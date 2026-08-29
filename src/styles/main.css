@@ -657,8 +657,8 @@ body {
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #e6a200;
-  border-color: #e6a200;
+  background: #8BB833;
+  border-color: #8BB833;
   box-shadow: var(--shadow-yellow);
   transform: translateY(-2px);
 }
@@ -5517,7 +5517,7 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
 .comment-at-mention {
   display: inline;
   background: rgba(169, 224, 62, .12);
-  color: #B88A00;
+  color: #4F7A16;
   border-radius: 4px;
   padding: 0 3px;
   font-weight: 600;
@@ -6318,9 +6318,9 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
    FERRAMENTA: Análise de Crédito (escopo .ac-page)
    ═══════════════════════════════════════════════════════════════════════ */
 .ac-page {
-  /* Accent primário alinhado ao sistema (amarelo DUX) */
+  /* Accent primário alinhado ao sistema (verde-limão da Sheep) */
   --ac-accent: var(--yellow);
-  --ac-accent-dark: #E6A200;
+  --ac-accent-dark: #8BB833;
   --ac-accent-bg: var(--yd);
   /* Roxo mantido apenas como cor de dado/IA (indicadores, hints) */
   --ac-purple: #7C3AED;
@@ -6340,7 +6340,7 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
 /* Análise de Crédito no tema escuro - inverte a escala de cinzas e ameniza os
    fundos pastel (tints) para não estourarem sobre superfícies escuras. */
 :root[data-theme="dark"] .ac-page {
-  --ac-accent-dark: #FFC94D;
+  --ac-accent-dark: #C6EE6B;
   --ac-purple: #A78BFA; --ac-purple-dark: #C4B5FD; --ac-purple-bg: rgba(124,58,237,.22);
   --ac-green-dark: #4ADE80;
   --ac-ok-bg: rgba(30,138,62,.20);

@@ -1347,7 +1347,7 @@ function ModalActionBtn({ onClick, variant = 'default', children }: {
     },
     primary: {
       base:  { background: 'var(--yellow)', color: 'var(--on-yellow)', border: '1.5px solid var(--yellow)' },
-      hover: { background: '#e6a200',       color: 'var(--on-yellow)', border: '1.5px solid #e6a200' },
+      hover: { background: '#8BB833',       color: 'var(--on-yellow)', border: '1.5px solid #8BB833' },
     },
     success: {
       base:  { background: 'rgba(30,138,62,0.1)',  color: '#15803D', border: '1.5px solid rgba(30,138,62,0.25)' },

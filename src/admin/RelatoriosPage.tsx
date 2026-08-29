@@ -720,7 +720,7 @@ function RelatorioVeiculos({ token, meta }: { token: string; meta: { title: stri
         .dux-cal-day.edge { background: var(--yellow); color: var(--on-yellow); font-weight: 800; }
         .dux-cal-day.today:not(.edge) { box-shadow: inset 0 0 0 1.5px var(--gray2); }
         .dux-cal-foot { display: flex; justify-content: space-between; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--gray3); }
-        .dux-cal-foot button { border: none; background: none; cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 700; color: #B58900; }
+        .dux-cal-foot button { border: none; background: none; cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 700; color: #4F7A16; }
         .dux-cal-foot button.muted { color: var(--gray); }
         .dux-cal-foot button:hover { text-decoration: underline; }
 
