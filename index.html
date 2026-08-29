@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- A aba usa o carneiro verde; a marca preta fica para a sidebar e o login,
+         onde ela convive com texto e precisa do contraste sólido. -->
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Portal Sheep</title>
+    <meta name="description" content="Gestão de Solicitações" />
+    <!-- Tema: aplica o data-theme salvo antes do render para evitar flash -->
+    <script>
+      try {
+        var t = localStorage.getItem('dux_tema') === 'escuro' ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Plus Jakarta Sans é usada só pela tela de login, que segue um template
+         próprio; o resto do sistema continua em Manrope. -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

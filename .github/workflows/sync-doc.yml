@@ -1,0 +1,92 @@
+# Sync TOOL_DOC.md → dux-tool-registry
+#
+# Drop this file into each tool repo at: .github/workflows/sync-doc.yml
+#
+# Triggers on any push to main that touches TOOL_DOC.md. Opens (or updates)
+# a PR against dux-tool-registry copying TOOL_DOC.md to docs/<tool>.md,
+# where <tool> is read from the YAML frontmatter `tool:` field.
+#
+# Requires org-level secrets (already configured for the @usedux org):
+#   - REGISTRY_APP_ID         — App ID of dux-tool-registry-sync
+#   - REGISTRY_APP_PRIVATE_KEY — .pem contents for the same App
+#
+# No per-repo PAT to manage. The App is installed only on dux-tool-registry;
+# this workflow mints a short-lived token scoped just to that repo.
+
+name: sync-tool-doc
+
+on:
+  push:
+    branches: [main, master]   # this repo's default branch is `master`, not `main`
+    paths:
+      - TOOL_DOC.md
+  workflow_dispatch:   # manual trigger from the Actions tab; useful for re-syncs and testing
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tool repo
+        uses: actions/checkout@v4
+
+      - name: Mint registry token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.REGISTRY_APP_ID }}
+          private-key: ${{ secrets.REGISTRY_APP_PRIVATE_KEY }}
+          owner: usedux
+          repositories: dux-tool-registry
+
+      - name: Fetch validator from registry
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          # Registry is private — raw.githubusercontent.com 404s without auth.
+          # Use the authenticated contents API and accept raw markdown/text.
+          curl -fsSL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github.raw" \
+            "https://api.github.com/repos/usedux/dux-tool-registry/contents/scripts/validate-doc.sh?ref=main" \
+            -o /tmp/validate-doc.sh
+          chmod +x /tmp/validate-doc.sh
+
+      - name: Validate TOOL_DOC.md
+        run: /tmp/validate-doc.sh TOOL_DOC.md
+
+      - name: Extract tool name from frontmatter
+        id: meta
+        run: |
+          tool=$(awk '/^tool:/ {print $2; exit}' TOOL_DOC.md)
+          if [ -z "$tool" ]; then
+            echo "::error::TOOL_DOC.md is missing a 'tool:' field in frontmatter"
+            exit 1
+          fi
+          echo "tool=$tool" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout registry
+        uses: actions/checkout@v4
+        with:
+          repository: usedux/dux-tool-registry
+          token: ${{ steps.app-token.outputs.token }}
+          path: registry
+          fetch-depth: 0
+
+      - name: Copy doc into registry
+        run: |
+          cp TOOL_DOC.md "registry/docs/${{ steps.meta.outputs.tool }}.md"
+
+      - name: Open PR against registry
+        uses: peter-evans/create-pull-request@v6
+        with:
+          path: registry
+          token: ${{ steps.app-token.outputs.token }}
+          branch: sync/${{ github.repository }}
+          base: main
+          commit-message: "sync(${{ steps.meta.outputs.tool }}): update from ${{ github.repository }}@${{ github.sha }}"
+          title: "sync: ${{ steps.meta.outputs.tool }}"
+          body: |
+            Auto-sync from [`${{ github.repository }}`](https://github.com/${{ github.repository }}/commit/${{ github.sha }}).
+
+            Triggered by commit ${{ github.sha }}.
+          delete-branch: true

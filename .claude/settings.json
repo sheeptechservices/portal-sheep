@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(awk -F: '{print $1}')",
+      "Bash(grep -noE \"var\\\\\\(--[a-z0-9-]+, ?#[A-Fa-f0-9]{3,6}\\\\\\)\" src/styles/main.css)",
+      "Bash(grep -viE \"var\\\\\\(|--|/\\\\*\")",
+      "Bash(grep -vE \"^\\\\s*//|/\\\\*|\\\\* \")",
+      "Bash(mkdir -p /tmp/tpl_avista /tmp/tpl_parc)",
+      "Bash(unzip -o -q proposta-avista-dux.docx -d /tmp/tpl_avista)",
+      "Bash(unzip -o -q proposta-parcelada-dux.docx -d /tmp/tpl_parc)",
+      "Read(//tmp/**)",
+      "Read(//tmp/tpl_avista/word/**)",
+      "Read(//tmp/tpl_parc/word/**)",
+      "Bash(cd /tmp && echo \"=== AVISTA header1.xml ===\" && cat tpl_avista/word/header1.xml && echo \"\" && echo \"=== AVISTA header1 rels \\(if any\\) ===\" && cat tpl_avista/word/_rels/header1.xml.rels 2>/dev/null || echo \"\\(no header1.xml.rels\\)\" && echo \"\" && echo \"=== AVISTA document.xml.rels ===\" && cat tpl_avista/word/_rels/document.xml.rels)",
+      "Read(//c/tmp/**)",
+      "Bash(grep -o '<w:drawing>.\\\\{0,1200\\\\}' tpl_avista/word/document.xml)",
+      "Bash(python3 -)",
+      "Bash(grep -oE '<w:drawing>.{0,2500}' tpl_avista/word/document.xml)",
+      "Bash(cd /tmp && echo \"=== PARCELADA: logo placement ===\" && grep -c \"wp:anchor\" tpl_parc/word/document.xml && grep -c \"wp:inline\" tpl_parc/word/document.xml && echo \"--- parcelada header1.xml \\(first 600 chars\\) ---\" && head -c 600 tpl_parc/word/header1.xml && echo \"\" && echo \"--- parcelada document.xml.rels ---\" && cat tpl_parc/word/_rels/document.xml.rels && echo \"\" && echo \"=== image1.png dimensions ===\" && file tpl_avista/word/media/image1.png && echo \"\" && echo \"=== does parcelada reference image in body or header? \\(rId of image\\) ===\" && grep -oE 'Id=\"rId[0-9]+\" Type=\"[^\"]*image[^\"]*\"' tpl_parc/word/_rels/document.xml.rels)",
+      "Bash(cd /tmp; echo \"=== PARC anchor/inline ===\"; grep -c \"wp:anchor\" tpl_parc/word/document.xml; grep -c \"wp:inline\" tpl_parc/word/document.xml; echo \"=== PARC header1.xml \\(600ch\\) ===\"; head -c 600 tpl_parc/word/header1.xml; echo \"\"; echo \"=== PARC document.xml.rels image ref ===\"; grep -oE 'Id=\"rId[0-9]+\"[^>]*image[^>]*' tpl_parc/word/_rels/document.xml.rels; echo \"=== PARC anchor positionH/V ===\"; grep -oE '<wp:positionH[^/]*relativeFrom=\"[^\"]*\"' tpl_parc/word/document.xml; grep -oE '<wp:positionV[^/]*relativeFrom=\"[^\"]*\"' tpl_parc/word/document.xml; grep -oE 'cx=\"[0-9]+\" cy=\"[0-9]+\"' tpl_parc/word/document.xml | head -1; echo \"=== image1.png info ===\"; file tpl_avista/word/media/image1.png)",
+      "Bash(cp /tmp/tpl_avista/word/media/image1.png \"C:/Users/gui-z/AppData/Local/Temp/claude/c--Users-gui-z-OneDrive--rea-de-Trabalho-Projetos-Claude-dux-dux-forms-solicitacoes/60e0a468-1f34-4ed4-8a1a-19b36c9564da/scratchpad/banner.png\" && echo copied)",
+      "Bash(cd /tmp; echo \"=== sectPr \\(margins\\) AVISTA ===\"; grep -oE '<w:sectPr.*</w:sectPr>' tpl_avista/word/document.xml | grep -oE '<w:pgMar[^/]*/>|<w:pgSz[^/]*/>|<w:headerReference[^/]*/>|<w:footerReference[^/]*/>'; echo \"\"; echo \"=== footer1.xml \\(first 900\\) ===\"; head -c 900 tpl_avista/word/footer1.xml; echo \"\"; echo \"=== footer2.xml \\(first 500\\) ===\"; head -c 500 tpl_avista/word/footer2.xml)",
+      "Bash(unzip -o -q vcr_osd_mono.zip -d /tmp/vcrfont)",
+      "Bash(cd \"c:/Users/gui-z/OneDrive/Área de Trabalho/Projetos Claude/dux/dux-forms-solicitacoes\" && mkdir -p public/fonts && cp /tmp/vcrfont/VCR_OSD_MONO_1.001.ttf public/fonts/VCR_OSD_MONO.ttf && ls -la public/fonts/)",
+      "Bash(rm -f public/fonts/VCR_OSD_MONO.ttf)",
+      "Bash(rmdir public/fonts)",
+      "Bash(unzip -p proposta-avista-prematch.docx word/media/image1.png)",
+      "Bash(node \"C:/Users/gui-z/AppData/Local/Temp/claude/c--Users-gui-z-OneDrive--rea-de-Trabalho-Projetos-Claude-dux-dux-forms-solicitacoes/60e0a468-1f34-4ed4-8a1a-19b36c9564da/scratchpad/limpar-banner.mjs\")",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:developers.google.com)",
+      "Bash(grep -n \"^\\\\.admin-btn[a-z-]*\\\\s*{\\\\|^\\\\.admin-btn[a-z-]*,\" src/styles/main.css)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(echo \"build_exit=$?\")",
+      "Bash(node scripts/check-permissoes.mjs)",
+      "Bash(node scripts/test-permissoes.mjs)"
+    ],
+    "additionalDirectories": [
+      "\\tmp\\tpl_avista\\word\\media",
+      "\\tmp\\vcrfont"
+    ]
+  }
+}
