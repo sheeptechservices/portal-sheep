@@ -2,7 +2,7 @@
 
 Instruções obrigatórias para qualquer alteração neste repositório. Valem para todo
 código novo e para todo código tocado em uma edição, sem exceção e sem precisar ser
-repetido a cada pedido. Para as regras de manutenção do `TOOL_DOC.md`, ver `AGENTS.md`.
+repetido a cada pedido.
 
 ## 1. Ícones: SVG sempre, emoji nunca
 
