@@ -1016,7 +1016,7 @@ function CreateModal({ token, onClose, onCreate }: { token: string; onClose: () 
                 style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
                   padding: '10px 14px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 13, fontWeight: 600,
                   border: active ? '2px solid var(--yellow)' : '1.5px solid var(--gray3)',
-                  background: active ? 'rgba(169,224,62,0.07)' : 'var(--white)',
+                  background: active ? 'rgba(0, 201, 167,0.07)' : 'var(--white)',
                   color: active ? 'var(--black)' : 'var(--gray)' }}>
                 {icon}{label}
               </button>
@@ -1347,7 +1347,7 @@ function ModalActionBtn({ onClick, variant = 'default', children }: {
     },
     primary: {
       base:  { background: 'var(--yellow)', color: 'var(--on-yellow)', border: '1.5px solid var(--yellow)' },
-      hover: { background: '#8BB833',       color: 'var(--on-yellow)', border: '1.5px solid #8BB833' },
+      hover: { background: '#00A88C',       color: 'var(--on-yellow)', border: '1.5px solid #00A88C' },
     },
     success: {
       base:  { background: 'rgba(30,138,62,0.1)',  color: '#15803D', border: '1.5px solid rgba(30,138,62,0.25)' },
@@ -1607,7 +1607,7 @@ function DetailModal({ op, token, onClose, onUpdate, onDelete }: { op: Operacao;
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--black)', margin: 0 }}>Detalhes da Operação</p>
           <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 99,
-            background: op.tipo === 'TERMO_ANUENCIA' ? 'rgba(99,102,241,0.1)' : 'rgba(169,224,62,0.12)',
+            background: op.tipo === 'TERMO_ANUENCIA' ? 'rgba(99,102,241,0.1)' : 'rgba(0, 201, 167,0.12)',
             color: op.tipo === 'TERMO_ANUENCIA' ? '#4F46E5' : '#B45309' }}>
             {op.tipo === 'TERMO_ANUENCIA' ? 'Termo de Anuência' : 'Aceite do Sacado'}
           </span>
@@ -1974,7 +1974,7 @@ function TableRow({ op, onClick }: { op: Operacao; onClick: () => void }) {
       </td>
       <td>
         <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 99, whiteSpace: 'nowrap',
-          background: op.tipo === 'TERMO_ANUENCIA' ? 'rgba(99,102,241,0.1)' : 'rgba(169,224,62,0.12)',
+          background: op.tipo === 'TERMO_ANUENCIA' ? 'rgba(99,102,241,0.1)' : 'rgba(0, 201, 167,0.12)',
           color: op.tipo === 'TERMO_ANUENCIA' ? '#4F46E5' : '#B45309' }}>
           {op.tipo === 'TERMO_ANUENCIA' ? 'Anuência' : 'Aceite'}
         </span>

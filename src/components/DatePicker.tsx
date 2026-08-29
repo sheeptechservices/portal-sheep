@@ -201,7 +201,7 @@ export function DatePicker({ value, onChange, label, required, error, disabled, 
   const hasError = !!error
   const borderColor = hasError ? 'var(--red)' : open ? 'var(--yellow)' : 'var(--gray3)'
   const boxShadow = open
-    ? (hasError ? '0 0 0 4px rgba(217,48,37,0.10)' : '0 0 0 4px var(--yd), 0 2px 8px rgba(169,224,62,0.12)')
+    ? (hasError ? '0 0 0 4px rgba(217,48,37,0.10)' : '0 0 0 4px var(--yd), 0 2px 8px rgba(0, 201, 167,0.12)')
     : 'none'
 
   const dropdown = open && createPortal(

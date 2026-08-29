@@ -886,7 +886,7 @@ function MarcasDoGrupo() {
 }
 
 // Shader das ondas, porte fiel do template: deforma o plano com uma soma de
-// senos e cossenos realimentada e tira dali o brilho e a banda verde-limão.
+// senos e cossenos realimentada e tira dali o brilho e a banda em teal.
 const FRAG_ONDAS = `
 precision highp float;
 uniform vec2 u_res; uniform float u_time; uniform float u_speed; uniform float u_warm;
@@ -904,10 +904,10 @@ void main(){
   float mid = pow(s, 2.2);
   float gold = pow(0.5 + 0.5*sin(q.x*0.9 - q.y*1.3 + t*0.5), 3.0);
   vec3 base = vec3(0.016, 0.018, 0.026);
-  vec3 midC = mix(vec3(0.060, 0.095, 0.045), vec3(0.105, 0.175, 0.060), gold*u_warm);
-  vec3 hi   = mix(vec3(0.70, 0.95, 0.30), vec3(0.80, 1.00, 0.40), gold*u_warm);
+  vec3 midC = mix(vec3(0.020, 0.080, 0.068), vec3(0.035, 0.150, 0.125), gold*u_warm);
+  vec3 hi   = mix(vec3(0.10, 0.82, 0.68), vec3(0.25, 0.92, 0.80), gold*u_warm);
   vec3 col = base + midC*mid + hi*sheen*0.85;
-  col += vec3(0.60, 0.90, 0.25) * gold * mid * sheen * 0.5 * u_warm;
+  col += vec3(0.05, 0.72, 0.60) * gold * mid * sheen * 0.5 * u_warm;
   float vig = smoothstep(1.45, 0.35, length(uv));
   col *= 0.55 + 0.45*vig;
   gl_FragColor = vec4(col, 1.0);

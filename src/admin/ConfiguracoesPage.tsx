@@ -599,7 +599,7 @@ function StatusRow({
             ref={starBtnRef}
             className="status-action-btn"
             onClick={() => onSetConversion(status.is_conversion ? null : status.id)}
-            style={status.is_conversion ? { color: 'var(--yellow)', background: 'rgba(169,224,62,0.1)' } : {}}
+            style={status.is_conversion ? { color: 'var(--yellow)', background: 'rgba(0, 201, 167,0.1)' } : {}}
             onMouseEnter={() => {
               const rect = starBtnRef.current?.getBoundingClientRect();
               if (!rect) return;

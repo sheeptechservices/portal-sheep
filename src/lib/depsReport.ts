@@ -113,7 +113,7 @@ export function buildDepsReportHTML(alvo: 'ced' | 'sac', e: DepsReportData, auto
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <title>Relatório DEPS - ${escHtml(papel)}${e.nome ? ' · ' + escHtml(e.nome) : ''}</title>
 <style>
-  :root{--y:#A9E03E;--k:#121316;--g:#6B7280;--l:#E3E4DE;}
+  :root{--y:#00C9A7;--k:#121316;--g:#6B7280;--l:#E3E4DE;}
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,Segoe UI,Roboto,Manrope,sans-serif;color:var(--k);background:#F4F5F1;padding:32px;line-height:1.5}
   .sheet{max-width:760px;margin:0 auto;background:#fff;border:1px solid var(--l);border-radius:14px;overflow:hidden}

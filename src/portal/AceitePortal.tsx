@@ -16,7 +16,7 @@ function AnexosSection({ anexos }: { anexos: Anexo[] }) {
   return (
     <div style={{ background: '#fff', borderRadius: 16, border: '1.5px solid #E3E4DE', boxShadow: '0 2px 16px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 18px', borderBottom: '1px solid #F0F0EC', background: '#FAFAF8' }}>
-        <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(169,224,62,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(0, 201, 167,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="#B45309" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><polyline points="14 2 14 8 20 8" stroke="#B45309" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </div>
         <span style={{ fontSize: 10.5, fontWeight: 800, color: '#888', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Documentos Anexados</span>
@@ -365,7 +365,7 @@ export default function AceitePortal() {
           {/* Cedente */}
           <div style={{ background: '#fff', borderRadius: 16, border: '1.5px solid #E3E4DE', boxShadow: '0 2px 16px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 18px', borderBottom: '1px solid #F0F0EC', background: '#FAFAF8' }}>
-              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(169,224,62,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(0, 201, 167,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="#B45309" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><polyline points="9 22 9 12 15 12 15 22" stroke="#B45309" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </div>
               <span style={{ fontSize: 10.5, fontWeight: 800, color: '#888', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Cedente</span>
@@ -385,7 +385,7 @@ export default function AceitePortal() {
           {/* Sacado */}
           <div style={{ background: '#fff', borderRadius: 16, border: '1.5px solid #E3E4DE', boxShadow: '0 2px 16px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 18px', borderBottom: '1px solid #F0F0EC', background: '#FAFAF8' }}>
-              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(169,224,62,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(0, 201, 167,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" stroke="#B45309" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><circle cx="12" cy="7" r="4" stroke="#B45309" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </div>
               <span style={{ fontSize: 10.5, fontWeight: 800, color: '#888', textTransform: 'uppercase', letterSpacing: '0.09em' }}>{op.tipo === 'TERMO_ANUENCIA' ? 'Anuente' : 'Sacado'}</span>
@@ -409,7 +409,7 @@ export default function AceitePortal() {
           <div style={{ background: '#fff', borderRadius: 16, border: '1.5px solid #E3E4DE', boxShadow: '0 2px 16px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
             {/* Header igual cedente/sacado */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 18px', borderBottom: '1px solid #F0F0EC', background: '#FAFAF8' }}>
-              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(169,224,62,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(0, 201, 167,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><line x1="12" y1="1" x2="12" y2="23" stroke="#B45309" strokeWidth="2" strokeLinecap="round"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="#B45309" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </div>
               <span style={{ fontSize: 10.5, fontWeight: 800, color: '#888', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Operação</span>
@@ -474,7 +474,7 @@ export default function AceitePortal() {
         {op.tipo !== 'TERMO_ANUENCIA' && op.bancoNome && (
           <div style={{ background: '#fff', borderRadius: 16, border: '1.5px solid #E3E4DE', boxShadow: '0 2px 16px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 18px', borderBottom: '1px solid #F0F0EC', background: '#FAFAF8' }}>
-              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(169,224,62,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(0, 201, 167,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="2" y="7" width="20" height="14" rx="2" stroke="#B45309" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16" stroke="#B45309" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </div>
               <span style={{ fontSize: 10.5, fontWeight: 800, color: '#888', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Conta para Pagamento (Escrow)</span>
@@ -550,7 +550,7 @@ export default function AceitePortal() {
           onMouseEnter={e => (e.currentTarget.style.background = '#2d2f36')}
           onMouseLeave={e => (e.currentTarget.style.background = '#121316')}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="#A9E03E" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="#00C9A7" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
           {op.tipo === 'TERMO_ANUENCIA' ? 'Assinar termo de anuência' : 'Assinar documento de aceite'}
         </button>
 

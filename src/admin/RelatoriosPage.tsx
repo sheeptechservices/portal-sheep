@@ -26,14 +26,14 @@ interface Vehicle {
 }
 
 const VEHICLES: Vehicle[] = [
-  { id: 'FIDC',  label: 'FIDC',  color: 'var(--yellow)', textColor: '#121316', bgLight: 'rgba(169,224,62,0.10)', ops: 731, liquidez: 21580000, variacao: -1.8 },
-  { id: 'ATLAS', label: 'Atlas', color: '#121316',       textColor: '#A9E03E', bgLight: '#F1F1EF',              ops: 312, liquidez: 8240000,  variacao:  4.2 },
+  { id: 'FIDC',  label: 'FIDC',  color: 'var(--yellow)', textColor: '#121316', bgLight: 'rgba(0, 201, 167,0.10)', ops: 731, liquidez: 21580000, variacao: -1.8 },
+  { id: 'ATLAS', label: 'Atlas', color: '#121316',       textColor: '#00C9A7', bgLight: '#F1F1EF',              ops: 312, liquidez: 8240000,  variacao:  4.2 },
   { id: 'DUX',   label: 'DUX',   color: '#AAAAAA',        textColor: '#121316', bgLight: '#F5F5F3',              ops: 173, liquidez: 3920000,  variacao:  0.5 },
 ];
 
 // Cor "crua" (hex) por veículo - para usos onde var(--yellow) não serve (ex.: SVG dasharray, transparências)
 const VEHICLE_HEX: Record<VehicleId, string> = {
-  FIDC:  '#A9E03E',
+  FIDC:  '#00C9A7',
   ATLAS: '#121316',
   DUX:   '#AAAAAA',
 };
@@ -720,7 +720,7 @@ function RelatorioVeiculos({ token, meta }: { token: string; meta: { title: stri
         .dux-cal-day.edge { background: var(--yellow); color: var(--on-yellow); font-weight: 800; }
         .dux-cal-day.today:not(.edge) { box-shadow: inset 0 0 0 1.5px var(--gray2); }
         .dux-cal-foot { display: flex; justify-content: space-between; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--gray3); }
-        .dux-cal-foot button { border: none; background: none; cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 700; color: #4F7A16; }
+        .dux-cal-foot button { border: none; background: none; cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 700; color: #0A6E5C; }
         .dux-cal-foot button.muted { color: var(--gray); }
         .dux-cal-foot button:hover { text-decoration: underline; }
 

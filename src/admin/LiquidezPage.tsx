@@ -134,7 +134,7 @@ function getWeeksForMonth(ym: string, todayMonday: Date): { start: string; end: 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const SOURCE_CONFIG: Record<LiquidezSource, { label: string; color: string }> = {
-  interno: { label: 'Interno', color: '#A9E03E' },
+  interno: { label: 'Interno', color: '#00C9A7' },
   atlas:   { label: 'Atlas',   color: '#2563EB' },
   fidc:    { label: 'FIDC',    color: '#7C3AED' },
 };
@@ -536,7 +536,7 @@ function LiquidezDayColumn({ date, isTodayCol, txs, onAdd, onEdit, onDelete, onT
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', minWidth: 180,
-      background: isTodayCol ? 'rgba(169,224,62,0.04)' : 'var(--bg)',
+      background: isTodayCol ? 'rgba(0, 201, 167,0.04)' : 'var(--bg)',
       border: `1.5px solid ${isTodayCol ? 'var(--yellow)' : 'var(--gray3)'}`,
       borderRadius: 12, overflow: 'hidden',
       transition: 'border-color 0.15s, background 0.15s',
@@ -545,7 +545,7 @@ function LiquidezDayColumn({ date, isTodayCol, txs, onAdd, onEdit, onDelete, onT
       <div style={{
         padding: '10px 12px',
         borderBottom: `1px solid ${isTodayCol ? 'var(--yb)' : 'var(--gray3)'}`,
-        background: isTodayCol ? 'rgba(169,224,62,0.06)' : 'transparent',
+        background: isTodayCol ? 'rgba(0, 201, 167,0.06)' : 'transparent',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <div>
@@ -1720,7 +1720,7 @@ function LiquidezMonthView({ year, month, transactions, today, onAdd, onEdit, on
                   key={date}
                   onClick={() => onAdd(date)}
                   style={{
-                    background: isToday ? 'rgba(169,224,62,0.04)' : 'var(--bg)',
+                    background: isToday ? 'rgba(0, 201, 167,0.04)' : 'var(--bg)',
                     border: `1.5px solid ${isToday ? 'var(--yellow)' : 'var(--gray3)'}`,
                     borderRadius: 10, padding: '8px 10px', minHeight: 72,
                     opacity: inMonth ? 1 : 0.3,

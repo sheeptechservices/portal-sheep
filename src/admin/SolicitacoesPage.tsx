@@ -1297,7 +1297,7 @@ function CedenteSearch({ token, value, onChange }: {
         {value ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, height: 38, padding: '0 11px',
             borderRadius: 8, border: '1.5px solid var(--yellow)', background: 'var(--white)',
-            boxShadow: '0 0 0 3px rgba(169,224,62,0.12)' }}>
+            boxShadow: '0 0 0 3px rgba(0, 201, 167,0.12)' }}>
             <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 6, overflow: 'hidden' }}>
               <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--black)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1 }}>{value.nome}</span>
               {value.cnpj_cpf && <span style={{ fontSize: 11.5, color: 'var(--gray2)', whiteSpace: 'nowrap', flexShrink: 0 }}>{cnpjFmt(value.cnpj_cpf)}</span>}
@@ -1436,7 +1436,7 @@ function SacadoSearch({ token, value, onChange }: {
       <div ref={wrapRef} style={{ position: 'relative' }}>
         {value ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, height: 38, padding: '0 11px',
-            borderRadius: 8, border: '1.5px solid var(--yellow)', background: 'var(--white)', boxShadow: '0 0 0 3px rgba(169,224,62,0.12)' }}>
+            borderRadius: 8, border: '1.5px solid var(--yellow)', background: 'var(--white)', boxShadow: '0 0 0 3px rgba(0, 201, 167,0.12)' }}>
             <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 6, overflow: 'hidden' }}>
               <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--black)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1 }}>{value.razao_social ?? cnpjFmt(value.cnpj_cpf)}</span>
               {value.cnpj_cpf && value.razao_social && <span style={{ fontSize: 11.5, color: 'var(--gray2)', whiteSpace: 'nowrap', flexShrink: 0 }}>{cnpjFmt(value.cnpj_cpf)}</span>}
@@ -1824,7 +1824,7 @@ function CreateModal({ statuses, token, onClose, onCreated }: {
               type="button"
               onClick={() => fileInputRef.current?.click()}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', fontSize: 12, fontWeight: 600, borderRadius: 8, border: '1.5px dashed var(--gray3)', background: 'none', cursor: 'pointer', color: 'var(--gray2)', width: '100%', justifyContent: 'center', transition: 'background 0.15s, border-color 0.15s, color 0.15s' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(169,224,62,0.08)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--yellow)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--black)'; }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0, 201, 167,0.08)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--yellow)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--black)'; }}
               onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--gray3)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--gray2)'; }}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>

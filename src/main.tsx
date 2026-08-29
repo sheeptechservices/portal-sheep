@@ -12,7 +12,7 @@ const AceitePortal = lazy(() => import('./portal/AceitePortal'));
 
 const Fallback = (
   <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-    <div style={{ width: 28, height: 28, border: '3px solid #E3E4DE', borderTopColor: '#A9E03E', borderRadius: '50%', animation: 'spin .7s linear infinite' }} />
+    <div style={{ width: 28, height: 28, border: '3px solid #E3E4DE', borderTopColor: '#00C9A7', borderRadius: '50%', animation: 'spin .7s linear infinite' }} />
   </div>
 );
 

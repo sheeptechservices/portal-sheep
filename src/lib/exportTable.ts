@@ -101,7 +101,7 @@ export function exportToPDF(data: ExportData): boolean {
   const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <title>${escapeHtml(data.filename)}</title>
 <style>
-  :root{--y:#A9E03E;--k:#121316;--g:#6B7280;--l:#E3E4DE;}
+  :root{--y:#00C9A7;--k:#121316;--g:#6B7280;--l:#E3E4DE;}
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,Segoe UI,Roboto,Manrope,sans-serif;color:var(--k);background:#fff;padding:28px;line-height:1.4}
   .head{display:flex;align-items:center;gap:12px;margin-bottom:6px}
