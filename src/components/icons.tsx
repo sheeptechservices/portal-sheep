@@ -308,6 +308,74 @@ export function IconAgrupar({ size = 14 }: { size?: number }) {
     </Ico>
   );
 }
+// As tres visoes de uma mesma lista, no seletor da barra de ferramentas.
+// Quadro: colunas de alturas diferentes, que e o que um kanban parece de longe.
+export function IconVisaoQuadro({ size = 14 }: { size?: number }) {
+  return (
+    <Ico size={size}>
+      <rect x="3.2" y="3.2" width="7" height="17.6" rx="2.2" />
+      <rect x="13.8" y="3.2" width="7" height="11" rx="2.2" />
+    </Ico>
+  );
+}
+// Lista: marcador e linha, repetidos.
+export function IconVisaoLista({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><path d="M8 6h13M8 12h13M8 18h13M3.4 6h.01M3.4 12h.01M3.4 18h.01" /></Ico>;
+}
+// Tabela: a moldura com cabecalho e a primeira coluna destacada.
+export function IconVisaoTabela({ size = 14 }: { size?: number }) {
+  return (
+    <Ico size={size}>
+      <rect x="3.2" y="4" width="17.6" height="16" rx="2.2" />
+      <path d="M3.2 9.6h17.6M9.8 9.6V20" />
+    </Ico>
+  );
+}
+// Etapa de conversao: a que fecha o fluxo. Preenchida quando esta marcada, para
+// ler acesa de relance no meio da linha.
+export function IconEstrela({ size = 14, preenchida }: { size?: number; preenchida?: boolean }) {
+  return (
+    <Ico size={size}>
+      <path d="M12 3.2l2.78 5.63 6.22.9-4.5 4.38 1.06 6.19L12 17.38l-5.56 2.92 1.06-6.19-4.5-4.38 6.22-.9z"
+        fill={preenchida ? 'currentColor' : 'none'} />
+    </Ico>
+  );
+}
+// Etapa desconsiderada: fica de fora da conta.
+export function IconProibido({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><circle cx="12" cy="12" r="8.6" /><path d="M6 6l12 12" /></Ico>;
+}
+// Coluna recolhida ou aberta: as setas apontam para dentro quando ela vai fechar.
+export function IconRecolher({ size = 14, aberta }: { size?: number; aberta?: boolean }) {
+  return aberta
+    ? <Ico size={size}><path d="M20 17l-5-5 5-5M4 7l5 5-5 5" /></Ico>
+    : <Ico size={size}><path d="M9 7l-5 5 5 5M15 7l5 5-5 5" /></Ico>;
+}
+// Punho de arrastar: seis pontos, o mesmo desenho ja usado nas etapas do funil.
+// Os circulos vao preenchidos de proposito - o ponto vazado some no tamanho em
+// que o punho aparece.
+export function IconArrastar({ size = 14 }: { size?: number }) {
+  return (
+    <Ico size={size}>
+      <circle cx="9" cy="6" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="12" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="18" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="6" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="12" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="18" r="1.4" fill="currentColor" stroke="none" />
+    </Ico>
+  );
+}
+// Etapa de entrada de um quadro: a bandeja que recebe o que chega.
+export function IconEntrada({ size = 14 }: { size?: number }) {
+  return (
+    <Ico size={size}>
+      <path d="M3.2 13.4h4.4l1.4 2.4h6l1.4-2.4h4.4" />
+      <path d="M3.2 13.4v4.4a2.2 2.2 0 002.2 2.2h13.2a2.2 2.2 0 002.2-2.2v-4.4" />
+      <path d="M12 3.4v6.8M9.2 7.6L12 10.4l2.8-2.8" />
+    </Ico>
+  );
+}
 // Data-alvo numa linha de tabela.
 export function IconCalendario({ size = 14 }: { size?: number }) {
   return <Ico size={size}><rect x="3.2" y="4.8" width="17.6" height="16" rx="2.4" /><path d="M3.2 9.6h17.6M8 3.2v3M16 3.2v3" /></Ico>;

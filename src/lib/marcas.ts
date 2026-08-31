@@ -37,6 +37,9 @@ export const MARCAS: Marca[] = [
   { nome: 'Bitka Analytics', src: '/marcas/bitka.webp', altura: 34 },
   { nome: 'Click!', src: '/marcas/click.webp', altura: 32 },
   { nome: '300 Franchising', src: '/marcas/300-f.webp', altura: 34 },
+  // Duas cores sobre transparente, recortada do cartao claro do manual: no
+  // carrossel vira silhueta como as outras, e nos seletores aparece direto.
+  { nome: 'GR2', src: '/marcas/gr2.webp', altura: 26 },
   { nome: 'Grupo 3SA', src: '/marcas/grupo-3sa.webp', altura: 28, fundoEscuro: true },
   // Assinatura larga e desenhada em branco: altura baixa, e escurece onde o
   // fundo é claro, como a do Grupo 3SA.

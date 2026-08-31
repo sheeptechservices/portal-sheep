@@ -9,11 +9,14 @@ import {
   IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado, IconMarcoValidado,
   IconPlus, IconPrioridadeAlta, IconPrioridadeBaixa, IconPrioridadeMaxima,
   IconPrioridadeMedia, IconTrash, IconTrendDown, IconTrendFlat, IconTrendUp, IconTrendWavy,
+  IconVisaoLista, IconVisaoQuadro,
   IconX, IconZip,
 } from '../components/icons';
 import FilterDropdown from '../components/FilterDropdown';
 import { logoDoCliente } from '../lib/marcas';
+import { PAPEIS_EQUIPE } from '../lib/papeisDeEquipe';
 import { SkeletonCards, SkeletonTabela } from '../components/Skeleton';
+import { CartaoKpi, CartoesKpiEsqueleto } from '../components/CartaoKpi';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { SelectSistema } from '../components/SelectSistema';
 import { DatePicker } from '../components/DatePicker';
@@ -106,7 +109,7 @@ const COR_ENTREGA: Record<string, string> = {
 export const PRIORIDADES = ['Urgente', 'Alta', 'Média', 'Baixa'] as const;
 export const PRIORIDADE_PADRAO = 'Média';
 
-const COR_PRIORIDADE: Record<string, string> = {
+export const COR_PRIORIDADE: Record<string, string> = {
   'Urgente': '#D93025',
   'Alta': '#C2410C',
   'Média': '#B58300',
@@ -123,7 +126,7 @@ const DESENHO_PRIORIDADE: Record<string, (p: { size?: number }) => JSX.Element> 
 
 /** O ícone já sai na cor do nível. A cor mora aqui, e não em cada uso, senão a
  *  célula editável e a de leitura acabam divergindo. */
-const ICONE_PRIORIDADE: Record<string, (p: { size?: number }) => JSX.Element> =
+export const ICONE_PRIORIDADE: Record<string, (p: { size?: number }) => JSX.Element> =
   Object.fromEntries(PRIORIDADES.map(nivel => [
     nivel,
     ({ size = 14 }: { size?: number }) => (
@@ -158,7 +161,7 @@ const ETIQUETA_PADRAO = 'Documento';
 const ETIQUETAS = ['Proposta', 'Contrato', 'Documento', 'Slide', 'Planilha', 'Outro'] as const;
 
 /** Papéis da equipe. Gestor vem primeiro porque é o que a aba de gestão destaca. */
-export const PAPEIS_EQUIPE = ['Gestor', 'Dev', 'Designer', 'Analista', 'QA', 'Outro'] as const;
+export { PAPEIS_EQUIPE } from '../lib/papeisDeEquipe';
 
 /** Tipos de projeto da casa. Lista fechada de propósito: campo livre viraria
  *  "BI", "bi" e "Business Intelligence" na mesma base, e o filtro não fecharia. */
@@ -218,6 +221,31 @@ export interface Entrega {
   links: { label: string; url: string }[];
   ordem: number;
   evidencias: Evidencia[];
+  /** Vêm do servidor, deduzidos das tarefas ligadas a esta entrega. O `status`
+   *  acima já chega deduzido junto - só resolução manual sobrevive à dedução. */
+  tarefas_total: number;
+  tarefas_feitas: number;
+}
+
+/** Tarefa do projeto. Mora aqui, e não na tela de Tarefas, porque é dado de
+ *  projeto: chega na mesma carga e é dela que sai o andamento das entregas. */
+export interface Tarefa {
+  id: number;
+  projeto_id: string;
+  /** Nulo quando a tarefa não pende de nenhum marco. */
+  entrega_id: number | null;
+  titulo: string;
+  descricao: string | null;
+  status: string;
+  prioridade: string;
+  responsavel_id: string | null;
+  responsavel_nome: string | null;
+  responsavel_email: string | null;
+  responsavel_foto: string | null;
+  prazo: string | null;
+  etiquetas: string[];
+  ordem: number;
+  concluida_em: string | null;
 }
 
 /** Entrega ainda sem id, montada no cadastro de um projeto novo. */
@@ -266,6 +294,8 @@ export interface Projeto {
   reunioes: Reuniao[];
   /** Na ordem em que foram criadas. */
   entregas: Entrega[];
+  /** Todas as do projeto, presas a uma entrega ou soltas. */
+  tarefas: Tarefa[];
   criado_em: string;
 }
 
@@ -290,6 +320,50 @@ const VAZIO = {
 };
 
 type Rascunho = typeof VAZIO;
+
+/** As entregas que todo projeto novo já nasce tendo. São as três cerimônias por
+ *  que todo projeto da casa passa, e deixá-las prontas poupa recadastrá-las uma
+ *  a uma e evita que cada projeto invente um nome diferente para a mesma coisa.
+ *  São entregas comuns depois de criadas: dá para renomear, adiar ou apagar
+ *  antes mesmo de salvar. */
+const CATEGORIA_DE_PARTIDA = 'Ritos';
+
+const ENTREGAS_DE_PARTIDA = [
+  {
+    titulo: 'Kickoff',
+    descricao: 'Reunião de abertura com o cliente: alinhamento de escopo, prazos, '
+      + 'responsáveis de cada lado e canais de comunicação.',
+  },
+  {
+    titulo: 'Levantamento de Requisitos',
+    descricao: 'Coleta e registro do que o sistema precisa fazer, fechada com o '
+      + 'documento de requisitos aprovado pelo cliente.',
+  },
+  {
+    titulo: 'Signoff',
+    descricao: 'Aceite formal do cliente sobre o que foi entregue, encerrando o '
+      + 'escopo acordado.',
+  },
+  {
+    // Depois do aceite, e não antes: perguntar como foi enquanto o escopo ainda
+    // está aberto mede uma coisa que ainda vai mudar.
+    titulo: 'Pesquisa de Satisfação',
+    descricao: 'Envio e apuração da pesquisa de satisfação com o cliente depois '
+      + 'da entrega, com o resultado anexado como evidência.',
+  },
+];
+
+/** Uma lista nova a cada projeto: devolver sempre o mesmo array deixaria dois
+ *  formulários abertos mexendo na mesma lista. */
+function entregasDePartida(): EntregaPendente[] {
+  return ENTREGAS_DE_PARTIDA.map(e => ({
+    titulo: e.titulo,
+    descricao: e.descricao,
+    categoria: CATEGORIA_DE_PARTIDA,
+    status: ENTREGA_PLANEJADA,
+    prazo: '', responsaveis: [], links: [],
+  }));
+}
 
 const fmtData = (v: string | null) =>
   v ? new Date(`${v}T00:00:00`).toLocaleDateString('pt-BR') : '-';
@@ -830,7 +904,7 @@ function CampoCategoria({ valor, sugestoes, onChange }: {
  *  subiu. Arrastar para selecionar texto de dentro do painel e soltar fora faz
  *  o clique nascer no fundo - e o painel fechava no meio da seleção. Por isso o
  *  fecho exige que o gesto tenha começado e terminado no fundo. */
-function useFecharNoFundo(onFechar: () => void) {
+export function useFecharNoFundo(onFechar: () => void) {
   const comecouNoFundo = useRef(false);
   return {
     onMouseDown: (e: React.MouseEvent) => { comecouNoFundo.current = e.target === e.currentTarget; },
@@ -1073,6 +1147,38 @@ function ListaDaCelula({ aberto, ancora, itens, onFechar }: {
   );
 }
 
+/** Saúde na tabela: a lista de estados vem antes do modal. Escolher o estado é
+ *  a parte que a pessoa já sabe ao olhar a linha; o texto que sustenta a
+ *  leitura vem depois, com o estado já resolvido. */
+function CelulaSaude({ registro, onEscolher }: {
+  registro: RegistroSaude | undefined;
+  onEscolher: (estado: string) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const botao = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <CelulaEditavel refBotao={botao}
+        titulo={registro?.descricao ?? 'Registrar leitura de saúde'}
+        onAbrir={() => setAberto(a => !a)}>
+        <ChipSaude estado={registro?.estado ?? SEM_LEITURA} size={11} />
+        {registro && (
+          <span style={{ fontSize: 11, color: 'var(--gray2)' }}>
+            {idadeDaLeitura(registro.criado_em)}
+          </span>
+        )}
+      </CelulaEditavel>
+      <ListaDaCelula aberto={aberto} ancora={botao} onFechar={() => setAberto(false)}
+        itens={SAUDES.map(e => ({
+          chave: e,
+          ativo: e === registro?.estado,
+          conteudo: <ChipSaude estado={e} size={11} />,
+          ao: () => onEscolher(e),
+        }))} />
+    </>
+  );
+}
+
 function CelulaPrioridade({ valor, onChange }: { valor: string; onChange: (v: string) => void }) {
   const [aberto, setAberto] = useState(false);
   const botao = useRef<HTMLButtonElement>(null);
@@ -1157,13 +1263,15 @@ function CelulaData({ valor, atrasado, onChange }: {
 
 /** Saúde não é um valor que se troca, é uma leitura que se registra: por isso
  *  abre o mesmo diálogo do resto do sistema, com o descritivo obrigatório. */
-function DialogoSaude({ projeto, salvando, onRegistrar, onFechar }: {
+function DialogoSaude({ projeto, inicial, salvando, onRegistrar, onFechar }: {
   projeto: Projeto;
+  /** Estado já escolhido na lista da tabela. Sem ele vale a leitura anterior. */
+  inicial?: string;
   salvando: boolean;
   onRegistrar: (estado: string, descricao: string) => Promise<void>;
   onFechar: () => void;
 }) {
-  const [estado, setEstado] = useState<string>(projeto.saude[0]?.estado ?? 'Saudável');
+  const [estado, setEstado] = useState<string>(inicial ?? projeto.saude[0]?.estado ?? 'Saudável');
   const [descricao, setDescricao] = useState('');
   const [erro, setErro] = useState('');
   const fundo = useFecharNoFundo(onFechar);
@@ -2478,7 +2586,7 @@ function FormularioProjeto({
     equipe: editando.equipe.map(m => ({ usuario_id: m.id, papel: m.papel })),
     data_inicio: editando.data_inicio ?? '', previsao_entrega: editando.previsao_entrega ?? '',
     progresso: editando.progresso ?? 0, observacoes: editando.observacoes ?? '',
-  } : VAZIO);
+  } : { ...VAZIO, entregas: entregasDePartida() });
   const [novos, setNovos] = useState<AnexoPendente[]>([]);
   const [removidos, setRemovidos] = useState<number[]>([]);
   const [erroAnexo, setErroAnexo] = useState('');
@@ -2884,7 +2992,9 @@ export default function ProjetosPage({ token }: { token: string }) {
     { fonte: 'anexo'; item: Arquivo } | { fonte: 'evidencia'; item: Evidencia } | null
   >(null);
   /** Projeto cuja leitura de saúde está sendo registrada pela listagem. */
-  const [lendoSaude, setLendoSaude] = useState<Projeto | null>(null);
+  // Guarda o estado escolhido na lista junto do projeto: o modal abre com ele
+  // já marcado, e continua trocável lá dentro.
+  const [lendoSaude, setLendoSaude] = useState<{ projeto: Projeto; estado?: string } | null>(null);
   const [view, setView] = useState<'quadro' | 'lista'>('lista');
   const [fStatus, setFStatus] = useState<string[]>([]);
   const [fCliente, setFCliente] = useState<string[]>([]);
@@ -3153,15 +3263,25 @@ export default function ProjetosPage({ token }: { token: string }) {
 
   // O resumo conta o que está em tela: com filtro aplicado, número que ignora
   // o filtro vira contradição visível.
-  const resumo = useMemo(() => ({
-    total: filtrados.length,
-    andamento: filtrados.filter(p => p.status === 'Em andamento').length,
-    concluidos: filtrados.filter(p => p.status === 'Concluído').length,
-    atrasados: filtrados.filter(p => {
-      const d = diasPara(p.previsao_entrega);
-      return d !== null && d < 0 && p.status !== 'Concluído' && p.status !== 'Cancelado';
-    }).length,
-  }), [filtrados]);
+  // Os cartões contam o que está na tela: mexer num filtro e ver o número
+  // parado faria duvidar de qual dos dois está certo.
+  const resumo = useMemo(() => {
+    const vivos = filtrados.filter(p => p.status !== 'Concluído' && p.status !== 'Cancelado');
+    return {
+      total: filtrados.length,
+      andamento: filtrados.filter(p => p.status === 'Em andamento').length,
+      atrasados: vivos.filter(p => {
+        const d = diasPara(p.previsao_entrega);
+        return d !== null && d < 0;
+      }).length,
+      // Só entre os que ainda correm: cobrar leitura de projeto encerrado seria
+      // uma pendência que ninguém vai resolver.
+      semSaude: vivos.filter(p => !p.saude[0]).length,
+      progresso: vivos.length
+        ? Math.round(vivos.reduce((soma, p) => soma + progressoDe(p), 0) / vivos.length)
+        : 0,
+    };
+  }, [filtrados]);
 
   if (!pode('projetos:ver')) {
     return (
@@ -3199,6 +3319,28 @@ export default function ProjetosPage({ token }: { token: string }) {
         )}
       </div>
 
+      {carregando ? (
+        <CartoesKpiEsqueleto cartoes={5} />
+      ) : projetos.length > 0 && (
+        <div className="admin-stats" style={{ marginBottom: 18 }}>
+          <CartaoKpi rotulo="Projetos" valor={resumo.total}
+            nota={temFiltro ? 'no filtro atual' : 'cadastrados'}
+            cor="var(--yellow)" atraso={0} />
+          <CartaoKpi rotulo="Em andamento" valor={resumo.andamento} nota="com trabalho correndo"
+            cor="#B58300" atraso={0.05}
+            ativo={fStatus.includes('Em andamento')}
+            onClick={() => setFStatus(f => f.includes('Em andamento')
+              ? f.filter(x => x !== 'Em andamento')
+              : [...f, 'Em andamento'])} />
+          <CartaoKpi rotulo="Atrasados" valor={resumo.atrasados} nota="com a entrega vencida"
+            cor="#D93025" atraso={0.1} />
+          <CartaoKpi rotulo="Sem leitura" valor={resumo.semSaude} nota="nunca tiveram update de saúde"
+            cor="#6E6F69" atraso={0.15} />
+          <CartaoKpi rotulo="Progresso médio" valor={`${resumo.progresso}%`} nota="das entregas validadas"
+            cor="#0066CC" atraso={0.2} />
+        </div>
+      )}
+
       {!carregando && projetos.length > 0 && (
         <div className="admin-toolbar">
           <span className="admin-toolbar-label">Filtrar</span>
@@ -3218,11 +3360,13 @@ export default function ProjetosPage({ token }: { token: string }) {
           {aba === 'geral' && (
             <div className="view-toggle">
               <div className="view-toggle-pill" style={{ left: view === 'quadro' ? 3 : 35 }} />
-              <button className={view === 'quadro' ? 'active' : ''} onClick={() => setView('quadro')} title="Quadro">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="18" rx="2" stroke="currentColor" strokeWidth="1.8" /><rect x="14" y="3" width="7" height="11" rx="2" stroke="currentColor" strokeWidth="1.8" /></svg>
+              <button className={view === 'quadro' ? 'active' : ''} onClick={() => setView('quadro')}
+                title="Quadro" aria-label="Ver em quadro">
+                <IconVisaoQuadro size={14} />
               </button>
-              <button className={view === 'lista' ? 'active' : ''} onClick={() => setView('lista')} title="Lista">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+              <button className={view === 'lista' ? 'active' : ''} onClick={() => setView('lista')}
+                title="Lista" aria-label="Ver em lista">
+                <IconVisaoLista size={14} />
               </button>
             </div>
           )}
@@ -3360,15 +3504,8 @@ export default function ProjetosPage({ token }: { token: string }) {
 
                   <td>
                     {podeEditar ? (
-                      <CelulaEditavel titulo={p.saude[0]?.descricao ?? 'Registrar leitura de saúde'}
-                        onAbrir={() => setLendoSaude(p)}>
-                        <ChipSaude estado={p.saude[0]?.estado ?? SEM_LEITURA} size={11} />
-                        {p.saude[0] && (
-                          <span style={{ fontSize: 11, color: 'var(--gray2)' }}>
-                            {idadeDaLeitura(p.saude[0].criado_em)}
-                          </span>
-                        )}
-                      </CelulaEditavel>
+                      <CelulaSaude registro={p.saude[0]}
+                        onEscolher={estado => setLendoSaude({ projeto: p, estado })} />
                     ) : (
                       <span title={p.saude[0]?.descricao ?? 'Nenhuma leitura de saúde registrada.'}
                         style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -3463,22 +3600,8 @@ export default function ProjetosPage({ token }: { token: string }) {
         </div>
       ) : (
         <>
-          <div className="admin-stats">
-            {([
-              ['Total', resumo.total, 'projetos cadastrados', 'var(--yellow)'],
-              ['Em andamento', resumo.andamento, 'com trabalho ativo', '#0066CC'],
-              ['Concluídos', resumo.concluidos, 'entregues', '#1E8A3E'],
-              ['Atrasados', resumo.atrasados, 'passaram da previsão', '#D93025'],
-            ] as const).map(([label, valor, desc, cor], i) => (
-              <div key={label} className="admin-stat-card-v2"
-                style={{ '--accent-color': cor, animationDelay: `${i * 0.05}s` } as React.CSSProperties}>
-                <p className="stat-v2-label">{label}</p>
-                <p className="stat-v2-value">{valor}</p>
-                <p className="stat-v2-desc">{desc}</p>
-              </div>
-            ))}
-          </div>
-
+          {/* Os cartões desta aba subiram para o topo da página: eram os mesmos
+              números, e ter uma fileira só serve as duas abas. */}
           <div className="admin-table-wrap">
             <table className="admin-table sem-quebra">
               <thead>
@@ -3530,9 +3653,17 @@ export default function ProjetosPage({ token }: { token: string }) {
                         )}
                       </td>
                       <td>
-                        <span title={p.saude[0]?.descricao ?? 'Nenhuma leitura de saúde registrada.'}>
-                          <ChipSaude estado={p.saude[0]?.estado ?? SEM_LEITURA} />
-                        </span>
+                        {/* Mesma interação da tabela Geral: as vizinhas desta
+                            célula são editáveis, e a saúde ficar morta aqui era
+                            o que destoava. */}
+                        {podeEditar ? (
+                          <CelulaSaude registro={p.saude[0]}
+                            onEscolher={estado => setLendoSaude({ projeto: p, estado })} />
+                        ) : (
+                          <span title={p.saude[0]?.descricao ?? 'Nenhuma leitura de saúde registrada.'}>
+                            <ChipSaude estado={p.saude[0]?.estado ?? SEM_LEITURA} />
+                          </span>
+                        )}
                       </td>
                       <td>
                         {podeEditar ? (
@@ -3613,10 +3744,11 @@ export default function ProjetosPage({ token }: { token: string }) {
 
       {lendoSaude && (
         <DialogoSaude
-          projeto={lendoSaude}
+          projeto={lendoSaude.projeto}
+          inicial={lendoSaude.estado}
           salvando={salvando}
           onFechar={() => setLendoSaude(null)}
-          onRegistrar={(estado, descricao) => registrarSaude(lendoSaude, estado, descricao)}
+          onRegistrar={(estado, descricao) => registrarSaude(lendoSaude.projeto, estado, descricao)}
         />
       )}
 

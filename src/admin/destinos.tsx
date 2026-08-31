@@ -3,7 +3,7 @@
 // por ⌘K (QuickSearch), que casa por título, descrição e apelidos de cada destino.
 
 export type Page =
-  | 'projetos' | 'leads' | 'cadastros' | 'configuracoes'
+  | 'projetos' | 'tarefas' | 'leads' | 'cadastros' | 'configuracoes'
   | 'ferramentas' | 'gerador-documentos' | 'perfil'
   | 'usuarios';
 
@@ -50,6 +50,19 @@ export const DESTINOS: Destino[] = [
       <svg {...ic}>
         <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.2l1.8 2.2h8A2.5 2.5 0 0 1 21 9.7v7.8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z" />
         <path d="M8 13h8" />
+      </svg>
+    ),
+  },
+  {
+    page: 'tarefas',
+    titulo: 'Tarefas',
+    descricao: 'O trabalho dos projetos, em quadro, lista ou tabela',
+    grupo: 'Páginas',
+    termos: ['task', 'tasks', 'tarefa', 'kanban', 'backlog', 'atividades', 'quadro'],
+    icon: (
+      <svg {...ic}>
+        <path d="M9 11l2 2 4-4" />
+        <rect x="3" y="4" width="18" height="16" rx="2.5" />
       </svg>
     ),
   },

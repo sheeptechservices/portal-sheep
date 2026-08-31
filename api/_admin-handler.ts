@@ -39,7 +39,7 @@ async function guardaDaEquipe(
   db: Client,
   usuario: UsuarioAdmin | null | undefined,
   id: unknown,
-  de: 'projeto' | 'entrega' | 'evidencia' | 'arquivo' | 'saude' | 'reuniao' = 'projeto',
+  de: 'projeto' | 'entrega' | 'evidencia' | 'arquivo' | 'saude' | 'reuniao' | 'tarefa' = 'projeto',
 ) {
   if (papelEfetivo(usuario?.email, usuario?.papel) !== 'membro') return null;
   if (id === undefined || id === null || id === '') return FORA_DA_EQUIPE;
@@ -47,6 +47,7 @@ async function guardaDaEquipe(
   const ORIGEM: Record<string, string> = {
     projeto: 'SELECT ? AS projeto_id',
     entrega: 'SELECT projeto_id FROM projeto_entregas WHERE id = ?',
+    tarefa: 'SELECT projeto_id FROM projeto_tarefas WHERE id = ?',
     evidencia: `SELECT t.projeto_id FROM entrega_evidencias e
                 JOIN projeto_entregas t ON t.id = e.entrega_id WHERE e.id = ?`,
     arquivo: 'SELECT projeto_id FROM projeto_arquivos WHERE id = ?',
@@ -83,6 +84,152 @@ const EXIGEM_PROVA = Object.keys(PROVA_DA_ETAPA);
  *  destino de quem reabre; "Em andamento" e "Bloqueada" serão deduzidos das
  *  tarefas da entrega, e por isso ninguém os digita. */
 const STATUS_MANUAL = ['Planejada', ENTREGA_ENTREGUE, ENTREGA_VALIDADA, ENTREGA_CANCELADA];
+
+/** As etapas de tarefa são configuráveis em Configurações > Etapas, então o
+ *  que antes eram constantes agora é uma leitura. `entrada` é a etapa em que a
+ *  tarefa nasce, e `conclusivas` são as que contam como trabalho terminado -
+ *  é delas que sai o percentual da entrega. */
+interface EtapasDeTarefa {
+  nomes: string[];
+  entrada: string;
+  /** A etapa de conversão: "feito". Conjunto por comodidade de consulta, mas a
+   *  marcação é exclusiva, como a estrela do funil. */
+  conclusivas: Set<string>;
+  /** Etapas desconsideradas. Tarefa aqui não entra na conta da entrega - nem no
+   *  numerador nem no denominador - e não conta como trabalho em curso. */
+  desconsideradas: Set<string>;
+  /** Etiquetas que travam a entrega. Vêm junto porque quem deduz o estado de
+   *  uma entrega precisa das duas listas ao mesmo tempo. */
+  bloqueio: Set<string>;
+}
+
+/** Usada quando a tabela ainda não foi semeada, e como valor de partida da
+ *  semente: é a lista com que o sistema nasceu. */
+const ETAPAS_TAREFA_PADRAO: { nome: string; cor: string; entrada: boolean; conclusao: boolean }[] = [
+  { nome: 'A fazer', cor: '#6E6F69', entrada: true, conclusao: false },
+  { nome: 'Em andamento', cor: '#B58300', entrada: false, conclusao: false },
+  { nome: 'Em revisão', cor: '#7C3AED', entrada: false, conclusao: false },
+  { nome: 'Concluída', cor: '#23A455', entrada: false, conclusao: true },
+];
+
+async function etapasDeTarefa(db: Client): Promise<EtapasDeTarefa> {
+  const [r, etq] = await Promise.all([
+    db.execute('SELECT nome, is_entrada, is_conclusao, is_excluded FROM tarefa_status_configs WHERE ativo = 1 ORDER BY ordem, id'),
+    db.execute('SELECT nome FROM tarefa_etiquetas WHERE ativo = 1 AND bloqueia = 1'),
+  ]);
+  const linhas = r.rows.length ? r.rows : ETAPAS_TAREFA_PADRAO.map(e => ({
+    nome: e.nome, is_entrada: e.entrada ? 1 : 0, is_conclusao: e.conclusao ? 1 : 0, is_excluded: 0,
+  }));
+  const nomes = linhas.map(l => String(l.nome));
+  return {
+    nomes,
+    // Sem marcação explícita vale a primeira da lista, como no funil.
+    entrada: String(linhas.find(l => Number(l.is_entrada) === 1)?.nome ?? nomes[0] ?? ''),
+    conclusivas: new Set(linhas.filter(l => Number(l.is_conclusao) === 1).map(l => String(l.nome))),
+    desconsideradas: new Set(linhas.filter(l => Number(l.is_excluded) === 1).map(l => String(l.nome))),
+    bloqueio: new Set(etq.rows.length
+      ? etq.rows.map(l => String(l.nome))
+      : ETIQUETAS_TAREFA_PADRAO.filter(e => e.bloqueia).map(e => e.nome)),
+  };
+}
+
+/** As etiquetas com que o sistema nasce. Depois disso quem manda é a tabela
+ *  `tarefa_etiquetas`, editável em Configurações > Etapas > Tarefas.
+ *
+ *  `bloqueia` não é decoração: enquanto uma tarefa aberta carrega uma dessas, a
+ *  entrega a que ela pende aparece como bloqueada. O impedimento é uma
+ *  circunstância da tarefa, não o lugar dela no fluxo, e por isso é etiqueta e
+ *  não etapa. */
+const ETIQUETAS_TAREFA_PADRAO = [
+  { nome: 'dev-pm: bloqueio externo', cor: '#D93025', bloqueia: true,
+    papeis: ['Gestor', 'Dev'],
+    descricao: 'Depende de cliente, parceiro ou fornecedor.' },
+  { nome: 'dev-pm: bloqueio interno', cor: '#D93025', bloqueia: true,
+    papeis: ['Gestor', 'Dev'],
+    descricao: 'Depende da Sheep ou de outro card.' },
+  { nome: 'pm: bug', cor: '#D93025', bloqueia: false,
+    papeis: ['Gestor', 'Analista'],
+    descricao: 'Comportamento divergente do esperado.' },
+  { nome: 'pm: análise comercial', cor: '#C2410C', bloqueia: false,
+    papeis: ['Gestor', 'Analista'],
+    descricao: 'Pedido do cliente fora do escopo acordado.' },
+  { nome: 'pm: funcionalidade', cor: '#7C3AED', bloqueia: false,
+    papeis: ['Gestor', 'Analista'],
+    descricao: 'Nova funcionalidade prevista no documento de requisitos.' },
+  { nome: 'pm: melhoria', cor: '#0066CC', bloqueia: false,
+    papeis: ['Gestor', 'Analista'],
+    descricao: 'Ajuste em funcionalidade que já existe.' },
+  { nome: 'pm: fora de escopo', cor: '#B58300', bloqueia: false,
+    papeis: ['Gestor', 'Analista'],
+    descricao: 'Pedido fora do escopo acordado no documento de requisitos.' },
+  { nome: 'qa: bloqueado', cor: '#C2410C', bloqueia: true,
+    papeis: ['Gestor', 'QA'],
+    descricao: 'Não foi possível testar por causa externa.' },
+  { nome: 'qa: reprovado', cor: '#D93025', bloqueia: false,
+    papeis: ['Gestor', 'QA'],
+    descricao: 'Card reprovado no teste.' },
+];
+
+/** Chave da preferência que liga a regra. Guardada como texto por causa do
+ *  formato do `app_config`. */
+const CHAVE_ETIQUETA_POR_PAPEL = 'tarefas.etiquetas_por_papel';
+
+/** O estado de uma entrega que ninguém resolveu à mão sai das tarefas dela.
+ *  Sem tarefa nenhuma, "Planejada": não há o que deduzir. */
+function statusDeduzido(tarefasTodas: Record<string, any>[], etapas: EtapasDeTarefa): string {
+  // Tarefa em etapa desconsiderada sai da conversa inteira: ela não trava, não
+  // adianta e não segura a entrega em "Planejada".
+  const tarefas = tarefasTodas.filter(t => !etapas.desconsideradas.has(String(t.status)));
+  const vivas = tarefas.filter(t => !etapas.conclusivas.has(String(t.status)));
+  const travada = vivas.some(t => {
+    const etq: string[] = JSON.parse(String(t.etiquetas ?? '[]'));
+    return etq.some(e => etapas.bloqueio.has(e));
+  });
+  if (travada) return 'Bloqueada';
+  if (!tarefas.length) return 'Planejada';
+  // Basta uma tarefa ter saído da etapa de entrada para a entrega estar andando
+  // - e ela continua andando com tudo pronto, porque a entrega só termina
+  // quando alguém a marca como entregue. Dizer "Planejada" com as tarefas
+  // concluídas seria o contrário do que aconteceu.
+  const comecou = tarefas.some(t => String(t.status) !== etapas.entrada);
+  return comecou ? 'Em andamento' : 'Planejada';
+}
+
+/** Percentual de uma entrega: fração das tarefas dela que foram concluídas.
+ *  Entrega sem tarefa não tem como medir e vale 0. */
+function progressoDaEntrega(tarefasTodas: Record<string, any>[], etapas: EtapasDeTarefa): number {
+  const tarefas = tarefasTodas.filter(t => !etapas.desconsideradas.has(String(t.status)));
+  if (!tarefas.length) return 0;
+  const feitas = tarefas.filter(t => etapas.conclusivas.has(String(t.status))).length;
+  return Math.round((feitas / tarefas.length) * 100);
+}
+
+/** A etiqueta mora dentro de uma lista JSON em cada tarefa, então renomear ou
+ *  excluir exige reescrever essas listas: sem isso a tarefa ficaria carregando
+ *  uma etiqueta que não existe mais. `novo` nulo remove. Devolve quantas tarefas
+ *  foram tocadas. */
+async function reescreverEtiqueta(db: Client, antigo: string, novo: string | null): Promise<number> {
+  // O LIKE é só para não trazer a base inteira; a checagem que vale é a de
+  // igualdade exata, item a item, logo abaixo.
+  const r = await db.execute({
+    sql: `SELECT id, etiquetas FROM projeto_tarefas WHERE etiquetas LIKE ?`,
+    args: [`%${antigo}%`],
+  });
+  let tocadas = 0;
+  for (const linha of r.rows) {
+    const lista: string[] = JSON.parse(String(linha.etiquetas ?? '[]'));
+    if (!lista.includes(antigo)) continue;
+    const nova = novo === null
+      ? lista.filter(e => e !== antigo)
+      : [...new Set(lista.map(e => (e === antigo ? novo : e)))];
+    await db.execute({
+      sql: 'UPDATE projeto_tarefas SET etiquetas = ? WHERE id = ?',
+      args: [JSON.stringify(nova), linha.id],
+    });
+    tocadas++;
+  }
+  return tocadas;
+}
 
 /** Recalcula o progresso do projeto a partir das entregas. É a razão de o campo
  *  ter deixado de ser manual: fração de entrega concluída é um número que o
@@ -611,6 +758,139 @@ async function migrarSchema(db: Client) {
   `);
 
   await ddl(`
+    -- Etapas do quadro de tarefas. Mesma estrutura das etapas do funil
+    -- (\`status_configs\`): nome, cor e ordem editáveis em Configurações. As duas
+    -- marcações existem porque a entrega lê o andamento daqui - \`is_entrada\` é
+    -- "ainda não começou" e \`is_conclusao\` é o que entra no percentual.
+    CREATE TABLE IF NOT EXISTS tarefa_status_configs (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      nome         TEXT NOT NULL,
+      cor          TEXT NOT NULL DEFAULT '#6E6F69',
+      ordem        INTEGER NOT NULL DEFAULT 0,
+      ativo        INTEGER NOT NULL DEFAULT 1,
+      is_entrada   INTEGER NOT NULL DEFAULT 0,
+      -- \`is_conclusao\` é a estrela de conversão do funil com outro nome: a etapa
+      -- que significa "feito". Exclusiva, como lá.
+      is_conclusao INTEGER NOT NULL DEFAULT 0,
+      -- Tarefa aqui sai da conta da entrega inteira, e não só do numerador -
+      -- cancelada não deveria puxar o percentual para baixo.
+      is_excluded  INTEGER NOT NULL DEFAULT 0,
+      always_collapsed INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
+  // As duas últimas colunas chegaram depois da tabela.
+  try {
+    await ddl(`ALTER TABLE tarefa_status_configs ADD COLUMN is_excluded INTEGER NOT NULL DEFAULT 0`);
+  } catch { /* coluna já existe */ }
+  try {
+    await ddl(`ALTER TABLE tarefa_status_configs ADD COLUMN always_collapsed INTEGER NOT NULL DEFAULT 0`);
+  } catch { /* coluna já existe */ }
+
+  await ddl(`
+    -- Quem é avisado quando uma tarefa chega numa etapa. Mesma forma da
+    -- \`status_notificacoes\` do funil, inclusive o par único.
+    CREATE TABLE IF NOT EXISTS tarefa_status_notificacoes (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      status_id  INTEGER NOT NULL,
+      usuario_id TEXT NOT NULL,
+      UNIQUE(status_id, usuario_id)
+    )
+  `);
+
+  // Etapas do quadro de tarefas, na primeira execução. As tarefas guardam o
+  // nome da etapa, então esta semente precisa casar com o que já está gravado.
+  const cntTarefa = await db.execute('SELECT COUNT(*) as c FROM tarefa_status_configs');
+  if (Number(cntTarefa.rows[0].c) === 0) {
+    for (const [i, e] of ETAPAS_TAREFA_PADRAO.entries()) {
+      await db.execute({
+        sql: `INSERT INTO tarefa_status_configs (nome, cor, ordem, is_entrada, is_conclusao)
+              VALUES (?,?,?,?,?)`,
+        args: [e.nome, e.cor, i + 1, e.entrada ? 1 : 0, e.conclusao ? 1 : 0],
+      });
+    }
+  }
+
+  await ddl(`
+    -- Etiquetas de tarefa. \`bloqueia\` é a única que muda o comportamento do
+    -- sistema: enquanto uma tarefa aberta a carrega, a entrega a que ela pende
+    -- aparece como bloqueada. O resto é classificação.
+    CREATE TABLE IF NOT EXISTS tarefa_etiquetas (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      nome      TEXT NOT NULL,
+      cor       TEXT NOT NULL DEFAULT '#6E6F69',
+      descricao TEXT,
+      ordem     INTEGER NOT NULL DEFAULT 0,
+      ativo     INTEGER NOT NULL DEFAULT 1,
+      bloqueia  INTEGER NOT NULL DEFAULT 0,
+      -- Papéis da equipe que enxergam a etiqueta, em JSON. Lista vazia ou nula
+      -- é "todo mundo". Só vale quando a regra está ligada.
+      papeis    TEXT
+    )
+  `);
+
+  // A coluna chegou depois da tabela.
+  try {
+    await ddl(`ALTER TABLE tarefa_etiquetas ADD COLUMN papeis TEXT`);
+  } catch { /* coluna já existe */ }
+
+  // As nove semeadas nasceram antes da coluna existir. O papel padrão de cada
+  // uma vem do prefixo do nome, que é o que ele significa: `dev-pm` é conversa
+  // de desenvolvimento com produto, `pm` classifica o pedido, `qa` é o veredito
+  // do teste. Etiqueta criada à mão fica sem papel, ou seja, visível a todos.
+  for (const e of ETIQUETAS_TAREFA_PADRAO) {
+    await db.execute({
+      sql: 'UPDATE tarefa_etiquetas SET papeis = ? WHERE nome = ? AND papeis IS NULL',
+      args: [JSON.stringify(e.papeis), e.nome],
+    });
+  }
+
+  await ddl(`
+    -- Chave/valor das preferências da casa. Nasceu para guardar se a lista de
+    -- etiquetas respeita o papel de quem está na equipe do projeto.
+    CREATE TABLE IF NOT EXISTS app_config (
+      chave TEXT PRIMARY KEY,
+      valor TEXT NOT NULL
+    )
+  `);
+
+  // Semente: as etiquetas com que o sistema nasceu, traduzidas do Linear da
+  // casa. As tarefas guardam o nome, então isto casa com o que já está gravado.
+  const cntEtiqueta = await db.execute('SELECT COUNT(*) as c FROM tarefa_etiquetas');
+  if (Number(cntEtiqueta.rows[0].c) === 0) {
+    for (const [i, e] of ETIQUETAS_TAREFA_PADRAO.entries()) {
+      await db.execute({
+        sql: `INSERT INTO tarefa_etiquetas (nome, cor, descricao, ordem, bloqueia, papeis)
+              VALUES (?,?,?,?,?,?)`,
+        args: [e.nome, e.cor, e.descricao, i + 1, e.bloqueia ? 1 : 0, JSON.stringify(e.papeis)],
+      });
+    }
+  }
+
+  await ddl(`
+    -- Tarefa do projeto. \`entrega_id\` é opcional: nem todo trabalho pende de um
+    -- marco, e obrigar a escolher um faria a pessoa inventar vínculo. Quando
+    -- existe, é dela que saem o andamento e o percentual daquela entrega.
+    CREATE TABLE IF NOT EXISTS projeto_tarefas (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      projeto_id      TEXT NOT NULL,
+      entrega_id      INTEGER,
+      titulo          TEXT NOT NULL,
+      descricao       TEXT,
+      status          TEXT NOT NULL DEFAULT 'A fazer',
+      prioridade      TEXT NOT NULL DEFAULT 'Média',
+      responsavel_id  TEXT,
+      prazo           TEXT,
+      etiquetas       TEXT,
+      ordem           INTEGER NOT NULL DEFAULT 0,
+      concluida_em    TEXT,
+      criado_em       TEXT NOT NULL,
+      criado_por_id   TEXT,
+      criado_por_nome TEXT
+    )
+  `);
+
+  await ddl(`
     -- Registro de reunião do projeto. Participantes ficam num JSON de ids em
     -- vez de tabela de ligação: a lista é só para exibir, nunca é consultada
     -- por pessoa, e uma tabela a mais aqui pagaria um custo sem uso.
@@ -724,7 +1004,7 @@ async function migrarSchema(db: Client) {
     const agora = new Date().toISOString();
     for (const nome of [
       '300 Franchising', 'Bitka Analytics', 'bip.', 'Cheirin Bão', 'Click!',
-      'Consigo Cred', 'FM Rocket', 'Grupo 3SA', 'J17 Bank', 'Orteconte', 'Prontomed',
+      'Consigo Cred', 'FM Rocket', 'GR2', 'Grupo 3SA', 'J17 Bank', 'Orteconte', 'Prontomed',
       'Shell', 'Vale',
     ]) {
       await db.execute({
@@ -751,6 +1031,10 @@ async function migrarSchema(db: Client) {
     `CREATE INDEX IF NOT EXISTS idx_saude_projeto ON projeto_saude (projeto_id, criado_em)`,
     `CREATE INDEX IF NOT EXISTS idx_reuniao_projeto ON projeto_reunioes (projeto_id, data)`,
     `CREATE INDEX IF NOT EXISTS idx_entrega_projeto ON projeto_entregas (projeto_id, ordem)`,
+    `CREATE INDEX IF NOT EXISTS idx_tarefa_projeto ON projeto_tarefas (projeto_id, ordem)`,
+    `CREATE INDEX IF NOT EXISTS idx_tarefa_etapa_ordem ON tarefa_status_configs (ordem)`,
+    `CREATE INDEX IF NOT EXISTS idx_tarefa_etiqueta_ordem ON tarefa_etiquetas (ordem)`,
+    `CREATE INDEX IF NOT EXISTS idx_tarefa_entrega ON projeto_tarefas (entrega_id)`,
     `CREATE INDEX IF NOT EXISTS idx_evidencia_entrega ON entrega_evidencias (entrega_id)`,
     `CREATE INDEX IF NOT EXISTS idx_ced_arq_ced ON cedente_arquivos (cedente_id)`,
     `CREATE INDEX IF NOT EXISTS idx_ced_pend_ced ON cedente_pendencias (cedente_id)`,
@@ -1241,7 +1525,7 @@ async function notifyEmail(to: string, assunto: string, corpo: string) {
  * limpar inscrição nenhuma.
  */
 async function emailsDosInscritos(
-  db: Client, tabela: 'status_notificacoes' | 'novo_lead_notificacoes',
+  db: Client, tabela: 'status_notificacoes' | 'novo_lead_notificacoes' | 'tarefa_status_notificacoes',
   filtro?: { coluna: 'status_id'; valor: unknown },
 ): Promise<{ email: string; nome: string }[]> {
   const r = await db.execute({
@@ -1615,6 +1899,70 @@ async function despacharAdminData(
       return { status: 200, body: { statuses: result } };
     }
 
+    // Etapas do quadro de tarefas. A tela de Tarefas monta as colunas com isto,
+    // e Configurações > Etapas edita a mesma lista.
+    if (action === 'tarefa_status_configs') {
+      const [etapas, inscritos] = await Promise.all([
+        db.execute('SELECT * FROM tarefa_status_configs WHERE ativo = 1 ORDER BY ordem, id'),
+        db.execute(`SELECT n.*, u.nome AS usuario_nome, u.email AS usuario_email
+                    FROM tarefa_status_notificacoes n JOIN usuarios u ON u.id = n.usuario_id
+                    ORDER BY u.nome`),
+      ]);
+      return {
+        status: 200,
+        body: {
+          statuses: etapas.rows.map(e => ({
+            ...e,
+            notificacoes: inscritos.rows.filter(n => Number(n.status_id) === Number(e.id)),
+          })),
+        },
+      };
+    }
+
+    // Quantas tarefas carregam a etiqueta. É o que o aviso de exclusão mostra.
+    if (action === 'tarefa_etiqueta_uso') {
+      const nome = query.get('nome') ?? '';
+      const r = await db.execute({
+        sql: 'SELECT id, etiquetas FROM projeto_tarefas WHERE etiquetas LIKE ?',
+        args: [`%${nome}%`],
+      });
+      const count = r.rows.filter(l =>
+        (JSON.parse(String(l.etiquetas ?? '[]')) as string[]).includes(nome)).length;
+      return { status: 200, body: { count } };
+    }
+
+    if (action === 'tarefa_etiquetas') {
+      const [r, cfg] = await Promise.all([
+        db.execute('SELECT * FROM tarefa_etiquetas WHERE ativo = 1 ORDER BY ordem, id'),
+        db.execute({
+          sql: 'SELECT valor FROM app_config WHERE chave = ?',
+          args: [CHAVE_ETIQUETA_POR_PAPEL],
+        }),
+      ]);
+      return {
+        status: 200,
+        body: {
+          etiquetas: r.rows.map(e => ({
+            ...e,
+            papeis: JSON.parse(String(e.papeis ?? '[]')) as string[],
+          })),
+          // A regra nasce desligada: ligá-la sem querer esconderia etiqueta de
+          // quem já usa o sistema.
+          porPapel: String(cfg.rows[0]?.valor ?? '0') === '1',
+        },
+      };
+    }
+
+    // Quantas tarefas moram numa etapa. É o que decide se excluir pede destino.
+    if (action === 'tarefa_status_card_count') {
+      const nome = query.get('nome') ?? '';
+      const r = await db.execute({
+        sql: 'SELECT COUNT(*) as count FROM projeto_tarefas WHERE status = ?',
+        args: [nome],
+      });
+      return { status: 200, body: { count: Number(r.rows[0]?.count ?? 0) } };
+    }
+
     if (action === 'status_card_count') {
       const statusId = query.get('status_id');
       // Count cards whose latest status_change points to this stage (active or inactive)
@@ -1696,7 +2044,8 @@ async function despacharAdminData(
       // quem não deve vê-la.
       const soDaEquipe = papelEfetivo(usuario?.email, usuario?.papel) === 'membro';
 
-      const [projs, equipe, arqs, clientes, saude, reunioes, entregas, evidencias] = await Promise.all([
+      const etapasTarefa = await etapasDeTarefa(db);
+      const [projs, equipe, arqs, clientes, saude, reunioes, entregas, evidencias, tarefas] = await Promise.all([
         db.execute({
           sql: `
             SELECT p.*, c.nome AS cliente_nome
@@ -1744,6 +2093,14 @@ async function despacharAdminData(
           SELECT id, entrega_id, nome, tipo, tamanho, comentario, etapa, criado_em, criado_por_nome
           FROM entrega_evidencias ORDER BY criado_em
         `),
+        db.execute(`
+          SELECT t.id, t.projeto_id, t.entrega_id, t.titulo, t.descricao, t.status, t.prioridade,
+                 t.responsavel_id, t.prazo, t.etiquetas, t.ordem, t.concluida_em,
+                 u.nome AS responsavel_nome, u.email AS responsavel_email, u.foto_url AS responsavel_foto
+          FROM projeto_tarefas t
+          LEFT JOIN usuarios u ON u.id = t.responsavel_id
+          ORDER BY t.ordem, t.id
+        `),
       ]);
       const projetos = projs.rows.map(p => ({
         ...p,
@@ -1753,11 +2110,29 @@ async function despacharAdminData(
         // Já vem da mais recente para a mais antiga, então a saúde atual do
         // projeto é o primeiro item.
         saude: saude.rows.filter(x => x.projeto_id === p.id),
-        entregas: entregas.rows.filter(x => x.projeto_id === p.id).map(x => ({
-          ...x,
-          responsaveis: JSON.parse(String(x.responsaveis ?? '[]')) as string[],
-          links: JSON.parse(String(x.links ?? '[]')) as { label: string; url: string }[],
-          evidencias: evidencias.rows.filter(e => e.entrega_id === x.id),
+        entregas: entregas.rows.filter(x => x.projeto_id === p.id).map(x => {
+          const daEntrega = tarefas.rows.filter(t => t.entrega_id === x.id);
+          return {
+            ...x,
+            responsaveis: JSON.parse(String(x.responsaveis ?? '[]')) as string[],
+            links: JSON.parse(String(x.links ?? '[]')) as { label: string; url: string }[],
+            evidencias: evidencias.rows.filter(e => e.entrega_id === x.id),
+            // O estado gravado só vale quando é resolução de alguém. Nos demais
+            // casos quem manda são as tarefas, e é aqui que isso é resolvido -
+            // uma coluna a mais no banco ficaria velha a cada tarefa movida.
+            status: STATUS_MANUAL.includes(String(x.status)) && String(x.status) !== 'Planejada'
+              ? x.status
+              : statusDeduzido(daEntrega, etapasTarefa),
+            // A contagem que aparece na entrega é a mesma que gera o
+            // percentual, então também deixa as desconsideradas de fora.
+            tarefas_total: daEntrega.filter(t => !etapasTarefa.desconsideradas.has(String(t.status))).length,
+            tarefas_feitas: daEntrega.filter(t => etapasTarefa.conclusivas.has(String(t.status))).length,
+            progresso: progressoDaEntrega(daEntrega, etapasTarefa),
+          };
+        }),
+        tarefas: tarefas.rows.filter(t => t.projeto_id === p.id).map(t => ({
+          ...t,
+          etiquetas: JSON.parse(String(t.etiquetas ?? '[]')) as string[],
         })),
         reunioes: reunioes.rows.filter(x => x.projeto_id === p.id).map(x => ({
           ...x,
@@ -2227,6 +2602,98 @@ function faltaEmProjeto(p: any): string | null {
 
     // Reetiquetar anexo já gravado. A lista de anexos é agrupada pela etiqueta,
     // então trocar aqui move o arquivo de grupo.
+    if (action === 'salvar_tarefa') {
+      const t = body;
+      const titulo = String(t.titulo ?? '').trim();
+      if (!t.projeto_id) return { status: 400, body: { error: 'projeto_id ausente.' } };
+      { const barrado = await guardaDaEquipe(db, usuario, t.projeto_id); if (barrado) return barrado; }
+      if (!titulo) return { status: 400, body: { error: 'A tarefa precisa de um título.' } };
+
+      const etiquetas = JSON.stringify(Array.isArray(t.etiquetas) ? t.etiquetas : []);
+      // A data de conclusão é carimbada pelo servidor: é ela que responde
+      // "quando isso ficou pronto", e deixar a tela mandar abriria espaço para
+      // divergir do momento em que a mudança de fato ocorreu.
+      const etapas = await etapasDeTarefa(db);
+      const statusPedido = String(t.status ?? etapas.entrada);
+      // Só avisa quando a tarefa realmente trocou de coluna - salvar o título de
+      // novo não é notícia para ninguém. Tarefa nova sempre é.
+      let mudouDeEtapa = true;
+      const fecha = etapas.conclusivas.has(statusPedido);
+      const concluida = fecha ? new Date().toISOString() : null;
+
+      if (t.id) {
+        const antes = await db.execute({
+          sql: 'SELECT status, concluida_em FROM projeto_tarefas WHERE id = ?',
+          args: [t.id],
+        });
+        if (!antes.rows[0]) return { status: 404, body: { error: 'Tarefa não encontrada.' } };
+        // Já estava concluída e continua: preserva o carimbo original.
+        const carimbo = fecha
+          ? (etapas.conclusivas.has(String(antes.rows[0].status)) ? antes.rows[0].concluida_em : concluida)
+          : null;
+        mudouDeEtapa = String(antes.rows[0].status) !== statusPedido;
+        await db.execute({
+          sql: `UPDATE projeto_tarefas
+                SET entrega_id=?, titulo=?, descricao=?, status=?, prioridade=?, responsavel_id=?,
+                    prazo=?, etiquetas=?, concluida_em=?
+                WHERE id=?`,
+          args: [t.entrega_id || null, titulo, t.descricao ?? null, statusPedido,
+            t.prioridade ?? 'Média', t.responsavel_id || null, t.prazo || null, etiquetas,
+            carimbo as never, t.id],
+        });
+      } else {
+        const ordem = await db.execute({
+          sql: 'SELECT COALESCE(MAX(ordem), -1) + 1 AS proxima FROM projeto_tarefas WHERE projeto_id = ?',
+          args: [t.projeto_id],
+        });
+        await db.execute({
+          sql: `INSERT INTO projeto_tarefas
+                  (projeto_id, entrega_id, titulo, descricao, status, prioridade, responsavel_id,
+                   prazo, etiquetas, ordem, concluida_em, criado_em, criado_por_id, criado_por_nome)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          args: [t.projeto_id, t.entrega_id || null, titulo, t.descricao ?? null,
+            statusPedido, t.prioridade ?? 'Média', t.responsavel_id || null,
+            t.prazo || null, etiquetas, Number(ordem.rows[0].proxima), concluida,
+            new Date().toISOString(), autorId, autorNome],
+        });
+      }
+      // Avisa por e-mail quem acompanha a etapa de destino, como no funil.
+      if (mudouDeEtapa) {
+        const etapa = await db.execute({
+          sql: 'SELECT id FROM tarefa_status_configs WHERE ativo = 1 AND nome = ?',
+          args: [statusPedido],
+        });
+        const etapaId = etapa.rows[0]?.id;
+        if (etapaId != null) {
+          const inscritos = await emailsDosInscritos(
+            db, 'tarefa_status_notificacoes', { coluna: 'status_id', valor: etapaId },
+          );
+          if (inscritos.length > 0) {
+            const [projeto, resp] = await Promise.all([
+              db.execute({ sql: 'SELECT nome FROM projetos WHERE id = ?', args: [t.projeto_id] }),
+              // O nome do responsável não vem no corpo: a tela manda o id.
+              t.responsavel_id
+                ? db.execute({ sql: 'SELECT nome FROM usuarios WHERE id = ?', args: [t.responsavel_id] })
+                : Promise.resolve({ rows: [] as Record<string, unknown>[] }),
+            ]);
+            const corpo = `
+  <p style="font-size:14px;color:#555;margin:0 0 4px"><strong>Projeto:</strong> ${esc(String(projeto.rows[0]?.nome ?? '-'))}</p>
+  <p style="font-size:14px;color:#555;margin:0"><strong>Responsável:</strong> ${esc(String(resp.rows[0]?.nome ?? 'sem responsável'))}</p>`;
+            for (const dest of inscritos) {
+              notifyEmail(dest.email, `Tarefa "${titulo}" chegou em "${statusPedido}"`, corpo);
+            }
+          }
+        }
+      }
+      return { status: 200, body: { ok: true } };
+    }
+
+    if (action === 'excluir_tarefa') {
+      { const barrado = await guardaDaEquipe(db, usuario, body.id, 'tarefa'); if (barrado) return barrado; }
+      await db.execute({ sql: 'DELETE FROM projeto_tarefas WHERE id = ?', args: [body.id] });
+      return { status: 200, body: { ok: true } };
+    }
+
     if (action === 'salvar_entrega') {
       const e = body;
       const barrado = await guardaDaEquipe(db, usuario, e.projeto_id);
@@ -2305,6 +2772,9 @@ function faltaEmProjeto(p: any): string | null {
         return { status: 400, body: { error: 'O projeto precisa de ao menos uma entrega.' } };
       }
       await db.execute({ sql: 'DELETE FROM entrega_evidencias WHERE entrega_id = ?', args: [body.id] });
+      // A tarefa sobrevive à entrega, solta no projeto: apagá-la junto perderia
+      // trabalho que existe, só porque o marco a que pendia foi reorganizado.
+      await db.execute({ sql: 'UPDATE projeto_tarefas SET entrega_id = NULL WHERE entrega_id = ?', args: [body.id] });
       await db.execute({ sql: 'DELETE FROM projeto_entregas WHERE id = ?', args: [body.id] });
       await recalcularProgresso(db, String(projetoId));
       return { status: 200, body: { ok: true } };
@@ -2713,6 +3183,281 @@ function faltaEmProjeto(p: any): string | null {
     if (action === 'delete_pendencia') {
       await db.execute({ sql: 'DELETE FROM lead_pendencias WHERE id = ?', args: [body.id] });
       return { status: 200, body: { ok: true } };
+    }
+
+    // ── Etapas de tarefa ────────────────────────────────────────────────────
+    // A tarefa guarda o nome da etapa, não o id: renomear e excluir precisam
+    // levar as tarefas junto, e é isso que as ações abaixo fazem.
+    if (action === 'create_tarefa_status') {
+      const nome = String(body.nome ?? '').trim();
+      if (!nome) return { status: 400, body: { error: 'A etapa precisa de um nome.' } };
+      const repetida = await db.execute({
+        sql: 'SELECT id FROM tarefa_status_configs WHERE ativo = 1 AND nome = ?',
+        args: [nome],
+      });
+      if (repetida.rows[0]) return { status: 400, body: { error: 'Já existe uma etapa com esse nome.' } };
+      const max = await db.execute('SELECT MAX(ordem) as m FROM tarefa_status_configs');
+      const ordem = Number(max.rows[0]?.m ?? 0) + 1;
+      const r = await db.execute({
+        sql: 'INSERT INTO tarefa_status_configs (nome, cor, ordem, ativo) VALUES (?,?,?,1)',
+        args: [nome, body.cor ?? '#6E6F69', ordem],
+      });
+      return {
+        status: 200,
+        body: {
+          status: {
+            id: Number(r.lastInsertRowid), nome, cor: body.cor ?? '#6E6F69',
+            ordem, ativo: 1, is_entrada: 0, is_conclusao: 0,
+          },
+        },
+      };
+    }
+
+    if (action === 'update_tarefa_status') {
+      const nome = String(body.nome ?? '').trim();
+      if (!nome) return { status: 400, body: { error: 'A etapa precisa de um nome.' } };
+      const atual = await db.execute({
+        sql: 'SELECT nome FROM tarefa_status_configs WHERE id = ?', args: [body.id],
+      });
+      if (!atual.rows[0]) return { status: 404, body: { error: 'Etapa não encontrada.' } };
+      const antigo = String(atual.rows[0].nome);
+      const repetida = await db.execute({
+        sql: 'SELECT id FROM tarefa_status_configs WHERE ativo = 1 AND nome = ? AND id <> ?',
+        args: [nome, body.id],
+      });
+      if (repetida.rows[0]) return { status: 400, body: { error: 'Já existe uma etapa com esse nome.' } };
+      await db.execute({
+        sql: 'UPDATE tarefa_status_configs SET nome = ?, cor = ? WHERE id = ?',
+        args: [nome, body.cor ?? '#6E6F69', body.id],
+      });
+      // As tarefas apontam pelo nome: sem isto, renomear as deixaria órfãs de
+      // uma coluna que não existe mais.
+      if (nome !== antigo) {
+        await db.execute({
+          sql: 'UPDATE projeto_tarefas SET status = ? WHERE status = ?',
+          args: [nome, antigo],
+        });
+      }
+      return { status: 200, body: { ok: true } };
+    }
+
+    // Excluir leva as tarefas para outra etapa. Sem destino não passa: some com
+    // a coluna e as tarefas ficariam invisíveis no quadro.
+    if (action === 'delete_tarefa_status') {
+      const alvo = await db.execute({
+        sql: 'SELECT nome FROM tarefa_status_configs WHERE id = ?', args: [body.id],
+      });
+      if (!alvo.rows[0]) return { status: 404, body: { error: 'Etapa não encontrada.' } };
+      const restantes = await db.execute({
+        sql: 'SELECT COUNT(*) as c FROM tarefa_status_configs WHERE ativo = 1 AND id <> ?',
+        args: [body.id],
+      });
+      if (Number(restantes.rows[0].c) === 0) {
+        return { status: 400, body: { error: 'O quadro precisa de ao menos uma etapa.' } };
+      }
+      const nome = String(alvo.rows[0].nome);
+      const comTarefas = await db.execute({
+        sql: 'SELECT COUNT(*) as c FROM projeto_tarefas WHERE status = ?', args: [nome],
+      });
+      const quantas = Number(comTarefas.rows[0].c);
+      if (quantas > 0) {
+        const destino = String(body.destino ?? '').trim();
+        if (!destino) return { status: 400, body: { error: 'Escolha para onde vão as tarefas desta etapa.', count: quantas } };
+        await db.execute({
+          sql: 'UPDATE projeto_tarefas SET status = ? WHERE status = ?',
+          args: [destino, nome],
+        });
+      }
+      await db.execute({ sql: 'UPDATE tarefa_status_configs SET ativo = 0 WHERE id = ?', args: [body.id] });
+      // A inscrição morre com a etapa: reaproveitar o id numa etapa futura faria
+      // gente receber aviso de coisa que nunca pediu.
+      await db.execute({ sql: 'DELETE FROM tarefa_status_notificacoes WHERE status_id = ?', args: [body.id] });
+      return { status: 200, body: { ok: true, movidas: quantas } };
+    }
+
+    if (action === 'reorder_tarefa_statuses') {
+      for (let i = 0; i < (body.ids as number[]).length; i++) {
+        await db.execute({
+          sql: 'UPDATE tarefa_status_configs SET ordem = ? WHERE id = ?',
+          args: [i + 1, body.ids[i]],
+        });
+      }
+      return { status: 200, body: { ok: true } };
+    }
+
+    // Entrada é exclusiva - marcar uma desmarca as outras. `id` nulo volta ao
+    // padrão, que é a primeira etapa da ordem.
+    if (action === 'set_entrada_tarefa_status') {
+      await db.execute('UPDATE tarefa_status_configs SET is_entrada = 0');
+      if (body.id != null) {
+        await db.execute({
+          sql: 'UPDATE tarefa_status_configs SET is_entrada = 1 WHERE id = ?', args: [body.id],
+        });
+      }
+      return { status: 200, body: { ok: true } };
+    }
+
+    // Conversão: a etapa que significa "feito", e a única que entra no
+    // percentual da entrega. Exclusiva, como a estrela do funil - o caminho que
+    // fecha sem entregar valor é "desconsiderada", logo abaixo.
+    if (action === 'set_conversao_tarefa_status') {
+      await db.execute('UPDATE tarefa_status_configs SET is_conclusao = 0');
+      if (body.id != null) {
+        await db.execute({
+          sql: 'UPDATE tarefa_status_configs SET is_conclusao = 1, is_excluded = 0 WHERE id = ?',
+          args: [body.id],
+        });
+      }
+      return { status: 200, body: { ok: true } };
+    }
+
+    // Desconsiderada: a tarefa continua lá, mas sai da conta da entrega. Uma
+    // etapa não pode ser as duas coisas - contar e não contar ao mesmo tempo
+    // não quer dizer nada - então marcar uma desmarca a outra.
+    if (action === 'toggle_desconsiderada_tarefa_status') {
+      const cur = await db.execute({
+        sql: 'SELECT is_excluded FROM tarefa_status_configs WHERE id = ?', args: [body.id],
+      });
+      if (!cur.rows[0]) return { status: 404, body: { error: 'Etapa não encontrada.' } };
+      const era = Number(cur.rows[0].is_excluded);
+      await db.execute({
+        sql: `UPDATE tarefa_status_configs
+              SET is_excluded = ?, is_conclusao = CASE WHEN ? = 1 THEN 0 ELSE is_conclusao END
+              WHERE id = ?`,
+        args: [era ? 0 : 1, era ? 0 : 1, body.id],
+      });
+      return { status: 200, body: { ok: true, is_excluded: era ? 0 : 1 } };
+    }
+
+    // Etapa pontual: a coluna nasce recolhida no quadro, mesmo com tarefas.
+    if (action === 'toggle_collapsed_tarefa_status') {
+      const cur = await db.execute({
+        sql: 'SELECT always_collapsed FROM tarefa_status_configs WHERE id = ?', args: [body.id],
+      });
+      if (!cur.rows[0]) return { status: 404, body: { error: 'Etapa não encontrada.' } };
+      const era = Number(cur.rows[0].always_collapsed);
+      await db.execute({
+        sql: 'UPDATE tarefa_status_configs SET always_collapsed = ? WHERE id = ?',
+        args: [era ? 0 : 1, body.id],
+      });
+      return { status: 200, body: { ok: true, always_collapsed: era ? 0 : 1 } };
+    }
+
+    // Quem acompanha a etapa. Mesma dupla de ações do funil.
+    if (action === 'add_tarefa_status_notif') {
+      const r = await db.execute({
+        sql: 'INSERT OR IGNORE INTO tarefa_status_notificacoes (status_id, usuario_id) VALUES (?, ?)',
+        args: [body.status_id, body.usuario_id],
+      });
+      const notif = {
+        ...await inscritoCriado(db, Number(r.lastInsertRowid), body.usuario_id),
+        status_id: body.status_id,
+      };
+      return { status: 200, body: { notificacao: notif } };
+    }
+
+    if (action === 'remove_tarefa_status_notif') {
+      await db.execute({
+        sql: 'DELETE FROM tarefa_status_notificacoes WHERE id = ?', args: [body.id],
+      });
+      return { status: 200, body: { ok: true } };
+    }
+
+    // ── Etiquetas de tarefa ─────────────────────────────────────────────────
+    // A tarefa guarda a etiqueta pelo nome, numa lista JSON. Renomear e excluir
+    // precisam reescrever essas listas, e é o que `reescreverEtiqueta` faz.
+    if (action === 'create_tarefa_etiqueta') {
+      const nome = String(body.nome ?? '').trim();
+      if (!nome) return { status: 400, body: { error: 'A etiqueta precisa de um nome.' } };
+      const repetida = await db.execute({
+        sql: 'SELECT id FROM tarefa_etiquetas WHERE ativo = 1 AND nome = ?', args: [nome],
+      });
+      if (repetida.rows[0]) return { status: 400, body: { error: 'Já existe uma etiqueta com esse nome.' } };
+      const max = await db.execute('SELECT MAX(ordem) as m FROM tarefa_etiquetas');
+      const ordem = Number(max.rows[0]?.m ?? 0) + 1;
+      const cor = String(body.cor ?? '#6E6F69');
+      const descricao = String(body.descricao ?? '').trim() || null;
+      const r = await db.execute({
+        sql: 'INSERT INTO tarefa_etiquetas (nome, cor, descricao, ordem, ativo, bloqueia, papeis) VALUES (?,?,?,?,1,?,?)',
+        args: [nome, cor, descricao, ordem, body.bloqueia ? 1 : 0,
+          JSON.stringify(Array.isArray(body.papeis) ? body.papeis : [])],
+      });
+      return {
+        status: 200,
+        body: {
+          etiqueta: {
+            id: Number(r.lastInsertRowid), nome, cor, descricao, ordem,
+            ativo: 1, bloqueia: body.bloqueia ? 1 : 0,
+            papeis: Array.isArray(body.papeis) ? body.papeis : [],
+          },
+        },
+      };
+    }
+
+    if (action === 'update_tarefa_etiqueta') {
+      const nome = String(body.nome ?? '').trim();
+      if (!nome) return { status: 400, body: { error: 'A etiqueta precisa de um nome.' } };
+      const atual = await db.execute({
+        sql: 'SELECT nome FROM tarefa_etiquetas WHERE id = ?', args: [body.id],
+      });
+      if (!atual.rows[0]) return { status: 404, body: { error: 'Etiqueta não encontrada.' } };
+      const antigo = String(atual.rows[0].nome);
+      const repetida = await db.execute({
+        sql: 'SELECT id FROM tarefa_etiquetas WHERE ativo = 1 AND nome = ? AND id <> ?',
+        args: [nome, body.id],
+      });
+      if (repetida.rows[0]) return { status: 400, body: { error: 'Já existe uma etiqueta com esse nome.' } };
+      await db.execute({
+        sql: 'UPDATE tarefa_etiquetas SET nome = ?, cor = ?, descricao = ?, papeis = ? WHERE id = ?',
+        args: [nome, String(body.cor ?? '#6E6F69'), String(body.descricao ?? '').trim() || null,
+          JSON.stringify(Array.isArray(body.papeis) ? body.papeis : []), body.id],
+      });
+      const tocadas = nome !== antigo ? await reescreverEtiqueta(db, antigo, nome) : 0;
+      return { status: 200, body: { ok: true, tocadas } };
+    }
+
+    // Excluir tira a etiqueta das tarefas que a carregam. Não há destino a
+    // escolher: etiqueta é classificação, e uma tarefa sem ela continua inteira.
+    if (action === 'delete_tarefa_etiqueta') {
+      const alvo = await db.execute({
+        sql: 'SELECT nome FROM tarefa_etiquetas WHERE id = ?', args: [body.id],
+      });
+      if (!alvo.rows[0]) return { status: 404, body: { error: 'Etiqueta não encontrada.' } };
+      const tocadas = await reescreverEtiqueta(db, String(alvo.rows[0].nome), null);
+      await db.execute({ sql: 'UPDATE tarefa_etiquetas SET ativo = 0 WHERE id = ?', args: [body.id] });
+      return { status: 200, body: { ok: true, tocadas } };
+    }
+
+    // Liga e desliga a regra de papel. Vale para a lista inteira: cada etiqueta
+    // diz quem a vê, e esta chave diz se isso é para valer.
+    if (action === 'set_etiquetas_por_papel') {
+      await db.execute({
+        sql: `INSERT INTO app_config (chave, valor) VALUES (?, ?)
+              ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor`,
+        args: [CHAVE_ETIQUETA_POR_PAPEL, body.ligado ? '1' : '0'],
+      });
+      return { status: 200, body: { ok: true, porPapel: !!body.ligado } };
+    }
+
+    if (action === 'reorder_tarefa_etiquetas') {
+      for (let i = 0; i < (body.ids as number[]).length; i++) {
+        await db.execute({
+          sql: 'UPDATE tarefa_etiquetas SET ordem = ? WHERE id = ?', args: [i + 1, body.ids[i]],
+        });
+      }
+      return { status: 200, body: { ok: true } };
+    }
+
+    if (action === 'toggle_bloqueio_tarefa_etiqueta') {
+      const cur = await db.execute({
+        sql: 'SELECT bloqueia FROM tarefa_etiquetas WHERE id = ?', args: [body.id],
+      });
+      if (!cur.rows[0]) return { status: 404, body: { error: 'Etiqueta não encontrada.' } };
+      const era = Number(cur.rows[0].bloqueia);
+      await db.execute({
+        sql: 'UPDATE tarefa_etiquetas SET bloqueia = ? WHERE id = ?', args: [era ? 0 : 1, body.id],
+      });
+      return { status: 200, body: { ok: true, bloqueia: era ? 0 : 1 } };
     }
 
     // Status CRUD

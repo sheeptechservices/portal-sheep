@@ -103,6 +103,18 @@ export const CATALOGO: PermGrupo[] = [
     ],
   },
   {
+    chave: 'tarefas',
+    label: 'Tarefas',
+    page: 'tarefas',
+    nota: 'O trabalho dos projetos. A lista respeita a mesma regra dos projetos: '
+      + 'membro só enxerga tarefa de projeto em que está na equipe.',
+    acoes: [
+      { chave: 'tarefas:ver', label: 'Ver o quadro de tarefas', acesso: true },
+      { chave: 'tarefas:editar', label: 'Criar e editar tarefa' },
+      { chave: 'tarefas:excluir', label: 'Excluir tarefa' },
+    ],
+  },
+  {
     chave: 'ferramentas',
     label: 'Ferramentas (hub)',
     page: 'ferramentas',
@@ -159,7 +171,9 @@ export const SO_ADMIN = '@admin';
  * mapeie-a aqui - o teste de fumaça `_permissoes.test.mjs` acusa a que faltar.
  */
 export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
-  projetos: 'projetos:ver',
+  // Alimenta as duas telas: quem vê tarefas precisa da mesma carga, e ela já
+  // vem cortada por equipe no servidor.
+  projetos: ['projetos:ver', 'tarefas:ver'],
   create_projeto: 'projetos:criar',
   update_projeto: 'projetos:editar',
   delete_projeto: 'projetos:excluir',
@@ -170,6 +184,29 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   create_cliente: 'projetos:criar',
   // Entregas, saúde e reuniões pendem do projeto: quem edita o projeto edita o
   // que está dentro dele. Ver o conteúdo da evidência é leitura.
+  // A tela de Tarefas monta as colunas com esta lista, e Configurações a edita.
+  tarefa_status_configs: ['tarefas:ver', 'configuracoes:ver'],
+  tarefa_status_card_count: 'configuracoes:etapas',
+  create_tarefa_status: 'configuracoes:etapas',
+  update_tarefa_status: 'configuracoes:etapas',
+  delete_tarefa_status: 'configuracoes:etapas',
+  reorder_tarefa_statuses: 'configuracoes:etapas',
+  set_entrada_tarefa_status: 'configuracoes:etapas',
+  set_conversao_tarefa_status: 'configuracoes:etapas',
+  toggle_desconsiderada_tarefa_status: 'configuracoes:etapas',
+  toggle_collapsed_tarefa_status: 'configuracoes:etapas',
+  tarefa_etiquetas: ['tarefas:ver', 'configuracoes:ver'],
+  tarefa_etiqueta_uso: 'configuracoes:etapas',
+  create_tarefa_etiqueta: 'configuracoes:etapas',
+  update_tarefa_etiqueta: 'configuracoes:etapas',
+  delete_tarefa_etiqueta: 'configuracoes:etapas',
+  reorder_tarefa_etiquetas: 'configuracoes:etapas',
+  set_etiquetas_por_papel: 'configuracoes:etapas',
+  toggle_bloqueio_tarefa_etiqueta: 'configuracoes:etapas',
+  add_tarefa_status_notif: 'configuracoes:etapas',
+  remove_tarefa_status_notif: 'configuracoes:etapas',
+  salvar_tarefa: 'tarefas:editar',
+  excluir_tarefa: 'tarefas:excluir',
   salvar_entrega: 'projetos:editar',
   excluir_entrega: 'projetos:editar',
   add_entrega_evidencia: 'projetos:editar',

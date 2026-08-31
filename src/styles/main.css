@@ -4012,6 +4012,33 @@ body.arrastando-painel {
   border-color: var(--gray2);
 }
 
+/* Linha clicável - de tabela ou de lista - também se alcança pelo teclado. O
+   contorno padrão do navegador cumpre a função, mas destoa do resto: aqui é o
+   mesmo anel amarelo dos outros controles. */
+/* Faixa que abre um grupo na tabela. Não é linha de dado: não clica, não passa
+   o mouse e não entra na navegação por teclado. */
+.admin-table tbody tr.linha-grupo,
+.admin-table tbody tr.linha-grupo:hover {
+  cursor: default;
+  background: var(--bg);
+}
+.admin-table tbody tr.linha-grupo td {
+  padding: 7px 12px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gray);
+  border-top: 1px solid var(--gray3);
+}
+.admin-table tbody:first-of-type tr.linha-grupo td { border-top: none; }
+
+.admin-table tbody tr:focus-visible,
+.admin-file-item:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--yb);
+}
+
 .admin-file-download {
   display: flex;
   align-items: center;

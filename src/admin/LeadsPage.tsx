@@ -4375,25 +4375,27 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
   });
 
   const statusByName = (name: string) => statuses.find(s => s.nome.toLowerCase() === name.toLowerCase());
+  // Os cartões contam sobre `filtered`, e não sobre `submissions`: mexer num
+  // filtro e ver o número parado faria duvidar de qual dos dois está certo.
   const countByStatus = (name: string) => {
     const st = statusByName(name);
-    return st ? submissions.filter(s => s.current_status_id === Number(st.id)).length : 0;
+    return st ? filtered.filter(s => s.current_status_id === Number(st.id)).length : 0;
   };
   const executadaSt = statusByName('Executada');
   const reprovadaSt = statusByName('Reprovada');
   const doneIds = new Set([executadaSt?.id, reprovadaSt?.id].filter(Boolean).map(Number));
-  const pendentes = submissions.filter(s => !doneIds.has(s.current_status_id as number)).length;
+  const pendentes = filtered.filter(s => !doneIds.has(s.current_status_id as number)).length;
 
   // Lead time médio: tempo de vida de cada lead (criação → conclusão, ou → agora se em aberto)
   const leadTimeMedioMs = (() => {
-    if (submissions.length === 0) return 0;
+    if (filtered.length === 0) return 0;
     const now = Date.now();
-    const total = submissions.reduce((acc, s) => {
+    const total = filtered.reduce((acc, s) => {
       const start = s.created_at ? new Date(s.created_at).getTime() : now;
       const done = doneIds.has(s.current_status_id as number) && s.status_since ? new Date(s.status_since).getTime() : now;
       return acc + Math.max(0, done - start);
     }, 0);
-    return total / submissions.length;
+    return total / filtered.length;
   })();
 
   return (
@@ -4434,8 +4436,8 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
         <div className="admin-stats">
           <div className="admin-stat-card-v2" style={{ '--accent-color': 'var(--yellow)', animationDelay: '0s' } as any}>
             <p className="stat-v2-label">Total de leads</p>
-            <p className="stat-v2-value">{submissions.length}</p>
-            <p className="stat-v2-desc">no funil</p>
+            <p className="stat-v2-value">{filtered.length}</p>
+            <p className="stat-v2-desc">{hasFilter ? 'no filtro atual' : 'no funil'}</p>
           </div>
           <div className="admin-stat-card-v2" style={{ '--accent-color': '#6366F1', animationDelay: '0.05s' } as any}>
             <p className="stat-v2-label">Em negociação</p>

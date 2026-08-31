@@ -50,6 +50,7 @@ export const PERMISSAO_DA_PAGINA: Record<string, string> = {
   'leads': 'leads:ver',
   'cadastros': 'cadastros:ver',
   'projetos': 'projetos:ver',
+  'tarefas': 'tarefas:ver',
   'ferramentas': 'ferramentas:ver',
   'gerador-documentos': 'gerador:ver',
   'configuracoes': 'configuracoes:ver',

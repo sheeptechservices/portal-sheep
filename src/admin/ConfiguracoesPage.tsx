@@ -6,8 +6,12 @@ import { useToast, useAuth } from './AdminApp';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { DepsMark } from '../components/DepsMark';
 import { descreveProdutoDeps, PRODUTO_PJ_DEFAULT } from '../lib/depsProdutos';
-import { IconClipboard, IconAlert, IconCheck } from '../components/icons';
+import {
+  IconAlert, IconAlertOctagon, IconArrastar, IconCheck, IconClipboard, IconEntrada,
+  IconEstrela, IconPlus, IconProibido, IconRecolher, IconTrash, IconX,
+} from '../components/icons';
 import { SegSwitch } from '../components/SegSwitch';
+import { PAPEIS_EQUIPE } from '../lib/papeisDeEquipe';
 
 // ── Move target dropdown ─────────────────────────────
 function MoveTargetSelect({
@@ -1218,13 +1222,988 @@ function ConfiguracoesSkeleton() {
   );
 }
 
+
+// ── Etapas do quadro de tarefas ───────────────────────────────
+//
+//  Mesma estrutura das etapas do funil - arrastar para ordenar, clicar no nome
+//  para renomear, ponto colorido para trocar a cor - sem o que é do funil e não
+//  existe aqui: notificação por etapa, pendência, conversão.
+//
+//  As duas marcações que sobram são as que a entrega lê. A de entrada diz onde
+//  a tarefa nasce e o que ainda não começou; a de conclusão diz o que conta no
+//  percentual da entrega. Sem elas o quadro seria só decoração.
+
+interface EtapaTarefa {
+  id: number;
+  nome: string;
+  cor: string;
+  ordem: number;
+  is_entrada: number;
+  /** A estrela de conversão: a etapa que quer dizer "feito". */
+  is_conclusao: number;
+  is_excluded: number;
+  always_collapsed: number;
+  notificacoes?: Notificacao[];
+}
+
+function EtapaTarefaRow({
+  etapa, todas, token, isDragging, dropIndicator,
+  onDragStart, onDragOver, onClearIndicator, onDrop, onDragEnd,
+  onUpdate, onDelete, onSetEntrada, onSetConversao, onToggleDesconsiderada, onToggleRecolhida,
+}: {
+  etapa: EtapaTarefa;
+  todas: EtapaTarefa[];
+  token: string;
+  isDragging: boolean;
+  dropIndicator: 'before' | 'after' | null;
+  onDragStart: () => void;
+  onDragOver: (pos: 'before' | 'after') => void;
+  onClearIndicator: () => void;
+  onDrop: () => void;
+  onDragEnd: () => void;
+  onUpdate: (e: EtapaTarefa) => void;
+  onDelete: (id: number) => void;
+  onSetEntrada: (id: number | null) => void;
+  onSetConversao: (id: number | null) => void;
+  onToggleDesconsiderada: (id: number) => void;
+  onToggleRecolhida: (id: number) => void;
+}) {
+  const api = useApi(token);
+  const { toast } = useToast();
+  const corDotRef = useRef<HTMLButtonElement>(null);
+  const paletaRef = useRef<HTMLDivElement>(null);
+
+  const [editandoNome, setEditandoNome] = useState(false);
+  const [nome, setNome] = useState(etapa.nome);
+  const [cor, setCor] = useState(etapa.cor);
+  const [paletaPos, setPaletaPos] = useState<{ top: number; left: number } | null>(null);
+
+  const [inscritos, setInscritos] = useState<Notificacao[]>(etapa.notificacoes ?? []);
+  const [confirmar, setConfirmar] = useState(false);
+  const [mover, setMover] = useState<{ count: number } | null>(null);
+  const [destino, setDestino] = useState<number | ''>('');
+  const [excluindo, setExcluindo] = useState(false);
+
+  useEffect(() => { setNome(etapa.nome); setCor(etapa.cor); }, [etapa.nome, etapa.cor]);
+
+  async function inscrever(u: UsuarioNotificavel) {
+    const r = await api('', 'POST', {
+      action: 'add_tarefa_status_notif', status_id: etapa.id, usuario_id: u.id,
+    });
+    if (r?.notificacao) setInscritos(prev => [...prev, r.notificacao]);
+  }
+
+  async function desinscrever(id: number) {
+    setInscritos(prev => prev.filter(n => n.id !== id));
+    await api('', 'POST', { action: 'remove_tarefa_status_notif', id });
+  }
+
+  useEffect(() => {
+    if (!paletaPos) return;
+    function fora(e: MouseEvent) {
+      if (corDotRef.current?.contains(e.target as Node)) return;
+      if (paletaRef.current?.contains(e.target as Node)) return;
+      setPaletaPos(null);
+    }
+    document.addEventListener('mousedown', fora);
+    return () => document.removeEventListener('mousedown', fora);
+  }, [paletaPos]);
+
+  async function salvar(novoNome: string, novaCor: string) {
+    const limpo = novoNome.trim();
+    if (!limpo) { setNome(etapa.nome); return; }
+    if (limpo === etapa.nome && novaCor === etapa.cor) return;
+    const r = await api('', 'POST', {
+      action: 'update_tarefa_status', id: etapa.id, nome: limpo, cor: novaCor,
+    });
+    if (r?.error) { toast('error', 'Não foi possível salvar', r.error); setNome(etapa.nome); return; }
+    onUpdate({ ...etapa, nome: limpo, cor: novaCor });
+  }
+
+  async function pedirExclusao() {
+    const r = await api(`?action=tarefa_status_card_count&nome=${encodeURIComponent(etapa.nome)}`);
+    const count = Number(r?.count ?? 0);
+    if (count > 0) { setDestino(''); setMover({ count }); }
+    else setConfirmar(true);
+  }
+
+  async function excluir(paraId?: number) {
+    setExcluindo(true);
+    try {
+      const para = paraId != null ? todas.find(e => e.id === paraId) : null;
+      const r = await api('', 'POST', {
+        action: 'delete_tarefa_status', id: etapa.id, destino: para?.nome,
+      });
+      if (r?.error) { toast('error', 'Não foi possível excluir', r.error); return; }
+      setConfirmar(false); setMover(null);
+      onDelete(etapa.id);
+      toast('success', 'Etapa excluída', r.movidas ? `${r.movidas} tarefa(s) movida(s).` : undefined);
+    } finally {
+      setExcluindo(false);
+    }
+  }
+
+  return (
+    <div
+      className={`status-row${isDragging ? ' status-row-dragging' : ''}${dropIndicator ? ' status-row-drop-target' : ''}`}
+      draggable={!editandoNome}
+      style={{
+        cursor: editandoNome ? 'default' : 'grab',
+        boxShadow: dropIndicator === 'before'
+          ? 'inset 0 3px 0 0 var(--yellow)'
+          : dropIndicator === 'after'
+          ? 'inset 0 -3px 0 0 var(--yellow)'
+          : undefined,
+      }}
+      onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; onDragStart(); }}
+      onDragEnd={onDragEnd}
+      onDragOver={e => {
+        e.preventDefault();
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        onDragOver(e.clientY < rect.top + rect.height / 2 ? 'before' : 'after');
+      }}
+      onDragLeave={e => {
+        if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) onClearIndicator();
+      }}
+      onDrop={e => { e.preventDefault(); onDrop(); }}
+    >
+      <div className="status-row-bar">
+        <div className="status-row-left">
+          <div className="drag-handle-dots"><IconArrastar size={14} /></div>
+
+          <button
+            ref={corDotRef}
+            className="status-color-dot-btn"
+            title="Alterar cor"
+            aria-label={`Alterar a cor de ${etapa.nome}`}
+            onClick={() => {
+              const r = corDotRef.current!.getBoundingClientRect();
+              setPaletaPos({ top: r.bottom + 6, left: Math.max(8, r.left - 6) });
+            }}
+          >
+            <span className="kanban-dot" style={{ background: cor, width: 12, height: 12 }} />
+          </button>
+
+          {editandoNome ? (
+            <input
+              className="status-name-input"
+              value={nome}
+              autoFocus
+              onChange={e => setNome(e.target.value)}
+              onClick={e => e.stopPropagation()}
+              onBlur={() => { setEditandoNome(false); void salvar(nome, cor); }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+                if (e.key === 'Escape') { setNome(etapa.nome); setEditandoNome(false); }
+              }}
+            />
+          ) : (
+            <span className="status-name" title="Clique para renomear"
+              onClick={e => { e.stopPropagation(); setEditandoNome(true); }}>
+              {nome}
+            </span>
+          )}
+        </div>
+
+        <div className="status-row-right" onClick={e => e.stopPropagation()}>
+          {/* Quem acompanha a etapa, igual ao funil: recebe e-mail quando uma
+              tarefa chega aqui. */}
+          <div className="status-notif-chips-inline">
+            {inscritos.map(n => (
+              <div key={n.id} className="notif-chip">
+                <div className="notif-avatar-sm notif-avatar-placeholder">{n.usuario_nome[0]}</div>
+                <span title={n.usuario_email}>{n.usuario_nome}</span>
+                <button aria-label={`Remover ${n.usuario_nome}`}
+                  onClick={() => void desinscrever(n.id)}>
+                  <IconX size={10} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <UsuarioDropdown
+            token={token}
+            onSelect={u => void inscrever(u)}
+            exclude={inscritos.map(n => n.usuario_id)}
+            compact
+          />
+
+          <button
+            className="status-action-btn"
+            title={etapa.is_entrada
+              ? 'Etapa de entrada: é aqui que a tarefa nasce, e a entrega considera que ainda não começou'
+              : 'Marcar como etapa de entrada'}
+            aria-pressed={!!etapa.is_entrada}
+            style={etapa.is_entrada ? { color: 'var(--green)', background: 'rgba(30,138,62,0.1)' } : {}}
+            onClick={() => onSetEntrada(etapa.is_entrada ? null : etapa.id)}
+          >
+            <IconEntrada size={12} />
+          </button>
+
+          <button
+            className="status-action-btn"
+            title={etapa.is_conclusao
+              ? 'Etapa de conversão: tarefa aqui conta como feita no percentual da entrega. Só uma etapa pode ter essa marcação.'
+              : 'Marcar como etapa de conversão'}
+            aria-pressed={!!etapa.is_conclusao}
+            style={etapa.is_conclusao ? { color: 'var(--yellow)', background: 'rgba(0, 201, 167,0.1)' } : {}}
+            onClick={() => onSetConversao(etapa.is_conclusao ? null : etapa.id)}
+          >
+            <IconEstrela size={12} preenchida={!!etapa.is_conclusao} />
+          </button>
+
+          <button
+            className="status-action-btn"
+            title={etapa.is_excluded
+              ? 'Etapa desconsiderada: tarefa aqui fica fora da conta da entrega, nem como feita nem como pendente'
+              : 'Marcar como etapa desconsiderada'}
+            aria-pressed={!!etapa.is_excluded}
+            style={etapa.is_excluded ? { color: 'var(--red)', background: 'rgba(217,48,37,0.1)' } : {}}
+            onClick={() => onToggleDesconsiderada(etapa.id)}
+          >
+            <IconProibido size={12} />
+          </button>
+
+          <button
+            className="status-action-btn"
+            title={etapa.always_collapsed
+              ? 'Etapa pontual: fica recolhida no quadro. Clique para mantê-la sempre aberta.'
+              : 'Manter esta etapa recolhida no quadro, mesmo com tarefas dentro'}
+            aria-pressed={!!etapa.always_collapsed}
+            style={etapa.always_collapsed ? { color: 'var(--gray)', background: 'var(--gray4)' } : {}}
+            onClick={() => onToggleRecolhida(etapa.id)}
+          >
+            <IconRecolher size={12} aberta={!etapa.always_collapsed} />
+          </button>
+
+          <button
+            className="status-action-btn danger"
+            title={todas.length <= 1 ? 'O quadro precisa de ao menos uma etapa' : 'Excluir etapa'}
+            aria-label={`Excluir ${etapa.nome}`}
+            disabled={todas.length <= 1}
+            style={todas.length <= 1 ? { opacity: 0.3, cursor: 'not-allowed' } : {}}
+            onClick={() => { if (todas.length > 1) void pedirExclusao(); }}
+          >
+            <IconTrash size={12} />
+          </button>
+        </div>
+      </div>
+
+      {paletaPos && createPortal(
+        <div ref={paletaRef} className="status-color-picker-popover"
+          style={{ position: 'fixed', top: paletaPos.top, left: paletaPos.left }}>
+          {COLORS.map(c => (
+            <button key={c} className={`color-swatch${cor === c ? ' active' : ''}`}
+              style={{ background: c }} aria-label={`Cor ${c}`}
+              onClick={() => { setCor(c); setPaletaPos(null); void salvar(nome, c); }} />
+          ))}
+        </div>,
+        document.body
+      )}
+
+      {confirmar && createPortal(
+        <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setConfirmar(false)}>
+          <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
+            <p className="delete-confirm-title">Excluir etapa?</p>
+            <p className="delete-confirm-desc">
+              <strong>{etapa.nome}</strong> sai do quadro de tarefas. Nenhuma tarefa está nela.
+            </p>
+            <div className="delete-confirm-actions">
+              <button className="delete-confirm-cancel" onClick={() => setConfirmar(false)}>Cancelar</button>
+              <button className="delete-confirm-ok" disabled={excluindo} onClick={() => void excluir()}>
+                {excluindo ? 'Excluindo…' : 'Excluir'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {mover && createPortal(
+        <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setMover(null)}>
+          <div className="delete-confirm-modal" onClick={e => e.stopPropagation()} style={{ width: 360 }}>
+            <p className="delete-confirm-title">Excluir etapa?</p>
+            <p className="delete-confirm-desc">
+              <strong>{etapa.nome}</strong> tem <strong>{mover.count}</strong> tarefa(s).
+              Para qual etapa deseja movê-las?
+            </p>
+
+            {/* Sem "criar nova" aqui: a tarefa aponta a etapa pelo nome, e
+                inventar uma no meio da exclusão deixaria o quadro com uma coluna
+                que ninguém pediu. */}
+            <MoveTargetSelect
+              options={todas.filter(e => e.id !== etapa.id)}
+              value={destino}
+              onChange={v => { if (v !== '__new__') setDestino(v); }}
+              allowNew={false}
+            />
+
+            <div className="delete-confirm-actions" style={{ marginTop: 16 }}>
+              <button className="delete-confirm-cancel" onClick={() => setMover(null)}>Cancelar</button>
+              <button className="delete-confirm-ok" disabled={excluindo || destino === ''}
+                onClick={() => void excluir(destino as number)}>
+                {excluindo ? 'Movendo…' : 'Mover e excluir'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+function EtapasTarefaTab({ token, adicionando, onFecharNova }: {
+  token: string;
+  adicionando: boolean;
+  onFecharNova: () => void;
+}) {
+  const api = useApi(token);
+  const { toast } = useToast();
+  const [etapas, setEtapas] = useState<EtapaTarefa[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [salvando, setSalvando] = useState(false);
+  const [novoNome, setNovoNome] = useState('');
+  const [novaCor, setNovaCor] = useState(COLORS[7]);
+  const [arrastando, setArrastando] = useState<number | null>(null);
+  const [sobre, setSobre] = useState<{ id: number; pos: 'before' | 'after' } | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    api('?action=tarefa_status_configs').then(r => {
+      if (vivo) { setEtapas(r?.statuses ?? []); setLoading(false); }
+    });
+    return () => { vivo = false; };
+  }, [api]);
+
+  async function criar() {
+    const nome = novoNome.trim();
+    if (!nome) return;
+    setSalvando(true);
+    try {
+      const r = await api('', 'POST', { action: 'create_tarefa_status', nome, cor: novaCor });
+      if (r?.error) { toast('error', 'Não foi possível criar', r.error); return; }
+      setEtapas(prev => [...prev, r.status]);
+      setNovoNome(''); setNovaCor(COLORS[7]);
+      onFecharNova();
+      toast('success', 'Etapa criada');
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  function soltar(alvoId: number) {
+    if (arrastando === null || arrastando === alvoId) { setArrastando(null); setSobre(null); return; }
+    const pos = sobre?.pos ?? 'before';
+    const proxima = [...etapas];
+    const de = proxima.findIndex(e => e.id === arrastando);
+    const [movida] = proxima.splice(de, 1);
+    const para = proxima.findIndex(e => e.id === alvoId);
+    proxima.splice(pos === 'before' ? para : para + 1, 0, movida);
+    setEtapas(proxima);
+    setArrastando(null); setSobre(null);
+    void api('', 'POST', { action: 'reorder_tarefa_statuses', ids: proxima.map(e => e.id) });
+    toast('success', 'Ordem atualizada');
+  }
+
+  async function definirEntrada(id: number | null) {
+    setEtapas(prev => prev.map(e => ({ ...e, is_entrada: e.id === id ? 1 : 0 })));
+    await api('', 'POST', { action: 'set_entrada_tarefa_status', id });
+  }
+
+  // Conversão é exclusiva, então marcar uma limpa as outras - a tela reflete
+  // isso na hora para a estrela não ficar acesa em dois lugares.
+  async function definirConversao(id: number | null) {
+    setEtapas(prev => prev.map(e => ({
+      ...e,
+      is_conclusao: e.id === id ? 1 : 0,
+      is_excluded: e.id === id ? 0 : e.is_excluded,
+    })));
+    await api('', 'POST', { action: 'set_conversao_tarefa_status', id });
+  }
+
+  async function alternarDesconsiderada(id: number) {
+    setEtapas(prev => prev.map(e => {
+      if (e.id !== id) return e;
+      const vira = e.is_excluded ? 0 : 1;
+      return { ...e, is_excluded: vira, is_conclusao: vira ? 0 : e.is_conclusao };
+    }));
+    await api('', 'POST', { action: 'toggle_desconsiderada_tarefa_status', id });
+  }
+
+  async function alternarRecolhida(id: number) {
+    setEtapas(prev => prev.map(e => (e.id === id ? { ...e, always_collapsed: e.always_collapsed ? 0 : 1 } : e)));
+    await api('', 'POST', { action: 'toggle_collapsed_tarefa_status', id });
+  }
+
+  if (loading) return <ConfiguracoesSkeleton />;
+
+  const semConclusao = etapas.length > 0 && !etapas.some(e => e.is_conclusao);
+
+  return (
+    <div className="status-list">
+      {semConclusao && (
+        <p style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12,
+          color: 'var(--red)', marginBottom: 4 }}>
+          <IconAlert size={14} />
+          Nenhuma etapa marcada como conversão: o percentual das entregas fica em zero.
+        </p>
+      )}
+
+      {adicionando && (
+        <div className="status-row status-row-new animate">
+          <div className="status-row-bar">
+            <div className="status-row-left">
+              <span className="kanban-dot" style={{ background: novaCor, width: 12, height: 12 }} />
+              <input
+                className="status-name-input"
+                placeholder="Nome da etapa…"
+                value={novoNome}
+                autoFocus
+                onChange={e => setNovoNome(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') void criar();
+                  if (e.key === 'Escape') onFecharNova();
+                }}
+              />
+            </div>
+            <div className="status-row-actions">
+              <button className="status-action-btn primary" onClick={() => void criar()}
+                disabled={salvando || !novoNome.trim()}>
+                {salvando ? '…' : 'Criar'}
+              </button>
+              <button className="status-action-btn" onClick={onFecharNova}>Cancelar</button>
+            </div>
+          </div>
+          <div className="status-color-picker">
+            {COLORS.map(c => (
+              <button key={c} className={`color-swatch${novaCor === c ? ' active' : ''}`}
+                style={{ background: c }} aria-label={`Cor ${c}`} onClick={() => setNovaCor(c)} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {etapas.map(e => (
+        <EtapaTarefaRow
+          key={e.id}
+          etapa={e}
+          todas={etapas}
+          token={token}
+          isDragging={arrastando === e.id}
+          dropIndicator={sobre?.id === e.id ? sobre.pos : null}
+          onDragStart={() => setArrastando(e.id)}
+          onDragOver={pos => setSobre({ id: e.id, pos })}
+          onClearIndicator={() => setSobre(null)}
+          onDrop={() => soltar(e.id)}
+          onDragEnd={() => { setArrastando(null); setSobre(null); }}
+          onUpdate={nova => setEtapas(prev => prev.map(x => (x.id === nova.id ? nova : x)))}
+          onDelete={id => setEtapas(prev => prev.filter(x => x.id !== id))}
+          onSetEntrada={id => void definirEntrada(id)}
+          onSetConversao={id => void definirConversao(id)}
+          onToggleDesconsiderada={id => void alternarDesconsiderada(id)}
+          onToggleRecolhida={id => void alternarRecolhida(id)}
+        />
+      ))}
+
+      {etapas.length === 0 && !adicionando && (
+        <div className="admin-empty" style={{ padding: '48px 0' }}>
+          <p style={{ display: 'flex', justifyContent: 'center', color: 'var(--gray2)' }}><IconClipboard size={26} /></p>
+          <p>Nenhuma etapa de tarefa configurada.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ── Etiquetas de tarefa ───────────────────────────────
+//
+//  Mesma linha das etapas, com um campo a mais: a descrição, que aparece na
+//  lista do formulário de tarefa e é o que separa "análise comercial" de "fora
+//  de escopo" na hora de escolher.
+//
+//  A marcação de bloqueio é a única que muda o comportamento do sistema:
+//  enquanto uma tarefa aberta carrega uma etiqueta assim, a entrega a que ela
+//  pende aparece como bloqueada.
+
+interface EtiquetaTarefa {
+  id: number;
+  nome: string;
+  cor: string;
+  descricao: string | null;
+  ordem: number;
+  bloqueia: number;
+  papeis: string[];
+}
+
+/** Escolha múltipla dos papéis que enxergam a etiqueta. Nada marcado é "todo
+ *  mundo": obrigar a marcar os seis para dizer "sem restrição" seria trabalho
+ *  para chegar ao estado que já é o padrão. */
+function SeletorPapeis({ valor, onChange }: {
+  valor: string[];
+  onChange: (v: string[]) => void;
+}) {
+  return (
+    <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 4 }}>
+      {PAPEIS_EQUIPE.map(p => {
+        const ativo = valor.includes(p);
+        return (
+          <button
+            key={p}
+            type="button"
+            aria-pressed={ativo}
+            onClick={() => onChange(ativo ? valor.filter(x => x !== p) : [...valor, p])}
+            style={{
+              fontFamily: 'inherit', fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
+              padding: '2px 9px', borderRadius: 'var(--radius-pill)',
+              border: `1px solid ${ativo ? 'var(--yellow)' : 'var(--gray3)'}`,
+              background: ativo ? 'var(--yd)' : 'var(--white)',
+              color: ativo ? 'var(--black)' : 'var(--gray2)',
+              transition: 'border-color var(--transition), background var(--transition), color var(--transition)',
+            }}
+          >
+            {p}
+          </button>
+        );
+      })}
+      {valor.length === 0 && (
+        <span style={{ fontSize: 11, color: 'var(--gray2)', alignSelf: 'center', marginLeft: 2 }}>
+          visível a todos
+        </span>
+      )}
+    </span>
+  );
+}
+
+function EtiquetaTarefaRow({
+  etiqueta, token, isDragging, dropIndicator,
+  onDragStart, onDragOver, onClearIndicator, onDrop, onDragEnd,
+  onUpdate, onDelete, onToggleBloqueio, porPapel,
+}: {
+  etiqueta: EtiquetaTarefa;
+  token: string;
+  /** Só desenha a escolha de papéis quando a regra está ligada. */
+  porPapel: boolean;
+  isDragging: boolean;
+  dropIndicator: 'before' | 'after' | null;
+  onDragStart: () => void;
+  onDragOver: (pos: 'before' | 'after') => void;
+  onClearIndicator: () => void;
+  onDrop: () => void;
+  onDragEnd: () => void;
+  onUpdate: (e: EtiquetaTarefa) => void;
+  onDelete: (id: number) => void;
+  onToggleBloqueio: (id: number) => void;
+}) {
+  const api = useApi(token);
+  const { toast } = useToast();
+  const corDotRef = useRef<HTMLButtonElement>(null);
+  const paletaRef = useRef<HTMLDivElement>(null);
+
+  const [editandoNome, setEditandoNome] = useState(false);
+  const [editandoDesc, setEditandoDesc] = useState(false);
+  const [nome, setNome] = useState(etiqueta.nome);
+  const [cor, setCor] = useState(etiqueta.cor);
+  const [descricao, setDescricao] = useState(etiqueta.descricao ?? '');
+  const [paletaPos, setPaletaPos] = useState<{ top: number; left: number } | null>(null);
+  const [confirmar, setConfirmar] = useState(false);
+  const [emUso, setEmUso] = useState(0);
+  const [excluindo, setExcluindo] = useState(false);
+
+  useEffect(() => {
+    setNome(etiqueta.nome); setCor(etiqueta.cor); setDescricao(etiqueta.descricao ?? '');
+  }, [etiqueta.nome, etiqueta.cor, etiqueta.descricao]);
+
+  useEffect(() => {
+    if (!paletaPos) return;
+    function fora(e: MouseEvent) {
+      if (corDotRef.current?.contains(e.target as Node)) return;
+      if (paletaRef.current?.contains(e.target as Node)) return;
+      setPaletaPos(null);
+    }
+    document.addEventListener('mousedown', fora);
+    return () => document.removeEventListener('mousedown', fora);
+  }, [paletaPos]);
+
+  async function salvar(novoNome: string, novaCor: string, novaDesc: string, papeis = etiqueta.papeis) {
+    const limpo = novoNome.trim();
+    if (!limpo) { setNome(etiqueta.nome); return; }
+    const r = await api('', 'POST', {
+      action: 'update_tarefa_etiqueta', id: etiqueta.id,
+      nome: limpo, cor: novaCor, descricao: novaDesc, papeis,
+    });
+    if (r?.error) {
+      toast('error', 'Não foi possível salvar', r.error);
+      setNome(etiqueta.nome); setDescricao(etiqueta.descricao ?? '');
+      return;
+    }
+    onUpdate({ ...etiqueta, nome: limpo, cor: novaCor, descricao: novaDesc.trim() || null, papeis });
+    if (r?.tocadas) toast('success', 'Etiqueta renomeada', `${r.tocadas} tarefa(s) atualizada(s).`);
+  }
+
+  async function excluir() {
+    setExcluindo(true);
+    try {
+      const r = await api('', 'POST', { action: 'delete_tarefa_etiqueta', id: etiqueta.id });
+      if (r?.error) { toast('error', 'Não foi possível excluir', r.error); return; }
+      setConfirmar(false);
+      onDelete(etiqueta.id);
+      toast('success', 'Etiqueta excluída',
+        r.tocadas ? `Saiu de ${r.tocadas} tarefa(s).` : undefined);
+    } finally {
+      setExcluindo(false);
+    }
+  }
+
+  return (
+    <div
+      className={`status-row${isDragging ? ' status-row-dragging' : ''}${dropIndicator ? ' status-row-drop-target' : ''}`}
+      draggable={!editandoNome && !editandoDesc}
+      style={{
+        cursor: editandoNome || editandoDesc ? 'default' : 'grab',
+        boxShadow: dropIndicator === 'before'
+          ? 'inset 0 3px 0 0 var(--yellow)'
+          : dropIndicator === 'after'
+          ? 'inset 0 -3px 0 0 var(--yellow)'
+          : undefined,
+      }}
+      onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; onDragStart(); }}
+      onDragEnd={onDragEnd}
+      onDragOver={e => {
+        e.preventDefault();
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        onDragOver(e.clientY < rect.top + rect.height / 2 ? 'before' : 'after');
+      }}
+      onDragLeave={e => {
+        if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) onClearIndicator();
+      }}
+      onDrop={e => { e.preventDefault(); onDrop(); }}
+    >
+      <div className="status-row-bar">
+        <div className="status-row-left">
+          <div className="drag-handle-dots"><IconArrastar size={14} /></div>
+
+          <button ref={corDotRef} className="status-color-dot-btn" title="Alterar cor"
+            aria-label={`Alterar a cor de ${etiqueta.nome}`}
+            onClick={() => {
+              const r = corDotRef.current!.getBoundingClientRect();
+              setPaletaPos({ top: r.bottom + 6, left: Math.max(8, r.left - 6) });
+            }}>
+            <span className="kanban-dot" style={{ background: cor, width: 12, height: 12 }} />
+          </button>
+
+          {editandoNome ? (
+            // Enquanto edita, o campo para de crescer: com `flex: 1` ele
+            // engoliria o espaço da descrição, que fica na mesma linha.
+            <input className="status-name-input" value={nome} autoFocus
+              style={{ flex: '0 1 320px' }}
+              onChange={e => setNome(e.target.value)}
+              onClick={e => e.stopPropagation()}
+              onBlur={() => { setEditandoNome(false); void salvar(nome, cor, descricao); }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+                if (e.key === 'Escape') { setNome(etiqueta.nome); setEditandoNome(false); }
+              }} />
+          ) : (
+            // O nome fica do tamanho que precisa; quem estica é a descrição.
+            <span className="status-name" title="Clique para renomear"
+              style={{ flex: '0 1 auto' }}
+              onClick={e => { e.stopPropagation(); setEditandoNome(true); }}>
+              {nome}
+            </span>
+          )}
+
+          {/* A descrição ao lado do nome, e não embaixo: ela é a continuação da
+              frase que o nome começa, e numa linha só a lista se lê de cima a
+              baixo sem o olho descer e voltar. */}
+          {editandoDesc ? (
+            <input className="status-name-input" value={descricao} autoFocus
+              placeholder="O que esta etiqueta quer dizer"
+              style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 500 }}
+              onChange={e => setDescricao(e.target.value)}
+              onClick={e => e.stopPropagation()}
+              onBlur={() => { setEditandoDesc(false); void salvar(nome, cor, descricao); }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+                if (e.key === 'Escape') { setDescricao(etiqueta.descricao ?? ''); setEditandoDesc(false); }
+              }} />
+          ) : (
+            <span title="Clique para editar a descrição"
+              onClick={e => { e.stopPropagation(); setEditandoDesc(true); }}
+              style={{
+                flex: 1, minWidth: 0, fontSize: 12, cursor: 'text',
+                color: descricao ? 'var(--gray2)' : 'var(--gray3)',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>
+              {descricao || 'Sem descrição'}
+            </span>
+          )}
+        </div>
+
+        <div className="status-row-right" onClick={e => e.stopPropagation()}>
+          <button className="status-action-btn"
+            title={etiqueta.bloqueia
+              ? 'Trava a entrega: enquanto uma tarefa aberta tiver esta etiqueta, a entrega dela aparece como bloqueada'
+              : 'Marcar como etiqueta de bloqueio'}
+            aria-pressed={!!etiqueta.bloqueia}
+            style={etiqueta.bloqueia ? { color: 'var(--red)', background: 'rgba(217,48,37,0.1)' } : {}}
+            onClick={() => onToggleBloqueio(etiqueta.id)}>
+            <IconAlertOctagon size={12} />
+          </button>
+
+          <button className="status-action-btn danger" title="Excluir etiqueta"
+            aria-label={`Excluir ${etiqueta.nome}`}
+            onClick={async () => {
+              const r = await api(`?action=tarefa_etiqueta_uso&nome=${encodeURIComponent(etiqueta.nome)}`);
+              setEmUso(Number(r?.count ?? 0));
+              setConfirmar(true);
+            }}>
+            <IconTrash size={12} />
+          </button>
+        </div>
+      </div>
+
+      {/* A escolha de papéis continua embaixo: são seis pastilhas, e elas não
+          cabem na linha do nome sem espremer a descrição. */}
+      {porPapel && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+          padding: '0 12px 10px 46px' }} onClick={e => e.stopPropagation()}>
+          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em',
+            textTransform: 'uppercase', color: 'var(--gray2)' }}>
+            Quem vê
+          </span>
+          <SeletorPapeis valor={etiqueta.papeis}
+            onChange={p => void salvar(nome, cor, descricao, p)} />
+        </div>
+      )}
+
+      {paletaPos && createPortal(
+        <div ref={paletaRef} className="status-color-picker-popover"
+          style={{ position: 'fixed', top: paletaPos.top, left: paletaPos.left }}>
+          {COLORS.map(c => (
+            <button key={c} className={`color-swatch${cor === c ? ' active' : ''}`}
+              style={{ background: c }} aria-label={`Cor ${c}`}
+              onClick={() => { setCor(c); setPaletaPos(null); void salvar(nome, c, descricao); }} />
+          ))}
+        </div>,
+        document.body
+      )}
+
+      {confirmar && createPortal(
+        <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setConfirmar(false)}>
+          <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
+            <p className="delete-confirm-title">Excluir etiqueta?</p>
+            <p className="delete-confirm-desc">
+              <strong>{etiqueta.nome}</strong>{' '}
+              {emUso > 0
+                ? `sai de ${emUso} tarefa(s). Elas continuam onde estão, só perdem esta etiqueta.`
+                : 'não está em nenhuma tarefa.'}
+            </p>
+            <div className="delete-confirm-actions">
+              <button className="delete-confirm-cancel" onClick={() => setConfirmar(false)}>Cancelar</button>
+              <button className="delete-confirm-ok" disabled={excluindo} onClick={() => void excluir()}>
+                {excluindo ? 'Excluindo…' : 'Excluir'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+function EtiquetasTarefaTab({ token, adicionando, onFecharNova }: {
+  token: string;
+  adicionando: boolean;
+  onFecharNova: () => void;
+}) {
+  const api = useApi(token);
+  const { toast } = useToast();
+  const [etiquetas, setEtiquetas] = useState<EtiquetaTarefa[]>([]);
+  const [porPapel, setPorPapel] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [salvando, setSalvando] = useState(false);
+  const [novoNome, setNovoNome] = useState('');
+  const [novaCor, setNovaCor] = useState(COLORS[0]);
+  const [arrastando, setArrastando] = useState<number | null>(null);
+  const [sobre, setSobre] = useState<{ id: number; pos: 'before' | 'after' } | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    api('?action=tarefa_etiquetas').then(r => {
+      if (vivo) {
+        setEtiquetas(r?.etiquetas ?? []);
+        setPorPapel(!!r?.porPapel);
+        setLoading(false);
+      }
+    });
+    return () => { vivo = false; };
+  }, [api]);
+
+  async function criar() {
+    const nome = novoNome.trim();
+    if (!nome) return;
+    setSalvando(true);
+    try {
+      const r = await api('', 'POST', { action: 'create_tarefa_etiqueta', nome, cor: novaCor });
+      if (r?.error) { toast('error', 'Não foi possível criar', r.error); return; }
+      setEtiquetas(prev => [...prev, r.etiqueta]);
+      setNovoNome(''); setNovaCor(COLORS[0]);
+      onFecharNova();
+      toast('success', 'Etiqueta criada', 'Escreva a descrição dela na própria linha.');
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  function soltar(alvoId: number) {
+    if (arrastando === null || arrastando === alvoId) { setArrastando(null); setSobre(null); return; }
+    const pos = sobre?.pos ?? 'before';
+    const proxima = [...etiquetas];
+    const de = proxima.findIndex(e => e.id === arrastando);
+    const [movida] = proxima.splice(de, 1);
+    const para = proxima.findIndex(e => e.id === alvoId);
+    proxima.splice(pos === 'before' ? para : para + 1, 0, movida);
+    setEtiquetas(proxima);
+    setArrastando(null); setSobre(null);
+    void api('', 'POST', { action: 'reorder_tarefa_etiquetas', ids: proxima.map(e => e.id) });
+    toast('success', 'Ordem atualizada');
+  }
+
+  async function alternarRegra() {
+    const ligado = !porPapel;
+    setPorPapel(ligado);
+    const r = await api('', 'POST', { action: 'set_etiquetas_por_papel', ligado });
+    if (r?.error) { setPorPapel(!ligado); toast('error', 'Não foi possível salvar', r.error); return; }
+    toast('success', ligado ? 'Regra ligada' : 'Regra desligada',
+      ligado
+        ? 'Cada etiqueta passa a aparecer só para os papéis marcados.'
+        : 'Todas as etiquetas voltam a aparecer para todo mundo.');
+  }
+
+  async function alternarBloqueio(id: number) {
+    setEtiquetas(prev => prev.map(e => (e.id === id ? { ...e, bloqueia: e.bloqueia ? 0 : 1 } : e)));
+    await api('', 'POST', { action: 'toggle_bloqueio_tarefa_etiqueta', id });
+  }
+
+  if (loading) return <ConfiguracoesSkeleton />;
+
+  return (
+    <div className="status-list">
+      {/* A regra vive aqui em cima, e não numa marcação por etiqueta: ela vale
+          para a lista inteira, e cada linha só diz quem a vê. */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
+        border: '1px solid var(--gray3)', borderRadius: 'var(--radius-md)',
+        background: porPapel ? 'var(--yd)' : 'var(--bg)',
+        transition: 'background var(--transition), border-color var(--transition)',
+      }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--black)', margin: 0 }}>
+            Mostrar etiquetas conforme o papel na equipe
+          </p>
+          <p style={{ fontSize: 11.5, color: 'var(--gray2)', margin: '3px 0 0', lineHeight: 1.45 }}>
+            Ligada, cada etiqueta só aparece para quem tem um dos papéis marcados nela, e o papel
+            é o daquele projeto. Quem não está na equipe do projeto continua vendo todas.
+            Etiqueta já aplicada não sai da tarefa.
+          </p>
+        </div>
+        <button type="button" role="switch" aria-checked={porPapel}
+          onClick={() => void alternarRegra()}
+          aria-label="Mostrar etiquetas conforme o papel na equipe"
+          style={{
+            flexShrink: 0, width: 42, height: 24, padding: 3, borderRadius: 'var(--radius-pill)',
+            border: '1px solid var(--gray3)', cursor: 'pointer',
+            background: porPapel ? 'var(--yellow)' : 'var(--gray3)',
+            transition: 'background var(--transition-spring)',
+          }}>
+          <span style={{
+            display: 'block', width: 16, height: 16, borderRadius: '50%',
+            background: 'var(--white)', boxShadow: '0 1px 2px rgba(0,0,0,.2)',
+            transform: porPapel ? 'translateX(18px)' : 'none',
+            transition: 'transform var(--transition-spring)',
+          }} />
+        </button>
+      </div>
+
+      {adicionando && (
+        <div className="status-row status-row-new animate">
+          <div className="status-row-bar">
+            <div className="status-row-left">
+              <span className="kanban-dot" style={{ background: novaCor, width: 12, height: 12 }} />
+              <input className="status-name-input" placeholder="Nome da etiqueta…"
+                value={novoNome} autoFocus
+                onChange={e => setNovoNome(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') void criar();
+                  if (e.key === 'Escape') onFecharNova();
+                }} />
+            </div>
+            <div className="status-row-actions">
+              <button className="status-action-btn primary" onClick={() => void criar()}
+                disabled={salvando || !novoNome.trim()}>
+                {salvando ? '…' : 'Criar'}
+              </button>
+              <button className="status-action-btn" onClick={onFecharNova}>Cancelar</button>
+            </div>
+          </div>
+          <div className="status-color-picker">
+            {COLORS.map(c => (
+              <button key={c} className={`color-swatch${novaCor === c ? ' active' : ''}`}
+                style={{ background: c }} aria-label={`Cor ${c}`} onClick={() => setNovaCor(c)} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {etiquetas.map(e => (
+        <EtiquetaTarefaRow
+          key={e.id}
+          etiqueta={e}
+          token={token}
+          isDragging={arrastando === e.id}
+          dropIndicator={sobre?.id === e.id ? sobre.pos : null}
+          onDragStart={() => setArrastando(e.id)}
+          onDragOver={pos => setSobre({ id: e.id, pos })}
+          onClearIndicator={() => setSobre(null)}
+          onDrop={() => soltar(e.id)}
+          onDragEnd={() => { setArrastando(null); setSobre(null); }}
+          onUpdate={nova => setEtiquetas(prev => prev.map(x => (x.id === nova.id ? nova : x)))}
+          onDelete={id => setEtiquetas(prev => prev.filter(x => x.id !== id))}
+          onToggleBloqueio={id => void alternarBloqueio(id)}
+          porPapel={porPapel}
+        />
+      ))}
+
+      {etiquetas.length === 0 && !adicionando && (
+        <div className="admin-empty" style={{ padding: '48px 0' }}>
+          <p style={{ display: 'flex', justifyContent: 'center', color: 'var(--gray2)' }}><IconClipboard size={26} /></p>
+          <p>Nenhuma etiqueta configurada.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main ─────────────────────────────────────────────
 type ConfigTab = 'etapas' | 'integracoes';
+
+/** Qual quadro está sendo configurado. São duas listas de etapas independentes
+ *  - o funil das leads e o quadro de tarefas - e o switcher escolhe uma. */
+type EscopoEtapas = 'funil' | 'tarefas';
 
 export default function ConfiguracoesPage({ token }: { token: string }) {
   const api = useApi(token);
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<ConfigTab>('etapas');
+  const [escopo, setEscopo] = useState<EscopoEtapas>('funil');
+  const [addingTarefa, setAddingTarefa] = useState(false);
+  const [addingEtiqueta, setAddingEtiqueta] = useState(false);
   const [statuses, setStatuses] = useState<StatusConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -1312,12 +2291,22 @@ export default function ConfiguracoesPage({ token }: { token: string }) {
           <p className="admin-page-desc">
             {activeTab === 'integracoes'
               ? 'Conecte ferramentas externas ao sistema.'
-              : 'Gerencie as etapas do funil e as notificações de cada uma.'}
+              : escopo === 'funil'
+              ? 'Gerencie as etapas do funil e as notificações de cada uma.'
+              : 'Gerencie as colunas e as etiquetas do quadro de tarefas.'}
           </p>
         </div>
         {activeTab === 'etapas' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-            {!loading && !adding && (
+            <SegSwitch
+              valor={escopo}
+              onChange={setEscopo}
+              opcoes={[{ valor: 'funil', label: 'Funil' }, { valor: 'tarefas', label: 'Tarefas' }]}
+            />
+            {/* A aba Tarefas tem duas listas, e cada uma ganha o próprio "+"
+                no cabeçalho da sua seção. Um botão só aqui em cima teria que
+                escolher a qual das duas ele serve. */}
+            {escopo === 'funil' && !loading && !adding && (
               <button className="btn btn-primary" onClick={() => setAdding(true)} style={{ whiteSpace: 'nowrap' }}>
                 + Nova etapa
               </button>
@@ -1328,6 +2317,35 @@ export default function ConfiguracoesPage({ token }: { token: string }) {
 
       {activeTab === 'integracoes' ? (
         <IntegracoesTab token={token} />
+      ) : escopo === 'tarefas' ? (
+        <>
+          {/* Cada seção vem dentro do próprio bloco. Soltas, o título e a lista
+              dele eram irmãos no `.admin-content-wrap`, que é uma coluna com
+              20px de vão - e esse vão entrava entre o título e a sua lista. */}
+          <div>
+            <div className="admin-section-head" style={{ marginBottom: 6 }}>
+              <p className="admin-section-title">Etapas do quadro</p>
+              <button type="button" className="secao-add" onClick={() => setAddingTarefa(true)}
+                title="Nova etapa" aria-label="Nova etapa">
+                <IconPlus size={14} />
+              </button>
+            </div>
+            <EtapasTarefaTab token={token} adicionando={addingTarefa}
+              onFecharNova={() => setAddingTarefa(false)} />
+          </div>
+
+          <div>
+            <div className="admin-section-head" style={{ marginBottom: 6 }}>
+              <p className="admin-section-title">Etiquetas</p>
+              <button type="button" className="secao-add" onClick={() => setAddingEtiqueta(true)}
+                title="Nova etiqueta" aria-label="Nova etiqueta">
+                <IconPlus size={14} />
+              </button>
+            </div>
+            <EtiquetasTarefaTab token={token} adicionando={addingEtiqueta}
+              onFecharNova={() => setAddingEtiqueta(false)} />
+          </div>
+        </>
       ) : loading ? (
         <ConfiguracoesSkeleton />
       ) : (

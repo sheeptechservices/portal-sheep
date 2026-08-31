@@ -12,6 +12,7 @@ import { GOOGLE_CLIENT_ID, GOOGLE_DOMINIO, carregarGis } from '../lib/google';
 // Cada página é carregada sob demanda (code-splitting) - só entra no bundle quando aberta
 const LeadsPage = lazy(() => import('./LeadsPage'));
 const ProjetosPage = lazy(() => import('./ProjetosPage'));
+const TarefasPage = lazy(() => import('./TarefasPage'));
 const ConfiguracoesPage = lazy(() => import('./ConfiguracoesPage'));
 const CadastrosPage = lazy(() => import('./CadastrosPage'));
 const FerramentasPage = lazy(() => import('./FerramentasPage'));
@@ -202,6 +203,16 @@ const NAV_SECTIONS: { section: string; items: NavLeaf[] }[] = [
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
             <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.2l1.8 2.2h8A2.5 2.5 0 0 1 21 9.7v7.8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
             <path d="M8 13h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+          </svg>
+        ),
+      },
+      {
+        page: 'tarefas',
+        label: 'Tarefas',
+        icon: (
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+            <rect x="3" y="4" width="18" height="16" rx="2.5" stroke="currentColor" strokeWidth="1.8"/>
+            <path d="M9 11l2 2 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         ),
       },
@@ -1287,6 +1298,7 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
           // então a troca de tela não pisca de vazio para cheio.
           <Suspense fallback={<SkeletonPagina />}>
             {page === 'projetos'      && <ProjetosPage      token={token} />}
+            {page === 'tarefas'       && <TarefasPage       token={token} />}
             {page === 'leads'  && <LeadsPage  token={token} openCard={openCard?.page === 'leads' ? openCard : undefined} onCardOpened={() => setOpenCard(null)} />}
             {page === 'cadastros'     && <CadastrosPage     token={token} newCedente={newCedente} />}
             {page === 'configuracoes' && <ConfiguracoesPage token={token} />}
