@@ -476,6 +476,8 @@ async function migrarSchema(db: Client) {
       cliente_id          TEXT,
       tipo                TEXT,
       repositorio         TEXT,
+      drive               TEXT,
+      descricao           TEXT,
       objetivo            TEXT,
       status              TEXT NOT NULL DEFAULT 'Em andamento',
       prioridade          TEXT NOT NULL DEFAULT 'Média',
@@ -610,6 +612,16 @@ async function migrarSchema(db: Client) {
       criado_por_nome TEXT
     )
   `);
+
+  // Descrição breve do projeto, acrescentada depois da tabela existir.
+  try {
+    await ddl(`ALTER TABLE projetos ADD COLUMN descricao TEXT`);
+  } catch { /* coluna já existe */ }
+
+  // Pasta do projeto no Drive, acrescentada depois da tabela existir.
+  try {
+    await ddl(`ALTER TABLE projetos ADD COLUMN drive TEXT`);
+  } catch { /* coluna já existe */ }
 
   // Categoria da entrega, acrescentada depois da tabela existir.
   try {
@@ -2003,13 +2015,15 @@ function faltaEmProjeto(p: any): string | null {
       const agora = new Date().toISOString();
       await db.execute({
         sql: `INSERT INTO projetos (
-                id, codigo, nome, cliente_id, tipo, repositorio, objetivo, status, prioridade,
-                data_inicio, previsao_entrega, progresso, observacoes,
+                id, codigo, nome, descricao, cliente_id, tipo, repositorio, drive, objetivo,
+                status, prioridade, data_inicio, previsao_entrega, progresso, observacoes,
                 ativo, criado_em, criado_por_id, criado_por_nome
-              ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
+              ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
         args: [
-          id, await proximoCodigo(), String(p.nome).trim(), p.cliente_id || null,
-          p.tipo || null, String(p.repositorio ?? '').trim() || null, p.objetivo ?? null,
+          id, await proximoCodigo(), String(p.nome).trim(),
+          String(p.descricao ?? '').trim() || null, p.cliente_id || null,
+          p.tipo || null, String(p.repositorio ?? '').trim() || null,
+          String(p.drive ?? '').trim() || null, p.objetivo ?? null,
           p.status ?? 'Em andamento', p.prioridade ?? 'Média',
           p.data_inicio || null, p.previsao_entrega || null,
           Math.min(100, Math.max(0, Number(p.progresso ?? 0))), p.observacoes ?? null,
@@ -2055,9 +2069,11 @@ function faltaEmProjeto(p: any): string | null {
       // status e progresso - zerava `tipo` e `repositorio` sem querer.
       const CAMPOS: Record<string, (v: any) => unknown> = {
         nome: v => String(v ?? '').trim(),
+        descricao: v => String(v ?? '').trim() || null,
         cliente_id: v => v || null,
         tipo: v => v || null,
         repositorio: v => String(v ?? '').trim() || null,
+        drive: v => String(v ?? '').trim() || null,
         objetivo: v => v ?? null,
         status: v => v ?? 'Em andamento',
         prioridade: v => v ?? 'Média',

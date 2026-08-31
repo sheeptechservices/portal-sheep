@@ -1104,7 +1104,11 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
       setPage('leads');
       setOpenCard({ page: 'leads', id: sid, nonce: 1 });
       window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+      return;
     }
+    // `?projeto=` só troca de página: quem abre o card é a própria tela de
+    // Projetos, que precisa da lista carregada para achar o projeto.
+    if (params.get('projeto')) setPage('projetos');
   }, []);
 
   // Desktop = sidebar fixa (pinned). Só reage quando CRUZA o limiar desktop↔mobile;

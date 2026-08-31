@@ -4,7 +4,7 @@ import { iniciais, useAuth, useToast } from './AdminApp';
 import {
   IconAlert, IconClip, IconDoc, IconDownload, IconImage, IconInbox,
   IconChevronRight, IconEdit, IconEye, IconLink, IconMarcoAndamento, IconMarcoBloqueado,
-  IconAgrupar, IconOrdenar, IconSearch,
+  IconAgrupar, IconCheck, IconFolder, IconOrdenar, IconSearch,
   IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado,
   IconPlus, IconPrioridadeAlta, IconPrioridadeBaixa, IconPrioridadeMaxima,
   IconPrioridadeMedia, IconTrash, IconTrendDown, IconTrendFlat, IconTrendUp, IconTrendWavy,
@@ -226,10 +226,12 @@ export interface Projeto {
   id: string;
   codigo: string | null;
   nome: string;
+  descricao: string | null;
   cliente_id: string | null;
   cliente_nome: string | null;
   tipo: string | null;
   repositorio: string | null;
+  drive: string | null;
   objetivo: string | null;
   status: string;
   prioridade: string;
@@ -257,7 +259,7 @@ interface AnexoPendente {
 }
 
 const VAZIO = {
-  nome: '', cliente_id: '', tipo: '', repositorio: '',
+  nome: '', descricao: '', cliente_id: '', tipo: '', repositorio: '', drive: '',
   entregas: [] as EntregaPendente[],
   status: 'Em andamento' as string, prioridade: PRIORIDADE_PADRAO as string,
   equipe: [] as { usuario_id: string; papel: string }[],
@@ -1936,7 +1938,7 @@ function SecaoEquipe({ titulo, pessoas, valor, onChange }: {
 
 function FormularioProjeto({
   editando, pessoas, clientes, salvando, onFechar, onSalvar, onBaixarAnexo, onEtiquetar,
-  categorias,
+  categorias, onExcluir,
   onRegistrarSaude, onExcluirSaude, onRegistrarReuniao, onExcluirReuniao,
   onSalvarEntrega, onExcluirEntrega, onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
 }: {
@@ -1957,6 +1959,7 @@ function FormularioProjeto({
   onExcluirReuniao: (r: Reuniao) => void;
   /** Categorias de entrega já usadas, para sugerir no cadastro. */
   categorias: string[];
+  onExcluir: (p: Projeto) => void;
   onSalvarEntrega: (p: Projeto, dados: EntregaPendente, id?: number) => Promise<void>;
   onExcluirEntrega: (e: Entrega) => void;
   onSubirEvidencia: (e: Entrega, arquivos: FileList | null, comentario?: string) => Promise<void>;
@@ -1964,8 +1967,10 @@ function FormularioProjeto({
   onVerEvidencia: (ev: Evidencia) => void;
 }) {
   const [r, setR] = useState<Rascunho>(() => editando ? {
-    nome: editando.nome, cliente_id: editando.cliente_id ?? '',
+    nome: editando.nome, descricao: editando.descricao ?? '',
+    cliente_id: editando.cliente_id ?? '',
     tipo: editando.tipo ?? '', repositorio: editando.repositorio ?? '',
+    drive: editando.drive ?? '',
     // As entregas de um projeto existente são gravadas uma a uma, fora do
     // rascunho: aqui a lista fica vazia de propósito.
     entregas: [] as EntregaPendente[],
@@ -1992,6 +1997,24 @@ function FormularioProjeto({
   };
   // `editando` é um retrato de quando o modal abriu: sem guardar a troca aqui,
   // o arquivo reetiquetado só mudaria de grupo depois de fechar e reabrir.
+  const [copiado, setCopiado] = useState(false);
+
+  /** Link que abre este projeto direto, para quem já tem acesso ao portal. É o
+   *  mesmo formato que o Funil usa em `?lead=`. */
+  async function copiarLink() {
+    if (!editando) return;
+    const url = `${window.location.origin}/?projeto=${editando.id}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiado(true);
+      window.setTimeout(() => setCopiado(false), 2000);
+    } catch {
+      // Área de transferência bloqueada (sem HTTPS, ou permissão negada):
+      // mostrar o link ainda deixa a pessoa copiar à mão.
+      window.prompt('Copie o link do projeto:', url);
+    }
+  }
+
   // Projeto novo não tem reuniões nem saúde a que se prender, então só existe
   // "Geral" até ele ser criado.
   const [abaModal, setAbaModal] = useState<'geral' | 'reunioes' | 'saude'>('geral');
@@ -2050,7 +2073,31 @@ function FormularioProjeto({
                 {editando ? editando.nome : 'Criar manualmente'}
               </h3>
             </div>
-            <button className="admin-modal-close" aria-label="Fechar" onClick={onFechar}><IconX size={16} /></button>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+              {editando && (
+                <>
+                  <button type="button" className="secao-add" style={{ width: 30, height: 30 }}
+                    disabled={!editando.drive}
+                    title={editando.drive ? 'Abrir a pasta no Drive' : 'Nenhuma pasta do Drive definida'}
+                    aria-label="Abrir a pasta do projeto no Drive"
+                    onClick={() => editando.drive && window.open(editando.drive, '_blank', 'noopener')}>
+                    <IconFolder size={15} />
+                  </button>
+                  <button type="button" className="secao-add" style={{ width: 30, height: 30 }}
+                    title={copiado ? 'Link copiado' : 'Copiar link do projeto'}
+                    aria-label="Copiar link para compartilhar o projeto"
+                    onClick={() => void copiarLink()}>
+                    {copiado ? <IconCheck size={15} /> : <IconLink size={15} />}
+                  </button>
+                  <button type="button" className="secao-add" style={{ width: 30, height: 30 }}
+                    title="Excluir projeto" aria-label="Excluir projeto"
+                    onClick={() => onExcluir(editando)}>
+                    <IconTrash size={15} />
+                  </button>
+                </>
+              )}
+              <button className="admin-modal-close" aria-label="Fechar" onClick={onFechar}><IconX size={16} /></button>
+            </span>
           </div>
           <div style={{ marginTop: 2, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <PilulaStatus valor={r.status} onChange={v => set('status', v)} />
@@ -2110,6 +2157,12 @@ function FormularioProjeto({
                 {erros.nome && <p className="form-error">{erros.nome}</p>}
               </div>
               <div className="form-group">
+                <label className="form-label">Descrição</label>
+                <textarea className="form-input" rows={2} value={r.descricao}
+                  onChange={e => set('descricao', e.target.value)}
+                  placeholder="Em poucas linhas, do que se trata o projeto" />
+              </div>
+              <div className="form-group">
                 <label className="form-label">Cliente *</label>
                 <SelectSistema
                   valor={r.cliente_id}
@@ -2150,6 +2203,12 @@ function FormularioProjeto({
                 <input className="form-input" value={r.repositorio}
                   onChange={e => set('repositorio', e.target.value)}
                   placeholder="https://github.com/sheeptechservices/portal-sheep" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Pasta no Drive</label>
+                <input className="form-input" value={r.drive}
+                  onChange={e => set('drive', e.target.value)}
+                  placeholder="https://drive.google.com/drive/folders/..." />
               </div>
             </div>
           </section>
@@ -2336,6 +2395,20 @@ export default function ProjetosPage({ token }: { token: string }) {
   }, [api, toast]);
 
   useEffect(() => { void carregar(); }, [carregar]);
+
+  // Link compartilhável: ?projeto=<id> abre o projeto assim que a lista chega.
+  // Roda uma vez, e limpa a query para não reabrir a cada recarregamento.
+  const linkAbertoRef = useRef(false);
+  useEffect(() => {
+    if (linkAbertoRef.current || projetos.length === 0) return;
+    const alvo = new URLSearchParams(window.location.search).get('projeto');
+    if (!alvo) return;
+    linkAbertoRef.current = true;
+    const p = projetos.find(x => x.id === alvo || x.codigo === alvo);
+    if (p) setForm({ editando: p });
+    else toast('error', 'Projeto não encontrado', 'O link aponta para um projeto que não existe mais.');
+    window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+  }, [projetos, toast]);
 
   async function salvar(r: Rascunho, anexos: AnexoPendente[], removidos: number[]) {
     setSalvando(true);
@@ -2670,7 +2743,10 @@ export default function ProjetosPage({ token }: { token: string }) {
                     {p.codigo || '-'}
                   </td>
                   <td>
-                    <div style={{ fontWeight: 600, color: 'var(--black)' }}>{p.nome}</div>
+                    <div style={{ fontWeight: 600, color: 'var(--black)' }}
+                      title={p.descricao ?? undefined}>
+                      {p.nome}
+                    </div>
                     {/* O antigo "objetivo" virou a primeira entrega. O subtítulo
                         mostra o andamento delas, que diz mais que o texto fixo. */}
                     {p.entregas.length > 0 && (
@@ -2840,6 +2916,7 @@ export default function ProjetosPage({ token }: { token: string }) {
           onSalvar={salvar}
           onBaixarAnexo={a => void baixarAnexo(a)}
           categorias={categoriasDeEntrega}
+          onExcluir={setExcluindo}
           onEtiquetar={etiquetarAnexo}
           onRegistrarSaude={registrarSaude}
           onExcluirSaude={excluirSaude}
