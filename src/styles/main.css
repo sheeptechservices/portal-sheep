@@ -2375,6 +2375,35 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   .skeleton::after { animation: none; }
 }
 
+/* ── Célula editável de tabela ────────────────────────────────────────── */
+/* Parece texto até o mouse chegar. Numa linha de nove colunas, nove controles
+   desenhados viram um formulário; o realce só no hover mantém a leitura de
+   tabela e ainda avisa que dá para clicar. */
+.celula-editavel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 6px;
+  margin: -3px -6px;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  text-align: left;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.celula-editavel:hover { background: var(--gray4); }
+
+.celula-editavel:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--yb);
+}
+
 /* ── Marco da entrega, que também é o seletor de status ───────────────── */
 /* Bolha circular na cor do estado. O fundo tênue dá massa ao desenho, que
    sozinho some no meio do texto da linha. `--mc` chega por style inline. */
@@ -3024,6 +3053,14 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
 .admin-toolbar-btn:hover {
   border-color: var(--gray2);
   color: var(--black);
+}
+
+/* Ícone-botão que apaga. O hover neutro dizia "clicável"; o vermelho diz o que
+   vai acontecer, e é o mesmo aviso do `.file-delete-btn` das listas. */
+.admin-toolbar-btn.perigo:hover {
+  border-color: var(--red);
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 12%, transparent);
 }
 
 .view-toggle {

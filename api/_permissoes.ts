@@ -175,6 +175,7 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   add_entrega_evidencia: 'projetos:editar',
   excluir_entrega_evidencia: 'projetos:editar',
   entrega_evidencia_base64: 'projetos:ver',
+  definir_gestor_projeto: 'projetos:editar',
   registrar_saude_projeto: 'projetos:editar',
   excluir_saude_projeto: 'projetos:editar',
   registrar_reuniao_projeto: 'projetos:editar',

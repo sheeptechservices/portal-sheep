@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { iniciais, useAuth, useToast } from './AdminApp';
 import {
   IconAlert, IconClip, IconDoc, IconDownload, IconImage, IconInbox,
-  IconChevronRight, IconEdit, IconEye, IconLink, IconMarcoAndamento, IconMarcoBloqueado,
+  IconChevronDown, IconChevronRight, IconChevronUp, IconChevronUpDown,
+  IconEdit, IconEye, IconLink, IconMarcoAndamento, IconMarcoBloqueado,
   IconAgrupar, IconCalendario, IconCheck, IconFolder, IconOrdenar, IconSearch,
   IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado,
   IconPlus, IconPrioridadeAlta, IconPrioridadeBaixa, IconPrioridadeMaxima,
@@ -349,6 +350,21 @@ function AnelProgresso({ valor, size = 15 }: { valor: number; size?: number }) {
   );
 }
 
+/** Valor pelo qual cada coluna ordena. Texto sai como texto, escala sai como
+ *  posição na escala - ordenar prioridade em ordem alfabética colocaria "Baixa"
+ *  antes de "Urgentíssima", que é o contrário do que se quer ver. */
+const CHAVE_ORDEM: Record<string, (p: Projeto) => string | number> = {
+  projeto: p => p.nome.toLocaleLowerCase('pt-BR'),
+  saude: p => (p.saude[0] ? SAUDES.indexOf(p.saude[0].estado as typeof SAUDES[number]) : SAUDES.length),
+  prioridade: p => PRIORIDADES.indexOf((p.prioridade ?? PRIORIDADE_PADRAO) as typeof PRIORIDADES[number]),
+  gestor: p => gestorDe(p)?.nome.toLocaleLowerCase('pt-BR') ?? '\uffff',
+  // Sem data vai para o fim: projeto sem prazo não disputa urgência.
+  entrega: p => p.previsao_entrega ?? '9999-99-99',
+  entregas: p => p.entregas.length,
+  progresso: p => progressoDe(p),
+  status: p => STATUS_PROJETO.indexOf(p.status as typeof STATUS_PROJETO[number]),
+};
+
 function progressoDe(p: Projeto): number {
   // Cancelada sai da conta: deixou de ser trabalho a fazer.
   const valem = (p.entregas ?? []).filter(e => e.status !== ENTREGA_CANCELADA);
@@ -415,11 +431,15 @@ function Avatar({ nome, foto, size = 22 }: { nome: string; foto?: string | null;
   );
 }
 
+/** Só aparece dentro de linha de tabela, onde o nome é dado secundário: 12px,
+ *  como as outras colunas. Herdando os 13px da tabela ele pesava mais que o
+ *  nome do projeto ao lado. */
 function Gestor({ nome, email, foto }: { nome: string | null; email: string | null; foto?: string | null }) {
-  if (!nome) return <span style={{ color: 'var(--gray2)' }}>Sem gestor</span>;
+  if (!nome) return <span style={{ fontSize: 12, color: 'var(--gray2)' }}>Sem gestor</span>;
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }} title={email ?? undefined}>
-      <Avatar nome={nome} foto={foto} />{nome}
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12 }}
+      title={email ?? undefined}>
+      <Avatar nome={nome} foto={foto} size={20} />{nome}
     </span>
   );
 }
@@ -814,6 +834,228 @@ function PreviaEvidencia({ evidencia, onCarregar, onBaixar, onFechar }: {
             {evidencia.comentario}
           </p>
         )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/** Cabeçalho que ordena ao clique. Reusa o `.sortable-th` do Funil; a seta vem
+ *  de `icons.tsx`, que já tem os três estados desenhados. */
+function ThOrdenavel({ coluna, atual, dir, onOrdenar, children, ...resto }: {
+  coluna: string;
+  atual: string | null;
+  dir: 'asc' | 'desc';
+  onOrdenar: (c: string) => void;
+  children: React.ReactNode;
+} & React.ThHTMLAttributes<HTMLTableCellElement>) {
+  const ativa = atual === coluna;
+  return (
+    <th {...resto} className={`sortable-th${ativa ? ' sorted' : ''}`}
+      aria-sort={ativa ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+      onClick={() => onOrdenar(coluna)}>
+      {children}
+      <span className="sort-arrow" style={{ display: 'inline-flex', verticalAlign: 'middle' }}>
+        {ativa
+          ? (dir === 'asc' ? <IconChevronUp size={12} /> : <IconChevronDown size={12} />)
+          : <IconChevronUpDown size={12} />}
+      </span>
+    </th>
+  );
+}
+
+// ── Células editáveis da listagem ───────────────────────────────────────────
+
+/** Gatilho discreto de uma célula: parece texto até o mouse chegar. Numa tabela
+ *  de nove colunas, nove controles desenhados viram um formulário. */
+function CelulaEditavel({ titulo, onAbrir, children, refBotao }: {
+  titulo: string;
+  onAbrir: () => void;
+  children: React.ReactNode;
+  refBotao?: React.Ref<HTMLButtonElement>;
+}) {
+  return (
+    <button ref={refBotao} type="button" className="celula-editavel" title={titulo} aria-label={titulo}
+      onClick={e => { e.stopPropagation(); onAbrir(); }}
+      onKeyDown={e => e.stopPropagation()}>
+      {children}
+    </button>
+  );
+}
+
+/** Lista suspensa presa a uma célula. Some ao escolher, ao clicar fora e ao rolar. */
+function ListaDaCelula({ aberto, ancora, itens, onFechar }: {
+  aberto: boolean;
+  ancora: React.RefObject<HTMLButtonElement | null>;
+  itens: { chave: string; conteudo: React.ReactNode; ativo?: boolean; ao: () => void }[];
+  onFechar: () => void;
+}) {
+  const dropRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+
+  useEffect(() => {
+    if (aberto && ancora.current) setPos(ancorar(ancora.current, itens.length, 200));
+  }, [aberto, itens.length]);
+
+  useDropdownDismiss(aberto, [ancora, dropRef], onFechar);
+  if (!aberto) return null;
+
+  return createPortal(
+    <div ref={dropRef} className="status-select-dropdown"
+      style={{ top: pos.top, left: pos.left, width: pos.width, zIndex: 10000 }}>
+      {itens.map(i => (
+        <div key={i.chave} className={`status-select-option${i.ativo ? ' active' : ''}`}
+          onClick={e => { e.stopPropagation(); i.ao(); onFechar(); }}>
+          {i.conteudo}
+        </div>
+      ))}
+    </div>,
+    document.body,
+  );
+}
+
+function CelulaPrioridade({ valor, onChange }: { valor: string; onChange: (v: string) => void }) {
+  const [aberto, setAberto] = useState(false);
+  const botao = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <CelulaEditavel refBotao={botao} titulo={`Prioridade: ${valor}`} onAbrir={() => setAberto(a => !a)}>
+        {ICONE_PRIORIDADE[valor]?.({ size: 15 })}
+      </CelulaEditavel>
+      <ListaDaCelula aberto={aberto} ancora={botao} onFechar={() => setAberto(false)}
+        itens={PRIORIDADES.map(p => ({
+          chave: p,
+          ativo: p === valor,
+          ao: () => onChange(p),
+          conteudo: <>{ICONE_PRIORIDADE[p]({ size: 14 })}<span>{p}</span></>,
+        }))} />
+    </>
+  );
+}
+
+function CelulaGestor({ gestor, pessoas, onChange }: {
+  gestor: Membro | null;
+  pessoas: Pessoa[];
+  onChange: (usuarioId: string) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const botao = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <CelulaEditavel refBotao={botao} titulo={gestor ? `Gestor: ${gestor.nome}` : 'Definir gestor'}
+        onAbrir={() => setAberto(a => !a)}>
+        <Gestor nome={gestor?.nome ?? null} email={gestor?.email ?? null} foto={gestor?.foto_url} />
+      </CelulaEditavel>
+      <ListaDaCelula aberto={aberto} ancora={botao} onFechar={() => setAberto(false)}
+        itens={[
+          { chave: '', ativo: !gestor, ao: () => onChange(''),
+            conteudo: <span style={{ color: 'var(--gray2)' }}>Sem gestor</span> },
+          ...pessoas.map(p => ({
+            chave: p.id,
+            ativo: p.id === gestor?.id,
+            ao: () => onChange(p.id),
+            conteudo: (
+              <>
+                <Avatar nome={p.nome} foto={p.foto_url} size={20} />
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.nome}</span>
+              </>
+            ),
+          })),
+        ]} />
+    </>
+  );
+}
+
+/** Data que vira campo só enquanto está sendo trocada: fora disso a linha
+ *  continua sendo texto, e o `DatePicker` inteiro em nove linhas pesaria. */
+function CelulaData({ valor, atrasado, onChange }: {
+  valor: string | null;
+  atrasado: boolean;
+  onChange: (v: string) => void;
+}) {
+  const [editando, setEditando] = useState(false);
+
+  if (editando) {
+    return (
+      <span style={{ display: 'block', width: 150 }}
+        onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+        <DatePicker compact allowPast value={valor ?? ''}
+          onChange={v => { onChange(v); setEditando(false); }} />
+      </span>
+    );
+  }
+
+  return (
+    <CelulaEditavel titulo="Trocar o fim previsto" onAbrir={() => setEditando(true)}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5,
+        fontSize: 12, color: atrasado ? 'var(--red)' : 'var(--gray)' }}>
+        <IconCalendario size={13} />
+        {fmtData(valor)}
+      </span>
+    </CelulaEditavel>
+  );
+}
+
+/** Saúde não é um valor que se troca, é uma leitura que se registra: por isso
+ *  abre o mesmo diálogo do resto do sistema, com o descritivo obrigatório. */
+function DialogoSaude({ projeto, salvando, onRegistrar, onFechar }: {
+  projeto: Projeto;
+  salvando: boolean;
+  onRegistrar: (estado: string, descricao: string) => Promise<void>;
+  onFechar: () => void;
+}) {
+  const [estado, setEstado] = useState<string>(projeto.saude[0]?.estado ?? 'Saudável');
+  const [descricao, setDescricao] = useState('');
+  const [erro, setErro] = useState('');
+
+  async function registrar() {
+    if (!descricao.trim()) { setErro('Descreva a situação do projeto.'); return; }
+    await onRegistrar(estado, descricao.trim());
+    onFechar();
+  }
+
+  return createPortal(
+    <div className="admin-modal-overlay" style={{ zIndex: 10001, alignItems: 'center', justifyContent: 'center' }}
+      onClick={onFechar}>
+      <div className="delete-confirm-modal" style={{ width: 420 }} onClick={e => e.stopPropagation()}>
+        <p className="delete-confirm-title">Registrar leitura de saúde</p>
+        <p className="delete-confirm-desc">{projeto.nome}</p>
+
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+          {SAUDES.map(e => {
+            const ativo = e === estado;
+            const cor = COR_SAUDE[e];
+            const Icone = ICONE_SAUDE[e];
+            return (
+              <button key={e} type="button" onClick={() => setEstado(e)}
+                style={{
+                  flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                  padding: '7px 6px', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 700,
+                  borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+                  border: `1.5px solid ${ativo ? cor : 'var(--gray3)'}`,
+                  background: ativo ? `${cor}14` : 'var(--white)',
+                  color: ativo ? cor : 'var(--gray2)',
+                  transition: 'border-color var(--transition), color var(--transition), background var(--transition)',
+                }}>
+                <Icone size={13} />{e}
+              </button>
+            );
+          })}
+        </div>
+
+        <textarea className={`form-input${erro ? ' error' : ''}`} rows={3} value={descricao}
+          onChange={e => { setDescricao(e.target.value); if (erro) setErro(''); }}
+          placeholder="O que sustenta essa leitura" style={{ fontSize: 13 }} />
+        {erro && <p className="form-error">{erro}</p>}
+
+        <div className="delete-confirm-actions" style={{ marginTop: 16 }}>
+          <button type="button" className="delete-confirm-cancel" onClick={onFechar}>Cancelar</button>
+          <button type="button" className="delete-confirm-ok" disabled={salvando}
+            style={{ background: COR_SAUDE[estado], color: 'var(--on-yellow)' }}
+            onClick={() => void registrar()}>
+            {salvando ? 'Registrando…' : 'Registrar'}
+          </button>
+        </div>
       </div>
     </div>,
     document.body,
@@ -2379,6 +2621,8 @@ export default function ProjetosPage({ token }: { token: string }) {
   const [excluindo, setExcluindo] = useState<Projeto | null>(null);
   /** Evidência aberta em prévia, sem sair do portal. */
   const [previa, setPrevia] = useState<Evidencia | null>(null);
+  /** Projeto cuja leitura de saúde está sendo registrada pela listagem. */
+  const [lendoSaude, setLendoSaude] = useState<Projeto | null>(null);
   const [view, setView] = useState<'quadro' | 'lista'>('lista');
   const [fStatus, setFStatus] = useState<string[]>([]);
   const [fCliente, setFCliente] = useState<string[]>([]);
@@ -2564,7 +2808,26 @@ export default function ProjetosPage({ token }: { token: string }) {
    *  apenas no que recebe, então mandar o campo isolado é suficiente - e
    *  reenviar a linha inteira arriscaria sobrescrever o que outra pessoa
    *  acabou de mudar. */
-  async function ajustar(p: Projeto, campo: 'status' | 'prioridade', valor: string) {
+  async function definirGestor(p: Projeto, usuarioId: string) {
+    // Otimista na equipe: quem era gestor vira Dev, o novo assume. É o mesmo
+    // que o servidor faz, para a linha não esperar o recarregamento.
+    setProjetos(ps => ps.map(x => {
+      if (x.id !== p.id) return x;
+      const pessoa = pessoas.find(u => u.id === usuarioId);
+      const semGestor = x.equipe.map(m => (m.papel === 'Gestor' ? { ...m, papel: 'Dev' } : m));
+      if (!pessoa) return { ...x, equipe: semGestor };
+      const jaEsta = semGestor.some(m => m.id === usuarioId);
+      return {
+        ...x,
+        equipe: jaEsta
+          ? semGestor.map(m => (m.id === usuarioId ? { ...m, papel: 'Gestor' } : m))
+          : [...semGestor, { ...pessoa, papel: 'Gestor' }],
+      };
+    }));
+    await api('', 'POST', { action: 'definir_gestor_projeto', projeto_id: p.id, usuario_id: usuarioId });
+  }
+
+  async function ajustar(p: Projeto, campo: 'status' | 'prioridade' | 'previsao_entrega', valor: string) {
     setProjetos(ps => ps.map(x => (x.id === p.id ? { ...x, [campo]: valor } as Projeto : x)));
     await api('', 'POST', { action: 'update_projeto', id: p.id, [campo]: valor });
   }
@@ -2591,12 +2854,37 @@ export default function ProjetosPage({ token }: { token: string }) {
     };
   }, [projetos]);
 
+  // Sem coluna escolhida vale a ordem do servidor, do mais novo para o mais
+  // velho - é a que responde "o que entrou por último".
+  const [ordemCol, setOrdemCol] = useState<string | null>(null);
+  const [ordemDir, setOrdemDir] = useState<'asc' | 'desc'>('asc');
+
+  function ordenarPor(col: string) {
+    if (ordemCol !== col) { setOrdemCol(col); setOrdemDir('asc'); return; }
+    // Terceiro clique desliga: volta para a ordem natural da lista.
+    if (ordemDir === 'asc') { setOrdemDir('desc'); return; }
+    setOrdemCol(null);
+  }
+
   const filtrados = useMemo(() => projetos.filter(p =>
     (fStatus.length === 0 || fStatus.includes(p.status)) &&
     (fCliente.length === 0 || (p.cliente_nome && fCliente.includes(p.cliente_nome))) &&
     (fGestor.length === 0 || fGestor.includes(gestorDe(p)?.nome ?? '')) &&
     (fTipo.length === 0 || (p.tipo && fTipo.includes(p.tipo)))
   ), [projetos, fStatus, fCliente, fGestor, fTipo]);
+
+  const ordenados = useMemo(() => {
+    if (!ordemCol) return filtrados;
+    const chave = CHAVE_ORDEM[ordemCol];
+    if (!chave) return filtrados;
+    const sinal = ordemDir === 'asc' ? 1 : -1;
+    return [...filtrados].sort((a, b) => {
+      const x = chave(a);
+      const y = chave(b);
+      if (typeof x === 'number' && typeof y === 'number') return (x - y) * sinal;
+      return String(x).localeCompare(String(y), 'pt-BR') * sinal;
+    });
+  }, [filtrados, ordemCol, ordemDir]);
 
   const temFiltro = fStatus.length + fCliente.length + fGestor.length + fTipo.length > 0;
   const limparFiltros = () => { setFStatus([]); setFCliente([]); setFGestor([]); setFTipo([]); };
@@ -2748,19 +3036,29 @@ export default function ProjetosPage({ token }: { token: string }) {
           <table className="admin-table sem-quebra">
             <thead>
               <tr>
-                <th>Projeto</th>
-                <th>Saúde</th>
-                <th style={{ width: 60 }}>Prioridade</th>
-                <th>Gestor</th>
-                <th>Entrega</th>
-                <th style={{ width: 70 }}>Entregas</th>
-                <th style={{ width: 90 }}>Progresso</th>
-                <th>Status</th>
+                {/* A coluna do projeto tomava o espaço que sobrava. Presa em
+                    32%, o resto da linha respira e o nome corta com reticências. */}
+                {([
+                  ['projeto', 'Projeto', '32%'],
+                  ['saude', 'Saúde', 160],
+                  ['prioridade', 'Prioridade', 60],
+                  ['gestor', 'Gestor', 170],
+                  ['entrega', 'Entrega', 130],
+                  ['entregas', 'Entregas', 70],
+                  ['progresso', 'Progresso', 90],
+                  ['status', 'Status', undefined],
+                ] as [string, string, string | number | undefined][]).map(([col, rotulo, largura]) => (
+                  <ThOrdenavel key={col} coluna={col} atual={ordemCol} dir={ordemDir}
+                    onOrdenar={ordenarPor} style={{ width: largura }}>
+                    {rotulo}
+                  </ThOrdenavel>
+                ))}
+                {/* Ações não ordena: não é dado do projeto. */}
                 <th>Ações</th>
               </tr>
             </thead>
             <tbody>
-              {filtrados.map(p => (
+              {ordenados.map(p => (
                 <tr key={p.id}
                   onClick={() => podeEditar && setForm({ editando: p })}
                   tabIndex={podeEditar ? 0 : undefined}
@@ -2817,28 +3115,45 @@ Em curso: ${atual.titulo} (${atual.status})` : p.descricao}>
                   </td>
 
                   <td>
-                    <span title={p.saude[0]?.descricao ?? 'Nenhuma leitura de saúde registrada.'}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                      <ChipSaude estado={p.saude[0]?.estado ?? SEM_LEITURA} size={11} />
-                      {p.saude[0] && (
-                        <span style={{ fontSize: 11, color: 'var(--gray2)' }}>
-                          {idadeDaLeitura(p.saude[0].criado_em)}
-                        </span>
-                      )}
-                    </span>
+                    {podeEditar ? (
+                      <CelulaEditavel titulo={p.saude[0]?.descricao ?? 'Registrar leitura de saúde'}
+                        onAbrir={() => setLendoSaude(p)}>
+                        <ChipSaude estado={p.saude[0]?.estado ?? SEM_LEITURA} size={11} />
+                        {p.saude[0] && (
+                          <span style={{ fontSize: 11, color: 'var(--gray2)' }}>
+                            {idadeDaLeitura(p.saude[0].criado_em)}
+                          </span>
+                        )}
+                      </CelulaEditavel>
+                    ) : (
+                      <span title={p.saude[0]?.descricao ?? 'Nenhuma leitura de saúde registrada.'}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <ChipSaude estado={p.saude[0]?.estado ?? SEM_LEITURA} size={11} />
+                      </span>
+                    )}
                   </td>
 
                   <td>
                     {/* Só o ícone: a escala se lê pela altura das barras, e o
                         nome do nível fica na dica. */}
-                    <span title={`Prioridade: ${p.prioridade ?? PRIORIDADE_PADRAO}`}>
-                      {ICONE_PRIORIDADE[p.prioridade ?? PRIORIDADE_PADRAO]?.({ size: 15 })}
-                    </span>
+                    {podeEditar ? (
+                      <CelulaPrioridade valor={p.prioridade ?? PRIORIDADE_PADRAO}
+                        onChange={v => void ajustar(p, 'prioridade', v)} />
+                    ) : (
+                      <span title={`Prioridade: ${p.prioridade ?? PRIORIDADE_PADRAO}`}>
+                        {ICONE_PRIORIDADE[p.prioridade ?? PRIORIDADE_PADRAO]?.({ size: 15 })}
+                      </span>
+                    )}
                   </td>
 
                   <td>
-                    <Gestor nome={gestorDe(p)?.nome ?? null} email={gestorDe(p)?.email ?? null}
-                      foto={gestorDe(p)?.foto_url} />
+                    {podeEditar ? (
+                      <CelulaGestor gestor={gestorDe(p)} pessoas={pessoas}
+                        onChange={id => void definirGestor(p, id)} />
+                    ) : (
+                      <Gestor nome={gestorDe(p)?.nome ?? null} email={gestorDe(p)?.email ?? null}
+                        foto={gestorDe(p)?.foto_url} />
+                    )}
                   </td>
 
                   <td>
@@ -2846,18 +3161,24 @@ Em curso: ${atual.titulo} (${atual.status})` : p.descricao}>
                       const dias = diasPara(p.previsao_entrega);
                       const atrasado = dias !== null && dias < 0
                         && p.status !== 'Concluído' && p.status !== 'Cancelado';
+                      if (!podeEditar) {
+                        return (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5,
+                            fontSize: 12, color: atrasado ? 'var(--red)' : 'var(--gray)' }}
+                            title={atrasado ? `${Math.abs(dias!)} dia(s) de atraso` : undefined}>
+                            <IconCalendario size={13} />
+                            {fmtData(p.previsao_entrega)}
+                          </span>
+                        );
+                      }
                       return (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5,
-                          fontSize: 12, color: atrasado ? 'var(--red)' : 'var(--gray)' }}
-                          title={atrasado ? `${Math.abs(dias!)} dia(s) de atraso` : undefined}>
-                          <IconCalendario size={13} />
-                          {fmtData(p.previsao_entrega)}
-                        </span>
+                        <CelulaData valor={p.previsao_entrega} atrasado={atrasado}
+                          onChange={v => void ajustar(p, 'previsao_entrega', v)} />
                       );
                     })()}
                   </td>
 
-                  <td style={{ color: 'var(--gray2)', fontVariantNumeric: 'tabular-nums' }}>
+                  <td style={{ fontSize: 12, color: 'var(--gray2)', fontVariantNumeric: 'tabular-nums' }}>
                     {p.entregas.length || '-'}
                   </td>
 
@@ -2881,7 +3202,7 @@ Em curso: ${atual.titulo} (${atual.status})` : p.descricao}>
                   </td>
                   <td>
                     {podeExcluir && (
-                      <button className="admin-toolbar-btn" title="Excluir projeto"
+                      <button className="admin-toolbar-btn perigo" title="Excluir projeto"
                         onClick={e => { e.stopPropagation(); setExcluindo(p); }}>
                         <IconTrash size={13} />
                       </button>
@@ -3037,6 +3358,15 @@ Em curso: ${atual.titulo} (${atual.status})` : p.descricao}>
           onSubirEvidencia={subirEvidencia}
           onBaixarEvidencia={baixarEvidencia}
           onVerEvidencia={setPrevia}
+        />
+      )}
+
+      {lendoSaude && (
+        <DialogoSaude
+          projeto={lendoSaude}
+          salvando={salvando}
+          onFechar={() => setLendoSaude(null)}
+          onRegistrar={(estado, descricao) => registrarSaude(lendoSaude, estado, descricao)}
         />
       )}
 

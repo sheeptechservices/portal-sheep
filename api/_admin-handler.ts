@@ -2340,6 +2340,34 @@ function faltaEmProjeto(p: any): string | null {
 
     // Nova leitura de saúde. Não substitui a anterior: o valor da tela está em
     // ver a série, então cada registro é uma linha nova.
+    // Trocar o gestor pela listagem. Mexe só nesse papel: regravar a equipe
+    // inteira a partir da tabela apagaria quem não aparece nela.
+    if (action === 'definir_gestor_projeto') {
+      { const barrado = await guardaDaEquipe(db, usuario, body.projeto_id); if (barrado) return barrado; }
+      const projetoId = String(body.projeto_id ?? '');
+      if (!projetoId) return { status: 400, body: { error: 'projeto_id ausente.' } };
+      const novo = String(body.usuario_id ?? '');
+
+      // Quem era gestor vira Dev em vez de sair do time: a pessoa continua no
+      // projeto, só deixou de responder por ele.
+      await db.execute({
+        sql: `UPDATE projeto_equipe SET papel = 'Dev' WHERE projeto_id = ? AND papel = 'Gestor'`,
+        args: [projetoId],
+      });
+      if (novo) {
+        await db.execute({
+          sql: `INSERT INTO projeto_equipe (projeto_id, usuario_id, papel) VALUES (?,?,'Gestor')
+                ON CONFLICT(projeto_id, usuario_id) DO UPDATE SET papel = 'Gestor'`,
+          args: [projetoId, novo],
+        });
+      }
+      await db.execute({
+        sql: 'UPDATE projetos SET atualizado_por_id=?, atualizado_por_nome=?, atualizado_em=? WHERE id=?',
+        args: [autorId, autorNome, new Date().toISOString(), projetoId],
+      });
+      return { status: 200, body: { ok: true } };
+    }
+
     if (action === 'registrar_saude_projeto') {
       { const barrado = await guardaDaEquipe(db, usuario, body.projeto_id); if (barrado) return barrado; }
       const estado = String(body.estado ?? '').trim();
