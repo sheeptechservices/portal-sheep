@@ -21,6 +21,8 @@ export type Marca = {
   fundoEscuro?: boolean;
   detalhe?: boolean;
   cor?: string;
+  /** Tom para o tema escuro, quando o da marca é fechado demais para ele. */
+  corEscura?: string;
   proporcao?: number;
 };
 
@@ -39,6 +41,10 @@ export const MARCAS: Marca[] = [
   // Assinatura larga e desenhada em branco: altura baixa, e escurece onde o
   // fundo é claro, como a do Grupo 3SA.
   { nome: 'Orteconte', src: '/marcas/orteconte.webp', altura: 26, cor: '#5B92C8', proporcao: 1536 / 301 },
+  // Roxo fechado da marca no claro, e um tom acima no escuro, onde o original
+  // se perde no fundo.
+  { nome: 'FM Rocket', src: '/marcas/fm-rocket.webp', altura: 28,
+    cor: '#5B2C87', corEscura: '#A57BE0', proporcao: 314 / 82 },
 ];
 
 /** Casa o cliente com a marca pelo nome. Cliente cadastrado à mão não tem logo,
@@ -54,6 +60,6 @@ export function logoDoCliente(nome: string | null | undefined) {
   const m = marcaDoCliente(nome);
   return m && {
     src: m.src, altura: m.altura, escurecer: m.fundoEscuro,
-    cor: m.cor, proporcao: m.proporcao,
+    cor: m.cor, corEscura: m.corEscura, proporcao: m.proporcao,
   };
 }

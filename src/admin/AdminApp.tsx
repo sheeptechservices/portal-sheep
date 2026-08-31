@@ -828,6 +828,7 @@ function MarcasDoGrupo() {
                 style={{
                   height: m.altura, width: Math.round(m.altura * m.proporcao),
                   '--marca': `url(${m.src})`, '--marca-cor': m.cor,
+                  '--marca-cor-escura': m.corEscura,
                 } as React.CSSProperties}
               />
             ) : (

@@ -2270,6 +2270,12 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   overflow: hidden;
 }
 
+/* Tabela de largura fixa precisa poder rolar: sem isto ela é cortada pelo
+   `overflow: hidden` do envoltório em janela estreita. */
+.admin-table-wrap:has(.admin-table.largura-fixa) {
+  overflow-x: auto;
+}
+
 .admin-table {
   width: 100%;
   border-collapse: collapse;
@@ -2365,6 +2371,22 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   max-width: 100%;
 }
 
+/* Largura de coluna só vale de verdade com layout fixo. No automático, que é o
+   padrão, a largura declarada é sugestão: o navegador estica a coluna até caber
+   o conteúdo, e com `nowrap` isso significa a descrição inteira numa linha. */
+.admin-table.largura-fixa {
+  table-layout: fixed;
+  /* Piso de largura: abaixo disto as colunas encolheriam todas juntas e o nome
+     do projeto viraria reticências cedo demais. O envoltório rola no lugar. */
+  min-width: 1300px;
+}
+
+.admin-table.largura-fixa td,
+.admin-table.largura-fixa th {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ── Esqueleto de carregamento ────────────────────────────────────────── */
 /* Bloco cinza no lugar do conteúdo que ainda vem, com um brilho passando por
    cima. Diferente do giro, ele diz onde as coisas vão aparecer - a página não
@@ -2398,6 +2420,41 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
    passagem de luz é só enfeite. */
 @media (prefers-reduced-motion: reduce) {
   .skeleton::after { animation: none; }
+}
+
+/* ── Puxador de largura do painel ─────────────────────────────────────── */
+/* Faixa fina na borda esquerda do painel. Fica invisível até o mouse chegar:
+   uma barra sempre desenhada competiria com o conteúdo, e a única pista de que
+   dá para arrastar precisa ser o cursor. */
+.painel-puxador {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 5;
+  background: transparent;
+  border: none;
+  padding: 0;
+  transition: background var(--transition);
+}
+
+.painel-puxador:hover,
+.painel-puxador.arrastando {
+  background: var(--yellow);
+}
+
+.painel-puxador:focus-visible {
+  outline: none;
+  background: var(--yellow);
+  box-shadow: 0 0 0 3px var(--yb);
+}
+
+/* Enquanto arrasta, o texto da página inteira para de ser selecionado: sem
+   isto o arrasto vira seleção de conteúdo no meio do caminho. */
+body.arrastando-painel {
+  user-select: none;
+  cursor: col-resize;
 }
 
 /* ── Célula editável de tabela ────────────────────────────────────────── */
@@ -2553,6 +2610,12 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   background-color: var(--marca-cor, currentColor);
   -webkit-mask: var(--marca) center / contain no-repeat;
   mask: var(--marca) center / contain no-repeat;
+}
+
+/* Marca de cor fechada some no fundo quase preto. Quem tem um tom próprio para
+   o escuro usa ele; quem não tem segue com o mesmo. */
+:root[data-theme="dark"] .marca-tingida {
+  background-color: var(--marca-cor-escura, var(--marca-cor, currentColor));
 }
 
 /* ── Logo de cliente dentro de seletor ────────────────────────────────── */

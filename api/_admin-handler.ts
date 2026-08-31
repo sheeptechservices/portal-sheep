@@ -704,7 +704,8 @@ async function migrarSchema(db: Client) {
     const agora = new Date().toISOString();
     for (const nome of [
       '300 Franchising', 'Bitka Analytics', 'bip.', 'Cheirin Bão', 'Click!',
-      'Consigo Cred', 'Grupo 3SA', 'J17 Bank', 'Orteconte', 'Prontomed', 'Shell', 'Vale',
+      'Consigo Cred', 'FM Rocket', 'Grupo 3SA', 'J17 Bank', 'Orteconte', 'Prontomed',
+      'Shell', 'Vale',
     ]) {
       await db.execute({
         sql: 'INSERT OR IGNORE INTO clientes (id, nome, ativo, criado_em) VALUES (?,?,1,?)',
@@ -2040,6 +2041,21 @@ async function despacharAdminData(
       }
     }
 
+/** A regra de "ao menos uma entrega" vive fora de `faltaEmProjeto` porque as
+ *  duas rotas a conferem em lugares diferentes: na criação, no que veio no
+ *  corpo; na edição, no que já está gravado. A tela manda `entregas: []` ao
+ *  editar - as entregas de projeto existente são gravadas uma a uma, em ação
+ *  própria -, e validar o corpo ali recusava projeto que tem entrega. */
+function faltaEntregaNoCorpo(p: any): string | null {
+  if (!Array.isArray(p?.entregas) || p.entregas.length === 0) {
+    return 'O projeto precisa de ao menos uma entrega.';
+  }
+  if (p.entregas.some((e: any) => !String(e?.titulo ?? '').trim())) {
+    return 'Toda entrega precisa de um título.';
+  }
+  return null;
+}
+
 /** Campos obrigatórios do projeto. Só observações é livre - e os anexos e as
  *  evidências, que sobem depois, em ação própria, porque só existem depois que
  *  o projeto e a entrega têm id. Anexo é opcional; a evidência é cobrada na
@@ -2051,12 +2067,6 @@ function faltaEmProjeto(p: any): string | null {
   if (!String(p?.prioridade ?? '').trim()) return 'A prioridade é obrigatória.';
   if (!p?.data_inicio) return 'A data de início é obrigatória.';
   if (!p?.previsao_entrega) return 'O fim previsto é obrigatório.';
-  if (!Array.isArray(p?.entregas) || p.entregas.length === 0) {
-    return 'O projeto precisa de ao menos uma entrega.';
-  }
-  if (p.entregas.some((e: any) => !String(e?.titulo ?? '').trim())) {
-    return 'Toda entrega precisa de um título.';
-  }
   if (!Array.isArray(p?.equipe) || p.equipe.length === 0) {
     return 'O projeto precisa de ao menos uma pessoa na equipe.';
   }
@@ -2065,7 +2075,7 @@ function faltaEmProjeto(p: any): string | null {
 
     if (action === 'create_projeto') {
       const p = body;
-      const falta = faltaEmProjeto(p);
+      const falta = faltaEmProjeto(p) ?? faltaEntregaNoCorpo(p);
       if (falta) return { status: 400, body: { error: falta } };
       const id = randomUUID();
       const agora = new Date().toISOString();
@@ -2121,6 +2131,14 @@ function faltaEmProjeto(p: any): string | null {
       if (p.equipe !== undefined) {
         const falta = faltaEmProjeto(p);
         if (falta) return { status: 400, body: { error: falta } };
+        // As entregas gravadas é que valem aqui, não a lista do corpo.
+        const quantas = await db.execute({
+          sql: 'SELECT COUNT(*) AS n FROM projeto_entregas WHERE projeto_id = ?',
+          args: [p.id],
+        });
+        if (Number(quantas.rows[0].n) === 0) {
+          return { status: 400, body: { error: 'O projeto precisa de ao menos uma entrega.' } };
+        }
       }
       // Só entra no SET o campo que veio no corpo. Antes o UPDATE reescrevia a
       // linha inteira, e a edição parcial da aba de gestão - que manda apenas

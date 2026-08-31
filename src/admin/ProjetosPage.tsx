@@ -5,7 +5,7 @@ import {
   IconAlert, IconClip, IconDoc, IconDownload, IconImage, IconInbox,
   IconChevronDown, IconChevronRight, IconChevronUp, IconChevronUpDown,
   IconEdit, IconEye, IconLink, IconMarcoAndamento, IconMarcoBloqueado,
-  IconAgrupar, IconCalendario, IconCheck, IconOrdenar, IconSearch,
+  IconAgrupar, IconCalendario, IconCheck, IconExternal, IconOrdenar, IconSearch,
   IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado,
   IconPlus, IconPrioridadeAlta, IconPrioridadeBaixa, IconPrioridadeMaxima,
   IconPrioridadeMedia, IconTrash, IconTrendDown, IconTrendFlat, IconTrendUp, IconTrendWavy,
@@ -88,20 +88,20 @@ const COR_ENTREGA: Record<string, string> = {
 
 /** Prioridade do projeto. Sai como "Média" porque a maioria é: exigir a
  *  escolha consciente em todo cadastro só produziria ruído. */
-export const PRIORIDADES = ['Urgentíssima', 'Urgente', 'Média', 'Baixa'] as const;
+export const PRIORIDADES = ['Urgente', 'Alta', 'Média', 'Baixa'] as const;
 export const PRIORIDADE_PADRAO = 'Média';
 
 const COR_PRIORIDADE: Record<string, string> = {
-  'Urgentíssima': '#D93025',
-  'Urgente': '#C2410C',
+  'Urgente': '#D93025',
+  'Alta': '#C2410C',
   'Média': '#B58300',
   'Baixa': '#6E6F69',
 };
 
 /** Barras que crescem com o nível; o topo da escala usa desenho próprio. */
 const DESENHO_PRIORIDADE: Record<string, (p: { size?: number }) => JSX.Element> = {
-  'Urgentíssima': IconPrioridadeMaxima,
-  'Urgente': IconPrioridadeAlta,
+  'Urgente': IconPrioridadeMaxima,
+  'Alta': IconPrioridadeAlta,
   'Média': IconPrioridadeMedia,
   'Baixa': IconPrioridadeBaixa,
 };
@@ -352,7 +352,7 @@ function AnelProgresso({ valor, size = 15 }: { valor: number; size?: number }) {
 
 /** Valor pelo qual cada coluna ordena. Texto sai como texto, escala sai como
  *  posição na escala - ordenar prioridade em ordem alfabética colocaria "Baixa"
- *  antes de "Urgentíssima", que é o contrário do que se quer ver. */
+ *  antes de "Urgente", que é o contrário do que se quer ver. */
 const CHAVE_ORDEM: Record<string, (p: Projeto) => string | number> = {
   projeto: p => p.nome.toLocaleLowerCase('pt-BR'),
   cliente: p => p.cliente_nome?.toLocaleLowerCase('pt-BR') ?? '\uffff',
@@ -361,7 +361,6 @@ const CHAVE_ORDEM: Record<string, (p: Projeto) => string | number> = {
   gestor: p => gestorDe(p)?.nome.toLocaleLowerCase('pt-BR') ?? '\uffff',
   // Sem data vai para o fim: projeto sem prazo não disputa urgência.
   entrega: p => p.previsao_entrega ?? '9999-99-99',
-  entregas: p => p.entregas.length,
   progresso: p => progressoDe(p),
   status: p => STATUS_PROJETO.indexOf(p.status as typeof STATUS_PROJETO[number]),
 };
@@ -527,11 +526,13 @@ function SeletorCompacto({ valor, opcoes, titulo, icones, onChange }: {
   );
 }
 
-function LinhaAnexo({ nome, tamanho, tipo, etiqueta, onEtiqueta, onBaixar, onRemover }: {
+function LinhaAnexo({ nome, tamanho, tipo, etiqueta, somenteLeitura, onEtiqueta, onBaixar, onVer, onRemover }: {
   nome: string; tamanho: number; tipo: string; etiqueta: string;
+  somenteLeitura: boolean;
   onEtiqueta: (v: string) => void;
-  /** Ausente no anexo que ainda não subiu: não há de onde baixar. */
+  /** Ausentes no anexo que ainda não subiu: não há de onde baixar nem o que ver. */
   onBaixar?: () => void;
+  onVer?: () => void;
   onRemover: () => void;
 }) {
   const { classe, icone } = iconeArquivo(nome, tipo);
@@ -547,16 +548,27 @@ function LinhaAnexo({ nome, tamanho, tipo, etiqueta, onEtiqueta, onBaixar, onRem
           {fmtTamanho(tamanho)}{onBaixar ? '' : ' · ainda não enviado'}
         </p>
       </div>
-      <SeletorCompacto valor={etiqueta} opcoes={ETIQUETAS} titulo="Etiqueta" onChange={onEtiqueta} />
+      {somenteLeitura
+        ? <span className="anexo-cat-trigger" style={{ cursor: 'default' }}>{etiqueta}</span>
+        : <SeletorCompacto valor={etiqueta} opcoes={ETIQUETAS} titulo="Etiqueta" onChange={onEtiqueta} />}
+      {onVer && (
+        <button type="button" className="file-eye-btn" title="Visualizar"
+          aria-label={`Visualizar ${nome}`} onClick={onVer}>
+          <IconEye size={13} />
+        </button>
+      )}
       {onBaixar && (
-        <button type="button" className="admin-file-download" title="Baixar" onClick={onBaixar}>
+        <button type="button" className="admin-file-download" title="Baixar"
+          aria-label={`Baixar ${nome}`} onClick={onBaixar}>
           <IconDownload size={13} />
         </button>
       )}
-      <button type="button" className="file-delete-btn" title="Remover anexo"
-        aria-label={`Remover ${nome}`} onClick={onRemover}>
-        <IconTrash size={13} />
-      </button>
+      {!somenteLeitura && (
+        <button type="button" className="file-delete-btn" title="Remover anexo"
+          aria-label={`Remover ${nome}`} onClick={onRemover}>
+          <IconTrash size={13} />
+        </button>
+      )}
     </div>
   );
 }
@@ -586,9 +598,10 @@ function ChipSaude({ estado, size = 11.5 }: { estado: string; size?: number }) {
 /** Leitura semanal de saúde. Fica fora do formulário de propósito: cada
  *  registro é gravado na hora, e não ao salvar o projeto - o histórico é o
  *  produto aqui, e um rascunho perdido levaria a leitura junto. */
-function SecaoSaude({ registros, salvando, onRegistrar, onExcluir }: {
+function SecaoSaude({ registros, salvando, somenteLeitura, onRegistrar, onExcluir }: {
   registros: RegistroSaude[];
   salvando: boolean;
+  somenteLeitura: boolean;
   onRegistrar: (estado: string, descricao: string) => Promise<void>;
   onExcluir: (r: RegistroSaude) => void;
 }) {
@@ -619,10 +632,12 @@ function SecaoSaude({ registros, salvando, onRegistrar, onExcluir }: {
             <ChipSaude estado={registros[0]?.estado ?? SEM_LEITURA} size={10} />
           </span>
         </p>
-        <button type="button" className="secao-add" onClick={() => setAbrindo(a => !a)}
-          title="Registrar leitura de saúde" aria-label="Registrar leitura de saúde">
-          <IconPlus size={14} />
-        </button>
+        {!somenteLeitura && (
+          <button type="button" className="secao-add" onClick={() => setAbrindo(a => !a)}
+            title="Registrar leitura de saúde" aria-label="Registrar leitura de saúde">
+            <IconPlus size={14} />
+          </button>
+        )}
       </div>
 
       {abrindo && (
@@ -689,15 +704,54 @@ function SecaoSaude({ registros, salvando, onRegistrar, onExcluir }: {
                   {reg.descricao}
                 </p>
               </div>
-              <button type="button" className="file-delete-btn" title="Excluir leitura"
-                aria-label="Excluir leitura de saúde" onClick={() => onExcluir(reg)}>
-                <IconX size={13} />
-              </button>
+              {!somenteLeitura && (
+                <button type="button" className="file-delete-btn" title="Excluir leitura"
+                  aria-label="Excluir leitura de saúde" onClick={() => onExcluir(reg)}>
+                  <IconX size={13} />
+                </button>
+              )}
             </div>
           ))}
         </div>
       )}
     </section>
+  );
+}
+
+/** Campo de endereço com o atalho de abrir ao lado. O botão só aparece com o
+ *  campo preenchido: convidar para um link vazio é oferecer uma aba em branco. */
+function CampoEndereco({ rotulo, valor, placeholder, somenteLeitura, onChange }: {
+  rotulo: string;
+  valor: string;
+  placeholder: string;
+  somenteLeitura: boolean;
+  onChange: (v: string) => void;
+}) {
+  const limpo = valor.trim();
+  const abrir = () => window.open(limpo, '_blank', 'noopener,noreferrer');
+
+  return (
+    <div className="form-group">
+      <label className="form-label">{rotulo}</label>
+      <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        {somenteLeitura ? (
+          <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: limpo ? 'var(--gray)' : 'var(--gray2)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={limpo || undefined}>
+            {limpo || 'Não informado'}
+          </span>
+        ) : (
+          <input className="form-input" style={{ flex: 1, minWidth: 0 }} value={valor}
+            onChange={e => onChange(e.target.value)} placeholder={placeholder} />
+        )}
+        {limpo && (
+          <button type="button" className="secao-add" style={{ width: 34, height: 34 }}
+            onClick={abrir} title={`Abrir ${rotulo.toLocaleLowerCase('pt-BR')} numa aba nova`}
+            aria-label={`Abrir ${rotulo} numa aba nova`}>
+            <IconExternal size={14} />
+          </button>
+        )}
+      </span>
+    </div>
   );
 }
 
@@ -750,16 +804,83 @@ function CampoCategoria({ valor, sugestoes, onChange }: {
   );
 }
 
+// ── Largura do painel ───────────────────────────────────────────────────────
+
+/** O mínimo é a largura que o painel sempre teve; o máximo evita que ele engula
+ *  a listagem atrás, que é a referência de onde a pessoa está. */
+const PAINEL_MIN = 560;
+const PAINEL_MAX = 1100;
+const PAINEL_CHAVE = 'portal-sheep:largura-painel';
+
+function larguraGuardada(): number {
+  try {
+    const n = Number(localStorage.getItem(PAINEL_CHAVE));
+    return Number.isFinite(n) && n >= PAINEL_MIN ? Math.min(n, PAINEL_MAX) : PAINEL_MIN;
+  } catch {
+    // Navegador com armazenamento bloqueado: vale o padrão.
+    return PAINEL_MIN;
+  }
+}
+
+/** Largura do painel, ajustável arrastando a borda esquerda. Fica guardada no
+ *  navegador: quem alargou uma vez não quer refazer isso a cada abertura. */
+function useLarguraPainel() {
+  const [largura, setLargura] = useState(larguraGuardada);
+  const [arrastando, setArrastando] = useState(false);
+
+  useEffect(() => {
+    if (!arrastando) return;
+
+    // O painel é ancorado à direita, então a largura é o que sobra da borda
+    // direita da janela até o ponteiro.
+    const mover = (e: MouseEvent) =>
+      setLargura(Math.round(Math.min(
+        Math.max(window.innerWidth - e.clientX, PAINEL_MIN),
+        Math.min(PAINEL_MAX, window.innerWidth - 40),
+      )));
+
+    const soltar = () => setArrastando(false);
+    document.body.classList.add('arrastando-painel');
+    window.addEventListener('mousemove', mover);
+    window.addEventListener('mouseup', soltar);
+    return () => {
+      document.body.classList.remove('arrastando-painel');
+      window.removeEventListener('mousemove', mover);
+      window.removeEventListener('mouseup', soltar);
+    };
+  }, [arrastando]);
+
+  // Guarda ao largar, e não a cada pixel: escrever no armazenamento a cada
+  // quadro do arrasto é trabalho jogado fora.
+  useEffect(() => {
+    if (arrastando) return;
+    try { localStorage.setItem(PAINEL_CHAVE, String(largura)); } catch { /* sem armazenamento */ }
+  }, [arrastando, largura]);
+
+  /** Teclado também ajusta: seta move 40px, e o painel não pode depender do
+   *  arrasto para ser usável. */
+  const porTecla = (e: React.KeyboardEvent) => {
+    const passo = e.key === 'ArrowLeft' ? 40 : e.key === 'ArrowRight' ? -40 : 0;
+    if (!passo) return;
+    e.preventDefault();
+    setLargura(l => Math.min(Math.max(l + passo, PAINEL_MIN), PAINEL_MAX));
+  };
+
+  return { largura, arrastando, setArrastando, porTecla };
+}
+
 // ── Prévia de arquivo ───────────────────────────────────────────────────────
 
 /** Mostra a evidência sem sair do portal, no mesmo modal que o Funil usa para
  *  os anexos. Imagem e PDF abrem aqui; o resto oferece o download, porque o
  *  navegador não sabe desenhar. */
-function PreviaEvidencia({ evidencia, onCarregar, onBaixar, onFechar }: {
-  evidencia: Evidencia;
+/** Serve à evidência da entrega e ao anexo do projeto: os dois são arquivo com
+ *  id, e o que muda é só de onde o conteúdo vem. */
+function PreviaArquivo({ arquivo, onCarregar, onBaixar, onFechar }: {
+  arquivo: { nome: string; comentario?: string | null };
   /** O buscador vem da página: o `api` carrega o token da sessão. */
-  onCarregar: (ev: Evidencia) => Promise<{ tipo: string; base64: string } | null>;
-  onBaixar: (ev: Evidencia) => void;
+  onCarregar: () => Promise<{ tipo: string; base64: string } | null>;
+  onBaixar: () => void;
   onFechar: () => void;
 }) {
   const [conteudo, setConteudo] = useState<{ tipo: string; url: string } | null>(null);
@@ -770,7 +891,7 @@ function PreviaEvidencia({ evidencia, onCarregar, onBaixar, onFechar }: {
     let criada = '';
     (async () => {
       try {
-        const r = await onCarregar(evidencia);
+        const r = await onCarregar();
         if (!vivo) return;
         if (!r?.base64) { setErro('O arquivo não veio.'); return; }
         const bytes = Uint8Array.from(atob(r.base64), c => c.charCodeAt(0));
@@ -783,7 +904,7 @@ function PreviaEvidencia({ evidencia, onCarregar, onBaixar, onFechar }: {
     // A URL do blob segura o arquivo em memória enquanto existir: soltá-la ao
     // fechar evita acumular cópias a cada prévia aberta.
     return () => { vivo = false; if (criada) URL.revokeObjectURL(criada); };
-  }, [evidencia.id]);
+  }, [arquivo.nome]);
 
   // Modal em portal não recebe tecla por si: o Esc é escutado na janela.
   useEffect(() => {
@@ -799,9 +920,9 @@ function PreviaEvidencia({ evidencia, onCarregar, onBaixar, onFechar }: {
     <div className="file-preview-backdrop" style={{ zIndex: 10002 }} onClick={onFechar}>
       <div className="file-preview-modal" onClick={e => e.stopPropagation()}>
         <div className="file-preview-header">
-          <span className="file-preview-name">{evidencia.nome}</span>
+          <span className="file-preview-name">{arquivo.nome}</span>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button type="button" className="file-preview-action" onClick={() => onBaixar(evidencia)}>
+            <button type="button" className="file-preview-action" onClick={() => onBaixar()}>
               <IconDownload size={13} />
               Baixar
             </button>
@@ -814,25 +935,25 @@ function PreviaEvidencia({ evidencia, onCarregar, onBaixar, onFechar }: {
           {erro && <div className="file-preview-unsupported"><p>{erro}</p></div>}
           {!erro && !conteudo && <div className="file-preview-spinner" />}
           {conteudo && imagem && (
-            <img src={conteudo.url} alt={evidencia.nome} className="file-preview-img" />
+            <img src={conteudo.url} alt={arquivo.nome} className="file-preview-img" />
           )}
           {conteudo && pdf && (
-            <iframe src={conteudo.url} className="file-preview-iframe" title={evidencia.nome} />
+            <iframe src={conteudo.url} className="file-preview-iframe" title={arquivo.nome} />
           )}
           {conteudo && !imagem && !pdf && (
             <div className="file-preview-unsupported">
               <p>Visualização não disponível para este formato.</p>
               <button type="button" className="btn btn-primary" style={{ marginTop: 16 }}
-                onClick={() => onBaixar(evidencia)}>
+                onClick={() => onBaixar()}>
                 Baixar arquivo
               </button>
             </div>
           )}
         </div>
-        {evidencia.comentario && (
+        {arquivo.comentario && (
           <p style={{ fontSize: 12.5, color: 'var(--gray)', margin: 0, padding: '12px 20px',
             borderTop: '1px solid var(--gray3)', whiteSpace: 'pre-wrap' }}>
-            {evidencia.comentario}
+            {arquivo.comentario}
           </p>
         )}
       </div>
@@ -1317,7 +1438,7 @@ function EditorEntrega({ inicial, pessoas, categorias, salvando, onSalvar, onCan
 /** Lista de entregas. Num projeto já criado cada mudança grava na hora; num
  *  projeto novo elas ficam em memória até o projeto existir. */
 function SecaoEntregas({
-  entregas, pendentes, pessoas, categorias, salvando,
+  entregas, pendentes, pessoas, categorias, salvando, somenteLeitura,
   onSalvarEntrega, onExcluirEntrega, onAlterarPendentes,
   onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
 }: {
@@ -1329,6 +1450,9 @@ function SecaoEntregas({
   /** Categorias já usadas em qualquer projeto: a grafia vem de lá. */
   categorias: string[];
   salvando: boolean;
+  /** Filtrar, agrupar, buscar, baixar e pré-visualizar seguem valendo. O que
+   *  sai é criar, editar, concluir e excluir. */
+  somenteLeitura: boolean;
   onSalvarEntrega: (dados: EntregaPendente, id?: number) => Promise<void>;
   onExcluirEntrega: (e: Entrega) => void;
   onAlterarPendentes: (v: EntregaPendente[]) => void;
@@ -1441,11 +1565,15 @@ function SecaoEntregas({
             icone={IconOrdenar} rotulo="Ordenar entregas" />
           <SeletorLista valor={agrupar} onChange={setAgrupar} opcoes={AGRUPAMENTOS_ENTREGA}
             icone={IconAgrupar} rotulo="Agrupar entregas" />
-          <button type="button" className="secao-add"
-            onClick={() => (gravado ? setEditando('novo') : setEditandoPendente(-1))}
-            title="Adicionar entrega" aria-label="Adicionar entrega">
-            <IconPlus size={14} />
-          </button>
+          {/* Buscar, ordenar e agrupar continuam: são leitura. Só o acrescentar
+              sai, junto com o resto do que grava. */}
+          {!somenteLeitura && (
+            <button type="button" className="secao-add"
+              onClick={() => (gravado ? setEditando('novo') : setEditandoPendente(-1))}
+              title="Adicionar entrega" aria-label="Adicionar entrega">
+              <IconPlus size={14} />
+            </button>
+          )}
         </span>
       </div>
 
@@ -1509,7 +1637,14 @@ function SecaoEntregas({
 
                 {/* Linha fechada: marco, título e o essencial à direita. */}
                 <div className="entrega-linha" style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                  <MarcoEntrega status={e.status} onEscolher={st => void escolherStatus(e, st)} />
+                  {somenteLeitura ? (
+                    <span className="marco-bolha" title={`Status: ${e.status}`}
+                      style={{ '--mc': COR_ENTREGA[e.status] } as React.CSSProperties}>
+                      {(ICONE_ENTREGA[e.status] ?? IconMarcoPlanejado)({ size: 14 })}
+                    </span>
+                  ) : (
+                    <MarcoEntrega status={e.status} onEscolher={st => void escolherStatus(e, st)} />
+                  )}
 
                   <button type="button" onClick={() => alternar(e.id)} aria-expanded={aberta}
                     style={{
@@ -1623,14 +1758,18 @@ function SecaoEntregas({
                         )}
                       </div>
 
-                      <button type="button" className="admin-file-download" title="Editar entrega"
-                        aria-label={`Editar ${e.titulo}`} onClick={() => setEditando(e.id)}>
-                        <IconEdit size={13} />
-                      </button>
-                      <button type="button" className="file-delete-btn" title="Excluir entrega"
-                        aria-label={`Excluir ${e.titulo}`} onClick={() => setExcluindoEntrega(e)}>
-                        <IconTrash size={13} />
-                      </button>
+                      {!somenteLeitura && (
+                        <>
+                          <button type="button" className="admin-file-download" title="Editar entrega"
+                            aria-label={`Editar ${e.titulo}`} onClick={() => setEditando(e.id)}>
+                            <IconEdit size={13} />
+                          </button>
+                          <button type="button" className="file-delete-btn" title="Excluir entrega"
+                            aria-label={`Excluir ${e.titulo}`} onClick={() => setExcluindoEntrega(e)}>
+                            <IconTrash size={13} />
+                          </button>
+                        </>
+                      )}
                     </div>
                    )}
                   </div>
@@ -1905,12 +2044,13 @@ function DialogoEvidencia({ entrega, salvando, onConcluir, onFechar }: {
 
 /** Diário de reuniões. Mesma forma da saúde: cada registro é gravado na hora e
  *  o valor está na série, não no último item. */
-function SecaoReunioes({ registros, pessoas, equipe, salvando, onRegistrar, onExcluir }: {
+function SecaoReunioes({ registros, pessoas, equipe, salvando, somenteLeitura, onRegistrar, onExcluir }: {
   registros: Reuniao[];
   pessoas: Pessoa[];
   /** Quem está no projeto aparece primeiro na escolha de participantes. */
   equipe: Membro[];
   salvando: boolean;
+  somenteLeitura: boolean;
   onRegistrar: (r: { data: string; assunto: string; notas: string; participantes: string[] }) => Promise<void>;
   onExcluir: (r: Reuniao) => void;
 }) {
@@ -1949,10 +2089,12 @@ function SecaoReunioes({ registros, pessoas, equipe, salvando, onRegistrar, onEx
           Reuniões
           {registros.length > 0 && <span style={{ marginLeft: 6, fontWeight: 600 }}>({registros.length})</span>}
         </p>
-        <button type="button" className="secao-add" onClick={() => setAbrindo(a => !a)}
-          title="Registrar reunião" aria-label="Registrar reunião">
-          <IconPlus size={14} />
-        </button>
+        {!somenteLeitura && (
+          <button type="button" className="secao-add" onClick={() => setAbrindo(a => !a)}
+            title="Registrar reunião" aria-label="Registrar reunião">
+            <IconPlus size={14} />
+          </button>
+        )}
       </div>
 
       {abrindo && (
@@ -2026,10 +2168,12 @@ function SecaoReunioes({ registros, pessoas, equipe, salvando, onRegistrar, onEx
                   </div>
                 )}
               </div>
-              <button type="button" className="file-delete-btn" title="Excluir reunião"
-                aria-label={`Excluir reunião ${reg.assunto}`} onClick={() => onExcluir(reg)}>
-                <IconX size={13} />
-              </button>
+              {!somenteLeitura && (
+                <button type="button" className="file-delete-btn" title="Excluir reunião"
+                  aria-label={`Excluir reunião ${reg.assunto}`} onClick={() => onExcluir(reg)}>
+                  <IconX size={13} />
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -2105,12 +2249,13 @@ function PilulaStatus({ valor, onChange, compacta }: {
 
 // ── Equipe do projeto ────────────────────────────────────────────────────────
 
-function SecaoEquipe({ titulo, pessoas, valor, onChange }: {
+function SecaoEquipe({ titulo, pessoas, valor, somenteLeitura, onChange }: {
   /** O título entra aqui, e não na seção acima, porque o botão de acrescentar
    *  mora ao lado dele e depende do estado deste componente. */
   titulo: string;
   pessoas: Pessoa[];
   valor: { usuario_id: string; papel: string }[];
+  somenteLeitura: boolean;
   onChange: (v: { usuario_id: string; papel: string }[]) => void;
 }) {
   const [aberto, setAberto] = useState(false);
@@ -2141,12 +2286,14 @@ function SecaoEquipe({ titulo, pessoas, valor, onChange }: {
     <div>
       <div className="admin-section-head">
         <p className="admin-section-title">{titulo}</p>
-        <button ref={botaoRef} type="button" className="secao-add" onClick={abrir}
-          disabled={disponiveis.length === 0}
-          title={disponiveis.length ? 'Adicionar pessoa à equipe' : 'Todos já estão no time'}
-          aria-label={disponiveis.length ? 'Adicionar pessoa à equipe' : 'Todos já estão no time'}>
-          <IconPlus size={14} />
-        </button>
+        {!somenteLeitura && (
+          <button ref={botaoRef} type="button" className="secao-add" onClick={abrir}
+            disabled={disponiveis.length === 0}
+            title={disponiveis.length ? 'Adicionar pessoa à equipe' : 'Todos já estão no time'}
+            aria-label={disponiveis.length ? 'Adicionar pessoa à equipe' : 'Todos já estão no time'}>
+            <IconPlus size={14} />
+          </button>
+        )}
       </div>
       {aberto && createPortal(
         <div ref={dropRef} className="status-select-dropdown"
@@ -2191,17 +2338,23 @@ function SecaoEquipe({ titulo, pessoas, valor, onChange }: {
                     {p?.email ?? 'Sem acesso ao portal'}
                   </p>
                 </div>
-                <SeletorCompacto
-                  valor={m.papel}
-                  opcoes={PAPEIS_EQUIPE}
-                  titulo="Papel na equipe"
-                  onChange={v => onChange(valor.map(x => x.usuario_id === m.usuario_id ? { ...x, papel: v } : x))}
-                />
-                <button type="button" className="file-delete-btn" title="Remover da equipe"
-                  aria-label={`Remover ${nome} da equipe`}
-                  onClick={() => onChange(valor.filter(x => x.usuario_id !== m.usuario_id))}>
-                  <IconX size={13} />
-                </button>
+                {somenteLeitura ? (
+                  <span className="anexo-cat-trigger" style={{ cursor: 'default' }}>{m.papel}</span>
+                ) : (
+                  <>
+                    <SeletorCompacto
+                      valor={m.papel}
+                      opcoes={PAPEIS_EQUIPE}
+                      titulo="Papel na equipe"
+                      onChange={v => onChange(valor.map(x => x.usuario_id === m.usuario_id ? { ...x, papel: v } : x))}
+                    />
+                    <button type="button" className="file-delete-btn" title="Remover da equipe"
+                      aria-label={`Remover ${nome} da equipe`}
+                      onClick={() => onChange(valor.filter(x => x.usuario_id !== m.usuario_id))}>
+                      <IconX size={13} />
+                    </button>
+                  </>
+                )}
               </div>
             );
           })}
@@ -2214,8 +2367,8 @@ function SecaoEquipe({ titulo, pessoas, valor, onChange }: {
 // ── Formulário ───────────────────────────────────────────────────────────────
 
 function FormularioProjeto({
-  editando, pessoas, clientes, salvando, onFechar, onSalvar, onBaixarAnexo, onEtiquetar,
-  categorias, onExcluir,
+  editando, pessoas, clientes, salvando, onFechar, onSalvar, onBaixarAnexo, onVerAnexo, onEtiquetar,
+  categorias, onExcluir, somenteLeitura,
   onRegistrarSaude, onExcluirSaude, onRegistrarReuniao, onExcluirReuniao,
   onSalvarEntrega, onExcluirEntrega, onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
 }: {
@@ -2226,6 +2379,7 @@ function FormularioProjeto({
   onFechar: () => void;
   onSalvar: (r: Rascunho, anexos: AnexoPendente[], removidos: number[]) => void;
   onBaixarAnexo: (a: Arquivo) => void;
+  onVerAnexo: (a: Arquivo) => void;
   onEtiquetar: (a: Arquivo, etiqueta: string) => Promise<void>;
   onRegistrarSaude: (p: Projeto, estado: string, descricao: string) => Promise<void>;
   onExcluirSaude: (r: RegistroSaude) => void;
@@ -2236,6 +2390,9 @@ function FormularioProjeto({
   onExcluirReuniao: (r: Reuniao) => void;
   /** Categorias de entrega já usadas, para sugerir no cadastro. */
   categorias: string[];
+  /** Quem tem acesso ao projeto mas não à edição: enxerga tudo, e ainda filtra,
+   *  agrupa, busca, baixa e pré-visualiza. Só não grava. */
+  somenteLeitura: boolean;
   onExcluir: (p: Projeto) => void;
   onSalvarEntrega: (p: Projeto, dados: EntregaPendente, id?: number) => Promise<void>;
   onExcluirEntrega: (e: Entrega) => void;
@@ -2275,6 +2432,7 @@ function FormularioProjeto({
   // `editando` é um retrato de quando o modal abriu: sem guardar a troca aqui,
   // o arquivo reetiquetado só mudaria de grupo depois de fechar e reabrir.
   const [copiado, setCopiado] = useState(false);
+  const { largura, arrastando, setArrastando, porTecla } = useLarguraPainel();
 
   /** Link que abre este projeto direto, para quem já tem acesso ao portal. É o
    *  mesmo formato que o Funil usa em `?lead=`. */
@@ -2336,7 +2494,27 @@ function FormularioProjeto({
 
   return createPortal(
     <div className="admin-modal-overlay" onClick={onFechar}>
-      <div className="admin-modal" style={{ width: 'min(560px, 96vw)' }} onClick={e => e.stopPropagation()}>
+      {/* Fora do painel de propósito: dentro dele, que rola, o puxador sumiria
+          ao descer o conteúdo. Ancorado pela direita, acompanha a largura. */}
+      <button
+        type="button"
+        className={`painel-puxador${arrastando ? ' arrastando' : ''}`}
+        style={{ right: `min(${largura}px, 96vw)` }}
+        onClick={e => e.stopPropagation()}
+        onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setArrastando(true); }}
+        onKeyDown={porTecla}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Ajustar a largura do painel"
+        aria-valuenow={largura}
+        aria-valuemin={PAINEL_MIN}
+        aria-valuemax={PAINEL_MAX}
+        title="Arraste para ajustar a largura"
+      />
+      <div className="admin-modal"
+        style={{ width: `min(${largura}px, 96vw)` }}
+        onClick={e => e.stopPropagation()}>
+
 
         <div className="admin-modal-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
@@ -2357,18 +2535,22 @@ function FormularioProjeto({
                     onClick={() => void copiarLink()}>
                     {copiado ? <IconCheck size={15} /> : <IconLink size={15} />}
                   </button>
-                  <button type="button" className="secao-add" style={{ width: 30, height: 30 }}
-                    title="Excluir projeto" aria-label="Excluir projeto"
-                    onClick={() => onExcluir(editando)}>
-                    <IconTrash size={15} />
-                  </button>
+                  {!somenteLeitura && (
+                    <button type="button" className="secao-add" style={{ width: 30, height: 30 }}
+                      title="Excluir projeto" aria-label="Excluir projeto"
+                      onClick={() => onExcluir(editando)}>
+                      <IconTrash size={15} />
+                    </button>
+                  )}
                 </>
               )}
               <button className="admin-modal-close" aria-label="Fechar" onClick={onFechar}><IconX size={16} /></button>
             </span>
           </div>
           <div style={{ marginTop: 2, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <PilulaStatus valor={r.status} onChange={v => set('status', v)} />
+            {somenteLeitura
+              ? <ChipStatus status={r.status} />
+              : <PilulaStatus valor={r.status} onChange={v => set('status', v)} />}
             {/* A saúde só existe em projeto criado, e só depois da primeira
                 leitura. Sem registro o cabeçalho não anuncia nada: um estado
                 inventado seria pior que a ausência. */}
@@ -2395,6 +2577,7 @@ function FormularioProjeto({
 
           {editando && abaModal === 'reunioes' && (
             <SecaoReunioes
+              somenteLeitura={somenteLeitura}
               registros={editando.reunioes ?? []}
               pessoas={pessoas}
               equipe={editando.equipe}
@@ -2406,6 +2589,7 @@ function FormularioProjeto({
 
           {editando && abaModal === 'saude' && (
             <SecaoSaude
+              somenteLeitura={somenteLeitura}
               registros={editando.saude ?? []}
               salvando={salvando}
               onRegistrar={(estado, descricao) => onRegistrarSaude(editando, estado, descricao)}
@@ -2420,13 +2604,14 @@ function FormularioProjeto({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div className="form-group">
                 <label className="form-label">Nome do projeto *</label>
-                <input className={`form-input${erros.nome ? ' error' : ''}`} value={r.nome} autoFocus
+                <input className={`form-input${erros.nome ? ' error' : ''}`} value={r.nome}
+                  autoFocus={!somenteLeitura} readOnly={somenteLeitura}
                   onChange={e => set('nome', e.target.value)} placeholder="Portal de gestão" />
                 {erros.nome && <p className="form-error">{erros.nome}</p>}
               </div>
               <div className="form-group">
                 <label className="form-label">Descrição</label>
-                <textarea className="form-input" rows={2} value={r.descricao}
+                <textarea className="form-input" rows={2} value={r.descricao} readOnly={somenteLeitura}
                   onChange={e => set('descricao', e.target.value)}
                   placeholder="Em poucas linhas, do que se trata o projeto" />
               </div>
@@ -2466,18 +2651,12 @@ function FormularioProjeto({
                   {erros.prioridade && <p className="form-error">{erros.prioridade}</p>}
                 </div>
               </div>
-              <div className="form-group">
-                <label className="form-label">Repositório no GitHub</label>
-                <input className="form-input" value={r.repositorio}
-                  onChange={e => set('repositorio', e.target.value)}
-                  placeholder="https://github.com/sheeptechservices/portal-sheep" />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Pasta no Drive</label>
-                <input className="form-input" value={r.drive}
-                  onChange={e => set('drive', e.target.value)}
-                  placeholder="https://drive.google.com/drive/folders/..." />
-              </div>
+              <CampoEndereco rotulo="Repositório no GitHub" valor={r.repositorio}
+                placeholder="https://github.com/sheeptechservices/portal-sheep"
+                somenteLeitura={somenteLeitura} onChange={v => set('repositorio', v)} />
+              <CampoEndereco rotulo="Pasta no Drive" valor={r.drive}
+                placeholder="https://drive.google.com/drive/folders/..."
+                somenteLeitura={somenteLeitura} onChange={v => set('drive', v)} />
             </div>
           </section>
 
@@ -2499,11 +2678,12 @@ function FormularioProjeto({
 
           <section>
             <SecaoEquipe titulo="Equipe *" pessoas={pessoas} valor={r.equipe}
-              onChange={v => set('equipe', v)} />
+              somenteLeitura={somenteLeitura} onChange={v => set('equipe', v)} />
             {erros.equipe && <p className="form-error" style={{ marginTop: 6 }}>{erros.equipe}</p>}
           </section>
 
           <SecaoEntregas
+            somenteLeitura={somenteLeitura}
             entregas={editando?.entregas ?? []}
             pendentes={r.entregas}
             pessoas={pessoas}
@@ -2521,7 +2701,7 @@ function FormularioProjeto({
           <section>
             <p className="admin-section-title">Observações</p>
             <div className="form-group">
-              <textarea className="form-input" rows={2} value={r.observacoes}
+              <textarea className="form-input" rows={2} value={r.observacoes} readOnly={somenteLeitura}
                 onChange={e => set('observacoes', e.target.value)}
                 placeholder="Riscos, dependências, combinados" />
             </div>
@@ -2530,12 +2710,14 @@ function FormularioProjeto({
           <section>
             <div className="admin-section-head">
               <p className="admin-section-title">Anexos</p>
-              <button type="button" className="secao-add"
-                onClick={() => inputArquivo.current?.click()}
-                title={`Adicionar arquivo · máx. ${fmtTamanho(LIMITE_ANEXO)}`}
-                aria-label="Adicionar arquivo">
-                <IconPlus size={14} />
-              </button>
+              {!somenteLeitura && (
+                <button type="button" className="secao-add"
+                  onClick={() => inputArquivo.current?.click()}
+                  title={`Adicionar arquivo · máx. ${fmtTamanho(LIMITE_ANEXO)}`}
+                  aria-label="Adicionar arquivo">
+                  <IconPlus size={14} />
+                </button>
+              )}
             </div>
             <input ref={inputArquivo} type="file" multiple hidden
               onChange={e => void escolherArquivos(e.target.files)} />
@@ -2564,17 +2746,18 @@ function FormularioProjeto({
                     <div className="admin-file-list">
                       {salvos.map(a => (
                         <LinhaAnexo key={a.id} nome={a.nome} tamanho={a.tamanho} tipo={a.tipo}
-                          etiqueta={a.etiqueta}
+                          etiqueta={a.etiqueta} somenteLeitura={somenteLeitura}
                           onEtiqueta={v => {
                             setReetiquetados(r => ({ ...r, [a.id]: v }));
                             void onEtiquetar(a, v);
                           }}
+                          onVer={() => onVerAnexo(a)}
                           onBaixar={() => onBaixarAnexo(a)}
                           onRemover={() => setRemovidos(p => [...p, a.id])} />
                       ))}
                       {pendentes.map(({ a, i }) => (
                         <LinhaAnexo key={`novo-${i}`} nome={a.nome} tamanho={a.tamanho} tipo={a.tipo}
-                          etiqueta={a.etiqueta}
+                          etiqueta={a.etiqueta} somenteLeitura={somenteLeitura}
                           onEtiqueta={v => setNovos(p => p.map((x, j) => (j === i ? { ...x, etiqueta: v } : x)))}
                           onRemover={() => setNovos(p => p.filter((_, j) => j !== i))} />
                       ))}
@@ -2591,11 +2774,13 @@ function FormularioProjeto({
 
         <div style={{ padding: '12px 20px', borderTop: '1px solid var(--gray3)', display: 'flex', justifyContent: 'flex-end', gap: 8, flexShrink: 0 }}>
           <button type="button" className="modal-acao" onClick={onFechar} disabled={salvando}>
-            Cancelar
+            {somenteLeitura ? 'Fechar' : 'Cancelar'}
           </button>
-          <button type="button" className="modal-acao-primaria" onClick={tentarSalvar} disabled={salvando}>
-            {salvando ? 'Salvando…' : editando ? 'Salvar' : 'Criar projeto'}
-          </button>
+          {!somenteLeitura && (
+            <button type="button" className="modal-acao-primaria" onClick={tentarSalvar} disabled={salvando}>
+              {salvando ? 'Salvando…' : editando ? 'Salvar' : 'Criar projeto'}
+            </button>
+          )}
         </div>
 
       </div>
@@ -2620,8 +2805,12 @@ export default function ProjetosPage({ token }: { token: string }) {
   const [form, setForm] = useState<{ editando: Projeto | null } | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [excluindo, setExcluindo] = useState<Projeto | null>(null);
-  /** Evidência aberta em prévia, sem sair do portal. */
-  const [previa, setPrevia] = useState<Evidencia | null>(null);
+  /** Arquivo aberto em prévia, sem sair do portal. `fonte` diz de onde buscar
+   *  o conteúdo: anexo do projeto e evidência de entrega vivem em tabelas
+   *  diferentes, com ações próprias. */
+  const [previa, setPrevia] = useState<
+    { fonte: 'anexo'; item: Arquivo } | { fonte: 'evidencia'; item: Evidencia } | null
+  >(null);
   /** Projeto cuja leitura de saúde está sendo registrada pela listagem. */
   const [lendoSaude, setLendoSaude] = useState<Projeto | null>(null);
   const [view, setView] = useState<'quadro' | 'lista'>('lista');
@@ -3003,7 +3192,7 @@ export default function ProjetosPage({ token }: { token: string }) {
                 <div className="kanban-column-body">
                   {daColuna.map(p => (
                     <div key={p.id} className="kanban-card"
-                      onClick={() => podeEditar && setForm({ editando: p })}
+                      onClick={() => setForm({ editando: p })}
                       style={{ cursor: podeEditar ? 'pointer' : 'default' }}>
                       <p style={{ fontWeight: 600, fontSize: 13, color: 'var(--black)', margin: 0 }}>{p.nome}</p>
                       <p style={{ fontSize: 11, color: 'var(--gray2)', margin: '2px 0 0' }}>
@@ -3034,21 +3223,20 @@ export default function ProjetosPage({ token }: { token: string }) {
         </div>
       ) : aba === 'geral' ? (
         <div className="admin-table-wrap">
-          <table className="admin-table sem-quebra">
+          <table className="admin-table sem-quebra largura-fixa">
             <thead>
               <tr>
                 {/* A coluna do projeto tomava o espaço que sobrava. Presa em
                     32%, o resto da linha respira e o nome corta com reticências. */}
                 {([
-                  ['projeto', 'Projeto', 220],
-                  ['saude', 'Saúde', 150],
-                  ['prioridade', 'Prioridade', 60],
+                  ['projeto', 'Projeto', 400],
+                  ['saude', 'Saúde', 145],
+                  ['prioridade', 'Prioridade', 70],
                   ['cliente', 'Cliente', 150],
-                  ['gestor', 'Gestor', 170],
-                  ['entrega', 'Entrega', 130],
-                  ['entregas', 'Entregas', 70],
-                  ['progresso', 'Progresso', 90],
-                  ['status', 'Status', undefined],
+                  ['gestor', 'Gestor', 160],
+                  ['entrega', 'Entrega', 120],
+                  ['progresso', 'Progresso', 95],
+                  ['status', 'Status', 130],
                 ] as [string, string, string | number | undefined][]).map(([col, rotulo, largura]) => (
                   <ThOrdenavel key={col} coluna={col} atual={ordemCol} dir={ordemDir}
                     onOrdenar={ordenarPor} style={{ width: largura }}>
@@ -3056,22 +3244,22 @@ export default function ProjetosPage({ token }: { token: string }) {
                   </ThOrdenavel>
                 ))}
                 {/* Ações não ordena: não é dado do projeto. */}
-                <th>Ações</th>
+                <th style={{ width: 70 }}>Ações</th>
               </tr>
             </thead>
             <tbody>
               {ordenados.map(p => (
                 <tr key={p.id}
-                  onClick={() => podeEditar && setForm({ editando: p })}
-                  tabIndex={podeEditar ? 0 : undefined}
+                  onClick={() => setForm({ editando: p })}
+                  tabIndex={0}
                   onKeyDown={e => {
                     // Linha clicavel tambem precisa abrir pelo teclado.
-                    if (podeEditar && (e.key === 'Enter' || e.key === ' ')) {
+                    if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
                       setForm({ editando: p });
                     }
                   }}
-                  style={{ cursor: podeEditar ? 'pointer' : 'default' }}>
+                  style={{ cursor: 'pointer' }}>
                   <td>
                     {(() => {
                       // A entrega em curso é a primeira que ainda não terminou:
@@ -3168,10 +3356,6 @@ export default function ProjetosPage({ token }: { token: string }) {
                           onChange={v => void ajustar(p, 'previsao_entrega', v)} />
                       );
                     })()}
-                  </td>
-
-                  <td style={{ fontSize: 12, color: 'var(--gray2)', fontVariantNumeric: 'tabular-nums' }}>
-                    {p.entregas.length || '-'}
                   </td>
 
                   <td>
@@ -3339,6 +3523,7 @@ export default function ProjetosPage({ token }: { token: string }) {
           onSalvar={salvar}
           onBaixarAnexo={a => void baixarAnexo(a)}
           categorias={categoriasDeEntrega}
+          somenteLeitura={!podeEditar}
           onExcluir={setExcluindo}
           onEtiquetar={etiquetarAnexo}
           onRegistrarSaude={registrarSaude}
@@ -3349,7 +3534,8 @@ export default function ProjetosPage({ token }: { token: string }) {
           onExcluirEntrega={excluirEntrega}
           onSubirEvidencia={subirEvidencia}
           onBaixarEvidencia={baixarEvidencia}
-          onVerEvidencia={setPrevia}
+          onVerEvidencia={ev => setPrevia({ fonte: 'evidencia', item: ev })}
+          onVerAnexo={a => setPrevia({ fonte: 'anexo', item: a })}
         />
       )}
 
@@ -3363,10 +3549,17 @@ export default function ProjetosPage({ token }: { token: string }) {
       )}
 
       {previa && (
-        <PreviaEvidencia
-          evidencia={previa}
-          onCarregar={ev => api(`?action=entrega_evidencia_base64&id=${ev.id}`)}
-          onBaixar={baixarEvidencia}
+        <PreviaArquivo
+          arquivo={{
+            nome: previa.item.nome,
+            comentario: previa.fonte === 'evidencia' ? previa.item.comentario : null,
+          }}
+          onCarregar={() => api(previa.fonte === 'evidencia'
+            ? `?action=entrega_evidencia_base64&id=${previa.item.id}`
+            : `?action=projeto_arquivo_base64&id=${previa.item.id}`)}
+          onBaixar={() => (previa.fonte === 'evidencia'
+            ? void baixarEvidencia(previa.item)
+            : void baixarAnexo(previa.item))}
           onFechar={() => setPrevia(null)}
         />
       )}

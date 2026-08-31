@@ -14,7 +14,7 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
   opcoes: {
     valor: T;
     label: string;
-    logo?: { src: string; altura: number; escurecer?: boolean; cor?: string; proporcao?: number };
+    logo?: { src: string; altura: number; escurecer?: boolean; cor?: string; corEscura?: string; proporcao?: number };
     /** Desenho ao lado do rótulo. Diferente de `logo`, que o substitui. */
     icone?: ReactNode;
   }[];
@@ -62,7 +62,7 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
    *  selo quadrado. */
   const marca = (o: {
     label: string;
-    logo?: { src: string; altura: number; escurecer?: boolean; cor?: string; proporcao?: number };
+    logo?: { src: string; altura: number; escurecer?: boolean; cor?: string; corEscura?: string; proporcao?: number };
     icone?: ReactNode;
   }) => {
     if (o.logo) {
@@ -75,6 +75,7 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
             style={{
               height: h, width: Math.round(h * o.logo.proporcao),
               '--marca': `url(${o.logo.src})`, '--marca-cor': o.logo.cor,
+              '--marca-cor-escura': o.logo.corEscura,
             } as CSSProperties} />
         );
       }
