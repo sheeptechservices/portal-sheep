@@ -24,14 +24,26 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
   placeholder?: string;
 }) {
   const [aberto, setAberto] = useState(false);
+  const [busca, setBusca] = useState('');
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
   const atual = opcoes.find(o => o.valor === valor);
 
+  // Acima de sete itens a lista deixa de caber de uma olhada: entra a busca.
+  // Ela ignora acento porque ninguém digita "Bão" para achar Cheirin Bão.
+  const BUSCA_A_PARTIR_DE = 7;
+  const semAcento = (t: string) =>
+    t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLocaleLowerCase('pt-BR');
+  const buscando = opcoes.length > BUSCA_A_PARTIR_DE;
+  const q = semAcento(busca.trim());
+  const filtradas = q ? opcoes.filter(o => semAcento(o.label).includes(q)) : opcoes;
+
   function abrir() {
     const rect = triggerRef.current!.getBoundingClientRect();
-    const altura = Math.min(8 + opcoes.length * 36, 320);
+    // O campo de busca ocupa uma linha a mais: sem contar com ele, o cálculo de
+    // abrir para cima erra por 36px justo perto do rodapé.
+    const altura = Math.min(8 + (opcoes.length + (buscando ? 1 : 0)) * 36, 320);
     const espacoAbaixo = window.innerHeight - rect.bottom - 8;
     const paraCima = espacoAbaixo < altura && rect.top > altura;
     setPos({
@@ -39,6 +51,7 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
       left: rect.left,
       width: Math.max(rect.width, minWidth ?? 180),
     });
+    setBusca('');
     setAberto(o => !o);
   }
 
@@ -107,7 +120,27 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
       {aberto && createPortal(
         <div ref={dropRef} className="status-select-dropdown"
           style={{ top: pos.top, left: pos.left, minWidth: pos.width, zIndex: 10000 }}>
-          {opcoes.map(o => (
+          {buscando && (
+            <input autoFocus className="form-input" value={busca}
+              onChange={e => setBusca(e.target.value)} placeholder="Buscar"
+              onKeyDown={e => {
+                if (e.key === 'Escape') { setBusca(''); setAberto(false); }
+                // Enter escolhe a única que sobrou: com a lista já reduzida a
+                // uma linha, obrigar o clique é passo a mais sem ganho.
+                if (e.key === 'Enter' && filtradas.length === 1) {
+                  e.preventDefault();
+                  onChange(filtradas[0].valor);
+                  setAberto(false);
+                }
+              }}
+              style={{ height: 32, fontSize: 12.5, marginBottom: 4 }} />
+          )}
+          {filtradas.length === 0 && (
+            <p style={{ fontSize: 12, color: 'var(--gray2)', margin: 0, padding: '6px 8px' }}>
+              Nada com esse nome.
+            </p>
+          )}
+          {filtradas.map(o => (
             <div
               key={o.valor}
               className={`status-select-option${valor === o.valor ? ' active' : ''}`}

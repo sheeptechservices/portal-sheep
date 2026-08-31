@@ -2010,8 +2010,20 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
    justamente o que identifica a marca, então preserva-se a luminância. */
 .login-marcas-fita img[data-detalhe] { filter: grayscale(1) opacity(.72); }
 .login-marcas-fita img:hover { filter: none; }
-/* Anti: escurece em vez de acender no verde limão da marca. */
-.login-marcas-fita img[data-hover="preto"]:hover { filter: brightness(0); }
+/* Marca desenhada para fundo escuro: no hover ela ganha a chapa que lhe falta,
+   e aí sim aparece na cor original. Escurecê-la, como se fazia antes, mostrava
+   o desenho mas jogava fora a cor - que é o que o hover promete nas outras. O
+   recuo já existe em repouso para a fita não pular de tamanho no hover. */
+.login-marcas-fita img[data-hover="preto"] {
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  transition: filter var(--transition), background-color var(--transition);
+}
+
+.login-marcas-fita img[data-hover="preto"]:hover {
+  filter: none;
+  background-color: #141518;
+}
 
 /* Marca tingida na fita: acompanha o cinza das vizinhas em repouso e acende na
    cor própria no hover, que é a mesma promessa das outras. */

@@ -5,7 +5,7 @@ import {
   IconAlert, IconClip, IconDoc, IconDownload, IconImage, IconInbox,
   IconChevronDown, IconChevronRight, IconChevronUp, IconChevronUpDown,
   IconEdit, IconEye, IconLink, IconMarcoAndamento, IconMarcoBloqueado,
-  IconAgrupar, IconCalendario, IconCheck, IconFolder, IconOrdenar, IconSearch,
+  IconAgrupar, IconCalendario, IconCheck, IconOrdenar, IconSearch,
   IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado,
   IconPlus, IconPrioridadeAlta, IconPrioridadeBaixa, IconPrioridadeMaxima,
   IconPrioridadeMedia, IconTrash, IconTrendDown, IconTrendFlat, IconTrendUp, IconTrendWavy,
@@ -355,6 +355,7 @@ function AnelProgresso({ valor, size = 15 }: { valor: number; size?: number }) {
  *  antes de "Urgentíssima", que é o contrário do que se quer ver. */
 const CHAVE_ORDEM: Record<string, (p: Projeto) => string | number> = {
   projeto: p => p.nome.toLocaleLowerCase('pt-BR'),
+  cliente: p => p.cliente_nome?.toLocaleLowerCase('pt-BR') ?? '\uffff',
   saude: p => (p.saude[0] ? SAUDES.indexOf(p.saude[0].estado as typeof SAUDES[number]) : SAUDES.length),
   prioridade: p => PRIORIDADES.indexOf((p.prioridade ?? PRIORIDADE_PADRAO) as typeof PRIORIDADES[number]),
   gestor: p => gestorDe(p)?.nome.toLocaleLowerCase('pt-BR') ?? '\uffff',
@@ -3039,9 +3040,10 @@ export default function ProjetosPage({ token }: { token: string }) {
                 {/* A coluna do projeto tomava o espaço que sobrava. Presa em
                     32%, o resto da linha respira e o nome corta com reticências. */}
                 {([
-                  ['projeto', 'Projeto', '32%'],
-                  ['saude', 'Saúde', 160],
+                  ['projeto', 'Projeto', 220],
+                  ['saude', 'Saúde', 150],
                   ['prioridade', 'Prioridade', 60],
+                  ['cliente', 'Cliente', 150],
                   ['gestor', 'Gestor', 170],
                   ['entrega', 'Entrega', 130],
                   ['entregas', 'Entregas', 70],
@@ -3072,51 +3074,26 @@ export default function ProjetosPage({ token }: { token: string }) {
                   style={{ cursor: podeEditar ? 'pointer' : 'default' }}>
                   <td>
                     {(() => {
-                      const marca = logoDoCliente(p.cliente_nome);
                       // A entrega em curso é a primeira que ainda não terminou:
                       // é ela que responde "em que pé está o projeto".
                       const atual = p.entregas.find(e =>
                         e.status !== ENTREGA_CONCLUIDA && e.status !== ENTREGA_CANCELADA);
                       return (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
-                          {marca?.cor && marca.proporcao ? (
-                            <span className="marca-tingida" role="img" aria-label={p.cliente_nome ?? ''}
-                              title={p.cliente_nome ?? undefined}
-                              style={{
-                                height: 12, width: Math.round(12 * marca.proporcao),
-                                '--marca': `url(${marca.src})`, '--marca-cor': marca.cor,
-                              } as React.CSSProperties} />
-                          ) : marca ? (
-                            <img className="select-logo" src={marca.src} alt={p.cliente_nome ?? ''}
-                              title={p.cliente_nome ?? undefined}
-                              data-escurecer={marca.escurecer ? '' : undefined}
-                              style={{ height: 15, width: 22, flexShrink: 0 }} />
-                          ) : (
-                            <span style={{ width: 22, flexShrink: 0, color: 'var(--gray2)' }}
-                              title={p.cliente_nome ?? undefined}>
-                              <IconFolder size={15} />
+                        <span style={{ display: 'block', minWidth: 0 }}>
+                          <span style={{ display: 'block', fontWeight: 600, color: 'var(--black)',
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                            title={atual ? `Em curso: ${atual.titulo} (${atual.status})` : undefined}>
+                            {p.nome}
+                          </span>
+                          {p.descricao && (
+                            <span style={{ display: 'block', marginTop: 3, fontSize: 11.5,
+                              color: 'var(--gray2)', overflow: 'hidden',
+                              textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                              title={p.descricao}>
+                              {p.descricao}
                             </span>
                           )}
-                          <span style={{ minWidth: 0 }}>
-                            <span style={{ display: 'block', overflow: 'hidden',
-                              textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              <span style={{ fontWeight: 600, color: 'var(--black)' }}>{p.nome}</span>
-                            </span>
-                            {/* A descrição diz do que o projeto se trata, que é o
-                                que falta ao lado do nome. A entrega em curso
-                                aparece na dica, junto do seu estado. */}
-                            {p.descricao && (
-                              <span style={{ display: 'block', marginTop: 3, fontSize: 11.5,
-                                color: 'var(--gray2)', overflow: 'hidden',
-                                textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                                title={atual ? `${p.descricao}
-
-Em curso: ${atual.titulo} (${atual.status})` : p.descricao}>
-                                {p.descricao}
-                              </span>
-                            )}
-                          </span>
-                        </div>
+                        </span>
                       );
                     })()}
                   </td>
@@ -3151,6 +3128,14 @@ Em curso: ${atual.titulo} (${atual.status})` : p.descricao}>
                         {ICONE_PRIORIDADE[p.prioridade ?? PRIORIDADE_PADRAO]?.({ size: 15 })}
                       </span>
                     )}
+                  </td>
+
+                  <td style={{ color: 'var(--gray)', fontSize: 12 }}
+                    title={p.cliente_nome ?? undefined}>
+                    <span style={{ display: 'block', overflow: 'hidden',
+                      textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {p.cliente_nome || '-'}
+                    </span>
                   </td>
 
                   <td>
