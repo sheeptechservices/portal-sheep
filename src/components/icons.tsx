@@ -298,6 +298,10 @@ export function IconAgrupar({ size = 14 }: { size?: number }) {
     </Ico>
   );
 }
+// Data-alvo numa linha de tabela.
+export function IconCalendario({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><rect x="3.2" y="4.8" width="17.6" height="16" rx="2.4" /><path d="M3.2 9.6h17.6M8 3.2v3M16 3.2v3" /></Ico>;
+}
 // Estado vazio - nada por aqui.
 export function IconInbox({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M21.5 12.5h-5.4l-1.8 3H9.7l-1.8-3H2.5" /><path d="M5.9 5.1L2.5 12.5V18a2 2 0 002 2h15a2 2 0 002-2v-5.5l-3.4-7.4A2 2 0 0016.3 4H7.7a2 2 0 00-1.8 1.1z" /></Ico>;

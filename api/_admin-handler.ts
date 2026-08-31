@@ -25,6 +25,45 @@ import {
 // novo em vez de herdar um schema pela metade.
 let _schemaPromessa: Promise<void> | null = null;
 
+const FORA_DA_EQUIPE = {
+  status: 403,
+  body: { error: 'Você não faz parte da equipe deste projeto.' },
+};
+
+/** Portão de escrita: membro só mexe em projeto onde está na equipe. Master e
+ *  admin passam direto. Devolve a recusa, ou `null` para seguir.
+ *
+ *  `de` diz de onde o projeto é deduzido quando a ação recebe o id de um filho
+ *  (entrega, anexo, evidência) em vez do projeto. */
+async function guardaDaEquipe(
+  db: Client,
+  usuario: UsuarioAdmin | null | undefined,
+  id: unknown,
+  de: 'projeto' | 'entrega' | 'evidencia' | 'arquivo' | 'saude' | 'reuniao' = 'projeto',
+) {
+  if (papelEfetivo(usuario?.email, usuario?.papel) !== 'membro') return null;
+  if (id === undefined || id === null || id === '') return FORA_DA_EQUIPE;
+
+  const ORIGEM: Record<string, string> = {
+    projeto: 'SELECT ? AS projeto_id',
+    entrega: 'SELECT projeto_id FROM projeto_entregas WHERE id = ?',
+    evidencia: `SELECT t.projeto_id FROM entrega_evidencias e
+                JOIN projeto_entregas t ON t.id = e.entrega_id WHERE e.id = ?`,
+    arquivo: 'SELECT projeto_id FROM projeto_arquivos WHERE id = ?',
+    saude: 'SELECT projeto_id FROM projeto_saude WHERE id = ?',
+    reuniao: 'SELECT projeto_id FROM projeto_reunioes WHERE id = ?',
+  };
+  const dono = await db.execute({ sql: ORIGEM[de], args: [id as never] });
+  const projetoId = dono.rows[0]?.projeto_id;
+  if (!projetoId) return FORA_DA_EQUIPE;
+
+  const membro = await db.execute({
+    sql: 'SELECT 1 FROM projeto_equipe WHERE projeto_id = ? AND usuario_id = ?',
+    args: [projetoId, usuario?.id ?? ''],
+  });
+  return membro.rows.length ? null : FORA_DA_EQUIPE;
+}
+
 /** Status de entrega em que a prova de conclusão é exigida. */
 const ENTREGA_CONCLUIDA = 'Concluída';
 const ENTREGA_CANCELADA = 'Cancelada';
@@ -1631,14 +1670,26 @@ async function despacharAdminData(
     // Detalhe de uma análise - inclui snapshot e parecer da IA (reimpressão)
     // ── Projetos ──────────────────────────────────────────────────────────
     if (action === 'projetos') {
+      // Membro só enxerga projeto em que está na equipe. O corte é aqui, e não
+      // na tela: filtrar no front mandaria a base inteira para o navegador de
+      // quem não deve vê-la.
+      const soDaEquipe = papelEfetivo(usuario?.email, usuario?.papel) === 'membro';
+
       const [projs, equipe, arqs, clientes, saude, reunioes, entregas, evidencias] = await Promise.all([
-        db.execute(`
-          SELECT p.*, c.nome AS cliente_nome
-          FROM projetos p
-          LEFT JOIN clientes c ON c.id = p.cliente_id
-          WHERE p.ativo = 1
-          ORDER BY p.criado_em DESC
-        `),
+        db.execute({
+          sql: `
+            SELECT p.*, c.nome AS cliente_nome
+            FROM projetos p
+            LEFT JOIN clientes c ON c.id = p.cliente_id
+            WHERE p.ativo = 1
+              AND (? = 0 OR EXISTS (
+                SELECT 1 FROM projeto_equipe e
+                WHERE e.projeto_id = p.id AND e.usuario_id = ?
+              ))
+            ORDER BY p.criado_em DESC
+          `,
+          args: [soDaEquipe ? 1 : 0, usuario?.id ?? ''],
+        }),
         db.execute(`
           SELECT e.projeto_id, e.usuario_id, e.papel, u.nome, u.email, u.foto_url
           FROM projeto_equipe e JOIN usuarios u ON u.id = e.usuario_id
@@ -1699,6 +1750,8 @@ async function despacharAdminData(
     if (action === 'entrega_evidencia_base64') {
       const id = Number(query.get('id'));
       if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };
+      const barrado = await guardaDaEquipe(db, usuario, id, 'evidencia');
+      if (barrado) return barrado;
       const r = await db.execute({
         sql: 'SELECT nome, tipo, base64 FROM entrega_evidencias WHERE id = ?',
         args: [id],
@@ -1710,6 +1763,8 @@ async function despacharAdminData(
     if (action === 'projeto_arquivo_base64') {
       const id = Number(query.get('id'));
       if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };
+      const barrado = await guardaDaEquipe(db, usuario, id, 'arquivo');
+      if (barrado) return barrado;
       const r = await db.execute({
         sql: 'SELECT nome, tipo, base64 FROM projeto_arquivos WHERE id = ?',
         args: [id],
@@ -2057,6 +2112,8 @@ function faltaEmProjeto(p: any): string | null {
     if (action === 'update_projeto') {
       const p = body;
       if (!p?.id) return { status: 400, body: { error: 'id ausente.' } };
+      const barrado = await guardaDaEquipe(db, usuario, p.id);
+      if (barrado) return barrado;
       // A edição parcial da aba de gestão manda só status e progresso; validar
       // tudo aqui barraria arrastar o slider. Só o formulário completo, que
       // envia `equipe`, passa pela validação inteira.
@@ -2102,6 +2159,7 @@ function faltaEmProjeto(p: any): string | null {
     }
 
     if (action === 'delete_projeto') {
+      { const barrado = await guardaDaEquipe(db, usuario, body.id); if (barrado) return barrado; }
       // Exclusão lógica, como no resto do sistema: o histórico de auditoria
       // continua apontando para uma linha que existe.
       await db.execute({
@@ -2112,6 +2170,7 @@ function faltaEmProjeto(p: any): string | null {
     }
 
     if (action === 'add_projeto_arquivo') {
+      { const barrado = await guardaDaEquipe(db, usuario, body.projeto_id); if (barrado) return barrado; }
       const a = body;
       if (!a?.projeto_id || !a?.nome || !a?.base64) {
         return { status: 400, body: { error: 'Anexo incompleto.' } };
@@ -2131,6 +2190,8 @@ function faltaEmProjeto(p: any): string | null {
     // então trocar aqui move o arquivo de grupo.
     if (action === 'salvar_entrega') {
       const e = body;
+      const barrado = await guardaDaEquipe(db, usuario, e.projeto_id);
+      if (barrado) return barrado;
       const titulo = String(e.titulo ?? '').trim();
       if (!e.projeto_id) return { status: 400, body: { error: 'projeto_id ausente.' } };
       if (!titulo) return { status: 400, body: { error: 'A entrega precisa de um título.' } };
@@ -2182,6 +2243,7 @@ function faltaEmProjeto(p: any): string | null {
     }
 
     if (action === 'excluir_entrega') {
+      { const barrado = await guardaDaEquipe(db, usuario, body.id, 'entrega'); if (barrado) return barrado; }
       const dono = await db.execute({
         sql: 'SELECT projeto_id FROM projeto_entregas WHERE id = ?',
         args: [body.id],
@@ -2202,6 +2264,7 @@ function faltaEmProjeto(p: any): string | null {
     }
 
     if (action === 'add_entrega_evidencia') {
+      { const barrado = await guardaDaEquipe(db, usuario, body.entrega_id, 'entrega'); if (barrado) return barrado; }
       if (!body.entrega_id) return { status: 400, body: { error: 'entrega_id ausente.' } };
       // `substituir` chega da conclusão: a prova anterior fica guardada desde a
       // reabertura e só sai agora, quando existe uma nova no lugar dela. Assim
@@ -2223,6 +2286,7 @@ function faltaEmProjeto(p: any): string | null {
     }
 
     if (action === 'excluir_entrega_evidencia') {
+      { const barrado = await guardaDaEquipe(db, usuario, body.id, 'evidencia'); if (barrado) return barrado; }
       // Tirar a última prova de uma entrega concluída a devolve para andamento:
       // deixar "Concluída" sem evidência quebraria a regra pelas costas.
       const alvo = await db.execute({
@@ -2247,6 +2311,7 @@ function faltaEmProjeto(p: any): string | null {
     }
 
     if (action === 'registrar_reuniao_projeto') {
+      { const barrado = await guardaDaEquipe(db, usuario, body.projeto_id); if (barrado) return barrado; }
       const assunto = String(body.assunto ?? '').trim();
       const notas = String(body.notas ?? '').trim();
       if (!body.projeto_id) return { status: 400, body: { error: 'projeto_id ausente.' } };
@@ -2267,6 +2332,7 @@ function faltaEmProjeto(p: any): string | null {
     }
 
     if (action === 'excluir_reuniao_projeto') {
+      { const barrado = await guardaDaEquipe(db, usuario, body.id, 'reuniao'); if (barrado) return barrado; }
       await db.execute({ sql: 'DELETE FROM projeto_reunioes WHERE id = ?', args: [body.id] });
       return { status: 200, body: { ok: true } };
     }
@@ -2274,6 +2340,7 @@ function faltaEmProjeto(p: any): string | null {
     // Nova leitura de saúde. Não substitui a anterior: o valor da tela está em
     // ver a série, então cada registro é uma linha nova.
     if (action === 'registrar_saude_projeto') {
+      { const barrado = await guardaDaEquipe(db, usuario, body.projeto_id); if (barrado) return barrado; }
       const estado = String(body.estado ?? '').trim();
       const descricao = String(body.descricao ?? '').trim();
       if (!body.projeto_id) return { status: 400, body: { error: 'projeto_id ausente.' } };
@@ -2288,11 +2355,13 @@ function faltaEmProjeto(p: any): string | null {
     }
 
     if (action === 'excluir_saude_projeto') {
+      { const barrado = await guardaDaEquipe(db, usuario, body.id, 'saude'); if (barrado) return barrado; }
       await db.execute({ sql: 'DELETE FROM projeto_saude WHERE id = ?', args: [body.id] });
       return { status: 200, body: { ok: true } };
     }
 
     if (action === 'etiquetar_projeto_arquivo') {
+      { const barrado = await guardaDaEquipe(db, usuario, body.id, 'arquivo'); if (barrado) return barrado; }
       await db.execute({
         sql: 'UPDATE projeto_arquivos SET etiqueta = ? WHERE id = ?',
         args: [String(body.etiqueta ?? 'Outro'), body.id],
@@ -2301,6 +2370,7 @@ function faltaEmProjeto(p: any): string | null {
     }
 
     if (action === 'delete_projeto_arquivo') {
+      { const barrado = await guardaDaEquipe(db, usuario, body.id, 'arquivo'); if (barrado) return barrado; }
       await db.execute({ sql: 'DELETE FROM projeto_arquivos WHERE id = ?', args: [body.id] });
       return { status: 200, body: { ok: true } };
     }

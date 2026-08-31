@@ -4,7 +4,7 @@ import { iniciais, useAuth, useToast } from './AdminApp';
 import {
   IconAlert, IconClip, IconDoc, IconDownload, IconImage, IconInbox,
   IconChevronRight, IconEdit, IconEye, IconLink, IconMarcoAndamento, IconMarcoBloqueado,
-  IconAgrupar, IconCheck, IconFolder, IconOrdenar, IconSearch,
+  IconAgrupar, IconCalendario, IconCheck, IconFolder, IconOrdenar, IconSearch,
   IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado,
   IconPlus, IconPrioridadeAlta, IconPrioridadeBaixa, IconPrioridadeMaxima,
   IconPrioridadeMedia, IconTrash, IconTrendDown, IconTrendFlat, IconTrendUp, IconTrendWavy,
@@ -318,6 +318,34 @@ function rotuloDoLink(url: string): string {
   } catch {
     return url;
   }
+}
+
+/** Há quanto tempo foi a última leitura de saúde. A idade importa tanto quanto
+ *  o estado: "Saudável" de dois meses atrás não diz nada sobre hoje. */
+function idadeDaLeitura(iso: string | undefined, hoje = new Date()): string {
+  if (!iso) return '';
+  const dias = Math.floor((hoje.getTime() - new Date(iso).getTime()) / 86400000);
+  if (dias <= 0) return 'hoje';
+  if (dias < 7) return `${dias}d`;
+  const semanas = Math.floor(dias / 7);
+  return semanas < 9 ? `${semanas}sem` : `${Math.floor(dias / 30)}m`;
+}
+
+/** Anel de progresso, no lugar da barra: ocupa a largura de um ícone e a fatia
+ *  preenchida se lê de relance, que é o que uma linha de tabela pede. */
+function AnelProgresso({ valor, size = 15 }: { valor: number; size?: number }) {
+  const v = Math.min(100, Math.max(0, valor));
+  const r = 7;
+  const volta = 2 * Math.PI * r;
+  const cor = v === 100 ? COR_ENTREGA[ENTREGA_CONCLUIDA] : 'var(--gray)';
+  return (
+    <svg width={size} height={size} viewBox="0 0 18 18" fill="none" aria-hidden="true"
+      style={{ flexShrink: 0 }}>
+      <circle cx="9" cy="9" r={r} stroke="var(--gray3)" strokeWidth="2.4" />
+      <circle cx="9" cy="9" r={r} stroke={cor} strokeWidth="2.4" strokeLinecap="round"
+        strokeDasharray={`${(v / 100) * volta} ${volta}`} transform="rotate(-90 9 9)" />
+    </svg>
+  );
 }
 
 function progressoDe(p: Projeto): number {
@@ -2077,13 +2105,6 @@ function FormularioProjeto({
               {editando && (
                 <>
                   <button type="button" className="secao-add" style={{ width: 30, height: 30 }}
-                    disabled={!editando.drive}
-                    title={editando.drive ? 'Abrir a pasta no Drive' : 'Nenhuma pasta do Drive definida'}
-                    aria-label="Abrir a pasta do projeto no Drive"
-                    onClick={() => editando.drive && window.open(editando.drive, '_blank', 'noopener')}>
-                    <IconFolder size={15} />
-                  </button>
-                  <button type="button" className="secao-add" style={{ width: 30, height: 30 }}
                     title={copiado ? 'Link copiado' : 'Copiar link do projeto'}
                     aria-label="Copiar link para compartilhar o projeto"
                     onClick={() => void copiarLink()}>
@@ -2722,7 +2743,14 @@ export default function ProjetosPage({ token }: { token: string }) {
           <table className="admin-table">
             <thead>
               <tr>
-                <th>Código</th><th>Projeto</th><th>Cliente</th><th>Tipo</th><th>Status</th><th>Anexos</th>
+                <th>Projeto</th>
+                <th>Saúde</th>
+                <th style={{ width: 60 }}>Prioridade</th>
+                <th>Gestor</th>
+                <th>Entrega</th>
+                <th style={{ width: 70 }}>Entregas</th>
+                <th style={{ width: 90 }}>Progresso</th>
+                <th>Status</th>
                 <th>Ações</th>
               </tr>
             </thead>
@@ -2739,26 +2767,105 @@ export default function ProjetosPage({ token }: { token: string }) {
                     }
                   }}
                   style={{ cursor: podeEditar ? 'pointer' : 'default' }}>
-                  <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--gray)', whiteSpace: 'nowrap' }}>
-                    {p.codigo || '-'}
-                  </td>
                   <td>
-                    <div style={{ fontWeight: 600, color: 'var(--black)' }}
-                      title={p.descricao ?? undefined}>
-                      {p.nome}
-                    </div>
-                    {/* O antigo "objetivo" virou a primeira entrega. O subtítulo
-                        mostra o andamento delas, que diz mais que o texto fixo. */}
-                    {p.entregas.length > 0 && (
-                      <div style={{ fontSize: 11.5, color: 'var(--gray2)', marginTop: 2 }}>
-                        {p.entregas.filter(e => e.status === ENTREGA_CONCLUIDA).length} de {p.entregas.length}
-                        {p.entregas.length === 1 ? ' entrega concluída' : ' entregas concluídas'}
-                        {' · '}{p.entregas[0].titulo}
-                      </div>
-                    )}
+                    {(() => {
+                      const marca = logoDoCliente(p.cliente_nome);
+                      // A entrega em curso é a primeira que ainda não terminou:
+                      // é ela que responde "em que pé está o projeto".
+                      const atual = p.entregas.find(e =>
+                        e.status !== ENTREGA_CONCLUIDA && e.status !== ENTREGA_CANCELADA);
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+                          {marca ? (
+                            <img className="select-logo" src={marca.src} alt={p.cliente_nome ?? ''}
+                              title={p.cliente_nome ?? undefined}
+                              data-escurecer={marca.escurecer ? '' : undefined}
+                              style={{ height: 15, width: 22, flexShrink: 0 }} />
+                          ) : (
+                            <span style={{ width: 22, flexShrink: 0, color: 'var(--gray2)' }}
+                              title={p.cliente_nome ?? undefined}>
+                              <IconFolder size={15} />
+                            </span>
+                          )}
+                          <span style={{ minWidth: 0 }}>
+                            <span style={{ display: 'block', overflow: 'hidden',
+                              textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                              title={p.descricao ?? undefined}>
+                              <span style={{ color: 'var(--gray2)', fontVariantNumeric: 'tabular-nums' }}>
+                                [{p.codigo || '-'}]
+                              </span>
+                              {' '}
+                              <span style={{ fontWeight: 600, color: 'var(--black)' }}>{p.nome}</span>
+                            </span>
+                            {atual && (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5,
+                                marginTop: 3, fontSize: 11, color: 'var(--gray2)' }}>
+                                <span style={{ color: COR_ENTREGA[atual.status], display: 'inline-flex' }}>
+                                  {(ICONE_ENTREGA[atual.status] ?? IconMarcoPlanejado)({ size: 11 })}
+                                </span>
+                                {atual.titulo}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    })()}
                   </td>
-                  <td>{p.cliente_nome || '-'}</td>
-                  <td style={{ color: 'var(--gray)' }}>{p.tipo || '-'}</td>
+
+                  <td>
+                    <span title={p.saude[0]?.descricao ?? 'Nenhuma leitura de saúde registrada.'}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <ChipSaude estado={p.saude[0]?.estado ?? SEM_LEITURA} size={11} />
+                      {p.saude[0] && (
+                        <span style={{ fontSize: 11, color: 'var(--gray2)' }}>
+                          {idadeDaLeitura(p.saude[0].criado_em)}
+                        </span>
+                      )}
+                    </span>
+                  </td>
+
+                  <td>
+                    {/* Só o ícone: a escala se lê pela altura das barras, e o
+                        nome do nível fica na dica. */}
+                    <span title={`Prioridade: ${p.prioridade ?? PRIORIDADE_PADRAO}`}>
+                      {ICONE_PRIORIDADE[p.prioridade ?? PRIORIDADE_PADRAO]?.({ size: 15 })}
+                    </span>
+                  </td>
+
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <Gestor nome={gestorDe(p)?.nome ?? null} email={gestorDe(p)?.email ?? null}
+                      foto={gestorDe(p)?.foto_url} />
+                  </td>
+
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {(() => {
+                      const dias = diasPara(p.previsao_entrega);
+                      const atrasado = dias !== null && dias < 0
+                        && p.status !== 'Concluído' && p.status !== 'Cancelado';
+                      return (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5,
+                          fontSize: 12, color: atrasado ? 'var(--red)' : 'var(--gray)' }}
+                          title={atrasado ? `${Math.abs(dias!)} dia(s) de atraso` : undefined}>
+                          <IconCalendario size={13} />
+                          {fmtData(p.previsao_entrega)}
+                        </span>
+                      );
+                    })()}
+                  </td>
+
+                  <td style={{ color: 'var(--gray2)', fontVariantNumeric: 'tabular-nums' }}>
+                    {p.entregas.length || '-'}
+                  </td>
+
+                  <td>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6,
+                      fontSize: 12, fontWeight: 600, color: 'var(--gray)' }}
+                      title={`${p.entregas.filter(e => e.status === ENTREGA_CONCLUIDA).length} de ${p.entregas.length} entrega(s) concluída(s)`}>
+                      <AnelProgresso valor={progressoDe(p)} />
+                      {progressoDe(p)}%
+                    </span>
+                  </td>
+
                   <td>
                     {podeEditar ? (
                       // O controle vive dentro de uma linha clicavel: o clique e o
@@ -2768,7 +2875,6 @@ export default function ProjetosPage({ token }: { token: string }) {
                       </span>
                     ) : <ChipStatus status={p.status} />}
                   </td>
-                  <td style={{ color: 'var(--gray2)' }}>{p.arquivos.length || '-'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {podeExcluir && (
                       <button className="admin-toolbar-btn" title="Excluir projeto"

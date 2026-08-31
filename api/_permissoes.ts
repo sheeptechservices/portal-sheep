@@ -156,10 +156,25 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   add_projeto_arquivo: 'projetos:editar',
   delete_projeto_arquivo: 'projetos:editar',
   projeto_arquivo_base64: 'projetos:ver',
+  etiquetar_projeto_arquivo: 'projetos:editar',
   create_cliente: 'projetos:criar',
+  // Entregas, saúde e reuniões pendem do projeto: quem edita o projeto edita o
+  // que está dentro dele. Ver o conteúdo da evidência é leitura.
+  salvar_entrega: 'projetos:editar',
+  excluir_entrega: 'projetos:editar',
+  add_entrega_evidencia: 'projetos:editar',
+  excluir_entrega_evidencia: 'projetos:editar',
+  entrega_evidencia_base64: 'projetos:ver',
+  registrar_saude_projeto: 'projetos:editar',
+  excluir_saude_projeto: 'projetos:editar',
+  registrar_reuniao_projeto: 'projetos:editar',
+  excluir_reuniao_projeto: 'projetos:editar',
   // ── Sempre liberado ────────────────────────────────────────────────────────
   me: LIVRE,
   perfil: LIVRE,
+  // Lista de nomes e fotos do time, que alimenta os seletores de pessoas. Não
+  // expõe nada além do que já aparece na equipe de um projeto.
+  usuarios_notificaveis: LIVRE,
   quick_search: LIVRE, // o resultado é filtrado por permissão dentro do handler
 
   // ── Gestão de usuários e acessos ──────────────────────────────────────────
