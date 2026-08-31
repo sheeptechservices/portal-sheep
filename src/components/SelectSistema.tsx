@@ -1,4 +1,4 @@
-import { useState, useRef, type ReactNode } from 'react';
+import { useState, useRef, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 
@@ -14,7 +14,7 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
   opcoes: {
     valor: T;
     label: string;
-    logo?: { src: string; altura: number; escurecer?: boolean };
+    logo?: { src: string; altura: number; escurecer?: boolean; cor?: string; proporcao?: number };
     /** Desenho ao lado do rótulo. Diferente de `logo`, que o substitui. */
     icone?: ReactNode;
   }[];
@@ -49,19 +49,35 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
    *  selo quadrado. */
   const marca = (o: {
     label: string;
-    logo?: { src: string; altura: number; escurecer?: boolean };
+    logo?: { src: string; altura: number; escurecer?: boolean; cor?: string; proporcao?: number };
     icone?: ReactNode;
-  }) =>
-    o.logo
-      ? <img className="select-logo" src={o.logo.src} alt={o.label} title={o.label}
+  }) => {
+    if (o.logo) {
+      const h = Math.min(24, Math.round(o.logo.altura * 0.52));
+      // Logo de uma cor só é pintada, e não achatada: mostra a cor da marca em
+      // vez do cinza que a silhueta produziria.
+      if (o.logo.cor && o.logo.proporcao) {
+        return (
+          <span className="marca-tingida" role="img" aria-label={o.label} title={o.label}
+            style={{
+              height: h, width: Math.round(h * o.logo.proporcao),
+              '--marca': `url(${o.logo.src})`, '--marca-cor': o.logo.cor,
+            } as CSSProperties} />
+        );
+      }
+      return (
+        <img className="select-logo" src={o.logo.src} alt={o.label} title={o.label}
           data-escurecer={o.logo.escurecer ? '' : undefined}
-          style={{ height: Math.min(24, Math.round(o.logo.altura * 0.52)) }} />
-      : (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          {o.icone}
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label}</span>
-        </span>
+          style={{ height: h }} />
       );
+    }
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        {o.icone}
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label}</span>
+      </span>
+    );
+  };
 
   return (
     <>

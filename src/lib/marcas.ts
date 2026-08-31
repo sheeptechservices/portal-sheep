@@ -9,13 +9,19 @@
  *  chapada apagaria justamente o que identifica a marca.
  *  `fundoEscuro` marca a logo desenhada em branco, para fundo escuro: sobre
  *  claro ela some. O carrossel a escurece no hover; os seletores a escurecem
- *  sempre. */
+ *  sempre.
+ *  `cor` e `proporcao` andam juntas e só existem em logo de uma cor só: o
+ *  arquivo vira máscara e a cor da marca é pintada por trás, o que dispensa
+ *  guardar uma versão do arquivo por fundo. A proporção é largura/altura, que a
+ *  máscara precisa saber para não deformar. */
 export type Marca = {
   nome: string;
   src: string;
   altura: number;
   fundoEscuro?: boolean;
   detalhe?: boolean;
+  cor?: string;
+  proporcao?: number;
 };
 
 export const MARCAS: Marca[] = [
@@ -30,6 +36,9 @@ export const MARCAS: Marca[] = [
   { nome: 'Click!', src: '/marcas/click.webp', altura: 32 },
   { nome: '300 Franchising', src: '/marcas/300-f.webp', altura: 34 },
   { nome: 'Grupo 3SA', src: '/marcas/grupo-3sa.webp', altura: 28, fundoEscuro: true },
+  // Assinatura larga e desenhada em branco: altura baixa, e escurece onde o
+  // fundo é claro, como a do Grupo 3SA.
+  { nome: 'Orteconte', src: '/marcas/orteconte.webp', altura: 26, cor: '#5B92C8', proporcao: 1536 / 301 },
 ];
 
 /** Casa o cliente com a marca pelo nome. Cliente cadastrado à mão não tem logo,
@@ -43,5 +52,8 @@ export function marcaDoCliente(nome: string | null | undefined): Marca | undefin
 /** A logo no formato que os seletores do portal esperam. */
 export function logoDoCliente(nome: string | null | undefined) {
   const m = marcaDoCliente(nome);
-  return m && { src: m.src, altura: m.altura, escurecer: m.fundoEscuro };
+  return m && {
+    src: m.src, altura: m.altura, escurecer: m.fundoEscuro,
+    cor: m.cor, proporcao: m.proporcao,
+  };
 }

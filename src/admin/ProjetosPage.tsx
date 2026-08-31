@@ -3079,7 +3079,14 @@ export default function ProjetosPage({ token }: { token: string }) {
                         e.status !== ENTREGA_CONCLUIDA && e.status !== ENTREGA_CANCELADA);
                       return (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
-                          {marca ? (
+                          {marca?.cor && marca.proporcao ? (
+                            <span className="marca-tingida" role="img" aria-label={p.cliente_nome ?? ''}
+                              title={p.cliente_nome ?? undefined}
+                              style={{
+                                height: 12, width: Math.round(12 * marca.proporcao),
+                                '--marca': `url(${marca.src})`, '--marca-cor': marca.cor,
+                              } as React.CSSProperties} />
+                          ) : marca ? (
                             <img className="select-logo" src={marca.src} alt={p.cliente_nome ?? ''}
                               title={p.cliente_nome ?? undefined}
                               data-escurecer={marca.escurecer ? '' : undefined}

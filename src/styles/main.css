@@ -2013,6 +2013,19 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
 /* Anti: escurece em vez de acender no verde limão da marca. */
 .login-marcas-fita img[data-hover="preto"]:hover { filter: brightness(0); }
 
+/* Marca tingida na fita: acompanha o cinza das vizinhas em repouso e acende na
+   cor própria no hover, que é a mesma promessa das outras. */
+.login-marca-tingida {
+  display: inline-block;
+  flex-shrink: 0;
+  background-color: #8c8c8c;
+  -webkit-mask: var(--marca) center / contain no-repeat;
+  mask: var(--marca) center / contain no-repeat;
+  transition: background-color var(--transition);
+}
+
+.login-marca-tingida:hover { background-color: var(--marca-cor); }
+
 /* ── Palco das ondas ──────────────────────────────────────────────────── */
 .login-palco {
   flex: 1 1 56%;
@@ -2517,6 +2530,17 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
 .secao-add:disabled {
   opacity: 0.55;
   cursor: default;
+}
+
+/* Logo de uma cor só, pintada por máscara. O arquivo entra como recorte e a
+   cor da marca vem do `background`, então um arquivo serve a qualquer fundo e
+   não é preciso guardar uma versão clara e outra escura. */
+.marca-tingida {
+  display: inline-block;
+  flex-shrink: 0;
+  background-color: var(--marca-cor, currentColor);
+  -webkit-mask: var(--marca) center / contain no-repeat;
+  mask: var(--marca) center / contain no-repeat;
 }
 
 /* ── Logo de cliente dentro de seletor ────────────────────────────────── */

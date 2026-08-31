@@ -815,6 +815,22 @@ function MarcasDoGrupo() {
         {/* A fita é duplicada: a animação corre até -50% e emenda sem salto. */}
         <div className="login-marcas-fita">
           {[0, 1].map(volta => MARCAS.map(m => (
+            m.cor && m.proporcao ? (
+              // Marca de uma cor só entra por máscara: cinza em repouso, como as
+              // outras, e a cor da marca no hover - que é o que a fita promete.
+              <span
+                key={`${volta}-${m.nome}`}
+                className="login-marca-tingida"
+                role={volta === 0 ? 'img' : undefined}
+                aria-label={volta === 0 ? m.nome : undefined}
+                aria-hidden={volta === 1 || undefined}
+                data-copia={volta === 1 ? '' : undefined}
+                style={{
+                  height: m.altura, width: Math.round(m.altura * m.proporcao),
+                  '--marca': `url(${m.src})`, '--marca-cor': m.cor,
+                } as React.CSSProperties}
+              />
+            ) : (
             <img
               key={`${volta}-${m.nome}`}
               src={m.src}
@@ -825,6 +841,7 @@ function MarcasDoGrupo() {
               data-detalhe={m.detalhe ? '' : undefined}
               style={{ height: m.altura }}
             />
+            )
           )))}
         </div>
       </div>

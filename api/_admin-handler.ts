@@ -704,7 +704,7 @@ async function migrarSchema(db: Client) {
     const agora = new Date().toISOString();
     for (const nome of [
       '300 Franchising', 'Bitka Analytics', 'bip.', 'Cheirin Bão', 'Click!',
-      'Consigo Cred', 'Grupo 3SA', 'J17 Bank', 'Prontomed', 'Shell', 'Vale',
+      'Consigo Cred', 'Grupo 3SA', 'J17 Bank', 'Orteconte', 'Prontomed', 'Shell', 'Vale',
     ]) {
       await db.execute({
         sql: 'INSERT OR IGNORE INTO clientes (id, nome, ativo, criado_em) VALUES (?,?,1,?)',
