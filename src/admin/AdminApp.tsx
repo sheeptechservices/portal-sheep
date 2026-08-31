@@ -6,6 +6,7 @@ import {
 } from './papeis';
 import { createPortal, flushSync } from 'react-dom';
 import { lojaTema, comRevelacao, type Tema } from '../lib/tema';
+import { MARCAS } from '../lib/marcas';
 import { GOOGLE_CLIENT_ID, GOOGLE_DOMINIO, carregarGis } from '../lib/google';
 // Cada página é carregada sob demanda (code-splitting) - só entra no bundle quando aberta
 const LeadsPage = lazy(() => import('./LeadsPage'));
@@ -185,21 +186,21 @@ const NAV_SECTIONS: { section: string; items: NavLeaf[] }[] = [
       // próprio sem rótulo: a lista é montada com `key={group.section}`, então
       // dois grupos de título vazio colidiriam na mesma chave.
       {
+        page: 'leads',
+        label: 'Funil',
+        icon: (
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+            <path d="M3 4h18l-7 8.5V19l-4 2v-8.5L3 4z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        ),
+      },
+      {
         page: 'projetos',
         label: 'Projetos',
         icon: (
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
             <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.2l1.8 2.2h8A2.5 2.5 0 0 1 21 9.7v7.8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
             <path d="M8 13h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-          </svg>
-        ),
-      },
-      {
-        page: 'leads',
-        label: 'Funil',
-        icon: (
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-            <path d="M3 4h18l-7 8.5V19l-4 2v-8.5L3 4z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         ),
       },
@@ -802,27 +803,8 @@ function LoginScreen({ onLogin, saindo }: { onLogin: (token: string) => void; sa
   );
 }
 
-/** Carrossel dos clientes, no pé da coluna de acesso.
- *  A `altura` compensa a proporção de cada marca: assinatura larga pede menos
- *  altura que selo quadrado, senão a fita fica com pesos visuais desiguais.
- *  `hoverPreto` marca quem escurece em vez de voltar à cor própria: a do Grupo
- *  3SA é desenhada para fundo escuro e tem "GRUPO" e "SA" em branco, que
- *  sumiriam aqui - no hover sobraria o "3" solto no meio do nada.
- *  `detalhe` troca a silhueta por luminância em quem tem desenho interno
- *  definido por cor, que a silhueta apagaria. */
-const MARCAS: { nome: string; src: string; altura: number; hoverPreto?: boolean; detalhe?: boolean }[] = [
-  { nome: 'Vale', src: '/marcas/vale.webp', altura: 32 },
-  { nome: 'Shell', src: '/marcas/shell.webp', altura: 42, detalhe: true },
-  { nome: 'Prontomed', src: '/marcas/prontomed.webp', altura: 28 },
-  { nome: 'Consigo Cred', src: '/marcas/consigo-cred.webp', altura: 28 },
-  { nome: 'J17 Bank', src: '/marcas/j17.webp', altura: 34 },
-  { nome: 'Cheirin Bão', src: '/marcas/cheirin-bao.webp', altura: 50, detalhe: true },
-  { nome: 'bip.', src: '/marcas/bi.webp', altura: 34 },
-  { nome: 'Bitka Analytics', src: '/marcas/bitka.webp', altura: 34 },
-  { nome: 'Click!', src: '/marcas/click.webp', altura: 32 },
-  { nome: '300 Franchising', src: '/marcas/300-f.webp', altura: 34 },
-  { nome: 'Grupo 3SA', src: '/marcas/grupo-3sa.webp', altura: 28, hoverPreto: true },
-];
+/** Carrossel dos clientes, no pé da coluna de acesso. As logos e suas
+ *  alturas ópticas vêm de `lib/marcas`, compartilhadas com o portal. */
 
 function MarcasDoGrupo() {
   return (
@@ -838,7 +820,7 @@ function MarcasDoGrupo() {
               alt={volta === 0 ? m.nome : ''}
               aria-hidden={volta === 1 || undefined}
               data-copia={volta === 1 ? '' : undefined}
-              data-hover={m.hoverPreto ? 'preto' : undefined}
+              data-hover={m.fundoEscuro ? 'preto' : undefined}
               data-detalhe={m.detalhe ? '' : undefined}
               style={{ height: m.altura }}
             />

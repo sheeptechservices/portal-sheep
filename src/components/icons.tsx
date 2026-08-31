@@ -46,10 +46,10 @@ export function IconTrash({ size = 15 }: { size?: number }) {
 
 // Base comum dos ícones de arquivo/tipo (traço, herda currentColor, alinha inline).
 const baseIcoStyle = { display: 'inline-block', verticalAlign: '-0.15em', flexShrink: 0 } as const;
-function Ico({ size = 14, children }: { size?: number; children: ReactNode }) {
+function Ico({ size = 14, traco = 1.8, children }: { size?: number; traco?: number; children: ReactNode }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true"
-      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+      stroke="currentColor" strokeWidth={traco} strokeLinecap="round" strokeLinejoin="round"
       style={baseIcoStyle}>
       {children}
     </svg>
@@ -214,6 +214,80 @@ export function IconNote({ size = 14 }: { size?: number }) {
 export function IconUser({ size = 14 }: { size?: number }) {
   return <Ico size={size}><circle cx="12" cy="8" r="4" /><path d="M4.5 21c0-4.1 3.4-6.6 7.5-6.6s7.5 2.5 7.5 6.6" /></Ico>;
 }
+// Saúde do projeto, em metáfora de tendência: a linha sobe, oscila ou cai.
+// Só o desenho muda entre as três; a cor vem de fora, pelo currentColor.
+export function IconTrendUp({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><path d="M3 17l5.5-5.5 3.5 3.5L21 6" /><path d="M15 6h6v6" /></Ico>;
+}
+export function IconTrendWavy({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><path d="M3 15l4-6 4 6 4-6 4 6" /></Ico>;
+}
+// Sem leitura: a linha nem sobe nem cai, e o tracejado diz que não há dado.
+export function IconTrendFlat({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><path d="M3 12h3.5M10.2 12h3.6M17.5 12H21" /></Ico>;
+}
+export function IconTrendDown({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><path d="M3 7l5.5 5.5 3.5-3.5L21 18" /><path d="M15 18h6v-6" /></Ico>;
+}
+// Prioridade, em barras que crescem com o nível: uma, duas ou três acesas. A
+// barra apagada continua desenhada para o conjunto ter sempre a mesma silhueta,
+// e a diferença entre os níveis se ler pela altura e não só pela quantidade.
+function Barras({ size, acesas }: { size: number; acesas: 1 | 2 | 3 }) {
+  return (
+    <Ico size={size} traco={2}>
+      <path d="M5.5 20v-4.5" opacity={acesas >= 1 ? 1 : 0.3} />
+      <path d="M12 20v-9" opacity={acesas >= 2 ? 1 : 0.3} />
+      <path d="M18.5 20v-13.5" opacity={acesas >= 3 ? 1 : 0.3} />
+    </Ico>
+  );
+}
+export function IconPrioridadeBaixa({ size = 14 }: { size?: number }) {
+  return <Barras size={size} acesas={1} />;
+}
+export function IconPrioridadeMedia({ size = 14 }: { size?: number }) {
+  return <Barras size={size} acesas={2} />;
+}
+export function IconPrioridadeAlta({ size = 14 }: { size?: number }) {
+  return <Barras size={size} acesas={3} />;
+}
+// O topo da escala foge das barras de propósito: quatro alturas parecidas se
+// confundem de relance, e o que urge tem que saltar.
+export function IconPrioridadeMaxima({ size = 14 }: { size?: number }) {
+  return (
+    <Ico size={size} traco={2}>
+      <rect x="3.5" y="3.5" width="17" height="17" rx="4.5" />
+      <path d="M12 8v4.8" />
+      <path d="M12 16.3v.1" />
+    </Ico>
+  );
+}
+// Marcos de entrega. Todos partem do mesmo círculo e mudam só por dentro: no
+// tamanho em que aparecem na lista, silhuetas diferentes viram borrão, e o que
+// distingue os estados precisa caber no miolo.
+export function IconMarcoPlanejado({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><circle cx="12" cy="12" r="8.6" /></Ico>;
+}
+// Em andamento: ponteiros de relógio, o tempo correndo.
+export function IconMarcoAndamento({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><circle cx="12" cy="12" r="8.6" /><path d="M12 7.8V12l3 1.8" /></Ico>;
+}
+// Bloqueada: o corte.
+export function IconMarcoBloqueado({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><circle cx="12" cy="12" r="8.6" /><path d="M9.1 14.9l5.8-5.8" /></Ico>;
+}
+// Concluída: o certo.
+export function IconMarcoConcluido({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><circle cx="12" cy="12" r="8.6" /><path d="M8.4 12.2l2.5 2.5 4.7-5.1" /></Ico>;
+}
+// Cancelada: o descarte.
+export function IconMarcoCancelado({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><circle cx="12" cy="12" r="8.6" /><path d="M9.4 9.4l5.2 5.2M14.6 9.4l-5.2 5.2" /></Ico>;
+}
+// Ordenação de uma lista: barras de comprimentos diferentes, da maior para a
+// menor, que é como o critério de ordem é desenhado em toda parte.
+export function IconOrdenar({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><path d="M4 7h16M4 12h10M4 17h5" /></Ico>;
+}
 // Estado vazio - nada por aqui.
 export function IconInbox({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M21.5 12.5h-5.4l-1.8 3H9.7l-1.8-3H2.5" /><path d="M5.9 5.1L2.5 12.5V18a2 2 0 002 2h15a2 2 0 002-2v-5.5l-3.4-7.4A2 2 0 0016.3 4H7.7a2 2 0 00-1.8 1.1z" /></Ico>;
@@ -234,6 +308,10 @@ export function IconArrowRight({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></Ico>;
 }
 // Seta de recolher/expandir (acordeão, seletores).
+// Seta de expandir uma linha: aponta para a direita fechada e gira ao abrir.
+export function IconChevronRight({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><path d="M9 6l6 6-6 6" /></Ico>;
+}
 export function IconChevronDown({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M5.5 9l6.5 6.5L18.5 9" /></Ico>;
 }

@@ -45,6 +45,8 @@
   --icon-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 12.5l5 5 10-11'/%3E%3C/svg%3E");
 
   --gray4: #F0F0EE;          /* superfície neutra sutil (chips/triggers) */
+  --logo-fundo: transparent;  /* chapa atrás da logo de cliente */
+  --logo-respiro: 0;
   --card-hover-bg: #FCFCFB;  /* elevação do card no hover */
 
   color-scheme: light;
@@ -61,6 +63,10 @@
   --gray2:  #74756F;
   --gray3:  #2A2B30;   /* bordas/divisores */
   --gray4:  #1C1D21;   /* superfície neutra sutil (chips/triggers) */
+  /* Quase toda logo é escura sobre transparente e sumiria no fundo quase preto.
+     Uma chapa clara devolve a elas o fundo para que foram desenhadas. */
+  --logo-fundo: #F4F4F2;
+  --logo-respiro: 3px;
   --card-hover-bg: #1E1F24; /* elevação do card no hover (mais claro que a superfície) */
   --yd:     rgba(0, 201, 167, 0.16);
   --yb:     rgba(0, 201, 167, 0.45);
@@ -2306,6 +2312,134 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   background: color-mix(in srgb, var(--yellow) 5%, var(--white));
 }
 
+/* ── Marco da entrega, que também é o seletor de status ───────────────── */
+/* Bolha circular na cor do estado. O fundo tênue dá massa ao desenho, que
+   sozinho some no meio do texto da linha. `--mc` chega por style inline. */
+.marco-entrega,
+.marco-bolha {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  color: var(--mc, var(--gray2));
+  background: color-mix(in srgb, var(--mc, var(--gray2)) 14%, transparent);
+}
+
+.marco-entrega {
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.marco-entrega:hover {
+  background: color-mix(in srgb, var(--mc, var(--gray2)) 28%, transparent);
+}
+
+.marco-entrega:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--yb);
+}
+
+/* ── Detalhe de entrega que abre e fecha ──────────────────────────────── */
+/* `grid-template-rows` de 0fr a 1fr anima a altura sem ninguém precisar medir
+   o conteúdo: `height: auto` não é animável, e altura fixa em px quebraria a
+   cada texto de tamanho diferente. */
+.entrega-detalhe {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows var(--transition-spring), opacity var(--transition-spring);
+}
+
+.entrega-detalhe > * {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.entrega-detalhe.aberta {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.entrega-seta {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--gray2);
+  transition: transform var(--transition-spring), color var(--transition);
+}
+
+.entrega-seta.aberta { transform: rotate(90deg); }
+
+.entrega-linha:hover .entrega-seta { color: var(--black); }
+
+@media (prefers-reduced-motion: reduce) {
+  .entrega-detalhe,
+  .entrega-seta {
+    transition: none;
+  }
+}
+
+/* ── Cabeçalho de seção com ação à direita ────────────────────────────── */
+.admin-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.admin-section-head .admin-section-title { margin-bottom: 0; }
+
+/* Ícone-botão de acrescentar. Mesmo porte e desenho do botão de baixar das
+   linhas de anexo, para o cabeçalho e a lista abaixo dele combinarem. */
+.secao-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--gray3);
+  background: var(--white);
+  color: var(--gray);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
+}
+
+.secao-add:hover:not(:disabled) {
+  border-color: var(--black);
+  color: var(--black);
+  background: var(--gray4);
+}
+
+.secao-add:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--yb);
+}
+
+.secao-add:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* ── Logo de cliente dentro de seletor ────────────────────────────────── */
+.select-logo {
+  object-fit: contain;
+  max-width: 120px;
+  background: var(--logo-fundo);
+  padding: var(--logo-respiro);
+  border-radius: 4px;
+}
+
+/* A do Grupo 3SA é branca, desenhada para fundo escuro: sobre claro sobraria
+   só o "3" amarelo. Escurecer devolve o desenho inteiro. */
+.select-logo[data-escurecer] { filter: brightness(0); }
+
 .admin-cell-sub {
   color: var(--gray2);
   margin-top: 2px;
@@ -3422,6 +3556,20 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
 .status-select-trigger:disabled {
   opacity: 0.55;
   cursor: default;
+}
+
+/* Sem contorno: numa coluna inteira de pílulas o anel colorido duplica o peso
+   visual, e o fundo com o ponto já dizem o status. A borda fica transparente
+   em vez de sair, senão a pílula encolhe 4px e desalinha com as das outras
+   telas. */
+.status-select-trigger.sem-contorno {
+  border-color: transparent;
+}
+
+/* O `outline: none` acima não tinha reposição: sem isto a pílula não mostra
+   foco de teclado, e sem a borda ela some de vez do rastreio. */
+.status-select-trigger:focus-visible {
+  box-shadow: 0 0 0 3px var(--yb);
 }
 
 .status-select-dot {

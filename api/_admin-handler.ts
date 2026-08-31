@@ -25,6 +25,46 @@ import {
 // novo em vez de herdar um schema pela metade.
 let _schemaPromessa: Promise<void> | null = null;
 
+/** Status de entrega em que a prova de conclusão é exigida. */
+const ENTREGA_CONCLUIDA = 'Concluída';
+const ENTREGA_CANCELADA = 'Cancelada';
+
+/** Os únicos estados que uma pessoa escolhe. "Planejada" é o de partida e o
+ *  destino de quem reabre; "Em andamento" e "Bloqueada" serão deduzidos das
+ *  tarefas da entrega, e por isso ninguém os digita. */
+const STATUS_MANUAL = ['Planejada', ENTREGA_CONCLUIDA, ENTREGA_CANCELADA];
+
+/** Recalcula o progresso do projeto a partir das entregas. É a razão de o campo
+ *  ter deixado de ser manual: fração de entrega concluída é um número que o
+ *  sistema sabe, e estimativa digitada envelhece sozinha. */
+async function recalcularProgresso(db: Client, projetoId: string) {
+  // Entrega cancelada sai da conta inteira, e não só do numerador: ela deixou
+  // de ser trabalho a fazer, e mantê-la no denominador travaria o projeto
+  // abaixo de 100% para sempre.
+  const r = await db.execute({
+    sql: `SELECT COUNT(*) AS total,
+                 SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS feitas
+          FROM projeto_entregas WHERE projeto_id = ? AND status <> ?`,
+    args: [ENTREGA_CONCLUIDA, projetoId, ENTREGA_CANCELADA],
+  });
+  const total = Number(r.rows[0]?.total ?? 0);
+  const feitas = Number(r.rows[0]?.feitas ?? 0);
+  await db.execute({
+    sql: 'UPDATE projetos SET progresso = ? WHERE id = ?',
+    args: [total ? Math.round((feitas / total) * 100) : 0, projetoId],
+  });
+}
+
+/** Uma entrega só pode ser dada como concluída com prova anexada. */
+async function podeConcluir(db: Client, entregaId: number) {
+  const r = await db.execute({
+    sql: 'SELECT COUNT(*) AS n FROM entrega_evidencias WHERE entrega_id = ?',
+    args: [entregaId],
+  });
+  return Number(r.rows[0]?.n ?? 0) > 0;
+}
+
+
 export function ensureAdminSchema(db: Client): Promise<void> {
   if (!_schemaPromessa) {
     _schemaPromessa = migrarSchema(db).catch(err => {
@@ -438,6 +478,7 @@ async function migrarSchema(db: Client) {
       repositorio         TEXT,
       objetivo            TEXT,
       status              TEXT NOT NULL DEFAULT 'Em andamento',
+      prioridade          TEXT NOT NULL DEFAULT 'Média',
       data_inicio         TEXT,
       previsao_entrega    TEXT,
       progresso           INTEGER NOT NULL DEFAULT 0,
@@ -493,10 +534,112 @@ async function migrarSchema(db: Client) {
       tipo            TEXT NOT NULL,
       tamanho         INTEGER NOT NULL,
       base64          TEXT NOT NULL,
+      comentario      TEXT,
       criado_em       TEXT NOT NULL,
       criado_por_nome TEXT
     )
   `);
+
+  await ddl(`
+    -- Registro de saúde do projeto. É histórico, não estado: cada leitura fica
+    -- guardada com data e autor, e a saúde atual do projeto é a mais recente.
+    -- Serve ao acompanhamento semanal, qualitativo e descritivo.
+    CREATE TABLE IF NOT EXISTS projeto_saude (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      projeto_id      TEXT NOT NULL,
+      estado          TEXT NOT NULL,
+      descricao       TEXT NOT NULL,
+      criado_em       TEXT NOT NULL,
+      criado_por_id   TEXT,
+      criado_por_nome TEXT
+    )
+  `);
+
+  await ddl(`
+    -- Registro de reunião do projeto. Participantes ficam num JSON de ids em
+    -- vez de tabela de ligação: a lista é só para exibir, nunca é consultada
+    -- por pessoa, e uma tabela a mais aqui pagaria um custo sem uso.
+    CREATE TABLE IF NOT EXISTS projeto_reunioes (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      projeto_id      TEXT NOT NULL,
+      data            TEXT NOT NULL,
+      assunto         TEXT NOT NULL,
+      notas           TEXT NOT NULL,
+      participantes   TEXT,
+      criado_em       TEXT NOT NULL,
+      criado_por_id   TEXT,
+      criado_por_nome TEXT
+    )
+  `);
+
+  await ddl(`
+    -- Entregas do projeto: os marcos a que as tarefas serão penduradas depois.
+    -- Substituem o campo único "objetivo": um projeto tem vários resultados
+    -- esperados, cada um com dono, prazo e prova de conclusão própria.
+    -- \`links\` e \`responsaveis\` são JSON pelo mesmo motivo dos participantes de
+    -- reunião: listas de exibição, nunca consultadas por item.
+    CREATE TABLE IF NOT EXISTS projeto_entregas (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      projeto_id      TEXT NOT NULL,
+      titulo          TEXT NOT NULL,
+      descricao       TEXT,
+      status          TEXT NOT NULL DEFAULT 'Planejada',
+      prazo           TEXT,
+      responsaveis    TEXT,
+      links           TEXT,
+      ordem           INTEGER NOT NULL DEFAULT 0,
+      criado_em       TEXT NOT NULL,
+      criado_por_id   TEXT,
+      criado_por_nome TEXT
+    )
+  `);
+
+  await ddl(`
+    -- Evidência de entrega. Tabela própria, e não uma etiqueta em
+    -- projeto_arquivos, porque ela é condição para concluir a entrega: misturar
+    -- com o anexo geral do projeto tornaria essa regra impossível de checar.
+    CREATE TABLE IF NOT EXISTS entrega_evidencias (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      entrega_id      INTEGER NOT NULL,
+      nome            TEXT NOT NULL,
+      tipo            TEXT NOT NULL,
+      tamanho         INTEGER NOT NULL,
+      base64          TEXT NOT NULL,
+      criado_em       TEXT NOT NULL,
+      criado_por_nome TEXT
+    )
+  `);
+
+  // A tabela de evidências pode ter sido criada antes do comentário existir.
+  try {
+    await ddl(`ALTER TABLE entrega_evidencias ADD COLUMN comentario TEXT`);
+  } catch { /* coluna já existe */ }
+
+  // Projetos: coluna acrescentada depois da tabela existir. Inofensiva se já
+  // estiver lá.
+  try {
+    await ddl(`ALTER TABLE projetos ADD COLUMN prioridade TEXT NOT NULL DEFAULT 'Média'`);
+  } catch { /* coluna já existe */ }
+
+  // Projeto que existia antes das entregas tinha um "objetivo" só. Ele vira a
+  // primeira entrega, senão esses projetos ficariam inválidos pela regra nova
+  // de exigir ao menos uma - e o texto que alguém escreveu se perderia.
+  const semEntrega = await db.execute(`
+    SELECT id, objetivo FROM projetos p
+    WHERE p.ativo = 1
+      AND TRIM(COALESCE(p.objetivo, '')) <> ''
+      AND NOT EXISTS (SELECT 1 FROM projeto_entregas e WHERE e.projeto_id = p.id)
+  `);
+  for (const p of semEntrega.rows) {
+    await db.execute({
+      sql: `INSERT INTO projeto_entregas (projeto_id, titulo, descricao, status, ordem, criado_em)
+            VALUES (?,?,?,'Planejada',0,?)`,
+      args: [p.id, 'Objetivo final', p.objetivo, new Date().toISOString()],
+    });
+    // O progresso deixou de ser digitado e passou a sair das entregas: o valor
+    // manual que estava gravado não corresponde mais a nada.
+    await recalcularProgresso(db, String(p.id));
+  }
 
   // Semente dos clientes: os mesmos que aparecem no carrossel da entrada.
   const cliCnt = await db.execute('SELECT COUNT(*) c FROM clientes');
@@ -525,6 +668,12 @@ async function migrarSchema(db: Client) {
     `CREATE INDEX IF NOT EXISTS idx_sol_arq_sol ON lead_arquivos (lead_id)`,
     `CREATE INDEX IF NOT EXISTS idx_pend_sol ON lead_pendencias (lead_id, resolvida)`,
     `CREATE INDEX IF NOT EXISTS idx_deps_sol ON lead_deps (lead_id)`,
+    // A listagem de projetos lê o histórico de saúde inteiro e separa por
+    // projeto; a ordem por data já vem do índice.
+    `CREATE INDEX IF NOT EXISTS idx_saude_projeto ON projeto_saude (projeto_id, criado_em)`,
+    `CREATE INDEX IF NOT EXISTS idx_reuniao_projeto ON projeto_reunioes (projeto_id, data)`,
+    `CREATE INDEX IF NOT EXISTS idx_entrega_projeto ON projeto_entregas (projeto_id, ordem)`,
+    `CREATE INDEX IF NOT EXISTS idx_evidencia_entrega ON entrega_evidencias (entrega_id)`,
     `CREATE INDEX IF NOT EXISTS idx_ced_arq_ced ON cedente_arquivos (cedente_id)`,
     `CREATE INDEX IF NOT EXISTS idx_ced_pend_ced ON cedente_pendencias (cedente_id)`,
     // Autoria. A tela de Perfil filtra por pessoa (`autor_id`, `criado_por_id`,
@@ -1464,7 +1613,7 @@ async function despacharAdminData(
     // Detalhe de uma análise - inclui snapshot e parecer da IA (reimpressão)
     // ── Projetos ──────────────────────────────────────────────────────────
     if (action === 'projetos') {
-      const [projs, equipe, arqs, clientes] = await Promise.all([
+      const [projs, equipe, arqs, clientes, saude, reunioes, entregas, evidencias] = await Promise.all([
         db.execute(`
           SELECT p.*, c.nome AS cliente_nome
           FROM projetos p
@@ -1473,7 +1622,7 @@ async function despacharAdminData(
           ORDER BY p.criado_em DESC
         `),
         db.execute(`
-          SELECT e.projeto_id, e.usuario_id, e.papel, u.nome, u.email
+          SELECT e.projeto_id, e.usuario_id, e.papel, u.nome, u.email, u.foto_url
           FROM projeto_equipe e JOIN usuarios u ON u.id = e.usuario_id
           ORDER BY u.nome
         `),
@@ -1484,14 +1633,59 @@ async function despacharAdminData(
           FROM projeto_arquivos ORDER BY criado_em
         `),
         db.execute('SELECT id, nome FROM clientes WHERE ativo = 1 ORDER BY nome'),
+        // Histórico inteiro: são poucas linhas de texto por projeto, e a tela
+        // mostra a série toda para leitura da evolução.
+        db.execute(`
+          SELECT id, projeto_id, estado, descricao, criado_em, criado_por_nome
+          FROM projeto_saude ORDER BY criado_em DESC
+        `),
+        db.execute(`
+          SELECT id, projeto_id, data, assunto, notas, participantes, criado_por_nome
+          FROM projeto_reunioes ORDER BY data DESC, id DESC
+        `),
+        db.execute(`
+          SELECT id, projeto_id, titulo, descricao, status, prazo, responsaveis, links, ordem
+          FROM projeto_entregas ORDER BY ordem, id
+        `),
+        // Sem o base64: a listagem carregaria o conteúdo de todo arquivo de
+        // todo projeto. O conteúdo vem por ação própria, ao baixar.
+        db.execute(`
+          SELECT id, entrega_id, nome, tipo, tamanho, comentario, criado_em, criado_por_nome
+          FROM entrega_evidencias ORDER BY criado_em
+        `),
       ]);
       const projetos = projs.rows.map(p => ({
         ...p,
         equipe: equipe.rows.filter(e => e.projeto_id === p.id)
-          .map(e => ({ id: e.usuario_id, nome: e.nome, email: e.email, papel: e.papel })),
+          .map(e => ({ id: e.usuario_id, nome: e.nome, email: e.email, foto_url: e.foto_url, papel: e.papel })),
         arquivos: arqs.rows.filter(a => a.projeto_id === p.id),
+        // Já vem da mais recente para a mais antiga, então a saúde atual do
+        // projeto é o primeiro item.
+        saude: saude.rows.filter(x => x.projeto_id === p.id),
+        entregas: entregas.rows.filter(x => x.projeto_id === p.id).map(x => ({
+          ...x,
+          responsaveis: JSON.parse(String(x.responsaveis ?? '[]')) as string[],
+          links: JSON.parse(String(x.links ?? '[]')) as { label: string; url: string }[],
+          evidencias: evidencias.rows.filter(e => e.entrega_id === x.id),
+        })),
+        reunioes: reunioes.rows.filter(x => x.projeto_id === p.id).map(x => ({
+          ...x,
+          // O banco guarda JSON; a tela quer a lista pronta.
+          participantes: JSON.parse(String(x.participantes ?? '[]')) as string[],
+        })),
       }));
       return { status: 200, body: { projetos, clientes: clientes.rows } };
+    }
+
+    if (action === 'entrega_evidencia_base64') {
+      const id = Number(query.get('id'));
+      if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };
+      const r = await db.execute({
+        sql: 'SELECT nome, tipo, base64 FROM entrega_evidencias WHERE id = ?',
+        args: [id],
+      });
+      if (!r.rows[0]) return { status: 404, body: { error: 'Evidência não encontrada.' } };
+      return { status: 200, body: r.rows[0] };
     }
 
     if (action === 'projeto_arquivo_base64') {
@@ -1772,19 +1966,27 @@ async function despacharAdminData(
       }
     }
 
-    /** Campos obrigatórios do projeto. Só observações é livre - e os anexos, que
-     *  não passam por aqui: eles sobem depois, em ação própria, porque só
-     *  existem depois que o projeto tem id. Essa parte a tela cobra sozinha. */
-    function faltaEmProjeto(p: any): string | null {
-      if (!String(p?.nome ?? '').trim()) return 'O nome do projeto é obrigatório.';
-      if (!p?.cliente_id) return 'O cliente é obrigatório.';
-      if (!String(p?.tipo ?? '').trim()) return 'O tipo do projeto é obrigatório.';
-      if (!p?.data_inicio) return 'A data de início é obrigatória.';
-      if (!p?.previsao_entrega) return 'O fim previsto é obrigatório.';
-      if (!String(p?.objetivo ?? '').trim()) return 'O objetivo final é obrigatório.';
-      if (!Array.isArray(p?.equipe) || p.equipe.length === 0) return 'O projeto precisa de ao menos uma pessoa na equipe.';
-      return null;
-    }
+/** Campos obrigatórios do projeto. Só observações é livre - e os anexos e as
+ *  evidências, que sobem depois, em ação própria, porque só existem depois que
+ *  o projeto e a entrega têm id. Essa parte a tela cobra sozinha. */
+function faltaEmProjeto(p: any): string | null {
+  if (!String(p?.nome ?? '').trim()) return 'O nome do projeto é obrigatório.';
+  if (!p?.cliente_id) return 'O cliente é obrigatório.';
+  if (!String(p?.tipo ?? '').trim()) return 'O tipo do projeto é obrigatório.';
+  if (!String(p?.prioridade ?? '').trim()) return 'A prioridade é obrigatória.';
+  if (!p?.data_inicio) return 'A data de início é obrigatória.';
+  if (!p?.previsao_entrega) return 'O fim previsto é obrigatório.';
+  if (!Array.isArray(p?.entregas) || p.entregas.length === 0) {
+    return 'O projeto precisa de ao menos uma entrega.';
+  }
+  if (p.entregas.some((e: any) => !String(e?.titulo ?? '').trim())) {
+    return 'Toda entrega precisa de um título.';
+  }
+  if (!Array.isArray(p?.equipe) || p.equipe.length === 0) {
+    return 'O projeto precisa de ao menos uma pessoa na equipe.';
+  }
+  return null;
+}
 
     if (action === 'create_projeto') {
       const p = body;
@@ -1794,20 +1996,40 @@ async function despacharAdminData(
       const agora = new Date().toISOString();
       await db.execute({
         sql: `INSERT INTO projetos (
-                id, codigo, nome, cliente_id, tipo, repositorio, objetivo, status,
+                id, codigo, nome, cliente_id, tipo, repositorio, objetivo, status, prioridade,
                 data_inicio, previsao_entrega, progresso, observacoes,
                 ativo, criado_em, criado_por_id, criado_por_nome
-              ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
+              ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
         args: [
           id, await proximoCodigo(), String(p.nome).trim(), p.cliente_id || null,
           p.tipo || null, String(p.repositorio ?? '').trim() || null, p.objetivo ?? null,
-          p.status ?? 'Em andamento',
+          p.status ?? 'Em andamento', p.prioridade ?? 'Média',
           p.data_inicio || null, p.previsao_entrega || null,
           Math.min(100, Math.max(0, Number(p.progresso ?? 0))), p.observacoes ?? null,
           agora, autorId, autorNome,
         ],
       });
       await gravarEquipe(id, p.equipe);
+      const agoraEntrega = new Date().toISOString();
+      for (const [i, e] of (p.entregas as any[]).entries()) {
+        await db.execute({
+          sql: `INSERT INTO projeto_entregas
+                  (projeto_id, titulo, descricao, status, prazo, responsaveis, links, ordem,
+                   criado_em, criado_por_id, criado_por_nome)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+          args: [
+            id, String(e.titulo).trim(), e.descricao ?? null,
+            // Concluída exige evidência, que só pode ser anexada depois de a
+            // entrega existir. Por isso a criação nunca nasce concluída.
+            e.status === ENTREGA_CANCELADA ? ENTREGA_CANCELADA : 'Planejada',
+            e.prazo || null,
+            JSON.stringify(Array.isArray(e.responsaveis) ? e.responsaveis : []),
+            JSON.stringify(Array.isArray(e.links) ? e.links : []),
+            i, agoraEntrega, autorId, autorNome,
+          ],
+        });
+      }
+      await recalcularProgresso(db, id);
       return { status: 200, body: { id } };
     }
 
@@ -1821,20 +2043,36 @@ async function despacharAdminData(
         const falta = faltaEmProjeto(p);
         if (falta) return { status: 400, body: { error: falta } };
       }
+      // Só entra no SET o campo que veio no corpo. Antes o UPDATE reescrevia a
+      // linha inteira, e a edição parcial da aba de gestão - que manda apenas
+      // status e progresso - zerava `tipo` e `repositorio` sem querer.
+      const CAMPOS: Record<string, (v: any) => unknown> = {
+        nome: v => String(v ?? '').trim(),
+        cliente_id: v => v || null,
+        tipo: v => v || null,
+        repositorio: v => String(v ?? '').trim() || null,
+        objetivo: v => v ?? null,
+        status: v => v ?? 'Em andamento',
+        prioridade: v => v ?? 'Média',
+        data_inicio: v => v || null,
+        previsao_entrega: v => v || null,
+        // `progresso` não entra: ele é calculado a partir das entregas
+        // concluídas, e aceitar um valor de fora o faria divergir na primeira
+        // gravação de projeto.
+        observacoes: v => v ?? null,
+      };
+      const sets: string[] = [];
+      const args: unknown[] = [];
+      for (const [campo, normalizar] of Object.entries(CAMPOS)) {
+        if (p[campo] === undefined) continue;
+        sets.push(`${campo}=?`);
+        args.push(normalizar(p[campo]));
+      }
       await db.execute({
-        sql: `UPDATE projetos SET
-                nome=?, cliente_id=?, tipo=?, repositorio=?, objetivo=?, status=?,
-                data_inicio=?, previsao_entrega=?, progresso=?, observacoes=?,
-                atualizado_por_id=?, atualizado_por_nome=?, atualizado_em=?
-              WHERE id=?`,
-        args: [
-          String(p.nome ?? '').trim(), p.cliente_id || null,
-          p.tipo || null, String(p.repositorio ?? '').trim() || null, p.objetivo ?? null,
-          p.status ?? 'Em andamento',
-          p.data_inicio || null, p.previsao_entrega || null,
-          Math.min(100, Math.max(0, Number(p.progresso ?? 0))), p.observacoes ?? null,
-          autorId, autorNome, new Date().toISOString(), p.id,
-        ],
+        sql: `UPDATE projetos SET ${sets.concat([
+          'atualizado_por_id=?', 'atualizado_por_nome=?', 'atualizado_em=?',
+        ]).join(', ')} WHERE id=?`,
+        args: [...args, autorId, autorNome, new Date().toISOString(), p.id] as never,
       });
       if (p.equipe !== undefined) await gravarEquipe(String(p.id), p.equipe);
       return { status: 200, body: { ok: true } };
@@ -1864,6 +2102,179 @@ async function despacharAdminData(
         ],
       });
       return { status: 200, body: { id: Number(r.lastInsertRowid) } };
+    }
+
+    // Reetiquetar anexo já gravado. A lista de anexos é agrupada pela etiqueta,
+    // então trocar aqui move o arquivo de grupo.
+    if (action === 'salvar_entrega') {
+      const e = body;
+      const titulo = String(e.titulo ?? '').trim();
+      if (!e.projeto_id) return { status: 400, body: { error: 'projeto_id ausente.' } };
+      if (!titulo) return { status: 400, body: { error: 'A entrega precisa de um título.' } };
+
+      const responsaveis = JSON.stringify(Array.isArray(e.responsaveis) ? e.responsaveis : []);
+      const links = JSON.stringify(Array.isArray(e.links) ? e.links : []);
+
+      if (e.status !== undefined && !STATUS_MANUAL.includes(e.status)) {
+        return {
+          status: 400,
+          body: { error: `"${e.status}" é deduzido das tarefas da entrega e não pode ser escolhido à mão.` },
+        };
+      }
+
+      if (e.id) {
+        if (e.status === ENTREGA_CONCLUIDA && !(await podeConcluir(db, Number(e.id)))) {
+          return { status: 400, body: { error: 'Anexe a evidência antes de concluir a entrega.' } };
+        }
+        await db.execute({
+          sql: `UPDATE projeto_entregas
+                SET titulo=?, descricao=?, status=?, prazo=?, responsaveis=?, links=?
+                WHERE id=?`,
+          args: [titulo, e.descricao ?? null, e.status ?? 'Planejada', e.prazo || null,
+            responsaveis, links, e.id],
+        });
+      } else {
+        // Entrega nova nunca nasce concluída: não há evidência a anexar ainda.
+        const ordem = await db.execute({
+          sql: 'SELECT COALESCE(MAX(ordem), -1) + 1 AS proxima FROM projeto_entregas WHERE projeto_id = ?',
+          args: [e.projeto_id],
+        });
+        await db.execute({
+          sql: `INSERT INTO projeto_entregas
+                  (projeto_id, titulo, descricao, status, prazo, responsaveis, links, ordem,
+                   criado_em, criado_por_id, criado_por_nome)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+          args: [
+            e.projeto_id, titulo, e.descricao ?? null,
+            // Entrega nova nasce planejada: concluir exige prova, que ainda não
+            // tem onde se prender.
+            e.status === ENTREGA_CANCELADA ? ENTREGA_CANCELADA : 'Planejada',
+            e.prazo || null, responsaveis, links,
+            Number(ordem.rows[0].proxima), new Date().toISOString(), autorId, autorNome,
+          ],
+        });
+      }
+      await recalcularProgresso(db, String(e.projeto_id));
+      return { status: 200, body: { ok: true } };
+    }
+
+    if (action === 'excluir_entrega') {
+      const dono = await db.execute({
+        sql: 'SELECT projeto_id FROM projeto_entregas WHERE id = ?',
+        args: [body.id],
+      });
+      const projetoId = dono.rows[0]?.projeto_id;
+      if (!projetoId) return { status: 404, body: { error: 'Entrega não encontrada.' } };
+      const restantes = await db.execute({
+        sql: 'SELECT COUNT(*) AS n FROM projeto_entregas WHERE projeto_id = ?',
+        args: [projetoId],
+      });
+      if (Number(restantes.rows[0].n) <= 1) {
+        return { status: 400, body: { error: 'O projeto precisa de ao menos uma entrega.' } };
+      }
+      await db.execute({ sql: 'DELETE FROM entrega_evidencias WHERE entrega_id = ?', args: [body.id] });
+      await db.execute({ sql: 'DELETE FROM projeto_entregas WHERE id = ?', args: [body.id] });
+      await recalcularProgresso(db, String(projetoId));
+      return { status: 200, body: { ok: true } };
+    }
+
+    if (action === 'add_entrega_evidencia') {
+      if (!body.entrega_id) return { status: 400, body: { error: 'entrega_id ausente.' } };
+      // `substituir` chega da conclusão: a prova anterior fica guardada desde a
+      // reabertura e só sai agora, quando existe uma nova no lugar dela. Assim
+      // nenhuma entrega concluída passa um instante sequer sem prova.
+      if (body.substituir) {
+        await db.execute({
+          sql: 'DELETE FROM entrega_evidencias WHERE entrega_id = ?',
+          args: [body.entrega_id],
+        });
+      }
+      await db.execute({
+        sql: `INSERT INTO entrega_evidencias
+                (entrega_id, nome, tipo, tamanho, base64, comentario, criado_em, criado_por_nome)
+              VALUES (?,?,?,?,?,?,?,?)`,
+        args: [body.entrega_id, body.nome, body.tipo, body.tamanho, body.base64,
+          String(body.comentario ?? '').trim() || null, new Date().toISOString(), autorNome],
+      });
+      return { status: 200, body: { ok: true } };
+    }
+
+    if (action === 'excluir_entrega_evidencia') {
+      // Tirar a última prova de uma entrega concluída a devolve para andamento:
+      // deixar "Concluída" sem evidência quebraria a regra pelas costas.
+      const alvo = await db.execute({
+        sql: `SELECT e.entrega_id, e.id, t.projeto_id, t.status
+              FROM entrega_evidencias e JOIN projeto_entregas t ON t.id = e.entrega_id
+              WHERE e.id = ?`,
+        args: [body.id],
+      });
+      const linha = alvo.rows[0];
+      if (!linha) return { status: 404, body: { error: 'Evidência não encontrada.' } };
+      await db.execute({ sql: 'DELETE FROM entrega_evidencias WHERE id = ?', args: [body.id] });
+      if (linha.status === ENTREGA_CONCLUIDA && !(await podeConcluir(db, Number(linha.entrega_id)))) {
+        // Volta para "Planejada", e não para "Em andamento": esse estado passou
+        // a ser deduzido das tarefas e ninguém, nem o servidor, o grava à mão.
+        await db.execute({
+          sql: 'UPDATE projeto_entregas SET status = ? WHERE id = ?',
+          args: ['Planejada', linha.entrega_id],
+        });
+        await recalcularProgresso(db, String(linha.projeto_id));
+      }
+      return { status: 200, body: { ok: true } };
+    }
+
+    if (action === 'registrar_reuniao_projeto') {
+      const assunto = String(body.assunto ?? '').trim();
+      const notas = String(body.notas ?? '').trim();
+      if (!body.projeto_id) return { status: 400, body: { error: 'projeto_id ausente.' } };
+      if (!body.data) return { status: 400, body: { error: 'Informe a data da reunião.' } };
+      if (!assunto) return { status: 400, body: { error: 'Informe o assunto da reunião.' } };
+      if (!notas) return { status: 400, body: { error: 'Registre o que foi tratado.' } };
+      await db.execute({
+        sql: `INSERT INTO projeto_reunioes
+                (projeto_id, data, assunto, notas, participantes, criado_em, criado_por_id, criado_por_nome)
+              VALUES (?,?,?,?,?,?,?,?)`,
+        args: [
+          body.projeto_id, body.data, assunto, notas,
+          JSON.stringify(Array.isArray(body.participantes) ? body.participantes : []),
+          new Date().toISOString(), autorId, autorNome,
+        ],
+      });
+      return { status: 200, body: { ok: true } };
+    }
+
+    if (action === 'excluir_reuniao_projeto') {
+      await db.execute({ sql: 'DELETE FROM projeto_reunioes WHERE id = ?', args: [body.id] });
+      return { status: 200, body: { ok: true } };
+    }
+
+    // Nova leitura de saúde. Não substitui a anterior: o valor da tela está em
+    // ver a série, então cada registro é uma linha nova.
+    if (action === 'registrar_saude_projeto') {
+      const estado = String(body.estado ?? '').trim();
+      const descricao = String(body.descricao ?? '').trim();
+      if (!body.projeto_id) return { status: 400, body: { error: 'projeto_id ausente.' } };
+      if (!estado) return { status: 400, body: { error: 'Escolha o estado de saúde.' } };
+      if (!descricao) return { status: 400, body: { error: 'Descreva a situação do projeto.' } };
+      await db.execute({
+        sql: `INSERT INTO projeto_saude (projeto_id, estado, descricao, criado_em, criado_por_id, criado_por_nome)
+              VALUES (?,?,?,?,?,?)`,
+        args: [body.projeto_id, estado, descricao, new Date().toISOString(), autorId, autorNome],
+      });
+      return { status: 200, body: { ok: true } };
+    }
+
+    if (action === 'excluir_saude_projeto') {
+      await db.execute({ sql: 'DELETE FROM projeto_saude WHERE id = ?', args: [body.id] });
+      return { status: 200, body: { ok: true } };
+    }
+
+    if (action === 'etiquetar_projeto_arquivo') {
+      await db.execute({
+        sql: 'UPDATE projeto_arquivos SET etiqueta = ? WHERE id = ?',
+        args: [String(body.etiqueta ?? 'Outro'), body.id],
+      });
+      return { status: 200, body: { ok: true } };
     }
 
     if (action === 'delete_projeto_arquivo') {

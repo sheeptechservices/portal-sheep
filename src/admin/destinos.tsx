@@ -27,19 +27,6 @@ const ic = {
 
 export const DESTINOS: Destino[] = [
   {
-    page: 'projetos',
-    titulo: 'Projetos',
-    descricao: 'Cadastro e acompanhamento dos projetos da casa',
-    grupo: 'Páginas',
-    termos: ['projeto', 'entregas', 'cliente', 'cronograma', 'prazo', 'gestao'],
-    icon: (
-      <svg {...ic}>
-        <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.2l1.8 2.2h8A2.5 2.5 0 0 1 21 9.7v7.8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z" />
-        <path d="M8 13h8" />
-      </svg>
-    ),
-  },
-  {
     page: 'leads',
     titulo: 'Funil',
     descricao: 'Esteira de demandas das operações',
@@ -50,6 +37,19 @@ export const DESTINOS: Destino[] = [
     icon: (
       <svg {...ic}>
         <path d="M3 4h18l-7 8.5V19l-4 2v-8.5L3 4z" />
+      </svg>
+    ),
+  },
+  {
+    page: 'projetos',
+    titulo: 'Projetos',
+    descricao: 'Cadastro e acompanhamento dos projetos da casa',
+    grupo: 'Páginas',
+    termos: ['projeto', 'entregas', 'cliente', 'cronograma', 'prazo', 'gestao'],
+    icon: (
+      <svg {...ic}>
+        <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.2l1.8 2.2h8A2.5 2.5 0 0 1 21 9.7v7.8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z" />
+        <path d="M8 13h8" />
       </svg>
     ),
   },
