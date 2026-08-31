@@ -2430,22 +2430,40 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 6px;
+  /* Alvo largo, traço fino. Com 6px era fácil errar por um pixel e pegar o
+     fundo, que fecha o painel ao soltar. O recuo negativo faz a faixa montar
+     sobre a borda do painel, então o erro cai do lado seguro. */
+  width: 14px;
+  margin-right: -5px;
   cursor: col-resize;
   z-index: 5;
   background: transparent;
   border: none;
   padding: 0;
+}
+
+/* O traço visível é o pseudo-elemento, de 3px, colado na borda do painel. */
+.painel-puxador::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 5px;
+  width: 3px;
+  background: transparent;
   transition: background var(--transition);
 }
 
-.painel-puxador:hover,
-.painel-puxador.arrastando {
+.painel-puxador:hover::after,
+.painel-puxador.arrastando::after {
   background: var(--yellow);
 }
 
 .painel-puxador:focus-visible {
   outline: none;
+}
+
+.painel-puxador:focus-visible::after {
   background: var(--yellow);
   box-shadow: 0 0 0 3px var(--yb);
 }

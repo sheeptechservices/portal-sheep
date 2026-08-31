@@ -220,7 +220,12 @@ export function IconTrendUp({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M3 17l5.5-5.5 3.5 3.5L21 6" /><path d="M15 6h6v6" /></Ico>;
 }
 export function IconTrendWavy({ size = 14 }: { size?: number }) {
-  return <Ico size={size}><path d="M3 15l4-6 4 6 4-6 4 6" /></Ico>;
+  return (
+    <Ico size={size}>
+      <path d="M3 12l2.8-4.5 2.8 4.5 2.8-4.5 2.8 4.5H21" />
+      <path d="M16 9L21 12l-5 3" />
+    </Ico>
+  );
 }
 // Sem leitura: a linha nem sobe nem cai, e o tracejado diz que não há dado.
 export function IconTrendFlat({ size = 14 }: { size?: number }) {
@@ -278,6 +283,11 @@ export function IconMarcoBloqueado({ size = 14 }: { size?: number }) {
 // Concluída: o certo.
 export function IconMarcoConcluido({ size = 14 }: { size?: number }) {
   return <Ico size={size}><circle cx="12" cy="12" r="8.6" /><path d="M8.4 12.2l2.5 2.5 4.7-5.1" /></Ico>;
+}
+// Validada: o segundo certo, como no mensageiro - um diz que saiu, dois dizem
+// que chegou e foi aceito.
+export function IconMarcoValidado({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><circle cx="12" cy="12" r="8.6" /><path d="M6.6 12.2l2.3 2.3 3.5-3.9M11.2 14.6l.8.8 4.4-4.8" /></Ico>;
 }
 // Cancelada: o descarte.
 export function IconMarcoCancelado({ size = 14 }: { size?: number }) {

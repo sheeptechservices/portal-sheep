@@ -6,7 +6,7 @@ import {
   IconChevronDown, IconChevronRight, IconChevronUp, IconChevronUpDown,
   IconEdit, IconEye, IconLink, IconMarcoAndamento, IconMarcoBloqueado,
   IconAgrupar, IconCalendario, IconCheck, IconExternal, IconOrdenar, IconSearch,
-  IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado,
+  IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado, IconMarcoValidado,
   IconPlus, IconPrioridadeAlta, IconPrioridadeBaixa, IconPrioridadeMaxima,
   IconPrioridadeMedia, IconTrash, IconTrendDown, IconTrendFlat, IconTrendUp, IconTrendWavy,
   IconX, IconZip,
@@ -59,22 +59,36 @@ const ORDENS_ENTREGA = [
 
 /** Estados possíveis de uma entrega, para exibição. Só dois são escolhidos por
  *  alguém: ver `RESOLUCAO_ENTREGA`. */
-export const STATUS_ENTREGA = ['Planejada', 'Em andamento', 'Bloqueada', 'Concluída', 'Cancelada'] as const;
-export const ENTREGA_CONCLUIDA = 'Concluída';
+export const STATUS_ENTREGA = [
+  'Planejada', 'Em andamento', 'Bloqueada', 'Entregue', 'Validada', 'Cancelada',
+] as const;
+/** Saiu da nossa mão. Ainda não é o fim: o cliente pode pedir ajuste. */
+export const ENTREGA_ENTREGUE = 'Entregue';
+/** O cliente deu o aceite. É este que conta como pronto. */
+export const ENTREGA_VALIDADA = 'Validada';
 export const ENTREGA_CANCELADA = 'Cancelada';
+/** Cada estado é provado pela sua própria evidência: o comprovante do que foi
+ *  enviado não serve de aceite do cliente, e vice-versa. */
+export const PROVA_DA_ETAPA: Record<string, string> = {
+  [ENTREGA_ENTREGUE]: 'Entrega',
+  [ENTREGA_VALIDADA]: 'Validação',
+};
 
 /** O que uma pessoa decide. "Em andamento" e "Bloqueada" saem das tarefas da
  *  entrega - respectivamente, ter tarefa em curso e ter tarefa com etiqueta de
  *  bloqueio - e por isso não estão aqui. "Planejada" é o estado de partida e o
  *  destino de quem reabre uma entrega resolvida. */
-export const RESOLUCAO_ENTREGA = [ENTREGA_CONCLUIDA, ENTREGA_CANCELADA] as const;
+export const RESOLUCAO_ENTREGA = [ENTREGA_ENTREGUE, ENTREGA_VALIDADA, ENTREGA_CANCELADA] as const;
 export const ENTREGA_PLANEJADA = 'Planejada';
 
+/** Um certo para entregue, dois para validada: a leitura de mensageiro, que
+ *  todo mundo já conhece. */
 const ICONE_ENTREGA: Record<string, (p: { size?: number }) => JSX.Element> = {
   'Planejada': IconMarcoPlanejado,
   'Em andamento': IconMarcoAndamento,
   'Bloqueada': IconMarcoBloqueado,
-  'Concluída': IconMarcoConcluido,
+  'Entregue': IconMarcoConcluido,
+  'Validada': IconMarcoValidado,
   'Cancelada': IconMarcoCancelado,
 };
 
@@ -82,7 +96,8 @@ const COR_ENTREGA: Record<string, string> = {
   'Planejada': '#6E6F69',
   'Em andamento': '#B58300',
   'Bloqueada': '#D93025',
-  'Concluída': '#23A455',
+  'Entregue': '#7C3AED',
+  'Validada': '#23A455',
   'Cancelada': '#8A857A',
 };
 
@@ -185,6 +200,8 @@ export interface Evidencia {
   tamanho: number;
   /** O que o arquivo prova. */
   comentario: string | null;
+  /** Qual afirmação ele sustenta: "Entrega" ou "Validação". */
+  etapa: string;
   criado_em: string;
   criado_por_nome: string | null;
 }
@@ -339,7 +356,7 @@ function AnelProgresso({ valor, size = 15 }: { valor: number; size?: number }) {
   const v = Math.min(100, Math.max(0, valor));
   const r = 7;
   const volta = 2 * Math.PI * r;
-  const cor = v === 100 ? COR_ENTREGA[ENTREGA_CONCLUIDA] : 'var(--gray)';
+  const cor = v === 100 ? COR_ENTREGA[ENTREGA_VALIDADA] : 'var(--gray)';
   return (
     <svg width={size} height={size} viewBox="0 0 18 18" fill="none" aria-hidden="true"
       style={{ flexShrink: 0 }}>
@@ -366,10 +383,11 @@ const CHAVE_ORDEM: Record<string, (p: Projeto) => string | number> = {
 };
 
 function progressoDe(p: Projeto): number {
-  // Cancelada sai da conta: deixou de ser trabalho a fazer.
+  // Só a validada conta como pronta: entregue e ainda sem o aceite é trabalho
+  // que pode voltar. Cancelada sai da conta: deixou de ser trabalho a fazer.
   const valem = (p.entregas ?? []).filter(e => e.status !== ENTREGA_CANCELADA);
   if (!valem.length) return 0;
-  return Math.round((valem.filter(e => e.status === ENTREGA_CONCLUIDA).length / valem.length) * 100);
+  return Math.round((valem.filter(e => e.status === ENTREGA_VALIDADA).length / valem.length) * 100);
 }
 
 function ChipStatus({ status }: { status: string }) {
@@ -804,6 +822,24 @@ function CampoCategoria({ valor, sugestoes, onChange }: {
   );
 }
 
+// ── Fechar clicando no fundo ────────────────────────────────────────────────
+
+/** Props do sobreposto para fechar ao clicar fora, sem fechar por engano.
+ *
+ *  O clique do navegador nasce no ancestral comum de onde o botão desceu e onde
+ *  subiu. Arrastar para selecionar texto de dentro do painel e soltar fora faz
+ *  o clique nascer no fundo - e o painel fechava no meio da seleção. Por isso o
+ *  fecho exige que o gesto tenha começado e terminado no fundo. */
+function useFecharNoFundo(onFechar: () => void) {
+  const comecouNoFundo = useRef(false);
+  return {
+    onMouseDown: (e: React.MouseEvent) => { comecouNoFundo.current = e.target === e.currentTarget; },
+    onClick: (e: React.MouseEvent) => {
+      if (comecouNoFundo.current && e.target === e.currentTarget) onFechar();
+    },
+  };
+}
+
 // ── Largura do painel ───────────────────────────────────────────────────────
 
 /** O mínimo é a largura que o painel sempre teve; o máximo evita que ele engula
@@ -885,6 +921,7 @@ function PreviaArquivo({ arquivo, onCarregar, onBaixar, onFechar }: {
 }) {
   const [conteudo, setConteudo] = useState<{ tipo: string; url: string } | null>(null);
   const [erro, setErro] = useState('');
+  const fundo = useFecharNoFundo(onFechar);
 
   useEffect(() => {
     let vivo = true;
@@ -917,7 +954,7 @@ function PreviaArquivo({ arquivo, onCarregar, onBaixar, onFechar }: {
   const pdf = conteudo?.tipo === 'application/pdf';
 
   return createPortal(
-    <div className="file-preview-backdrop" style={{ zIndex: 10002 }} onClick={onFechar}>
+    <div className="file-preview-backdrop" style={{ zIndex: 10002 }} {...fundo}>
       <div className="file-preview-modal" onClick={e => e.stopPropagation()}>
         <div className="file-preview-header">
           <span className="file-preview-name">{arquivo.nome}</span>
@@ -1129,6 +1166,7 @@ function DialogoSaude({ projeto, salvando, onRegistrar, onFechar }: {
   const [estado, setEstado] = useState<string>(projeto.saude[0]?.estado ?? 'Saudável');
   const [descricao, setDescricao] = useState('');
   const [erro, setErro] = useState('');
+  const fundo = useFecharNoFundo(onFechar);
 
   async function registrar() {
     if (!descricao.trim()) { setErro('Descreva a situação do projeto.'); return; }
@@ -1138,7 +1176,7 @@ function DialogoSaude({ projeto, salvando, onRegistrar, onFechar }: {
 
   return createPortal(
     <div className="admin-modal-overlay" style={{ zIndex: 10001, alignItems: 'center', justifyContent: 'center' }}
-      onClick={onFechar}>
+      {...fundo}>
       <div className="delete-confirm-modal" style={{ width: 420 }} onClick={e => e.stopPropagation()}>
         <p className="delete-confirm-title">Registrar leitura de saúde</p>
         <p className="delete-confirm-desc">{projeto.nome}</p>
@@ -1456,7 +1494,7 @@ function SecaoEntregas({
   onSalvarEntrega: (dados: EntregaPendente, id?: number) => Promise<void>;
   onExcluirEntrega: (e: Entrega) => void;
   onAlterarPendentes: (v: EntregaPendente[]) => void;
-  onSubirEvidencia: (e: Entrega, arquivos: FileList | null, comentario?: string) => Promise<void>;
+  onSubirEvidencia: (e: Entrega, arquivos: FileList | null, comentario?: string, etapa?: string) => Promise<void>;
   onBaixarEvidencia: (ev: Evidencia) => void;
   onVerEvidencia: (ev: Evidencia) => void;
 }) {
@@ -1475,9 +1513,11 @@ function SecaoEntregas({
     setAbertas(a => (a.includes(id) ? a.filter(x => x !== id) : [...a, id]));
   }
   /** Entrega que alguém tentou concluir sem prova: o diálogo pede o arquivo. */
-  const [concluindo, setConcluindo] = useState<Entrega | null>(null);
+  /** Entrega cuja mudança de estado espera a prova, e para onde ela vai. */
+  const [concluindo, setConcluindo] = useState<{ entrega: Entrega; alvo: string } | null>(null);
   /** Excluir leva as evidências junto e não tem desfazer: confirma antes. */
   const [excluindoEntrega, setExcluindoEntrega] = useState<Entrega | null>(null);
+  const fundoEntrega = useFecharNoFundo(() => setExcluindoEntrega(null));
 
   /** Troca só o status, preservando o resto da entrega - `salvar_entrega`
    *  regrava a linha inteira. */
@@ -1489,10 +1529,11 @@ function SecaoEntregas({
   }
 
   async function escolherStatus(e: Entrega, status: string) {
-    // Concluir passa sempre pelo diálogo, mesmo com prova antiga guardada: a
-    // entrega foi reaberta e mudou, então a prova tem que ser a nova.
-    if (status === ENTREGA_CONCLUIDA) {
-      setConcluindo(e);
+    // Cada estado pede a prova da sua etapa, e sempre: reentregar produz um
+    // comprovante novo, revalidar produz um aceite novo. Um não substitui o
+    // outro, então os dois passam pelo diálogo.
+    if (PROVA_DA_ETAPA[status]) {
+      setConcluindo({ entrega: e, alvo: status });
       return;
     }
     await onSalvarEntrega(comStatus(e, status), e.id);
@@ -1629,7 +1670,7 @@ function SecaoEntregas({
               onCancelar={() => setEditando(null)} />
           ) : (() => {
             const aberta = abertas.includes(e.id);
-            const feita = e.status === ENTREGA_CONCLUIDA;
+            const feita = e.status === ENTREGA_VALIDADA;
             const cor = COR_ENTREGA[e.status] ?? 'var(--gray2)';
             return (
               <div key={e.id} className="admin-file-item"
@@ -1716,14 +1757,21 @@ function SecaoEntregas({
                         {/* A evidência entra pelo diálogo de conclusão e por
                             nenhum outro caminho, então a seção só existe em
                             entrega concluída - onde ela obrigatoriamente tem. */}
-                        {feita && e.evidencias.length > 0 && (
-                          <div style={{ marginTop: 10 }}>
+                        {/* Uma seção por etapa: a prova do envio e o aceite do
+                            cliente são afirmações diferentes e ficam separadas.
+                            Aparecem assim que existem, mesmo antes de a entrega
+                            chegar ao estado que elas sustentam. */}
+                        {e.evidencias.length > 0 && ['Entrega', 'Validação'].map(et => {
+                          const daEtapa = e.evidencias.filter(v => v.etapa === et);
+                          if (!daEtapa.length) return null;
+                          return (
+                          <div key={et} style={{ marginTop: 10 }}>
                             <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em',
                               textTransform: 'uppercase', color: 'var(--gray2)', margin: '0 0 5px' }}>
-                              Evidência
+                              {et === 'Entrega' ? 'Comprovante de entrega' : 'Aceite do cliente'}
                             </p>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                              {e.evidencias.map(ev => (
+                              {daEtapa.map(ev => (
                                 <div key={ev.id}>
                                   {/* Sem excluir: a prova de uma entrega concluída
                                       não se apaga. Trocar exige reabrir a entrega e
@@ -1755,7 +1803,8 @@ function SecaoEntregas({
                               ))}
                             </div>
                           </div>
-                        )}
+                          );
+                        })}
                       </div>
 
                       {!somenteLeitura && (
@@ -1825,7 +1874,7 @@ function SecaoEntregas({
 
       {excluindoEntrega && createPortal(
         <div className="admin-modal-overlay" style={{ zIndex: 10001, alignItems: 'center', justifyContent: 'center' }}
-          onClick={() => setExcluindoEntrega(null)}>
+          {...fundoEntrega}>
           <div className="delete-confirm-modal" onClick={ev => ev.stopPropagation()}>
             <p className="delete-confirm-title">Excluir entrega</p>
             <p className="delete-confirm-desc">
@@ -1853,12 +1902,13 @@ function SecaoEntregas({
 
       {concluindo && (
         <DialogoEvidencia
-          entrega={concluindo}
+          entrega={concluindo.entrega}
+          alvo={concluindo.alvo}
           salvando={salvando}
           onFechar={() => setConcluindo(null)}
           onConcluir={async (arquivos, comentario) => {
-            await onSubirEvidencia(concluindo, arquivos, comentario);
-            await onSalvarEntrega(comStatus(concluindo, ENTREGA_CONCLUIDA), concluindo.id);
+            await onSubirEvidencia(concluindo.entrega, arquivos, comentario, PROVA_DA_ETAPA[concluindo.alvo]);
+            await onSalvarEntrega(comStatus(concluindo.entrega, concluindo.alvo), concluindo.entrega.id);
             setConcluindo(null);
           }}
         />
@@ -1930,7 +1980,7 @@ function MarcoEntrega({ status, onEscolher }: {
   const Icone = ICONE_ENTREGA[status] ?? IconMarcoPlanejado;
 
   // Resolvida ganha uma linha a mais, para desfazer.
-  const resolvida = status === ENTREGA_CONCLUIDA || status === ENTREGA_CANCELADA;
+  const resolvida = RESOLUCAO_ENTREGA.includes(status as typeof RESOLUCAO_ENTREGA[number]);
   const opcoes: string[] = resolvida
     ? [...RESOLUCAO_ENTREGA, ENTREGA_PLANEJADA]
     : [...RESOLUCAO_ENTREGA];
@@ -1960,7 +2010,14 @@ function MarcoEntrega({ status, onEscolher }: {
                 <span className="marco-bolha" style={{ '--mc': COR_ENTREGA[st] } as React.CSSProperties}>
                   <Desenho size={14} />
                 </span>
-                <span>{reabrir ? 'Reabrir' : st}</span>
+                <span>
+                  {reabrir ? 'Reabrir' : st}
+                  {reabrir && (
+                    <span style={{ display: 'block', fontSize: 10.5, color: 'var(--gray2)' }}>
+                      volta ao estado automático
+                    </span>
+                  )}
+                </span>
               </div>
             );
           })}
@@ -1974,8 +2031,10 @@ function MarcoEntrega({ status, onEscolher }: {
 /** Portão da conclusão. Aparece quando alguém escolhe "Concluída" numa entrega
  *  sem prova anexada: em vez de recusar com um erro, o diálogo pede o arquivo
  *  que falta e conclui em seguida. */
-function DialogoEvidencia({ entrega, salvando, onConcluir, onFechar }: {
+function DialogoEvidencia({ entrega, alvo, salvando, onConcluir, onFechar }: {
   entrega: Entrega;
+  /** Estado de destino: muda o texto, o botão e a cor da ação. */
+  alvo: string;
   salvando: boolean;
   onConcluir: (arquivos: FileList, comentario: string) => Promise<void>;
   onFechar: () => void;
@@ -1984,16 +2043,21 @@ function DialogoEvidencia({ entrega, salvando, onConcluir, onFechar }: {
   const [comentario, setComentario] = useState('');
   const input = useRef<HTMLInputElement>(null);
   const nomes = Array.from(escolhidos ?? []);
+  const fundo = useFecharNoFundo(onFechar);
 
   return createPortal(
     // Mesmo molde da confirmação de exclusão: caixa centrada, título,
     // descrição e as duas ações no rodapé.
     <div className="admin-modal-overlay" style={{ zIndex: 10001, alignItems: 'center', justifyContent: 'center' }}
-      onClick={onFechar}>
+      {...fundo}>
       <div className="delete-confirm-modal" style={{ width: 400 }} onClick={e => e.stopPropagation()}>
-        <p className="delete-confirm-title">Concluir entrega</p>
+        <p className="delete-confirm-title">
+          {alvo === ENTREGA_ENTREGUE ? 'Marcar como entregue' : 'Marcar como validada'}
+        </p>
         <p className="delete-confirm-desc">
-          "<strong>{entrega.titulo}</strong>" só é dada como concluída com a evidência anexada.
+          {alvo === ENTREGA_ENTREGUE
+            ? <>"<strong>{entrega.titulo}</strong>" só é dada como entregue com a prova do que foi enviado ao cliente.</>
+            : <>"<strong>{entrega.titulo}</strong>" só é dada como validada com o aceite do cliente anexado.</>}
         </p>
 
         <input ref={input} type="file" multiple hidden
@@ -2022,16 +2086,18 @@ function DialogoEvidencia({ entrega, salvando, onConcluir, onFechar }: {
 
         <textarea className="form-input" rows={3} value={comentario}
           onChange={e => setComentario(e.target.value)}
-          placeholder="Comentário: o que este arquivo comprova"
+          placeholder={alvo === ENTREGA_ENTREGUE
+            ? 'Comentário: o que foi enviado, e por onde'
+            : 'Comentário: quem validou, e quando'}
           style={{ marginTop: 10, fontSize: 13 }} />
 
         <div className="delete-confirm-actions" style={{ marginTop: 20 }}>
           <button type="button" className="delete-confirm-cancel" onClick={onFechar}>Cancelar</button>
           <button type="button" className="delete-confirm-ok"
-            style={{ background: COR_ENTREGA[ENTREGA_CONCLUIDA], color: 'var(--on-yellow)' }}
+            style={{ background: COR_ENTREGA[alvo], color: '#fff' }}
             disabled={!escolhidos?.length || salvando}
             onClick={() => escolhidos && void onConcluir(escolhidos, comentario.trim())}>
-            {salvando ? 'Concluindo…' : 'Concluir'}
+            {salvando ? 'Salvando…' : alvo === ENTREGA_ENTREGUE ? 'Anexar e entregar' : 'Anexar e validar'}
           </button>
         </div>
       </div>
@@ -2396,7 +2462,7 @@ function FormularioProjeto({
   onExcluir: (p: Projeto) => void;
   onSalvarEntrega: (p: Projeto, dados: EntregaPendente, id?: number) => Promise<void>;
   onExcluirEntrega: (e: Entrega) => void;
-  onSubirEvidencia: (e: Entrega, arquivos: FileList | null, comentario?: string) => Promise<void>;
+  onSubirEvidencia: (e: Entrega, arquivos: FileList | null, comentario?: string, etapa?: string) => Promise<void>;
   onBaixarEvidencia: (ev: Evidencia) => void;
   onVerEvidencia: (ev: Evidencia) => void;
 }) {
@@ -2433,6 +2499,7 @@ function FormularioProjeto({
   // o arquivo reetiquetado só mudaria de grupo depois de fechar e reabrir.
   const [copiado, setCopiado] = useState(false);
   const { largura, arrastando, setArrastando, porTecla } = useLarguraPainel();
+  const fundo = useFecharNoFundo(onFechar);
 
   /** Link que abre este projeto direto, para quem já tem acesso ao portal. É o
    *  mesmo formato que o Funil usa em `?lead=`. */
@@ -2493,7 +2560,7 @@ function FormularioProjeto({
 
 
   return createPortal(
-    <div className="admin-modal-overlay" onClick={onFechar}>
+    <div className="admin-modal-overlay" {...fundo}>
       {/* Fora do painel de propósito: dentro dele, que rola, o puxador sumiria
           ao descer o conteúdo. Ancorado pela direita, acompanha a largura. */}
       <button
@@ -2501,7 +2568,11 @@ function FormularioProjeto({
         className={`painel-puxador${arrastando ? ' arrastando' : ''}`}
         style={{ right: `min(${largura}px, 96vw)` }}
         onClick={e => e.stopPropagation()}
-        onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setArrastando(true); }}
+        // Sem `stopPropagation` no mousedown de propósito: é preciso que o
+        // fundo veja o evento para registrar que o gesto NÃO começou nele.
+        // Barrando aqui, ele ficava com a marca da interação anterior e o
+        // painel fechava ao soltar o arrasto fora.
+        onMouseDown={e => { e.preventDefault(); setArrastando(true); }}
         onKeyDown={porTecla}
         role="separator"
         aria-orientation="vertical"
@@ -2805,6 +2876,7 @@ export default function ProjetosPage({ token }: { token: string }) {
   const [form, setForm] = useState<{ editando: Projeto | null } | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [excluindo, setExcluindo] = useState<Projeto | null>(null);
+  const fundoProjeto = useFecharNoFundo(() => setExcluindo(null));
   /** Arquivo aberto em prévia, sem sair do portal. `fonte` diz de onde buscar
    *  o conteúdo: anexo do projeto e evidência de entrega vivem em tabelas
    *  diferentes, com ações próprias. */
@@ -2913,7 +2985,7 @@ export default function ProjetosPage({ token }: { token: string }) {
     await carregar();
   }
 
-  async function subirEvidencia(e: Entrega, arquivos: FileList | null, comentario?: string) {
+  async function subirEvidencia(e: Entrega, arquivos: FileList | null, comentario?: string, etapa?: string) {
     // Só o primeiro arquivo do lote substitui a prova antiga; os demais entram
     // ao lado dele, senão cada um apagaria o anterior.
     let primeiro = true;
@@ -2926,7 +2998,7 @@ export default function ProjetosPage({ token }: { token: string }) {
       await api('', 'POST', {
         action: 'add_entrega_evidencia', entrega_id: e.id, nome: f.name,
         tipo: f.type || 'application/octet-stream', tamanho: f.size,
-        base64: await lerBase64(f), comentario, substituir: primeiro,
+        base64: await lerBase64(f), comentario, etapa, substituir: primeiro,
       });
       primeiro = false;
     }
@@ -3265,7 +3337,7 @@ export default function ProjetosPage({ token }: { token: string }) {
                       // A entrega em curso é a primeira que ainda não terminou:
                       // é ela que responde "em que pé está o projeto".
                       const atual = p.entregas.find(e =>
-                        e.status !== ENTREGA_CONCLUIDA && e.status !== ENTREGA_CANCELADA);
+                        e.status !== ENTREGA_VALIDADA && e.status !== ENTREGA_CANCELADA);
                       return (
                         <span style={{ display: 'block', minWidth: 0 }}>
                           <span style={{ display: 'block', fontWeight: 600, color: 'var(--black)',
@@ -3361,7 +3433,7 @@ export default function ProjetosPage({ token }: { token: string }) {
                   <td>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6,
                       fontSize: 12, fontWeight: 600, color: 'var(--gray)' }}
-                      title={`${p.entregas.filter(e => e.status === ENTREGA_CONCLUIDA).length} de ${p.entregas.length} entrega(s) concluída(s)`}>
+                      title={`${p.entregas.filter(e => e.status === ENTREGA_VALIDADA).length} de ${p.entregas.length} entrega(s) validada(s)`}>
                       <AnelProgresso valor={progressoDe(p)} />
                       {progressoDe(p)}%
                     </span>
@@ -3494,10 +3566,10 @@ export default function ProjetosPage({ token }: { token: string }) {
                         {/* Deixou de ser estimativa digitada: é a fração de
                             entregas concluídas, que o sistema sabe contar. */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-                          title={`${p.entregas.filter(e => e.status === ENTREGA_CONCLUIDA).length} de ${p.entregas.length} entrega(s) concluída(s)`}>
+                          title={`${p.entregas.filter(e => e.status === ENTREGA_VALIDADA).length} de ${p.entregas.length} entrega(s) validada(s)`}>
                           <span style={{ flex: 1, minWidth: 90 }}><Barra valor={progressoDe(p)} /></span>
                           <span style={{ fontSize: 11, color: 'var(--gray2)', whiteSpace: 'nowrap' }}>
-                            {p.entregas.filter(e => e.status === ENTREGA_CONCLUIDA).length}/{p.entregas.length}
+                            {p.entregas.filter(e => e.status === ENTREGA_VALIDADA).length}/{p.entregas.length}
                           </span>
                         </div>
                       </td>
@@ -3566,7 +3638,7 @@ export default function ProjetosPage({ token }: { token: string }) {
 
       {excluindo && createPortal(
         <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }}
-          onClick={() => setExcluindo(null)}>
+          {...fundoProjeto}>
           <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
             <p className="delete-confirm-title">Excluir projeto</p>
             <p className="delete-confirm-desc">

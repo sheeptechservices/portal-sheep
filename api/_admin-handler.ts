@@ -64,27 +64,39 @@ async function guardaDaEquipe(
   return membro.rows.length ? null : FORA_DA_EQUIPE;
 }
 
-/** Status de entrega em que a prova de conclusão é exigida. */
-const ENTREGA_CONCLUIDA = 'Concluída';
+/** "Entregue" é o que saiu da nossa mão; "Validada" é o que o cliente aceitou.
+ *  Os dois falam do mundo fora do sistema, então os dois pedem prova. */
+const ENTREGA_ENTREGUE = 'Entregue';
+const ENTREGA_VALIDADA = 'Validada';
 const ENTREGA_CANCELADA = 'Cancelada';
+
+/** Cada estado é provado pela sua própria evidência: o comprovante do que foi
+ *  enviado não serve de aceite do cliente, e vice-versa. A etapa gravada na
+ *  evidência é o que diz qual é qual. */
+const PROVA_DA_ETAPA: Record<string, string> = {
+  [ENTREGA_ENTREGUE]: 'Entrega',
+  [ENTREGA_VALIDADA]: 'Validação',
+};
+const EXIGEM_PROVA = Object.keys(PROVA_DA_ETAPA);
 
 /** Os únicos estados que uma pessoa escolhe. "Planejada" é o de partida e o
  *  destino de quem reabre; "Em andamento" e "Bloqueada" serão deduzidos das
  *  tarefas da entrega, e por isso ninguém os digita. */
-const STATUS_MANUAL = ['Planejada', ENTREGA_CONCLUIDA, ENTREGA_CANCELADA];
+const STATUS_MANUAL = ['Planejada', ENTREGA_ENTREGUE, ENTREGA_VALIDADA, ENTREGA_CANCELADA];
 
 /** Recalcula o progresso do projeto a partir das entregas. É a razão de o campo
  *  ter deixado de ser manual: fração de entrega concluída é um número que o
  *  sistema sabe, e estimativa digitada envelhece sozinha. */
 async function recalcularProgresso(db: Client, projetoId: string) {
-  // Entrega cancelada sai da conta inteira, e não só do numerador: ela deixou
-  // de ser trabalho a fazer, e mantê-la no denominador travaria o projeto
-  // abaixo de 100% para sempre.
+  // Só "Validada" conta como pronta: entregue e ainda sem o aceite é trabalho
+  // que pode voltar. Cancelada sai da conta inteira, e não só do numerador:
+  // deixou de ser trabalho a fazer, e mantê-la no denominador travaria o
+  // projeto abaixo de 100% para sempre.
   const r = await db.execute({
     sql: `SELECT COUNT(*) AS total,
                  SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS feitas
           FROM projeto_entregas WHERE projeto_id = ? AND status <> ?`,
-    args: [ENTREGA_CONCLUIDA, projetoId, ENTREGA_CANCELADA],
+    args: [ENTREGA_VALIDADA, projetoId, ENTREGA_CANCELADA],
   });
   const total = Number(r.rows[0]?.total ?? 0);
   const feitas = Number(r.rows[0]?.feitas ?? 0);
@@ -94,11 +106,12 @@ async function recalcularProgresso(db: Client, projetoId: string) {
   });
 }
 
-/** Uma entrega só pode ser dada como concluída com prova anexada. */
-async function podeConcluir(db: Client, entregaId: number) {
+/** Entregue e validada são afirmações sobre o mundo: cada uma só vale com a
+ *  prova da sua etapa. */
+async function temProva(db: Client, entregaId: number, etapa: string) {
   const r = await db.execute({
-    sql: 'SELECT COUNT(*) AS n FROM entrega_evidencias WHERE entrega_id = ?',
-    args: [entregaId],
+    sql: 'SELECT COUNT(*) AS n FROM entrega_evidencias WHERE entrega_id = ? AND etapa = ?',
+    args: [entregaId, etapa],
   });
   return Number(r.rows[0]?.n ?? 0) > 0;
 }
@@ -576,6 +589,7 @@ async function migrarSchema(db: Client) {
       tamanho         INTEGER NOT NULL,
       base64          TEXT NOT NULL,
       comentario      TEXT,
+      etapa           TEXT NOT NULL DEFAULT 'Entrega',
       criado_em       TEXT NOT NULL,
       criado_por_nome TEXT
     )
@@ -665,6 +679,12 @@ async function migrarSchema(db: Client) {
   // Categoria da entrega, acrescentada depois da tabela existir.
   try {
     await ddl(`ALTER TABLE projeto_entregas ADD COLUMN categoria TEXT`);
+  } catch { /* coluna já existe */ }
+
+  // Etapa da evidência, acrescentada depois. As que já existiam provam a
+  // entrega: era o único estado que pedia prova quando foram anexadas.
+  try {
+    await ddl(`ALTER TABLE entrega_evidencias ADD COLUMN etapa TEXT NOT NULL DEFAULT 'Entrega'`);
   } catch { /* coluna já existe */ }
 
   // A tabela de evidências pode ter sido criada antes do comentário existir.
@@ -1721,7 +1741,7 @@ async function despacharAdminData(
         // Sem o base64: a listagem carregaria o conteúdo de todo arquivo de
         // todo projeto. O conteúdo vem por ação própria, ao baixar.
         db.execute(`
-          SELECT id, entrega_id, nome, tipo, tamanho, comentario, criado_em, criado_por_nome
+          SELECT id, entrega_id, nome, tipo, tamanho, comentario, etapa, criado_em, criado_por_nome
           FROM entrega_evidencias ORDER BY criado_em
         `),
       ]);
@@ -2107,7 +2127,7 @@ function faltaEmProjeto(p: any): string | null {
           args: [
             id, String(e.titulo).trim(), e.descricao ?? null, String(e.categoria ?? '').trim() || null,
             // Concluída exige evidência, que só pode ser anexada depois de a
-            // entrega existir. Por isso a criação nunca nasce concluída.
+            // entrega existir. Por isso a criacao nunca nasce entregue.
             e.status === ENTREGA_CANCELADA ? ENTREGA_CANCELADA : 'Planejada',
             e.prazo || null,
             JSON.stringify(Array.isArray(e.responsaveis) ? e.responsaveis : []),
@@ -2226,8 +2246,16 @@ function faltaEmProjeto(p: any): string | null {
       }
 
       if (e.id) {
-        if (e.status === ENTREGA_CONCLUIDA && !(await podeConcluir(db, Number(e.id)))) {
-          return { status: 400, body: { error: 'Anexe a evidência antes de concluir a entrega.' } };
+        const etapaExigida = PROVA_DA_ETAPA[e.status];
+        if (etapaExigida && !(await temProva(db, Number(e.id), etapaExigida))) {
+          return {
+            status: 400,
+            body: {
+              error: e.status === ENTREGA_ENTREGUE
+                ? 'Anexe o comprovante do que foi enviado antes de marcar como entregue.'
+                : 'Anexe o aceite do cliente antes de marcar como validada.',
+            },
+          };
         }
         await db.execute({
           sql: `UPDATE projeto_entregas
@@ -2237,7 +2265,7 @@ function faltaEmProjeto(p: any): string | null {
             e.status ?? 'Planejada', e.prazo || null, responsaveis, links, e.id],
         });
       } else {
-        // Entrega nova nunca nasce concluída: não há evidência a anexar ainda.
+        // Entrega nova nunca nasce entregue nem validada: nao ha prova a anexar.
         const ordem = await db.execute({
           sql: 'SELECT COALESCE(MAX(ordem), -1) + 1 AS proxima FROM projeto_entregas WHERE projeto_id = ?',
           args: [e.projeto_id],
@@ -2285,21 +2313,23 @@ function faltaEmProjeto(p: any): string | null {
     if (action === 'add_entrega_evidencia') {
       { const barrado = await guardaDaEquipe(db, usuario, body.entrega_id, 'entrega'); if (barrado) return barrado; }
       if (!body.entrega_id) return { status: 400, body: { error: 'entrega_id ausente.' } };
-      // `substituir` chega da conclusão: a prova anterior fica guardada desde a
-      // reabertura e só sai agora, quando existe uma nova no lugar dela. Assim
-      // nenhuma entrega concluída passa um instante sequer sem prova.
+      const etapa = String(body.etapa ?? 'Entrega');
+      // `substituir` troca a prova daquela etapa, e só dela: reentregar não pode
+      // apagar o aceite, nem revalidar pode apagar o comprovante de envio. A
+      // anterior fica guardada até a nova existir, então a entrega não passa um
+      // instante sequer sem prova.
       if (body.substituir) {
         await db.execute({
-          sql: 'DELETE FROM entrega_evidencias WHERE entrega_id = ?',
-          args: [body.entrega_id],
+          sql: 'DELETE FROM entrega_evidencias WHERE entrega_id = ? AND etapa = ?',
+          args: [body.entrega_id, etapa],
         });
       }
       await db.execute({
         sql: `INSERT INTO entrega_evidencias
-                (entrega_id, nome, tipo, tamanho, base64, comentario, criado_em, criado_por_nome)
-              VALUES (?,?,?,?,?,?,?,?)`,
+                (entrega_id, nome, tipo, tamanho, base64, comentario, etapa, criado_em, criado_por_nome)
+              VALUES (?,?,?,?,?,?,?,?,?)`,
         args: [body.entrega_id, body.nome, body.tipo, body.tamanho, body.base64,
-          String(body.comentario ?? '').trim() || null, new Date().toISOString(), autorNome],
+          String(body.comentario ?? '').trim() || null, etapa, new Date().toISOString(), autorNome],
       });
       return { status: 200, body: { ok: true } };
     }
@@ -2309,7 +2339,7 @@ function faltaEmProjeto(p: any): string | null {
       // Tirar a última prova de uma entrega concluída a devolve para andamento:
       // deixar "Concluída" sem evidência quebraria a regra pelas costas.
       const alvo = await db.execute({
-        sql: `SELECT e.entrega_id, e.id, t.projeto_id, t.status
+        sql: `SELECT e.entrega_id, e.id, e.etapa, t.projeto_id, t.status
               FROM entrega_evidencias e JOIN projeto_entregas t ON t.id = e.entrega_id
               WHERE e.id = ?`,
         args: [body.id],
@@ -2317,12 +2347,17 @@ function faltaEmProjeto(p: any): string | null {
       const linha = alvo.rows[0];
       if (!linha) return { status: 404, body: { error: 'Evidência não encontrada.' } };
       await db.execute({ sql: 'DELETE FROM entrega_evidencias WHERE id = ?', args: [body.id] });
-      if (linha.status === ENTREGA_CONCLUIDA && !(await podeConcluir(db, Number(linha.entrega_id)))) {
-        // Volta para "Planejada", e não para "Em andamento": esse estado passou
-        // a ser deduzido das tarefas e ninguém, nem o servidor, o grava à mão.
+      // Tirar a prova de um estado desfaz esse estado, e só ele: perder o aceite
+      // devolve a entrega para "Entregue", que a prova de envio ainda sustenta.
+      // Sem prova nenhuma, cai para "Planejada" - "Em andamento" é deduzido das
+      // tarefas e ninguém, nem o servidor, o grava à mão.
+      const etapaDoEstado = PROVA_DA_ETAPA[String(linha.status)];
+      if (etapaDoEstado && etapaDoEstado === String(linha.etapa)
+          && !(await temProva(db, Number(linha.entrega_id), etapaDoEstado))) {
+        const aindaEntregue = await temProva(db, Number(linha.entrega_id), PROVA_DA_ETAPA[ENTREGA_ENTREGUE]);
         await db.execute({
           sql: 'UPDATE projeto_entregas SET status = ? WHERE id = ?',
-          args: ['Planejada', linha.entrega_id],
+          args: [aindaEntregue ? ENTREGA_ENTREGUE : 'Planejada', linha.entrega_id],
         });
         await recalcularProgresso(db, String(linha.projeto_id));
       }
