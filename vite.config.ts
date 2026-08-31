@@ -47,22 +47,22 @@ export default defineConfig(({ mode }) => {
               }
 
               if (id) {
-                const sub = await db.execute({ sql: 'SELECT * FROM solicitacoes WHERE id = ?', args: [id] })
+                const sub = await db.execute({ sql: 'SELECT * FROM leads WHERE id = ?', args: [id] })
                 if (sub.rows.length === 0) {
                   res.statusCode = 404
                   res.end(JSON.stringify({ error: 'Not found' }))
                   return
                 }
                 const arqs = await db.execute({
-                  sql: 'SELECT id, categoria, nome, tipo, tamanho, base64 FROM solicitacao_arquivos WHERE solicitacao_id = ?',
+                  sql: 'SELECT id, categoria, nome, tipo, tamanho, base64 FROM lead_arquivos WHERE lead_id = ?',
                   args: [id],
                 })
                 res.end(JSON.stringify({ submission: sub.rows[0], arquivos: arqs.rows }))
               } else {
                 const result = await db.execute(`
                   SELECT s.*, COUNT(a.id) AS arquivo_count
-                  FROM solicitacoes s
-                  LEFT JOIN solicitacao_arquivos a ON a.solicitacao_id = s.id
+                  FROM leads s
+                  LEFT JOIN lead_arquivos a ON a.lead_id = s.id
                   GROUP BY s.id
                   ORDER BY s.created_at DESC
                 `)
@@ -115,7 +115,7 @@ export default defineConfig(({ mode }) => {
                 }
 
                 await db.execute(`
-                  CREATE TABLE IF NOT EXISTS solicitacoes (
+                  CREATE TABLE IF NOT EXISTS leads (
                     id                  TEXT PRIMARY KEY,
                     created_at          TEXT NOT NULL,
                     status              TEXT NOT NULL DEFAULT 'submitted',
@@ -132,14 +132,14 @@ export default defineConfig(({ mode }) => {
                     fim_type            INTEGER
                   )
                 `)
-                try { await db.execute(`ALTER TABLE solicitacoes ADD COLUMN parcelas TEXT`) } catch {}
-                try { await db.execute(`ALTER TABLE solicitacoes ADD COLUMN previsao_execucao TEXT`) } catch {}
-                try { await db.execute(`ALTER TABLE solicitacoes ADD COLUMN data_execucao TEXT`) } catch {}
+                try { await db.execute(`ALTER TABLE leads ADD COLUMN parcelas TEXT`) } catch {}
+                try { await db.execute(`ALTER TABLE leads ADD COLUMN previsao_execucao TEXT`) } catch {}
+                try { await db.execute(`ALTER TABLE leads ADD COLUMN data_execucao TEXT`) } catch {}
 
                 await db.execute(`
-                  CREATE TABLE IF NOT EXISTS solicitacao_arquivos (
+                  CREATE TABLE IF NOT EXISTS lead_arquivos (
                     id             INTEGER PRIMARY KEY AUTOINCREMENT,
-                    solicitacao_id TEXT NOT NULL,
+                    lead_id TEXT NOT NULL,
                     categoria      TEXT NOT NULL,
                     nome           TEXT NOT NULL,
                     tipo           TEXT NOT NULL,
@@ -164,7 +164,7 @@ export default defineConfig(({ mode }) => {
                 }
 
                 await db.execute({
-                  sql: `INSERT INTO solicitacoes (
+                  sql: `INSERT INTO leads (
                           id, created_at,
                           cnpj_contratado, nome_contratado, situacao_contratado,
                           cnpj_sacado, nome_sacado, situacao_sacado,
@@ -199,8 +199,8 @@ export default defineConfig(({ mode }) => {
                   )
                   if (firstStatus.rows.length > 0) {
                     await db.execute({
-                      sql: `INSERT INTO solicitacao_eventos (solicitacao_id, tipo, status_id, descricao, criado_em)
-                            VALUES (?, 'status_change', ?, 'Solicitação recebida', ?)`,
+                      sql: `INSERT INTO lead_eventos (lead_id, tipo, status_id, descricao, criado_em)
+                            VALUES (?, 'status_change', ?, 'Lead recebida', ?)`,
                       args: [id, firstStatus.rows[0].id, createdAt],
                     })
                   }
@@ -212,7 +212,7 @@ export default defineConfig(({ mode }) => {
               } catch (err) {
                 console.error('[api/submit]', err)
                 res.statusCode = 500
-                res.end(JSON.stringify({ error: 'Erro ao salvar solicitação. Tente novamente.' }))
+                res.end(JSON.stringify({ error: 'Erro ao salvar lead. Tente novamente.' }))
               }
             })
           })
@@ -229,8 +229,8 @@ export default defineConfig(({ mode }) => {
             req.on('end', async () => {
               res.setHeader('Content-Type', 'application/json')
               try {
-                const { solicitacaoId, arquivo } = JSON.parse(body)
-                if (!solicitacaoId || !arquivo?.base64 || !arquivo.nome) {
+                const { leadId, arquivo } = JSON.parse(body)
+                if (!leadId || !arquivo?.base64 || !arquivo.nome) {
                   res.statusCode = 400
                   res.end(JSON.stringify({ error: 'Dados ausentes.' }))
                   return
@@ -239,17 +239,17 @@ export default defineConfig(({ mode }) => {
                 const { createClient } = await import('@libsql/client')
                 const db = createClient({ url: env.TURSO_DATABASE_URL, authToken: env.TURSO_AUTH_TOKEN })
 
-                const row = await db.execute({ sql: 'SELECT id FROM solicitacoes WHERE id = ? LIMIT 1', args: [solicitacaoId] })
+                const row = await db.execute({ sql: 'SELECT id FROM leads WHERE id = ? LIMIT 1', args: [leadId] })
                 if (row.rows.length === 0) {
                   res.statusCode = 404
-                  res.end(JSON.stringify({ error: 'Solicitação não encontrada.' }))
+                  res.end(JSON.stringify({ error: 'Lead não encontrada.' }))
                   return
                 }
 
                 await db.execute({
-                  sql: `INSERT INTO solicitacao_arquivos (solicitacao_id, categoria, nome, tipo, tamanho, base64)
+                  sql: `INSERT INTO lead_arquivos (lead_id, categoria, nome, tipo, tamanho, base64)
                         VALUES (?, ?, ?, ?, ?, ?)`,
-                  args: [solicitacaoId, arquivo.categoria ?? '', arquivo.nome, arquivo.tipo ?? '', arquivo.tamanho ?? 0, arquivo.base64],
+                  args: [leadId, arquivo.categoria ?? '', arquivo.nome, arquivo.tipo ?? '', arquivo.tamanho ?? 0, arquivo.base64],
                 })
 
                 res.end(JSON.stringify({ ok: true }))
@@ -411,100 +411,13 @@ export default defineConfig(({ mode }) => {
                 process.env.DEPS_SENHA         = process.env.DEPS_SENHA         ?? env.DEPS_SENHA
                 process.env.DEPS_PRODUTO_PJ    = process.env.DEPS_PRODUTO_PJ    ?? env.DEPS_PRODUTO_PJ
                 process.env.DEPS_PRODUTO_PF    = process.env.DEPS_PRODUTO_PF    ?? env.DEPS_PRODUTO_PF
-                const result = await handleAdminData(req.method ?? 'GET', qs, parsed, db, env.SLACK_BOT_TOKEN, sessao.usuario)
+                const result = await handleAdminData(req.method ?? 'GET', qs, parsed, db, sessao.usuario)
                 res.statusCode = result.status
                 res.end(JSON.stringify(result.body))
               } catch (err) {
                 console.error('[api/admin-data]', err)
                 res.statusCode = 500
                 res.end(JSON.stringify({ error: 'Internal error' }))
-              }
-            })
-          })
-
-          // /api/analise-credito - extração de documentos por IA (Análise de Crédito)
-          server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
-            const url = new URL(req.url ?? '/', `http://localhost`)
-            if (!url.pathname.startsWith('/api/analise-credito')) return next()
-            if (req.method !== 'POST') {
-              res.statusCode = 405
-              res.setHeader('Content-Type', 'application/json')
-              res.end(JSON.stringify({ error: 'Method not allowed' }))
-              return
-            }
-
-            let body = ''
-            req.on('data', (chunk: Buffer) => { body += chunk.toString() })
-            req.on('end', async () => {
-              res.setHeader('Content-Type', 'application/json')
-              try {
-                // O handler real lê process.env - popula a partir do .env do projeto.
-                // .env tem precedência sobre o ambiente do shell (que pode ter um token
-                // do Claude Code inválido para chamadas diretas à API da Anthropic).
-                if (env.ANTHROPIC_API_KEY)  process.env.ANTHROPIC_API_KEY  = env.ANTHROPIC_API_KEY
-                if (env.TURSO_DATABASE_URL) process.env.TURSO_DATABASE_URL = env.TURSO_DATABASE_URL
-                if (env.TURSO_AUTH_TOKEN)   process.env.TURSO_AUTH_TOKEN   = env.TURSO_AUTH_TOKEN
-
-                const { default: handler } = await import('./api/analise-credito')
-                const fakeReq = { method: 'POST', headers: req.headers, body: body ? JSON.parse(body) : {} } as any
-                let statusCode = 200
-                let responseBody = ''
-                const fakeRes = {
-                  setHeader: () => {},
-                  status(code: number) { statusCode = code; return this },
-                  json(obj: unknown) { responseBody = JSON.stringify(obj); return this },
-                  end() {},
-                } as any
-                await handler(fakeReq, fakeRes)
-                res.statusCode = statusCode
-                res.end(responseBody)
-              } catch (err) {
-                console.error('[api/analise-credito dev]', err)
-                res.statusCode = 500
-                res.end(JSON.stringify({ success: false, error: String(err) }))
-              }
-            })
-          })
-
-          // /api/ai-parecer - parecer consultivo de crédito por IA (etapa Decisão)
-          server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
-            const url = new URL(req.url ?? '/', `http://localhost`)
-            if (!url.pathname.startsWith('/api/ai-parecer')) return next()
-            if (req.method !== 'POST') {
-              res.statusCode = 405
-              res.setHeader('Content-Type', 'application/json')
-              res.end(JSON.stringify({ error: 'Method not allowed' }))
-              return
-            }
-
-            let body = ''
-            req.on('data', (chunk: Buffer) => { body += chunk.toString() })
-            req.on('end', async () => {
-              res.setHeader('Content-Type', 'application/json')
-              try {
-                if (env.ANTHROPIC_API_KEY)   process.env.ANTHROPIC_API_KEY   = env.ANTHROPIC_API_KEY
-                if (env.TURSO_DATABASE_URL)  process.env.TURSO_DATABASE_URL  = env.TURSO_DATABASE_URL
-                if (env.TURSO_AUTH_TOKEN)    process.env.TURSO_AUTH_TOKEN    = env.TURSO_AUTH_TOKEN
-                if (env.APP_ENCRYPTION_KEY)  process.env.APP_ENCRYPTION_KEY  = env.APP_ENCRYPTION_KEY
-                if (env.D4SIGN_CRYPT_KEY)    process.env.D4SIGN_CRYPT_KEY    = env.D4SIGN_CRYPT_KEY
-
-                const { default: handler } = await import('./api/ai-parecer')
-                const fakeReq = { method: 'POST', headers: req.headers, body: body ? JSON.parse(body) : {} } as any
-                let statusCode = 200
-                let responseBody = ''
-                const fakeRes = {
-                  setHeader: () => {},
-                  status(code: number) { statusCode = code; return this },
-                  json(obj: unknown) { responseBody = JSON.stringify(obj); return this },
-                  end() {},
-                } as any
-                await handler(fakeReq, fakeRes)
-                res.statusCode = statusCode
-                res.end(responseBody)
-              } catch (err) {
-                console.error('[api/ai-parecer dev]', err)
-                res.statusCode = 500
-                res.end(JSON.stringify({ error: String(err) }))
               }
             })
           })
@@ -585,404 +498,6 @@ export default defineConfig(({ mode }) => {
             })
           })
 
-          // /api/liquidez - liquidez semanal CRUD
-          server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
-            const url = new URL(req.url ?? '/', `http://localhost`)
-            if (!url.pathname.startsWith('/api/liquidez')) return next()
-
-            let body = ''
-            req.on('data', (chunk: Buffer) => { body += chunk.toString() })
-            req.on('end', async () => {
-              res.setHeader('Content-Type', 'application/json')
-              try {
-                const { createClient } = await import('@libsql/client')
-                const { randomUUID } = await import('crypto')
-                const db = createClient({ url: env.TURSO_DATABASE_URL, authToken: env.TURSO_AUTH_TOKEN })
-                const { getAdminSession, ensureAdminSchema, autoriaDe } = await import('./api/_admin-handler')
-                await ensureAdminSchema(db)
-
-                const sessionToken = String(req.headers['x-admin-session'] ?? '')
-                if (!sessionToken) {
-                  res.statusCode = 401
-                  res.end(JSON.stringify({ error: 'Unauthorized' }))
-                  return
-                }
-                const sessao = await getAdminSession(db, sessionToken).catch(() => null)
-                if (!sessao) {
-                  res.statusCode = 401
-                  res.end(JSON.stringify({ error: 'Sessão expirada.' }))
-                  return
-                }
-                const [autorId, autorNome] = autoriaDe(sessao.usuario)
-
-                if (req.method === 'GET') {
-                  const qs = url.searchParams
-                  const weekStart = qs.get('week_start') ?? ''
-                  const weekEnd   = qs.get('week_end')   ?? ''
-
-                  if (qs.get('saldos') === '1') {
-                    if (!weekStart) { res.statusCode = 400; res.end(JSON.stringify({ error: 'week_start é obrigatório' })); return }
-                    const saldoRows = await db.execute({ sql: `SELECT source, amount FROM liquidez_saldos WHERE week_start = ?`, args: [weekStart] })
-                    const saldos: Record<string, number> = {}
-                    for (const r of saldoRows.rows) saldos[r.source as string] = r.amount as number
-                    res.statusCode = 200
-                    res.end(JSON.stringify({ saldos }))
-                    return
-                  }
-
-                  if (!weekStart || !weekEnd) {
-                    res.statusCode = 400
-                    res.end(JSON.stringify({ error: 'week_start e week_end são obrigatórios' }))
-                    return
-                  }
-                  const result = await db.execute({
-                    sql: `SELECT * FROM liquidez_transactions WHERE date >= ? AND date <= ? ORDER BY date, created_at`,
-                    args: [weekStart, weekEnd],
-                  })
-                  const transactions = result.rows.map(r => ({
-                    id: r.id, date: r.date, source: r.source, type: r.type,
-                    category: r.category, amount: r.amount, description: r.description,
-                    realized: Boolean(r.realized), created_at: r.created_at,
-                    criado_por_nome: r.criado_por_nome ?? null,
-                    atualizado_por_nome: r.atualizado_por_nome ?? null,
-                  }))
-                  res.statusCode = 200
-                  res.end(JSON.stringify({ transactions }))
-                  return
-                }
-
-                if (req.method === 'POST') {
-                  const parsed = body ? JSON.parse(body) : {}
-                  const action: string = parsed.action ?? ''
-
-                  if (action === 'create') {
-                    const { date, source, type, category, amount, description } = parsed
-                    if (!date || !source || !type || !category || amount == null) {
-                      res.statusCode = 400
-                      res.end(JSON.stringify({ error: 'Campos obrigatórios ausentes' }))
-                      return
-                    }
-                    const id = randomUUID()
-                    const now = new Date().toISOString()
-                    await db.execute({
-                      sql: `INSERT INTO liquidez_transactions (id, date, source, type, category, amount, description, created_at, criado_por_id, criado_por_nome) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                      args: [id, date, source, type, category, Number(amount), description ?? null, now, autorId, autorNome],
-                    })
-                    res.statusCode = 201
-                    res.end(JSON.stringify({ ok: true, id }))
-                    return
-                  }
-
-                  if (action === 'update') {
-                    const { id, date, source, type, category, amount, description } = parsed
-                    if (!id) { res.statusCode = 400; res.end(JSON.stringify({ error: 'id obrigatório' })); return }
-                    await db.execute({
-                      sql: `UPDATE liquidez_transactions SET date=?, source=?, type=?, category=?, amount=?, description=?, atualizado_por_id=?, atualizado_por_nome=?, atualizado_em=? WHERE id=?`,
-                      args: [date, source, type, category, Number(amount), description ?? null, autorId, autorNome, new Date().toISOString(), id],
-                    })
-                    res.statusCode = 200
-                    res.end(JSON.stringify({ ok: true }))
-                    return
-                  }
-
-                  if (action === 'delete') {
-                    const { id } = parsed
-                    if (!id) { res.statusCode = 400; res.end(JSON.stringify({ error: 'id obrigatório' })); return }
-                    await db.execute({ sql: `DELETE FROM liquidez_transactions WHERE id=?`, args: [id] })
-                    res.statusCode = 200
-                    res.end(JSON.stringify({ ok: true }))
-                    return
-                  }
-
-                  if (action === 'toggle_realized') {
-                    const { id } = parsed
-                    if (!id) { res.statusCode = 400; res.end(JSON.stringify({ error: 'id obrigatório' })); return }
-                    await db.execute({
-                      sql: `UPDATE liquidez_transactions SET realized = CASE WHEN realized = 1 THEN 0 ELSE 1 END, atualizado_por_id = ?, atualizado_por_nome = ?, atualizado_em = ? WHERE id = ?`,
-                      args: [autorId, autorNome, new Date().toISOString(), id],
-                    })
-                    const row = await db.execute({ sql: `SELECT realized FROM liquidez_transactions WHERE id = ?`, args: [id] })
-                    res.statusCode = 200
-                    res.end(JSON.stringify({ ok: true, realized: Boolean(row.rows[0]?.realized) }))
-                    return
-                  }
-
-                  if (action === 'set_saldo') {
-                    const { week_start, source, amount } = parsed
-                    if (!week_start || !source || amount == null) { res.statusCode = 400; res.end(JSON.stringify({ error: 'week_start, source e amount são obrigatórios' })); return }
-                    const now = new Date().toISOString()
-                    await db.execute({
-                      sql: `INSERT INTO liquidez_saldos (week_start, source, amount, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(week_start, source) DO UPDATE SET amount=excluded.amount, updated_at=excluded.updated_at`,
-                      args: [week_start, source, Number(amount), now],
-                    })
-                    res.statusCode = 200
-                    res.end(JSON.stringify({ ok: true }))
-                    return
-                  }
-
-                  res.statusCode = 400
-                  res.end(JSON.stringify({ error: 'action inválida' }))
-                  return
-                }
-
-                res.statusCode = 405
-                res.end(JSON.stringify({ error: 'Method not allowed' }))
-              } catch (err) {
-                console.error('[api/liquidez]', err)
-                res.statusCode = 500
-                res.end(JSON.stringify({ error: 'Internal error' }))
-              }
-            })
-          })
-
-          // /api/relatorios - operações reais lidas do Google Sheets
-          server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
-            const url = new URL(req.url ?? '/', `http://localhost`)
-            if (!url.pathname.startsWith('/api/relatorios')) return next()
-            ;(async () => {
-              res.setHeader('Content-Type', 'application/json')
-              try {
-                // O handler real lê process.env - popula a partir do .env do projeto.
-                if (env.GOOGLE_SA_EMAIL)       process.env.GOOGLE_SA_EMAIL       = env.GOOGLE_SA_EMAIL
-                if (env.GOOGLE_SA_PRIVATE_KEY) process.env.GOOGLE_SA_PRIVATE_KEY = env.GOOGLE_SA_PRIVATE_KEY
-                if (env.RELATORIOS_SHEET_ID)   process.env.RELATORIOS_SHEET_ID   = env.RELATORIOS_SHEET_ID
-                if (env.RELATORIOS_SHEET_ABA)  process.env.RELATORIOS_SHEET_ABA  = env.RELATORIOS_SHEET_ABA
-                if (env.TURSO_DATABASE_URL)    process.env.TURSO_DATABASE_URL    = env.TURSO_DATABASE_URL
-                if (env.TURSO_AUTH_TOKEN)      process.env.TURSO_AUTH_TOKEN      = env.TURSO_AUTH_TOKEN
-
-                const { default: handler } = await import('./api/relatorios')
-                const query: Record<string, string> = {}
-                url.searchParams.forEach((v, k) => { query[k] = v })
-                const fakeReq = { method: req.method ?? 'GET', headers: req.headers, query } as any
-                let statusCode = 200
-                let responseBody = ''
-                const fakeRes = {
-                  setHeader: () => {},
-                  status(code: number) { statusCode = code; return this },
-                  json(obj: unknown) { responseBody = JSON.stringify(obj); return this },
-                  end() {},
-                } as any
-                await handler(fakeReq, fakeRes)
-                res.statusCode = statusCode
-                res.end(responseBody)
-              } catch (err) {
-                console.error('[api/relatorios dev]', err)
-                res.statusCode = 500
-                res.end(JSON.stringify({ error: String(err) }))
-              }
-            })()
-          })
-
-          // /api/d4sign - D4Sign document creation and status polling
-          server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
-            const url = new URL(req.url ?? '/', `http://localhost`)
-            if (!url.pathname.startsWith('/api/d4sign')) return next()
-
-            res.setHeader('Content-Type', 'application/json')
-            // Sem CORS, espelhando api/d4sign.ts: mesma origem, nada a liberar.
-
-            const action = url.searchParams.get('action') ?? ''
-            const sessionToken = String(req.headers['x-admin-session'] ?? '')
-
-            /** Sessão do painel, exigida nas duas ações (falam com a conta da empresa). */
-            const comSessao = async () => {
-              if (!sessionToken) return false
-              const { createClient } = await import('@libsql/client')
-              const db = createClient({ url: env.TURSO_DATABASE_URL, authToken: env.TURSO_AUTH_TOKEN })
-              const { getAdminSession } = await import('./api/_admin-handler')
-              return !!(await getAdminSession(db, sessionToken).catch(() => null))
-            }
-
-            if (req.method === 'GET' && action === 'status') {
-              const uuid = url.searchParams.get('uuid') ?? ''
-              if (!uuid) { res.statusCode = 400; res.end(JSON.stringify({ error: 'uuid required' })); return }
-              ;(async () => {
-                if (!await comSessao()) { res.statusCode = 401; res.end(JSON.stringify({ error: 'Unauthorized' })); return }
-                const BASE  = env.D4SIGN_BASE_URL  ?? 'https://secure.d4sign.com.br/api/v1'
-                const TOKEN = env.D4SIGN_API_KEY   ?? ''
-                const CRYPT = env.D4SIGN_CRYPT_KEY ?? ''
-                const r = await fetch(`${BASE}/documents/${uuid}?tokenAPI=${TOKEN}&cryptKey=${CRYPT}`)
-                const data = await r.json()
-                const statusId = Number(data.statusId ?? data.uuidStatus ?? data.status_id ?? 0)
-                const status = statusId === 3 ? 'signed' : statusId === 4 ? 'canceled' : 'pending'
-                res.end(JSON.stringify({ status, statusId }))
-              })().catch(err => { res.statusCode = 500; res.end(JSON.stringify({ error: String(err) })) })
-              return
-            }
-
-            if (req.method === 'POST' && action === 'create') {
-              let body = ''
-              req.on('data', (chunk: Buffer) => { body += chunk.toString() })
-              req.on('end', async () => {
-                try {
-                  const { operacao } = JSON.parse(body)
-                  // Forward to the api/d4sign handler logic by importing it
-                  const { default: handler } = await import('./api/d4sign')
-                  // O shim precisa levar os headers: é neles que vai a sessão
-                  // que o handler agora exige.
-                  const fakeReq = { method: 'POST', query: { action: 'create' }, body: { operacao }, headers: req.headers } as any
-                  let statusCode = 200
-                  let responseBody = ''
-                  const fakeRes = {
-                    setHeader: () => {},
-                    status(code: number) { statusCode = code; return this },
-                    json(obj: unknown) { responseBody = JSON.stringify(obj); return this },
-                    end() {},
-                  } as any
-                  await handler(fakeReq, fakeRes)
-                  res.statusCode = statusCode
-                  res.end(responseBody)
-                } catch (err) {
-                  console.error('[api/d4sign dev]', err)
-                  res.statusCode = 500
-                  res.end(JSON.stringify({ error: String(err) }))
-                }
-              })
-              return
-            }
-
-            res.statusCode = 405
-            res.end(JSON.stringify({ error: 'Method not allowed' }))
-          })
-
-          // /api/slack-users
-          server.middlewares.use('/api/slack-users', (req: IncomingMessage, res: ServerResponse) => {
-            if (req.method !== 'GET') {
-              res.statusCode = 405
-              res.setHeader('Content-Type', 'application/json')
-              res.end(JSON.stringify({ error: 'Method not allowed' }))
-              return
-            }
-
-            const sessionToken = String(req.headers['x-admin-session'] ?? '')
-
-            ;(async () => {
-              const { createClient } = await import('@libsql/client')
-              const db = createClient({ url: env.TURSO_DATABASE_URL, authToken: env.TURSO_AUTH_TOKEN })
-              const { validateAdminSession } = await import('./api/_admin-handler')
-              const valid = await validateAdminSession(db, sessionToken).catch(() => false)
-              if (!valid) {
-                res.statusCode = 401
-                res.setHeader('Content-Type', 'application/json')
-                res.end(JSON.stringify({ error: 'Unauthorized' }))
-                return
-              }
-              res.setHeader('Content-Type', 'application/json')
-              try {
-                const r = await fetch('https://slack.com/api/users.list?limit=200', {
-                  headers: { Authorization: `Bearer ${env.SLACK_BOT_TOKEN}` },
-                })
-                const data = await r.json() as { ok: boolean; members?: any[] }
-                if (!data.ok) { res.statusCode = 500; res.end(JSON.stringify({ error: 'Slack error' })); return }
-                const users = (data.members ?? [])
-                  .filter((m: any) => !m.is_bot && !m.deleted && m.id !== 'USLACKBOT' && !m.is_restricted)
-                  .map((m: any) => ({ id: m.id, name: m.real_name || m.name, username: m.name, avatar: m.profile?.image_48 ?? null }))
-                  .sort((a: any, b: any) => a.name.localeCompare(b.name))
-                res.end(JSON.stringify({ users }))
-              } catch (err) {
-                console.error('[api/slack-users]', err)
-                res.statusCode = 500
-                res.end(JSON.stringify({ error: 'Internal error' }))
-              }
-            })()
-          })
-
-          server.middlewares.use('/api/slack', (req: IncomingMessage, res: ServerResponse) => {
-            if (req.method !== 'POST') {
-              res.statusCode = 405
-              res.end(JSON.stringify({ error: 'Method not allowed' }))
-              return
-            }
-
-            let body = ''
-            req.on('data', (chunk: Buffer) => { body += chunk.toString() })
-            req.on('end', async () => {
-              res.setHeader('Content-Type', 'application/json')
-              try {
-                const { data, fimType, arquivosCount } = JSON.parse(body)
-                if (!data) {
-                  res.statusCode = 400
-                  res.end(JSON.stringify({ error: 'Missing data' }))
-                  return
-                }
-
-                const token = env.SLACK_BOT_TOKEN
-
-                const { createClient } = await import('@libsql/client')
-                const db = createClient({ url: env.TURSO_DATABASE_URL, authToken: env.TURSO_AUTH_TOKEN })
-                const { getNovaSubmissaoRecipients } = await import('./api/_admin-handler')
-                const recipients = await getNovaSubmissaoRecipients(db)
-
-                if (recipients.length === 0) {
-                  res.end(JSON.stringify({ ok: true }))
-                  return
-                }
-
-                const FIM_LABELS: Record<number, string> = {
-                  1: 'Escrow direto na operação',
-                  2: 'Pagamento direto / Domicílio bancário',
-                  3: 'Escrow na nota + aceite via email',
-                }
-
-                async function slackCall(method: string, payload: Record<string, unknown>) {
-                  const r = await fetch(`https://slack.com/api/${method}`, {
-                    method: 'POST',
-                    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                  })
-                  return r.json() as Promise<{ ok: boolean; ts?: string; error?: string; channel?: { id: string } }>
-                }
-
-                const row = (l1: string, v1: string, l2: string, v2: string) => ({
-                  type: 'section',
-                  text: { type: 'mrkdwn', text: `*${l1}*   |   *${l2}*\n${v1}   |   ${v2}` },
-                })
-
-                const blocks: unknown[] = [
-                  { type: 'header', text: { type: 'plain_text', text: '✅ Nova solicitação recebida', emoji: true } },
-                  row('Empresa Contratado', data.nomeContratado ?? '-', 'Empresa Sacado', data.nomeSacado ?? '-'),
-                  row('CNPJ Contratado', data.cnpjContratado ?? '-', 'CNPJ Sacado', data.cnpjSacado ?? '-'),
-                  { type: 'divider' },
-                  row('Valor', data.valor ?? '-', 'Prazo limite', data.prazoLimite ?? '-'),
-                ]
-
-                if (fimType) {
-                  blocks.push({ type: 'section', text: {
-                    type: 'mrkdwn', text: `*Fluxo*\n${FIM_LABELS[fimType] ?? `FIM ${fimType}`}`,
-                  }})
-                }
-
-                blocks.push({ type: 'divider' })
-
-                const ctx: unknown[] = [{ type: 'mrkdwn', text: '✅ Formulário completo e enviado' }]
-                if (arquivosCount && arquivosCount > 0) {
-                  ctx.push({ type: 'mrkdwn', text: `📎 ${arquivosCount} arquivo${arquivosCount !== 1 ? 's' : ''} enviado${arquivosCount !== 1 ? 's' : ''}` })
-                }
-                blocks.push({ type: 'context', elements: ctx })
-
-                const message = {
-                  text: `✅ Nova solicitação - ${data.nomeContratado ?? data.cnpjContratado ?? '-'}`,
-                  blocks,
-                }
-
-                for (const userId of recipients) {
-                  let channel = userId
-                  if (userId.startsWith('U')) {
-                    const open = await slackCall('conversations.open', { users: userId })
-                    if (open.ok && open.channel?.id) channel = open.channel.id
-                  }
-                  const result = await slackCall('chat.postMessage', { channel, ...message })
-                  if (!result.ok) console.error('[api/slack]', result.error)
-                }
-
-                res.end(JSON.stringify({ ok: true }))
-              } catch (err) {
-                console.error('[api/slack]', err)
-                res.statusCode = 500
-                res.end(JSON.stringify({ error: 'Internal error' }))
-              }
-            })
-          })
         },
       },
     ],

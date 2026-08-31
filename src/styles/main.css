@@ -96,11 +96,9 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
 .nav-leaf:not(:disabled):active .nav-leaf-ico { transform: scale(0.92); }
 
 /* Spinner de carregamento reutilizável (substitui os textos "Carregando…") */
-/* A marca é preta e a sidebar acompanha o tema do usuário: no escuro ela
-   sumiria contra o #0A0A0C. `invert` devolve o carneiro em branco. A tela de
-   login não precisa disso porque é fixa no tema claro. */
-.brand-logo { }
-:root[data-theme="dark"] .brand-logo { filter: invert(1); }
+/* Sem inversão no tema escuro: a marca da sidebar é o carneiro verde, que já
+   tem contraste contra o #0A0A0C. `invert` existia para a versão preta - sobre
+   o verde ele devolveria magenta. */
 
 .dux-spinner {
   width: 24px; height: 24px;
@@ -128,7 +126,7 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
 .theme-seg {
   --seg-w: 30px;          /* largura de cada opção */
   --seg-gap: 2px;
-  /* Mesmo movimento do switch kanban/lista das Solicitações (.view-toggle-pill) */
+  /* Mesmo movimento do switch kanban/lista das Leads (.view-toggle-pill) */
   --seg-curva: cubic-bezier(0.4, 0, 0.2, 1);
   --seg-dur: 0.22s;
   position: relative;
@@ -441,6 +439,45 @@ body {
 .form-select.error { border-color: var(--red); }
 
 .form-hint { font-size: 11px; color: var(--gray2); }
+
+/* Ações do rodapé de modal. Estavam com estilo inline, que não faz :hover, e
+   ficavam sem retorno nenhum ao passar o mouse. O realce é de propósito
+   discreto: o modal já é o foco da tela, e botão que salta aqui compete com o
+   conteúdo em vez de guiar. */
+.modal-acao,
+.modal-acao-primaria {
+  padding: 8px 16px;
+  font-size: 13px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition),
+              color var(--transition), filter var(--transition), box-shadow var(--transition);
+}
+.modal-acao {
+  font-weight: 600;
+  border: 1.5px solid var(--gray3);
+  background: none;
+  color: var(--gray);
+}
+.modal-acao:hover:not(:disabled) {
+  background: var(--gray3);
+  border-color: var(--gray2);
+  color: var(--black);
+}
+.modal-acao-primaria {
+  font-weight: 700;
+  border: none;
+  background: var(--yellow);
+  color: var(--on-yellow);
+}
+.modal-acao-primaria:hover:not(:disabled) {
+  filter: brightness(0.94);
+  box-shadow: 0 2px 10px var(--yd);
+}
+.modal-acao:disabled,
+.modal-acao-primaria:disabled { cursor: not-allowed; opacity: .7; }
+
+
 
 .form-error { font-size: 12px; color: var(--red); font-weight: 500; animation: up .2s ease both; }
 
@@ -3243,7 +3280,16 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
 .anexos-row-meta { font-size: 11px; color: var(--gray2); margin-top: 1px; }
 .anexos-mini { flex-shrink: 0; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--gray3); background: var(--white); cursor: pointer; color: var(--gray); transition: all .12s; display: inline-flex; align-items: center; justify-content: center; }
 .anexos-mini:hover { background: var(--black); color: var(--white); border-color: var(--black); }
-.admin-modal-footer { padding: 14px 20px; border-top: 1px solid var(--gray3); }
+.admin-modal-footer {
+  padding: 14px 20px;
+  border-top: 1px solid var(--gray3);
+  /* Botões de ação à direita e com respiro entre eles. Estava só com
+     padding, então quem usava a classe sem estilo inline via os botões
+     colados. */
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
 
 /* Pré-visualização - modal sobre o modal */
 .anexos-preview-modal { background: var(--white); border-radius: 14px; box-shadow: 0 24px 70px rgba(0,0,0,0.3); width: 90%; max-width: 860px; height: 86vh; display: flex; flex-direction: column; overflow: hidden; animation: acpop .18s ease; }
@@ -4635,7 +4681,7 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   transform: scale(1.1);
 }
 
-/* ── Nova solicitação notification section ──────────── */
+/* ── Novo lead notification section ──────────── */
 .nova-notif-section {
   border: 1px solid var(--gray3);
   border-radius: 10px;
@@ -4720,7 +4766,7 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   color: var(--red);
 }
 
-.slack-avatar-sm {
+.notif-avatar-sm {
   width: 20px;
   height: 20px;
   border-radius: 50%;
@@ -4728,13 +4774,13 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   flex-shrink: 0;
 }
 
-/* ── Slack user dropdown ────────────────────────────── */
-.slack-dropdown-wrap {
+/* ── Seletor de usuários para notificação ────────────────────────────── */
+.notif-dropdown-wrap {
   position: relative;
   display: inline-block;
 }
 
-.slack-add-btn {
+.notif-add-btn {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -4750,17 +4796,17 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   transition: border-color var(--transition), color var(--transition);
 }
 
-.slack-add-btn:hover {
+.notif-add-btn:hover {
   border-color: var(--black);
   color: var(--black);
 }
 
-.slack-add-btn.compact {
+.notif-add-btn.compact {
   padding: 5px 7px;
   border-radius: var(--radius-sm);
 }
 
-.slack-dropdown {
+.notif-dropdown {
   width: 260px;
   background: var(--white);
   border: 1.5px solid var(--gray3);
@@ -4771,7 +4817,7 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   animation: fadeUp 0.08s ease both;
 }
 
-.slack-search {
+.notif-search {
   width: 100%;
   border: none;
   border-bottom: 1px solid var(--gray3);
@@ -4782,19 +4828,19 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   background: var(--bg);
 }
 
-.slack-list {
+.notif-list {
   max-height: 220px;
   overflow-y: auto;
 }
 
-.slack-list-empty {
+.notif-list-empty {
   padding: 16px;
   text-align: center;
   font-size: 13px;
   color: var(--gray2);
 }
 
-.slack-list-item {
+.notif-list-item {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -4803,11 +4849,11 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   transition: background var(--transition);
 }
 
-.slack-list-item:hover {
+.notif-list-item:hover {
   background: var(--bg);
 }
 
-.slack-avatar {
+.notif-avatar {
   width: 28px;
   height: 28px;
   border-radius: 50%;
@@ -4815,7 +4861,7 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   flex-shrink: 0;
 }
 
-.slack-avatar-placeholder {
+.notif-avatar-placeholder {
   width: 28px;
   height: 28px;
   border-radius: 50%;
@@ -4829,13 +4875,13 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   flex-shrink: 0;
 }
 
-.slack-user-name {
+.notif-user-name {
   font-size: 13px;
   font-weight: 600;
   color: var(--black);
 }
 
-.slack-user-handle {
+.notif-user-handle {
   font-size: 11px;
   color: var(--gray2);
 }
@@ -6480,7 +6526,7 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
 .ac-icobtn:hover { background: var(--ac-g900); color: #fff; border-color: var(--ac-g900); }
 .ac-icobtn.danger:hover { background: #DC2626; border-color: #DC2626; color: #fff; }
 
-/* Detalhamento de parcelas (info da solicitação) */
+/* Detalhamento de parcelas (info do lead) */
 .ac-parcelas { border: 1px solid var(--ac-g200); border-radius: 10px; overflow: hidden; }
 .ac-parcelas-head, .ac-parcelas-row { display: grid; grid-template-columns: 56px 1fr 1fr; gap: 12px; padding: 9px 14px; font-size: 13px; align-items: center; }
 .ac-parcelas-head { background: var(--bg); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ac-g500); }
@@ -6585,7 +6631,7 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
 .ac-ov-warn { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 10px; font-size: 13px; color: #92400E; line-height: 1.5; margin-bottom: 16px; }
 .ac-ov-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 
-/* Opção do dropdown de solicitações (Análise de Crédito) - hover claro */
+/* Opção do dropdown de leads (Análise de Crédito) - hover claro */
 .ac-sol-opt { padding: 11px 14px; cursor: pointer; border-radius: var(--radius-sm); transition: background .12s, box-shadow .12s; border: 1px solid transparent; }
 .ac-sol-opt:hover { background: var(--yd); border-color: var(--yellow); }
 
@@ -6651,7 +6697,7 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
 .ac-note.ok { background: var(--ac-ok-bg); border-color: var(--ac-ok); color: var(--ac-green-dark); }
 .ac-note.info { background: #E7EEFB; border-color: #3B82F6; color: #1E40AF; }
 
-/* Read-only info (solicitação) */
+/* Read-only info (lead) */
 .ac-sol-info { background: var(--bg); border: 1.5px solid var(--ac-g200); border-radius: var(--radius-md); }
 
 /* Status cards (decisão) */

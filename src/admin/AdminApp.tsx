@@ -8,17 +8,12 @@ import { createPortal, flushSync } from 'react-dom';
 import { lojaTema, comRevelacao, type Tema } from '../lib/tema';
 import { GOOGLE_CLIENT_ID, GOOGLE_DOMINIO, carregarGis } from '../lib/google';
 // Cada página é carregada sob demanda (code-splitting) - só entra no bundle quando aberta
-const SolicitacoesPage = lazy(() => import('./SolicitacoesPage'));
+const LeadsPage = lazy(() => import('./LeadsPage'));
+const ProjetosPage = lazy(() => import('./ProjetosPage'));
 const ConfiguracoesPage = lazy(() => import('./ConfiguracoesPage'));
 const CadastrosPage = lazy(() => import('./CadastrosPage'));
-const CadastrosPipelinePage = lazy(() => import('./CadastrosPipelinePage'));
-const LiquidezPage = lazy(() => import('./LiquidezPage'));
 const FerramentasPage = lazy(() => import('./FerramentasPage'));
-const AceiteSacadoPage = lazy(() => import('./AceiteSacadoPage'));
-const AnaliseCreditoPage = lazy(() => import('./AnaliseCreditoPage'));
-const SimuladorTaxasPage = lazy(() => import('./SimuladorTaxasPage'));
 const GeradorDocumentosPage = lazy(() => import('./GeradorDocumentosPage'));
-const RelatoriosPage = lazy(() => import('./RelatoriosPage'));
 const PerfilPage = lazy(() => import('./PerfilPage'));
 const UsuariosPage = lazy(() => import('./UsuariosPage'));
 const QuickSearch = lazy(() => import('./QuickSearch'));
@@ -185,37 +180,26 @@ const NAV_SECTIONS: { section: string; items: NavLeaf[] }[] = [
         disabled: true,
         icon: <IconDashboard size={15} />,
       },
-    ],
-  },
-  {
-    section: 'Esteira de Crédito',
-    items: [
+      // Onboarding, Leads e Operações ficavam sob o título "Esteira de
+      // Crédito". O título saiu e os itens vieram para cá, e não para um grupo
+      // próprio sem rótulo: a lista é montada com `key={group.section}`, então
+      // dois grupos de título vazio colidiriam na mesma chave.
       {
-        page: 'cadastros-pipeline',
-        label: 'Onboarding',
+        page: 'projetos',
+        label: 'Projetos',
         icon: (
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-            <path d="M9 11l3 3L22 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.2l1.8 2.2h8A2.5 2.5 0 0 1 21 9.7v7.8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M8 13h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
           </svg>
         ),
       },
       {
-        page: 'solicitacoes',
-        label: 'Solicitações',
+        page: 'leads',
+        label: 'Funil',
         icon: (
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-            <rect x="3" y="3" width="7" height="18" rx="2" stroke="currentColor" strokeWidth="1.8"/>
-            <rect x="14" y="3" width="7" height="11" rx="2" stroke="currentColor" strokeWidth="1.8"/>
-          </svg>
-        ),
-      },
-      {
-        label: 'Operações',
-        disabled: true,
-        icon: (
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-            <path d="M4 7h13l-3-3M20 17H7l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M3 4h18l-7 8.5V19l-4 2v-8.5L3 4z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         ),
       },
@@ -224,26 +208,6 @@ const NAV_SECTIONS: { section: string; items: NavLeaf[] }[] = [
   {
     section: 'GERAL',
     items: [
-      {
-        page: 'liquidez',
-        label: 'Liquidez',
-        icon: (
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M12 6v6l4 2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        ),
-      },
-      {
-        page: 'relatorios',
-        label: 'Relatórios',
-        icon: (
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-            <path d="M3 3v18h18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M7 14l3-4 3 3 4-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        ),
-      },
       {
         page: 'ferramentas',
         label: 'Ferramentas',
@@ -395,13 +359,13 @@ function Topbar({ onToggle, onLogout, onQuickSearch, usuario, onAbrirPerfil }: {
           width: 28, height: 28, borderRadius: 6, flexShrink: 0,
           display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
         }}>
-          <img src="/logo.png" alt="Sheep Technology" className="brand-logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          <img src="/favicon.png" alt="Sheep Technology" className="brand-logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
         </div>
 
         {/* Brand text */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--black)', lineHeight: 1 }}>Portal DUX</div>
-          <div style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 500, lineHeight: 1 }}>Gestão das demandas de crédito</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--black)', lineHeight: 1 }}>Portal Sheep</div>
+          <div style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 500, lineHeight: 1 }}>Gestão geral dos projetos</div>
         </div>
       </div>
 
@@ -1090,7 +1054,7 @@ function LoginArte() {
 interface NewCedente { cnpj: string; razao_social: string; natureza_juridica?: string }
 
 function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLogout: () => void; saindo: boolean; newCedente?: NewCedente }) {
-  const [page, setPage] = useState<Page>(newCedente ? 'cadastros' : 'solicitacoes');
+  const [page, setPage] = useState<Page>(newCedente ? 'cadastros' : 'leads');
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -1133,7 +1097,7 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
     [pode, admin],
   );
 
-  // A tela abre em Solicitações, que é o certo para quase todo mundo. Quando as
+  // A tela abre em Leads, que é o certo para quase todo mundo. Quando as
   // permissões chegam e a página aberta não é alcançável, vai para a primeira que
   // é - em vez de deixar a pessoa parada num "sem acesso" que ela não escolheu.
   useEffect(() => {
@@ -1149,14 +1113,14 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
     return () => { document.title = prev; };
   }, []);
 
-  // Deep link: ?solicitacao=<id> abre direto o card da solicitação (link compartilhável).
+  // Deep link: ?lead=<id> abre direto o card do lead (link compartilhável).
   // Lê uma vez na montagem (após o login, a URL é preservada) e limpa a query para não reabrir.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const sid = params.get('solicitacao');
+    const sid = params.get('lead');
     if (sid) {
-      setPage('solicitacoes');
-      setOpenCard({ page: 'solicitacoes', id: sid, nonce: 1 });
+      setPage('leads');
+      setOpenCard({ page: 'leads', id: sid, nonce: 1 });
       window.history.replaceState({}, '', window.location.pathname + window.location.hash);
     }
   }, []);
@@ -1291,16 +1255,11 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
               <div style={{ width: 26, height: 26, border: '3px solid var(--gray3)', borderTopColor: 'var(--yellow)', borderRadius: '50%', animation: 'spin .7s linear infinite' }} />
             </div>
           }>
-            {page === 'solicitacoes'  && <SolicitacoesPage  token={token} openCard={openCard?.page === 'solicitacoes' ? openCard : undefined} onCardOpened={() => setOpenCard(null)} />}
+            {page === 'projetos'      && <ProjetosPage      token={token} />}
+            {page === 'leads'  && <LeadsPage  token={token} openCard={openCard?.page === 'leads' ? openCard : undefined} onCardOpened={() => setOpenCard(null)} />}
             {page === 'cadastros'     && <CadastrosPage     token={token} newCedente={newCedente} />}
-            {page === 'cadastros-pipeline' && <CadastrosPipelinePage token={token} openCard={openCard?.page === 'cadastros-pipeline' ? openCard : undefined} onCardOpened={() => setOpenCard(null)} />}
             {page === 'configuracoes' && <ConfiguracoesPage token={token} />}
-            {page === 'liquidez'      && <LiquidezPage      token={token} />}
-            {page === 'relatorios'    && <RelatoriosPage    token={token} />}
             {page === 'ferramentas'   && <FerramentasPage onNavigate={p => setPage(p as Page)} />}
-            {page === 'aceite-sacado' && <AceiteSacadoPage token={token} />}
-            {page === 'analise-credito' && <AnaliseCreditoPage token={token} />}
-            {page === 'simulador-taxas' && <SimuladorTaxasPage />}
             {page === 'gerador-documentos' && <GeradorDocumentosPage token={token} />}
             {page === 'perfil'        && <PerfilPage token={token} />}
             {page === 'usuarios'      && <UsuariosPage   token={token} />}

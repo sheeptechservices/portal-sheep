@@ -24,7 +24,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (r.rows.length > 0) {
     const aprov = String(r.rows[0].aprovacao_status ?? 'aprovado');
-    // Só libera o formulário de solicitação quando o cadastro está aprovado.
+    // Só libera o formulário de lead quando o cadastro está aprovado.
     if (aprov === 'aprovado') {
       return res.status(200).json({ found: true, nome: r.rows[0].razao_social || r.rows[0].nome, nome_curto: r.rows[0].nome });
     }

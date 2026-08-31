@@ -2,13 +2,9 @@ import { StrictMode, lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles/main.css';
 
-const path = window.location.pathname;
-const isAceite = path.startsWith('/aceite/');
-
-// A raiz do site é o próprio sistema (login + admin). O portal de aceite fica
-// em /aceite/ e carrega num chunk separado.
+// A raiz do site é o próprio sistema: login e painel. Não há mais segunda
+// porta de entrada desde que o portal público de aceite saiu.
 const AdminApp = lazy(() => import('./admin/AdminApp'));
-const AceitePortal = lazy(() => import('./portal/AceitePortal'));
 
 const Fallback = (
   <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -19,7 +15,7 @@ const Fallback = (
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <Suspense fallback={Fallback}>
-      {isAceite ? <AceitePortal /> : <AdminApp />}
+      <AdminApp />
     </Suspense>
   </StrictMode>
 );

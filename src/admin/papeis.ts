@@ -47,15 +47,9 @@ export type Permissoes = '*' | string[];
  * Página fora deste mapa é aberta a qualquer sessão (Perfil, por exemplo).
  */
 export const PERMISSAO_DA_PAGINA: Record<string, string> = {
-  'solicitacoes': 'solicitacoes:ver',
-  'cadastros-pipeline': 'onboarding:ver',
+  'leads': 'leads:ver',
   'cadastros': 'cadastros:ver',
-  'liquidez': 'liquidez:ver',
-  'relatorios': 'relatorios:ver',
   'ferramentas': 'ferramentas:ver',
-  'aceite-sacado': 'aceites:ver',
-  'analise-credito': 'credito:ver',
-  'simulador-taxas': 'simulador:usar',
   'gerador-documentos': 'gerador:ver',
   'configuracoes': 'configuracoes:ver',
 };

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { DatePicker } from './DatePicker'
 
 /**
- * Modal obrigatório exibido ao mover uma solicitação para a etapa de conversão.
+ * Modal obrigatório exibido ao mover um lead para a etapa de conversão.
  * Força o usuário a registrar a data em que a operação foi de fato executada
  * antes de concluir a mudança de etapa. A data pode ser no passado.
  */

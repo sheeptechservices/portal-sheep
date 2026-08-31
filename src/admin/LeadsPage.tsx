@@ -10,6 +10,19 @@ import { SegSwitch } from '../components/SegSwitch';
 import { CategoriaTag, ANEXO_CATEGORIAS, normalizaCategoria } from '../components/CategoriaTag';
 import { distribuirParcelas } from '../lib/parcelas';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
+import FilterDropdown from '../components/FilterDropdown';
+
+// Fluxo de pagamento (fim_type) - fonte única de opções + labels/cores
+export const FIM_OPTIONS: { value: string; label: string; bg: string; color: string }[] = [
+  { value: '1', label: 'Trava Perfeita (Escrow no Contrato)', bg: 'rgba(30,138,62,.12)', color: '#1E8A3E' },
+  { value: '2', label: 'Anuência (Pgto direto)',              bg: 'rgba(0,102,204,.12)', color: '#0066CC' },
+  { value: '3', label: 'Escrow na Nota',                      bg: 'rgba(122,86,0,.12)',  color: '#7A5600' },
+  { value: '4', label: 'Repasse',                             bg: 'rgba(124,58,237,.12)', color: '#7C3AED' },
+];
+const FIM_LABELS: Record<number, { label: string; bg: string; color: string }> = Object.fromEntries(
+  FIM_OPTIONS.map(o => [Number(o.value), { label: o.label, bg: o.bg, color: o.color }])
+);
+const FIM_SELECT_OPTIONS = FIM_OPTIONS.map(o => ({ value: o.value, label: o.label }));
 import { definirImagemArrasto } from '../lib/dragImage';
 import { buildDepsReportHTML, depsPortalLink as depsLinkDoRaw, depsDataConsulta } from '../lib/depsReport';
 import { DepsPanel, DepsPreviewModal } from '../components/DepsPanel';
@@ -488,97 +501,6 @@ function StatusSelect({
   );
 }
 
-// ── Filter Dropdown (multi-select) ───────────────────
-function FilterDropdown({
-  label, values, options, onChange,
-}: {
-  label: string;
-  values: string[];
-  options: { value: string; label: string }[];
-  onChange: (v: string[]) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const dropRef = useRef<HTMLDivElement>(null);
-
-  function openDropdown() {
-    const rect = triggerRef.current!.getBoundingClientRect();
-    setPos({ top: rect.bottom + 4, left: rect.left });
-    setOpen(true);
-  }
-
-  useDropdownDismiss(open, [triggerRef, dropRef], () => setOpen(false));
-
-  function toggle(v: string) {
-    onChange(values.includes(v) ? values.filter(x => x !== v) : [...values, v]);
-  }
-
-  const hasSelection = values.length > 0;
-  const btnLabel = hasSelection
-    ? values.length === 1
-      ? (options.find(o => o.value === values[0])?.label ?? label)
-      : `${label} (${values.length})`
-    : label;
-
-  return (
-    <>
-      <button
-        ref={triggerRef}
-        className={`filter-dropdown-btn${hasSelection ? ' active' : ''}`}
-        onClick={openDropdown}
-        type="button"
-      >
-        <span>{btnLabel}</span>
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
-          <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </button>
-      {open && createPortal(
-        <div ref={dropRef} className="filter-dropdown-list" style={{ top: pos.top, left: pos.left }}>
-          {hasSelection && (
-            <div className="filter-dropdown-clear" onClick={() => onChange([])}>
-              Limpar seleção
-            </div>
-          )}
-          {options.map(o => {
-            const checked = values.includes(o.value);
-            return (
-              <div
-                key={o.value}
-                className={`filter-dropdown-option${checked ? ' active' : ''}`}
-                onClick={() => toggle(o.value)}
-              >
-                <span className={`filter-check${checked ? ' checked' : ''}`}>
-                  {checked && (
-                    <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  )}
-                </span>
-                {o.label}
-              </div>
-            );
-          })}
-        </div>,
-        document.body
-      )}
-    </>
-  );
-}
-
-// Fluxo de pagamento (fim_type) - fonte única de opções + labels/cores
-export const FIM_OPTIONS: { value: string; label: string; bg: string; color: string }[] = [
-  { value: '1', label: 'Trava Perfeita (Escrow no Contrato)', bg: 'rgba(30,138,62,.12)', color: '#1E8A3E' },
-  { value: '2', label: 'Anuência (Pgto direto)',              bg: 'rgba(0,102,204,.12)', color: '#0066CC' },
-  { value: '3', label: 'Escrow na Nota',                      bg: 'rgba(122,86,0,.12)',  color: '#7A5600' },
-  { value: '4', label: 'Repasse',                             bg: 'rgba(124,58,237,.12)', color: '#7C3AED' },
-];
-const FIM_LABELS: Record<number, { label: string; bg: string; color: string }> = Object.fromEntries(
-  FIM_OPTIONS.map(o => [Number(o.value), { label: o.label, bg: o.bg, color: o.color }])
-);
-const FIM_SELECT_OPTIONS = FIM_OPTIONS.map(o => ({ value: o.value, label: o.label }));
-
 function daysSince(iso: string | null): number {
   if (!iso) return 0;
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -845,14 +767,14 @@ function CommentInput({ placeholder, onSend, autoFocus, fetchMentions, statuses 
   placeholder: string;
   onSend: (text: string) => Promise<void>;
   autoFocus?: boolean;
-  fetchMentions?: () => Promise<import('./types').SlackUser[]>;
+  fetchMentions?: () => Promise<import('./types').UsuarioNotificavel[]>;
   statuses?: Pick<StatusConfig, 'id' | 'nome' | 'cor'>[];
 }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStart, setMentionStart] = useState(0);
-  const [slackUsers, setSlackUsers] = useState<import('./types').SlackUser[]>([]);
+  const [usuariosMencao, setUsuariosMencao] = useState<import('./types').UsuarioNotificavel[]>([]);
   const [mentionIdx, setMentionIdx] = useState(0);
   const [stageQuery, setStageQuery] = useState<string | null>(null);
   const [stageStart, setStageStart] = useState(0);
@@ -860,11 +782,16 @@ function CommentInput({ placeholder, onSend, autoFocus, fetchMentions, statuses 
   const [dropPos, setDropPos] = useState({ bottom: 0, left: 0, width: 0 });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // O @ escrito no comentário é a parte local do e-mail. É por ela que o
+  // servidor reencontra a pessoa em `notifyMentions`, então as duas pontas
+  // precisam usar exatamente o mesmo critério.
+  const apelido = (u: { email: string }) => u.email.split('@')[0];
+
   const filtered = mentionQuery !== null
-    ? slackUsers.filter(u =>
+    ? usuariosMencao.filter(u =>
         !mentionQuery ||
-        u.name.toLowerCase().includes(mentionQuery.toLowerCase()) ||
-        u.username.toLowerCase().includes(mentionQuery.toLowerCase())
+        u.nome.toLowerCase().includes(mentionQuery.toLowerCase()) ||
+        u.email.toLowerCase().includes(mentionQuery.toLowerCase())
       ).slice(0, 6)
     : [];
 
@@ -882,15 +809,15 @@ function CommentInput({ placeholder, onSend, autoFocus, fetchMentions, statuses 
     setStageQuery(null);
   }
 
-  function selectMention(user: import('./types').SlackUser) {
+  function selectMention(user: import('./types').UsuarioNotificavel) {
     const before = text.slice(0, mentionStart);
     const after = text.slice(mentionStart + 1 + (mentionQuery?.length ?? 0));
-    const newText = `${before}@${user.username} ${after}`;
+    const newText = `${before}@${apelido(user)} ${after}`;
     setText(newText);
     setMentionQuery(null);
     setTimeout(() => {
       if (textareaRef.current) {
-        const pos = before.length + user.username.length + 2;
+        const pos = before.length + apelido(user).length + 2;
         textareaRef.current.selectionStart = pos;
         textareaRef.current.selectionEnd = pos;
         textareaRef.current.focus();
@@ -927,7 +854,7 @@ function CommentInput({ placeholder, onSend, autoFocus, fetchMentions, statuses 
       setMentionQuery(atMatch[1]);
       setMentionIdx(0);
       setStageQuery(null);
-      if (slackUsers.length === 0) fetchMentions!().then(setSlackUsers);
+      if (usuariosMencao.length === 0) fetchMentions!().then(setUsuariosMencao);
       const rect = textareaRef.current!.getBoundingClientRect();
       setDropPos({ bottom: window.innerHeight - rect.top + 6, left: rect.left, width: rect.width });
     } else if (hashMatch) {
@@ -988,13 +915,13 @@ function CommentInput({ placeholder, onSend, autoFocus, fetchMentions, statuses 
               className={`mention-option${i === mentionIdx ? ' active' : ''}`}
               onMouseDown={e => { e.preventDefault(); selectMention(u); }}
             >
-              {u.avatar
-                ? <img src={u.avatar} alt="" className="mention-avatar" />
-                : <div className="mention-avatar">{u.name[0]}</div>
+              {u.foto_url
+                ? <img src={u.foto_url} alt="" className="mention-avatar" referrerPolicy="no-referrer" />
+                : <div className="mention-avatar">{u.nome[0]}</div>
               }
               <div>
-                <p className="mention-name">{u.name}</p>
-                <p className="mention-handle">@{u.username}</p>
+                <p className="mention-name">{u.nome}</p>
+                <p className="mention-handle">@{apelido(u)}</p>
               </div>
             </div>
           ))}
@@ -1086,7 +1013,7 @@ function CommentItem({ ev, replies, onReply, onDelete, fetchMentions, statuses }
   replies: Evento[];
   onReply: (parentId: number, text: string) => Promise<void>;
   onDelete: (id: number) => void;
-  fetchMentions: () => Promise<import('./types').SlackUser[]>;
+  fetchMentions: () => Promise<import('./types').UsuarioNotificavel[]>;
   statuses?: Pick<StatusConfig, 'id' | 'nome' | 'cor'>[];
 }) {
   const [showReply, setShowReply] = useState(false);
@@ -1158,7 +1085,7 @@ function CommentsSection({ eventos, onSend, onDelete, onFileUpload, fetchMention
   onSend: (text: string, parentId?: number) => Promise<void>;
   onDelete: (id: number) => void;
   onFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  fetchMentions: () => Promise<import('./types').SlackUser[]>;
+  fetchMentions: () => Promise<import('./types').UsuarioNotificavel[]>;
   statuses?: Pick<StatusConfig, 'id' | 'nome' | 'cor'>[];
 }) {
   const comments = eventos.filter(e => e.tipo === 'comentario');
@@ -1617,7 +1544,7 @@ function CreateModal({ statuses, token, onClose, onCreated }: {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                solicitacaoId: newId,
+                leadId: newId,
                 arquivo: { categoria: 'Documento', nome: file.name, tipo: file.type, tamanho: file.size, base64 },
               }),
             });
@@ -1632,13 +1559,13 @@ function CreateModal({ statuses, token, onClose, onCreated }: {
       if (falhas.length > 0) {
         toast('error', `${falhas.length} anexo(s) não enviado(s)`, `Verifique o tamanho (máx. 5 MB): ${falhas.join(', ')}`);
       } else {
-        toast('success', 'Solicitação criada');
+        toast('success', 'Lead criada');
       }
       const sub = res.submission as Submission;
       onCreated({ ...sub, arquivo_count: enviados });
     } catch (e: any) {
       console.error('[create_submission]', e);
-      toast('error', 'Erro ao criar solicitação', e?.message ?? 'Tente novamente.');
+      toast('error', 'Erro ao criar lead', e?.message ?? 'Tente novamente.');
     } finally {
       setSaving(false);
     }
@@ -1653,7 +1580,7 @@ function CreateModal({ statuses, token, onClose, onCreated }: {
         <div className="admin-modal-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
             <div style={{ minWidth: 0 }}>
-              <p style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Nova solicitação</p>
+              <p style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Novo lead</p>
               <h3 style={{ fontSize: 16, fontWeight: 800 }}>Criar manualmente</h3>
             </div>
             <button className="admin-modal-close" aria-label="Fechar" onClick={onClose}><IconX size={16} /></button>
@@ -1858,7 +1785,7 @@ function CreateModal({ statuses, token, onClose, onCreated }: {
           </button>
           <button type="button" onClick={handleCreate} disabled={saving}
             style={{ padding: '8px 16px', fontSize: 13, fontWeight: 700, borderRadius: 8, border: 'none', background: 'var(--yellow)', color: '#000', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
-            {saving ? savingLabel : 'Criar solicitação'}
+            {saving ? savingLabel : 'Criar lead'}
           </button>
         </div>
 
@@ -1986,7 +1913,7 @@ function EditModal({
 
       const res = await api('', 'POST', { action: 'update_submission', id: s.id, ...fields });
       if (res?.error) throw new Error(res.error);
-      toast('success', 'Solicitação atualizada');
+      toast('success', 'Lead atualizada');
       onSaved({
         nome_contratado: fields.nome_contratado,
         cnpj_contratado: fields.cnpj_contratado,
@@ -2209,7 +2136,7 @@ export function DetailPanel({
   // Quem está logado: usado para assinar o evento otimista antes de o servidor responder.
   const { usuario } = useAuth();
   const [detail, setDetail] = useState<SubmissionDetail | null>(null);
-  // Relatórios DEPS salvos (por alvo) desta solicitação - para o link no balão da parte.
+  // Relatórios DEPS salvos (por alvo) deste lead - para o link no balão da parte.
   const [depsSaved, setDepsSaved] = useState<Record<string, { nome: string | null; documento: string | null; norm: any; raw?: any; criado_em?: string } >>({});
   const [depsProduto, setDepsProduto] = useState<string>(PRODUTOS_DEPS[0].id);
   const [depsBusy, setDepsBusy] = useState<'ced' | 'sac' | null>(null);
@@ -2257,8 +2184,8 @@ export function DetailPanel({
   async function load() {
     const data = await api(`?action=detail&id=${id}`);
     setDetail(data);
-    // Relatórios DEPS salvos desta solicitação (best-effort).
-    api(`?action=deps_by_solicitacao&solicitacao_id=${id}`).then(r => setDepsSaved(r?.deps ?? {})).catch(() => {});
+    // Relatórios DEPS salvos deste lead (best-effort).
+    api(`?action=deps_by_lead&lead_id=${id}`).then(r => setDepsSaved(r?.deps ?? {})).catch(() => {});
   }
 
   // Link do relatório no portal da DEPS (consulta compartilhada: público, sem
@@ -2307,13 +2234,13 @@ export function DetailPanel({
   // Persiste um resultado DEPS já obtido e atualiza o balão na hora.
   async function saveDeps(alvo: 'ced' | 'sac', payload: { norm: any; nome: string; doc: string; raw: any; reutilizou: boolean }) {
     const { norm, nome, doc, raw, reutilizou } = payload;
-    const saveRes = await api('', 'POST', { action: 'save_solicitacao_deps', solicitacao_id: id, alvo, nome, documento: doc, norm, raw });
+    const saveRes = await api('', 'POST', { action: 'save_lead_deps', lead_id: id, alvo, nome, documento: doc, norm, raw });
     if (saveRes?.error) { toast('error', 'Não foi possível salvar o relatório DEPS', saveRes.error); return; }
     // Atualiza o balão imediatamente (sem depender da releitura, que pode ter lag).
     setDepsSaved(prev => ({ ...prev, [alvo]: { nome, documento: doc, norm, raw, criado_em: new Date().toISOString() } }));
     setDepsReused(prev => ({ ...prev, [alvo]: !!reutilizou }));
     toast('success', `DEPS ${alvo === 'ced' ? 'cedente' : 'sacado'} (${reutilizou ? 'reaproveitada' : 'nova'})`, norm.resumo || 'Relatório atualizado.');
-    api(`?action=deps_by_solicitacao&solicitacao_id=${id}`)
+    api(`?action=deps_by_lead&lead_id=${id}`)
       .then(r => { if (r?.deps && Object.keys(r.deps).length) setDepsSaved(prev => ({ ...prev, ...r.deps })); })
       .catch(() => {});
   }
@@ -2385,10 +2312,10 @@ export function DetailPanel({
     );
   }
 
-  // Copia um link direto para este card (?solicitacao=<id>) - compartilhável com
+  // Copia um link direto para este card (?lead=<id>) - compartilhável com
   // qualquer pessoa que tenha acesso à plataforma. Feedback visual + toast.
   async function copyShareLink() {
-    const url = `${window.location.origin}${window.location.pathname}?solicitacao=${id}`;
+    const url = `${window.location.origin}${window.location.pathname}?lead=${id}`;
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(url);
@@ -2429,7 +2356,7 @@ export function DetailPanel({
 
   async function sendComment(texto: string, parentId?: number) {
     if (!texto.trim()) return;
-    await api('', 'POST', { action: 'comment', solicitacao_id: id, texto: texto.trim(), parent_id: parentId ?? null });
+    await api('', 'POST', { action: 'comment', lead_id: id, texto: texto.trim(), parent_id: parentId ?? null });
     await load();
   }
 
@@ -2486,7 +2413,7 @@ export function DetailPanel({
   async function handleDeleteSubmission() {
     await api('', 'POST', { action: 'delete_submission', id });
     setDeleteSubmissionConfirm(false);
-    toast('success', 'Solicitação excluída');
+    toast('success', 'Lead excluída');
     onDelete?.(id);
     onClose();
   }
@@ -2499,7 +2426,7 @@ export function DetailPanel({
     setDetail(prev => prev ? {
       ...prev,
       eventos: [...prev.eventos, {
-        id: -Date.now(), solicitacao_id: id, tipo: 'status_change',
+        id: -Date.now(), lead_id: id, tipo: 'status_change',
         status_id: statusId, status_nome: statusName ?? null, status_cor: (st as any)?.cor ?? null,
         descricao: null, parent_id: null, criado_em: new Date().toISOString(),
         autor_id: usuario?.id ?? null, autor_nome: usuario?.nome ?? null, autor_foto: usuario?.foto_url ?? null,
@@ -2508,7 +2435,7 @@ export function DetailPanel({
     toast('success', statusName ? `Movido para "${statusName}"` : 'Status atualizado');
     setMovingTo(statusId);
     try {
-      await api('', 'POST', { action: 'move', solicitacao_id: id, status_id: statusId });
+      await api('', 'POST', { action: 'move', lead_id: id, status_id: statusId });
       await load();
     } finally {
       setMovingTo(null);
@@ -2547,7 +2474,7 @@ export function DetailPanel({
       const orig = new Map((detail?.pendencias ?? []).map(p => [p.id, p]));
       const novas = itens.filter(i => !i.id && i.descricao.trim()).map(i => ({ descricao: i.descricao.trim(), categoria: i.categoria }));
       const editadas = itens.filter(i => i.id && (orig.get(i.id)?.descricao !== i.descricao.trim() || normPendCat(orig.get(i.id)?.categoria) !== i.categoria));
-      if (novas.length) await api('', 'POST', { action: 'add_pendencias', solicitacao_id: id, status_id: statusId, itens: novas });
+      if (novas.length) await api('', 'POST', { action: 'add_pendencias', lead_id: id, status_id: statusId, itens: novas });
       for (const e of editadas) await api('', 'POST', { action: 'update_pendencia', id: e.id, descricao: e.descricao.trim(), categoria: e.categoria });
       setPendingPendencia(null);
       await performMove(statusId);
@@ -2646,7 +2573,7 @@ export function DetailPanel({
   async function addPendencia(descricao: string, categoria: string) {
     const scEvts = detail?.eventos.filter(ev => ev.tipo === 'status_change') ?? [];
     const currentStatusId = scEvts[scEvts.length - 1]?.status_id ?? null;
-    await api('', 'POST', { action: 'add_pendencias', solicitacao_id: id, status_id: currentStatusId, itens: [{ descricao, categoria }] });
+    await api('', 'POST', { action: 'add_pendencias', lead_id: id, status_id: currentStatusId, itens: [{ descricao, categoria }] });
     await load();
   }
 
@@ -2690,7 +2617,7 @@ export function DetailPanel({
       try {
         await api('', 'POST', {
           action: 'upload_file',
-          solicitacao_id: id,
+          lead_id: id,
           status_id: currentStatusId,
           arquivo: { nome: file.name, tipo: file.type, tamanho: file.size, base64: reader.result, categoria: 'Outros' },
         });
@@ -2722,7 +2649,7 @@ export function DetailPanel({
     try {
       await api('', 'POST', {
         action: 'upload_file',
-        solicitacao_id: id,
+        lead_id: id,
         status_id: currentStatusId,
         arquivo: { nome: linkNome.trim() || url, tipo: 'link', tamanho: 0, base64: url, categoria: 'Outros' },
       });
@@ -2769,7 +2696,7 @@ export function DetailPanel({
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ minWidth: 0 }}>
               <p style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                Solicitação
+                Lead
               </p>
               <h3 style={{ fontSize: 16, fontWeight: 800 }}>{s?.nome_contratado ?? '…'}</h3>
             </div>
@@ -2795,7 +2722,7 @@ export function DetailPanel({
                   </button>
                   <button
                     className="admin-toolbar-btn"
-                    title="Editar solicitação"
+                    title="Editar lead"
                     onClick={() => setShowEdit(true)}
                     style={{ width: 30, height: 30 }}
                   >
@@ -2806,7 +2733,7 @@ export function DetailPanel({
                   </button>
                   <button
                     className="admin-toolbar-btn"
-                    title="Excluir solicitação"
+                    title="Excluir lead"
                     onClick={() => setDeleteSubmissionConfirm(true)}
                     style={{ width: 30, height: 30, color: '#D93025' }}
                   >
@@ -3394,7 +3321,7 @@ export function DetailPanel({
             {deleteSubmissionConfirm && createPortal(
               <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }} onClick={() => setDeleteSubmissionConfirm(false)}>
                 <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-                  <p className="delete-confirm-title">Excluir solicitação?</p>
+                  <p className="delete-confirm-title">Excluir lead?</p>
                   <p className="delete-confirm-desc">
                     <strong>{detail?.submission.nome_contratado}</strong> será removida do sistema. Esta ação pode ser revertida pelo suporte, mas não pela interface.
                   </p>
@@ -3544,7 +3471,7 @@ export function DetailPanel({
               onFileUpload={handleFileUpload}
               statuses={detail.statuses}
               fetchMentions={async () => {
-                const data = await fetch('/api/slack-users', { headers: { 'x-admin-session': token } }).then(r => r.json());
+                const data = await fetch('/api/admin-data?action=usuarios_notificaveis', { headers: { 'x-admin-session': token } }).then(r => r.json());
                 return data.users ?? [];
               }}
             />
@@ -3558,7 +3485,7 @@ export function DetailPanel({
 
 // ── Modal de anexos (pré-visualização + download) ───
 type AnexoItem = { nome: string; tipo: string; tamanho: number; categoria?: string | null; url: string; isLink?: boolean };
-function AnexosModal({ solicitacaoId, onClose }: { solicitacaoId: string; onClose: () => void }) {
+function AnexosModal({ leadId, onClose }: { leadId: string; onClose: () => void }) {
   const { toast } = useToast();
   const [itens, setItens] = useState<AnexoItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -3567,7 +3494,7 @@ function AnexosModal({ solicitacaoId, onClose }: { solicitacaoId: string; onClos
   useEffect(() => {
     const token = localStorage.getItem('dux_admin_token') ?? '';
     let urls: string[] = [];
-    fetch(`/api/admin-data?action=get_solicitacao_files&id=${encodeURIComponent(solicitacaoId)}`, {
+    fetch(`/api/admin-data?action=get_lead_files&id=${encodeURIComponent(leadId)}`, {
       headers: { 'x-admin-session': token },
     })
       .then(r => r.json())
@@ -3591,7 +3518,7 @@ function AnexosModal({ solicitacaoId, onClose }: { solicitacaoId: string; onClos
       .catch(() => toast('error', 'Erro ao carregar anexos'))
       .finally(() => setLoading(false));
     return () => { urls.forEach(u => URL.revokeObjectURL(u)); };
-  }, [solicitacaoId]);
+  }, [leadId]);
 
   const baixar = (it: AnexoItem) => {
     if (!it.url) return;
@@ -3610,7 +3537,7 @@ function AnexosModal({ solicitacaoId, onClose }: { solicitacaoId: string; onClos
     <div className="anexos-overlay" style={{ zIndex: 1060 }} onClick={onClose}>
       <div className="anexos-card" onClick={e => e.stopPropagation()}>
         <div className="admin-modal-header">
-          <h3 style={{ fontSize: 16, fontWeight: 800 }}>Anexos da solicitação {loading ? '' : `(${itens.length})`}</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 800 }}>Anexos do lead {loading ? '' : `(${itens.length})`}</h3>
           <button className="admin-modal-close" aria-label="Fechar" onClick={onClose}><IconX size={16} /></button>
         </div>
 
@@ -3775,7 +3702,7 @@ function KanbanCard({
       )}
       {showAnexos && (
         <div onClick={e => e.stopPropagation()}>
-          <AnexosModal solicitacaoId={sub.id} onClose={() => setShowAnexos(false)} />
+          <AnexosModal leadId={sub.id} onClose={() => setShowAnexos(false)} />
         </div>
       )}
 
@@ -4104,7 +4031,7 @@ function SkeletonBlock({ w, h, radius = 6 }: { w: string | number; h: string | n
   );
 }
 
-function SolicitacoesSkeleton({ view }: { view: 'kanban' | 'lista' }) {
+function LeadsSkeleton({ view }: { view: 'kanban' | 'lista' }) {
   if (view === 'kanban') {
     return (
       <div className="kanban-board sk-wrap">
@@ -4158,7 +4085,7 @@ function SolicitacoesSkeleton({ view }: { view: 'kanban' | 'lista' }) {
 }
 
 // ── Main Page ───────────────────────────────────────
-export default function SolicitacoesPage({ token, openCard, onCardOpened }: {
+export default function LeadsPage({ token, openCard, onCardOpened }: {
   token: string;
   // Card vindo da busca rápida - abre o painel de detalhe ao entrar na página.
   openCard?: { id: string; nonce: number };
@@ -4290,7 +4217,7 @@ export default function SolicitacoesPage({ token, openCard, onCardOpened }: {
       ? { ...s, current_status_id: statusId, status_since: new Date().toISOString() }
       : s
     ));
-    api('', 'POST', { action: 'move', solicitacao_id: subId, status_id: statusId });
+    api('', 'POST', { action: 'move', lead_id: subId, status_id: statusId });
     toast('success', statusName ? `Movido para "${statusName}"` : 'Status atualizado');
   }
 
@@ -4315,7 +4242,7 @@ export default function SolicitacoesPage({ token, openCard, onCardOpened }: {
     // Etapa que exige pendências: registrar antes de mover. Busca as pendências
     // abertas do card para pré-preencher o modal (segue com elas, edita ou adiciona).
     if (cfg?.requires_pendencia) {
-      api(`?action=pendencias_by_solicitacao&solicitacao_id=${subId}`)
+      api(`?action=pendencias_by_lead&lead_id=${subId}`)
         .then(r => {
           const existentes: PendItem[] = (r?.pendencias ?? [])
             .filter((p: any) => !p.resolvida)
@@ -4336,7 +4263,7 @@ export default function SolicitacoesPage({ token, openCard, onCardOpened }: {
       const orig = new Map(existentes.map(p => [p.id, p]));
       const novas = itens.filter(i => !i.id && i.descricao.trim()).map(i => ({ descricao: i.descricao.trim(), categoria: i.categoria }));
       const editadas = itens.filter(i => i.id && (orig.get(i.id)?.descricao !== i.descricao.trim() || orig.get(i.id)?.categoria !== i.categoria));
-      if (novas.length) await api('', 'POST', { action: 'add_pendencias', solicitacao_id: subId, status_id: statusId, itens: novas });
+      if (novas.length) await api('', 'POST', { action: 'add_pendencias', lead_id: subId, status_id: statusId, itens: novas });
       for (const e of editadas) await api('', 'POST', { action: 'update_pendencia', id: e.id, descricao: e.descricao.trim(), categoria: e.categoria });
       // Só as novas aumentam a contagem; as existentes já estavam contabilizadas.
       if (novas.length) setSubmissions(prev => prev.map(s => s.id === subId ? { ...s, pendencia_aberta_count: (s.pendencia_aberta_count ?? 0) + novas.length, pendencia_total_count: (s.pendencia_total_count ?? 0) + novas.length } : s));
@@ -4381,9 +4308,9 @@ export default function SolicitacoesPage({ token, openCard, onCardOpened }: {
     try {
       await api('', 'POST', { action: 'delete_submission', id });
       handleDeleted(id);
-      toast('success', 'Solicitação excluída');
+      toast('success', 'Lead excluída');
     } catch {
-      toast('error', 'Erro ao excluir solicitação');
+      toast('error', 'Erro ao excluir lead');
     }
   }
 
@@ -4457,7 +4384,7 @@ export default function SolicitacoesPage({ token, openCard, onCardOpened }: {
   const doneIds = new Set([executadaSt?.id, reprovadaSt?.id].filter(Boolean).map(Number));
   const pendentes = submissions.filter(s => !doneIds.has(s.current_status_id as number)).length;
 
-  // Lead time médio: tempo de vida de cada solicitação (criação → conclusão, ou → agora se em aberto)
+  // Lead time médio: tempo de vida de cada lead (criação → conclusão, ou → agora se em aberto)
   const leadTimeMedioMs = (() => {
     if (submissions.length === 0) return 0;
     const now = Date.now();
@@ -4473,8 +4400,8 @@ export default function SolicitacoesPage({ token, openCard, onCardOpened }: {
     <div className="admin-content-wrap">
       <div className="admin-page-header">
         <div>
-          <h1 className="admin-page-title">Solicitações</h1>
-          <p className="admin-page-desc">Gerencie e acompanhe todas as solicitações de operação recebidas.</p>
+          <h1 className="admin-page-title">Funil</h1>
+          <p className="admin-page-desc">Acompanhe os leads em negociação, do primeiro contato ao desfecho.</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           <button className="admin-toolbar-btn" onClick={loadBoard} title="Atualizar" disabled={loading}>
@@ -4487,7 +4414,7 @@ export default function SolicitacoesPage({ token, openCard, onCardOpened }: {
             </svg>
           </button>
           <button onClick={() => setShowCreate(true)} className="btn btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13, flexShrink: 0 }}>
-            + Nova solicitação
+            + Novo lead
           </button>
         </div>
       </div>
@@ -4506,14 +4433,14 @@ export default function SolicitacoesPage({ token, openCard, onCardOpened }: {
       ) : (
         <div className="admin-stats">
           <div className="admin-stat-card-v2" style={{ '--accent-color': 'var(--yellow)', animationDelay: '0s' } as any}>
-            <p className="stat-v2-label">Total de solicitações</p>
+            <p className="stat-v2-label">Total de leads</p>
             <p className="stat-v2-value">{submissions.length}</p>
-            <p className="stat-v2-desc">recebidas no sistema</p>
+            <p className="stat-v2-desc">no funil</p>
           </div>
           <div className="admin-stat-card-v2" style={{ '--accent-color': '#6366F1', animationDelay: '0.05s' } as any}>
-            <p className="stat-v2-label">Em andamento</p>
+            <p className="stat-v2-label">Em negociação</p>
             <p className="stat-v2-value">{pendentes}</p>
-            <p className="stat-v2-desc">aguardando resolução</p>
+            <p className="stat-v2-desc">ainda sem desfecho</p>
           </div>
           {executadaSt && (
             <div
@@ -4521,9 +4448,9 @@ export default function SolicitacoesPage({ token, openCard, onCardOpened }: {
               style={{ '--accent-color': executadaSt.cor, animationDelay: '0.1s', cursor: 'pointer' } as any}
               onClick={() => setFilterStatus(filterStatus.includes(String(executadaSt.id)) ? filterStatus.filter(x => x !== String(executadaSt.id)) : [...filterStatus, String(executadaSt.id)])}
             >
-              <p className="stat-v2-label">Executadas</p>
+              <p className="stat-v2-label">{executadaSt.nome}</p>
               <p className="stat-v2-value">{countByStatus('Executada')}</p>
-              <p className="stat-v2-desc">operações concluídas</p>
+              <p className="stat-v2-desc">fecharam negócio</p>
             </div>
           )}
           {reprovadaSt && (
@@ -4532,15 +4459,15 @@ export default function SolicitacoesPage({ token, openCard, onCardOpened }: {
               style={{ '--accent-color': reprovadaSt.cor, animationDelay: '0.15s', cursor: 'pointer' } as any}
               onClick={() => setFilterStatus(filterStatus.includes(String(reprovadaSt.id)) ? filterStatus.filter(x => x !== String(reprovadaSt.id)) : [...filterStatus, String(reprovadaSt.id)])}
             >
-              <p className="stat-v2-label">Reprovadas</p>
+              <p className="stat-v2-label">{reprovadaSt.nome}</p>
               <p className="stat-v2-value">{countByStatus('Reprovada')}</p>
-              <p className="stat-v2-desc">não prosseguiram</p>
+              <p className="stat-v2-desc">não avançaram</p>
             </div>
           )}
           <div className="admin-stat-card-v2" style={{ '--accent-color': '#0EA5E9', animationDelay: '0.2s' } as any}>
-            <p className="stat-v2-label">Lead time médio</p>
+            <p className="stat-v2-label">Ciclo médio</p>
             <p className="stat-v2-value">{fmtDuracao(leadTimeMedioMs)}</p>
-            <p className="stat-v2-desc">da criação à conclusão</p>
+            <p className="stat-v2-desc">da entrada ao desfecho</p>
           </div>
         </div>
       )}
@@ -4573,11 +4500,11 @@ export default function SolicitacoesPage({ token, openCard, onCardOpened }: {
       </div>}
 
       {loading ? (
-        <SolicitacoesSkeleton view={view} />
+        <LeadsSkeleton view={view} />
       ) : filtered.length === 0 ? (
         <div className="admin-empty">
           <p style={{ color: 'var(--gray2)', marginBottom: 6 }}><IconInbox size={34} /></p>
-          <p>Nenhuma solicitação encontrada</p>
+          <p>Nenhum lead encontrado</p>
         </div>
       ) : view === 'kanban' ? (
         <div className="kanban-board" ref={boardRef}>

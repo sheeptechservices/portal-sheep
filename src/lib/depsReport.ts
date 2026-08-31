@@ -1,5 +1,5 @@
 // Geração do Relatório DEPS (HTML autocontido para abrir em nova aba → visualizar / salvar PDF).
-// Extraído de AnaliseCreditoPage para poder ser reaproveitado no drawer da solicitação
+// Extraído de AnaliseCreditoPage para poder ser reaproveitado no drawer do lead
 // (link para a análise DEPS salva de cedente/sacado) e no anexo do parecer.
 
 export function escHtml(s: any): string {

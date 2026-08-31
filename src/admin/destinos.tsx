@@ -3,9 +3,8 @@
 // por ⌘K (QuickSearch), que casa por título, descrição e apelidos de cada destino.
 
 export type Page =
-  | 'solicitacoes' | 'cadastros' | 'cadastros-pipeline' | 'configuracoes'
-  | 'liquidez' | 'ferramentas' | 'aceite-sacado' | 'analise-credito'
-  | 'simulador-taxas' | 'gerador-documentos' | 'relatorios' | 'perfil'
+  | 'projetos' | 'leads' | 'cadastros' | 'configuracoes'
+  | 'ferramentas' | 'gerador-documentos' | 'perfil'
   | 'usuarios';
 
 export type GrupoDestino = 'Páginas' | 'Ferramentas';
@@ -28,54 +27,29 @@ const ic = {
 
 export const DESTINOS: Destino[] = [
   {
-    page: 'cadastros-pipeline',
-    titulo: 'Onboarding',
-    descricao: 'Pipeline dos cadastros de cedentes em aprovação',
+    page: 'projetos',
+    titulo: 'Projetos',
+    descricao: 'Cadastro e acompanhamento dos projetos da casa',
     grupo: 'Páginas',
-    termos: ['pipeline', 'kanban', 'cadastros em aprovacao', 'esteira de cadastro'],
+    termos: ['projeto', 'entregas', 'cliente', 'cronograma', 'prazo', 'gestao'],
     icon: (
       <svg {...ic}>
-        <path d="M9 11l3 3L22 4" />
-        <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+        <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.2l1.8 2.2h8A2.5 2.5 0 0 1 21 9.7v7.8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z" />
+        <path d="M8 13h8" />
       </svg>
     ),
   },
   {
-    page: 'solicitacoes',
-    titulo: 'Solicitações',
+    page: 'leads',
+    titulo: 'Funil',
     descricao: 'Esteira de demandas das operações',
     grupo: 'Páginas',
-    termos: ['esteira', 'demandas', 'operacoes', 'kanban'],
+    termos: ['esteira', 'demandas', 'operacoes', 'kanban', 'leads',
+      // nomes anteriores da tela, para quem a conhece assim ainda encontrar
+      'solicitacoes', 'solicitações'],
     icon: (
       <svg {...ic}>
-        <rect x="3" y="3" width="7" height="18" rx="2" />
-        <rect x="14" y="3" width="7" height="11" rx="2" />
-      </svg>
-    ),
-  },
-  {
-    page: 'liquidez',
-    titulo: 'Liquidez',
-    descricao: 'Posição de caixa e vencimentos',
-    grupo: 'Páginas',
-    termos: ['caixa', 'fluxo de caixa', 'vencimentos'],
-    icon: (
-      <svg {...ic}>
-        <circle cx="12" cy="12" r="10" />
-        <path d="M12 6v6l4 2" />
-      </svg>
-    ),
-  },
-  {
-    page: 'relatorios',
-    titulo: 'Relatórios',
-    descricao: 'Indicadores e exportações da operação',
-    grupo: 'Páginas',
-    termos: ['dashboard', 'indicadores', 'graficos', 'metricas', 'exportar'],
-    icon: (
-      <svg {...ic}>
-        <path d="M3 3v18h18" />
-        <path d="M7 14l3-4 3 3 4-6" />
+        <path d="M3 4h18l-7 8.5V19l-4 2v-8.5L3 4z" />
       </svg>
     ),
   },
@@ -154,51 +128,8 @@ export const DESTINOS: Destino[] = [
 
   // ── Ferramentas (páginas que vivem dentro do hub) ──────────────────────────
   {
-    page: 'aceite-sacado',
-    titulo: 'Aceites & Anuências',
-    descricao: 'Confirmações de aceite do sacado e termos de anuência',
-    grupo: 'Ferramentas',
-    termos: ['aceite do sacado', 'anuencia', 'assinatura', 'd4sign', 'termo'],
-    icon: (
-      <svg {...ic}>
-        <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h4" />
-        <path d="M14 3l5 5h-5V3z" />
-        <circle cx="16.8" cy="17.2" r="4.1" />
-        <path d="M15.1 17.3l1.2 1.2 2.3-2.4" />
-      </svg>
-    ),
-  },
-  {
-    page: 'analise-credito',
-    titulo: 'Análise de Crédito',
-    descricao: 'Extração por IA, motor de decisão e parecer',
-    grupo: 'Ferramentas',
-    termos: ['credito', 'parecer', 'risco', 'limite', 'deps', 'serasa', 'motor de decisao', 'extracao'],
-    icon: (
-      <svg {...ic}>
-        <path d="M3.6 17.6a8.4 8.4 0 1 1 16.8 0" />
-        <path d="M12 17.6l4.1-4.7" />
-        <circle cx="12" cy="17.6" r="1.5" />
-      </svg>
-    ),
-  },
-  {
-    page: 'simulador-taxas',
-    titulo: 'Simulador de Taxas',
-    descricao: 'Taxas, prazos e líquido de uma operação',
-    grupo: 'Ferramentas',
-    termos: ['taxa', 'calculadora', 'simulacao', 'deságio', 'liquido', 'prazo'],
-    icon: (
-      <svg {...ic}>
-        <rect x="4.6" y="2.8" width="14.8" height="18.4" rx="2.6" />
-        <rect x="7.6" y="5.9" width="8.8" height="3.4" rx="1" />
-        <path d="M8.7 13.1h.01M12 13.1h.01M15.3 13.1h.01M8.7 17h.01M12 17h.01M15.3 17h.01" strokeWidth="2.2" />
-      </svg>
-    ),
-  },
-  {
     page: 'gerador-documentos',
-    titulo: 'Gerador de Documentos',
+    titulo: 'Gerador de Contratos',
     descricao: 'Contratos, termos e aditivos a partir de modelos',
     grupo: 'Ferramentas',
     termos: ['documento', 'contrato', 'aditivo', 'modelo', 'template', 'docx', 'minuta'],

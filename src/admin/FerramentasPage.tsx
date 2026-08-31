@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useToast } from './AdminApp';
 
 /** Área da operação que é dona da ferramenta - vira uma coluna no hub. */
-type AreaId = 'juridico' | 'comercial' | 'cobrancas' | 'operacoes';
+type AreaId = 'juridico' | 'comercial';
 
 interface Ferramenta {
   id: string;
@@ -22,8 +22,6 @@ interface Ferramenta {
 const AREAS: { id: AreaId; nome: string; descricao: string }[] = [
   { id: 'juridico', nome: 'Jurídico', descricao: 'Formalização, análise e documentos das operações' },
   { id: 'comercial', nome: 'Comercial', descricao: 'Apoio à negociação com o cedente' },
-  { id: 'cobrancas', nome: 'Cobranças', descricao: 'Acompanhamento e recuperação de títulos vencidos' },
-  { id: 'operacoes', nome: 'Operações', descricao: 'Gestão e acompanhamento das operações em andamento' },
 ];
 
 // Ícones em traço, herdando a cor do card via currentColor. Mesmo peso de linha
@@ -74,6 +72,17 @@ const IconGerador = (
   </svg>
 );
 
+/** Folha com selo - gerador de propostas */
+const IconProposta = (
+  <svg {...svgProps}>
+    <path d="M13.4 2.6H6.2A2.2 2.2 0 0 0 4 4.8v14.4a2.2 2.2 0 0 0 2.2 2.2h7" />
+    <path d="M13.4 2.6 19 8.2v3" />
+    <path d="M7.8 11h5.6M7.8 14.6h3.4" />
+    <circle cx="17.4" cy="17.4" r="3.2" />
+    <path d="m15.9 17.4 1.1 1.1 2-2.2" />
+  </svg>
+);
+
 /** Gota - controle de liquidez */
 const IconLiquidez = (
   <svg {...svgProps}>
@@ -84,49 +93,22 @@ const IconLiquidez = (
 
 const FERRAMENTAS: (Ferramenta & { page?: string })[] = [
   {
-    id: 'aceite-sacado',
-    page: 'aceite-sacado',
-    area: 'juridico',
-    nome: 'Aceites & Anuências',
-    descricao: 'Envie e acompanhe confirmações de aceite do sacado e termos de anuência para operações em andamento.',
-    icon: IconAceite,
-    cor: '#2563EB',
-  },
-  {
-    id: 'analise-credito',
-    page: 'analise-credito',
-    area: 'juridico',
-    nome: 'Análise de Crédito',
-    descricao: 'Extração de documentos por IA, motor de decisão (limite, risco e tipo de operação) e geração de parecer.',
-    icon: IconAnalise,
-    cor: '#7C3AED',
-  },
-  {
-    id: 'simulador-taxas',
-    page: 'simulador-taxas',
-    area: 'comercial',
-    nome: 'Simulador de Taxas',
-    descricao: 'Simule taxas, prazos e o líquido de uma operação para negociar com o cedente antes de formalizar a proposta.',
-    icon: IconSimulador,
-    cor: '#059669',
-  },
-  {
-    id: 'gerador-documentos',
+    id: 'gerador-contratos',
     page: 'gerador-documentos',
     area: 'juridico',
-    nome: 'Gerador de Documentos',
+    nome: 'Gerador de Contratos',
     descricao: 'Monte contratos, termos e aditivos a partir de modelos, já preenchidos com os dados do cedente, do sacado e da operação.',
     icon: IconGerador,
     cor: '#D97706',
   },
   {
-    id: 'controle-liquidez',
-    area: 'operacoes',
-    nome: 'Controle de Liquidez',
-    descricao: 'O controle de liquidez do Grupo DUX - rendimento de quem emprestou, comissão de quem trouxe negócio.',
-    icon: IconLiquidez,
-    cor: '#0891B2',
-    href: 'https://dux-liquidity-app.pages.dev/#/assistant',
+    id: 'gerador-propostas',
+    area: 'comercial',
+    nome: 'Gerador de Propostas',
+    descricao: 'Monte propostas comerciais a partir de modelos, com condições e valores já preenchidos, prontas para enviar ao cliente.',
+    icon: IconProposta,
+    cor: '#0EA5E9',
+    breve: true,
   },
 ];
 

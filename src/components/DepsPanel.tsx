@@ -1,4 +1,4 @@
-// Painel de Análise DEPS - a mesma estrutura no balão da parte (Solicitações) e
+// Painel de Análise DEPS - a mesma estrutura no balão da parte (Leads) e
 // na Análise de Crédito, para as duas telas não divergirem em layout nem em
 // comportamento. Quem usa o painel decide de onde vem o resultado e o que cada
 // ação faz; aqui fica só a casca (chip de score, atalhos, estado de consulta).

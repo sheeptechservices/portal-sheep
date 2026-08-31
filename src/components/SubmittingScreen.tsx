@@ -15,7 +15,7 @@ export default function SubmittingScreen() {
           <span>.</span><span>.</span><span>.</span>
         </span>
       </h2>
-      <p className="submitting-sub">Registrando sua solicitação, aguarde um momento.</p>
+      <p className="submitting-sub">Registrando seu lead, aguarde um momento.</p>
     </div>
   );
 }

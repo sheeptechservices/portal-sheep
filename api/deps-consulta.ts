@@ -89,7 +89,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Consulta paga: a permissão é conferida antes de qualquer validação de
    // entrada, para quem não pode nem descobrir se o documento seria aceito.
-  const recusa = await exigir(db, sessao.usuario, ['solicitacoes:deps', 'credito:deps']);
+  const recusa = await exigir(db, sessao.usuario, ['leads:deps', 'credito:deps']);
   if (recusa) return res.status(recusa.status).json(recusa.body);
 
   const documento = String(req.body?.documento ?? '').replace(/\D/g, '');

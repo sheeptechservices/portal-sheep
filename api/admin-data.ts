@@ -119,7 +119,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       qs,
       req.body ?? {},
       db,
-      process.env.SLACK_BOT_TOKEN,
       sessao.usuario
     );
     return res.status(result.status).json(result.body);

@@ -1,4 +1,4 @@
-// Gerador de Documentos - porte do "DUX Gerador de Propostas" para a esteira.
+// Gerador de Contratos - porte do "DUX Gerador de Propostas" para a esteira.
 // Módulos portados: proposta avulsa e lote de propostas. Os documentos saem dos
 // mesmos templates Word do original (api/_templates), gerados em
 // api/gerar-documento.ts.
@@ -44,7 +44,7 @@ function useApi(token: string) {
 
 /**
  * Passos do wizard — porte do `wz-*` do "DUX Gerador de Propostas". A diferença
- * é a porta de entrada: lá era o upload da NF, aqui é a solicitação do kanban
+ * é a porta de entrada: lá era o upload da NF, aqui é o lead do kanban
  * (com o upload solto e o preenchimento manual como saídas alternativas).
  */
 type PassoWz = 'origem' | 'anexos' | 'vencimentos' | 'pronto';
@@ -183,7 +183,7 @@ function SeletorParte({
 }
 
 // ── Select no padrão do sistema ──────────────────────────────────────────────
-// Mesmas classes do FormSelect das Solicitações (.liquidez-trigger /
+// Mesmas classes do FormSelect das Leads (.liquidez-trigger /
 // .status-select-dropdown); duplicado aqui só para não puxar aquele módulo
 // inteiro para dentro deste chunk. Sem opção vazia: o campo é obrigatório.
 function SelectSistema<T extends string>({ valor, onChange, opcoes }: {
@@ -257,9 +257,9 @@ function SelectSistema<T extends string>({ valor, onChange, opcoes }: {
   );
 }
 
-// ── Solicitação do kanban ────────────────────────────────────────────────────
+// ── Lead do kanban ────────────────────────────────────────────────────
 
-interface SolicitacaoOpt {
+interface LeadOpt {
   id: string;
   /** Etapa atual — o anexo entra vinculado a ela */
   etapaId: number | null;
@@ -272,7 +272,7 @@ interface SolicitacaoOpt {
   etapaCor: string;
 }
 
-/** Anexo da solicitação; `etapa` distingue as duas tabelas de arquivos. */
+/** Anexo do lead; `etapa` distingue as duas tabelas de arquivos. */
 interface AnexoOpt {
   id: number;
   nome: string;
@@ -293,10 +293,10 @@ function tamanhoLegivel(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function SeletorSolicitacao({ itens, valor, onChange, carregando }: {
-  itens: SolicitacaoOpt[];
-  valor: SolicitacaoOpt | null;
-  onChange: (s: SolicitacaoOpt | null) => void;
+function SeletorLead({ itens, valor, onChange, carregando }: {
+  itens: LeadOpt[];
+  valor: LeadOpt | null;
+  onChange: (s: LeadOpt | null) => void;
   carregando: boolean;
 }) {
   const [aberto, setAberto] = useState(false);
@@ -337,7 +337,7 @@ function SeletorSolicitacao({ itens, valor, onChange, carregando }: {
         <div
           role="button"
           tabIndex={0}
-          title="Clique para trocar a solicitação"
+          title="Clique para trocar o lead"
           onClick={abrir}
           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrir(); } }}
           style={{
@@ -372,7 +372,7 @@ function SeletorSolicitacao({ itens, valor, onChange, carregando }: {
             background: 'var(--white)', color: 'var(--gray2)', fontSize: 13.5,
             fontFamily: 'inherit', cursor: 'pointer',
           }}
-        >Selecione a solicitação&hellip;</button>
+        >Selecione o lead&hellip;</button>
       )}
 
       {aberto && createPortal(
@@ -388,7 +388,7 @@ function SeletorSolicitacao({ itens, valor, onChange, carregando }: {
           </div>
           {carregando && <p style={{ padding: 12, fontSize: 12, color: 'var(--gray2)' }}>Carregando...</p>}
           {!carregando && filtrados.length === 0 && (
-            <p style={{ padding: 12, fontSize: 12, color: 'var(--gray2)' }}>Nenhuma solicitação encontrada.</p>
+            <p style={{ padding: 12, fontSize: 12, color: 'var(--gray2)' }}>Nenhum lead encontrada.</p>
           )}
           {filtrados.slice(0, 80).map(i => (
             <button key={i.id} type="button"
@@ -584,9 +584,9 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
   // Texto do campo de %, separado do valor para não brigar enquanto digita
   const [pctTexto, setPctTexto] = useState('');
 
-  // Solicitação da esteira: traz os dados já cadastrados e a lista de anexos
-  const [solicitacoes, setSolicitacoes] = useState<SolicitacaoOpt[]>([]);
-  const [solicitacao, setSolicitacao] = useState<SolicitacaoOpt | null>(null);
+  // Lead da esteira: traz os dados já cadastrados e a lista de anexos
+  const [leads, setLeads] = useState<LeadOpt[]>([]);
+  const [lead, setLead] = useState<LeadOpt | null>(null);
   const [anexos, setAnexos] = useState<AnexoOpt[]>([]);
   const [anexosSel, setAnexosSel] = useState<Set<string>>(new Set());
   const [carregandoDemanda, setCarregandoDemanda] = useState(false);
@@ -619,7 +619,7 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
             fora: Number(e.is_conversion ?? 0) === 1 || Number(e.is_excluded ?? 0) === 1,
           }]),
         );
-        setSolicitacoes((board?.submissions ?? [])
+        setLeads((board?.submissions ?? [])
           .filter((x: any) => !etapasPorId.get(Number(x.current_status_id))?.fora)
           .map((x: any) => {
             const et = etapasPorId.get(Number(x.current_status_id));
@@ -633,7 +633,7 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
               valor: x.valor ?? '',
               etapa: et?.nome ?? '',
               etapaCor: et?.cor ?? '#AAAAAA',
-            } as SolicitacaoOpt;
+            } as LeadOpt;
           }));
         setCedentes((c?.cedentes ?? []).map((x: any) => ({
           id: x.id,
@@ -824,7 +824,7 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
     setPasso('origem');
     setViaManual(false);
     setQtdLida(0);
-    setSolicitacao(null);
+    setLead(null);
     setAnexos([]);
     setAnexosSel(new Set());
     setLido(null);
@@ -850,9 +850,9 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
     setPasso('vencimentos');
   }
 
-  /** Puxa o detalhe da solicitação: preenche o que já está cadastrado e lista os anexos. */
-  async function selecionarSolicitacao(sel: SolicitacaoOpt | null) {
-    setSolicitacao(sel);
+  /** Puxa o detalhe do lead: preenche o que já está cadastrado e lista os anexos. */
+  async function selecionarLead(sel: LeadOpt | null) {
+    setLead(sel);
     setAnexos([]);
     setAnexosSel(new Set());
     setLido(null);
@@ -862,7 +862,7 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
     try {
       const det = await api(`?action=detail&id=${encodeURIComponent(sel.id)}`);
       const sub = det?.submission;
-      if (!sub) throw new Error('Solicitação não encontrada.');
+      if (!sub) throw new Error('Lead não encontrada.');
 
       // Partes: o detalhe já resolve razão social e CNPJ pelo cadastro
       const ced = resolverParte(cedentes, sub.nome_contratado, sub.cnpj_contratado);
@@ -870,7 +870,7 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
       const sac = resolverParte(sacados, sub.nome_sacado, sub.cnpj_sacado);
       if (sac) setSacado(sac);
 
-      // Valor e parcelas como foram registrados na solicitação
+      // Valor e parcelas como foram registrados no lead
       const bruto = Number(sub.valor_numerico);
       if (Number.isFinite(bruto) && bruto > 0) definirValor(bruto);
       else if (sub.valor) definirValor(parseMoedaBR(String(sub.valor).replace(/R\$\s*/, '')));
@@ -920,11 +920,11 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
       // Sem anexo legível não há o que ler: pula direto para a pergunta do tipo
       setPasso(legiveis.length ? 'anexos' : 'vencimentos');
 
-      toast('success', 'Solicitação carregada',
+      toast('success', 'Lead carregada',
         legiveis.length ? `${legiveis.length} anexo(s) disponível(is) para leitura.` : 'Sem anexos legíveis - preencha os campos à mão.');
     } catch (e: any) {
-      console.error('[gerador] solicitação', e);
-      toast('error', 'Não foi possível abrir a solicitação', e?.message ?? 'Tente novamente.');
+      console.error('[gerador] lead', e);
+      toast('error', 'Não foi possível abrir o lead', e?.message ?? 'Tente novamente.');
     } finally {
       setCarregandoDemanda(false);
     }
@@ -1110,15 +1110,15 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
     }
   }
 
-  /** Anexa a proposta na solicitação de origem, na etapa em que ela está. */
-  async function anexarNaSolicitacao() {
-    if (!documento || !solicitacao) return;
+  /** Anexa a proposta no lead de origem, na etapa em que ela está. */
+  async function anexarNaLead() {
+    if (!documento || !lead) return;
     setAnexando(true);
     try {
       const r = await api('', 'POST', {
         action: 'upload_file',
-        solicitacao_id: solicitacao.id,
-        status_id: solicitacao.etapaId,
+        lead_id: lead.id,
+        status_id: lead.etapaId,
         arquivo: {
           nome: documento.nome,
           tipo: MIME_DOCX,
@@ -1130,7 +1130,7 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
       });
       if (r?.error) throw new Error(r.error);
       setAnexado(true);
-      toast('success', 'Anexado à solicitação', `${documento.nome} entrou nos anexos da etapa.`);
+      toast('success', 'Anexado ao lead', `${documento.nome} entrou nos anexos da etapa.`);
     } catch (e: any) {
       console.error('[gerador] anexar', e);
       toast('error', 'Não foi possível anexar', e?.message ?? 'Tente novamente.');
@@ -1182,7 +1182,7 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
   }
 
   // Cartão de upload avulso — entrada alternativa do wizard, quando o documento
-  // não está anexado a nenhuma solicitação.
+  // não está anexado a nenhum lead.
   const cartaoUpload = (
         <div
           className="gd-drop"
@@ -1244,7 +1244,7 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
   return (
     <div className="admin-content-wrap">
       <div>
-        <h1 className="admin-page-title">Gerador de Documentos</h1>
+        <h1 className="admin-page-title">Gerador de Contratos</h1>
         <p className="admin-page-desc">Propostas, contratos e aditivos a partir dos modelos oficiais</p>
       </div>
 
@@ -1457,21 +1457,21 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
             <div className="gd-card">
               <p className="gd-wz-titulo">Por onde começamos?</p>
               <p className="gd-wz-sub">
-                Escolha a solicitação do kanban — dela vêm as partes, o valor e os anexos para leitura.
+                Escolha o lead do kanban — dela vêm as partes, o valor e os anexos para leitura.
               </p>
             </div>
 
-            {/* Solicitação da esteira */}
+            {/* Lead da esteira */}
             <div className="gd-card">
               <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
                 <div style={{ minWidth: 150 }}>
-                  <p className="admin-section-title" style={{ marginBottom: 2 }}>Solicitação</p>
+                  <p className="admin-section-title" style={{ marginBottom: 2 }}>Lead</p>
                   <p style={{ fontSize: 11.5, color: 'var(--gray2)' }}>Puxa partes, valor e parcelas do kanban</p>
                 </div>
-                <SeletorSolicitacao
-                  itens={solicitacoes}
-                  valor={solicitacao}
-                  onChange={selecionarSolicitacao}
+                <SeletorLead
+                  itens={leads}
+                  valor={lead}
+                  onChange={selecionarLead}
                   carregando={carregando}
                 />
               </div>
@@ -1479,7 +1479,7 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
               {/* Carregamento dos dados/anexos - abaixo do seletor */}
               {carregandoDemanda && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 12.5, color: 'var(--gray2)' }}>
-                  <span className="gd-spin" /> Carregando dados e anexos da solicitação…
+                  <span className="gd-spin" /> Carregando dados e anexos do lead…
                 </div>
               )}
 
@@ -1501,7 +1501,7 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
             {passo === 'anexos' && (
               <div className="gd-card">
                 <button type="button" className="gd-voltar" onClick={recomecar}>
-                  <span style={{ display: 'inline-flex', transform: 'rotate(180deg)' }}><IconArrowRight size={12} /></span> Trocar solicitação
+                  <span style={{ display: 'inline-flex', transform: 'rotate(180deg)' }}><IconArrowRight size={12} /></span> Trocar lead
                 </button>
                 <p className="gd-wz-titulo">Quais anexos devo ler?</p>
                 <p className="gd-wz-sub">
@@ -1597,7 +1597,7 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
             {passo === 'vencimentos' && (
               <div className="gd-card">
                 <button type="button" className="gd-voltar"
-                  onClick={() => setPasso(solicitacao && anexos.some(a => a.legivel) ? 'anexos' : 'origem')}>
+                  onClick={() => setPasso(lead && anexos.some(a => a.legivel) ? 'anexos' : 'origem')}>
                   <span style={{ display: 'inline-flex', transform: 'rotate(180deg)' }}><IconArrowRight size={12} /></span> Voltar
                 </button>
                 <p className="gd-wz-titulo">Como são os vencimentos?</p>
@@ -1630,7 +1630,7 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
             {passo === 'pronto' && (
               <div className="gd-resumo">
                 <span className="gd-resumo-badge">
-                  {viaManual ? 'Preenchimento manual' : solicitacao ? `${solicitacao.cedente} → ${solicitacao.sacado}` : 'Documento avulso'}
+                  {viaManual ? 'Preenchimento manual' : lead ? `${lead.cedente} → ${lead.sacado}` : 'Documento avulso'}
                 </span>
                 <span className="gd-resumo-badge">
                   {qtdLida === 0 ? 'Sem leitura' : qtdLida === 1 ? '1 documento lido' : `${qtdLida} documentos lidos`}
@@ -1910,10 +1910,10 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
             </div>
 
             <div className="gd-modal-rodape">
-              {solicitacao ? (
+              {lead ? (
                 <button
                   className="btn"
-                  onClick={anexarNaSolicitacao}
+                  onClick={anexarNaLead}
                   disabled={anexando || anexado}
                   style={{
                     border: '1.5px solid var(--gray3)', background: 'var(--white)',
@@ -1922,12 +1922,12 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
                   }}
                 >
                   {anexando ? <><IconSpinner size={13} /> Anexando…</>
-                    : anexado ? 'Anexado à solicitação'
-                    : 'Anexar à solicitação'}
+                    : anexado ? 'Anexado ao lead'
+                    : 'Anexar ao lead'}
                 </button>
               ) : (
                 <span style={{ fontSize: 11.5, color: 'var(--gray2)' }}>
-                  Sem solicitação escolhida — não há onde anexar.
+                  Sem lead escolhida — não há onde anexar.
                 </span>
               )}
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>

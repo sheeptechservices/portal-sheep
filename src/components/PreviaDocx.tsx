@@ -6,7 +6,7 @@ import { ajustarBannerDocx } from '../lib/docxBanner';
  * arquivo, então o que aparece aqui é o documento de verdade - não uma
  * reconstrução dos dados. Carregado sob demanda para não pesar o bundle inicial.
  *
- * O enquadramento (`.gd-docx`, `.gd-spin`) vem do Gerador de Documentos, que é
+ * O enquadramento (`.gd-docx`, `.gd-spin`) vem do Gerador de Contratos, que é
  * quem monta o modal em volta.
  */
 export function PreviaDocx({ blob }: { blob: Blob }) {

@@ -1,4 +1,4 @@
-// Peças comuns do Gerador de Documentos, usadas tanto pela tela de proposta
+// Peças comuns do Gerador de Contratos, usadas tanto pela tela de proposta
 // avulsa quanto pela de lote. Só função pura aqui - nada de React, nada de rede.
 import { isBusinessDay, nextBusinessDay } from './businessDays';
 
@@ -81,7 +81,7 @@ export function parseMoedaBR(v: string): number {
 
 /**
  * Empurra vencimento que cai em fim de semana ou feriado para o próximo dia útil.
- * Aplica só no que o sistema preenche (leitura de documento e solicitação) - data
+ * Aplica só no que o sistema preenche (leitura de documento e lead) - data
  * digitada à mão é escolha do analista e fica como está.
  */
 export function ajustarParaDiaUtil(datas: string[]): { datas: string[]; ajustes: { de: string; para: string }[] } {

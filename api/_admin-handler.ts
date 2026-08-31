@@ -5,8 +5,6 @@ import {
   getIntegrationCredential, saveIntegrationCredential,
   updateIntegrationMeta, removeIntegrationCredential, validateAnthropicKey,
 } from './_credentials.js';
-import { ensureDiretrizesSchema } from './_diretrizes.js';
-import { ensureAnalisesSchema, ANALISE_LIST_COLS, ANALISE_ARQUIVO_COLS } from './_analises.js';
 import { obterDdl } from './_schema.js';
 import {
   emailAdmin, ehEmailAdmin, ordemPapel, papelEfetivo, podeGerenciarUsuarios,
@@ -42,7 +40,7 @@ async function migrarSchema(db: Client) {
   const ddl = await obterDdl(db);
 
   await ddl(`
-    CREATE TABLE IF NOT EXISTS solicitacoes (
+    CREATE TABLE IF NOT EXISTS leads (
       id                  TEXT PRIMARY KEY,
       created_at          TEXT NOT NULL,
       cnpj_contratado     TEXT,
@@ -58,12 +56,12 @@ async function migrarSchema(db: Client) {
       fim_type            INTEGER
     )
   `);
-  try { await ddl(`ALTER TABLE solicitacoes ADD COLUMN parcelas TEXT`); } catch {}
+  try { await ddl(`ALTER TABLE leads ADD COLUMN parcelas TEXT`); } catch {}
 
   await ddl(`
-    CREATE TABLE IF NOT EXISTS solicitacao_arquivos (
+    CREATE TABLE IF NOT EXISTS lead_arquivos (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
-      solicitacao_id TEXT NOT NULL,
+      lead_id TEXT NOT NULL,
       categoria      TEXT NOT NULL,
       nome           TEXT NOT NULL,
       tipo           TEXT NOT NULL,
@@ -84,28 +82,24 @@ async function migrarSchema(db: Client) {
 
   await ddl(`
     CREATE TABLE IF NOT EXISTS status_notificacoes (
-      id                INTEGER PRIMARY KEY AUTOINCREMENT,
-      status_id         INTEGER NOT NULL,
-      slack_user_id     TEXT NOT NULL,
-      slack_user_name   TEXT NOT NULL,
-      slack_user_avatar TEXT,
-      UNIQUE(status_id, slack_user_id)
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      status_id  INTEGER NOT NULL,
+      usuario_id TEXT NOT NULL,
+      UNIQUE(status_id, usuario_id)
     )
   `);
 
   await ddl(`
-    CREATE TABLE IF NOT EXISTS nova_solicitacao_notificacoes (
-      id                INTEGER PRIMARY KEY AUTOINCREMENT,
-      slack_user_id     TEXT NOT NULL UNIQUE,
-      slack_user_name   TEXT NOT NULL,
-      slack_user_avatar TEXT
+    CREATE TABLE IF NOT EXISTS novo_lead_notificacoes (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      usuario_id TEXT NOT NULL UNIQUE
     )
   `);
 
   await ddl(`
-    CREATE TABLE IF NOT EXISTS solicitacao_eventos (
+    CREATE TABLE IF NOT EXISTS lead_eventos (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
-      solicitacao_id TEXT NOT NULL,
+      lead_id TEXT NOT NULL,
       tipo           TEXT NOT NULL,
       status_id      INTEGER,
       descricao      TEXT,
@@ -115,7 +109,7 @@ async function migrarSchema(db: Client) {
   `);
   // Migration: add parent_id if it doesn't exist yet
   try {
-    await ddl(`ALTER TABLE solicitacao_eventos ADD COLUMN parent_id INTEGER`);
+    await ddl(`ALTER TABLE lead_eventos ADD COLUMN parent_id INTEGER`);
   } catch (_) { /* already exists */ }
 
   await ddl(`
@@ -163,13 +157,13 @@ async function migrarSchema(db: Client) {
     `ALTER TABLE cedentes ADD COLUMN wpp_contato TEXT`,
     `ALTER TABLE cedentes ADD COLUMN conta_escrow TEXT`,
     `ALTER TABLE cedentes ADD COLUMN link_drive TEXT`,
-    `ALTER TABLE solicitacoes ADD COLUMN cedente_id INTEGER`,
-    `ALTER TABLE solicitacoes ADD COLUMN sacado_id INTEGER`,
+    `ALTER TABLE leads ADD COLUMN cedente_id INTEGER`,
+    `ALTER TABLE leads ADD COLUMN sacado_id INTEGER`,
     `ALTER TABLE sacados ADD COLUMN ativo INTEGER NOT NULL DEFAULT 1`,
     // `cidade_estado` saiu daqui: a lista tinha o ADD e o DROP da mesma coluna,
     // então toda partida recriava e derrubava a coluna de novo, sem fim. A
     // coluna não deve existir, e não existe - nada a migrar.
-    `ALTER TABLE solicitacoes ADD COLUMN liquidez TEXT`,
+    `ALTER TABLE leads ADD COLUMN liquidez TEXT`,
     // Auto-cadastro (onboarding self-service) - pipeline de aprovação.
     // ADD COLUMN com DEFAULT 'aprovado' marca todos os cedentes já existentes como aprovados.
     `ALTER TABLE cedentes ADD COLUMN aprovacao_status TEXT DEFAULT 'aprovado'`,
@@ -235,9 +229,9 @@ async function migrarSchema(db: Client) {
   }
 
   await ddl(`
-    CREATE TABLE IF NOT EXISTS solicitacao_etapa_arquivos (
+    CREATE TABLE IF NOT EXISTS lead_etapa_arquivos (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
-      solicitacao_id TEXT NOT NULL,
+      lead_id TEXT NOT NULL,
       status_id      INTEGER NOT NULL,
       nome           TEXT NOT NULL,
       tipo           TEXT NOT NULL,
@@ -247,7 +241,7 @@ async function migrarSchema(db: Client) {
     )
   `);
   // Categoria do anexo (Lastro, Proposta, etc.) - em ambas as tabelas de arquivos
-  try { await ddl(`ALTER TABLE solicitacao_etapa_arquivos ADD COLUMN categoria TEXT`); } catch {}
+  try { await ddl(`ALTER TABLE lead_etapa_arquivos ADD COLUMN categoria TEXT`); } catch {}
 
   await ddl(`
     CREATE TABLE IF NOT EXISTS admin_sessions (
@@ -304,35 +298,13 @@ async function migrarSchema(db: Client) {
     )
   `);
 
-  await ddl(`
-    CREATE TABLE IF NOT EXISTS liquidez_transactions (
-      id          TEXT PRIMARY KEY,
-      date        TEXT NOT NULL,
-      source      TEXT NOT NULL CHECK(source IN ('interno', 'atlas', 'fidc')),
-      type        TEXT NOT NULL CHECK(type IN ('entrada', 'saida')),
-      category    TEXT NOT NULL,
-      amount      REAL NOT NULL,
-      description TEXT,
-      created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
+  try { await ddl(`ALTER TABLE leads ADD COLUMN deleted_at TEXT`); } catch {}
+  // Datas de execução, gravadas só pelo sistema e não pelo formulário:
+  // `data_execucao` registra quando a operação foi de fato executada.
+  try { await ddl(`ALTER TABLE leads ADD COLUMN previsao_execucao TEXT`); } catch {}
+  try { await ddl(`ALTER TABLE leads ADD COLUMN data_execucao TEXT`); } catch {}
 
-  try { await ddl(`ALTER TABLE liquidez_transactions ADD COLUMN realized INTEGER NOT NULL DEFAULT 0`); } catch {}
-  try { await ddl(`ALTER TABLE solicitacoes ADD COLUMN deleted_at TEXT`); } catch {}
-  // Datas de execução (só via sistema, não vêm do formulário): previsão posiciona o
-  // card na liquidez; data_execucao registra quando a operação foi de fato executada.
-  try { await ddl(`ALTER TABLE solicitacoes ADD COLUMN previsao_execucao TEXT`); } catch {}
-  try { await ddl(`ALTER TABLE solicitacoes ADD COLUMN data_execucao TEXT`); } catch {}
 
-  await ddl(`
-    CREATE TABLE IF NOT EXISTS liquidez_saldos (
-      week_start TEXT NOT NULL,
-      source     TEXT NOT NULL,
-      amount     REAL NOT NULL DEFAULT 0,
-      updated_at TEXT NOT NULL,
-      PRIMARY KEY (week_start, source)
-    )
-  `);
 
   // Migration: add is_conversion flag
   try {
@@ -349,7 +321,7 @@ async function migrarSchema(db: Client) {
     await ddl(`ALTER TABLE status_configs ADD COLUMN requires_pendencia INTEGER NOT NULL DEFAULT 0`);
   } catch (_) { /* already exists */ }
 
-  // Migration: add is_entrada flag (etapa que recebe as solicitações do formulário)
+  // Migration: add is_entrada flag (etapa que recebe os leads do formulário)
   try {
     await ddl(`ALTER TABLE status_configs ADD COLUMN is_entrada INTEGER NOT NULL DEFAULT 0`);
   } catch (_) { /* already exists */ }
@@ -371,11 +343,11 @@ async function migrarSchema(db: Client) {
     await ddl(`ALTER TABLE status_configs ADD COLUMN always_collapsed INTEGER NOT NULL DEFAULT 0`);
   } catch (_) { /* already exists */ }
 
-  // Pendências (checklist) de uma solicitação - ex.: "Aprovado com Pendência"
+  // Pendências (checklist) de um lead - ex.: "Aprovado com Pendência"
   await ddl(`
-    CREATE TABLE IF NOT EXISTS solicitacao_pendencias (
+    CREATE TABLE IF NOT EXISTS lead_pendencias (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
-      solicitacao_id TEXT NOT NULL,
+      lead_id TEXT NOT NULL,
       descricao      TEXT NOT NULL,
       categoria      TEXT,
       resolvida      INTEGER NOT NULL DEFAULT 0,
@@ -385,12 +357,12 @@ async function migrarSchema(db: Client) {
     )
   `);
 
-  // Relatório DEPS (cedente/sacado) persistido por solicitação - gerado no módulo
-  // de Análise de Crédito e acessível no balão da parte no card da solicitação.
+  // Relatório DEPS (cedente/sacado) persistido por lead - gerado no módulo
+  // de Análise de Crédito e acessível no balão da parte no card do lead.
   await ddl(`
-    CREATE TABLE IF NOT EXISTS solicitacao_deps (
+    CREATE TABLE IF NOT EXISTS lead_deps (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
-      solicitacao_id TEXT NOT NULL,
+      lead_id TEXT NOT NULL,
       alvo           TEXT NOT NULL,
       nome           TEXT,
       documento      TEXT,
@@ -401,13 +373,13 @@ async function migrarSchema(db: Client) {
   // Payload BRUTO da consulta DEPS (~50-150 KB de JSON). O norm_json guarda só ~15
   // campos; o bruto é o que permite renderizar o relatório completo (todos os blocos)
   // e alimentar o parecer da IA sem uma nova consulta paga.
-  try { await ddl(`ALTER TABLE solicitacao_deps ADD COLUMN raw_json TEXT`); } catch {}
+  try { await ddl(`ALTER TABLE lead_deps ADD COLUMN raw_json TEXT`); } catch {}
 
   // Data migration: strip hyphens from conta_escrow (idempotent)
   await db.execute(`UPDATE cedentes SET conta_escrow = REPLACE(conta_escrow, '-', '') WHERE conta_escrow IS NOT NULL AND conta_escrow LIKE '%-%'`);
 
   // Data migration: corrige "FIDIC" → "FIDC" na origem de liquidez (idempotente) - DUX-327
-  await db.execute(`UPDATE solicitacoes SET liquidez = 'FIDC' WHERE liquidez = 'FIDIC'`);
+  await db.execute(`UPDATE leads SET liquidez = 'FIDC' WHERE liquidez = 'FIDIC'`);
 
   // Seed default statuses on first run
   const cnt = await db.execute('SELECT COUNT(*) as c FROM status_configs');
@@ -418,86 +390,14 @@ async function migrarSchema(db: Client) {
     await db.execute(`INSERT INTO status_configs (nome, cor, ordem) VALUES ('Cancelado', '#D93025', 4)`);
   }
 
-  await ddl(`
-    CREATE TABLE IF NOT EXISTS aceite_operacoes (
-      id                        TEXT PRIMARY KEY,
-      token                     TEXT NOT NULL UNIQUE,
-      solicitacao_id            TEXT NOT NULL,
-      tipo                      TEXT NOT NULL DEFAULT 'ACEITE_SACADO',
-      status                    TEXT NOT NULL DEFAULT 'PENDENTE',
-      nome_cedente              TEXT NOT NULL,
-      cnpj_cedente              TEXT NOT NULL,
-      email_cedente             TEXT,
-      email_cedente_responsavel TEXT,
-      nome_sacado               TEXT NOT NULL,
-      cnpj_sacado               TEXT,
-      numero_nf                 TEXT,
-      data_emissao_nf           TEXT,
-      valor_nf                  REAL,
-      vencimento                TEXT,
-      periodo_servico           TEXT,
-      parcelas                  TEXT,
-      banco_nome                TEXT,
-      titular_conta             TEXT,
-      cnpj_titular              TEXT,
-      agencia                   TEXT,
-      conta                     TEXT,
-      token_expires_at          TEXT NOT NULL,
-      email_history             TEXT,
-      aceitante                 TEXT,
-      criado_em                 TEXT NOT NULL
-    )
-  `);
-
-  await ddl(`
-    CREATE TABLE IF NOT EXISTS aceite_anexos (
-      id          TEXT PRIMARY KEY,
-      operacao_id TEXT NOT NULL,
-      nome        TEXT NOT NULL,
-      tipo        TEXT NOT NULL,
-      tamanho     INTEGER NOT NULL,
-      data_url    TEXT NOT NULL,
-      criado_em   TEXT NOT NULL
-    )
-  `);
-
-  // Notificações do pipeline de auto-cadastro de cedentes (mesma lógica das solicitações).
+  // Notificações do pipeline de auto-cadastro de cedentes (mesma lógica dos leads).
   // Por etapa fixa (pendente/em_analise/aprovado/rejeitado):
-  await ddl(`
-    CREATE TABLE IF NOT EXISTS cadastro_etapa_notificacoes (
-      id                INTEGER PRIMARY KEY AUTOINCREMENT,
-      etapa             TEXT NOT NULL,
-      slack_user_id     TEXT NOT NULL,
-      slack_user_name   TEXT NOT NULL,
-      slack_user_avatar TEXT,
-      UNIQUE(etapa, slack_user_id)
-    )
-  `);
   // No momento da submissão do formulário de cadastro:
-  await ddl(`
-    CREATE TABLE IF NOT EXISTS cadastro_submissao_notificacoes (
-      id                INTEGER PRIMARY KEY AUTOINCREMENT,
-      slack_user_id     TEXT NOT NULL UNIQUE,
-      slack_user_name   TEXT NOT NULL,
-      slack_user_avatar TEXT
-    )
-  `);
-
   // Etapas configuráveis do pipeline de onboarding (auto-cadastro).
   // `chave` é o valor persistido em cedentes.aprovacao_status. As chaves
   // 'aprovado' e 'rejeitado' são âncoras semânticas protegidas (controlam o
   // acesso ao formulário público) - podem ser renomeadas/recoloridas/reordenadas,
   // mas não excluídas. Demais etapas são livres e contam como "em análise".
-  await ddl(`
-    CREATE TABLE IF NOT EXISTS cadastro_status_configs (
-      id    INTEGER PRIMARY KEY AUTOINCREMENT,
-      chave TEXT NOT NULL UNIQUE,
-      nome  TEXT NOT NULL,
-      cor   TEXT NOT NULL DEFAULT '#AAAAAA',
-      ordem INTEGER NOT NULL DEFAULT 0,
-      ativo INTEGER NOT NULL DEFAULT 1
-    )
-  `);
   // Cofre de credenciais de integração (chaves de API criptografadas em repouso).
   await ddl(`
     CREATE TABLE IF NOT EXISTS integration_credentials (
@@ -514,13 +414,11 @@ async function migrarSchema(db: Client) {
   // pessoa saia da empresa e o cadastro dela seja desativado. Linha gravada antes
   // do login individual fica com os dois nulos e aparece como "Sistema" na UI.
   const colunasAutoria: Array<[string, string[]]> = [
-    ['solicitacao_eventos',    ['autor_id TEXT', 'autor_nome TEXT']],
-    ['solicitacoes',           ['criado_por_id TEXT', 'criado_por_nome TEXT', 'atualizado_por_id TEXT', 'atualizado_por_nome TEXT', 'atualizado_em TEXT']],
+    ['lead_eventos',    ['autor_id TEXT', 'autor_nome TEXT']],
+    ['leads',           ['criado_por_id TEXT', 'criado_por_nome TEXT', 'atualizado_por_id TEXT', 'atualizado_por_nome TEXT', 'atualizado_em TEXT']],
     ['cedentes',               ['criado_por_id TEXT', 'criado_por_nome TEXT', 'atualizado_por_id TEXT', 'atualizado_por_nome TEXT', 'atualizado_em TEXT']],
     ['sacados',                ['criado_por_id TEXT', 'criado_por_nome TEXT', 'atualizado_por_id TEXT', 'atualizado_por_nome TEXT', 'atualizado_em TEXT']],
-    ['liquidez_transactions',  ['criado_por_id TEXT', 'criado_por_nome TEXT', 'atualizado_por_id TEXT', 'atualizado_por_nome TEXT', 'atualizado_em TEXT']],
-    ['solicitacao_pendencias', ['criado_por_id TEXT', 'criado_por_nome TEXT', 'resolvido_por_id TEXT', 'resolvido_por_nome TEXT']],
-    ['aceite_operacoes',       ['criado_por_id TEXT', 'criado_por_nome TEXT', 'atualizado_por_id TEXT', 'atualizado_por_nome TEXT', 'atualizado_em TEXT']],
+    ['lead_pendencias', ['criado_por_id TEXT', 'criado_por_nome TEXT', 'resolvido_por_id TEXT', 'resolvido_por_nome TEXT']],
   ];
   for (const [tabela, colunas] of colunasAutoria) {
     for (const coluna of colunas) {
@@ -528,27 +426,107 @@ async function migrarSchema(db: Client) {
     }
   }
 
-  // Diretrizes do motor de crédito (regras da casa aprendidas com o operador)
-  await ensureDiretrizesSchema(db, ddl);
-  // Histórico de análises de crédito validadas
-  await ensureAnalisesSchema(db, ddl);
+  // Projetos da casa. `responsavel_id` aponta para `usuarios`, e não guarda o
+  // nome: assim renomear alguém se propaga, e desativar não deixa órfão visível.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS projetos (
+      id                  TEXT PRIMARY KEY,
+      codigo              TEXT UNIQUE,
+      nome                TEXT NOT NULL,
+      cliente_id          TEXT,
+      tipo                TEXT,
+      repositorio         TEXT,
+      objetivo            TEXT,
+      status              TEXT NOT NULL DEFAULT 'Em andamento',
+      data_inicio         TEXT,
+      previsao_entrega    TEXT,
+      progresso           INTEGER NOT NULL DEFAULT 0,
+      observacoes         TEXT,
+      ativo               INTEGER NOT NULL DEFAULT 1,
+      criado_em           TEXT NOT NULL,
+      criado_por_id       TEXT,
+      criado_por_nome     TEXT,
+      atualizado_em       TEXT,
+      atualizado_por_id   TEXT,
+      atualizado_por_nome TEXT
+    )
+  `);
 
-  // Índices nas chaves estrangeiras. Sem eles, cada busca por `solicitacao_id`
+  // Colunas acrescentadas depois do primeiro desenho da tabela. O `ddl` só vai
+  // ao banco quando muda algo, então repetir aqui não custa ida nenhuma.
+  try { await ddl(`ALTER TABLE projetos ADD COLUMN tipo TEXT`); } catch { /* já existe */ }
+  try { await ddl(`ALTER TABLE projetos ADD COLUMN repositorio TEXT`); } catch { /* já existe */ }
+
+  // Clientes atendidos. Registro próprio, e não `cedentes`: aquele é cadastro de
+  // crédito, com CNPJ e limite; aqui basta quem é o cliente do projeto.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS clientes (
+      id        TEXT PRIMARY KEY,
+      nome      TEXT NOT NULL UNIQUE,
+      ativo     INTEGER NOT NULL DEFAULT 1,
+      criado_em TEXT NOT NULL
+    )
+  `);
+
+  // Equipe do projeto. Tabela de ligação com papel, e não colunas fixas de
+  // gestor e devs: quem está no time e em que função é a mesma pergunta, e
+  // separá-la em dois lugares obrigaria a mexer no schema a cada papel novo.
+  // A chave é (projeto, usuário): a mesma pessoa não acumula dois papéis no
+  // mesmo projeto.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS projeto_equipe (
+      projeto_id TEXT NOT NULL,
+      usuario_id TEXT NOT NULL,
+      papel      TEXT NOT NULL DEFAULT 'Dev',
+      PRIMARY KEY (projeto_id, usuario_id)
+    )
+  `);
+
+  // Anexos do projeto. `etiqueta` classifica (proposta, contrato, slide...);
+  // o arquivo vai em base64, igual aos anexos de cedente.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS projeto_arquivos (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      projeto_id      TEXT NOT NULL,
+      etiqueta        TEXT NOT NULL DEFAULT 'Documento',
+      nome            TEXT NOT NULL,
+      tipo            TEXT NOT NULL,
+      tamanho         INTEGER NOT NULL,
+      base64          TEXT NOT NULL,
+      criado_em       TEXT NOT NULL,
+      criado_por_nome TEXT
+    )
+  `);
+
+  // Semente dos clientes: os mesmos que aparecem no carrossel da entrada.
+  const cliCnt = await db.execute('SELECT COUNT(*) c FROM clientes');
+  if (Number(cliCnt.rows[0].c) === 0) {
+    const agora = new Date().toISOString();
+    for (const nome of [
+      '300 Franchising', 'Bitka Analytics', 'bip.', 'Cheirin Bão', 'Click!',
+      'Consigo Cred', 'Grupo 3SA', 'J17 Bank', 'Prontomed', 'Shell', 'Vale',
+    ]) {
+      await db.execute({
+        sql: 'INSERT OR IGNORE INTO clientes (id, nome, ativo, criado_em) VALUES (?,?,1,?)',
+        args: [randomUUID(), nome, agora],
+      });
+    }
+  }
+
+  // Índices nas chaves estrangeiras. Sem eles, cada busca por `lead_id`
   // (etc.) vira full table scan: o board roda subqueries correlacionadas por
   // linha e cada abertura de detalhe varre as tabelas filhas inteiras, o que
   // dispara o "rows read" do Turso. Os índices transformam isso em busca direta.
   const indices = [
     // Cobre comentario_count, o MAX(id) de status_change do board e o detalhe.
-    `CREATE INDEX IF NOT EXISTS idx_eventos_sol ON solicitacao_eventos (solicitacao_id, tipo, id)`,
-    `CREATE INDEX IF NOT EXISTS idx_eventos_parent ON solicitacao_eventos (parent_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_etapa_arq_sol ON solicitacao_etapa_arquivos (solicitacao_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_sol_arq_sol ON solicitacao_arquivos (solicitacao_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_pend_sol ON solicitacao_pendencias (solicitacao_id, resolvida)`,
-    `CREATE INDEX IF NOT EXISTS idx_deps_sol ON solicitacao_deps (solicitacao_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_eventos_sol ON lead_eventos (lead_id, tipo, id)`,
+    `CREATE INDEX IF NOT EXISTS idx_eventos_parent ON lead_eventos (parent_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_etapa_arq_sol ON lead_etapa_arquivos (lead_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_sol_arq_sol ON lead_arquivos (lead_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_pend_sol ON lead_pendencias (lead_id, resolvida)`,
+    `CREATE INDEX IF NOT EXISTS idx_deps_sol ON lead_deps (lead_id)`,
     `CREATE INDEX IF NOT EXISTS idx_ced_arq_ced ON cedente_arquivos (cedente_id)`,
     `CREATE INDEX IF NOT EXISTS idx_ced_pend_ced ON cedente_pendencias (cedente_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_aceite_op_sol ON aceite_operacoes (solicitacao_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_aceite_anexos_op ON aceite_anexos (operacao_id)`,
     // Autoria. A tela de Perfil filtra por pessoa (`autor_id`, `criado_por_id`,
     // `usuario_id`) e nenhum dos índices acima começa por essas colunas, então
     // cada contagem varria a tabela inteira. Índice por coluna consultada, e
@@ -556,31 +534,16 @@ async function migrarSchema(db: Client) {
     // porque índice também custa em toda gravação.
     // `(autor_id, tipo)` serve as duas contagens de eventos: a de comentários
     // usa as duas colunas, a de eventos usa só o prefixo.
-    `CREATE INDEX IF NOT EXISTS idx_eventos_autor ON solicitacao_eventos (autor_id, tipo)`,
-    `CREATE INDEX IF NOT EXISTS idx_sol_autor ON solicitacoes (criado_por_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_eventos_autor ON lead_eventos (autor_id, tipo)`,
+    `CREATE INDEX IF NOT EXISTS idx_sol_autor ON leads (criado_por_id)`,
     `CREATE INDEX IF NOT EXISTS idx_ced_autor ON cedentes (criado_por_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_pend_autor ON solicitacao_pendencias (criado_por_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_pend_autor ON lead_pendencias (criado_por_id)`,
     // `(usuario_id, id DESC)` cobre a contagem e as últimas 15 ações no mesmo
     // índice - o ORDER BY sai de graça, sem passo de ordenação.
     `CREATE INDEX IF NOT EXISTS idx_auditoria_usuario ON auditoria (usuario_id, id DESC)`,
   ];
   for (const sql of indices) { try { await ddl(sql); } catch { /* tabela ainda não existe em algum estado - ignora */ } }
 
-  const cadCnt = await db.execute('SELECT COUNT(*) as c FROM cadastro_status_configs');
-  if (Number(cadCnt.rows[0].c) === 0) {
-    const seed: Array<[string, string, string, number]> = [
-      ['pendente',   'Pendente',   '#FFB400', 1],
-      ['em_analise', 'Em análise', '#0066CC', 2],
-      ['aprovado',   'Aprovado',   '#1E8A3E', 3],
-      ['rejeitado',  'Rejeitado',  '#D93025', 4],
-    ];
-    for (const [chave, nome, cor, ordem] of seed) {
-      await db.execute({
-        sql: 'INSERT INTO cadastro_status_configs (chave, nome, cor, ordem, ativo) VALUES (?,?,?,?,1)',
-        args: [chave, nome, cor, ordem],
-      });
-    }
-  }
 
 }
 
@@ -627,7 +590,7 @@ export const AUTOR_PORTAL = 'Portal de aceite';
 
 /** Tabelas que guardam "quem mexeu por último". União de literais de propósito:
  *  o nome da tabela entra na SQL por interpolação e nunca pode vir de fora. */
-export type TabelaComEdicao = 'solicitacoes' | 'cedentes' | 'sacados' | 'aceite_operacoes';
+export type TabelaComEdicao = 'leads' | 'cedentes' | 'sacados';
 
 /**
  * Carimba "quem mexeu por último". Nunca derruba a ação que a chamou - autoria
@@ -876,7 +839,7 @@ export async function clearLoginAttempts(db: Client, ip: string): Promise<void> 
 }
 
 /**
- * Etapa de entrada do pipeline de solicitações: a marcada com `is_entrada` nas
+ * Etapa de entrada do pipeline de leads: a marcada com `is_entrada` nas
  * Configurações → Etapas. Sem marcação (ou se a etapa marcada foi excluída),
  * cai na primeira etapa ativa por ordem - o comportamento antigo.
  */
@@ -898,22 +861,22 @@ export async function healOrphanedCards(db: Client) {
     const now = new Date().toISOString();
     const orphans = await db.execute(`
       SELECT s.id
-      FROM solicitacoes s
+      FROM leads s
       INNER JOIN (
-        SELECT e.solicitacao_id, e.status_id
-        FROM solicitacao_eventos e
+        SELECT e.lead_id, e.status_id
+        FROM lead_eventos e
         WHERE e.tipo = 'status_change'
           AND e.id = (
-            SELECT MAX(e2.id) FROM solicitacao_eventos e2
-            WHERE e2.solicitacao_id = e.solicitacao_id AND e2.tipo = 'status_change'
+            SELECT MAX(e2.id) FROM lead_eventos e2
+            WHERE e2.lead_id = e.lead_id AND e2.tipo = 'status_change'
           )
-      ) curr ON curr.solicitacao_id = s.id
+      ) curr ON curr.lead_id = s.id
       LEFT JOIN status_configs sc ON sc.id = curr.status_id AND sc.ativo = 1
       WHERE sc.id IS NULL
     `);
     for (const row of orphans.rows) {
       await db.execute({
-        sql: `INSERT INTO solicitacao_eventos (solicitacao_id, tipo, status_id, descricao, criado_em)
+        sql: `INSERT INTO lead_eventos (lead_id, tipo, status_id, descricao, criado_em)
               VALUES (?, 'status_change', ?, 'Reagrupado após exclusão de etapa', ?)`,
         args: [row.id, targetId, now],
       });
@@ -921,61 +884,66 @@ export async function healOrphanedCards(db: Client) {
   } catch (_) { /* non-fatal */ }
 }
 
+/**
+ * A inscrição recém-criada, já com nome e e-mail resolvidos.
+ *
+ * A tabela guarda só `usuario_id`; a UI precisa do nome para desenhar a linha
+ * sem uma segunda ida ao servidor.
+ */
+async function inscritoCriado(db: Client, id: number, usuarioId: string) {
+  const u = await db.execute({ sql: 'SELECT nome, email FROM usuarios WHERE id = ?', args: [usuarioId] });
+  const row = u.rows[0];
+  return {
+    id,
+    usuario_id: usuarioId,
+    usuario_nome: String(row?.nome ?? ''),
+    usuario_email: String(row?.email ?? ''),
+  };
+}
+
 export async function getNovaSubmissaoRecipients(db: Client): Promise<string[]> {
   await ensureAdminSchema(db);
-  const rows = await db.execute('SELECT slack_user_id FROM nova_solicitacao_notificacoes');
-  return rows.rows.map(r => String(r.slack_user_id));
+  return (await emailsDosInscritos(db, 'novo_lead_notificacoes')).map(u => u.email);
 }
 
-export async function getCadastroSubmissaoRecipients(db: Client): Promise<string[]> {
-  await ensureAdminSchema(db);
-  const rows = await db.execute('SELECT slack_user_id FROM cadastro_submissao_notificacoes');
-  return rows.rows.map(r => String(r.slack_user_id));
-}
 
-async function notifyMentions(token: string, texto: string, solicitacaoId: string, db: Client) {
-  // \w+ doesn't capture dots - use [\w.]+ so "guilherme.zaidan" is captured in full
-  const usernames = [...new Set((texto.match(/@([\w.]+)/g) ?? []).map(m => m.slice(1)))];
-  if (usernames.length === 0) return;
-
-  console.log('[mention-notify] mentions detected:', usernames);
-
-  const r = await fetch('https://slack.com/api/users.list?limit=200', {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  const data = await r.json() as { ok: boolean; members?: any[] };
-  if (!data.ok) { console.error('[mention-notify] users.list failed:', data); return; }
-
-  const members = (data.members ?? []).filter(
-    (m: any) => !m.is_bot && !m.deleted && m.id !== 'USLACKBOT'
-  );
+async function notifyMentions(texto: string, leadId: string, db: Client) {
+  // O ponto faz parte do apelido ("guilherme.zaidan"), então [\w.]+ e não \w+.
+  const apelidos = [...new Set((texto.match(/@([\w.]+)/g) ?? []).map(m => m.slice(1)))];
+  if (apelidos.length === 0) return;
 
   const sol = await db.execute({
-    sql: 'SELECT nome_contratado FROM solicitacoes WHERE id = ?',
-    args: [solicitacaoId],
+    sql: 'SELECT nome_contratado FROM leads WHERE id = ?',
+    args: [leadId],
   });
-  const nomeSol = String(sol.rows[0]?.nome_contratado ?? solicitacaoId);
+  const nomeSol = String(sol.rows[0]?.nome_contratado ?? leadId);
 
-  for (const username of usernames) {
-    const member = members.find((m: any) => m.name === username);
-    if (!member) { console.warn('[mention-notify] no Slack user found for username:', username); continue; }
-    console.log('[mention-notify] notifying', member.id, 'for mention of', username);
-    const msg = `💬 *Você foi mencionado em um comentário*\n*Solicitação:* ${nomeSol}\n> ${texto}`;
-    notifySlack(token, member.id, msg);
+  for (const apelido of apelidos) {
+    // O apelido casa com a parte local do e-mail: @guilherme.zaidan encontra
+    // guilherme.zaidan@dominio. É o mesmo critério que a UI usa para sugerir.
+    const u = await db.execute({
+      sql: 'SELECT email, nome FROM usuarios WHERE ativo = 1 AND lower(email) LIKE ? LIMIT 1',
+      args: [`${apelido.toLowerCase()}@%`],
+    });
+    const dest = u.rows[0];
+    if (!dest) { console.warn('[mention-notify] sem usuário para o apelido:', apelido); continue; }
+    notifyEmail(String(dest.email), 'Você foi mencionado em um comentário', `
+  <p style="font-size:14px;color:#555;margin:0 0 6px"><strong>Lead:</strong> ${esc(nomeSol)}</p>
+  <blockquote style="margin:12px 0 0;padding:10px 14px;background:#F7F6F3;border-left:3px solid #00C9A7;border-radius:0 8px 8px 0;font-size:14px;color:#333">${esc(texto)}</blockquote>`);
   }
 }
 
-async function notifyStageMentions(token: string, texto: string, solicitacaoId: string, db: Client) {
+async function notifyStageMentions(texto: string, leadId: string, db: Client) {
   const stageNames = [...new Set((texto.match(/#\[([^\]]+)\]/g) ?? []).map(m => m.slice(2, -1)))];
   if (stageNames.length === 0) return;
 
   console.log('[stage-notify] stage mentions detected:', stageNames);
 
   const sol = await db.execute({
-    sql: 'SELECT nome_contratado FROM solicitacoes WHERE id = ?',
-    args: [solicitacaoId],
+    sql: 'SELECT nome_contratado FROM leads WHERE id = ?',
+    args: [leadId],
   });
-  const nomeSol = String(sol.rows[0]?.nome_contratado ?? solicitacaoId);
+  const nomeSol = String(sol.rows[0]?.nome_contratado ?? leadId);
 
   for (const stageName of stageNames) {
     const statusResult = await db.execute({
@@ -985,34 +953,77 @@ async function notifyStageMentions(token: string, texto: string, solicitacaoId: 
     if (statusResult.rows.length === 0) { console.warn('[stage-notify] no status found for:', stageName); continue; }
     const statusId = statusResult.rows[0].id;
 
-    const notifs = await db.execute({
-      sql: 'SELECT slack_user_id FROM status_notificacoes WHERE status_id = ?',
-      args: [statusId],
-    });
-    if (notifs.rows.length === 0) { console.log('[stage-notify] no subscribers for stage:', stageName); continue; }
+    const inscritos = await emailsDosInscritos(db, 'status_notificacoes', { coluna: 'status_id', valor: statusId });
+    if (inscritos.length === 0) { console.log('[stage-notify] sem inscritos na etapa:', stageName); continue; }
 
-    const msg = `🏷️ *A etapa "${stageName}" foi mencionada em um comentário*\n*Solicitação:* ${nomeSol}\n> ${texto}`;
-    for (const n of notifs.rows) {
-      console.log('[stage-notify] notifying', n.slack_user_id, 'for stage', stageName);
-      notifySlack(token, String(n.slack_user_id), msg);
+    for (const dest of inscritos) {
+      notifyEmail(dest.email, `A etapa "${stageName}" foi mencionada em um comentário`, `
+  <p style="font-size:14px;color:#555;margin:0 0 6px"><strong>Lead:</strong> ${esc(nomeSol)}</p>
+  <blockquote style="margin:12px 0 0;padding:10px 14px;background:#F7F6F3;border-left:3px solid #00C9A7;border-radius:0 8px 8px 0;font-size:14px;color:#333">${esc(texto)}</blockquote>`);
     }
   }
 }
 
-async function notifySlack(token: string, userId: string, text: string) {
+/** Escapa o que vai para dentro do HTML do e-mail. */
+function esc(v: unknown): string {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Moldura única dos e-mails de notificação, no acento da casa. */
+function layoutEmail(titulo: string, corpo: string): string {
+  return `<!DOCTYPE html><html><body style="font-family:Arial,Helvetica,sans-serif;color:#121316;background:#F7F6F3;padding:32px 0;margin:0">
+<div style="max-width:520px;margin:0 auto;background:#fff;border-radius:14px;padding:28px 28px 24px">
+  <div style="height:4px;width:34px;border-radius:2px;background:#00C9A7;margin-bottom:18px"></div>
+  <h1 style="font-size:18px;font-weight:800;margin:0 0 14px">${esc(titulo)}</h1>
+  ${corpo}
+  <p style="font-size:11px;color:#9A958A;margin:22px 0 0">Portal Sheep - você recebe este aviso porque está inscrito nesta notificação.</p>
+</div>
+</body></html>`;
+}
+
+/**
+ * Envia um e-mail pelo Resend.
+ *
+ * Falhar aqui é sempre não-fatal: notificação é efeito colateral, e perder uma
+ * não pode derrubar a ação que a disparou (mover etapa, comentar, cadastrar).
+ * Sem `RESEND_API_KEY` ou `RESEND_FROM_EMAIL` a função simplesmente não envia.
+ */
+async function notifyEmail(to: string, assunto: string, corpo: string) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.RESEND_FROM_EMAIL;
+  if (!apiKey || !from || !to) return;
   try {
-    const dm = await fetch('https://slack.com/api/conversations.open', {
+    const r = await fetch('https://api.resend.com/emails', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ users: userId }),
-    }).then(r => r.json()) as { ok: boolean; channel?: { id: string } };
-    if (!dm.ok || !dm.channel) return;
-    await fetch('https://slack.com/api/chat.postMessage', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channel: dm.channel.id, text }),
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from, to, subject: assunto, html: layoutEmail(assunto, corpo) }),
     });
-  } catch {}
+    if (!r.ok) console.error('[notify-email]', to, await r.text().catch(() => ''));
+  } catch (e) {
+    console.error('[notify-email]', (e as Error).message);
+  }
+}
+
+/**
+ * E-mails dos inscritos numa lista de notificação.
+ *
+ * O e-mail sai sempre de `usuarios`, nunca de cópia guardada na tabela de
+ * inscrição: usuário desativado (`ativo = 0`) para de receber sem precisar
+ * limpar inscrição nenhuma.
+ */
+async function emailsDosInscritos(
+  db: Client, tabela: 'status_notificacoes' | 'novo_lead_notificacoes',
+  filtro?: { coluna: 'status_id'; valor: unknown },
+): Promise<{ email: string; nome: string }[]> {
+  const r = await db.execute({
+    sql: `SELECT u.email, u.nome FROM ${tabela} n
+          JOIN usuarios u ON u.id = n.usuario_id
+          WHERE u.ativo = 1${filtro ? ` AND n.${filtro.coluna} = ?` : ''}`,
+    args: filtro ? [filtro.valor as any] : [],
+  });
+  return r.rows.map(x => ({ email: String(x.email), nome: String(x.nome) }));
 }
 
 // ── Busca rápida (⌘K) ────────────────────────────────────────────────────────
@@ -1061,8 +1072,8 @@ function foldTerm(s: string): string {
  * Numa criação o id ainda não existe no pedido, então vem da resposta.
  */
 function alvoDaAcao(body: any, resposta: any): string | null {
-  const alvo = body?.id ?? body?.solicitacao_id ?? body?.cedente_id ?? body?.analise_id ??
-               body?.status_id ?? body?.sacado_id ?? body?.chave ?? body?.slack_user_id ??
+  const alvo = body?.id ?? body?.lead_id ?? body?.cedente_id ?? body?.analise_id ??
+               body?.status_id ?? body?.sacado_id ?? body?.chave ??
                body?.usuario_id ?? body?.papel ??
                resposta?.id ?? resposta?.submission?.id ?? resposta?.cedente?.id ??
                resposta?.sacado?.id ?? resposta?.operacao?.id ?? resposta?.status?.id;
@@ -1074,10 +1085,9 @@ export async function handleAdminData(
   query: URLSearchParams,
   body: any,
   db: Client,
-  slackToken?: string,
   usuario?: UsuarioAdmin | null
 ): Promise<{ status: number; body: any }> {
-  const resultado = await despacharAdminData(method, query, body, db, slackToken, usuario);
+  const resultado = await despacharAdminData(method, query, body, db, usuario);
   // Toda ação que gravou alguma coisa deixa registro de quem fez. Fica fora do
   // despacho de propósito: assim nenhuma ação nova nasce sem auditoria.
   if (method === 'POST' && resultado.status < 400) {
@@ -1092,7 +1102,6 @@ async function despacharAdminData(
   query: URLSearchParams,
   body: any,
   db: Client,
-  slackToken?: string,
   usuario?: UsuarioAdmin | null
 ): Promise<{ status: number; body: any }> {
   await ensureAdminSchema(db);
@@ -1142,16 +1151,15 @@ async function despacharAdminData(
     if (action === 'perfil') {
       if (!usuario) return { status: 200, body: { usuario: null } };
       const conta = (sql: string) => db.execute({ sql, args: [usuario.id] });
-      const [linha, comentarios, eventos, solicitacoes, cedentes, analises, pendencias, acoes, ultimas] = await Promise.all([
+      const [linha, comentarios, eventos, leads, cedentes, pendencias, acoes, ultimas] = await Promise.all([
         conta('SELECT id, email, nome, foto_url, papel, criado_em, ultimo_acesso FROM usuarios WHERE id = ?'),
-        conta("SELECT COUNT(*) c FROM solicitacao_eventos WHERE autor_id = ? AND tipo = 'comentario'"),
-        conta('SELECT COUNT(*) c FROM solicitacao_eventos WHERE autor_id = ?'),
-        conta('SELECT COUNT(*) c FROM solicitacoes WHERE criado_por_id = ?'),
+        conta("SELECT COUNT(*) c FROM lead_eventos WHERE autor_id = ? AND tipo = 'comentario'"),
+        conta('SELECT COUNT(*) c FROM lead_eventos WHERE autor_id = ?'),
+        conta('SELECT COUNT(*) c FROM leads WHERE criado_por_id = ?'),
         conta('SELECT COUNT(*) c FROM cedentes WHERE criado_por_id = ?'),
-        conta('SELECT COUNT(*) c FROM credito_analises WHERE criado_por_id = ?'),
         // Só conta o que foi aberto depois que a coluna passou a ser gravada:
         // pendência anterior a isso tem o nome, mas não o id.
-        conta('SELECT COUNT(*) c FROM solicitacao_pendencias WHERE criado_por_id = ?'),
+        conta('SELECT COUNT(*) c FROM lead_pendencias WHERE criado_por_id = ?'),
         conta('SELECT COUNT(*) c FROM auditoria WHERE usuario_id = ?'),
         conta('SELECT acao, alvo, criado_em FROM auditoria WHERE usuario_id = ? ORDER BY id DESC LIMIT 15'),
       ]);
@@ -1161,8 +1169,8 @@ async function despacharAdminData(
         body: {
           usuario: linha.rows[0] ?? null,
           resumo: {
-            comentarios: n(comentarios), eventos: n(eventos), solicitacoes: n(solicitacoes),
-            cedentes: n(cedentes), analises: n(analises), pendencias: n(pendencias), acoes: n(acoes),
+            comentarios: n(comentarios), eventos: n(eventos), leads: n(leads),
+            cedentes: n(cedentes), pendencias: n(pendencias), acoes: n(acoes),
           },
           ultimas_acoes: ultimas.rows,
         },
@@ -1188,6 +1196,17 @@ async function despacharAdminData(
           atualizado_por_nome: matriz.atualizado_por_nome,
         },
       };
+    }
+
+    // Lista enxuta para o seletor de destinatários de notificação. Separada da
+    // ação `usuarios`, que é exclusiva do dono do painel: escolher quem recebe
+    // aviso não exige poder gerenciar gente, só chegar em Configurações.
+    if (action === 'usuarios_notificaveis') {
+      const r = await db.execute(`
+        SELECT id, nome, email, foto_url FROM usuarios
+        WHERE ativo = 1 ORDER BY nome
+      `);
+      return { status: 200, body: { usuarios: r.rows } };
     }
 
     // Gestão de usuários: a lista inteira, com papel, acesso e sessões abertas.
@@ -1255,25 +1274,25 @@ async function despacharAdminData(
           s.cedente_id, s.sacado_id,
           s.valor, s.valor_numerico, s.prazo_limite, s.fim_type,
           s.previsao_execucao, s.data_execucao,
-          COUNT(DISTINCT a.id) + (SELECT COUNT(*) FROM solicitacao_etapa_arquivos ea WHERE ea.solicitacao_id = s.id) AS arquivo_count,
-          (SELECT COUNT(*) FROM solicitacao_eventos c WHERE c.solicitacao_id = s.id AND c.tipo = 'comentario') AS comentario_count,
-          (SELECT COUNT(*) FROM solicitacao_pendencias p WHERE p.solicitacao_id = s.id AND p.resolvida = 0) AS pendencia_aberta_count,
-          (SELECT COUNT(*) FROM solicitacao_pendencias p WHERE p.solicitacao_id = s.id) AS pendencia_total_count,
+          COUNT(DISTINCT a.id) + (SELECT COUNT(*) FROM lead_etapa_arquivos ea WHERE ea.lead_id = s.id) AS arquivo_count,
+          (SELECT COUNT(*) FROM lead_eventos c WHERE c.lead_id = s.id AND c.tipo = 'comentario') AS comentario_count,
+          (SELECT COUNT(*) FROM lead_pendencias p WHERE p.lead_id = s.id AND p.resolvida = 0) AS pendencia_aberta_count,
+          (SELECT COUNT(*) FROM lead_pendencias p WHERE p.lead_id = s.id) AS pendencia_total_count,
           curr.status_id AS current_status_id,
           curr.criado_em  AS status_since
-        FROM solicitacoes s
+        FROM leads s
         LEFT JOIN cedentes ced ON ced.id = s.cedente_id
         LEFT JOIN sacados sac ON sac.id = s.sacado_id
-        LEFT JOIN solicitacao_arquivos a ON a.solicitacao_id = s.id
+        LEFT JOIN lead_arquivos a ON a.lead_id = s.id
         LEFT JOIN (
-          SELECT e.solicitacao_id, e.status_id, e.criado_em
-          FROM solicitacao_eventos e
+          SELECT e.lead_id, e.status_id, e.criado_em
+          FROM lead_eventos e
           WHERE e.tipo = 'status_change'
             AND e.id = (
-              SELECT MAX(e2.id) FROM solicitacao_eventos e2
-              WHERE e2.solicitacao_id = e.solicitacao_id AND e2.tipo = 'status_change'
+              SELECT MAX(e2.id) FROM lead_eventos e2
+              WHERE e2.lead_id = e.lead_id AND e2.tipo = 'status_change'
             )
-        ) curr ON curr.solicitacao_id = s.id
+        ) curr ON curr.lead_id = s.id
         WHERE s.deleted_at IS NULL
         GROUP BY s.id
         ORDER BY s.created_at DESC
@@ -1282,18 +1301,17 @@ async function despacharAdminData(
       return { status: 200, body: { statuses: statuses.rows, submissions: subs.rows } };
     }
 
-    // Busca rápida global (⌘K): cards de solicitações + cadastros de onboarding.
+    // Busca rápida global (⌘K): cards de leads + cadastros de onboarding.
     // Casa por nome/razão social, CNPJ/CPF (com ou sem máscara), e-mail e id do card.
     if (action === 'quick_search') {
       const raw = (query.get('q') ?? '').trim();
-      if (raw.length < 2) return { status: 200, body: { solicitacoes: [], cadastros: [] } };
+      if (raw.length < 2) return { status: 200, body: { leads: [] } };
 
       // A busca é livre para qualquer sessão, mas o resultado não: quem não
       // enxerga o kanban não pode achar cards dele por aqui. Sem este filtro a
       // busca rápida seria a porta dos fundos das duas páginas.
-      const veSolicitacoes = pode(permissoes, 'solicitacoes:ver');
-      const veCadastros = pode(permissoes, 'onboarding:ver');
-      if (!veSolicitacoes && !veCadastros) return { status: 200, body: { solicitacoes: [], cadastros: [] } };
+      const veLeads = pode(permissoes, 'leads:ver');
+      if (!veLeads) return { status: 200, body: { leads: [] } };
 
       const term = `%${foldTerm(raw)}%`;
       const digits = raw.replace(/\D/g, '');
@@ -1312,19 +1330,8 @@ async function despacharAdminData(
         solArgs.push(digitTerm, digitTerm);
       }
 
-      const cadCond = [
-        `${sqlFold('c.nome')} LIKE ?`,
-        `${sqlFold('c.razao_social')} LIKE ?`,
-        `${sqlFold('c.nome_responsavel')} LIKE ?`,
-        `${sqlFold('c.email')} LIKE ?`,
-      ];
-      const cadArgs: any[] = [term, term, term, term];
-      if (digitTerm) {
-        cadCond.push(`${sqlDigits('c.cnpj_cpf')} LIKE ?`, `${sqlDigits('c.cpf_responsavel')} LIKE ?`);
-        cadArgs.push(digitTerm, digitTerm);
-      }
 
-      const [sols, cads] = await Promise.all([
+      const [sols] = await Promise.all([
         db.execute({
           sql: `
             SELECT x.id, x.created_at, x.valor, x.nome_contratado, x.cnpj_contratado,
@@ -1337,18 +1344,18 @@ async function despacharAdminData(
                 COALESCE(sac.razao_social, NULLIF(TRIM(s.nome_sacado), '')) AS nome_sacado,
                 COALESCE(sac.cnpj_cpf, NULLIF(TRIM(s.cnpj_sacado), '')) AS cnpj_sacado,
                 st.nome AS status_nome, st.cor AS status_cor
-              FROM solicitacoes s
+              FROM leads s
               LEFT JOIN cedentes ced ON ced.id = s.cedente_id
               LEFT JOIN sacados sac ON sac.id = s.sacado_id
               LEFT JOIN (
-                SELECT e.solicitacao_id, e.status_id
-                FROM solicitacao_eventos e
+                SELECT e.lead_id, e.status_id
+                FROM lead_eventos e
                 WHERE e.tipo = 'status_change'
                   AND e.id = (
-                    SELECT MAX(e2.id) FROM solicitacao_eventos e2
-                    WHERE e2.solicitacao_id = e.solicitacao_id AND e2.tipo = 'status_change'
+                    SELECT MAX(e2.id) FROM lead_eventos e2
+                    WHERE e2.lead_id = e.lead_id AND e2.tipo = 'status_change'
                   )
-              ) curr ON curr.solicitacao_id = s.id
+              ) curr ON curr.lead_id = s.id
               LEFT JOIN status_configs st ON st.id = curr.status_id
             ) x
             WHERE x.deleted_at IS NULL AND (${solCond.join(' OR ')})
@@ -1357,26 +1364,12 @@ async function despacharAdminData(
           `,
           args: solArgs,
         }),
-        db.execute({
-          sql: `
-            SELECT c.id, c.nome, c.razao_social, c.cnpj_cpf, c.nome_responsavel,
-                   c.aprovacao_status, c.criado_em,
-                   cs.nome AS etapa_nome, cs.cor AS etapa_cor
-            FROM cedentes c
-            LEFT JOIN cadastro_status_configs cs ON cs.chave = c.aprovacao_status
-            WHERE c.ativo = 1 AND c.origem = 'Auto-cadastro' AND (${cadCond.join(' OR ')})
-            ORDER BY c.criado_em DESC
-            LIMIT ${LIMIT}
-          `,
-          args: cadArgs,
-        }),
       ]);
 
       return {
         status: 200,
         body: {
-          solicitacoes: veSolicitacoes ? sols.rows : [],
-          cadastros: veCadastros ? cads.rows : [],
+          leads: sols.rows,
         },
       };
     }
@@ -1384,7 +1377,9 @@ async function despacharAdminData(
     if (action === 'status_configs') {
       const [statuses, notifs] = await Promise.all([
         db.execute('SELECT * FROM status_configs WHERE ativo = 1 ORDER BY ordem'),
-        db.execute('SELECT * FROM status_notificacoes ORDER BY slack_user_name'),
+        db.execute(`SELECT n.*, u.nome AS usuario_nome, u.email AS usuario_email
+                     FROM status_notificacoes n JOIN usuarios u ON u.id = n.usuario_id
+                     ORDER BY u.nome`),
       ]);
       const result = statuses.rows.map(s => ({
         ...s,
@@ -1397,26 +1392,22 @@ async function despacharAdminData(
       const statusId = query.get('status_id');
       // Count cards whose latest status_change points to this stage (active or inactive)
       const r = await db.execute({
-        sql: `SELECT COUNT(*) as count FROM solicitacoes s
+        sql: `SELECT COUNT(*) as count FROM leads s
               INNER JOIN (
-                SELECT e.solicitacao_id FROM solicitacao_eventos e
+                SELECT e.lead_id FROM lead_eventos e
                 WHERE e.tipo = 'status_change' AND CAST(e.status_id AS TEXT) = CAST(? AS TEXT)
                   AND e.id = (
-                    SELECT MAX(e2.id) FROM solicitacao_eventos e2
-                    WHERE e2.solicitacao_id = e.solicitacao_id AND e2.tipo = 'status_change'
+                    SELECT MAX(e2.id) FROM lead_eventos e2
+                    WHERE e2.lead_id = e.lead_id AND e2.tipo = 'status_change'
                   )
-              ) curr ON curr.solicitacao_id = s.id
+              ) curr ON curr.lead_id = s.id
               WHERE s.deleted_at IS NULL`,
         args: [statusId],
       });
       return { status: 200, body: { count: Number(r.rows[0]?.count ?? 0) } };
     }
 
-    if (action === 'slack_config') {
-      return { status: 200, body: { has_token: !!slackToken } };
-    }
-
-    // Credenciais da DEPS vivem em variáveis de ambiente (igual ao Slack) - a UI
+    // Credenciais da DEPS vivem em variáveis de ambiente - a UI
     // só reflete o que está configurado; o segredo nunca sai do servidor.
     if (action === 'deps_config') {
       const email = process.env.DEPS_EMAIL ?? '';
@@ -1432,59 +1423,19 @@ async function despacharAdminData(
       };
     }
 
-    if (action === 'list_diretrizes') {
-      // status: 'ativa' (default) | 'all'
-      const filtro = query.get('status') ?? 'ativa';
-      const sql = filtro === 'all'
-        ? `SELECT * FROM credito_diretrizes ORDER BY status, categoria, escopo, prioridade DESC, id DESC`
-        : `SELECT * FROM credito_diretrizes WHERE status = 'ativa' ORDER BY categoria, escopo, prioridade DESC, id DESC`;
-      const r = await db.execute(sql);
-      return { status: 200, body: { diretrizes: r.rows } };
-    }
-
     // Histórico de análises de crédito. Filtros opcionais: q (cedente/sacado/
     // protocolo), status, de/ate (data ISO yyyy-mm-dd). Sem snapshot - a lista
     // só precisa dos campos de prateleira.
-    if (action === 'list_analises') {
-      const q = (query.get('q') ?? '').trim();
-      const status = (query.get('status') ?? '').trim();
-      const de = (query.get('de') ?? '').trim();
-      const ate = (query.get('ate') ?? '').trim();
-      const limit = Math.min(Math.max(Number(query.get('limit') ?? 200) || 200, 1), 500);
-
-      const where: string[] = [];
-      const args: any[] = [];
-      if (q) {
-        where.push('(cedente_nome LIKE ? OR sacado_nome LIKE ? OR cedente_cnpj LIKE ? OR sacado_cnpj LIKE ? OR protocolo LIKE ?)');
-        const like = `%${q}%`;
-        args.push(like, like, like, like, like);
-      }
-      if (status) { where.push('status = ?'); args.push(status); }
-      if (de) { where.push('criado_em >= ?'); args.push(`${de}T00:00:00.000Z`); }
-      // `ate` é inclusivo: pega o dia inteiro
-      if (ate) { where.push('criado_em <= ?'); args.push(`${ate}T23:59:59.999Z`); }
-
-      const r = await db.execute({
-        sql: `SELECT ${ANALISE_LIST_COLS},
-                     (SELECT COUNT(*) FROM credito_analise_arquivos a WHERE a.analise_id = credito_analises.id) AS arquivo_count
-              FROM credito_analises
-              ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-              ORDER BY criado_em DESC, id DESC LIMIT ?`,
-        args: [...args, limit],
-      });
-      return { status: 200, body: { analises: r.rows } };
-    }
-
-    // Relatórios DEPS (cedente/sacado) salvos de uma solicitação - para o link no balão.
-    if (action === 'deps_by_solicitacao') {
-      const sid = query.get('solicitacao_id');
-      if (!sid) return { status: 400, body: { error: 'solicitacao_id required' } };
+    // Relatórios DEPS (cedente/sacado) salvos de um lead - para o link no balão.
+    if (action === 'deps_by_lead') {
+      const sid = query.get('lead_id');
+      if (!sid) return { status: 400, body: { error: 'lead_id required' } };
       // Mais recente por alvo (agrupa por alvo, pega o maior id).
       const r = await db.execute({
         sql: `SELECT d.alvo, d.nome, d.documento, d.norm_json, d.raw_json, d.criado_em
-              FROM solicitacao_deps d
-              WHERE d.solicitacao_id = ? AND d.id = (
-                SELECT MAX(d2.id) FROM solicitacao_deps d2 WHERE d2.solicitacao_id = d.solicitacao_id AND d2.alvo = d.alvo
+              FROM lead_deps d
+              WHERE d.lead_id = ? AND d.id = (
+                SELECT MAX(d2.id) FROM lead_deps d2 WHERE d2.lead_id = d.lead_id AND d2.alvo = d.alvo
               )`,
         args: [sid],
       });
@@ -1498,48 +1449,56 @@ async function despacharAdminData(
       return { status: 200, body: { deps } };
     }
 
-    // Pendências de uma solicitação (leve) - usada ao mover no board para pré-preencher
+    // Pendências de um lead (leve) - usada ao mover no board para pré-preencher
     // o modal de "Registrar pendências" com as pendências já existentes.
-    if (action === 'pendencias_by_solicitacao') {
-      const sid = query.get('solicitacao_id');
-      if (!sid) return { status: 400, body: { error: 'solicitacao_id required' } };
+    if (action === 'pendencias_by_lead') {
+      const sid = query.get('lead_id');
+      if (!sid) return { status: 400, body: { error: 'lead_id required' } };
       const r = await db.execute({
-        sql: 'SELECT id, descricao, categoria, resolvida FROM solicitacao_pendencias WHERE solicitacao_id = ? ORDER BY resolvida ASC, criado_em ASC',
+        sql: 'SELECT id, descricao, categoria, resolvida FROM lead_pendencias WHERE lead_id = ? ORDER BY resolvida ASC, criado_em ASC',
         args: [sid],
       });
       return { status: 200, body: { pendencias: r.rows } };
     }
 
     // Detalhe de uma análise - inclui snapshot e parecer da IA (reimpressão)
-    if (action === 'analise_detail') {
-      const id = Number(query.get('id'));
-      if (!Number.isFinite(id)) return { status: 400, body: { error: 'ID inválido.' } };
-      const [r, arqs] = await Promise.all([
-        db.execute({ sql: 'SELECT * FROM credito_analises WHERE id = ?', args: [id] }),
-        db.execute({
-          sql: `SELECT ${ANALISE_ARQUIVO_COLS} FROM credito_analise_arquivos WHERE analise_id = ? ORDER BY id ASC`,
-          args: [id],
-        }),
+    // ── Projetos ──────────────────────────────────────────────────────────
+    if (action === 'projetos') {
+      const [projs, equipe, arqs, clientes] = await Promise.all([
+        db.execute(`
+          SELECT p.*, c.nome AS cliente_nome
+          FROM projetos p
+          LEFT JOIN clientes c ON c.id = p.cliente_id
+          WHERE p.ativo = 1
+          ORDER BY p.criado_em DESC
+        `),
+        db.execute(`
+          SELECT e.projeto_id, e.usuario_id, e.papel, u.nome, u.email
+          FROM projeto_equipe e JOIN usuarios u ON u.id = e.usuario_id
+          ORDER BY u.nome
+        `),
+        // O base64 fica de fora da listagem: um anexo pesado por projeto
+        // tornaria o board inviável. O conteúdo vem por ação própria.
+        db.execute(`
+          SELECT id, projeto_id, etiqueta, nome, tipo, tamanho, criado_em, criado_por_nome
+          FROM projeto_arquivos ORDER BY criado_em
+        `),
+        db.execute('SELECT id, nome FROM clientes WHERE ativo = 1 ORDER BY nome'),
       ]);
-      const row = r.rows[0];
-      if (!row) return { status: 404, body: { error: 'Análise não encontrada.' } };
-      const parse = (v: any) => { try { return v ? JSON.parse(String(v)) : null; } catch { return null; } };
-      return {
-        status: 200,
-        body: {
-          analise: { ...row, snapshot: parse(row.snapshot), parecer_ia: parse(row.parecer_ia) },
-          arquivos: arqs.rows,
-        },
-      };
+      const projetos = projs.rows.map(p => ({
+        ...p,
+        equipe: equipe.rows.filter(e => e.projeto_id === p.id)
+          .map(e => ({ id: e.usuario_id, nome: e.nome, email: e.email, papel: e.papel })),
+        arquivos: arqs.rows.filter(a => a.projeto_id === p.id),
+      }));
+      return { status: 200, body: { projetos, clientes: clientes.rows } };
     }
 
-    // Conteúdo de UM anexo da análise (ver/baixar) - mesmo contrato dos anexos
-    // do cedente, para reaproveitar o b64ToFile/preview do front.
-    if (action === 'get_analise_arquivo_base64') {
+    if (action === 'projeto_arquivo_base64') {
       const id = Number(query.get('id'));
       if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };
       const r = await db.execute({
-        sql: 'SELECT nome, mime, base64 FROM credito_analise_arquivos WHERE id = ?',
+        sql: 'SELECT nome, tipo, base64 FROM projeto_arquivos WHERE id = ?',
         args: [id],
       });
       if (!r.rows[0]) return { status: 404, body: { error: 'Anexo não encontrado.' } };
@@ -1622,36 +1581,7 @@ async function despacharAdminData(
       return { status: 200, body: { cadastros: rows.rows } };
     }
 
-    if (action === 'cadastro_notif_config') {
-      const [etapas, etapa, sub] = await Promise.all([
-        db.execute('SELECT * FROM cadastro_status_configs WHERE ativo = 1 ORDER BY ordem'),
-        db.execute('SELECT * FROM cadastro_etapa_notificacoes ORDER BY slack_user_name'),
-        db.execute('SELECT * FROM cadastro_submissao_notificacoes ORDER BY slack_user_name'),
-      ]);
-      const result = etapas.rows.map(e => ({
-        ...e,
-        locked: CADASTRO_LOCKED_CHAVES.includes(String(e.chave)) ? 1 : 0,
-        notificacoes: etapa.rows.filter(n => String(n.etapa) === String(e.chave)),
-      }));
-      return { status: 200, body: { etapas: result, etapa_notificacoes: etapa.rows, submissao_notificacoes: sub.rows } };
-    }
-
     // Etapas do onboarding para o board público/admin (colunas dinâmicas)
-    if (action === 'cadastro_status_configs') {
-      const etapas = await db.execute('SELECT * FROM cadastro_status_configs WHERE ativo = 1 ORDER BY ordem');
-      const result = etapas.rows.map(e => ({ ...e, locked: CADASTRO_LOCKED_CHAVES.includes(String(e.chave)) ? 1 : 0 }));
-      return { status: 200, body: { etapas: result } };
-    }
-
-    if (action === 'cadastro_status_card_count') {
-      const chave = query.get('chave');
-      const r = await db.execute({
-        sql: `SELECT COUNT(*) as count FROM cedentes WHERE ativo = 1 AND origem = 'Auto-cadastro' AND aprovacao_status = ?`,
-        args: [chave],
-      });
-      return { status: 200, body: { count: Number(r.rows[0]?.count ?? 0) } };
-    }
-
     if (action === 'cadastro_detail') {
       const id = query.get('id');
       if (!id) return { status: 400, body: { error: 'id required' } };
@@ -1671,13 +1601,13 @@ async function despacharAdminData(
     if (action === 'list_sacados_by_cedente') {
       const cedenteCnpj = (query.get('cnpj') ?? '').replace(/\D/g, '');
       if (!cedenteCnpj) return { status: 400, body: { error: 'cnpj required' } };
-      // Sacados que já operaram com esse cedente (via solicitacoes)
+      // Sacados que já operaram com esse cedente (via leads)
       const linked = await db.execute({
         sql: `SELECT DISTINCT s.id, s.cnpj_cpf, s.razao_social FROM sacados s
               WHERE s.ativo = 1
               AND s.cnpj_cpf IN (
                 SELECT DISTINCT REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(sol.cnpj_sacado,'.',''),'/',''),'-',''),' ',''),'_','')
-                FROM solicitacoes sol
+                FROM leads sol
                 WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(sol.cnpj_contratado,'.',''),'/',''),'-',''),' ',''),'_','') = ?
                 AND sol.cnpj_sacado IS NOT NULL AND sol.cnpj_sacado != ''
               )
@@ -1692,55 +1622,13 @@ async function despacharAdminData(
       return { status: 200, body: { sacados: linked.rows, filtered: true } };
     }
 
-    if (action === 'list_solicitacoes_for_aceite') {
-      const rows = await db.execute(`
-        SELECT
-          s.id, s.created_at, s.nome_contratado, s.cnpj_contratado,
-          s.nome_sacado, s.cnpj_sacado, s.valor, s.valor_numerico, s.prazo_limite, s.parcelas,
-          c.id        AS cedente_id,        c.nome         AS cedente_nome,
-          c.razao_social AS cedente_razao_social,
-          c.cnpj_cpf  AS cedente_cnpj,      c.email        AS cedente_email,
-          c.email_responsavel AS cedente_email_responsavel,
-          c.conta_escrow AS cedente_conta_escrow,
-          sac.id      AS sacado_id_db,      sac.razao_social AS sacado_razao_social,
-          sac.cnpj_cpf AS sacado_cnpj_db
-        FROM solicitacoes s
-        LEFT JOIN cedentes c ON c.id = (
-          CASE WHEN s.cedente_id IS NOT NULL THEN s.cedente_id
-               ELSE (SELECT id FROM cedentes WHERE REPLACE(REPLACE(REPLACE(cnpj_cpf,'.',''),'/',''),'-','') = REPLACE(REPLACE(REPLACE(s.cnpj_contratado,'.',''),'/',''),'-','') LIMIT 1)
-          END
-        )
-        LEFT JOIN sacados sac ON sac.id = (
-          CASE WHEN s.sacado_id IS NOT NULL THEN s.sacado_id
-               ELSE (SELECT id FROM sacados WHERE REPLACE(REPLACE(REPLACE(cnpj_cpf,'.',''),'/',''),'-','') = REPLACE(REPLACE(REPLACE(s.cnpj_sacado,'.',''),'/',''),'-','') LIMIT 1)
-          END
-        )
-        LEFT JOIN (
-          SELECT e.solicitacao_id, e.status_id
-          FROM solicitacao_eventos e
-          WHERE e.tipo = 'status_change'
-            AND e.id = (
-              SELECT MAX(e2.id) FROM solicitacao_eventos e2
-              WHERE e2.solicitacao_id = e.solicitacao_id AND e2.tipo = 'status_change'
-            )
-        ) curr ON curr.solicitacao_id = s.id
-        LEFT JOIN status_configs sc ON sc.id = curr.status_id
-        WHERE s.deleted_at IS NULL
-          AND (sc.is_excluded IS NULL OR sc.is_excluded = 0)
-          AND (sc.is_conversion IS NULL OR sc.is_conversion = 0)
-        ORDER BY s.created_at DESC
-        LIMIT 300
-      `);
-      return { status: 200, body: { solicitacoes: rows.rows } };
-    }
-
-    if (action === 'get_solicitacao_files') {
+    if (action === 'get_lead_files') {
       const id = query.get('id');
       if (!id) return { status: 400, body: { error: 'id required' } };
       const rows = await db.execute({
-        sql: `SELECT nome, tipo, tamanho, categoria, base64 FROM solicitacao_arquivos WHERE solicitacao_id = ?
+        sql: `SELECT nome, tipo, tamanho, categoria, base64 FROM lead_arquivos WHERE lead_id = ?
               UNION ALL
-              SELECT nome, tipo, tamanho, categoria, base64 FROM solicitacao_etapa_arquivos WHERE solicitacao_id = ?`,
+              SELECT nome, tipo, tamanho, categoria, base64 FROM lead_etapa_arquivos WHERE lead_id = ?`,
         args: [id, id],
       });
       return { status: 200, body: { arquivos: rows.rows } };
@@ -1764,8 +1652,10 @@ async function despacharAdminData(
       return { status: 200, body: { base64: row.rows[0].base64 } };
     }
 
-    if (action === 'nova_solicitacao_notifs') {
-      const notifs = await db.execute('SELECT * FROM nova_solicitacao_notificacoes ORDER BY slack_user_name');
+    if (action === 'novo_lead_notifs') {
+      const notifs = await db.execute(`SELECT n.*, u.nome AS usuario_nome, u.email AS usuario_email
+                     FROM novo_lead_notificacoes n JOIN usuarios u ON u.id = n.usuario_id
+                     ORDER BY u.nome`);
       return { status: 200, body: { notificacoes: notifs.rows } };
     }
 
@@ -1773,7 +1663,7 @@ async function despacharAdminData(
       const id = query.get('id');
       if (!id) return { status: 400, body: { error: 'Missing id' } };
 
-      const sub = await db.execute({ sql: 'SELECT * FROM solicitacoes WHERE id = ?', args: [id] });
+      const sub = await db.execute({ sql: 'SELECT * FROM leads WHERE id = ?', args: [id] });
       if (!sub.rows[0]) return { status: 404, body: { error: 'Not found' } };
       const submission = sub.rows[0] as Record<string, any>;
       if (submission.cedente_id) {
@@ -1803,24 +1693,24 @@ async function despacharAdminData(
         // acompanha a foto atual da pessoa, enquanto `autor_nome` continua
         // sendo o nome congelado na hora em que a ação aconteceu.
         sql: `SELECT e.*, sc.nome AS status_nome, sc.cor AS status_cor, u.foto_url AS autor_foto
-              FROM solicitacao_eventos e
+              FROM lead_eventos e
               LEFT JOIN status_configs sc ON sc.id = e.status_id
               LEFT JOIN usuarios u ON u.id = e.autor_id
-              WHERE e.solicitacao_id = ? ORDER BY e.criado_em ASC`,
+              WHERE e.lead_id = ? ORDER BY e.criado_em ASC`,
         args: [id],
       });
 
       const etapaArquivos = await db.execute({
         sql: `SELECT sa.id, sa.status_id, sa.nome, sa.tipo, sa.tamanho, sa.categoria, sa.criado_em,
                      sc.nome AS status_nome
-              FROM solicitacao_etapa_arquivos sa
+              FROM lead_etapa_arquivos sa
               LEFT JOIN status_configs sc ON sc.id = sa.status_id
-              WHERE sa.solicitacao_id = ? ORDER BY sa.criado_em DESC`,
+              WHERE sa.lead_id = ? ORDER BY sa.criado_em DESC`,
         args: [id],
       });
 
       const formArquivos = await db.execute({
-        sql: 'SELECT id, categoria, nome, tipo, tamanho FROM solicitacao_arquivos WHERE solicitacao_id = ?',
+        sql: 'SELECT id, categoria, nome, tipo, tamanho FROM lead_arquivos WHERE lead_id = ?',
         args: [id],
       });
 
@@ -1829,7 +1719,7 @@ async function despacharAdminData(
       );
 
       const pendencias = await db.execute({
-        sql: 'SELECT id, descricao, categoria, resolvida, status_id, criado_em, resolvido_em FROM solicitacao_pendencias WHERE solicitacao_id = ? ORDER BY resolvida ASC, criado_em ASC',
+        sql: 'SELECT id, descricao, categoria, resolvida, status_id, criado_em, resolvido_em FROM lead_pendencias WHERE lead_id = ? ORDER BY resolvida ASC, criado_em ASC',
         args: [id],
       });
 
@@ -1846,24 +1736,160 @@ async function despacharAdminData(
       };
     }
 
-    if (action === 'list_aceite_operacoes') {
-      const rows = await db.execute('SELECT * FROM aceite_operacoes ORDER BY criado_em DESC');
-      return { status: 200, body: { operacoes: rows.rows } };
-    }
-
-    if (action === 'get_aceite_anexos') {
-      const operacao_id = query.get('operacao_id');
-      if (!operacao_id) return { status: 400, body: { error: 'operacao_id required' } };
-      const rows = await db.execute({ sql: 'SELECT * FROM aceite_anexos WHERE operacao_id = ?', args: [operacao_id] });
-      return { status: 200, body: { anexos: rows.rows } };
-    }
-
     return { status: 400, body: { error: 'Unknown action' } };
   }
 
   // ── POST ─────────────────────────────────────────────
   if (method === 'POST') {
     const action = body?.action;
+
+    // Código do projeto: PRJ-<ano com 2 dígitos>-<sequencial de 3>. Gerado aqui e
+    // não no formulário, para não existirem dois projetos disputando o mesmo
+    // número. A busca é pelo maior sequencial do ano, e não pela contagem:
+    // projeto excluído não pode fazer o próximo repetir um código já usado.
+    async function proximoCodigo(): Promise<string> {
+      const ano = String(new Date().getFullYear()).slice(-2);
+      const r = await db.execute({
+        sql: `SELECT codigo FROM projetos WHERE codigo LIKE ? ORDER BY codigo DESC LIMIT 1`,
+        args: [`PRJ-${ano}-%`],
+      });
+      const ultimo = String(r.rows[0]?.codigo ?? '');
+      const seq = ultimo ? Number(ultimo.split('-')[2] ?? 0) + 1 : 1;
+      return `PRJ-${ano}-${String(seq).padStart(3, '0')}`;
+    }
+
+    /** Regrava a equipe do projeto. Apaga e insere: a lista que chega é a
+     *  verdade, e diferença incremental aqui só traria estado intermediário. */
+    async function gravarEquipe(projetoId: string, membros: unknown) {
+      await db.execute({ sql: 'DELETE FROM projeto_equipe WHERE projeto_id = ?', args: [projetoId] });
+      for (const m of Array.isArray(membros) ? membros : []) {
+        const uid = String((m as any)?.usuario_id ?? '');
+        if (!uid) continue;
+        await db.execute({
+          sql: 'INSERT OR IGNORE INTO projeto_equipe (projeto_id, usuario_id, papel) VALUES (?,?,?)',
+          args: [projetoId, uid, String((m as any)?.papel ?? 'Dev')],
+        });
+      }
+    }
+
+    /** Campos obrigatórios do projeto. Só observações é livre - e os anexos, que
+     *  não passam por aqui: eles sobem depois, em ação própria, porque só
+     *  existem depois que o projeto tem id. Essa parte a tela cobra sozinha. */
+    function faltaEmProjeto(p: any): string | null {
+      if (!String(p?.nome ?? '').trim()) return 'O nome do projeto é obrigatório.';
+      if (!p?.cliente_id) return 'O cliente é obrigatório.';
+      if (!String(p?.tipo ?? '').trim()) return 'O tipo do projeto é obrigatório.';
+      if (!p?.data_inicio) return 'A data de início é obrigatória.';
+      if (!p?.previsao_entrega) return 'O fim previsto é obrigatório.';
+      if (!String(p?.objetivo ?? '').trim()) return 'O objetivo final é obrigatório.';
+      if (!Array.isArray(p?.equipe) || p.equipe.length === 0) return 'O projeto precisa de ao menos uma pessoa na equipe.';
+      return null;
+    }
+
+    if (action === 'create_projeto') {
+      const p = body;
+      const falta = faltaEmProjeto(p);
+      if (falta) return { status: 400, body: { error: falta } };
+      const id = randomUUID();
+      const agora = new Date().toISOString();
+      await db.execute({
+        sql: `INSERT INTO projetos (
+                id, codigo, nome, cliente_id, tipo, repositorio, objetivo, status,
+                data_inicio, previsao_entrega, progresso, observacoes,
+                ativo, criado_em, criado_por_id, criado_por_nome
+              ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
+        args: [
+          id, await proximoCodigo(), String(p.nome).trim(), p.cliente_id || null,
+          p.tipo || null, String(p.repositorio ?? '').trim() || null, p.objetivo ?? null,
+          p.status ?? 'Em andamento',
+          p.data_inicio || null, p.previsao_entrega || null,
+          Math.min(100, Math.max(0, Number(p.progresso ?? 0))), p.observacoes ?? null,
+          agora, autorId, autorNome,
+        ],
+      });
+      await gravarEquipe(id, p.equipe);
+      return { status: 200, body: { id } };
+    }
+
+    if (action === 'update_projeto') {
+      const p = body;
+      if (!p?.id) return { status: 400, body: { error: 'id ausente.' } };
+      // A edição parcial da aba de gestão manda só status e progresso; validar
+      // tudo aqui barraria arrastar o slider. Só o formulário completo, que
+      // envia `equipe`, passa pela validação inteira.
+      if (p.equipe !== undefined) {
+        const falta = faltaEmProjeto(p);
+        if (falta) return { status: 400, body: { error: falta } };
+      }
+      await db.execute({
+        sql: `UPDATE projetos SET
+                nome=?, cliente_id=?, tipo=?, repositorio=?, objetivo=?, status=?,
+                data_inicio=?, previsao_entrega=?, progresso=?, observacoes=?,
+                atualizado_por_id=?, atualizado_por_nome=?, atualizado_em=?
+              WHERE id=?`,
+        args: [
+          String(p.nome ?? '').trim(), p.cliente_id || null,
+          p.tipo || null, String(p.repositorio ?? '').trim() || null, p.objetivo ?? null,
+          p.status ?? 'Em andamento',
+          p.data_inicio || null, p.previsao_entrega || null,
+          Math.min(100, Math.max(0, Number(p.progresso ?? 0))), p.observacoes ?? null,
+          autorId, autorNome, new Date().toISOString(), p.id,
+        ],
+      });
+      if (p.equipe !== undefined) await gravarEquipe(String(p.id), p.equipe);
+      return { status: 200, body: { ok: true } };
+    }
+
+    if (action === 'delete_projeto') {
+      // Exclusão lógica, como no resto do sistema: o histórico de auditoria
+      // continua apontando para uma linha que existe.
+      await db.execute({
+        sql: 'UPDATE projetos SET ativo = 0, atualizado_por_id=?, atualizado_por_nome=?, atualizado_em=? WHERE id = ?',
+        args: [autorId, autorNome, new Date().toISOString(), body.id],
+      });
+      return { status: 200, body: { ok: true } };
+    }
+
+    if (action === 'add_projeto_arquivo') {
+      const a = body;
+      if (!a?.projeto_id || !a?.nome || !a?.base64) {
+        return { status: 400, body: { error: 'Anexo incompleto.' } };
+      }
+      const r = await db.execute({
+        sql: `INSERT INTO projeto_arquivos (projeto_id, etiqueta, nome, tipo, tamanho, base64, criado_em, criado_por_nome)
+              VALUES (?,?,?,?,?,?,?,?)`,
+        args: [
+          a.projeto_id, a.etiqueta || 'Documento', a.nome, a.tipo ?? 'application/octet-stream',
+          Number(a.tamanho ?? 0), a.base64, new Date().toISOString(), autorNome,
+        ],
+      });
+      return { status: 200, body: { id: Number(r.lastInsertRowid) } };
+    }
+
+    if (action === 'delete_projeto_arquivo') {
+      await db.execute({ sql: 'DELETE FROM projeto_arquivos WHERE id = ?', args: [body.id] });
+      return { status: 200, body: { ok: true } };
+    }
+
+    if (action === 'create_cliente') {
+      const nome = String(body?.nome ?? '').trim();
+      if (!nome) return { status: 400, body: { error: 'O nome do cliente é obrigatório.' } };
+      // Devolve o nome como está gravado, não como foi digitado: quem escrever
+      // "cliente novo" recebe de volta "Cliente Novo" e a tela não passa a
+      // exibir uma segunda grafia do mesmo registro.
+      const existente = await db.execute({
+        sql: 'SELECT id, nome FROM clientes WHERE lower(nome) = lower(?) LIMIT 1', args: [nome],
+      });
+      if (existente.rows[0]) {
+        return { status: 200, body: { id: String(existente.rows[0].id), nome: String(existente.rows[0].nome) } };
+      }
+      const id = randomUUID();
+      await db.execute({
+        sql: 'INSERT INTO clientes (id, nome, ativo, criado_em) VALUES (?,?,1,?)',
+        args: [id, nome, new Date().toISOString()],
+      });
+      return { status: 200, body: { id, nome } };
+    }
 
     // Matriz de permissões do papel. Chave fora do catálogo é descartada em
     // `salvarMatrizPapel`, então a tela não consegue inventar permissão.
@@ -1920,46 +1946,45 @@ async function despacharAdminData(
       return { status: 200, body: { ok: true, usuario_id: alvoId, ativo: ativo === 1 } };
     }
 
-    // Persiste (upsert) o relatório DEPS de um alvo, ligado à solicitação - fica
+    // Persiste (upsert) o relatório DEPS de um alvo, ligado ao lead - fica
     // acessível no balão do cedente/sacado no card.
-    if (action === 'save_solicitacao_deps') {
-      const { solicitacao_id, alvo, nome, documento, norm, raw } = body;
-      if (!solicitacao_id || (alvo !== 'ced' && alvo !== 'sac') || !norm) {
+    if (action === 'save_lead_deps') {
+      const { lead_id, alvo, nome, documento, norm, raw } = body;
+      if (!lead_id || (alvo !== 'ced' && alvo !== 'sac') || !norm) {
         return { status: 400, body: { error: 'Dados inválidos.' } };
       }
-      await db.execute({ sql: 'DELETE FROM solicitacao_deps WHERE solicitacao_id = ? AND alvo = ?', args: [solicitacao_id, alvo] });
+      await db.execute({ sql: 'DELETE FROM lead_deps WHERE lead_id = ? AND alvo = ?', args: [lead_id, alvo] });
       await db.execute({
-        sql: `INSERT INTO solicitacao_deps (solicitacao_id, alvo, nome, documento, norm_json, raw_json, criado_em) VALUES (?,?,?,?,?,?,?)`,
-        args: [solicitacao_id, alvo, nome ?? null, documento ?? null, JSON.stringify(norm),
+        sql: `INSERT INTO lead_deps (lead_id, alvo, nome, documento, norm_json, raw_json, criado_em) VALUES (?,?,?,?,?,?,?)`,
+        args: [lead_id, alvo, nome ?? null, documento ?? null, JSON.stringify(norm),
                raw ? JSON.stringify(raw) : null, new Date().toISOString()],
       });
       return { status: 200, body: { ok: true } };
     }
 
     if (action === 'move') {
-      const { solicitacao_id, status_id } = body;
+      const { lead_id, status_id } = body;
       const now = new Date().toISOString();
       const sc = await db.execute({ sql: 'SELECT nome FROM status_configs WHERE id = ?', args: [status_id] });
       const nome = String(sc.rows[0]?.nome ?? '');
 
       await db.execute({
-        sql: `INSERT INTO solicitacao_eventos (solicitacao_id, tipo, status_id, descricao, criado_em, autor_id, autor_nome)
+        sql: `INSERT INTO lead_eventos (lead_id, tipo, status_id, descricao, criado_em, autor_id, autor_nome)
               VALUES (?, 'status_change', ?, ?, ?, ?, ?)`,
-        args: [solicitacao_id, status_id, `Movido para ${nome}`, now, autorId, autorNome],
+        args: [lead_id, status_id, `Movido para ${nome}`, now, autorId, autorNome],
       });
-      await marcarEdicao(db, 'solicitacoes', solicitacao_id, autorId, autorNome, now);
+      await marcarEdicao(db, 'leads', lead_id, autorId, autorNome, now);
 
-      // Slack notifications
-      if (slackToken) {
-        const notifs = await db.execute({
-          sql: 'SELECT slack_user_id FROM status_notificacoes WHERE status_id = ?',
-          args: [status_id],
-        });
-        if (notifs.rows.length > 0) {
-          const s = (await db.execute({ sql: 'SELECT nome_contratado, cnpj_contratado, valor FROM solicitacoes WHERE id = ?', args: [solicitacao_id] })).rows[0];
-          const msg = `📋 Solicitação movida para *${nome}*\n*Contratado:* ${s?.nome_contratado ?? '-'} (${s?.cnpj_contratado ?? '-'})\n*Valor:* ${s?.valor ?? '-'}`;
-          for (const n of notifs.rows) {
-            notifySlack(slackToken, String(n.slack_user_id), msg);
+      // Avisa por e-mail quem acompanha a etapa de destino
+      {
+        const inscritos = await emailsDosInscritos(db, 'status_notificacoes', { coluna: 'status_id', valor: status_id });
+        if (inscritos.length > 0) {
+          const s = (await db.execute({ sql: 'SELECT nome_contratado, cnpj_contratado, valor FROM leads WHERE id = ?', args: [lead_id] })).rows[0];
+          const corpo = `
+  <p style="font-size:14px;color:#555;margin:0 0 4px"><strong>Contratado:</strong> ${esc(s?.nome_contratado ?? '-')} (${esc(s?.cnpj_contratado ?? '-')})</p>
+  <p style="font-size:14px;color:#555;margin:0"><strong>Valor:</strong> ${esc(s?.valor ?? '-')}</p>`;
+          for (const dest of inscritos) {
+            notifyEmail(dest.email, `Lead movido para "${nome}"`, corpo);
           }
         }
       }
@@ -1969,13 +1994,13 @@ async function despacharAdminData(
     if (action === 'comment') {
       const now = new Date().toISOString();
       const result = await db.execute({
-        sql: `INSERT INTO solicitacao_eventos (solicitacao_id, tipo, descricao, parent_id, criado_em, autor_id, autor_nome)
+        sql: `INSERT INTO lead_eventos (lead_id, tipo, descricao, parent_id, criado_em, autor_id, autor_nome)
               VALUES (?, 'comentario', ?, ?, ?, ?, ?)`,
-        args: [body.solicitacao_id, body.texto, body.parent_id ?? null, now, autorId, autorNome],
+        args: [body.lead_id, body.texto, body.parent_id ?? null, now, autorId, autorNome],
       });
-      if (slackToken && body.texto) {
-        notifyMentions(slackToken, body.texto, body.solicitacao_id, db).catch(e => console.error('[mention-notify]', e));
-        notifyStageMentions(slackToken, body.texto, body.solicitacao_id, db).catch(e => console.error('[stage-notify]', e));
+      if (body.texto) {
+        notifyMentions(body.texto, body.lead_id, db).catch(e => console.error('[mention-notify]', e));
+        notifyStageMentions(body.texto, body.lead_id, db).catch(e => console.error('[stage-notify]', e));
       }
       return {
         status: 200,
@@ -1985,92 +2010,92 @@ async function despacharAdminData(
 
     if (action === 'delete_comment') {
       // Delete replies first, then the comment itself
-      await db.execute({ sql: `DELETE FROM solicitacao_eventos WHERE parent_id = ? AND tipo = 'comentario'`, args: [body.id] });
-      await db.execute({ sql: `DELETE FROM solicitacao_eventos WHERE id = ? AND tipo = 'comentario'`, args: [body.id] });
+      await db.execute({ sql: `DELETE FROM lead_eventos WHERE parent_id = ? AND tipo = 'comentario'`, args: [body.id] });
+      await db.execute({ sql: `DELETE FROM lead_eventos WHERE id = ? AND tipo = 'comentario'`, args: [body.id] });
       return { status: 200, body: { ok: true } };
     }
 
     if (action === 'upload_file') {
-      const { solicitacao_id, status_id, arquivo } = body;
+      const { lead_id, status_id, arquivo } = body;
       const now = new Date().toISOString();
       await db.execute({
-        sql: `INSERT INTO solicitacao_etapa_arquivos (solicitacao_id, status_id, nome, tipo, tamanho, base64, categoria, criado_em)
+        sql: `INSERT INTO lead_etapa_arquivos (lead_id, status_id, nome, tipo, tamanho, base64, categoria, criado_em)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        args: [solicitacao_id, status_id, arquivo.nome, arquivo.tipo, arquivo.tamanho, arquivo.base64, arquivo.categoria ?? null, now],
+        args: [lead_id, status_id, arquivo.nome, arquivo.tipo, arquivo.tamanho, arquivo.base64, arquivo.categoria ?? null, now],
       });
       await db.execute({
-        sql: `INSERT INTO solicitacao_eventos (solicitacao_id, tipo, status_id, descricao, criado_em, autor_id, autor_nome)
+        sql: `INSERT INTO lead_eventos (lead_id, tipo, status_id, descricao, criado_em, autor_id, autor_nome)
               VALUES (?, 'arquivo', ?, ?, ?, ?, ?)`,
-        args: [solicitacao_id, status_id, `Arquivo: ${arquivo.nome}`, now, autorId, autorNome],
+        args: [lead_id, status_id, `Arquivo: ${arquivo.nome}`, now, autorId, autorNome],
       });
-      await marcarEdicao(db, 'solicitacoes', solicitacao_id, autorId, autorNome, now);
+      await marcarEdicao(db, 'leads', lead_id, autorId, autorNome, now);
       return { status: 200, body: { ok: true } };
     }
 
     if (action === 'delete_stage_file') {
-      await db.execute({ sql: 'DELETE FROM solicitacao_etapa_arquivos WHERE id = ?', args: [body.id] });
+      await db.execute({ sql: 'DELETE FROM lead_etapa_arquivos WHERE id = ?', args: [body.id] });
       return { status: 200, body: { ok: true } };
     }
 
     if (action === 'get_file_base64') {
-      const f = await db.execute({ sql: 'SELECT base64, nome FROM solicitacao_etapa_arquivos WHERE id = ?', args: [body.id] });
+      const f = await db.execute({ sql: 'SELECT base64, nome FROM lead_etapa_arquivos WHERE id = ?', args: [body.id] });
       if (!f.rows[0]) return { status: 404, body: { error: 'Not found' } };
       return { status: 200, body: f.rows[0] };
     }
 
     if (action === 'get_form_file_base64') {
-      const f = await db.execute({ sql: 'SELECT base64, nome FROM solicitacao_arquivos WHERE id = ?', args: [body.id] });
+      const f = await db.execute({ sql: 'SELECT base64, nome FROM lead_arquivos WHERE id = ?', args: [body.id] });
       if (!f.rows[0]) return { status: 404, body: { error: 'Not found' } };
       return { status: 200, body: f.rows[0] };
     }
 
     if (action === 'rename_form_file') {
-      await db.execute({ sql: 'UPDATE solicitacao_arquivos SET nome = ? WHERE id = ?', args: [body.nome, body.id] });
+      await db.execute({ sql: 'UPDATE lead_arquivos SET nome = ? WHERE id = ?', args: [body.nome, body.id] });
       return { status: 200, body: { ok: true } };
     }
 
     if (action === 'rename_file') {
-      await db.execute({ sql: 'UPDATE solicitacao_etapa_arquivos SET nome = ? WHERE id = ?', args: [body.nome, body.id] });
+      await db.execute({ sql: 'UPDATE lead_etapa_arquivos SET nome = ? WHERE id = ?', args: [body.nome, body.id] });
       return { status: 200, body: { ok: true } };
     }
 
     if (action === 'delete_file') {
-      await db.execute({ sql: 'DELETE FROM solicitacao_etapa_arquivos WHERE id = ?', args: [body.id] });
+      await db.execute({ sql: 'DELETE FROM lead_etapa_arquivos WHERE id = ?', args: [body.id] });
       return { status: 200, body: { ok: true } };
     }
 
     if (action === 'delete_form_file') {
-      await db.execute({ sql: 'DELETE FROM solicitacao_arquivos WHERE id = ?', args: [body.id] });
+      await db.execute({ sql: 'DELETE FROM lead_arquivos WHERE id = ?', args: [body.id] });
       return { status: 200, body: { ok: true } };
     }
 
     if (action === 'update_arquivo_categoria') {
-      const table = body.is_stage ? 'solicitacao_etapa_arquivos' : 'solicitacao_arquivos';
+      const table = body.is_stage ? 'lead_etapa_arquivos' : 'lead_arquivos';
       await db.execute({ sql: `UPDATE ${table} SET categoria = ? WHERE id = ?`, args: [body.categoria ?? null, body.id] });
       return { status: 200, body: { ok: true } };
     }
 
     // Pendências (checklist)
     if (action === 'add_pendencias') {
-      const { solicitacao_id, status_id, itens } = body;
+      const { lead_id, status_id, itens } = body;
       const now = new Date().toISOString();
       const lista = (Array.isArray(itens) ? itens : [])
         .map((it: any) => ({ descricao: String(it?.descricao ?? '').trim(), categoria: it?.categoria ?? null }))
         .filter((it: any) => it.descricao);
       for (const it of lista) {
         await db.execute({
-          sql: `INSERT INTO solicitacao_pendencias (solicitacao_id, descricao, categoria, resolvida, status_id, criado_em, criado_por_id, criado_por_nome)
+          sql: `INSERT INTO lead_pendencias (lead_id, descricao, categoria, resolvida, status_id, criado_em, criado_por_id, criado_por_nome)
                 VALUES (?, ?, ?, 0, ?, ?, ?, ?)`,
-          args: [solicitacao_id, it.descricao, it.categoria, status_id ?? null, now, autorId, autorNome],
+          args: [lead_id, it.descricao, it.categoria, status_id ?? null, now, autorId, autorNome],
         });
       }
       // Resumo na timeline (histórico)
       if (lista.length > 0) {
         const resumo = lista.map((it: any) => `• ${it.categoria ? `[${it.categoria}] ` : ''}${it.descricao}`).join('\n');
         await db.execute({
-          sql: `INSERT INTO solicitacao_eventos (solicitacao_id, tipo, status_id, descricao, criado_em, autor_id, autor_nome)
+          sql: `INSERT INTO lead_eventos (lead_id, tipo, status_id, descricao, criado_em, autor_id, autor_nome)
                 VALUES (?, 'comentario', ?, ?, ?, ?, ?)`,
-          args: [solicitacao_id, status_id ?? null, `Pendências registradas:\n${resumo}`, now, autorId, autorNome],
+          args: [lead_id, status_id ?? null, `Pendências registradas:\n${resumo}`, now, autorId, autorNome],
         });
       }
       return { status: 200, body: { ok: true, count: lista.length } };
@@ -2079,7 +2104,7 @@ async function despacharAdminData(
     if (action === 'toggle_pendencia') {
       const resolvida = body.resolvida ? 1 : 0;
       await db.execute({
-        sql: `UPDATE solicitacao_pendencias SET resolvida = ?, resolvido_em = ?, resolvido_por_id = ?, resolvido_por_nome = ? WHERE id = ?`,
+        sql: `UPDATE lead_pendencias SET resolvida = ?, resolvido_em = ?, resolvido_por_id = ?, resolvido_por_nome = ? WHERE id = ?`,
         args: [
           resolvida,
           resolvida ? new Date().toISOString() : null,
@@ -2093,14 +2118,14 @@ async function despacharAdminData(
 
     if (action === 'update_pendencia') {
       await db.execute({
-        sql: `UPDATE solicitacao_pendencias SET descricao = COALESCE(?, descricao), categoria = ? WHERE id = ?`,
+        sql: `UPDATE lead_pendencias SET descricao = COALESCE(?, descricao), categoria = ? WHERE id = ?`,
         args: [body.descricao != null ? String(body.descricao).trim() : null, body.categoria ?? null, body.id],
       });
       return { status: 200, body: { ok: true } };
     }
 
     if (action === 'delete_pendencia') {
-      await db.execute({ sql: 'DELETE FROM solicitacao_pendencias WHERE id = ?', args: [body.id] });
+      await db.execute({ sql: 'DELETE FROM lead_pendencias WHERE id = ?', args: [body.id] });
       return { status: 200, body: { ok: true } };
     }
 
@@ -2129,23 +2154,23 @@ async function despacharAdminData(
       const now = new Date().toISOString();
       const sc = await db.execute({ sql: 'SELECT nome FROM status_configs WHERE id = ?', args: [move_to_id] });
       const targetNome = String(sc.rows[0]?.nome ?? '');
-      // Find all solicitações currently in this status
+      // Find all leads currently in this status
       const cards = await db.execute({
-        sql: `SELECT s.id FROM solicitacoes s
+        sql: `SELECT s.id FROM leads s
               INNER JOIN (
-                SELECT e.solicitacao_id FROM solicitacao_eventos e
+                SELECT e.lead_id FROM lead_eventos e
                 WHERE e.tipo = 'status_change' AND e.status_id = ?
                   AND e.id = (
-                    SELECT MAX(e2.id) FROM solicitacao_eventos e2
-                    WHERE e2.solicitacao_id = e.solicitacao_id AND e2.tipo = 'status_change'
+                    SELECT MAX(e2.id) FROM lead_eventos e2
+                    WHERE e2.lead_id = e.lead_id AND e2.tipo = 'status_change'
                   )
-              ) curr ON curr.solicitacao_id = s.id
+              ) curr ON curr.lead_id = s.id
               WHERE s.deleted_at IS NULL`,
         args: [id],
       });
       for (const row of cards.rows) {
         await db.execute({
-          sql: `INSERT INTO solicitacao_eventos (solicitacao_id, tipo, status_id, descricao, criado_em, autor_id, autor_nome)
+          sql: `INSERT INTO lead_eventos (lead_id, tipo, status_id, descricao, criado_em, autor_id, autor_nome)
                 VALUES (?, 'status_change', ?, ?, ?, ?, ?)`,
           args: [row.id, move_to_id, `Movido para ${targetNome}`, now, autorId, autorNome],
         });
@@ -2163,15 +2188,8 @@ async function despacharAdminData(
       //  - explícito no body → respeita
       //  - onboarding (origem 'Auto-cadastro') → entra na 1ª etapa do pipeline (para aprovação)
       //  - registro direto de cedente ("+ Novo cedente") → já entra APROVADO (default da coluna)
-      let aprovacaoStatus = c.aprovacao_status ?? null;
-      if (!aprovacaoStatus) {
-        if (c.origem === 'Auto-cadastro') {
-          const entryRow = await db.execute(`SELECT chave FROM cadastro_status_configs WHERE ativo = 1 ORDER BY ordem LIMIT 1`);
-          aprovacaoStatus = String(entryRow.rows[0]?.chave ?? 'pendente');
-        } else {
-          aprovacaoStatus = 'aprovado';
-        }
-      }
+      // Sem pipeline de aprovação, todo cedente registrado já nasce aprovado.
+      const aprovacaoStatus = c.aprovacao_status ?? 'aprovado';
       await db.execute({
         sql: `INSERT INTO cedentes (
                 id, nome, cnpj_cpf, razao_social, status, flags, origem, segmento, sub_segmento,
@@ -2229,85 +2247,7 @@ async function despacharAdminData(
 
     // Pipeline de aprovação: muda o estágio do auto-cadastro.
     // 'aprovado' libera o CNPJ no formulário público; demais estágios mantêm bloqueado.
-    if (action === 'move_cadastro') {
-      const etapa = await db.execute({
-        sql: 'SELECT nome FROM cadastro_status_configs WHERE chave = ? AND ativo = 1 LIMIT 1',
-        args: [body.aprovacao_status],
-      });
-      if (etapa.rows.length === 0) {
-        return { status: 400, body: { error: 'aprovacao_status inválido' } };
-      }
-      const movidoEm = new Date().toISOString();
-      await db.execute({
-        sql: `UPDATE cedentes SET aprovacao_status = ?, cadastro_movido_em = ?,
-                atualizado_por_id = ?, atualizado_por_nome = ?, atualizado_em = ?
-              WHERE id = ?`,
-        args: [body.aprovacao_status, movidoEm, autorId, autorNome, movidoEm, body.id],
-      });
-
-      // Notifica os inscritos da etapa de destino no Slack
-      if (slackToken) {
-        const notifs = await db.execute({
-          sql: 'SELECT slack_user_id FROM cadastro_etapa_notificacoes WHERE etapa = ?',
-          args: [body.aprovacao_status],
-        });
-        if (notifs.rows.length > 0) {
-          const c = (await db.execute({ sql: 'SELECT nome, cnpj_cpf FROM cedentes WHERE id = ?', args: [body.id] })).rows[0];
-          const label = String(etapa.rows[0].nome);
-          const msg = `📋 Cadastro de cedente movido para *${label}*\n*Empresa:* ${c?.nome ?? '-'} (${c?.cnpj_cpf ?? '-'})`;
-          for (const n of notifs.rows) {
-            notifySlack(slackToken, String(n.slack_user_id), msg);
-          }
-        }
-      }
-      return { status: 200, body: { ok: true } };
-    }
-
     // ── Etapas do onboarding: CRUD / reorder ───────────────────────────────────
-    if (action === 'create_cadastro_status') {
-      const max = await db.execute('SELECT MAX(ordem) as m FROM cadastro_status_configs WHERE ativo = 1');
-      const ordem = Number(max.rows[0]?.m ?? 0) + 1;
-      const chave = `et_${randomUUID().slice(0, 8)}`;
-      const r = await db.execute({
-        sql: 'INSERT INTO cadastro_status_configs (chave, nome, cor, ordem, ativo) VALUES (?,?,?,?,1)',
-        args: [chave, body.nome, body.cor, ordem],
-      });
-      return {
-        status: 200,
-        body: { etapa: { id: Number(r.lastInsertRowid), chave, nome: body.nome, cor: body.cor, ordem, ativo: 1, locked: 0, notificacoes: [] } },
-      };
-    }
-
-    if (action === 'update_cadastro_status') {
-      await db.execute({ sql: 'UPDATE cadastro_status_configs SET nome = ?, cor = ? WHERE id = ?', args: [body.nome, body.cor, body.id] });
-      return { status: 200, body: { ok: true } };
-    }
-
-    if (action === 'delete_cadastro_status') {
-      const cur = await db.execute({ sql: 'SELECT chave FROM cadastro_status_configs WHERE id = ?', args: [body.id] });
-      const chave = String(cur.rows[0]?.chave ?? '');
-      if (CADASTRO_LOCKED_CHAVES.includes(chave)) {
-        return { status: 400, body: { error: 'Etapa protegida não pode ser excluída' } };
-      }
-      // Reassocia cadastros desta etapa antes de excluir
-      if (body.move_to_chave) {
-        await db.execute({
-          sql: `UPDATE cedentes SET aprovacao_status = ? WHERE aprovacao_status = ? AND origem = 'Auto-cadastro'`,
-          args: [body.move_to_chave, chave],
-        });
-      }
-      await db.execute({ sql: 'UPDATE cadastro_status_configs SET ativo = 0 WHERE id = ?', args: [body.id] });
-      await db.execute({ sql: 'DELETE FROM cadastro_etapa_notificacoes WHERE etapa = ?', args: [chave] });
-      return { status: 200, body: { ok: true } };
-    }
-
-    if (action === 'reorder_cadastro_status') {
-      for (let i = 0; i < (body.ids as number[]).length; i++) {
-        await db.execute({ sql: 'UPDATE cadastro_status_configs SET ordem = ? WHERE id = ?', args: [i + 1, body.ids[i]] });
-      }
-      return { status: 200, body: { ok: true } };
-    }
-
     if (action === 'upload_cedente_arquivo') {
       const now = new Date().toISOString();
       await db.execute({
@@ -2450,7 +2390,7 @@ async function despacharAdminData(
       return { status: 200, body: { ok: true } };
     }
 
-    // Etapa de entrada: a que recebe as solicitações do formulário público.
+    // Etapa de entrada: a que recebe os leads do formulário público.
     // Exclusiva - marcar uma desmarca as outras. id = null volta ao padrão
     // (primeira etapa ativa por ordem).
     if (action === 'set_entrada_status') {
@@ -2494,11 +2434,6 @@ async function despacharAdminData(
       return { status: 200, body: { ok: true } };
     }
 
-    // Bot token is managed via environment variables - these are no-ops in the UI
-    if (action === 'save_slack_token' || action === 'remove_slack_token') {
-      return { status: 200, body: { ok: true } };
-    }
-
     // Credencial da Anthropic - salva criptografada no banco (cofre de integrações)
     if (action === 'save_anthropic_key') {
       const key = String(body?.key ?? '').trim();
@@ -2523,296 +2458,38 @@ async function despacharAdminData(
       return { status: 200, body: { ok: true } };
     }
 
-    if (action === 'salvar_diretriz') {
-      await ensureDiretrizesSchema(db);
-      const categoria = String(body?.categoria ?? '').trim();
-      const escopo = String(body?.escopo ?? 'global').trim() || 'global';
-      const instrucao = String(body?.instrucao ?? '').trim();
-      const exemplo = body?.exemplo ? String(body.exemplo).trim() : null;
-      const origem = body?.origem ? String(body.origem).trim() : null;
-      const substituiIds: number[] = Array.isArray(body?.substitui_ids)
-        ? body.substitui_ids.map((n: any) => Number(n)).filter((n: number) => Number.isFinite(n)) : [];
-      if (!['extracao', 'interpretacao', 'decisao'].includes(categoria)) {
-        return { status: 400, body: { error: 'Categoria inválida.' } };
-      }
-      if (!instrucao) return { status: 400, body: { error: 'A regra não pode ser vazia.' } };
-
-      const now = new Date().toISOString();
-      // Regras substituídas saem de circulação (mas ficam no banco - auditoria)
-      for (const sid of substituiIds) {
-        await db.execute({
-          sql: `UPDATE credito_diretrizes SET status = 'substituida', atualizado_em = ? WHERE id = ? AND status = 'ativa'`,
-          args: [now, sid],
-        });
-      }
-      const ins = await db.execute({
-        sql: `INSERT INTO credito_diretrizes
-              (categoria, escopo, instrucao, exemplo, status, substitui_id, prioridade, origem, criado_por_nome, criado_por_id, criado_em, atualizado_em)
-              VALUES (?, ?, ?, ?, 'ativa', ?, 0, ?, ?, ?, ?, ?)`,
-        args: [categoria, escopo, instrucao, exemplo, substituiIds[0] ?? null, origem, autorNome, autorId, now, now],
-      });
-      return { status: 200, body: { ok: true, id: Number(ins.lastInsertRowid ?? 0), substituidas: substituiIds } };
-    }
-
     // Grava a análise validada no histórico. Chamado pelo "Validar e salvar" da
     // etapa Parecer; criado_por_nome é o analista que validou.
-    if (action === 'salvar_analise') {
-      await ensureAnalisesSchema(db);
-      const s = (v: any) => (v == null || String(v).trim() === '' ? null : String(v).trim());
-      const status = String(body?.status ?? '').trim();
-      if (!status) return { status: 400, body: { error: 'Análise sem status de decisão.' } };
-      if (!body?.snapshot || typeof body.snapshot !== 'object') {
-        return { status: 400, body: { error: 'Snapshot da análise ausente.' } };
-      }
-      const now = new Date().toISOString();
-      const protocolo = s(body?.protocolo) ?? `AC-${now.slice(0, 10).replace(/-/g, '')}-${now.slice(11, 16).replace(':', '')}`;
-
-      const ins = await db.execute({
-        sql: `INSERT INTO credito_analises
-              (protocolo, solicitacao_id, cedente_nome, cedente_cnpj, sacado_nome, sacado_cnpj,
-               valor, status, risco, taxa, limite, tipo_operacao,
-               ia_recomendacao, ia_confianca, ia_modelo, parecer_ia, snapshot, criado_por_nome, criado_por_id, criado_em)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        args: [
-          protocolo, s(body?.solicitacao_id),
-          s(body?.cedente_nome), s(body?.cedente_cnpj), s(body?.sacado_nome), s(body?.sacado_cnpj),
-          s(body?.valor), status, s(body?.risco), s(body?.taxa), s(body?.limite), s(body?.tipo_operacao),
-          s(body?.ia_recomendacao), s(body?.ia_confianca), s(body?.ia_modelo),
-          body?.parecer_ia ? JSON.stringify(body.parecer_ia) : null,
-          JSON.stringify(body.snapshot),
-          autorNome, autorId, now,
-        ],
-      });
-      return { status: 200, body: { ok: true, id: Number(ins.lastInsertRowid ?? 0), protocolo, criado_em: now } };
-    }
-
     // Anexos da análise: sobem em PEDAÇOS depois que a análise já tem id.
     // Um pedaço por requisição (o body da função não aguenta o arquivo inteiro);
     // o finalize remonta, grava a linha e limpa os pedaços.
-    if (action === 'analise_arquivo_chunk') {
-      const analiseId = Number(body?.analise_id);
-      const fileId = body?.file_id != null ? String(body.file_id) : '';
-      const { seq, chunk } = body ?? {};
-      if (!Number.isFinite(analiseId) || !fileId || typeof chunk !== 'string' || seq == null) {
-        return { status: 400, body: { error: 'Pedaço de anexo inválido.' } };
-      }
-      await db.execute({
-        sql: 'INSERT INTO credito_analise_arquivo_chunks (analise_id, file_id, seq, chunk, criado_em) VALUES (?,?,?,?,?)',
-        args: [analiseId, fileId, Number(seq), chunk, new Date().toISOString()],
-      });
-      return { status: 200, body: { ok: true } };
-    }
-
-    if (action === 'analise_arquivo_finalize') {
-      const analiseId = Number(body?.analise_id);
-      const fileId = body?.file_id != null ? String(body.file_id) : '';
-      const arquivo = body?.arquivo ?? {};
-      if (!Number.isFinite(analiseId) || !fileId || !arquivo?.nome) {
-        return { status: 400, body: { error: 'Dados do anexo ausentes.' } };
-      }
-      const existe = await db.execute({ sql: 'SELECT id FROM credito_analises WHERE id = ? LIMIT 1', args: [analiseId] });
-      if (!existe.rows[0]) return { status: 404, body: { error: 'Análise não encontrada.' } };
-
-      const pedacos = await db.execute({
-        sql: 'SELECT chunk FROM credito_analise_arquivo_chunks WHERE analise_id = ? AND file_id = ? ORDER BY seq ASC',
-        args: [analiseId, fileId],
-      });
-      const base64 = pedacos.rows.map(r => String(r.chunk)).join('');
-      // Consome os pedaços mesmo se o conteúdo vier vazio, para não deixar órfãos.
-      await db.execute({
-        sql: 'DELETE FROM credito_analise_arquivo_chunks WHERE analise_id = ? AND file_id = ?',
-        args: [analiseId, fileId],
-      }).catch(() => {});
-      await db.execute({
-        sql: 'DELETE FROM credito_analise_arquivo_chunks WHERE criado_em < ?',
-        args: [new Date(Date.now() - 3600_000).toISOString()],
-      }).catch(() => {});
-      if (!base64) return { status: 400, body: { error: 'Nenhum conteúdo recebido para o anexo.' } };
-
-      const t = (v: any) => (v == null || String(v).trim() === '' ? null : String(v).trim());
-      const ins = await db.execute({
-        sql: `INSERT INTO credito_analise_arquivos
-              (analise_id, nome, tipo, mime, tamanho, categoria, origem, base64, criado_em)
-              VALUES (?,?,?,?,?,?,?,?,?)`,
-        args: [
-          analiseId, String(arquivo.nome), t(arquivo.tipo), t(arquivo.mime),
-          Number(arquivo.tamanho ?? 0) || 0, t(arquivo.categoria), t(arquivo.origem),
-          base64, new Date().toISOString(),
-        ],
-      });
-      return { status: 200, body: { ok: true, id: Number(ins.lastInsertRowid ?? 0) } };
-    }
-
     // Importação em lote de diretrizes (ex.: metodologia que o analista mantinha
     // num markdown próprio). Já vem revisada pelo operador na tela; aqui só
     // validamos e gravamos, pulando o que já existe ativo com o mesmo texto.
-    if (action === 'importar_diretrizes') {
-      await ensureDiretrizesSchema(db);
-      const entrada = Array.isArray(body?.diretrizes) ? body.diretrizes : [];
-      if (!entrada.length) return { status: 400, body: { error: 'Nenhuma diretriz para importar.' } };
-      if (entrada.length > 200) return { status: 400, body: { error: 'Importe no máximo 200 diretrizes por vez.' } };
-      const origem = body?.origem ? String(body.origem).trim() : 'importação de markdown';
-
-      // Texto das ativas para deduplicar (normalizado: caixa e espaços)
-      const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
-      const existentes = new Set(
-        (await db.execute(`SELECT instrucao FROM credito_diretrizes WHERE status = 'ativa'`))
-          .rows.map(r => norm(String(r.instrucao ?? ''))),
-      );
-
-      const now = new Date().toISOString();
-      const criadas: number[] = [];
-      const ignoradas: string[] = [];
-      for (const d of entrada) {
-        const categoria = String(d?.categoria ?? '').trim();
-        const instrucao = String(d?.instrucao ?? '').trim();
-        if (!['extracao', 'interpretacao', 'decisao'].includes(categoria) || !instrucao) {
-          ignoradas.push(instrucao || '(vazia)');
-          continue;
-        }
-        if (existentes.has(norm(instrucao))) { ignoradas.push(instrucao); continue; }
-        const escopo = String(d?.escopo ?? 'global').trim() || 'global';
-        const exemplo = d?.exemplo ? String(d.exemplo).trim() : null;
-        const prioridade = Number.isFinite(Number(d?.prioridade)) ? Number(d.prioridade) : 0;
-        const ins = await db.execute({
-          sql: `INSERT INTO credito_diretrizes
-                (categoria, escopo, instrucao, exemplo, status, substitui_id, prioridade, origem, criado_por_nome, criado_por_id, criado_em, atualizado_em)
-                VALUES (?, ?, ?, ?, 'ativa', NULL, ?, ?, ?, ?, ?, ?)`,
-          args: [categoria, escopo, instrucao, exemplo, prioridade, origem, autorNome, autorId, now, now],
-        });
-        criadas.push(Number(ins.lastInsertRowid ?? 0));
-        existentes.add(norm(instrucao));
-      }
-      return { status: 200, body: { ok: true, criadas: criadas.length, ignoradas: ignoradas.length, ids: criadas } };
-    }
-
-    if (action === 'revogar_diretriz') {
-      const id = Number(body?.id);
-      if (!Number.isFinite(id)) return { status: 400, body: { error: 'ID inválido.' } };
-      const now = new Date().toISOString();
-      await db.execute({
-        sql: `UPDATE credito_diretrizes SET status = 'revogada', atualizado_em = ? WHERE id = ?`,
-        args: [now, id],
-      });
-      return { status: 200, body: { ok: true } };
-    }
-
-    if (action === 'send_aceite_email') {
-      const { to, cc, link, cedente_nome, sacado_nome } = body as {
-        to: string[]; cc?: string[]; link: string; cedente_nome: string; sacado_nome: string;
-      };
-      const apiKey = process.env.RESEND_API_KEY;
-      const fromEmail = process.env.RESEND_FROM_EMAIL ?? 'noreply@wearedux.com';
-      if (!apiKey) return { status: 500, body: { error: 'RESEND_API_KEY não configurado' } };
-      if (!to?.length || !link) return { status: 400, body: { error: 'Parâmetros inválidos' } };
-
-      const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#121316;background:#fff;padding:40px 0;margin:0">
-<div style="max-width:520px;margin:0 auto;padding:0 24px">
-  <div style="background:#FFB400;width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:24px">
-    <span style="color:#fff;font-weight:900;font-size:18px">D</span>
-  </div>
-  <h1 style="font-size:22px;font-weight:800;margin:0 0 8px">Aceite do Sacado</h1>
-  <p style="font-size:15px;color:#555;margin:0 0 24px">
-    Você recebeu uma solicitação de aceite referente à operação de <strong>${cedente_nome}</strong> com o sacado <strong>${sacado_nome}</strong>.
-  </p>
-  <a href="${link}" style="display:inline-block;background:#121316;color:#fff;font-weight:700;font-size:14px;padding:13px 28px;border-radius:10px;text-decoration:none;margin-bottom:24px">
-    Revisar e assinar →
-  </a>
-  <p style="font-size:12px;color:#999;margin:0">Se não esperava este e-mail, pode ignorá-lo.</p>
-</div>
-</body></html>`;
-
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: fromEmail, to, ...(cc?.length && { cc }), subject: `Aceite do Sacado - ${cedente_nome}`, html }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        return { status: 502, body: { error: 'Erro ao enviar e-mail', detail: err } };
-      }
-      return { status: 200, body: { ok: true } };
-    }
-
-    // Nova solicitação notifications
-    if (action === 'add_nova_solicitacao_notif') {
+    // Novo lead notifications
+    if (action === 'add_novo_lead_notif') {
       const r = await db.execute({
-        sql: `INSERT OR IGNORE INTO nova_solicitacao_notificacoes (slack_user_id, slack_user_name, slack_user_avatar)
-              VALUES (?, ?, ?)`,
-        args: [body.slack_user_id, body.slack_user_name, body.slack_user_avatar ?? null],
+        sql: 'INSERT OR IGNORE INTO novo_lead_notificacoes (usuario_id) VALUES (?)',
+        args: [body.usuario_id],
       });
-      const notif = {
-        id: Number(r.lastInsertRowid),
-        slack_user_id: body.slack_user_id,
-        slack_user_name: body.slack_user_name,
-        slack_user_avatar: body.slack_user_avatar ?? null,
-      };
+      const notif = await inscritoCriado(db, Number(r.lastInsertRowid), body.usuario_id);
       return { status: 200, body: { notificacao: notif } };
     }
 
-    if (action === 'remove_nova_solicitacao_notif') {
-      await db.execute({ sql: 'DELETE FROM nova_solicitacao_notificacoes WHERE id = ?', args: [body.id] });
+    if (action === 'remove_novo_lead_notif') {
+      await db.execute({ sql: 'DELETE FROM novo_lead_notificacoes WHERE id = ?', args: [body.id] });
       return { status: 200, body: { ok: true } };
     }
 
     // Notificações do pipeline de cadastro - por etapa
-    if (action === 'add_cadastro_etapa_notif') {
-      const r = await db.execute({
-        sql: `INSERT OR IGNORE INTO cadastro_etapa_notificacoes (etapa, slack_user_id, slack_user_name, slack_user_avatar)
-              VALUES (?, ?, ?, ?)`,
-        args: [body.etapa, body.slack_user_id, body.slack_user_name, body.slack_user_avatar ?? null],
-      });
-      return {
-        status: 200,
-        body: { notificacao: {
-          id: Number(r.lastInsertRowid), etapa: body.etapa,
-          slack_user_id: body.slack_user_id, slack_user_name: body.slack_user_name,
-          slack_user_avatar: body.slack_user_avatar ?? null,
-        } },
-      };
-    }
-
-    if (action === 'remove_cadastro_etapa_notif') {
-      await db.execute({ sql: 'DELETE FROM cadastro_etapa_notificacoes WHERE id = ?', args: [body.id] });
-      return { status: 200, body: { ok: true } };
-    }
-
     // Notificações do pipeline de cadastro - na submissão do formulário
-    if (action === 'add_cadastro_submissao_notif') {
-      const r = await db.execute({
-        sql: `INSERT OR IGNORE INTO cadastro_submissao_notificacoes (slack_user_id, slack_user_name, slack_user_avatar)
-              VALUES (?, ?, ?)`,
-        args: [body.slack_user_id, body.slack_user_name, body.slack_user_avatar ?? null],
-      });
-      return {
-        status: 200,
-        body: { notificacao: {
-          id: Number(r.lastInsertRowid),
-          slack_user_id: body.slack_user_id, slack_user_name: body.slack_user_name,
-          slack_user_avatar: body.slack_user_avatar ?? null,
-        } },
-      };
-    }
-
-    if (action === 'remove_cadastro_submissao_notif') {
-      await db.execute({ sql: 'DELETE FROM cadastro_submissao_notificacoes WHERE id = ?', args: [body.id] });
-      return { status: 200, body: { ok: true } };
-    }
-
-    // Slack notifications
+    // Inscritos nas notificações por etapa
     if (action === 'add_notificacao') {
       const r = await db.execute({
-        sql: `INSERT OR IGNORE INTO status_notificacoes (status_id, slack_user_id, slack_user_name, slack_user_avatar)
-              VALUES (?, ?, ?, ?)`,
-        args: [body.status_id, body.slack_user_id, body.slack_user_name, body.slack_user_avatar ?? null],
+        sql: 'INSERT OR IGNORE INTO status_notificacoes (status_id, usuario_id) VALUES (?, ?)',
+        args: [body.status_id, body.usuario_id],
       });
-      const notif = {
-        id: Number(r.lastInsertRowid),
-        status_id: body.status_id,
-        slack_user_id: body.slack_user_id,
-        slack_user_name: body.slack_user_name,
-        slack_user_avatar: body.slack_user_avatar ?? null,
-      };
+      const notif = { ...await inscritoCriado(db, Number(r.lastInsertRowid), body.usuario_id), status_id: body.status_id };
       return { status: 200, body: { notificacao: notif } };
     }
 
@@ -2829,10 +2506,10 @@ async function despacharAdminData(
       const field = body.field as string;
       if (!allowed.includes(field)) return { status: 400, body: { error: 'Field not allowed' } };
       await db.execute({
-        sql: `UPDATE solicitacoes SET ${field} = ? WHERE id = ?`,
+        sql: `UPDATE leads SET ${field} = ? WHERE id = ?`,
         args: [body.value ?? null, body.id],
       });
-      await marcarEdicao(db, 'solicitacoes', String(body.id), autorId, autorNome, new Date().toISOString());
+      await marcarEdicao(db, 'leads', String(body.id), autorId, autorNome, new Date().toISOString());
       return { status: 200, body: { ok: true } };
     }
 
@@ -2872,7 +2549,7 @@ async function despacharAdminData(
       const now = new Date().toISOString();
 
       await db.execute({
-        sql: `INSERT INTO solicitacoes
+        sql: `INSERT INTO leads
               (id, created_at, nome_contratado, cnpj_contratado, situacao_contratado,
                nome_sacado, cnpj_sacado, situacao_sacado,
                valor, valor_numerico, prazo_limite, parcelas, fim_type, cedente_id, sacado_id,
@@ -2894,7 +2571,7 @@ async function despacharAdminData(
         const sc = await db.execute({ sql: 'SELECT nome FROM status_configs WHERE id = ?', args: [status_id] });
         const nome = String(sc.rows[0]?.nome ?? '');
         await db.execute({
-          sql: `INSERT INTO solicitacao_eventos (solicitacao_id, tipo, status_id, descricao, criado_em, autor_id, autor_nome)
+          sql: `INSERT INTO lead_eventos (lead_id, tipo, status_id, descricao, criado_em, autor_id, autor_nome)
                 VALUES (?, 'status_change', ?, ?, ?, ?, ?)`,
           args: [id, status_id, `Movido para ${nome}`, now, autorId, autorNome],
         });
@@ -2931,7 +2608,7 @@ async function despacharAdminData(
       } = body;
       const now = new Date().toISOString();
       await db.execute({
-        sql: `UPDATE solicitacoes SET
+        sql: `UPDATE leads SET
           nome_contratado=?, cnpj_contratado=?, situacao_contratado=?,
           nome_sacado=?, cnpj_sacado=?, situacao_sacado=?, cedente_id=?, sacado_id=?,
           valor=?, valor_numerico=?, prazo_limite=?, parcelas=?, decisions=?, fim_type=?
@@ -2948,109 +2625,31 @@ async function despacharAdminData(
         ],
       });
       await db.execute({
-        sql: `INSERT INTO solicitacao_eventos (solicitacao_id, tipo, descricao, criado_em, autor_id, autor_nome)
+        sql: `INSERT INTO lead_eventos (lead_id, tipo, descricao, criado_em, autor_id, autor_nome)
               VALUES (?, 'edicao', 'Dados editados', ?, ?, ?)`,
         args: [subId, now, autorId, autorNome],
       });
-      await marcarEdicao(db, 'solicitacoes', subId, autorId, autorNome, now);
+      await marcarEdicao(db, 'leads', subId, autorId, autorNome, now);
       return { status: 200, body: { ok: true } };
     }
 
     if (action === 'delete_submission') {
       const now = new Date().toISOString();
       await db.execute({
-        sql: 'UPDATE solicitacoes SET deleted_at = ? WHERE id = ?',
+        sql: 'UPDATE leads SET deleted_at = ? WHERE id = ?',
         args: [now, body.id],
       });
       await db.execute({
-        sql: `INSERT INTO solicitacao_eventos (solicitacao_id, tipo, descricao, criado_em, autor_id, autor_nome)
-              VALUES (?, 'edicao', 'Solicitação excluída', ?, ?, ?)`,
+        sql: `INSERT INTO lead_eventos (lead_id, tipo, descricao, criado_em, autor_id, autor_nome)
+              VALUES (?, 'edicao', 'Lead excluída', ?, ?, ?)`,
         args: [body.id, now, autorId, autorNome],
       });
-      await marcarEdicao(db, 'solicitacoes', String(body.id), autorId, autorNome, now);
+      await marcarEdicao(db, 'leads', String(body.id), autorId, autorNome, now);
       return { status: 200, body: { ok: true } };
     }
 
     // ── Aceite operacoes CRUD ────────────────────────────────────────────────────
 
-    if (action === 'create_aceite_operacao') {
-      const id = randomUUID();
-      const token = randomBytes(24).toString('hex');
-      const now = new Date().toISOString();
-      const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-      const parcelas = body.parcelas != null
-        ? (typeof body.parcelas === 'string' ? body.parcelas : JSON.stringify(body.parcelas))
-        : null;
-      await db.execute({
-        sql: `INSERT INTO aceite_operacoes (
-          id, token, solicitacao_id, tipo, status,
-          nome_cedente, cnpj_cedente, email_cedente, email_cedente_responsavel,
-          nome_sacado, cnpj_sacado, numero_nf, data_emissao_nf, valor_nf,
-          vencimento, periodo_servico, parcelas,
-          banco_nome, titular_conta, cnpj_titular, agencia, conta,
-          token_expires_at, criado_em, criado_por_id, criado_por_nome
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        args: [
-          id, token, body.solicitacao_id, body.tipo ?? 'ACEITE_SACADO', 'PENDENTE',
-          body.nome_cedente, body.cnpj_cedente, body.email_cedente ?? null, body.email_cedente_responsavel ?? null,
-          body.nome_sacado, body.cnpj_sacado ?? null, body.numero_nf ?? null, body.data_emissao_nf ?? null, body.valor_nf ?? null,
-          body.vencimento ?? null, body.periodo_servico ?? null, parcelas,
-          body.banco_nome ?? null, body.titular_conta ?? null, body.cnpj_titular ?? null, body.agencia ?? null, body.conta ?? null,
-          tokenExpiresAt, now, autorId, autorNome,
-        ],
-      });
-      const rowRes = await db.execute({ sql: 'SELECT * FROM aceite_operacoes WHERE id = ?', args: [id] });
-      return { status: 200, body: { operacao: rowRes.rows[0] } };
-    }
-
-    if (action === 'update_aceite_status') {
-      await db.execute({ sql: 'UPDATE aceite_operacoes SET status = ? WHERE id = ?', args: [body.status, body.id] });
-      await marcarEdicao(db, 'aceite_operacoes', String(body.id), autorId, autorNome, new Date().toISOString());
-      return { status: 200, body: { ok: true } };
-    }
-
-    if (action === 'reenviar_aceite') {
-      const token = randomBytes(24).toString('hex');
-      const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-      await db.execute({
-        sql: "UPDATE aceite_operacoes SET token=?, token_expires_at=?, status='PENDENTE', aceitante=NULL WHERE id=?",
-        args: [token, tokenExpiresAt, body.id],
-      });
-      await marcarEdicao(db, 'aceite_operacoes', String(body.id), autorId, autorNome, new Date().toISOString());
-      const rowRes = await db.execute({ sql: 'SELECT * FROM aceite_operacoes WHERE id = ?', args: [body.id] });
-      return { status: 200, body: { operacao: rowRes.rows[0] } };
-    }
-
-    if (action === 'add_aceite_email_history') {
-      const rowRes = await db.execute({ sql: 'SELECT email_history FROM aceite_operacoes WHERE id = ?', args: [body.id] });
-      const existing = rowRes.rows[0]?.email_history ? JSON.parse(String(rowRes.rows[0].email_history)) : [];
-      const merged = [...existing, ...(body.entries ?? [])];
-      await db.execute({ sql: 'UPDATE aceite_operacoes SET email_history = ? WHERE id = ?', args: [JSON.stringify(merged), body.id] });
-      await marcarEdicao(db, 'aceite_operacoes', String(body.id), autorId, autorNome, new Date().toISOString());
-      return { status: 200, body: { ok: true } };
-    }
-
-    if (action === 'delete_aceite_operacao') {
-      await db.execute({ sql: 'DELETE FROM aceite_anexos WHERE operacao_id = ?', args: [body.id] });
-      await db.execute({ sql: 'DELETE FROM aceite_operacoes WHERE id = ?', args: [body.id] });
-      return { status: 200, body: { ok: true } };
-    }
-
-    if (action === 'add_aceite_anexo') {
-      const id = randomUUID();
-      const now = new Date().toISOString();
-      await db.execute({
-        sql: 'INSERT INTO aceite_anexos (id, operacao_id, nome, tipo, tamanho, data_url, criado_em) VALUES (?,?,?,?,?,?,?)',
-        args: [id, body.operacao_id, body.nome, body.tipo, body.tamanho, body.data_url, now],
-      });
-      const rowRes = await db.execute({ sql: 'SELECT * FROM aceite_anexos WHERE id = ?', args: [id] });
-      return { status: 200, body: { anexo: rowRes.rows[0] } };
-    }
-
-    if (action === 'delete_aceite_anexo') {
-      await db.execute({ sql: 'DELETE FROM aceite_anexos WHERE id = ?', args: [body.id] });
-      return { status: 200, body: { ok: true } };
-    }
   }
 
   return { status: 405, body: { error: 'Method not allowed' } };

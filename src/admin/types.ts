@@ -7,52 +7,36 @@ export interface StatusConfig {
   is_conversion?: number;
   is_excluded?: number;
   requires_pendencia?: number;
-  /** Etapa que recebe as solicitações enviadas pelo formulário público. */
+  /** Etapa que recebe os leads enviadas pelo formulário público. */
   is_entrada?: number;
   /** Etapa pontual: fica recolhida no kanban mesmo tendo cards. */
   always_collapsed?: number;
   notificacoes?: Notificacao[];
 }
 
-export interface Notificacao {
+/** Nome e e-mail vêm de JOIN com `usuarios`, não de cópia guardada: renomear
+ *  alguém se propaga sozinho, e desativar tira da lista de envio. */
+interface Inscrito {
   id: number;
+  usuario_id: string;
+  usuario_nome: string;
+  usuario_email: string;
+}
+
+export interface Notificacao extends Inscrito {
   status_id: number;
-  slack_user_id: string;
-  slack_user_name: string;
-  slack_user_avatar: string | null;
 }
 
-export interface NovaNotificacao {
-  id: number;
-  slack_user_id: string;
-  slack_user_name: string;
-  slack_user_avatar: string | null;
-}
+export type NovaNotificacao = Inscrito;
 
-export interface CadastroEtapaNotificacao {
-  id: number;
-  etapa: string;
-  slack_user_id: string;
-  slack_user_name: string;
-  slack_user_avatar: string | null;
-}
 
-export interface CadastroEtapaConfig {
-  id: number;
-  chave: string;
-  nome: string;
-  cor: string;
-  ordem: number;
-  ativo: number;
-  locked: number; // 1 = etapa âncora protegida (aprovado/rejeitado): não pode ser excluída
-  notificacoes?: CadastroEtapaNotificacao[];
-}
 
-export interface SlackUser {
+/** Usuário do portal, como o seletor de destinatários o enxerga. */
+export interface UsuarioNotificavel {
   id: string;
-  name: string;
-  username: string;
-  avatar: string | null;
+  nome: string;
+  email: string;
+  foto_url: string | null;
 }
 
 export interface Submission {
@@ -82,7 +66,7 @@ export interface Submission {
 
 export interface Evento {
   id: number;
-  solicitacao_id: string;
+  lead_id: string;
   tipo: 'status_change' | 'comentario' | 'arquivo' | 'edicao';
   status_id: number | null;
   status_nome: string | null;
@@ -134,23 +118,3 @@ export interface SubmissionDetail {
   statuses: Pick<StatusConfig, 'id' | 'nome' | 'cor'>[];
   pendencias: Pendencia[];
 }
-
-// ── Liquidez ─────────────────────────────────────────────────────────────────
-
-export type LiquidezSource   = 'interno' | 'atlas' | 'fidc';
-export type LiquidezType     = 'entrada' | 'saida';
-export type LiquidezCategory = string;
-
-export interface LiquidezTx {
-  id: string;
-  date: string;
-  source: LiquidezSource;
-  type: LiquidezType;
-  category: LiquidezCategory;
-  amount: number;
-  description: string | null;
-  realized: boolean;
-  created_at: string;
-}
-
-export type LiquidezTxInput = Omit<LiquidezTx, 'id' | 'created_at' | 'realized'> & { realized?: boolean };

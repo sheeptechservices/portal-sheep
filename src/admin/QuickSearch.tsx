@@ -7,7 +7,7 @@ import { podeAbrirPagina, podeGerenciarUsuarios } from './papeis';
 // Alvo de navegação devolvido ao shell. Um alvo é ou um card (abre a página e
 // destaca o card) ou um destino de navegação (só troca de página).
 export type QuickTarget =
-  | { kind: 'card'; page: 'solicitacoes' | 'cadastros-pipeline'; id: string; titulo: string; sub?: string | null }
+  | { kind: 'card'; page: 'leads'; id: string; titulo: string; sub?: string | null }
   | { kind: 'nav'; page: Page; titulo: string; sub?: string | null };
 
 interface SolHit {
@@ -22,17 +22,6 @@ interface SolHit {
   status_cor: string | null;
 }
 
-interface CadHit {
-  id: string;
-  nome: string | null;
-  razao_social: string | null;
-  cnpj_cpf: string | null;
-  nome_responsavel: string | null;
-  aprovacao_status: string | null;
-  criado_em: string;
-  etapa_nome: string | null;
-  etapa_cor: string | null;
-}
 
 type Row = { target: QuickTarget; badge?: string | null; badgeCor?: string | null; meta?: string | null };
 
@@ -70,16 +59,10 @@ function maskDoc(v: string | null): string {
 }
 
 const CardIcon = {
-  solicitacoes: (
+  leads: (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
       <rect x="3" y="3" width="7" height="18" rx="2" stroke="currentColor" strokeWidth="1.8"/>
       <rect x="14" y="3" width="7" height="11" rx="2" stroke="currentColor" strokeWidth="1.8"/>
-    </svg>
-  ),
-  'cadastros-pipeline': (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-      <path d="M9 11l3 3L22 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   ),
 };
@@ -111,7 +94,6 @@ export default function QuickSearch({ token, onClose, onSelect }: {
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(false);
   const [sols, setSols] = useState<SolHit[]>([]);
-  const [cads, setCads] = useState<CadHit[]>([]);
   const [active, setActive] = useState(0);
   const [recents] = useState<QuickTarget[]>(() => loadRecents());
   const inputRef = useRef<HTMLInputElement>(null);
@@ -129,7 +111,7 @@ export default function QuickSearch({ token, onClose, onSelect }: {
 
   // Busca com debounce - cada tecla cancela o request anterior em voo.
   useEffect(() => {
-    if (!buscandoCards) { setSols([]); setCads([]); setLoading(false); return; }
+    if (!buscandoCards) { setSols([]); setLoading(false); return; }
     const ctrl = new AbortController();
     setLoading(true);
     const timer = setTimeout(() => {
@@ -138,7 +120,7 @@ export default function QuickSearch({ token, onClose, onSelect }: {
         signal: ctrl.signal,
       })
         .then(r => r.json())
-        .then(d => { setSols(d.solicitacoes ?? []); setCads(d.cadastros ?? []); })
+        .then(d => { setSols(d.leads ?? []); })
         .catch(() => { /* abortado ou offline */ })
         .finally(() => { if (!ctrl.signal.aborted) setLoading(false); });
     }, 180);
@@ -152,11 +134,11 @@ export default function QuickSearch({ token, onClose, onSelect }: {
           rows: buscarDestinos(termo).filter(visivel).map(linhaDestino),
         },
         {
-          titulo: 'Solicitações',
+          titulo: 'Leads',
           rows: sols.map(s => ({
             target: {
               kind: 'card' as const,
-              page: 'solicitacoes' as const,
+              page: 'leads' as const,
               id: s.id,
               titulo: s.nome_contratado || 'Sem cedente',
               sub: s.nome_sacado ? `Sacado: ${s.nome_sacado}` : maskDoc(s.cnpj_contratado) || null,
@@ -164,21 +146,6 @@ export default function QuickSearch({ token, onClose, onSelect }: {
             badge: s.status_nome,
             badgeCor: s.status_cor,
             meta: s.valor,
-          })),
-        },
-        {
-          titulo: 'Onboarding',
-          rows: cads.map(c => ({
-            target: {
-              kind: 'card' as const,
-              page: 'cadastros-pipeline' as const,
-              id: c.id,
-              titulo: c.razao_social || c.nome || 'Sem razão social',
-              sub: c.nome_responsavel ? `Resp.: ${c.nome_responsavel}` : maskDoc(c.cnpj_cpf) || null,
-            },
-            badge: c.etapa_nome ?? c.aprovacao_status,
-            badgeCor: c.etapa_cor,
-            meta: maskDoc(c.cnpj_cpf) || null,
           })),
         },
       ].filter(g => g.rows.length > 0)
@@ -227,7 +194,7 @@ export default function QuickSearch({ token, onClose, onSelect }: {
             className="qs-input"
             value={q}
             onChange={e => setQ(e.target.value)}
-            placeholder="Buscar páginas, ferramentas, solicitações e onboarding…"
+            placeholder="Buscar páginas, ferramentas e leads…"
             spellCheck={false}
           />
           {loading && <span className="qs-spinner" aria-hidden />}

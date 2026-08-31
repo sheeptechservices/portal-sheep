@@ -22,9 +22,8 @@ interface UsuarioPerfil {
 interface Resumo {
   comentarios: number;
   eventos: number;
-  solicitacoes: number;
+  leads: number;
   cedentes: number;
-  analises: number;
   pendencias: number;
   acoes: number;
 }
@@ -43,29 +42,20 @@ const ACAO_LABEL: Record<string, string> = {
   move: 'Moveu de etapa',
   upload_file: 'Anexou arquivo',
   delete_file: 'Excluiu arquivo',
-  create_submission: 'Criou solicitação',
-  update_submission: 'Editou solicitação',
-  delete_submission: 'Excluiu solicitação',
-  patch_submission: 'Ajustou campo da solicitação',
+  create_submission: 'Criou lead',
+  update_submission: 'Editou lead',
+  delete_submission: 'Excluiu lead',
+  patch_submission: 'Ajustou campo do lead',
   create_cedente: 'Criou cedente',
   update_cedente: 'Editou cedente',
   delete_cedente: 'Desativou cedente',
   import_cedentes: 'Importou cedentes',
-  move_cadastro: 'Moveu cadastro no onboarding',
   create_sacado: 'Criou sacado',
   update_sacado: 'Editou sacado',
   add_pendencias: 'Registrou pendências',
   toggle_pendencia: 'Marcou pendência',
-  salvar_analise: 'Validou análise de crédito',
-  salvar_diretriz: 'Cadastrou diretriz de crédito',
-  importar_diretrizes: 'Importou diretrizes',
-  revogar_diretriz: 'Revogou diretriz',
-  create_aceite_operacao: 'Criou operação de aceite',
-  reenviar_aceite: 'Reenviou aceite',
-  send_aceite_email: 'Enviou e-mail de aceite',
   'gerar-documento': 'Gerou documento',
   'deps-consulta': 'Consultou o bureau DEPS',
-  'ai-parecer': 'Pediu parecer à IA',
 };
 
 function rotuloAcao(acao: string): string {
@@ -209,10 +199,8 @@ export default function PerfilPage({ token }: { token: string }) {
         <div className="admin-stats">
           <Estatistica label="Comentários" valor={resumo.comentarios} desc="escritos por você" />
           <Estatistica label="Movimentações" valor={resumo.eventos} desc="eventos no histórico" />
-          <Estatistica label="Solicitações" valor={resumo.solicitacoes} desc="criadas por você" />
+          <Estatistica label="Leads" valor={resumo.leads} desc="criadas por você" />
           <Estatistica label="Cedentes" valor={resumo.cedentes} desc="cadastrados por você" />
-          <Estatistica label="Análises" valor={resumo.analises} desc="validadas por você" />
-          <Estatistica label="Pendências" valor={resumo.pendencias} desc="abertas por você" />
           <Estatistica label="Ações" valor={resumo.acoes} desc="registradas na auditoria" />
         </div>
       </div>

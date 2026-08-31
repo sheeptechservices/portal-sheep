@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
-import type { StatusConfig, SlackUser, Notificacao, NovaNotificacao, CadastroEtapaConfig } from './types';
+import type { StatusConfig, UsuarioNotificavel, Notificacao, NovaNotificacao } from './types';
 import { useToast, useAuth } from './AdminApp';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { DepsMark } from '../components/DepsMark';
@@ -108,17 +108,17 @@ function useApi(token: string) {
   }, [token, onSessionExpired]);
 }
 
-// ── Slack users dropdown ─────────────────────────────
-function SlackUserDropdown({
+// ── Seletor de usuários do portal ─────────────────────────────
+function UsuarioDropdown({
   token, onSelect, exclude, compact,
 }: {
   token: string;
-  onSelect: (user: SlackUser) => void;
+  onSelect: (user: UsuarioNotificavel) => void;
   exclude: string[];
   compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [users, setUsers] = useState<SlackUser[]>([]);
+  const [users, setUsers] = useState<UsuarioNotificavel[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [pos, setPos] = useState<{ top: number; left?: number; right?: number }>({ top: 0 });
@@ -129,9 +129,9 @@ function SlackUserDropdown({
     if (users.length) return;
     setLoading(true);
     try {
-      const r = await fetch('/api/slack-users', { headers: { 'x-admin-session': token } });
+      const r = await fetch('/api/admin-data?action=usuarios_notificaveis', { headers: { 'x-admin-session': token } });
       const data = await r.json();
-      setUsers(data.users ?? []);
+      setUsers(data.usuarios ?? []);
     } finally {
       setLoading(false);
     }
@@ -164,41 +164,43 @@ function SlackUserDropdown({
     return () => document.removeEventListener('mousedown', outside);
   }, [open]);
 
+  const busca = search.trim().toLowerCase();
   const filtered = users
     .filter(u => !exclude.includes(u.id))
-    .filter(u => !search || u.name.toLowerCase().includes(search.toLowerCase()));
+    // Busca por nome e por e-mail: quem tem homônimo se distingue pelo endereço.
+    .filter(u => !busca || u.nome.toLowerCase().includes(busca) || u.email.toLowerCase().includes(busca));
 
   return (
     <>
-      <button ref={btnRef} className={`slack-add-btn${compact ? ' compact' : ''}`} onClick={toggle} title={compact ? 'Adicionar usuário' : undefined}>
+      <button ref={btnRef} className={`notif-add-btn${compact ? ' compact' : ''}`} onClick={toggle} title={compact ? 'Adicionar usuário' : undefined}>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
         {!compact && 'Adicionar usuário'}
       </button>
       {open && createPortal(
         <div
           ref={dropRef}
-          className="slack-dropdown"
+          className="notif-dropdown"
           style={{ position: 'fixed', top: pos.top, left: pos.left, right: pos.right }}
         >
           <input
-            className="slack-search"
+            className="notif-search"
             placeholder="Buscar…"
             value={search}
             onChange={e => setSearch(e.target.value)}
             autoFocus
           />
-          <div className="slack-list">
+          <div className="notif-list">
             {loading && <div className="dux-spinner-row" style={{ padding: '12px 0' }}><span className="dux-spinner sm" /></div>}
-            {!loading && filtered.length === 0 && <p className="slack-list-empty">Nenhum usuário</p>}
+            {!loading && filtered.length === 0 && <p className="notif-list-empty">Nenhum usuário</p>}
             {filtered.map(u => (
-              <div key={u.id} className="slack-list-item" onClick={() => { onSelect(u); setOpen(false); setSearch(''); }}>
-                {u.avatar
-                  ? <img src={u.avatar} alt="" className="slack-avatar" />
-                  : <div className="slack-avatar-placeholder">{u.name[0]}</div>
+              <div key={u.id} className="notif-list-item" onClick={() => { onSelect(u); setOpen(false); setSearch(''); }}>
+                {u.foto_url
+                  ? <img src={u.foto_url} alt="" className="notif-avatar" referrerPolicy="no-referrer" />
+                  : <div className="notif-avatar-placeholder">{u.nome[0]}</div>
                 }
-                <div>
-                  <p className="slack-user-name">{u.name}</p>
-                  <p className="slack-user-handle">@{u.username}</p>
+                <div style={{ minWidth: 0 }}>
+                  <p className="notif-user-name">{u.nome}</p>
+                  <p className="notif-user-handle">{u.email}</p>
                 </div>
               </div>
             ))}
@@ -210,31 +212,29 @@ function SlackUserDropdown({
   );
 }
 
-// ── Nova solicitação notification section ────────────
+// ── Novo lead notification section ────────────
 function NovaNotificacaoSection({ token }: { token: string }) {
   const api = useApi(token);
   const [notifs, setNotifs] = useState<NovaNotificacao[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api('?action=nova_solicitacao_notifs').then(d => {
+    api('?action=novo_lead_notifs').then(d => {
       setNotifs(d.notificacoes ?? []);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
 
-  async function addNotif(user: SlackUser) {
+  async function addNotif(user: UsuarioNotificavel) {
     const data = await api('', 'POST', {
-      action: 'add_nova_solicitacao_notif',
-      slack_user_id: user.id,
-      slack_user_name: user.name,
-      slack_user_avatar: user.avatar,
+      action: 'add_novo_lead_notif',
+      usuario_id: user.id,
     });
     if (data.notificacao) setNotifs(prev => [...prev, data.notificacao]);
   }
 
   async function removeNotif(id: number) {
-    await api('', 'POST', { action: 'remove_nova_solicitacao_notif', id });
+    await api('', 'POST', { action: 'remove_novo_lead_notif', id });
     setNotifs(prev => prev.filter(n => n.id !== id));
   }
 
@@ -248,8 +248,8 @@ function NovaNotificacaoSection({ token }: { token: string }) {
           </svg>
         </div>
         <div>
-          <p className="nova-notif-title">Nova solicitação recebida</p>
-          <p className="nova-notif-desc">Notificar no Slack quando um formulário for submetido</p>
+          <p className="nova-notif-title">Novo lead recebido</p>
+          <p className="nova-notif-desc">Enviar e-mail quando um lead entrar no funil</p>
         </div>
       </div>
       {loading ? (
@@ -261,19 +261,16 @@ function NovaNotificacaoSection({ token }: { token: string }) {
           <div className="notif-chips">
             {notifs.map(n => (
               <div key={n.id} className="notif-chip">
-                {n.slack_user_avatar
-                  ? <img src={n.slack_user_avatar} alt="" className="slack-avatar-sm" />
-                  : <div className="slack-avatar-sm slack-avatar-placeholder" style={{ fontSize: 10 }}>{n.slack_user_name[0]}</div>
-                }
-                <span>{n.slack_user_name}</span>
+                <div className="notif-avatar-sm notif-avatar-placeholder">{n.usuario_nome[0]}</div>
+                <span title={n.usuario_email}>{n.usuario_nome}</span>
                 <button onClick={() => removeNotif(n.id)}>×</button>
               </div>
             ))}
           </div>
-          <SlackUserDropdown
+          <UsuarioDropdown
             token={token}
             onSelect={addNotif}
-            exclude={notifs.map(n => n.slack_user_id)}
+            exclude={notifs.map(n => n.usuario_id)}
           />
         </div>
       )}
@@ -398,7 +395,7 @@ function StatusRow({
       const res = await api('', 'POST', { action: 'delete_status_with_move', id: status.id, move_to_id: targetId });
       if (res.error) throw new Error(res.error);
       onDelete(status.id);
-      toast('success', `${res.moved ?? 0} solicitação(ões) movida(s) e etapa excluída`);
+      toast('success', `${res.moved ?? 0} lead(ões) movida(s) e etapa excluída`);
       setMoveModal(null);
     } catch (err) {
       console.error('[handleMoveAndDelete]', err);
@@ -436,13 +433,11 @@ function StatusRow({
     toast('success', 'Etapa atualizada');
   }
 
-  async function addNotif(user: SlackUser) {
+  async function addNotif(user: UsuarioNotificavel) {
     const data = await api('', 'POST', {
       action: 'add_notificacao',
       status_id: status.id,
-      slack_user_id: user.id,
-      slack_user_name: user.name,
-      slack_user_avatar: user.avatar,
+      usuario_id: user.id,
     });
     const updated = [...notifs, data.notificacao];
     setNotifs(updated);
@@ -531,20 +526,17 @@ function StatusRow({
           <div className="status-notif-chips-inline">
             {notifs.map(n => (
               <div key={n.id} className="notif-chip">
-                {n.slack_user_avatar
-                  ? <img src={n.slack_user_avatar} alt="" className="slack-avatar-sm" />
-                  : <div className="slack-avatar-sm slack-avatar-placeholder" style={{ fontSize: 10 }}>{n.slack_user_name[0]}</div>
-                }
-                <span>{n.slack_user_name}</span>
+                <div className="notif-avatar-sm notif-avatar-placeholder">{n.usuario_nome[0]}</div>
+                <span title={n.usuario_email}>{n.usuario_nome}</span>
                 <button onClick={() => removeNotif(n.id)}>×</button>
               </div>
             ))}
           </div>
 
-          <SlackUserDropdown
+          <UsuarioDropdown
             token={token}
             onSelect={addNotif}
-            exclude={notifs.map(n => n.slack_user_id)}
+            exclude={notifs.map(n => n.usuario_id)}
             compact
           />
 
@@ -587,8 +579,8 @@ function StatusRow({
             >
               <strong style={{ display: 'block', marginBottom: 6 }}>Etapa de entrada</strong>
               <ul style={{ margin: 0, paddingLeft: 14, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <li>Solicitações enviadas pelo <em>formulário</em> caem nesta etapa. Só uma etapa pode ter essa marcação.</li>
-                <li>Também é a etapa sugerida ao criar uma solicitação pelo painel.</li>
+                <li>Leads enviadas pelo <em>formulário</em> caem nesta etapa. Só uma etapa pode ter essa marcação.</li>
+                <li>Também é a etapa sugerida ao criar um lead pelo painel.</li>
                 <li>Sem marcação, vale a <em>primeira</em> etapa da lista.</li>
               </ul>
             </span>,
@@ -632,8 +624,9 @@ function StatusRow({
             >
               <strong style={{ display: 'block', marginBottom: 6 }}>Etapa de conversão</strong>
               <ul style={{ margin: 0, paddingLeft: 14, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <li>Define qual etapa representa uma operação <em>realizada</em> na Liquidez. Só uma etapa pode ter essa marcação.</li>
-                <li>Solicitações nesta etapa são <em>ocultadas</em> no seletor de aceite do sacado.</li>
+                <li>Marca a etapa que representa <em>negócio fechado</em>. Só uma etapa pode ter essa marcação.</li>
+                <li>O relógio do lead <em>para</em> ao chegar aqui, e é esta etapa que alimenta o card de fechados no Funil.</li>
+                <li>Leads nesta etapa ficam <em>fora</em> do Gerador de Contratos.</li>
               </ul>
             </span>,
             document.body
@@ -677,8 +670,8 @@ function StatusRow({
             >
               <strong style={{ display: 'block', marginBottom: 6 }}>Etapa desconsiderada</strong>
               <ul style={{ margin: 0, paddingLeft: 14, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <li>Solicitações nesta etapa <em>não são contabilizadas</em> na Liquidez - nem em previsão nem em realização.</li>
-                <li>Também são <em>ocultadas</em> no seletor de aceite do sacado.</li>
+                <li>Leads nesta etapa ficam <em>fora</em> do Gerador de Contratos.</li>
+                <li>Use para etapas que tiram o lead do fluxo sem serem fechamento - descartado, em espera, duplicado.</li>
               </ul>
             </span>,
             document.body
@@ -783,7 +776,7 @@ function StatusRow({
           <div className="delete-confirm-modal" onClick={e => e.stopPropagation()} style={{ width: 360 }}>
             <p className="delete-confirm-title">Excluir etapa?</p>
             <p className="delete-confirm-desc">
-              <strong>{status.nome}</strong> tem <strong>{moveModal.count}</strong> solicitação(ões). Para qual etapa deseja movê-las?
+              <strong>{status.nome}</strong> tem <strong>{moveModal.count}</strong> lead(ões). Para qual etapa deseja movê-las?
             </p>
 
             <MoveTargetSelect
@@ -831,7 +824,6 @@ function StatusRow({
 }
 
 // ── Integrações Tab ──────────────────────────────────
-const SLACK_COLOR = '#4A154B';
 const ANTHROPIC_COLOR = '#CC785C';
 const CLAUDE_ORANGE = '#D97757';
 
@@ -1093,7 +1085,7 @@ function AnthropicIntegrationCard({ api }: { api: ReturnType<typeof useApi> }) {
 
 // ── DEPS (bureau de crédito) ─────────────────────────
 // Card informativo. As credenciais da DEPS ficam em variáveis de ambiente (como
-// as do Slack), então aqui não há formulário: só o estado da conexão, a conta em
+// as de integração), então aqui não há formulário: só o estado da conexão, a conta em
 // uso e os produtos configurados. Nada é editável nem enviado ao servidor.
 const DEPS_NAVY = '#1B2A4E';
 
@@ -1189,137 +1181,8 @@ function DepsIntegrationCard({ api }: { api: ReturnType<typeof useApi> }) {
 
 function IntegracoesTab({ token: sessionToken }: { token: string }) {
   const api = useApi(sessionToken);
-  const [token, setToken] = useState('');
-  const [hasToken, setHasToken] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-  const [showToken, setShowToken] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [removing, setRemoving] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    api('?action=slack_config').then(d => {
-      setHasToken(!!d.has_token);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, []);
-
-  async function save() {
-    if (!token.trim()) return;
-    setSaving(true);
-    await api('', 'POST', { action: 'save_slack_token', token: token.trim() });
-    setHasToken(true);
-    setToken('');
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-  }
-
-  async function remove() {
-    if (!confirm('Remover integração com o Slack?')) return;
-    setRemoving(true);
-    await api('', 'POST', { action: 'remove_slack_token' });
-    setHasToken(false);
-    setExpanded(false);
-    setRemoving(false);
-  }
-
   return (
     <div className="integrations-list">
-      {/* Comunicação */}
-      <div className="integration-section-label">Comunicação</div>
-
-      <div className={`integration-card${expanded ? ' expanded' : ''}`}>
-        <div className="integration-card-row" onClick={() => setExpanded(v => !v)}>
-          {/* Logo */}
-          <div className="integration-logo" style={{ background: `${SLACK_COLOR}12`, border: `1px solid ${SLACK_COLOR}25` }}>
-            <svg width="22" height="22" viewBox="0 0 54 54" fill="none">
-              <path d="M19.712 33.6c0 2.496-2.016 4.512-4.512 4.512S10.688 36.096 10.688 33.6s2.016-4.512 4.512-4.512H19.712V33.6z" fill="#E01E5A"/>
-              <path d="M21.984 33.6c0-2.496 2.016-4.512 4.512-4.512s4.512 2.016 4.512 4.512v11.288c0 2.496-2.016 4.512-4.512 4.512s-4.512-2.016-4.512-4.512V33.6z" fill="#E01E5A"/>
-              <path d="M26.496 19.712c-2.496 0-4.512-2.016-4.512-4.512S24 10.688 26.496 10.688s4.512 2.016 4.512 4.512V19.712H26.496z" fill="#36C5F0"/>
-              <path d="M26.496 21.984c2.496 0 4.512 2.016 4.512 4.512s-2.016 4.512-4.512 4.512H15.208c-2.496 0-4.512-2.016-4.512-4.512s2.016-4.512 4.512-4.512H26.496z" fill="#36C5F0"/>
-              <path d="M40.288 26.496c0-2.496 2.016-4.512 4.512-4.512S49.312 24 49.312 26.496s-2.016 4.512-4.512 4.512H40.288V26.496z" fill="#2EB67D"/>
-              <path d="M38.016 26.496c0 2.496-2.016 4.512-4.512 4.512s-4.512-2.016-4.512-4.512V15.208c0-2.496 2.016-4.512 4.512-4.512s4.512 2.016 4.512 4.512V26.496z" fill="#2EB67D"/>
-              <path d="M33.504 40.288c2.496 0 4.512 2.016 4.512 4.512s-2.016 4.512-4.512 4.512-4.512-2.016-4.512-4.512V40.288H33.504z" fill="#ECB22E"/>
-              <path d="M33.504 38.016c-2.496 0-4.512-2.016-4.512-4.512s2.016-4.512 4.512-4.512h11.288c2.496 0 4.512 2.016 4.512 4.512s-2.016 4.512-4.512 4.512H33.504z" fill="#ECB22E"/>
-            </svg>
-          </div>
-
-          {/* Info */}
-          <div className="integration-info">
-            <div className="integration-title">
-              Slack
-              {loading ? null : hasToken ? (
-                <span className="integration-badge connected">
-                  <span className="live-dot" />
-                  Conectado
-                </span>
-              ) : (
-                <span className="integration-badge disconnected">Não conectado</span>
-              )}
-            </div>
-            <div className="integration-desc">
-              Envio de notificações e alertas para canais e usuários do Slack.
-            </div>
-          </div>
-
-          {/* Chevron */}
-          <svg
-            className={`integration-chevron${expanded ? ' open' : ''}`}
-            width="14" height="14" viewBox="0 0 24 24" fill="none"
-          >
-            <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </div>
-
-        {/* Expanded form */}
-        {expanded && (
-          <div className="integration-form">
-            <div className="integration-form-group">
-              <label className="integration-label">Bot Token</label>
-              <div className="integration-input-wrap">
-                <input
-                  className="integration-input"
-                  type={showToken ? 'text' : 'password'}
-                  placeholder={hasToken ? '••••••••••••••••' : 'xoxb-...'}
-                  value={token}
-                  onChange={e => setToken(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && save()}
-                  style={{ '--focus-color': SLACK_COLOR } as any}
-                />
-                <button className="integration-eye" onClick={() => setShowToken(v => !v)} type="button">
-                  {showToken ? (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-                  ) : (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" strokeWidth="1.8"/><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8"/></svg>
-                  )}
-                </button>
-              </div>
-              <p className="integration-hint">
-                Crie um Slack App e copie o Bot Token em <strong>OAuth &amp; Permissions</strong>.
-              </p>
-            </div>
-
-            <div className="integration-form-actions">
-              <button
-                className="integration-save-btn"
-                style={{ background: SLACK_COLOR }}
-                onClick={save}
-                disabled={saving || !token.trim()}
-              >
-                {saving ? 'Salvando…' : saved ? <><IconCheck size={12} /> Salvo!</> : 'Salvar token'}
-              </button>
-              {hasToken && (
-                <button className="integration-remove-btn" onClick={remove} disabled={removing}>
-                  {removing ? 'Removendo…' : 'Remover integração'}
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* Inteligência artificial */}
       <div className="integration-section-label" style={{ marginTop: 24 }}>Inteligência artificial</div>
       <AnthropicIntegrationCard api={api} />
@@ -1331,426 +1194,6 @@ function IntegracoesTab({ token: sessionToken }: { token: string }) {
   );
 }
 
-// ── Onboarding: linha de etapa editável ──────────────
-function CadastroEtapaRow({
-  etapa, allEtapas, token, onUpdate, onDelete, onAddNotif, onRemoveNotif,
-  isDragging, dropIndicator, onDragStart, onDragOver, onClearIndicator, onDrop, onDragEnd,
-}: {
-  etapa: CadastroEtapaConfig;
-  allEtapas: CadastroEtapaConfig[];
-  token: string;
-  onUpdate: (e: CadastroEtapaConfig) => void;
-  onDelete: (id: number) => void;
-  onAddNotif: (chave: string, user: SlackUser) => void;
-  onRemoveNotif: (id: number) => void;
-  isDragging: boolean;
-  dropIndicator: 'before' | 'after' | null;
-  onDragStart: () => void;
-  onDragOver: (pos: 'before' | 'after') => void;
-  onClearIndicator: () => void;
-  onDrop: () => void;
-  onDragEnd: () => void;
-}) {
-  const api = useApi(token);
-  const { toast } = useToast();
-  const rowRef = useRef<HTMLDivElement>(null);
-  const colorDotRef = useRef<HTMLButtonElement>(null);
-  const colorPickerRef = useRef<HTMLDivElement>(null);
-
-  const [editingName, setEditingName] = useState(false);
-  const [nome, setNome] = useState(etapa.nome);
-  const [cor, setCor] = useState(etapa.cor);
-  const [colorPickerPos, setColorPickerPos] = useState<{ top: number; left: number } | null>(null);
-  const notifs = etapa.notificacoes ?? [];
-
-  // Delete flow
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [moveModal, setMoveModal] = useState<{ count: number } | null>(null);
-  const [moveTargetId, setMoveTargetId] = useState<number | ''>('');
-  const [deleting, setDeleting] = useState(false);
-
-  useEffect(() => {
-    if (!colorPickerPos) return;
-    function handle(e: MouseEvent) {
-      if (colorDotRef.current?.contains(e.target as Node)) return;
-      if (colorPickerRef.current?.contains(e.target as Node)) return;
-      setColorPickerPos(null);
-    }
-    document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
-  }, [colorPickerPos]);
-
-  async function handleDeleteClick() {
-    if (etapa.locked) return;
-    try {
-      const res = await api(`?action=cadastro_status_card_count&chave=${encodeURIComponent(etapa.chave)}`);
-      const count = Number(res.count ?? 0);
-      if (count === 0) setConfirmDelete(true);
-      else { setMoveTargetId(''); setMoveModal({ count }); }
-    } catch {
-      setConfirmDelete(true);
-    }
-  }
-
-  async function handleDeleteConfirm() {
-    setDeleting(true);
-    try {
-      const res = await api('', 'POST', { action: 'delete_cadastro_status', id: etapa.id });
-      if (res.error) throw new Error(res.error);
-      onDelete(etapa.id);
-      toast('success', `Etapa "${etapa.nome}" excluída`);
-      setConfirmDelete(false);
-    } catch {
-      toast('error', 'Erro ao excluir etapa. Tente novamente.');
-    } finally {
-      setDeleting(false);
-    }
-  }
-
-  async function handleMoveAndDelete() {
-    if (!moveTargetId) return;
-    setDeleting(true);
-    try {
-      const target = allEtapas.find(e => e.id === moveTargetId);
-      const res = await api('', 'POST', { action: 'delete_cadastro_status', id: etapa.id, move_to_chave: target?.chave });
-      if (res.error) throw new Error(res.error);
-      onDelete(etapa.id);
-      toast('success', `${moveModal?.count ?? 0} cadastro(s) movido(s) e etapa excluída`);
-      setMoveModal(null);
-    } catch {
-      toast('error', 'Erro ao mover e excluir etapa. Tente novamente.');
-    } finally {
-      setDeleting(false);
-    }
-  }
-
-  function openColorPicker(e: React.MouseEvent) {
-    e.stopPropagation();
-    if (colorPickerPos) { setColorPickerPos(null); return; }
-    const rect = colorDotRef.current!.getBoundingClientRect();
-    setColorPickerPos({ top: rect.bottom + 6, left: rect.left });
-  }
-
-  async function handleColorClick(c: string) {
-    setCor(c);
-    setColorPickerPos(null);
-    await api('', 'POST', { action: 'update_cadastro_status', id: etapa.id, nome, cor: c });
-    onUpdate({ ...etapa, nome, cor: c });
-    toast('success', 'Cor atualizada');
-  }
-
-  function handleNameBlur(e: React.FocusEvent) {
-    if (rowRef.current?.contains(e.relatedTarget as Node)) return;
-    saveName();
-  }
-
-  async function saveName() {
-    setEditingName(false);
-    if (nome === etapa.nome) return;
-    await api('', 'POST', { action: 'update_cadastro_status', id: etapa.id, nome, cor });
-    onUpdate({ ...etapa, nome, cor });
-    toast('success', 'Etapa atualizada');
-  }
-
-  return (
-    <div
-      ref={rowRef}
-      className={`status-row${isDragging ? ' status-row-dragging' : ''}${dropIndicator ? ' status-row-drop-target' : ''}`}
-      draggable={!editingName}
-      style={{
-        cursor: editingName ? 'default' : 'grab',
-        boxShadow: dropIndicator === 'before' ? 'inset 0 3px 0 0 var(--yellow)'
-          : dropIndicator === 'after' ? 'inset 0 -3px 0 0 var(--yellow)' : undefined,
-      }}
-      onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; onDragStart(); }}
-      onDragEnd={onDragEnd}
-      onDragOver={e => {
-        e.preventDefault();
-        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-        onDragOver(e.clientY < rect.top + rect.height / 2 ? 'before' : 'after');
-      }}
-      onDragLeave={e => { if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) onClearIndicator(); }}
-      onDrop={e => { e.preventDefault(); onDrop(); }}
-    >
-      <div className="status-row-bar">
-        <div className="status-row-left">
-          <div className="drag-handle-dots">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <circle cx="4" cy="3" r="1.2" fill="currentColor"/><circle cx="4" cy="7" r="1.2" fill="currentColor"/><circle cx="4" cy="11" r="1.2" fill="currentColor"/>
-              <circle cx="10" cy="3" r="1.2" fill="currentColor"/><circle cx="10" cy="7" r="1.2" fill="currentColor"/><circle cx="10" cy="11" r="1.2" fill="currentColor"/>
-            </svg>
-          </div>
-
-          <button ref={colorDotRef} className="status-color-dot-btn" onClick={openColorPicker} title="Alterar cor">
-            <span className="kanban-dot" style={{ background: cor, width: 12, height: 12 }} />
-          </button>
-
-          {editingName ? (
-            <input
-              className="status-name-input"
-              value={nome}
-              onChange={e => setNome(e.target.value)}
-              autoFocus
-              onClick={e => e.stopPropagation()}
-              onBlur={handleNameBlur}
-              onKeyDown={e => {
-                if (e.key === 'Enter') e.currentTarget.blur();
-                if (e.key === 'Escape') { setNome(etapa.nome); setEditingName(false); }
-              }}
-            />
-          ) : (
-            <span className="status-name" onClick={e => { e.stopPropagation(); setNome(etapa.nome); setEditingName(true); }} title="Clique para renomear">
-              {nome}
-            </span>
-          )}
-
-          {etapa.locked === 1 && (
-            <span
-              title="Etapa de sistema - controla o acesso ao formulário público. Pode renomear/recolorir, mas não excluir."
-              style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--gray2)', background: 'var(--gray3)', padding: '2px 7px', borderRadius: 99 }}
-            >
-              {etapa.chave === 'aprovado' ? 'Libera CNPJ' : 'Sistema'}
-            </span>
-          )}
-        </div>
-
-        <div className="status-row-right" onClick={e => e.stopPropagation()}>
-          <div className="status-notif-chips-inline">
-            {notifs.map(n => (
-              <div key={n.id} className="notif-chip">
-                {n.slack_user_avatar
-                  ? <img src={n.slack_user_avatar} alt="" className="slack-avatar-sm" />
-                  : <div className="slack-avatar-sm slack-avatar-placeholder" style={{ fontSize: 10 }}>{n.slack_user_name[0]}</div>
-                }
-                <span>{n.slack_user_name}</span>
-                <button onClick={() => onRemoveNotif(n.id)}>×</button>
-              </div>
-            ))}
-          </div>
-
-          <SlackUserDropdown token={token} onSelect={user => onAddNotif(etapa.chave, user)} exclude={notifs.map(n => n.slack_user_id)} compact />
-
-          <button
-            className="status-action-btn danger"
-            onClick={etapa.locked ? undefined : handleDeleteClick}
-            title={etapa.locked ? 'Etapa de sistema não pode ser excluída' : 'Excluir etapa'}
-            style={etapa.locked ? { opacity: 0.3, cursor: 'not-allowed' } : {}}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M10 11v6M14 11v6M9 6V4h6v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          </button>
-        </div>
-      </div>
-
-      {colorPickerPos && createPortal(
-        <div ref={colorPickerRef} className="status-color-picker-popover" style={{ position: 'fixed', top: colorPickerPos.top, left: colorPickerPos.left }}>
-          {COLORS.map(c => (
-            <button key={c} className={`color-swatch${cor === c ? ' active' : ''}`} style={{ background: c }} onClick={() => handleColorClick(c)} />
-          ))}
-        </div>,
-        document.body
-      )}
-
-      {confirmDelete && createPortal(
-        <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }} onClick={() => setConfirmDelete(false)}>
-          <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-            <p className="delete-confirm-title">Excluir etapa?</p>
-            <p className="delete-confirm-desc"><strong>{etapa.nome}</strong> será excluída permanentemente e não poderá ser recuperada.</p>
-            <div className="delete-confirm-actions">
-              <button className="delete-confirm-cancel" onClick={() => setConfirmDelete(false)}>Cancelar</button>
-              <button className="delete-confirm-ok" onClick={handleDeleteConfirm} disabled={deleting}>{deleting ? 'Excluindo…' : 'Excluir'}</button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {moveModal && createPortal(
-        <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }} onClick={() => setMoveModal(null)}>
-          <div className="delete-confirm-modal" onClick={e => e.stopPropagation()} style={{ width: 360 }}>
-            <p className="delete-confirm-title">Excluir etapa?</p>
-            <p className="delete-confirm-desc"><strong>{etapa.nome}</strong> tem <strong>{moveModal.count}</strong> cadastro(s). Para qual etapa deseja movê-los?</p>
-            <MoveTargetSelect
-              options={allEtapas.filter(e => e.id !== etapa.id).map(e => ({ id: e.id, nome: e.nome, cor: e.cor }))}
-              value={moveTargetId}
-              onChange={v => { if (v !== '__new__') setMoveTargetId(v); }}
-              allowNew={false}
-            />
-            <div className="delete-confirm-actions" style={{ marginTop: 20 }}>
-              <button className="delete-confirm-cancel" onClick={() => setMoveModal(null)}>Cancelar</button>
-              <button className="delete-confirm-ok" onClick={handleMoveAndDelete} disabled={deleting || !moveTargetId}>
-                {deleting ? 'Movendo…' : 'Mover e excluir'}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-    </div>
-  );
-}
-
-// ── Onboarding Tab (etapas configuráveis + notificações) ────────
-function CadastroNotifTab({ token, adding, setAdding }: { token: string; adding: boolean; setAdding: (v: boolean) => void }) {
-  const api = useApi(token);
-  const { toast } = useToast();
-  const [submissao, setSubmissao] = useState<NovaNotificacao[]>([]);
-  const [etapas, setEtapas] = useState<CadastroEtapaConfig[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [newNome, setNewNome] = useState('');
-  const [newCor, setNewCor] = useState(COLORS[0]);
-  const [saving, setSaving] = useState(false);
-  const [draggedId, setDraggedId] = useState<number | null>(null);
-  const [dragOver, setDragOver] = useState<{ id: number; pos: 'before' | 'after' } | null>(null);
-
-  useEffect(() => {
-    api('?action=cadastro_notif_config').then(d => {
-      setSubmissao(d.submissao_notificacoes ?? []);
-      setEtapas(d.etapas ?? []);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, []);
-
-  async function addSubmissao(user: SlackUser) {
-    const data = await api('', 'POST', {
-      action: 'add_cadastro_submissao_notif',
-      slack_user_id: user.id, slack_user_name: user.name, slack_user_avatar: user.avatar,
-    });
-    if (data.notificacao) setSubmissao(prev => [...prev, data.notificacao]);
-  }
-  async function removeSubmissao(id: number) {
-    await api('', 'POST', { action: 'remove_cadastro_submissao_notif', id });
-    setSubmissao(prev => prev.filter(n => n.id !== id));
-  }
-
-  async function addEtapaNotif(chave: string, user: SlackUser) {
-    const data = await api('', 'POST', {
-      action: 'add_cadastro_etapa_notif', etapa: chave,
-      slack_user_id: user.id, slack_user_name: user.name, slack_user_avatar: user.avatar,
-    });
-    if (data.notificacao) {
-      setEtapas(prev => prev.map(e => e.chave === chave ? { ...e, notificacoes: [...(e.notificacoes ?? []), data.notificacao] } : e));
-    }
-  }
-  async function removeEtapaNotif(id: number) {
-    await api('', 'POST', { action: 'remove_cadastro_etapa_notif', id });
-    setEtapas(prev => prev.map(e => ({ ...e, notificacoes: (e.notificacoes ?? []).filter(n => n.id !== id) })));
-  }
-
-  async function createEtapa() {
-    if (!newNome.trim()) return;
-    setSaving(true);
-    const data = await api('', 'POST', { action: 'create_cadastro_status', nome: newNome.trim(), cor: newCor });
-    if (data.etapa) setEtapas(prev => [...prev, data.etapa]);
-    setNewNome(''); setNewCor(COLORS[0]); setAdding(false); setSaving(false);
-    toast('success', 'Etapa criada');
-  }
-
-  function handleDrop(targetId: number) {
-    if (draggedId === null || draggedId === targetId) { setDragOver(null); return; }
-    const pos = dragOver?.pos ?? 'after';
-    const next = [...etapas];
-    const fromIdx = next.findIndex(e => e.id === draggedId);
-    const [moved] = next.splice(fromIdx, 1);
-    const toIdx = next.findIndex(e => e.id === targetId);
-    next.splice(pos === 'before' ? toIdx : toIdx + 1, 0, moved);
-    setEtapas(next);
-    setDraggedId(null);
-    setDragOver(null);
-    api('', 'POST', { action: 'reorder_cadastro_status', ids: next.map(e => e.id) });
-    toast('success', 'Ordem atualizada');
-  }
-
-  if (loading) return <ConfiguracoesSkeleton />;
-
-  return (
-    <>
-      {/* Submissão do formulário de cadastro */}
-      <div className="nova-notif-section">
-        <div className="nova-notif-header">
-          <div className="nova-notif-icon">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </div>
-          <div>
-            <p className="nova-notif-title">Novo cadastro de cedente recebido</p>
-            <p className="nova-notif-desc">Notificar no Slack quando alguém enviar o formulário de cadastro</p>
-          </div>
-        </div>
-        <div className="nova-notif-body">
-          <div className="notif-chips">
-            {submissao.map(n => (
-              <div key={n.id} className="notif-chip">
-                {n.slack_user_avatar
-                  ? <img src={n.slack_user_avatar} alt="" className="slack-avatar-sm" />
-                  : <div className="slack-avatar-sm slack-avatar-placeholder" style={{ fontSize: 10 }}>{n.slack_user_name[0]}</div>
-                }
-                <span>{n.slack_user_name}</span>
-                <button onClick={() => removeSubmissao(n.id)}>×</button>
-              </div>
-            ))}
-          </div>
-          <SlackUserDropdown token={token} onSelect={addSubmissao} exclude={submissao.map(n => n.slack_user_id)} />
-        </div>
-      </div>
-
-      {/* Etapas configuráveis da pipeline de onboarding */}
-      <div className="status-list" style={{ marginTop: 16 }}>
-        {adding && (
-          <div className="status-row status-row-new animate">
-            <div className="status-row-bar">
-              <div className="status-row-left">
-                <span className="kanban-dot" style={{ background: newCor, width: 12, height: 12 }} />
-                <input
-                  className="status-name-input"
-                  placeholder="Nome da etapa…"
-                  value={newNome}
-                  onChange={e => setNewNome(e.target.value)}
-                  autoFocus
-                  onKeyDown={e => { if (e.key === 'Enter') createEtapa(); if (e.key === 'Escape') setAdding(false); }}
-                />
-              </div>
-              <div className="status-row-actions">
-                <button className="status-action-btn primary" onClick={createEtapa} disabled={saving || !newNome.trim()}>
-                  {saving ? '…' : 'Criar'}
-                </button>
-                <button className="status-action-btn" onClick={() => setAdding(false)}>Cancelar</button>
-              </div>
-            </div>
-            <div className="status-color-picker">
-              {COLORS.map(c => (
-                <button key={c} className={`color-swatch${newCor === c ? ' active' : ''}`} style={{ background: c }} onClick={() => setNewCor(c)} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {etapas.map(et => (
-          <CadastroEtapaRow
-            key={et.id}
-            etapa={et}
-            allEtapas={etapas}
-            token={token}
-            isDragging={draggedId === et.id}
-            dropIndicator={dragOver?.id === et.id ? dragOver.pos : null}
-            onDragStart={() => setDraggedId(et.id)}
-            onDragOver={pos => setDragOver({ id: et.id, pos })}
-            onClearIndicator={() => setDragOver(null)}
-            onDrop={() => handleDrop(et.id)}
-            onDragEnd={() => { setDraggedId(null); setDragOver(null); }}
-            onUpdate={updated => setEtapas(prev => prev.map(e => e.id === updated.id ? { ...e, ...updated } : e))}
-            onDelete={id => setEtapas(prev => prev.filter(e => e.id !== id))}
-            onAddNotif={addEtapaNotif}
-            onRemoveNotif={removeEtapaNotif}
-          />
-        ))}
-      </div>
-    </>
-  );
-}
-
-// ── Skeleton ─────────────────────────────────────────
 function SkBlock({ w, h, radius = 6 }: { w: string | number; h: string | number; radius?: number }) {
   return <div className="sk-block" style={{ width: w, height: h, borderRadius: radius }} />;
 }
@@ -1777,14 +1220,11 @@ function ConfiguracoesSkeleton() {
 
 // ── Main ─────────────────────────────────────────────
 type ConfigTab = 'etapas' | 'integracoes';
-type EtapaScope = 'solicitacoes' | 'onboarding';
 
 export default function ConfiguracoesPage({ token }: { token: string }) {
   const api = useApi(token);
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<ConfigTab>('etapas');
-  const [etapaScope, setEtapaScope] = useState<EtapaScope>('solicitacoes');
-  const [obAdding, setObAdding] = useState(false);
   const [statuses, setStatuses] = useState<StatusConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -1872,28 +1312,13 @@ export default function ConfiguracoesPage({ token }: { token: string }) {
           <p className="admin-page-desc">
             {activeTab === 'integracoes'
               ? 'Conecte ferramentas externas ao sistema.'
-              : etapaScope === 'solicitacoes'
-              ? 'Gerencie as etapas do pipeline de solicitações e notificações.'
-              : 'Etapas e notificações do pipeline de on-boarding de cedentes.'}
+              : 'Gerencie as etapas do funil e as notificações de cada uma.'}
           </p>
         </div>
         {activeTab === 'etapas' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-            <SegSwitch
-              valor={etapaScope}
-              onChange={setEtapaScope}
-              opcoes={[
-                { valor: 'solicitacoes', label: 'Solicitações' },
-                { valor: 'onboarding', label: 'Onboarding' },
-              ]}
-            />
-            {etapaScope === 'solicitacoes' && !loading && !adding && (
+            {!loading && !adding && (
               <button className="btn btn-primary" onClick={() => setAdding(true)} style={{ whiteSpace: 'nowrap' }}>
-                + Nova etapa
-              </button>
-            )}
-            {etapaScope === 'onboarding' && !obAdding && (
-              <button className="btn btn-primary" onClick={() => setObAdding(true)} style={{ whiteSpace: 'nowrap' }}>
                 + Nova etapa
               </button>
             )}
@@ -1903,8 +1328,6 @@ export default function ConfiguracoesPage({ token }: { token: string }) {
 
       {activeTab === 'integracoes' ? (
         <IntegracoesTab token={token} />
-      ) : etapaScope === 'onboarding' ? (
-        <CadastroNotifTab token={token} adding={obAdding} setAdding={setObAdding} />
       ) : loading ? (
         <ConfiguracoesSkeleton />
       ) : (
