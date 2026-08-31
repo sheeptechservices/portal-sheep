@@ -583,6 +583,7 @@ async function migrarSchema(db: Client) {
       projeto_id      TEXT NOT NULL,
       titulo          TEXT NOT NULL,
       descricao       TEXT,
+      categoria       TEXT,
       status          TEXT NOT NULL DEFAULT 'Planejada',
       prazo           TEXT,
       responsaveis    TEXT,
@@ -609,6 +610,11 @@ async function migrarSchema(db: Client) {
       criado_por_nome TEXT
     )
   `);
+
+  // Categoria da entrega, acrescentada depois da tabela existir.
+  try {
+    await ddl(`ALTER TABLE projeto_entregas ADD COLUMN categoria TEXT`);
+  } catch { /* coluna já existe */ }
 
   // A tabela de evidências pode ter sido criada antes do comentário existir.
   try {
@@ -1644,7 +1650,8 @@ async function despacharAdminData(
           FROM projeto_reunioes ORDER BY data DESC, id DESC
         `),
         db.execute(`
-          SELECT id, projeto_id, titulo, descricao, status, prazo, responsaveis, links, ordem
+          SELECT id, projeto_id, titulo, descricao, categoria, status, prazo,
+                 responsaveis, links, ordem
           FROM projeto_entregas ORDER BY ordem, id
         `),
         // Sem o base64: a listagem carregaria o conteúdo de todo arquivo de
@@ -2014,11 +2021,11 @@ function faltaEmProjeto(p: any): string | null {
       for (const [i, e] of (p.entregas as any[]).entries()) {
         await db.execute({
           sql: `INSERT INTO projeto_entregas
-                  (projeto_id, titulo, descricao, status, prazo, responsaveis, links, ordem,
+                  (projeto_id, titulo, descricao, categoria, status, prazo, responsaveis, links, ordem,
                    criado_em, criado_por_id, criado_por_nome)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
           args: [
-            id, String(e.titulo).trim(), e.descricao ?? null,
+            id, String(e.titulo).trim(), e.descricao ?? null, String(e.categoria ?? '').trim() || null,
             // Concluída exige evidência, que só pode ser anexada depois de a
             // entrega existir. Por isso a criação nunca nasce concluída.
             e.status === ENTREGA_CANCELADA ? ENTREGA_CANCELADA : 'Planejada',
@@ -2128,10 +2135,10 @@ function faltaEmProjeto(p: any): string | null {
         }
         await db.execute({
           sql: `UPDATE projeto_entregas
-                SET titulo=?, descricao=?, status=?, prazo=?, responsaveis=?, links=?
+                SET titulo=?, descricao=?, categoria=?, status=?, prazo=?, responsaveis=?, links=?
                 WHERE id=?`,
-          args: [titulo, e.descricao ?? null, e.status ?? 'Planejada', e.prazo || null,
-            responsaveis, links, e.id],
+          args: [titulo, e.descricao ?? null, String(e.categoria ?? '').trim() || null,
+            e.status ?? 'Planejada', e.prazo || null, responsaveis, links, e.id],
         });
       } else {
         // Entrega nova nunca nasce concluída: não há evidência a anexar ainda.
@@ -2141,11 +2148,11 @@ function faltaEmProjeto(p: any): string | null {
         });
         await db.execute({
           sql: `INSERT INTO projeto_entregas
-                  (projeto_id, titulo, descricao, status, prazo, responsaveis, links, ordem,
+                  (projeto_id, titulo, descricao, categoria, status, prazo, responsaveis, links, ordem,
                    criado_em, criado_por_id, criado_por_nome)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
           args: [
-            e.projeto_id, titulo, e.descricao ?? null,
+            e.projeto_id, titulo, e.descricao ?? null, String(e.categoria ?? '').trim() || null,
             // Entrega nova nasce planejada: concluir exige prova, que ainda não
             // tem onde se prender.
             e.status === ENTREGA_CANCELADA ? ENTREGA_CANCELADA : 'Planejada',

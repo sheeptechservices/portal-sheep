@@ -4,7 +4,7 @@ import { iniciais, useAuth, useToast } from './AdminApp';
 import {
   IconAlert, IconClip, IconDoc, IconDownload, IconImage, IconInbox,
   IconChevronRight, IconEdit, IconEye, IconLink, IconMarcoAndamento, IconMarcoBloqueado,
-  IconOrdenar, IconSearch,
+  IconAgrupar, IconOrdenar, IconSearch,
   IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado,
   IconPlus, IconPrioridadeAlta, IconPrioridadeBaixa, IconPrioridadeMaxima,
   IconPrioridadeMedia, IconTrash, IconTrendDown, IconTrendFlat, IconTrendUp, IconTrendWavy,
@@ -40,6 +40,14 @@ const COR_STATUS: Record<string, string> = {
 
 /** Como a lista de entregas pode ser ordenada. A ordem de criação é o padrão
  *  porque as entregas são cadastradas na sequência em que devem acontecer. */
+/** Como a lista de entregas pode ser agrupada. Desligado por padrão: agrupar
+ *  ajuda em lista longa e atrapalha em lista curta. */
+const AGRUPAMENTOS_ENTREGA = [
+  { valor: 'nenhum', label: 'Sem agrupamento' },
+  { valor: 'status', label: 'Agrupar por status' },
+  { valor: 'categoria', label: 'Agrupar por categoria' },
+] as const;
+
 const ORDENS_ENTREGA = [
   { valor: 'criacao', label: 'Ordem de criação' },
   { valor: 'titulo', label: 'Título (A a Z)' },
@@ -184,6 +192,7 @@ export interface Entrega {
   projeto_id: string;
   titulo: string;
   descricao: string | null;
+  categoria: string | null;
   status: string;
   prazo: string | null;
   responsaveis: string[];
@@ -196,6 +205,7 @@ export interface Entrega {
 export interface EntregaPendente {
   titulo: string;
   descricao: string;
+  categoria: string;
   status: string;
   prazo: string;
   responsaveis: string[];
@@ -639,6 +649,146 @@ function SecaoSaude({ registros, salvando, onRegistrar, onExcluir }: {
   );
 }
 
+// ── Categoria da entrega ────────────────────────────────────────────────────
+
+/** Campo livre que reaproveita o que já foi escrito. Lista fechada engessaria a
+ *  casa; campo solto viraria "BI", "bi" e "B.I." na mesma base. A sugestão
+ *  puxa a grafia existente sem impedir uma categoria nova. */
+function CampoCategoria({ valor, sugestoes, onChange }: {
+  valor: string;
+  sugestoes: string[];
+  onChange: (v: string) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+  const campoRef = useRef<HTMLInputElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  const q = valor.trim().toLocaleLowerCase('pt-BR');
+  const combinam = sugestoes.filter(c =>
+    c.toLocaleLowerCase('pt-BR') !== q && (!q || c.toLocaleLowerCase('pt-BR').includes(q)));
+
+  function abrir() {
+    if (!campoRef.current) return;
+    setPos(ancorar(campoRef.current, Math.min(combinam.length, 6), 200));
+    setAberto(true);
+  }
+  useDropdownDismiss(aberto, [campoRef, dropRef], () => setAberto(false));
+
+  return (
+    <>
+      <input ref={campoRef} className="form-input" value={valor}
+        onChange={e => { onChange(e.target.value); abrir(); }}
+        onFocus={abrir}
+        placeholder="Automação, Relatório, Integração"
+        onKeyDown={e => { if (e.key === 'Escape') setAberto(false); }} />
+      {aberto && combinam.length > 0 && createPortal(
+        <div ref={dropRef} className="status-select-dropdown"
+          style={{ top: pos.top, left: pos.left, width: pos.width, zIndex: 10000 }}>
+          {combinam.slice(0, 8).map(c => (
+            <div key={c} className="status-select-option"
+              onMouseDown={e => { e.preventDefault(); onChange(c); setAberto(false); }}>
+              <span>{c}</span>
+            </div>
+          ))}
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
+// ── Prévia de arquivo ───────────────────────────────────────────────────────
+
+/** Mostra a evidência sem sair do portal, no mesmo modal que o Funil usa para
+ *  os anexos. Imagem e PDF abrem aqui; o resto oferece o download, porque o
+ *  navegador não sabe desenhar. */
+function PreviaEvidencia({ evidencia, onCarregar, onBaixar, onFechar }: {
+  evidencia: Evidencia;
+  /** O buscador vem da página: o `api` carrega o token da sessão. */
+  onCarregar: (ev: Evidencia) => Promise<{ tipo: string; base64: string } | null>;
+  onBaixar: (ev: Evidencia) => void;
+  onFechar: () => void;
+}) {
+  const [conteudo, setConteudo] = useState<{ tipo: string; url: string } | null>(null);
+  const [erro, setErro] = useState('');
+
+  useEffect(() => {
+    let vivo = true;
+    let criada = '';
+    (async () => {
+      try {
+        const r = await onCarregar(evidencia);
+        if (!vivo) return;
+        if (!r?.base64) { setErro('O arquivo não veio.'); return; }
+        const bytes = Uint8Array.from(atob(r.base64), c => c.charCodeAt(0));
+        criada = URL.createObjectURL(new Blob([bytes], { type: r.tipo }));
+        setConteudo({ tipo: r.tipo, url: criada });
+      } catch {
+        if (vivo) setErro('Não foi possível abrir o arquivo.');
+      }
+    })();
+    // A URL do blob segura o arquivo em memória enquanto existir: soltá-la ao
+    // fechar evita acumular cópias a cada prévia aberta.
+    return () => { vivo = false; if (criada) URL.revokeObjectURL(criada); };
+  }, [evidencia.id]);
+
+  // Modal em portal não recebe tecla por si: o Esc é escutado na janela.
+  useEffect(() => {
+    const sair = (e: KeyboardEvent) => { if (e.key === 'Escape') onFechar(); };
+    window.addEventListener('keydown', sair);
+    return () => window.removeEventListener('keydown', sair);
+  }, [onFechar]);
+
+  const imagem = conteudo?.tipo.startsWith('image/');
+  const pdf = conteudo?.tipo === 'application/pdf';
+
+  return createPortal(
+    <div className="file-preview-backdrop" style={{ zIndex: 10002 }} onClick={onFechar}>
+      <div className="file-preview-modal" onClick={e => e.stopPropagation()}>
+        <div className="file-preview-header">
+          <span className="file-preview-name">{evidencia.nome}</span>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button type="button" className="file-preview-action" onClick={() => onBaixar(evidencia)}>
+              <IconDownload size={13} />
+              Baixar
+            </button>
+            <button type="button" className="file-preview-close" aria-label="Fechar" onClick={onFechar}>
+              <IconX size={16} />
+            </button>
+          </div>
+        </div>
+        <div className="file-preview-body">
+          {erro && <div className="file-preview-unsupported"><p>{erro}</p></div>}
+          {!erro && !conteudo && <div className="file-preview-spinner" />}
+          {conteudo && imagem && (
+            <img src={conteudo.url} alt={evidencia.nome} className="file-preview-img" />
+          )}
+          {conteudo && pdf && (
+            <iframe src={conteudo.url} className="file-preview-iframe" title={evidencia.nome} />
+          )}
+          {conteudo && !imagem && !pdf && (
+            <div className="file-preview-unsupported">
+              <p>Visualização não disponível para este formato.</p>
+              <button type="button" className="btn btn-primary" style={{ marginTop: 16 }}
+                onClick={() => onBaixar(evidencia)}>
+                Baixar arquivo
+              </button>
+            </div>
+          )}
+        </div>
+        {evidencia.comentario && (
+          <p style={{ fontSize: 12.5, color: 'var(--gray)', margin: 0, padding: '12px 20px',
+            borderTop: '1px solid var(--gray3)', whiteSpace: 'pre-wrap' }}>
+            {evidencia.comentario}
+          </p>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 // ── Escolha de pessoas ──────────────────────────────────────────────────────
 
 /** Seleção múltipla de pessoas num campo só. Com a lista de usuários crescendo,
@@ -771,15 +921,18 @@ function ChipEntrega({ status }: { status: string }) {
 /** Editor de uma entrega. O mesmo componente serve a entrega já gravada e à que
  *  ainda está sendo montada num projeto novo. O status fica de fora: ele é
  *  resolvido no marco da linha ou deduzido das tarefas. */
-function EditorEntrega({ inicial, pessoas, salvando, onSalvar, onCancelar }: {
+function EditorEntrega({ inicial, pessoas, categorias, salvando, onSalvar, onCancelar }: {
   inicial?: Entrega | EntregaPendente;
   pessoas: Pessoa[];
+  /** Categorias já usadas, para a grafia não se multiplicar. */
+  categorias: string[];
   salvando: boolean;
   onSalvar: (e: EntregaPendente) => void;
   onCancelar: () => void;
 }) {
   const [titulo, setTitulo] = useState(inicial?.titulo ?? '');
   const [descricao, setDescricao] = useState(inicial?.descricao ?? '');
+  const [categoria, setCategoria] = useState(inicial?.categoria ?? '');
   const status = inicial?.status ?? ENTREGA_PLANEJADA;
   const [prazo, setPrazo] = useState(inicial?.prazo ?? '');
   const [responsaveis, setResponsaveis] = useState<string[]>(inicial?.responsaveis ?? []);
@@ -799,7 +952,8 @@ function EditorEntrega({ inicial, pessoas, salvando, onSalvar, onCancelar }: {
       setErros({ titulo: 'Informe o título da entrega.' });
       return;
     }
-    onSalvar({ titulo: titulo.trim(), descricao, status, prazo, responsaveis, links });
+    onSalvar({ titulo: titulo.trim(), descricao, categoria: categoria.trim(),
+      status, prazo, responsaveis, links });
   }
 
   return (
@@ -817,9 +971,15 @@ function EditorEntrega({ inicial, pessoas, salvando, onSalvar, onCancelar }: {
 
       {/* Status não é campo de formulário: ou é resolução, tomada no marco da
           linha, ou vem das tarefas. */}
-      <div className="form-group">
-        <label className="form-label">Prazo</label>
-        <DatePicker compact allowPast value={prazo} onChange={setPrazo} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div className="form-group">
+          <label className="form-label">Categoria</label>
+          <CampoCategoria valor={categoria} sugestoes={categorias} onChange={setCategoria} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Prazo</label>
+          <DatePicker compact allowPast value={prazo} onChange={setPrazo} />
+        </div>
       </div>
 
       <div className="form-group">
@@ -883,7 +1043,7 @@ function EditorEntrega({ inicial, pessoas, salvando, onSalvar, onCancelar }: {
 /** Lista de entregas. Num projeto já criado cada mudança grava na hora; num
  *  projeto novo elas ficam em memória até o projeto existir. */
 function SecaoEntregas({
-  entregas, pendentes, pessoas, salvando,
+  entregas, pendentes, pessoas, categorias, salvando,
   onSalvarEntrega, onExcluirEntrega, onAlterarPendentes,
   onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
 }: {
@@ -892,6 +1052,8 @@ function SecaoEntregas({
   /** Em memória, no cadastro de um projeto novo. */
   pendentes: EntregaPendente[];
   pessoas: Pessoa[];
+  /** Categorias já usadas em qualquer projeto: a grafia vem de lá. */
+  categorias: string[];
   salvando: boolean;
   onSalvarEntrega: (dados: EntregaPendente, id?: number) => Promise<void>;
   onExcluirEntrega: (e: Entrega) => void;
@@ -923,7 +1085,7 @@ function SecaoEntregas({
    *  regrava a linha inteira. */
   function comStatus(e: Entrega, status: string): EntregaPendente {
     return {
-      titulo: e.titulo, descricao: e.descricao ?? '', status,
+      titulo: e.titulo, descricao: e.descricao ?? '', categoria: e.categoria ?? '', status,
       prazo: e.prazo ?? '', responsaveis: e.responsaveis, links: e.links,
     };
   }
@@ -944,6 +1106,7 @@ function SecaoEntregas({
   const [busca, setBusca] = useState('');
   const [buscando, setBuscando] = useState(false);
   const [ordem, setOrdem] = useState<string>('criacao');
+  const [agrupar, setAgrupar] = useState<string>('nenhum');
 
   const visiveis = useMemo(() => {
     const q = busca.trim().toLocaleLowerCase('pt-BR');
@@ -962,6 +1125,27 @@ function SecaoEntregas({
     return copia;
   }, [entregas, busca, ordem]);
 
+  /** A lista já filtrada e ordenada, repartida em blocos. Sem agrupamento é um
+   *  bloco só, sem título, e o desenho da lista não muda. */
+  const blocos = useMemo(() => {
+    if (agrupar === 'nenhum') return [{ titulo: '', itens: visiveis }];
+
+    const chave = (e: Entrega) => (agrupar === 'status'
+      ? e.status
+      : (e.categoria ?? '').trim() || 'Sem categoria');
+
+    // Por status a ordem é a da escala, não a alfabética: "Bloqueada" antes de
+    // "Planejada" inverteria a leitura do andamento.
+    const nomes = [...new Set(visiveis.map(chave))].sort((a, b) => (
+      agrupar === 'status'
+        ? STATUS_ENTREGA.indexOf(a as typeof STATUS_ENTREGA[number])
+          - STATUS_ENTREGA.indexOf(b as typeof STATUS_ENTREGA[number])
+        : a === 'Sem categoria' ? 1 : b === 'Sem categoria' ? -1 : a.localeCompare(b, 'pt-BR')
+    ));
+
+    return nomes.map(titulo => ({ titulo, itens: visiveis.filter(e => chave(e) === titulo) }));
+  }, [visiveis, agrupar]);
+
   return (
     <section>
       <div className="admin-section-head">
@@ -979,7 +1163,10 @@ function SecaoEntregas({
             title="Buscar entrega" aria-label="Buscar entrega" aria-expanded={buscando}>
             <IconSearch size={13} />
           </button>
-          <SeletorOrdem valor={ordem} onChange={setOrdem} />
+          <SeletorLista valor={ordem} onChange={setOrdem} opcoes={ORDENS_ENTREGA}
+            icone={IconOrdenar} rotulo="Ordenar entregas" />
+          <SeletorLista valor={agrupar} onChange={setAgrupar} opcoes={AGRUPAMENTOS_ENTREGA}
+            icone={IconAgrupar} rotulo="Agrupar entregas" />
           <button type="button" className="secao-add"
             onClick={() => (gravado ? setEditando('novo') : setEditandoPendente(-1))}
             title="Adicionar entrega" aria-label="Adicionar entrega">
@@ -999,6 +1186,7 @@ function SecaoEntregas({
       {(editando === 'novo' || editandoPendente === -1) && (
         <EditorEntrega
           pessoas={pessoas}
+          categorias={categorias}
           salvando={salvando}
           onSalvar={dados => {
             if (gravado || entregas.length) void onSalvarEntrega(dados);
@@ -1021,10 +1209,19 @@ function SecaoEntregas({
         </p>
       )}
 
+      {blocos.map(bloco => (
+      <div key={bloco.titulo} style={{ marginBottom: bloco.titulo ? 12 : 0 }}>
+      {bloco.titulo && (
+        <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray2)',
+          textTransform: 'uppercase', letterSpacing: '.04em', margin: '0 0 6px' }}>
+          {bloco.titulo}
+          <span style={{ marginLeft: 6, fontWeight: 600 }}>({bloco.itens.length})</span>
+        </p>
+      )}
       <div className="admin-file-list">
-        {visiveis.map(e => (
+        {bloco.itens.map(e => (
           editando === e.id ? (
-            <EditorEntrega key={e.id} inicial={e} pessoas={pessoas}
+            <EditorEntrega key={e.id} inicial={e} pessoas={pessoas} categorias={categorias}
               salvando={salvando}
               onSalvar={dados => { void onSalvarEntrega(dados, e.id); setEditando(null); }}
               onCancelar={() => setEditando(null)} />
@@ -1168,10 +1365,14 @@ function SecaoEntregas({
             );
           })()
         ))}
+      </div>
+      </div>
+      ))}
 
+      <div className="admin-file-list">
         {pendentes.map((e, i) => (
           editandoPendente === i ? (
-            <EditorEntrega key={`pend-${i}`} inicial={e} pessoas={pessoas}
+            <EditorEntrega key={`pend-${i}`} inicial={e} pessoas={pessoas} categorias={categorias}
               salvando={salvando}
               onSalvar={dados => {
                 onAlterarPendentes(pendentes.map((x, j) => (j === i ? dados : x)));
@@ -1253,16 +1454,23 @@ function SecaoEntregas({
   );
 }
 
-/** Escolha do critério de ordenação, no mesmo ícone-botão do cabeçalho. */
-function SeletorOrdem({ valor, onChange }: { valor: string; onChange: (v: string) => void }) {
+/** Ícone-botão do cabeçalho que abre uma lista curta de critérios. Serve à
+ *  ordenação e ao agrupamento, que só diferem no ícone e nas opções. */
+function SeletorLista({ valor, opcoes, icone: Icone, rotulo, onChange }: {
+  valor: string;
+  opcoes: readonly { valor: string; label: string }[];
+  icone: (p: { size?: number }) => JSX.Element;
+  rotulo: string;
+  onChange: (v: string) => void;
+}) {
   const [aberto, setAberto] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
-  const atual = ORDENS_ENTREGA.find(o => o.valor === valor);
+  const atual = opcoes.find(o => o.valor === valor);
 
   function abrir() {
-    setPos(ancorar(triggerRef.current!, ORDENS_ENTREGA.length, 190));
+    setPos(ancorar(triggerRef.current!, opcoes.length, 190));
     setAberto(a => !a);
   }
   useDropdownDismiss(aberto, [triggerRef, dropRef], () => setAberto(false));
@@ -1270,13 +1478,13 @@ function SeletorOrdem({ valor, onChange }: { valor: string; onChange: (v: string
   return (
     <>
       <button ref={triggerRef} type="button" className="secao-add" onClick={abrir}
-        title={`Ordenar por: ${atual?.label}`} aria-label={`Ordenar entregas. Atual: ${atual?.label}`}>
-        <IconOrdenar size={13} />
+        title={`${rotulo}: ${atual?.label}`} aria-label={`${rotulo}. Atual: ${atual?.label}`}>
+        <Icone size={13} />
       </button>
       {aberto && createPortal(
         <div ref={dropRef} className="status-select-dropdown"
           style={{ top: pos.top, left: pos.left, width: pos.width, zIndex: 10000 }}>
-          {ORDENS_ENTREGA.map(o => (
+          {opcoes.map(o => (
             <div key={o.valor} className={`status-select-option${o.valor === valor ? ' active' : ''}`}
               onClick={() => { onChange(o.valor); setAberto(false); }}>
               <span>{o.label}</span>
@@ -1728,6 +1936,7 @@ function SecaoEquipe({ titulo, pessoas, valor, onChange }: {
 
 function FormularioProjeto({
   editando, pessoas, clientes, salvando, onFechar, onSalvar, onBaixarAnexo, onEtiquetar,
+  categorias,
   onRegistrarSaude, onExcluirSaude, onRegistrarReuniao, onExcluirReuniao,
   onSalvarEntrega, onExcluirEntrega, onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
 }: {
@@ -1746,6 +1955,8 @@ function FormularioProjeto({
     r: { data: string; assunto: string; notas: string; participantes: string[] },
   ) => Promise<void>;
   onExcluirReuniao: (r: Reuniao) => void;
+  /** Categorias de entrega já usadas, para sugerir no cadastro. */
+  categorias: string[];
   onSalvarEntrega: (p: Projeto, dados: EntregaPendente, id?: number) => Promise<void>;
   onExcluirEntrega: (e: Entrega) => void;
   onSubirEvidencia: (e: Entrega, arquivos: FileList | null, comentario?: string) => Promise<void>;
@@ -1969,6 +2180,7 @@ function FormularioProjeto({
             entregas={editando?.entregas ?? []}
             pendentes={r.entregas}
             pessoas={pessoas}
+            categorias={categorias}
             salvando={salvando}
             onSalvarEntrega={(dados, id) => onSalvarEntrega(editando!, dados, id)}
             onExcluirEntrega={onExcluirEntrega}
@@ -2084,6 +2296,8 @@ export default function ProjetosPage({ token }: { token: string }) {
   const [form, setForm] = useState<{ editando: Projeto | null } | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [excluindo, setExcluindo] = useState<Projeto | null>(null);
+  /** Evidência aberta em prévia, sem sair do portal. */
+  const [previa, setPrevia] = useState<Evidencia | null>(null);
   const [view, setView] = useState<'quadro' | 'lista'>('lista');
   const [fStatus, setFStatus] = useState<string[]>([]);
   const [fCliente, setFCliente] = useState<string[]>([]);
@@ -2199,21 +2413,7 @@ export default function ProjetosPage({ token }: { token: string }) {
     link.click();
   }
 
-  /** Abre a prova numa aba. A aba é aberta antes da busca porque o navegador só
-   *  a autoriza no clique; abrir depois do `await` cairia no bloqueador. */
-  async function verEvidencia(ev: Evidencia) {
-    const aba = window.open('', '_blank');
-    const r = await api(`?action=entrega_evidencia_base64&id=${ev.id}`);
-    if (!r?.base64) {
-      aba?.close();
-      toast('error', 'Não deu', 'A evidência não veio.');
-      return;
-    }
-    const bytes = Uint8Array.from(atob(r.base64), c => c.charCodeAt(0));
-    const url = URL.createObjectURL(new Blob([bytes], { type: r.tipo }));
-    if (aba) aba.location.href = url;
-    else window.open(url, '_blank');
-  }
+
 
   async function registrarReuniao(
     p: Projeto,
@@ -2273,6 +2473,15 @@ export default function ProjetosPage({ token }: { token: string }) {
     setProjetos(ps => ps.map(x => (x.id === p.id ? { ...x, [campo]: valor } as Projeto : x)));
     await api('', 'POST', { action: 'update_projeto', id: p.id, [campo]: valor });
   }
+
+  /** Categorias de entrega já escritas, de todos os projetos. Sugerir só as do
+   *  projeto aberto faria a mesma categoria nascer com grafia diferente em cada
+   *  projeto novo. */
+  const categoriasDeEntrega = useMemo(() => [...new Set(
+    projetos.flatMap(p => p.entregas ?? [])
+      .map(e => (e.categoria ?? '').trim())
+      .filter(Boolean),
+  )].sort((a, b) => a.localeCompare(b, 'pt-BR')), [projetos]);
 
   /** Opções vêm do que existe, não de uma lista fixa: filtro que oferece valor
    *  sem resultado é ruído. */
@@ -2441,7 +2650,7 @@ export default function ProjetosPage({ token }: { token: string }) {
             <thead>
               <tr>
                 <th>Código</th><th>Projeto</th><th>Cliente</th><th>Tipo</th><th>Status</th><th>Anexos</th>
-                <th style={{ textAlign: 'right' }}>Ações</th>
+                <th>Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -2484,7 +2693,7 @@ export default function ProjetosPage({ token }: { token: string }) {
                     ) : <ChipStatus status={p.status} />}
                   </td>
                   <td style={{ color: 'var(--gray2)' }}>{p.arquivos.length || '-'}</td>
-                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <td style={{ whiteSpace: 'nowrap' }}>
                     {podeExcluir && (
                       <button className="admin-toolbar-btn" title="Excluir projeto"
                         onClick={e => { e.stopPropagation(); setExcluindo(p); }}>
@@ -2630,6 +2839,7 @@ export default function ProjetosPage({ token }: { token: string }) {
           onFechar={() => setForm(null)}
           onSalvar={salvar}
           onBaixarAnexo={a => void baixarAnexo(a)}
+          categorias={categoriasDeEntrega}
           onEtiquetar={etiquetarAnexo}
           onRegistrarSaude={registrarSaude}
           onExcluirSaude={excluirSaude}
@@ -2639,7 +2849,16 @@ export default function ProjetosPage({ token }: { token: string }) {
           onExcluirEntrega={excluirEntrega}
           onSubirEvidencia={subirEvidencia}
           onBaixarEvidencia={baixarEvidencia}
-          onVerEvidencia={verEvidencia}
+          onVerEvidencia={setPrevia}
+        />
+      )}
+
+      {previa && (
+        <PreviaEvidencia
+          evidencia={previa}
+          onCarregar={ev => api(`?action=entrega_evidencia_base64&id=${ev.id}`)}
+          onBaixar={baixarEvidencia}
+          onFechar={() => setPrevia(null)}
         />
       )}
 
