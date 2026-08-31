@@ -12,6 +12,7 @@ import {
 } from '../components/icons';
 import FilterDropdown from '../components/FilterDropdown';
 import { logoDoCliente } from '../lib/marcas';
+import { SkeletonCards, SkeletonTabela } from '../components/Skeleton';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { SelectSistema } from '../components/SelectSistema';
 import { DatePicker } from '../components/DatePicker';
@@ -1798,7 +1799,12 @@ function SecaoReunioes({ registros, pessoas, equipe, salvando, onRegistrar, onEx
 
 /** O mesmo controle de etapa que o Funil usa no cabeçalho do card: pílula na
  *  cor do status, com o dropdown num portal para não ser cortado pelo modal. */
-function PilulaStatus({ valor, onChange }: { valor: string; onChange: (v: string) => void }) {
+function PilulaStatus({ valor, onChange, compacta }: {
+  valor: string;
+  onChange: (v: string) => void;
+  /** Dentro de linha de tabela, onde o status não é o dado principal. */
+  compacta?: boolean;
+}) {
   const [aberto, setAberto] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -1817,7 +1823,7 @@ function PilulaStatus({ valor, onChange }: { valor: string; onChange: (v: string
       <button
         ref={triggerRef}
         type="button"
-        className="status-select-trigger sem-contorno"
+        className={`status-select-trigger sem-contorno${compacta ? ' compacta' : ''}`}
         style={{ '--sc': cor } as React.CSSProperties}
         onClick={abrir}
       >
@@ -2063,7 +2069,6 @@ function FormularioProjeto({
     if (!editando && r.entregas.length === 0) {
       novosErros.entregas = 'Adicione ao menos uma entrega.';
     }
-    if (jaAnexados.length + novos.length === 0) novosErros.anexos = 'Anexe ao menos um arquivo.';
     setErros(novosErros);
     if (Object.keys(novosErros).length > 0) return;
     onSalvar(r, novos, removidos);
@@ -2082,7 +2087,6 @@ function FormularioProjeto({
       aceitos.push({ etiqueta: ETIQUETA_PADRAO, nome: f.name, tipo: f.type || 'application/octet-stream', tamanho: f.size, base64 });
     }
     setNovos(p => [...p, ...aceitos]);
-    if (aceitos.length) setErros(e => (e.anexos ? { ...e, anexos: '' } : e));
     if (inputArquivo.current) inputArquivo.current.value = '';
   }
 
@@ -2282,7 +2286,7 @@ function FormularioProjeto({
 
           <section>
             <div className="admin-section-head">
-              <p className="admin-section-title">Anexos *</p>
+              <p className="admin-section-title">Anexos</p>
               <button type="button" className="secao-add"
                 onClick={() => inputArquivo.current?.click()}
                 title={`Adicionar arquivo · máx. ${fmtTamanho(LIMITE_ANEXO)}`}
@@ -2297,10 +2301,7 @@ function FormularioProjeto({
             )}
 
             {jaAnexados.length === 0 && novos.length === 0 ? (
-              <>
-                <p style={{ fontSize: 12, color: 'var(--gray2)', margin: 0 }}>Nenhum anexo.</p>
-                {erros.anexos && <p className="form-error" style={{ marginTop: 6 }}>{erros.anexos}</p>}
-              </>
+              <p style={{ fontSize: 12, color: 'var(--gray2)', margin: 0 }}>Nenhum anexo.</p>
             ) : (
               // Agrupado por etiqueta, na ordem fixa de `ETIQUETAS`: a ordem por
               // chegada faria os grupos dançarem a cada arquivo novo.
@@ -2679,7 +2680,11 @@ export default function ProjetosPage({ token }: { token: string }) {
       )}
 
       {carregando ? (
-        <div className="dux-spinner-row" style={{ padding: '48px 0' }}><span className="dux-spinner" /></div>
+        // O esqueleto imita a visão que está aberta: quadro vira cartões,
+        // lista vira linhas. Um giro no meio da tela não diria nada disso.
+        aba === 'geral' && view === 'quadro'
+          ? <SkeletonCards cards={6} />
+          : <SkeletonTabela linhas={6} colunas={aba === 'geral' ? [4, 2, 1, 2, 2, 1, 1, 2, 1] : [3, 2, 2, 2, 2, 2]} />
       ) : filtrados.length === 0 ? (
         <div className="admin-empty">
           <p style={{ color: 'var(--gray2)', marginBottom: 6 }}><IconInbox size={34} /></p>
@@ -2740,7 +2745,7 @@ export default function ProjetosPage({ token }: { token: string }) {
         </div>
       ) : aba === 'geral' ? (
         <div className="admin-table-wrap">
-          <table className="admin-table">
+          <table className="admin-table sem-quebra">
             <thead>
               <tr>
                 <th>Projeto</th>
@@ -2789,21 +2794,20 @@ export default function ProjetosPage({ token }: { token: string }) {
                           )}
                           <span style={{ minWidth: 0 }}>
                             <span style={{ display: 'block', overflow: 'hidden',
-                              textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                              title={p.descricao ?? undefined}>
-                              <span style={{ color: 'var(--gray2)', fontVariantNumeric: 'tabular-nums' }}>
-                                [{p.codigo || '-'}]
-                              </span>
-                              {' '}
+                              textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               <span style={{ fontWeight: 600, color: 'var(--black)' }}>{p.nome}</span>
                             </span>
-                            {atual && (
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5,
-                                marginTop: 3, fontSize: 11, color: 'var(--gray2)' }}>
-                                <span style={{ color: COR_ENTREGA[atual.status], display: 'inline-flex' }}>
-                                  {(ICONE_ENTREGA[atual.status] ?? IconMarcoPlanejado)({ size: 11 })}
-                                </span>
-                                {atual.titulo}
+                            {/* A descrição diz do que o projeto se trata, que é o
+                                que falta ao lado do nome. A entrega em curso
+                                aparece na dica, junto do seu estado. */}
+                            {p.descricao && (
+                              <span style={{ display: 'block', marginTop: 3, fontSize: 11.5,
+                                color: 'var(--gray2)', overflow: 'hidden',
+                                textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                title={atual ? `${p.descricao}
+
+Em curso: ${atual.titulo} (${atual.status})` : p.descricao}>
+                                {p.descricao}
                               </span>
                             )}
                           </span>
@@ -2832,12 +2836,12 @@ export default function ProjetosPage({ token }: { token: string }) {
                     </span>
                   </td>
 
-                  <td style={{ whiteSpace: 'nowrap' }}>
+                  <td>
                     <Gestor nome={gestorDe(p)?.nome ?? null} email={gestorDe(p)?.email ?? null}
                       foto={gestorDe(p)?.foto_url} />
                   </td>
 
-                  <td style={{ whiteSpace: 'nowrap' }}>
+                  <td>
                     {(() => {
                       const dias = diasPara(p.previsao_entrega);
                       const atrasado = dias !== null && dias < 0
@@ -2871,11 +2875,11 @@ export default function ProjetosPage({ token }: { token: string }) {
                       // O controle vive dentro de uma linha clicavel: o clique e o
                       // Enter param aqui, senao abririam o modal de edicao junto.
                       <span onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
-                        <PilulaStatus valor={p.status} onChange={v => void ajustar(p, 'status', v)} />
+                        <PilulaStatus valor={p.status} onChange={v => void ajustar(p, 'status', v)} compacta />
                       </span>
                     ) : <ChipStatus status={p.status} />}
                   </td>
-                  <td style={{ whiteSpace: 'nowrap' }}>
+                  <td>
                     {podeExcluir && (
                       <button className="admin-toolbar-btn" title="Excluir projeto"
                         onClick={e => { e.stopPropagation(); setExcluindo(p); }}>
@@ -2907,7 +2911,7 @@ export default function ProjetosPage({ token }: { token: string }) {
           </div>
 
           <div className="admin-table-wrap">
-            <table className="admin-table">
+            <table className="admin-table sem-quebra">
               <thead>
                 <tr>
                   <th>Projeto</th><th>Gestor</th><th>Equipe</th><th>Entrega</th>
@@ -2948,7 +2952,7 @@ export default function ProjetosPage({ token }: { token: string }) {
                             </span>
                           )}
                       </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
+                      <td>
                         {fmtData(p.previsao_entrega)}
                         {atrasado && (
                           <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: '#B45309' }}>

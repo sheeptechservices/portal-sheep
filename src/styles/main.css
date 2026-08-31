@@ -2312,6 +2312,69 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   background: color-mix(in srgb, var(--yellow) 5%, var(--white));
 }
 
+/* Texto só para leitor de tela: o esqueleto é mudo, e "Carregando" precisa ser
+   dito a quem não vê os blocos. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Tabela que não quebra linha: cada registro ocupa exatamente uma, e o texto
+   longo corta com reticências. Fica em modificador, e não em `.admin-table`,
+   porque as outras telas dependem da quebra em células de texto corrido. */
+.admin-table.sem-quebra th,
+.admin-table.sem-quebra td {
+  white-space: nowrap;
+}
+
+/* Sem isto o `nowrap` acima estica a célula e a tabela transborda em vez de o
+   texto cortar. */
+.admin-table.sem-quebra td > * {
+  max-width: 100%;
+}
+
+/* ── Esqueleto de carregamento ────────────────────────────────────────── */
+/* Bloco cinza no lugar do conteúdo que ainda vem, com um brilho passando por
+   cima. Diferente do giro, ele diz onde as coisas vão aparecer - a página não
+   salta quando os dados chegam. */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--gray4);
+  border-radius: var(--radius-sm);
+}
+
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--white) 70%, transparent),
+    transparent
+  );
+  animation: brilho 1.4s var(--curva-anti) infinite;
+}
+
+@keyframes brilho {
+  to { transform: translateX(100%); }
+}
+
+/* Movimento reduzido: o bloco fica, o brilho sai. A forma é a informação; a
+   passagem de luz é só enfeite. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after { animation: none; }
+}
+
 /* ── Marco da entrega, que também é o seletor de status ───────────────── */
 /* Bolha circular na cor do estado. O fundo tênue dá massa ao desenho, que
    sozinho some no meio do texto da linha. `--mc` chega por style inline. */
@@ -3564,6 +3627,15 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
    telas. */
 .status-select-trigger.sem-contorno {
   border-color: transparent;
+}
+
+/* Dentro de uma linha de tabela a pílula compete com os vizinhos: 12px em peso
+   700 ao lado de chips de 11px puxa o olho para o status como se ele fosse o
+   dado mais importante da linha. */
+.status-select-trigger.compacta {
+  font-size: 11px;
+  padding: 4px 8px 4px 7px;
+  gap: 6px;
 }
 
 /* O `outline: none` acima não tinha reposição: sem isto a pílula não mostra

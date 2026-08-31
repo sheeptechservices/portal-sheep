@@ -288,26 +288,6 @@ export default defineConfig(({ mode }) => {
             })
           })
 
-          // /api/check-cedente - public cedente lookup by CNPJ
-          server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
-            const url = new URL(req.url ?? '/', `http://localhost`)
-            if (!url.pathname.startsWith('/api/check-cedente')) return next()
-            if (req.method !== 'GET') { res.statusCode = 405; res.end(); return }
-            const cnpj = (url.searchParams.get('cnpj') ?? '').replace(/\D/g, '')
-            if (cnpj.length !== 14) { res.statusCode = 400; res.end(JSON.stringify({ error: 'CNPJ inválido' })); return }
-            ;(async () => {
-              res.setHeader('Content-Type', 'application/json')
-              const { createClient } = await import('@libsql/client')
-              const db = createClient({ url: env.TURSO_DATABASE_URL, authToken: env.TURSO_AUTH_TOKEN })
-              const r = await db.execute({ sql: 'SELECT id FROM cedentes WHERE cnpj_cpf = ? AND ativo = 1 LIMIT 1', args: [cnpj] })
-              res.end(JSON.stringify({ found: r.rows.length > 0 }))
-            })().catch(err => {
-              console.error('[api/check-cedente]', err)
-              res.statusCode = 500
-              res.end(JSON.stringify({ error: 'Internal error' }))
-            })
-          })
-
           // /api/admin-data - all admin CRUD (uses shared _admin-handler)
           server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
             const url = new URL(req.url ?? '/', `http://localhost`)

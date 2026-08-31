@@ -7,6 +7,7 @@ import {
 import { createPortal, flushSync } from 'react-dom';
 import { lojaTema, comRevelacao, type Tema } from '../lib/tema';
 import { MARCAS } from '../lib/marcas';
+import { SkeletonPagina } from '../components/Skeleton';
 import { GOOGLE_CLIENT_ID, GOOGLE_DOMINIO, carregarGis } from '../lib/google';
 // Cada página é carregada sob demanda (code-splitting) - só entra no bundle quando aberta
 const LeadsPage = lazy(() => import('./LeadsPage'));
@@ -1070,6 +1071,34 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
     return () => { vivo = false; };
   }, [token]);
 
+  // Ronda da sessão. O servidor já recusa quem teve o acesso removido, mas só na
+  // requisição seguinte: uma aba parada seguiria mostrando a tela até a pessoa
+  // clicar em alguma coisa. A ronda transforma isso em, no máximo, um minuto - e
+  // confere na hora em que a aba volta a aparecer, que é quando alguém retoma o
+  // trabalho depois de um tempo longe.
+  useEffect(() => {
+    let vivo = true;
+
+    async function conferir() {
+      if (document.hidden) return;
+      try {
+        const r = await fetch('/api/admin-data?action=me', { headers: { 'x-admin-session': token } });
+        if (vivo && r.status === 401) onLogout();
+      } catch {
+        // Rede fora não é sessão perdida: deixa para a próxima volta.
+      }
+    }
+
+    const relogio = setInterval(() => void conferir(), 60_000);
+    const aoMostrar = () => { if (!document.hidden) void conferir(); };
+    document.addEventListener('visibilitychange', aoMostrar);
+    return () => {
+      vivo = false;
+      clearInterval(relogio);
+      document.removeEventListener('visibilitychange', aoMostrar);
+    };
+  }, [token]);
+
   const pode = useMemo(() => criarPode(permissoes), [permissoes]);
   // A página de Usuários não entra na matriz: a trava dela é o e-mail do
   // administrador, conferido no servidor. Ver `PAGINAS_SO_ADMIN`.
@@ -1236,11 +1265,9 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
           {!paginaLiberada(page) ? (
             <SemAcesso />
           ) : (
-          <Suspense fallback={
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 80 }}>
-              <div style={{ width: 26, height: 26, border: '3px solid var(--gray3)', borderTopColor: 'var(--yellow)', borderRadius: '50%', animation: 'spin .7s linear infinite' }} />
-            </div>
-          }>
+          // Esqueleto, e não giro: ele já ocupa o formato da página que vem,
+          // então a troca de tela não pisca de vazio para cheio.
+          <Suspense fallback={<SkeletonPagina />}>
             {page === 'projetos'      && <ProjetosPage      token={token} />}
             {page === 'leads'  && <LeadsPage  token={token} openCard={openCard?.page === 'leads' ? openCard : undefined} onCardOpened={() => setOpenCard(null)} />}
             {page === 'cadastros'     && <CadastrosPage     token={token} newCedente={newCedente} />}

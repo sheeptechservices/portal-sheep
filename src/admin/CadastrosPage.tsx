@@ -168,10 +168,14 @@ function matchNaturezaJuridica(raw: string | undefined): string {
   }) ?? '';
 }
 
-async function buscarCNPJ(cnpj: string): Promise<{ razao_social?: string; endereco?: AddressJSON; natureza_juridica?: string } | null> {
+async function buscarCNPJ(cnpj: string, token: string): Promise<{ razao_social?: string; endereco?: AddressJSON; natureza_juridica?: string } | null> {
   const digits = cnpj.replace(/\D/g, '');
   try {
-    const res = await fetch(`/api/cnpj-lookup?cnpj=${digits}`, { signal: AbortSignal.timeout(15000) });
+    // A consulta sai da nossa infraestrutura e custa: o endpoint exige sessão.
+    const res = await fetch(`/api/cnpj-lookup?cnpj=${digits}`, {
+      headers: { 'x-admin-session': token },
+      signal: AbortSignal.timeout(15000),
+    });
     if (!res.ok) return null;
     const data = await res.json();
     if (data.error) return null;
@@ -1140,7 +1144,7 @@ function CedentePanel({
       setCnpjStatus('loading');
       const snapshot = form;
       cnpjTimer.current = setTimeout(async () => {
-        const result = await buscarCNPJ(d);
+        const result = await buscarCNPJ(d, token);
         if (result) {
           setCnpjStatus('ok');
           setForm({

@@ -49,10 +49,15 @@ export type Permissoes = '*' | string[];
 export const PERMISSAO_DA_PAGINA: Record<string, string> = {
   'leads': 'leads:ver',
   'cadastros': 'cadastros:ver',
+  'projetos': 'projetos:ver',
   'ferramentas': 'ferramentas:ver',
   'gerador-documentos': 'gerador:ver',
   'configuracoes': 'configuracoes:ver',
 };
+
+/** Páginas que moram dentro do hub de Ferramentas. Abrir qualquer uma delas
+ *  exige também abrir o hub - a mesma regra que o servidor aplica às ações. */
+export const PAGINAS_DE_FERRAMENTA = ['gerador-documentos'];
 
 /**
  * Páginas que não entram na matriz de permissões porque a trava delas é outra:
@@ -81,6 +86,7 @@ export type Pode = ReturnType<typeof criarPode>;
  */
 export function podeAbrirPagina(pode: Pode, page: string, admin = false): boolean {
   if (PAGINAS_SO_ADMIN.includes(page)) return admin;
+  if (PAGINAS_DE_FERRAMENTA.includes(page) && !pode('ferramentas:ver')) return false;
   const chave = PERMISSAO_DA_PAGINA[page];
   return !chave || pode(chave);
 }

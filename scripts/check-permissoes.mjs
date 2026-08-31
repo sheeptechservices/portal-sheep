@@ -16,7 +16,11 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..');
-const ler = p => readFileSync(join(raiz, p), 'utf8');
+// Normaliza a quebra de linha na leitura: os padroes abaixo casam blocos por
+// quebra + dois espacos + chave, e num clone com fim de linha do Windows nada
+// casava - o mapa de pagina saia vazio e o script acusava divergencia que nao
+// existia.
+const ler = p => readFileSync(join(raiz, p), 'utf8').replace(/\r\n/g, '\n');
 
 const handler = ler('api/_admin-handler.ts');
 const permissoes = ler('api/_permissoes.ts');
@@ -98,11 +102,18 @@ if (mortas.length) {
 // `/api/admin-data` tranca no despacho, de uma vez. Estes têm handler separado e
 // precisam chamar `exigir` cada um. A lista existe para que remover um porteiro
 // num refactor apareça aqui, e não em produção.
-const COM_PORTEIRO_PROPRIO = [
-  'liquidez.ts', 'relatorios.ts', 'deps-consulta.ts', 'ai-parecer.ts',
-  'analise-credito.ts', 'gerar-documento.ts', 'slack-users.ts', 'd4sign.ts',
-];
-const semPorteiro = COM_PORTEIRO_PROPRIO.filter(f => !/\bexigir\(/.test(ler(`api/${f}`))).sort();
+// Descoberto do diretório, e não de uma lista escrita à mão: a lista antiga
+// citava arquivos apagados num refactor, e o script inteiro passou a estourar
+// antes de conferir qualquer coisa - justamente o que ele existe para evitar.
+const SEM_PORTEIRO_PROPRIO = new Set([
+  'admin-data.ts',   // tranca no despacho, para todas as ações de uma vez
+  'submit.ts',       // formulário público
+  'submit-file.ts',  // formulário público
+  'submissions.ts',  // formulário público
+]);
+const proprios = readdirSync(join(raiz, 'api'))
+  .filter(f => f.endsWith('.ts') && !f.startsWith('_') && !SEM_PORTEIRO_PROPRIO.has(f));
+const semPorteiro = proprios.filter(f => !/\bexigir(Ferramenta)?\(/.test(ler(`api/${f}`))).sort();
 if (semPorteiro.length) {
   falhou = true;
   console.error(`\nFALHA: ${semPorteiro.length} endpoint(s) sem chamada a \`exigir\` - a matriz é contornável por eles:\n`);
@@ -151,7 +162,7 @@ const ui = catalogo.filter(c => c.apenasUi).length;
 console.log(
   `\n${acoes.size} ações no handler, ${mapeadas.size} entradas no mapa, ` +
   `${catalogo.length} permissões no catálogo (${acesso} de acesso, ${ui} só de UI), ` +
-  `${COM_PORTEIRO_PROPRIO.length} endpoints com porteiro próprio.`
+  `${proprios.length} endpoints com porteiro próprio.`
 );
 if (falhou) process.exit(1);
 console.log('OK - controle de acesso íntegro.');

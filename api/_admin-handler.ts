@@ -2042,7 +2042,8 @@ async function despacharAdminData(
 
 /** Campos obrigatórios do projeto. Só observações é livre - e os anexos e as
  *  evidências, que sobem depois, em ação própria, porque só existem depois que
- *  o projeto e a entrega têm id. Essa parte a tela cobra sozinha. */
+ *  o projeto e a entrega têm id. Anexo é opcional; a evidência é cobrada na
+ *  conclusão da entrega, não aqui. */
 function faltaEmProjeto(p: any): string | null {
   if (!String(p?.nome ?? '').trim()) return 'O nome do projeto é obrigatório.';
   if (!p?.cliente_id) return 'O cliente é obrigatório.';

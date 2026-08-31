@@ -81,6 +81,16 @@ export const CATALOGO: PermGrupo[] = [
     ],
   },
   {
+    chave: 'dashboard',
+    label: 'Dashboard',
+    // Sem `page` ainda: a tela não existe. A chave entra agora para o acesso já
+    // poder ser desenhado por papel, e ganha a rota quando a página nascer.
+    nota: 'Painel de indicadores da casa. Em construção.',
+    acoes: [
+      { chave: 'dashboard:ver', label: 'Ver o painel', acesso: true },
+    ],
+  },
+  {
     chave: 'projetos',
     label: 'Projetos',
     page: 'projetos',
@@ -193,7 +203,7 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   get_form_file_base64: 'leads:ver',
   pendencias_by_lead: 'leads:ver',
   deps_by_lead: 'leads:ver',
-  status_configs: ['leads:ver', 'onboarding:ver', 'configuracoes:ver'],
+  status_configs: ['leads:ver', 'cadastros:ver', 'configuracoes:ver'],
   create_submission: 'leads:criar',
   update_submission: 'leads:editar',
   patch_submission: 'leads:editar',
@@ -211,29 +221,29 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   toggle_pendencia: 'leads:pendencias',
   update_pendencia: 'leads:pendencias',
   delete_pendencia: 'leads:pendencias',
-  save_lead_deps: ['leads:deps', 'credito:deps'],
+  save_lead_deps: ['leads:deps'],
   delete_submission: 'leads:excluir',
 
   // ── Onboarding ────────────────────────────────────────────────────────────
-  cadastros_board: 'onboarding:ver',
-  cadastro_detail: 'onboarding:ver',
-  upload_cedente_arquivo: 'onboarding:anexar',
-  rename_cedente_arquivo: 'onboarding:anexar',
-  update_cedente_arquivo_categoria: 'onboarding:anexar',
-  delete_cedente_arquivo: 'onboarding:anexo_excluir',
-  add_cedente_pendencias: 'onboarding:pendencias',
-  toggle_cedente_pendencia: 'onboarding:pendencias',
-  update_cedente_pendencia: 'onboarding:pendencias',
-  delete_cedente_pendencia: 'onboarding:pendencias',
-  list_cedente_arquivos: ['onboarding:ver', 'cadastros:ver'],
-  get_cedente_arquivo_base64: ['onboarding:ver', 'cadastros:ver'],
+  cadastros_board: 'cadastros:ver',
+  cadastro_detail: 'cadastros:ver',
+  upload_cedente_arquivo: 'cadastros:editar',
+  rename_cedente_arquivo: 'cadastros:editar',
+  update_cedente_arquivo_categoria: 'cadastros:editar',
+  delete_cedente_arquivo: 'cadastros:editar',
+  add_cedente_pendencias: 'cadastros:editar',
+  toggle_cedente_pendencia: 'cadastros:editar',
+  update_cedente_pendencia: 'cadastros:editar',
+  delete_cedente_pendencia: 'cadastros:editar',
+  list_cedente_arquivos: ['cadastros:ver', 'cadastros:ver'],
+  get_cedente_arquivo_base64: ['cadastros:ver', 'cadastros:ver'],
 
   // ── Cadastros ─────────────────────────────────────────────────────────────
   // Os seletores de cedente/sacado aparecem em quase toda tela, então a leitura
   // da lista basta ter acesso a uma delas.
   list_cedentes: ['cadastros:ver', 'leads:ver', 'gerador:ver'],
-  list_sacados: ['cadastros:ver', 'leads:ver', 'aceites:ver', 'credito:ver', 'gerador:ver'],
-  list_sacados_by_cedente: ['cadastros:ver', 'leads:ver', 'aceites:ver', 'credito:ver', 'gerador:ver'],
+  list_sacados: ['cadastros:ver', 'leads:ver', 'gerador:ver'],
+  list_sacados_by_cedente: ['cadastros:ver', 'leads:ver', 'gerador:ver'],
   create_cedente: 'cadastros:criar',
   create_sacado: 'cadastros:criar',
   update_cedente: 'cadastros:editar',
@@ -246,8 +256,8 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   // ── Aceites & Anuências ───────────────────────────────────────────────────
 
   // ── Análise de Crédito ────────────────────────────────────────────────────
-  taxa_sugerida: 'credito:nova',
-  deps_config: ['credito:ver', 'leads:ver', 'configuracoes:integracoes'],
+  taxa_sugerida: 'cadastros:editar',
+  deps_config: ['leads:ver', 'configuracoes:integracoes'],
 
   // ── Configurações ─────────────────────────────────────────────────────────
   create_status: 'configuracoes:etapas',
@@ -421,6 +431,19 @@ export async function salvarMatrizPapel(
  * isso a matriz seria contornável indo direto na rota - e as rotas caras (DEPS,
  * IA) são justamente as que mais importa trancar.
  */
+/** Exige a permissão da ferramenta **e** a do hub que a contém. Uma ferramenta
+ *  vive dentro de Ferramentas: quem não abre o hub não deveria alcançar o que
+ *  está nele, e desmarcar "Ferramentas" bastar é a leitura natural da tela. */
+export async function exigirFerramenta(
+  db: Client,
+  usuario: UsuarioAdmin | null | undefined,
+  chave: string,
+): Promise<{ status: number; body: any } | null> {
+  const perm = await permissoesDoUsuario(db, usuario);
+  if (!pode(perm, 'ferramentas:ver')) return negado('ferramentas:ver');
+  return pode(perm, chave) ? null : negado(chave);
+}
+
 export async function exigir(
   db: Client,
   usuario: UsuarioAdmin | null | undefined,

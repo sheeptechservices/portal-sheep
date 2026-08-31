@@ -1338,7 +1338,7 @@ function SacadoSearch({ token, value, onChange }: {
       // Busca a razão social na Receita (1x) e cria/vincula o sacado no cadastro
       let razao = '';
       try {
-        const rc = await fetch(`/api/cnpj-lookup?cnpj=${qDigits}`);
+        const rc = await fetch(`/api/cnpj-lookup?cnpj=${qDigits}`, { headers: { 'x-admin-session': token } });
         if (rc.ok) { const d = await rc.json(); razao = d.razao_social ?? d.nome_fantasia ?? d.nome ?? ''; }
       } catch { /* segue sem razão - backend salva o que der */ }
       const res = await fetch('/api/admin-data', {

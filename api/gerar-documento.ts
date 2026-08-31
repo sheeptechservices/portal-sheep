@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@libsql/client';
 import { getAdminSession, registrarAuditoria } from './_admin-handler.js';
-import { exigir } from './_permissoes.js';
+import { exigirFerramenta } from './_permissoes.js';
 import {
   calcular, gerarPropostaAvista, gerarPropostaParcelada, primeiroNomeRazao,
   type DadosProposta, type Marca, type TipoDocumento,
@@ -56,7 +56,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const sessao = await getAdminSession(db, token).catch(() => null);
   if (!sessao) return res.status(401).json({ error: 'Unauthorized' });
 
-  const recusaPerm = await exigir(db, sessao.usuario, 'gerador:gerar');
+  const recusaPerm = await exigirFerramenta(db, sessao.usuario, 'gerador:gerar');
   if (recusaPerm) return res.status(recusaPerm.status).json(recusaPerm.body);
 
   const acao = String((req.query?.action as string) ?? 'proposta');

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useToast } from './AdminApp';
+import { useAuth, useToast } from './AdminApp';
+import { podeAbrirPagina, podeGerenciarUsuarios } from './papeis';
 
 /** Área da operação que é dona da ferramenta - vira uma coluna no hub. */
 type AreaId = 'juridico' | 'comercial';
@@ -210,6 +211,13 @@ function ToolCard({ ferramenta, onClick }: { ferramenta: Ferramenta; onClick: ()
 }
 
 export default function FerramentasPage({ onNavigate }: { onNavigate?: (page: string) => void }) {
+  // O hub some com o card que a matriz não abre. Sem isto ele anuncia uma
+  // ferramenta que devolve "sem acesso" no clique, e o card vira um convite
+  // para uma porta trancada.
+  const { pode, usuario } = useAuth();
+  const admin = podeGerenciarUsuarios(usuario);
+  const liberada = (f: { page?: string }) => !f.page || podeAbrirPagina(pode, f.page, admin);
+
   return (
     <div className="admin-content-wrap">
       <div>
@@ -225,7 +233,7 @@ export default function FerramentasPage({ onNavigate }: { onNavigate?: (page: st
         alignItems: 'start',
       }}>
         {AREAS.map(area => {
-          const doGrupo = FERRAMENTAS.filter(f => f.area === area.id);
+          const doGrupo = FERRAMENTAS.filter(f => f.area === area.id && liberada(f));
           return (
             <section key={area.id} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ paddingBottom: 10, borderBottom: '1px solid var(--gray3)' }}>

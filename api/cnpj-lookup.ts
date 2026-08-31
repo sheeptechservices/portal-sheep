@@ -1,4 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { createClient } from '@libsql/client';
+import { getAdminSession } from './_admin-handler.js';
+import { exigir } from './_permissoes.js';
 import { getQuery } from './_query.js';
 
 // Normaliza capital social (número ou "1.234,56" / "1234.56") para Number | null
@@ -88,6 +91,22 @@ async function tryCNPJa(digits: string) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Consulta paga a terceiros, saindo da infraestrutura da Sheep: sem sessão
+  // isto é um proxy aberto para qualquer um na internet.
+  const token = String(req.headers['x-admin-session'] ?? '');
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  const db = createClient({
+    url: process.env.TURSO_DATABASE_URL!,
+    authToken: process.env.TURSO_AUTH_TOKEN!,
+  });
+  const sessao = await getAdminSession(db, token).catch(() => null);
+  if (!sessao) return res.status(401).json({ error: 'Unauthorized' });
+
+  // Quem consulta CNPJ são as telas de Cadastros e do Funil; qualquer uma das
+  // duas permissões basta.
+  const recusa = await exigir(db, sessao.usuario, ['cadastros:ver', 'leads:ver']);
+  if (recusa) return res.status(recusa.status).json(recusa.body);
+
   const digits = String(getQuery(req).get('cnpj') ?? '').replace(/\D/g, '');
   if (digits.length !== 14) return res.status(400).json({ error: 'CNPJ inválido' });
 
