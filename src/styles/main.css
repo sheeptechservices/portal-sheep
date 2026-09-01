@@ -9911,7 +9911,47 @@ body.arrastando-painel {
   gap: 24px;
 }
 .pub-topo-texto { flex: 1; min-width: 0; }
-.pub-topo-marca { flex-shrink: 0; display: flex; align-items: center; }
+/* Marca do cliente e, quando existe, o acesso ao que foi entregue. */
+.pub-topo-fim {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.pub-acesso {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 14px;
+  height: 34px;
+  border: 1px solid var(--pub-cristal-borda);
+  border-radius: var(--radius-md);
+  background: var(--pub-cristal);
+  box-shadow: inset 0 1px 0 var(--pub-cristal-luz),
+    inset 0 -1px 0 var(--pub-cristal-base),
+    var(--pub-cristal-sombra);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--black);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color var(--transition), transform var(--transition-spring);
+}
+.pub-acesso:hover {
+  border-color: var(--pub-cristal-borda-forte);
+  transform: translateY(-1px);
+}
+.pub-acesso:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pub-acesso { transition: none; }
+  .pub-acesso:hover { transform: none; }
+}
+
+@media (max-width: 560px) {
+  /* Em coluna, o botao vem antes da marca e ocupa a linha toda. */
+  .pub-topo-fim { flex-direction: column-reverse; align-items: flex-start; gap: 12px; }
+}
 
 .pub-sobre {
   font-size: 11px;

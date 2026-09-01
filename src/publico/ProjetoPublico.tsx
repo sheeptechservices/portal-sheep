@@ -15,8 +15,9 @@ import { logoDoCliente } from '../lib/marcas';
 // portal junto, e o filtro fica com o mesmo desenho dos dois lados.
 import FilterDropdown from '../components/FilterDropdown';
 import {
-  IconAgrupar, IconChevronRight, IconMarcoAndamento, IconMarcoBloqueado, IconMarcoCancelado,
-  IconMarcoConcluido, IconMarcoPlanejado, IconMarcoValidado, IconOrdenar, IconSearch, IconX,
+  IconAgrupar, IconChevronRight, IconExternal, IconMarcoAndamento, IconMarcoBloqueado,
+  IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado, IconMarcoValidado, IconOrdenar,
+  IconSearch, IconX,
 } from '../components/icons';
 import { porNivelDeContato } from '../lib/papeisDeEquipe';
 
@@ -50,6 +51,8 @@ interface Dados {
     status: string;
     previsao_entrega: string | null;
     progresso: number;
+    /** Endereço do que foi entregue. Nulo quando ainda não há o que acessar. */
+    link: string | null;
     publicado_em: string | null;
     cliente: string | null;
   };
@@ -579,7 +582,18 @@ export default function ProjetoPublico({ token }: { token: string }) {
             <p className="pub-sobre">Acompanhamento do projeto</p>
             <h1 className="pub-nome">{projeto.nome}</h1>
           </div>
-          <div className="pub-topo-marca"><Logo cliente={projeto.cliente} /></div>
+          <div className="pub-topo-fim">
+            {/* O acesso ao que foi entregue fica no cabeçalho, ao lado da
+                marca: e a acao que o cliente vem fazer, quando ela existe. */}
+            {projeto.link && (
+              <a className="pub-acesso" href={projeto.link}
+                target="_blank" rel="noopener noreferrer">
+                Acessar o portal
+                <IconExternal size={13} />
+              </a>
+            )}
+            <Logo cliente={projeto.cliente} />
+          </div>
         </div>
       </header>
 

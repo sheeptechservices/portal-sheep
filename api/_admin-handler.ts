@@ -598,6 +598,10 @@ async function migrarSchema(db: Client) {
   // nulo quer dizer não publicado, e despublicar apaga em vez de guardar - assim
   // republicar gera link novo e o antigo, que pode ter sido encaminhado adiante,
   // morre de vez.
+  // Endereço do que foi entregue: o portal, o sistema, o site. Diferente de
+  // `repositorio` e `drive`, que são de dentro - este é o único link do projeto
+  // que sai na página do cliente.
+  try { await ddl(`ALTER TABLE projetos ADD COLUMN link_portal TEXT`); } catch {}
   try { await ddl(`ALTER TABLE projetos ADD COLUMN publico_token TEXT`); } catch {}
   try { await ddl(`ALTER TABLE projetos ADD COLUMN publicado_em TEXT`); } catch {}
   try { await ddl(`ALTER TABLE projetos ADD COLUMN publicado_por_nome TEXT`); } catch {}
@@ -2852,15 +2856,16 @@ function faltaEmProjeto(p: any): string | null {
       const agora = new Date().toISOString();
       await db.execute({
         sql: `INSERT INTO projetos (
-                id, codigo, nome, descricao, cliente_id, tipo, repositorio, drive, objetivo,
-                status, prioridade, data_inicio, previsao_entrega, progresso, observacoes,
+                id, codigo, nome, descricao, cliente_id, tipo, repositorio, drive, link_portal,
+                objetivo, status, prioridade, data_inicio, previsao_entrega, progresso, observacoes,
                 ativo, criado_em, criado_por_id, criado_por_nome
-              ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
+              ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
         args: [
           id, await proximoCodigo(), String(p.nome).trim(),
           String(p.descricao ?? '').trim() || null, p.cliente_id || null,
           p.tipo || null, String(p.repositorio ?? '').trim() || null,
-          String(p.drive ?? '').trim() || null, p.objetivo ?? null,
+          String(p.drive ?? '').trim() || null,
+          String(p.link_portal ?? '').trim() || null, p.objetivo ?? null,
           p.status ?? 'Em andamento', p.prioridade ?? 'Média',
           p.data_inicio || null, p.previsao_entrega || null,
           Math.min(100, Math.max(0, Number(p.progresso ?? 0))), p.observacoes ?? null,
@@ -2921,6 +2926,7 @@ function faltaEmProjeto(p: any): string | null {
         tipo: v => v || null,
         repositorio: v => String(v ?? '').trim() || null,
         drive: v => String(v ?? '').trim() || null,
+        link_portal: v => String(v ?? '').trim() || null,
         objetivo: v => v ?? null,
         status: v => v ?? 'Em andamento',
         prioridade: v => v ?? 'Média',

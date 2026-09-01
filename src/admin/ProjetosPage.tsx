@@ -274,6 +274,8 @@ export interface Projeto {
   tipo: string | null;
   repositorio: string | null;
   drive: string | null;
+  /** Endereço do que foi entregue. É o único link do projeto que o cliente vê. */
+  link_portal: string | null;
   objetivo: string | null;
   status: string;
   prioridade: string;
@@ -307,6 +309,7 @@ interface AnexoPendente {
 
 const VAZIO = {
   nome: '', descricao: '', cliente_id: '', tipo: '', repositorio: '', drive: '',
+  link_portal: '',
   entregas: [] as EntregaPendente[],
   status: 'Em andamento' as string, prioridade: PRIORIDADE_PADRAO as string,
   equipe: [] as { usuario_id: string; papel: string }[],
@@ -777,10 +780,12 @@ function SecaoSaude({ registros, salvando, somenteLeitura, onRegistrar, onExclui
 
 /** Campo de endereço com o atalho de abrir ao lado. O botão só aparece com o
  *  campo preenchido: convidar para um link vazio é oferecer uma aba em branco. */
-function CampoEndereco({ rotulo, valor, placeholder, somenteLeitura, onChange }: {
+function CampoEndereco({ rotulo, valor, placeholder, dica, somenteLeitura, onChange }: {
   rotulo: string;
   valor: string;
   placeholder: string;
+  /** Linha de apoio abaixo do campo, para quando o rótulo não basta. */
+  dica?: string;
   somenteLeitura: boolean;
   onChange: (v: string) => void;
 }) {
@@ -808,6 +813,7 @@ function CampoEndereco({ rotulo, valor, placeholder, somenteLeitura, onChange }:
           </button>
         )}
       </span>
+      {dica && <p className="form-hint" style={{ marginTop: 4 }}>{dica}</p>}
     </div>
   );
 }
@@ -3596,6 +3602,7 @@ function FormularioProjeto({
     nome: editando.nome, descricao: editando.descricao ?? '',
     cliente_id: editando.cliente_id ?? '',
     tipo: editando.tipo ?? '', repositorio: editando.repositorio ?? '',
+    link_portal: editando.link_portal ?? '',
     drive: editando.drive ?? '',
     // As entregas de um projeto existente são gravadas uma a uma, fora do
     // rascunho: aqui a lista fica vazia de propósito.
@@ -3930,6 +3937,10 @@ function FormularioProjeto({
                   {erros.prioridade && <p className="form-error">{erros.prioridade}</p>}
                 </div>
               </div>
+              <CampoEndereco rotulo="Link de acesso" valor={r.link_portal}
+                placeholder="https://portal.cliente.com.br/"
+                dica="Endereço do que foi entregue. Aparece na página do cliente."
+                somenteLeitura={somenteLeitura} onChange={v => set('link_portal', v)} />
               <CampoEndereco rotulo="Repositório no GitHub" valor={r.repositorio}
                 placeholder="https://github.com/sheeptechservices/portal-sheep"
                 somenteLeitura={somenteLeitura} onChange={v => set('repositorio', v)} />

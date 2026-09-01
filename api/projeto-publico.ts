@@ -44,7 +44,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const projeto = await db.execute({
       sql: `SELECT p.id, p.nome, p.descricao, p.status, p.previsao_entrega, p.progresso,
-                   p.publicado_em, c.nome AS cliente_nome
+                   p.link_portal, p.publicado_em, c.nome AS cliente_nome
             FROM projetos p
             LEFT JOIN clientes c ON c.id = p.cliente_id
             WHERE p.publico_token = ? AND p.ativo = 1`,
@@ -156,6 +156,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         status: p.status,
         previsao_entrega: p.previsao_entrega,
         progresso: Number(p.progresso ?? 0),
+        // O endereço do que foi entregue. Sai daqui de propósito, e é o único
+        // link do projeto que sai: `repositorio` e `drive` são de dentro.
+        link: p.link_portal != null ? String(p.link_portal) : null,
         publicado_em: p.publicado_em,
         cliente: p.cliente_nome ?? null,
       },
