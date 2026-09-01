@@ -16,7 +16,8 @@ import { createPortal } from 'react-dom';
 import { iniciais, useAuth, useToast } from './AdminApp';
 import {
   IconAgrupar, IconAlert, IconCalendario, IconCheck, IconChevronDown, IconInbox, IconRecolher,
-  IconDuplicar, IconOrdenar, IconSearch, IconTrash, IconUser, IconVisaoLista, IconVisaoQuadro,
+  IconDownload, IconDuplicar, IconOrdenar, IconSearch, IconTrash, IconUser,
+  IconVisaoLista, IconVisaoQuadro,
   IconVisaoTabela, IconX,
 } from '../components/icons';
 import { SelectSistema } from '../components/SelectSistema';
@@ -25,6 +26,7 @@ import FilterDropdown from '../components/FilterDropdown';
 import { SkeletonCards, SkeletonTabela } from '../components/Skeleton';
 import { CartaoKpi, CartoesKpiEsqueleto } from '../components/CartaoKpi';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
+import { exportar, type Formato as FormatoExport, type Pacote as PacoteExport } from '../lib/exportarTarefas';
 // Só tipos: um valor vindo daqui fecharia um ciclo com ProjetosPage, que
 // importa o formulário de tarefa.
 import type { Projeto, Tarefa } from './ProjetosPage';
@@ -49,6 +51,15 @@ const VAZIO: Omit<Rascunho, 'status'> = {
   projeto_id: '', entrega_id: '', titulo: '', descricao: '',
   prioridade: PRIORIDADE_PADRAO, responsavel_id: '', prazo: '', etiquetas: [],
 };
+
+/** Os quatro formatos, na ordem em que se usa: planilha, planilha de verdade,
+ *  documento e contexto para IA. */
+const FORMATOS = [
+  { valor: 'csv', label: 'CSV (planilha)' },
+  { valor: 'xlsx', label: 'Excel (.xlsx)' },
+  { valor: 'pdf', label: 'PDF (impressão)' },
+  { valor: 'md', label: 'Markdown (contexto para IA)' },
+] as const;
 
 const ORDENS = [
   { valor: 'prazo', label: 'Prazo' },
@@ -516,6 +527,72 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
     }
   }
 
+  /** Monta o pacote de exportação a partir do que está na tela. Sai o recorte
+   *  filtrado, e não a base inteira: quem acabou de filtrar não quer o resto.
+   *  Projeto entra com o diretório dele - ficha, equipe e entregas -, porque
+   *  tarefa fora do contexto do projeto não serve nem para planilha nem para
+   *  alimentar uma IA. */
+  function montarPacote(): PacoteExport {
+    const porProjeto = new Map<string, TarefaComProjeto[]>();
+    for (const t of filtradas) {
+      const lista = porProjeto.get(t.projeto.id);
+      if (lista) lista.push(t); else porProjeto.set(t.projeto.id, [t]);
+    }
+    const recorte = [
+      fProjeto.length && `projeto: ${fProjeto.join(', ')}`,
+      fStatus.length && `etapa: ${fStatus.join(', ')}`,
+      fResponsavel.length && `responsável: ${fResponsavel.join(', ')}`,
+      fEtiqueta.length && `etiqueta: ${fEtiqueta.join(', ')}`,
+      busca.trim() && `busca: "${busca.trim()}"`,
+    ].filter(Boolean).join(' · ');
+
+    return {
+      gerado_em: new Date(),
+      filtro: recorte || null,
+      projetos: [...porProjeto.entries()].map(([id, tarefas]) => {
+        const p = projetos.find(x => x.id === id)!;
+        const gestor = p.equipe.find(m => m.papel === 'Gestor');
+        return {
+          codigo: p.codigo ?? null,
+          nome: p.nome,
+          cliente: p.cliente_nome ?? null,
+          descricao: p.descricao ?? null,
+          status: p.status,
+          prioridade: p.prioridade ?? null,
+          gestor: gestor?.nome ?? null,
+          data_inicio: p.data_inicio ?? null,
+          previsao_entrega: p.previsao_entrega ?? null,
+          equipe: p.equipe.map(m => ({ nome: m.nome, papel: m.papel })),
+          entregas: (p.entregas ?? []).map(e => ({
+            titulo: e.titulo, status: e.status, prazo: e.prazo, categoria: e.categoria,
+          })),
+          tarefas: tarefas.map(t => ({
+            titulo: t.titulo,
+            descricao: t.descricao ?? null,
+            status: t.status,
+            prioridade: t.prioridade ?? null,
+            responsavel_nome: t.responsavel_nome ?? null,
+            prazo: t.prazo ?? null,
+            etiquetas: t.etiquetas ?? [],
+            concluida_em: t.concluida_em ?? null,
+            entrega_titulo: (p.entregas ?? []).find(e => e.id === t.entrega_id)?.titulo ?? null,
+          })),
+        };
+      }),
+    };
+  }
+
+  function exportarComo(formato: FormatoExport) {
+    if (filtradas.length === 0) {
+      toast('error', 'Nada para exportar', 'O recorte atual não tem nenhuma tarefa.');
+      return;
+    }
+    exportar(formato, montarPacote());
+    if (formato === 'pdf') {
+      toast('info', 'Escolha "Salvar como PDF"', 'O PDF sai pela caixa de impressão do navegador.');
+    }
+  }
+
   /** Rascunho de tarefa nova. Nasce com quem está criando como responsável: é
    *  quem vai tocar a tarefa na maioria das vezes, e deixar o campo vazio
    *  produzia uma fila de tarefas sem dono que ninguém revisava depois. Continua
@@ -593,6 +670,10 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
                 icone={IconAgrupar} rotulo="Agrupar tarefas" />
               <SeletorLista valor={ordem} onChange={setOrdem} opcoes={ORDENS}
                 icone={IconOrdenar} rotulo="Ordenar tarefas" />
+              {/* Exporta o que está filtrado. O `.md` existe para virar contexto
+                  de uma IA; os outros três, para planilha e para mandar adiante. */}
+              <SeletorLista valor="" onChange={v => exportarComo(v as FormatoExport)}
+                opcoes={FORMATOS} icone={IconDownload} rotulo="Exportar" />
             </>
           )}
           {podeEditar && projetos.length > 0 && (

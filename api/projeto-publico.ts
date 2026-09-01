@@ -28,6 +28,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   const token = String(req.query.token ?? '').trim();
+  // Um mesmo endereço serve a página e entrega o conteúdo da evidência. Duas
+  // rotas pediriam duas vezes a mesma conferência de token, e é ela que tranca
+  // isto - o id do arquivo sozinho não abre nada.
+  const anexo = Number(req.query.anexo ?? 0);
   // Formato conferido antes de ir ao banco: o token é sempre 32 hexadecimais,
   // e qualquer coisa fora disso é ruído ou tentativa.
   if (!/^[0-9a-f]{32}$/.test(token)) return res.status(404).json({ error: 'Página não encontrada.' });
@@ -49,7 +53,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const p = projeto.rows[0];
     if (!p) return res.status(404).json({ error: 'Página não encontrada.' });
 
-    const [equipe, entregas, tarefas] = await Promise.all([
+    // Conteúdo de uma evidência, para a prévia. Só desce o arquivo que pende de
+    // uma entrega deste projeto.
+    if (anexo > 0) {
+      const r = await db.execute({
+        sql: `SELECT ev.nome, ev.tipo, ev.base64
+              FROM entrega_evidencias ev
+              JOIN projeto_entregas e ON e.id = ev.entrega_id
+              WHERE ev.id = ? AND e.projeto_id = ?`,
+        args: [anexo, p.id as string],
+      });
+      if (!r.rows[0]) return res.status(404).json({ error: 'Arquivo não encontrado.' });
+      res.setHeader('Cache-Control', 'private, max-age=300');
+      return res.status(200).json(r.rows[0]);
+    }
+
+    const [equipe, entregas, tarefas, evidencias] = await Promise.all([
       // Nome, papel e foto. O e-mail fica de fora: a página é de
       // acompanhamento, não uma lista de contatos da casa para fora.
       db.execute({
@@ -59,10 +78,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               ORDER BY u.nome`,
         args: [p.id as string],
       }),
-      // Sem `responsaveis` e sem `links`: o primeiro é id de gente e o segundo
-      // aponta para Drive e repositório, que são de dentro.
+      // `responsaveis` entra, mas resolvido em nome e foto mais abaixo - o id
+      // em si não sai daqui. `links` continua de fora: aponta para Drive e
+      // repositório, que são de dentro.
       db.execute({
-        sql: `SELECT id, titulo, descricao, categoria, status, prazo, ordem
+        sql: `SELECT id, titulo, descricao, categoria, status, prazo, ordem, responsaveis
               FROM projeto_entregas WHERE projeto_id = ? ORDER BY ordem, id`,
         args: [p.id as string],
       }),
@@ -75,7 +95,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               GROUP BY entrega_id`,
         args: [p.id as string],
       }),
+      // A prova do que foi entregue e do que foi validado. Sem o `base64`: a
+      // lista descreve o arquivo, e o conteúdo só desce quando alguém abre a
+      // prévia. Uma entrega com cinco imagens não pode custar cinco imagens só
+      // por a página ter carregado.
+      db.execute({
+        sql: `SELECT ev.id, ev.entrega_id, ev.nome, ev.tipo, ev.tamanho, ev.criado_em, ev.etapa
+              FROM entrega_evidencias ev
+              JOIN projeto_entregas e ON e.id = ev.entrega_id
+              WHERE e.projeto_id = ? ORDER BY ev.criado_em`,
+        args: [p.id as string],
+      }),
     ]);
+
+    /** Os ids de responsável guardados em JSON na entrega. Formato inválido -
+     *  de uma gravação antiga, por exemplo - devolve lista vazia em vez de
+     *  derrubar a página do cliente. */
+    const idsDe = (v: unknown): string[] => {
+      try {
+        const lista = JSON.parse(String(v ?? '[]'));
+        return Array.isArray(lista) ? lista.map(x => String(x)) : [];
+      } catch { return []; }
+    };
+
+    // Uma consulta só para todos os responsáveis de todas as entregas, e o
+    // resultado vira nome e foto. O id fica no servidor.
+    const idsResponsaveis = [...new Set(entregas.rows.flatMap(e => idsDe(e.responsaveis)))];
+    const pessoas = new Map<string, { nome: string; foto_url: string | null }>();
+    if (idsResponsaveis.length > 0) {
+      const achados = await db.execute({
+        sql: `SELECT id, nome, foto_url FROM usuarios
+              WHERE ativo = 1 AND id IN (${idsResponsaveis.map(() => '?').join(',')})`,
+        args: idsResponsaveis,
+      });
+      for (const u of achados.rows) {
+        pessoas.set(String(u.id), {
+          nome: String(u.nome),
+          foto_url: u.foto_url != null ? String(u.foto_url) : null,
+        });
+      }
+    }
 
     const contagem = new Map(tarefas.rows.map(t => [
       Number(t.entrega_id),
@@ -114,6 +173,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           categoria: e.categoria != null ? String(e.categoria) : null,
           status: String(e.status),
           prazo: e.prazo != null ? String(e.prazo) : null,
+          // `progresso` não é coluna: sai das tarefas, como no painel de dentro.
+          // Validada vale 100 mesmo com tarefa em aberto - o aceite do cliente
+          // é o que encerra a entrega.
+          progresso: String(e.status) === 'Validada'
+            ? 100
+            : (c.total > 0 ? Math.round((c.feitas / c.total) * 100) : 0),
+          evidencias: evidencias.rows
+            .filter(v => Number(v.entrega_id) === Number(e.id))
+            .map(v => ({
+              id: Number(v.id),
+              nome: String(v.nome),
+              tipo: String(v.tipo),
+              tamanho: Number(v.tamanho ?? 0),
+              criado_em: String(v.criado_em),
+              etapa: String(v.etapa ?? 'Entrega'),
+            })),
+          responsaveis: idsDe(e.responsaveis)
+            .map(id => pessoas.get(id))
+            .filter((x): x is { nome: string; foto_url: string | null } => !!x),
           tarefas_total: c.total,
           tarefas_feitas: c.feitas,
         };

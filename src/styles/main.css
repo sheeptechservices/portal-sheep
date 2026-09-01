@@ -2375,6 +2375,18 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   max-width: 100%;
 }
 
+/* O invólucro do controle é inline, e `max-width` não vale em elemento inline:
+   o limite acima passa batido e a pílula sai da célula. Limitar a própria
+   pílula resolve em qualquer largura de coluna - ela encolhe e o rótulo corta
+   dentro dela, em vez de virar um "..." solto ao lado de um chip inteiro. */
+.admin-table.sem-quebra .status-select-trigger { max-width: 100%; }
+.status-select-trigger > span:not(.status-select-dot) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Largura de coluna só vale de verdade com layout fixo. No automático, que é o
    padrão, a largura declarada é sugestão: o navegador estica a coluna até caber
    o conteúdo, e com `nowrap` isso significa a descrição inteira numa linha. */
@@ -2612,15 +2624,6 @@ body.arrastando-painel {
   color: var(--black);
   background: var(--gray4);
 }
-
-/* Globo aceso: a pagina do cliente esta no ar. Estado que muda o que existe
-   fora do portal nao pode ficar so no tooltip. */
-.secao-add.publicado {
-  color: var(--green);
-  border-color: var(--green);
-  background: var(--green-soft);
-}
-.secao-add.publicado:hover { background: var(--green); color: var(--white); }
 
 .secao-add:focus-visible {
   outline: none;
@@ -4207,6 +4210,86 @@ body.arrastando-painel {
 .detail-status-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ── Cabeca de grupo (entregas agrupadas) ───────────── */
+/* A linha inteira e o botao: alvo largo, e o titulo do grupo ja diz o que
+   abre. A seta gira em vez de trocar de icone, para o olho acompanhar. */
+.grupo-cabeca {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin: 0 0 6px;
+  padding: 3px 4px;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--gray2);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.grupo-cabeca:hover { background: var(--gray4); color: var(--black); }
+.grupo-cabeca:focus-visible { outline: 2px solid var(--yb); outline-offset: 2px; }
+.grupo-seta {
+  width: 0;
+  height: 0;
+  flex: none;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid currentColor;
+  transform-origin: 2px 50%;
+  transition: transform var(--transition-spring);
+}
+.grupo-cabeca.aberto .grupo-seta { transform: rotate(90deg); }
+.grupo-conta {
+  font-weight: 600;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* O grupo abre e fecha pela mesma técnica do detalhe da entrega: a altura sai
+   do conteúdo por `grid-template-rows`, sem ninguém medir nada em JavaScript.
+   Serve aos dois lados - o painel de dentro e a página do cliente. */
+.grupo-corpo {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows var(--transition-spring), opacity var(--transition-spring);
+}
+.grupo-corpo > * {
+  overflow: hidden;
+  min-height: 0;
+}
+.grupo-corpo.aberto {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grupo-corpo { transition: none; }
+}
+
+/* Entrada dos itens quando a busca ou o filtro muda o resultado. Sem isso a
+   lista trocava de conteúdo em um quadro, e o olho perdia onde estava.
+   `backwards` e não `both`: com `both` o estado final da animação ficaria
+   grudado no elemento e venceria o `transform` do hover. */
+@keyframes entraLista {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.lista-anima > * {
+  animation: entraLista .2s var(--curva-anti) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lista-anima > * { animation: none; }
 }
 
 /* ── Files in detail ────────────────────────────────── */
@@ -8354,6 +8437,16 @@ body.arrastando-painel {
   animation: countUp 0.5s cubic-bezier(0.4,0,0.2,1) both;
 }
 
+/* A fração aceita, colada no número, em corpo menor e peso menor: é contexto
+   do valor, não um segundo valor disputando o olho com ele. */
+.stat-v2-fracao {
+  margin-left: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gray2);
+  font-variant-numeric: tabular-nums;
+}
+
 .stat-v2-desc {
   font-size: 12px;
   color: var(--gray2);
@@ -9695,10 +9788,13 @@ body.arrastando-painel {
    não compartilha componente nenhum com ele: aqui não há nada clicável que
    grave, e o que parece botão só recorta a lista.
    ──────────────────────────────────────────────────────────────────────────── */
+/* Centralizada e com largura de leitura: o conteúdo é documento, e documento
+   largo demais cansa antes de informar. */
 .pub {
   max-width: 900px;
   margin: 0 auto;
-  padding: 48px 24px 64px;
+  /* Menos folga no alto: o respiro agora e da faixa do cabecalho. */
+  padding: 30px 24px 64px;
   color: var(--black);
 }
 
@@ -9725,14 +9821,22 @@ body.arrastando-painel {
 }
 
 /* ── Topo ─────────────────────────────────────────── */
+/* A faixa vai de ponta a ponta e o conteudo dela para na mesma coluna do
+   resto: o cabecalho vira uma peca, e nao um paragrafo perdido no alto. */
 .pub-topo {
+  background: var(--white);
+  border-bottom: 1px solid var(--gray3);
+}
+.pub-topo-dentro {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 26px 24px 24px;
   display: flex;
-  align-items: flex-start;
+  /* Nome e marca na mesma linha de base visual: sem a descricao embaixo, nao
+     ha mais um bloco alto de um lado e um logotipo solto do outro. */
+  align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding-bottom: 28px;
-  margin-bottom: 32px;
-  border-bottom: 1px solid var(--gray3);
 }
 .pub-topo-texto { flex: 1; min-width: 0; }
 .pub-topo-marca { flex-shrink: 0; display: flex; align-items: center; }
@@ -9753,25 +9857,40 @@ body.arrastando-painel {
   margin: 0;
 }
 .pub-descricao {
-  margin: 10px 0 0;
+  margin: 0;
   font-size: 14.5px;
   line-height: 1.6;
   color: var(--gray);
-  max-width: 62ch;
 }
 .pub-logo { display: block; object-fit: contain; }
 .pub-cliente-nome { font-size: 15px; font-weight: 800; color: var(--gray); }
 
 /* ── Seções ───────────────────────────────────────── */
-.pub-secao { margin-bottom: 36px; }
-.pub-secao-cabeca { display: flex; align-items: center; gap: 8px; }
+.pub-secao { margin-bottom: 22px; }
+/* A linha comeca depois do nome da secao e vai ate a borda: separa os blocos
+   sem uma regua cortando a pagina inteira, e o rotulo fica encaixado nela.
+   A folga de baixo mora no cabecalho, e nao no titulo, porque com margem no
+   titulo a linha e o rotulo deixariam de estar na mesma altura. */
+.pub-secao-cabeca {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.pub-secao-cabeca::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--gray3);
+}
 .pub-secao-titulo {
   font-size: 11px;
   font-weight: 800;
   letter-spacing: .1em;
   text-transform: uppercase;
   color: var(--gray2);
-  margin: 0 0 14px;
+  margin: 0;
+  flex-shrink: 0;
 }
 .pub-conta {
   font-size: 11px;
@@ -9780,31 +9899,12 @@ body.arrastando-painel {
   background: var(--gray4);
   border-radius: var(--radius-pill);
   padding: 1px 8px;
-  margin-bottom: 14px;
+  flex-shrink: 0;
   font-variant-numeric: tabular-nums;
 }
 .pub-nada { font-size: 13.5px; color: var(--gray2); margin: 0; }
 
 /* ── Equipe ───────────────────────────────────────── */
-.pub-equipe {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 10px;
-}
-.pub-equipe li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid var(--gray3);
-  border-radius: var(--radius-md);
-  background: var(--white);
-  transition: border-color var(--transition), box-shadow var(--transition-spring);
-}
-.pub-equipe li:hover { border-color: var(--gray2); box-shadow: var(--shadow-card); }
 .pub-avatar {
   width: 34px;
   height: 34px;
@@ -9821,57 +9921,81 @@ body.arrastando-painel {
   font-size: 13px;
   font-weight: 800;
 }
-.pub-equipe-texto { display: flex; flex-direction: column; min-width: 0; }
-.pub-equipe-texto strong {
-  font-size: 13.5px;
-  font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.pub-equipe-texto span { font-size: 11.5px; color: var(--gray2); }
-
-/* ── Entregas ─────────────────────────────────────── */
-.pub-barra {
-  display: flex;
-  height: 8px;
-  border-radius: var(--radius-pill);
-  overflow: hidden;
-  background: var(--gray3);
-  margin-bottom: 14px;
-}
-
-.pub-filtros {
+/* ── Equipe em galeria ────────────────────────────────
+   Retrato grande com o nome embaixo, em grade. Quem está do lado de fora quer
+   reconhecer a cara de quem fala com ele, e numa fileira de avatares pequenos
+   ao lado do nome isso não acontece - a foto vira enfeite do texto. */
+.pub-galeria {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  /* Flex e nao grade: a grade espalhava quatro pessoas de ponta a ponta da
+     pagina, com um vao enorme entre elas. Em flex o grupo fica junto e
+     centrado, e uma fila incompleta continua centrada. */
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 16px;
+  justify-content: center;
+  gap: 26px 42px;
 }
-/* Parece botão e é botão, mas só recorta a lista: nada aqui grava. */
-.pub-filtros button {
-  display: inline-flex;
+.pub-galeria li {
+  flex: 0 1 124px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 5px 11px;
-  border: 1px solid var(--gray3);
-  border-radius: var(--radius-pill);
-  background: none;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--gray);
-  cursor: pointer;
-  transition: background var(--transition), border-color var(--transition), color var(--transition);
+  text-align: center;
+  min-width: 0;
 }
-.pub-filtros button:hover { background: var(--gray4); color: var(--black); }
-.pub-filtros button.ativo { border-color: var(--black); color: var(--black); background: var(--gray4); }
-.pub-filtros button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
-.pub-filtros button > span:last-child {
+
+/* O retrato. Um anel claro em volta separa a foto do fundo branco sem virar
+   moldura, e o hover levanta o card inteiro. */
+.pub-galeria .pub-avatar {
+  width: 52px;
+  height: 52px;
+  box-shadow: 0 0 0 1px var(--gray3);
+  transition: box-shadow var(--transition), transform var(--transition-spring);
+}
+.pub-galeria li:hover .pub-avatar {
+  box-shadow: 0 0 0 1px var(--gray2), var(--shadow-card-hover);
+  transform: translateY(-2px);
+}
+.pub-galeria .pub-avatar-vazio { font-size: 18px; }
+
+.pub-galeria strong {
+  /* Espaco proprio em vez do `gap` da coluna: o nome respira longe da foto, e
+     o cargo fica colado nele - os dois sao a mesma informacao. */
+  margin-top: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--black);
+  /* Duas linhas: nome comprido é comum, e cortar com reticências deixaria
+     metade da galeria sem sobrenome. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.pub-galeria span {
+  margin-top: 1px;
   font-size: 11px;
   color: var(--gray2);
-  font-variant-numeric: tabular-nums;
+  letter-spacing: .02em;
 }
-.pub-ponto { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+@media (max-width: 640px) {
+  .pub-galeria { gap: 20px 20px; }
+  .pub-galeria li { flex: 0 1 100px; }
+  .pub-galeria .pub-avatar { width: 46px; height: 46px; }
+  .pub-galeria .pub-avatar-vazio { font-size: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pub-galeria .pub-avatar { transition: none; }
+  .pub-galeria li:hover .pub-avatar { transform: none; }
+}
+
+/* ── Entregas ─────────────────────────────────────── */
 
 .pub-entregas {
   list-style: none;
@@ -9879,84 +10003,556 @@ body.arrastando-painel {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
-.pub-entregas li {
+
+.pub-entrega {
   display: flex;
-  align-items: stretch;
-  gap: 12px;
-  padding: 14px 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
   border: 1px solid var(--gray3);
   border-radius: var(--radius-md);
   background: var(--white);
-  transition: border-color var(--transition), box-shadow var(--transition-spring), transform var(--transition-spring);
+  transition: border-color var(--transition), box-shadow var(--transition-spring);
 }
-.pub-entregas li:hover {
-  border-color: var(--gray2);
-  box-shadow: var(--shadow-card-hover);
-  transform: translateY(-2px);
-}
-.pub-entrega-marca { width: 3px; border-radius: 2px; flex-shrink: 0; }
-.pub-entrega-corpo { flex: 1; min-width: 0; }
-.pub-entrega-titulo {
-  display: flex;
+.pub-entrega:hover { border-color: var(--gray2); box-shadow: var(--shadow-card); }
+
+/* O marco: círculo com o ícone da situação, no tom dela sobre um fundo de 14%.
+   Mesma construção da bolha do painel. */
+.pub-marco {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin: 0;
-  font-size: 14px;
-  font-weight: 700;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  color: var(--mc, var(--gray2));
+  background: color-mix(in srgb, var(--mc, var(--gray2)) 14%, transparent);
 }
+
+.pub-entrega-meio {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+.pub-entrega-titulo {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--black);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+/* Etiqueta da categoria, ao lado do titulo. Perdeu o estilo numa limpeza e
+   voltou como texto solto: sem a caixa, ela se confundia com a continuacao do
+   nome da entrega, que e exatamente o que uma etiqueta nao pode fazer. */
 .pub-categoria {
-  font-size: 10.5px;
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
+  background: var(--gray4);
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: .04em;
   text-transform: uppercase;
   color: var(--gray2);
-  background: var(--gray4);
-  border-radius: var(--radius-sm);
-  padding: 1px 6px;
-}
-.pub-entrega-desc {
-  margin: 5px 0 0;
-  font-size: 13px;
-  line-height: 1.55;
-  color: var(--gray);
-}
-.pub-progresso {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 9px;
-  font-size: 11px;
-  color: var(--gray2);
-  font-variant-numeric: tabular-nums;
-}
-.pub-progresso-barra {
-  display: block;
-  width: 110px;
-  height: 5px;
-  border-radius: var(--radius-pill);
-  background: var(--gray3);
-  overflow: hidden;
-}
-.pub-progresso-barra span { display: block; height: 100%; border-radius: var(--radius-pill); }
-
-.pub-entrega-lado {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-  flex-shrink: 0;
-}
-.pub-chip {
-  font-size: 11px;
-  font-weight: 700;
-  padding: 3px 10px;
-  border-radius: var(--radius-pill);
   white-space: nowrap;
 }
-.pub-prazo { font-size: 11.5px; color: var(--gray2); font-variant-numeric: tabular-nums; }
+
+.pub-entrega-desc {
+  flex-basis: 100%;
+  font-size: 11.5px;
+  color: var(--gray2);
+  /* Uma linha: aqui a descrição é apoio, e mais que isso quebra a altura
+     regular que faz a lista ser varrida de cima a baixo. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pub-entrega-fim {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  font-size: 11.5px;
+  color: var(--gray2);
+}
+/* Fotos de quem responde pela entrega. Sobrepostas quando sao varias: em fila
+   elas empurrariam prazo e percentual, e o que importa aqui e reconhecer a
+   cara, nao contar quantos sao. */
+.pub-donos { display: inline-flex; align-items: center; flex-shrink: 0; }
+.pub-donos > span { display: inline-flex; margin-left: -7px; }
+.pub-donos > span:first-child { margin-left: 0; }
+.pub-donos .pub-avatar {
+  width: 24px;
+  height: 24px;
+  /* O anel branco separa uma foto da outra na sobreposicao. */
+  box-shadow: 0 0 0 2px var(--white);
+}
+.pub-donos .pub-avatar-vazio { font-size: 9px; }
+
+.pub-prazo { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pub-tarefas { white-space: nowrap; }
+.pub-pct {
+  font-weight: 700;
+  min-width: 34px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Barra de ferramentas ─────────────────────────── */
+/* ── Indicadores do cliente ───────────────────────────
+   Quatro números logo abaixo da barra: o que já foi aceito, o que anda, quando
+   é a próxima entrega e o que pede atenção. São leitura, não controle - por
+   isso não têm hover de clique nem cursor de mão. */
+/* Os cartões são os mesmos do funil (`.admin-stat-card-v2`), e não uma cópia:
+   duas folhas de estilo para o mesmo cartão viram dois cartões diferentes na
+   primeira vez que alguém mexer em uma delas. Aqui só muda o que é próprio
+   desta página - a grade de três e o fato de não serem clicáveis. */
+.pub-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  /* Folga maior embaixo: os cartões são leitura, e a barra de filtros é ação.
+     O respiro separa as duas coisas sem precisar de uma linha divisória. */
+  margin: 14px 0 32px;
+}
+.pub-kpis .admin-stat-card-v2 { cursor: default; }
+
+@media (max-width: 760px) {
+  .pub-kpis { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 420px) {
+  .pub-kpis { grid-template-columns: 1fr; }
+}
+
+/* Rotulo do grupo de filtros, no mesmo desenho da barra do portal. */
+.pub-filtros-rotulo {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--gray2);
+  margin-right: 2px;
+}
+
+.pub-limpar {
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--gray2);
+  cursor: pointer;
+  padding: 4px 2px;
+  transition: color var(--transition);
+}
+.pub-limpar:hover { color: var(--black); }
+.pub-limpar:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+
+.pub-barra-ferramentas {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+/* Encostados na direita. `margin-left: auto` em vez de `space-between` na
+   barra: com os chips de situacao quebrando em duas linhas, o `space-between`
+   espalharia os chips em vez de empurrar so os botoes. */
+.pub-ferramentas {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.pub-ferramentas > button,
+.pub-seletor > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.pub-ferramentas > button:hover,
+.pub-seletor > button:hover { border-color: var(--gray2); color: var(--black); }
+.pub-ferramentas > button.aberto,
+.pub-seletor > button.aberto { border-color: var(--black); color: var(--black); }
+.pub-ferramentas > button:focus-visible,
+.pub-seletor > button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+
+.pub-seletor { position: relative; }
+.pub-seletor-lista {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 5;
+  min-width: 190px;
+  padding: 4px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  box-shadow: var(--shadow-card-hover);
+}
+.pub-seletor-lista button {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--gray);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.pub-seletor-lista button:hover { background: var(--gray4); color: var(--black); }
+.pub-seletor-lista button.ativo { color: var(--black); font-weight: 700; }
+.pub-seletor-lista button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+
+/* Faixa propria, abaixo da barra e de ponta a ponta. Campo de busca larga
+   perdoa o dedo e o olho: o alvo de clique e a linha inteira, e o texto
+   digitado nunca chega perto de encostar na borda. */
+.pub-busca {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 14px;
+  padding: 0 14px;
+  height: 40px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  color: var(--gray2);
+  transition: border-color var(--transition);
+}
+.pub-busca:focus-within { border-color: var(--gray2); }
+.pub-busca input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--black);
+}
+.pub-busca button {
+  display: inline-flex;
+  padding: 3px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.pub-busca button:hover { background: var(--gray4); color: var(--black); }
+
+/* ── Grupos ───────────────────────────────────────── */
+.pub-grupo + .pub-grupo { margin-top: 18px; }
+.pub-grupo-titulo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0 0 7px;
+  padding: 3px 4px;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--gray2);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.pub-grupo-titulo:hover { background: var(--gray4); color: var(--black); }
+.pub-grupo-titulo:focus-visible { outline: 2px solid var(--yb); outline-offset: 2px; }
+.pub-grupo-seta {
+  width: 0;
+  height: 0;
+  flex: none;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid currentColor;
+  transform-origin: 2px 50%;
+  transition: transform var(--transition-spring);
+}
+.pub-grupo-titulo.aberto .pub-grupo-seta { transform: rotate(90deg); }
+.pub-grupo-titulo span {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  background: var(--gray4);
+  border-radius: var(--radius-pill);
+  padding: 0 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  /* No celular fica o essencial: situação, título e percentual. */
+  .pub-prazo, .pub-tarefas { display: none; }
+  .pub-entrega { padding: 9px 11px; gap: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pub-entrega { transition: none; }
+}
+
+/* ── Detalhe da entrega ───────────────────────────────
+   A linha inteira é o botão que abre - o alvo é a faixa toda, e não um ícone
+   de 12px no canto. O detalhe cai logo abaixo, dentro do mesmo cartão, para o
+   olho não perder de qual entrega ele fala. */
+.pub-entrega { flex-direction: column; align-items: stretch; gap: 0; padding: 0; }
+
+.pub-entrega-topo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pub-entrega-topo:disabled { cursor: default; }
+.pub-entrega-topo:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.pub-entrega.abrivel:hover { border-color: var(--gray2); }
+
+/* A mesma seta da seção de entregas do painel, no mesmo lugar: colada no
+   título, e não no fim da linha. Quem usa os dois lados encontra o mesmo gesto
+   no mesmo canto. */
+.pub-seta {
+  display: inline-flex;
+  align-self: center;
+  flex-shrink: 0;
+  color: var(--gray2);
+  transition: transform var(--transition-spring), color var(--transition);
+}
+.pub-entrega.aberta .pub-seta { transform: rotate(90deg); }
+.pub-entrega-topo:hover .pub-seta { color: var(--black); }
+
+/* Abre e fecha por `grid-template-rows`, como o detalhe da entrega no painel:
+   a altura é a do conteúdo, sem ninguém medir nada em JavaScript. O padding
+   mora no corpo, porque no invólucro ele apareceria com o bloco fechado. */
+.pub-detalhe {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows var(--transition-spring), opacity var(--transition-spring);
+}
+.pub-detalhe > * {
+  overflow: hidden;
+  min-height: 0;
+}
+.pub-detalhe.aberta {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.pub-detalhe-corpo {
+  margin-top: 2px;
+  padding: 12px 14px 14px 50px;
+  border-top: 1px solid var(--gray3);
+}
+.pub-detalhe-desc {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--gray);
+  white-space: pre-wrap;
+  max-width: 72ch;
+}
+
+/* ── Evidências ───────────────────────────────────── */
+.pub-evidencias { margin-top: 12px; }
+.pub-evidencias-titulo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 6px;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.pub-evidencias-titulo span {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  background: var(--gray4);
+  border-radius: var(--radius-pill);
+  padding: 0 6px;
+}
+.pub-evidencias ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pub-evidencias button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  font-family: inherit;
+  font-size: 11.5px;
+  color: var(--gray2);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+}
+.pub-evidencias button:hover { border-color: var(--gray2); background: var(--gray4); }
+.pub-evidencias button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.pub-ev-etapa {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
+  background: var(--gray4);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--gray);
+}
+.pub-ev-nome {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--black);
+  font-weight: 600;
+}
+.pub-ev-peso, .pub-ev-data { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+
+/* ── Prévia ───────────────────────────────────────── */
+.pub-previa {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+}
+.pub-previa-caixa {
+  display: flex;
+  flex-direction: column;
+  width: min(880px, 100%);
+  max-height: 100%;
+  border-radius: var(--radius-lg);
+  background: var(--white);
+  overflow: hidden;
+  box-shadow: var(--shadow-card-hover);
+}
+.pub-previa-topo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--gray3);
+}
+.pub-previa-topo span { display: flex; flex-direction: column; min-width: 0; }
+.pub-previa-topo strong {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--black);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pub-previa-topo em { font-style: normal; font-size: 11px; color: var(--gray2); }
+.pub-previa-topo button {
+  display: inline-flex;
+  padding: 5px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition), color var(--transition);
+}
+.pub-previa-topo button:hover { background: var(--gray4); color: var(--black); }
+
+.pub-previa-corpo {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow: auto;
+  background: var(--bg);
+}
+/* A imagem cabe na caixa sem cortar nem esticar. */
+.pub-previa-corpo img { max-width: 100%; max-height: 70vh; object-fit: contain; }
+
+.pub-previa-pe {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 16px;
+  border-top: 1px solid var(--gray3);
+}
+.pub-previa-pe button {
+  padding: 7px 16px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-pill);
+  background: var(--white);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--gray);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.pub-previa-pe button:hover:not(:disabled) { background: var(--gray4); border-color: var(--gray2); color: var(--black); }
+.pub-previa-pe button:disabled { opacity: .5; cursor: default; }
+.pub-previa-pe button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+
+@media (max-width: 640px) {
+  .pub-detalhe-corpo { padding-left: 14px; }
+  .pub-previa { padding: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pub-seta,
+  .pub-detalhe { transition: none; }
+}
 
 .pub-rodape {
   display: flex;
@@ -9971,16 +10567,17 @@ body.arrastando-painel {
 
 @media (max-width: 640px) {
   .pub { padding: 28px 16px 48px; }
-  .pub-topo { flex-direction: column-reverse; align-items: flex-start; gap: 16px; }
+  .pub-topo-dentro {
+    flex-direction: column-reverse;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 20px 16px 18px;
+  }
   .pub-nome { font-size: 22px; }
-  .pub-entregas li { flex-wrap: wrap; }
-  .pub-entrega-lado { flex-direction: row; align-items: center; width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pub-equipe li,
-  .pub-entregas li { transition: none; }
-  .pub-entregas li:hover { transform: none; }
+  .pub-tabela tbody tr { transition: none; }
   .pub-girando { animation: none; }
 }
 
@@ -10051,27 +10648,6 @@ body.arrastando-painel {
   font-variant-numeric: tabular-nums;
 }
 
-/* ── O mesmo escalonamento na página do cliente ─────── */
-.pub-nivel { margin-bottom: 18px; }
-.pub-nivel:last-child { margin-bottom: 0; }
-.pub-nivel-rotulo {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 8px;
-  font-size: 10.5px;
-  font-weight: 800;
-  letter-spacing: .09em;
-  text-transform: uppercase;
-  color: var(--gray2);
-}
-.pub-nivel-rotulo::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--gray3);
-}
-
 /* ── Painel em modo leitura ───────────────────────────
    O corpo do painel é um `fieldset`: sem `disabled` ele se comporta como uma
    div qualquer, e com ele todo controle de dentro sai de circulação. Estas
@@ -10133,4 +10709,95 @@ body.arrastando-painel {
 .painel-leitura[disabled] .status-select-trigger svg,
 .painel-leitura[disabled] .anexo-cat-trigger svg {
   display: none;
+}
+
+/* ── Selo "ao vivo" ───────────────────────────────────
+   A página do cliente está no ar. Não é um ícone entre outros: publicar cria
+   um endereço que existe fora do portal, e o estado disso precisa ser lido de
+   relance, não descoberto num tooltip. */
+.ao-vivo {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px 0 10px;
+  border: 1px solid var(--green);
+  border-radius: var(--radius-pill);
+  background: var(--green-soft);
+  color: var(--green);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+
+/* O ponto e o anel que abre a partir dele: é o pulso que diz "agora", e é o
+   que separa um selo de estado de um chip qualquer. */
+.ao-vivo-ponto {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+}
+.ao-vivo-ponto::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--green);
+  animation: pulsoAoVivo 1.8s var(--curva-anti) infinite;
+}
+@keyframes pulsoAoVivo {
+  0%   { transform: scale(1);   opacity: .55; }
+  70%  { transform: scale(3.2); opacity: 0; }
+  100% { transform: scale(3.2); opacity: 0; }
+}
+
+/* Os dois rótulos moram no DOM e trocam no hover. Trocar texto por CSS seria
+   invisível para leitor de tela - por isso os dois são `aria-hidden` e o botão
+   carrega o próprio `aria-label`, que diz o que o clique faz. */
+.ao-vivo-acao { display: none; }
+.ao-vivo:hover:not(:disabled),
+.ao-vivo:focus-visible {
+  border-color: var(--red);
+  background: var(--red-soft);
+  color: var(--red);
+}
+.ao-vivo:hover:not(:disabled) .ao-vivo-texto,
+.ao-vivo:focus-visible .ao-vivo-texto { display: none; }
+.ao-vivo:hover:not(:disabled) .ao-vivo-acao,
+.ao-vivo:focus-visible .ao-vivo-acao { display: inline; }
+/* O ponto acompanha a cor e para de pulsar: no hover a promessa é desligar,
+   e um pulso ali continuaria dizendo o contrário. */
+.ao-vivo:hover:not(:disabled) .ao-vivo-ponto,
+.ao-vivo:focus-visible .ao-vivo-ponto { background: var(--red); }
+.ao-vivo:hover:not(:disabled) .ao-vivo-ponto::after,
+.ao-vivo:focus-visible .ao-vivo-ponto::after { animation: none; opacity: 0; }
+
+.ao-vivo:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.ao-vivo:disabled { opacity: .55; cursor: default; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ao-vivo-ponto::after { animation: none; opacity: .35; }
+}
+
+
+/* O cartão de indicador entra deslizando e o número conta para cima. Bonito,
+   e desligado para quem pediu menos movimento. */
+@media (prefers-reduced-motion: reduce) {
+  .admin-stat-card-v2,
+  .stat-v2-value { animation: none; }
+}
+
+/* Sem movimento: a seta troca de posicao, mas nao gira na frente de quem
+   pediu menos animacao. */
+@media (prefers-reduced-motion: reduce) {
+  .grupo-seta,
+  .pub-grupo-seta { transition: none; }
 }

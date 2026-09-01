@@ -73,6 +73,7 @@ const AGRUPAMENTOS_ENTREGA = [
   { valor: 'nenhum', label: 'Sem agrupamento' },
   { valor: 'status', label: 'Agrupar por status' },
   { valor: 'categoria', label: 'Agrupar por categoria' },
+  { valor: 'responsavel', label: 'Agrupar por responsável' },
 ] as const;
 
 const ORDENS_ENTREGA = [
@@ -1693,26 +1694,50 @@ function SecaoEntregas({
     return copia;
   }, [entregas, busca, ordem]);
 
+  /** O resultado visível, como uma linha só. Muda quando a busca, a ordem ou o
+   *  próprio conjunto muda, e serve de `key` da lista: a troca de chave remonta
+   *  os itens, e é isso que faz a animação de entrada tocar de novo. Digitar uma
+   *  letra que não altera o resultado não reanima nada. */
+  const assinatura = visiveis.map(e => e.id).join(',');
+
   /** A lista já filtrada e ordenada, repartida em blocos. Sem agrupamento é um
    *  bloco só, sem título, e o desenho da lista não muda. */
   const blocos = useMemo(() => {
     if (agrupar === 'nenhum') return [{ titulo: '', itens: visiveis }];
 
-    const chave = (e: Entrega) => (agrupar === 'status'
-      ? e.status
-      : (e.categoria ?? '').trim() || 'Sem categoria');
+    // Entrega com dois responsáveis aparece nos dois blocos: ela é de ambos, e
+    // esconder uma cópia faria o time procurar o que é dele e não achar.
+    const chavesDe = (e: Entrega): string[] => {
+      if (agrupar === 'status') return [e.status];
+      if (agrupar === 'categoria') return [(e.categoria ?? '').trim() || 'Sem categoria'];
+      const nomes = e.responsaveis
+        .map(id => pessoas.find(p => p.id === id)?.nome)
+        .filter((n): n is string => !!n);
+      return nomes.length ? nomes : ['Sem responsável'];
+    };
 
     // Por status a ordem é a da escala, não a alfabética: "Bloqueada" antes de
-    // "Planejada" inverteria a leitura do andamento.
-    const nomes = [...new Set(visiveis.map(chave))].sort((a, b) => (
+    // "Planejada" inverteria a leitura do andamento. Nos outros, o balde de
+    // sobra ("Sem categoria", "Sem responsável") vai para o fim.
+    const sobra = agrupar === 'categoria' ? 'Sem categoria' : 'Sem responsável';
+    const nomes = [...new Set(visiveis.flatMap(chavesDe))].sort((a, b) => (
       agrupar === 'status'
         ? STATUS_ENTREGA.indexOf(a as typeof STATUS_ENTREGA[number])
           - STATUS_ENTREGA.indexOf(b as typeof STATUS_ENTREGA[number])
-        : a === 'Sem categoria' ? 1 : b === 'Sem categoria' ? -1 : a.localeCompare(b, 'pt-BR')
+        : a === sobra ? 1 : b === sobra ? -1 : a.localeCompare(b, 'pt-BR')
     ));
 
-    return nomes.map(titulo => ({ titulo, itens: visiveis.filter(e => chave(e) === titulo) }));
-  }, [visiveis, agrupar]);
+    return nomes.map(titulo => ({
+      titulo,
+      itens: visiveis.filter(e => chavesDe(e).includes(titulo)),
+    }));
+  }, [visiveis, agrupar, pessoas]);
+
+  /** Grupos recolhidos. Guardado por título: com a lista longa, fechar o que
+   *  não interessa é o que faz o agrupamento valer a pena. Trocar o critério
+   *  reabre tudo, senão a pessoa mudaria de eixo e veria uma lista vazia. */
+  const [recolhidos, setRecolhidos] = useState<Set<string>>(new Set());
+  useEffect(() => { setRecolhidos(new Set()); }, [agrupar]);
 
   return (
     <section>
@@ -1781,16 +1806,30 @@ function SecaoEntregas({
         </p>
       )}
 
-      {blocos.map(bloco => (
+      {blocos.map(bloco => {
+      const fechado = recolhidos.has(bloco.titulo);
+      return (
       <div key={bloco.titulo} style={{ marginBottom: bloco.titulo ? 12 : 0 }}>
       {bloco.titulo && (
-        <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray2)',
-          textTransform: 'uppercase', letterSpacing: '.04em', margin: '0 0 6px' }}>
+        <button type="button" className={`grupo-cabeca${fechado ? '' : ' aberto'}`}
+          aria-expanded={!fechado}
+          onClick={() => setRecolhidos(r => {
+            const n = new Set(r);
+            if (n.has(bloco.titulo)) n.delete(bloco.titulo); else n.add(bloco.titulo);
+            return n;
+          })}>
+          <span className="grupo-seta" aria-hidden="true" />
           {bloco.titulo}
-          <span style={{ marginLeft: 6, fontWeight: 600 }}>({bloco.itens.length})</span>
-        </p>
+          <span className="grupo-conta">{bloco.itens.length}</span>
+        </button>
       )}
-      <div className="admin-file-list">
+      <div className={`grupo-corpo${fechado ? '' : ' aberto'}`}>
+       <div>
+        {/* Com um editor aberto a chave congela: a remontagem que faz a
+            animação tocar apagaria o rascunho de quem está digitando se uma
+            atualização de fundo mudasse a lista no meio da edição. */}
+        <div className="admin-file-list lista-anima"
+          key={editando === null ? assinatura : 'editando'}>
         {bloco.itens.map(e => (
           editando === e.id ? (
             <EditorEntrega key={e.id} inicial={e} pessoas={pessoas} categorias={categorias}
@@ -1965,9 +2004,12 @@ function SecaoEntregas({
             );
           })()
         ))}
+        </div>
+       </div>
       </div>
       </div>
-      ))}
+      );
+      })}
 
       <div className="admin-file-list">
         {pendentes.map((e, i) => (
@@ -3733,20 +3775,31 @@ function FormularioProjeto({
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
               {editando && (
                 <>
-                  {/* Publicar abre a página de acompanhamento do cliente. O
-                      globo aceso diz que está no ar; ao lado dele, o botão que
-                      copia o endereço. */}
-                  <button type="button" className={`secao-add${tokenPublico ? ' publicado' : ''}`}
-                    style={{ width: 30, height: 30 }}
-                    disabled={publicando || somenteLeitura}
-                    title={tokenPublico
-                      ? 'Publicado para o cliente. Clique para tirar do ar.'
-                      : 'Publicar uma página de acompanhamento para o cliente'}
-                    aria-label={tokenPublico ? 'Despublicar projeto' : 'Publicar projeto'}
-                    aria-pressed={!!tokenPublico}
-                    onClick={() => void alternarPublicacao()}>
-                    <IconGlobo size={15} />
-                  </button>
+                  {/* No ar, o botão vira um selo pulsando: publicar muda o que
+                      existe fora do portal, e isso não pode ficar escondido num
+                      ícone que se parece com os vizinhos. No hover ele anuncia o
+                      que o clique faz, em vermelho - o rótulo não muda para quem
+                      lê por leitor de tela, que recebe o `aria-label`. */}
+                  {tokenPublico ? (
+                    <button type="button" className="ao-vivo"
+                      disabled={publicando || somenteLeitura}
+                      title="A página do cliente está no ar. Clique para tirar."
+                      aria-label="Tirar a página do cliente do ar"
+                      aria-pressed
+                      onClick={() => void alternarPublicacao()}>
+                      <span className="ao-vivo-ponto" aria-hidden="true" />
+                      <span className="ao-vivo-texto" aria-hidden="true">Ao vivo</span>
+                      <span className="ao-vivo-acao" aria-hidden="true">Tirar do ar</span>
+                    </button>
+                  ) : (
+                    <button type="button" className="secao-add" style={{ width: 30, height: 30 }}
+                      disabled={publicando || somenteLeitura}
+                      title="Publicar uma página de acompanhamento para o cliente"
+                      aria-label="Publicar a página do cliente"
+                      onClick={() => void alternarPublicacao()}>
+                      <IconGlobo size={15} />
+                    </button>
+                  )}
                   {linkPublico && (
                     <button type="button" className="secao-add" style={{ width: 30, height: 30 }}
                       title={copiadoPublico ? 'Link copiado' : 'Copiar o link do cliente'}
@@ -4762,7 +4815,10 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
                   ['gestor', 'Gestor', 160],
                   ['entrega', 'Entrega', 120],
                   ['progresso', 'Progresso', 95],
-                  ['status', 'Status', 130],
+                  // 160px: a pílula mais larga ("Em andamento") pede 128, e a
+                  // célula come 32 de recuo. Com 130 ela transbordava, e o corte
+                  // da célula desenhava um "..." ao lado de um chip inteiro.
+                  ['status', 'Status', 160],
                 ] as [string, string, string | number | undefined][]).map(([col, rotulo, largura]) => (
                   <ThOrdenavel key={col} coluna={col} atual={ordemCol} dir={ordemDir}
                     onOrdenar={ordenarPor} style={{ width: largura }}>
