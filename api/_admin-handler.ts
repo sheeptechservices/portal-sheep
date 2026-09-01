@@ -2436,6 +2436,42 @@ async function despacharAdminData(
       return { status: 200, body: { projetos, clientes: clientes.rows } };
     }
 
+    // Conversa de muitas tarefas de uma vez, para a exportação. A de uma
+    // tarefa só continua sendo `tarefa_atividade`: aqui não vêm eventos, nem
+    // menções, nem anexos - só o texto, que é o que vira documento.
+    if (action === 'tarefas_comentarios') {
+      const ids = String(query.get('ids') ?? '')
+        .split(',')
+        .map(x => Number(x.trim()))
+        .filter(n => Number.isFinite(n) && n > 0);
+      if (ids.length === 0) return { status: 200, body: { comentarios: [] } };
+
+      // Mesmo corte da listagem, feito no SQL: membro não lê a conversa de
+      // tarefa que ele nem enxerga. Conferir tarefa por tarefa custaria uma
+      // consulta por card.
+      const soDaEquipe = papelEfetivo(usuario?.email, usuario?.papel) === 'membro';
+      const linhas: unknown[] = [];
+      // O SQLite tem teto de variáveis por consulta; em lotes o export de uma
+      // base inteira não esbarra nele.
+      for (let i = 0; i < ids.length; i += 400) {
+        const lote = ids.slice(i, i + 400);
+        const r = await db.execute({
+          sql: `SELECT c.tarefa_id, c.pai_id, c.usuario_nome, c.texto, c.criado_em
+                FROM tarefa_comentarios c
+                JOIN projeto_tarefas t ON t.id = c.tarefa_id
+                WHERE c.tarefa_id IN (${lote.map(() => '?').join(',')})
+                  AND (? = 0 OR EXISTS (
+                    SELECT 1 FROM projeto_equipe e
+                    WHERE e.projeto_id = t.projeto_id AND e.usuario_id = ?
+                  ))
+                ORDER BY c.tarefa_id, c.id`,
+          args: [...lote, soDaEquipe ? 1 : 0, usuario?.id ?? ''],
+        });
+        linhas.push(...r.rows);
+      }
+      return { status: 200, body: { comentarios: linhas } };
+    }
+
     if (action === 'tarefa_atividade') {
       const id = Number(query.get('id'));
       if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };

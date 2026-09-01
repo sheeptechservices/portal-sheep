@@ -26,7 +26,9 @@ import FilterDropdown from '../components/FilterDropdown';
 import { SkeletonCards, SkeletonTabela } from '../components/Skeleton';
 import { CartaoKpi, CartoesKpiEsqueleto } from '../components/CartaoKpi';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
-import { exportar, type Formato as FormatoExport, type Pacote as PacoteExport } from '../lib/exportarTarefas';
+import {
+  exportar, type ComentarioExport, type Formato as FormatoExport, type Pacote as PacoteExport,
+} from '../lib/exportarTarefas';
 // Só tipos: um valor vindo daqui fecharia um ciclo com ProjetosPage, que
 // importa o formulário de tarefa.
 import type { Projeto, Tarefa } from './ProjetosPage';
@@ -532,7 +534,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
    *  Projeto entra com o diretório dele - ficha, equipe e entregas -, porque
    *  tarefa fora do contexto do projeto não serve nem para planilha nem para
    *  alimentar uma IA. */
-  function montarPacote(): PacoteExport {
+  function montarPacote(conversas: Map<number, ComentarioExport[]>): PacoteExport {
     const porProjeto = new Map<string, TarefaComProjeto[]>();
     for (const t of filtradas) {
       const lista = porProjeto.get(t.projeto.id);
@@ -576,18 +578,46 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
             etiquetas: t.etiquetas ?? [],
             concluida_em: t.concluida_em ?? null,
             entrega_titulo: (p.entregas ?? []).find(e => e.id === t.entrega_id)?.titulo ?? null,
+            comentarios: conversas.get(t.id) ?? [],
           })),
         };
       }),
     };
   }
 
-  function exportarComo(formato: FormatoExport) {
+  /** A conversa de todas as tarefas do recorte, numa chamada só. O card carrega
+   *  a dele quando é aberto; aqui seria uma requisição por tarefa. Se a busca
+   *  falhar, a exportação continua sem os comentários: perder o arquivo inteiro
+   *  por causa deles seria pior do que entregá-lo incompleto. */
+  async function buscarConversas(ids: number[]): Promise<Map<number, ComentarioExport[]>> {
+    const mapa = new Map<number, ComentarioExport[]>();
+    if (ids.length === 0) return mapa;
+    try {
+      const r = await api(`?action=tarefas_comentarios&ids=${ids.join(',')}`);
+      if (!r.ok) return mapa;
+      const dados = await r.json();
+      for (const c of (dados.comentarios ?? []) as any[]) {
+        const id = Number(c.tarefa_id);
+        const lista = mapa.get(id) ?? [];
+        lista.push({
+          autor: String(c.usuario_nome ?? 'Alguém'),
+          em: String(c.criado_em ?? ''),
+          texto: String(c.texto ?? ''),
+          resposta: c.pai_id != null,
+        });
+        mapa.set(id, lista);
+      }
+    } catch { /* segue sem a conversa */ }
+    return mapa;
+  }
+
+  async function exportarComo(formato: FormatoExport) {
     if (filtradas.length === 0) {
       toast('error', 'Nada para exportar', 'O recorte atual não tem nenhuma tarefa.');
       return;
     }
-    exportar(formato, montarPacote());
+    const conversas = await buscarConversas(filtradas.map(t => t.id));
+    exportar(formato, montarPacote(conversas));
     if (formato === 'pdf') {
       toast('info', 'Escolha "Salvar como PDF"', 'O PDF sai pela caixa de impressão do navegador.');
     }
@@ -672,7 +702,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
                 icone={IconOrdenar} rotulo="Ordenar tarefas" />
               {/* Exporta o que está filtrado. O `.md` existe para virar contexto
                   de uma IA; os outros três, para planilha e para mandar adiante. */}
-              <SeletorLista valor="" onChange={v => exportarComo(v as FormatoExport)}
+              <SeletorLista valor="" onChange={v => void exportarComo(v as FormatoExport)}
                 opcoes={FORMATOS} icone={IconDownload} rotulo="Exportar" />
             </>
           )}

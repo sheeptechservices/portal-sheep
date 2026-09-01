@@ -19,6 +19,16 @@ import { zipSync, strToU8 } from 'fflate';
 
 export type Formato = 'csv' | 'xlsx' | 'md' | 'pdf';
 
+/** Um comentário do card, já achatado: quem escreveu, quando e o quê. Sem
+ *  menções nem anexos - o que vira documento é o texto. */
+export interface ComentarioExport {
+  autor: string;
+  em: string;
+  texto: string;
+  /** Resposta dentro de uma conversa, e não um comentário de primeiro nível. */
+  resposta: boolean;
+}
+
 export interface TarefaExport {
   titulo: string;
   descricao: string | null;
@@ -29,6 +39,7 @@ export interface TarefaExport {
   etiquetas: string[];
   concluida_em: string | null;
   entrega_titulo: string | null;
+  comentarios: ComentarioExport[];
 }
 
 export interface ProjetoExport {
@@ -56,9 +67,17 @@ export interface Pacote {
 const COLUNAS = [
   'Projeto', 'Código', 'Cliente', 'Entrega', 'Tarefa', 'Descrição',
   'Status', 'Prioridade', 'Responsável', 'Prazo', 'Etiquetas', 'Concluída em',
+  'Comentários',
 ] as const;
 
 const dia = (v: string | null | undefined) => (v ? String(v).slice(0, 10) : '');
+
+/** A conversa inteira numa célula. Planilha não tem onde aninhar resposta,
+ *  então cada comentário vira uma linha do texto, com o autor na frente e a
+ *  resposta marcada com um recuo. */
+const conversaEmTexto = (cs: ComentarioExport[] | undefined) =>
+  (cs ?? []).map(c => `${c.resposta ? '> ' : ''}${c.autor} (${dia(c.em)}): ${c.texto}`)
+    .join('\n');
 
 /** Uma linha por tarefa, com o projeto repetido: é o formato que planilha e
  *  tabela dinâmica esperam. Projeto sem tarefa entra com a linha do projeto
@@ -67,7 +86,7 @@ function linhas(pacote: Pacote): string[][] {
   const saida: string[][] = [];
   for (const p of pacote.projetos) {
     if (p.tarefas.length === 0) {
-      saida.push([p.nome, p.codigo ?? '', p.cliente ?? '', '', '', '', p.status, p.prioridade ?? '', p.gestor ?? '', dia(p.previsao_entrega), '', '']);
+      saida.push([p.nome, p.codigo ?? '', p.cliente ?? '', '', '', '', p.status, p.prioridade ?? '', p.gestor ?? '', dia(p.previsao_entrega), '', '', '']);
       continue;
     }
     for (const t of p.tarefas) {
@@ -75,7 +94,7 @@ function linhas(pacote: Pacote): string[][] {
         p.nome, p.codigo ?? '', p.cliente ?? '', t.entrega_titulo ?? '',
         t.titulo, t.descricao ?? '', t.status, t.prioridade ?? '',
         t.responsavel_nome ?? '', dia(t.prazo), (t.etiquetas ?? []).join('; '),
-        dia(t.concluida_em),
+        dia(t.concluida_em), conversaEmTexto(t.comentarios),
       ]);
     }
   }
@@ -148,7 +167,7 @@ function exportarXlsx(pacote: Pacote) {
 
   // Larguras pensadas para a leitura, não para o conteúdo: título e descrição
   // largos, datas estreitas.
-  const larguras = [26, 12, 18, 24, 40, 52, 15, 12, 20, 12, 24, 14];
+  const larguras = [26, 12, 18, 24, 40, 52, 15, 12, 20, 12, 24, 14, 60];
   const cols = larguras.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('');
 
   const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -276,6 +295,15 @@ function markdown(pacote: Pacote): string {
           // preservada mantém o texto legível como o autor escreveu.
           L.push(...t.descricao.trim().split('\n').map(x => `  > ${x}`));
         }
+        // A conversa entra depois da descrição, na ordem em que aconteceu: é
+        // onde costuma estar a decisão que o título não conta.
+        if (t.comentarios?.length) {
+          L.push(`  - Comentários (${t.comentarios.length}):`);
+          for (const c of t.comentarios) {
+            L.push(`    - **${c.autor}**${c.resposta ? ' (resposta)' : ''} - ${dia(c.em)}`);
+            L.push(...c.texto.trim().split('\n').map(x => `      ${x}`));
+          }
+        }
       }
       L.push('');
     }
@@ -314,19 +342,35 @@ function exportarPdf(pacote: Pacote) {
     if (p.descricao) partes.push(`<p class="desc">${escHtml(p.descricao)}</p>`);
 
     partes.push('<table><thead><tr>'
-      + ['Tarefa', 'Entrega', 'Status', 'Responsável', 'Prazo']
+      + ['Tarefa', 'Entrega', 'Status', 'Prioridade', 'Responsável', 'Prazo', 'Etiquetas']
         .map(h => `<th>${h}</th>`).join('')
       + '</tr></thead><tbody>');
     for (const t of p.tarefas) {
+      // Descrição e conversa vão embaixo do título, na mesma célula: em coluna
+      // própria elas espremeriam o resto da linha até ficar ilegível.
+      const abaixo: string[] = [];
+      if (t.descricao?.trim()) {
+        abaixo.push(`<div class="t-desc">${escHtml(t.descricao.trim())}</div>`);
+      }
+      if (t.comentarios?.length) {
+        abaixo.push('<div class="t-conversa">'
+          + t.comentarios.map(c =>
+            `<p><b>${escHtml(c.autor)}</b>${c.resposta ? ' <i>(resposta)</i>' : ''}`
+            + ` <span class="t-quando">${escHtml(dia(c.em))}</span><br>`
+            + `${escHtml(c.texto.trim())}</p>`).join('')
+          + '</div>');
+      }
       partes.push('<tr>'
-        + `<td>${escHtml(t.titulo)}</td>`
+        + `<td><b>${escHtml(t.titulo)}</b>${abaixo.join('')}</td>`
         + `<td>${escHtml(t.entrega_titulo ?? '-')}</td>`
         + `<td>${escHtml(t.status)}</td>`
+        + `<td>${escHtml(t.prioridade ?? '-')}</td>`
         + `<td>${escHtml(t.responsavel_nome ?? '-')}</td>`
         + `<td>${escHtml(dia(t.prazo) || '-')}</td>`
+        + `<td>${escHtml((t.etiquetas ?? []).join(', ') || '-')}</td>`
         + '</tr>');
     }
-    if (p.tarefas.length === 0) partes.push('<tr><td colspan="5" class="vazio">Nenhuma tarefa no recorte.</td></tr>');
+    if (p.tarefas.length === 0) partes.push('<tr><td colspan="7" class="vazio">Nenhuma tarefa no recorte.</td></tr>');
     partes.push('</tbody></table></section>');
   }
 
@@ -352,6 +396,10 @@ th { text-align:left; font-size:7.5pt; letter-spacing:.08em; text-transform:uppe
      color:#6E6E6E; padding:1.5mm 2mm; border-bottom:1px solid #000; }
 td { padding:1.5mm 2mm; border-bottom:1px solid #C8C8C8; vertical-align:top; }
 .vazio { color:#A8A8A8; }
+.t-desc { margin-top:1mm; font-size:8pt; color:#5F5F5F; white-space:pre-wrap; }
+.t-conversa { margin-top:1.5mm; padding-left:2mm; border-left:2px solid #C8C8C8; }
+.t-conversa p { margin:0 0 1.2mm; font-size:8pt; color:#3F3F3F; white-space:pre-wrap; }
+.t-quando { color:#8A8A8A; font-size:7.5pt; }
 /* Linha não parte no meio da quebra de página. */
 tr, section > h2 { break-inside:avoid; page-break-inside:avoid; }
 thead { display:table-header-group; }

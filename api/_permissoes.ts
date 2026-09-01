@@ -218,6 +218,7 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   // permissão própria. Apagar entra em `comentar` porque o servidor já limita a
   // quem escreveu - quem manda no sistema passa por cima disso lá dentro.
   tarefa_atividade: 'tarefas:ver',
+  tarefas_comentarios: 'tarefas:ver',
   tarefa_comentario_anexo_base64: 'tarefas:ver',
   add_tarefa_comentario: 'tarefas:comentar',
   excluir_tarefa_comentario: 'tarefas:comentar',

@@ -2481,7 +2481,6 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
 
 .painel-puxador:focus-visible::after {
   background: var(--yellow);
-  box-shadow: 0 0 0 3px var(--yb);
 }
 
 /* Enquanto arrasta, o texto da página inteira para de ser selecionado: sem
@@ -2517,7 +2516,6 @@ body.arrastando-painel {
 
 .celula-editavel:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--yb);
 }
 
 /* ── Marco da entrega, que também é o seletor de status ───────────────── */
@@ -2549,7 +2547,6 @@ body.arrastando-painel {
 
 .marco-entrega:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--yb);
 }
 
 /* ── Detalhe de entrega que abre e fecha ──────────────────────────────── */
@@ -2627,7 +2624,6 @@ body.arrastando-painel {
 
 .secao-add:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--yb);
 }
 
 .secao-add:disabled {
@@ -2830,7 +2826,7 @@ body.arrastando-painel {
 }
 .rodape-icone:hover { background: var(--gray4); color: var(--black); }
 .rodape-icone.perigo:hover { background: var(--red-soft); border-color: var(--red); color: var(--red); }
-.rodape-icone:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.rodape-icone:focus-visible { outline: none; }
 .rodape-icone:disabled { opacity: .5; cursor: default; }
 
 /* Rodapé de ações da gaveta. Grudento como o cabeçalho, e pelo mesmo motivo:
@@ -3462,7 +3458,7 @@ body.arrastando-painel {
 }
 .kanban-column-fixar[aria-pressed="true"] { color: var(--gray); background: var(--gray4); }
 .kanban-column-fixar:hover { background: var(--gray4); color: var(--gray); }
-.kanban-column-fixar:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.kanban-column-fixar:focus-visible { outline: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .kanban-column-fixar { transition: none; }
@@ -3810,7 +3806,7 @@ body.arrastando-painel {
 .kanban-card-acao:focus-visible { opacity: 1; }
 .kanban-card-acao:hover { background: var(--gray4); color: var(--black); }
 .kanban-card-acao.perigo:hover { background: var(--red-soft); color: var(--red); }
-.kanban-card-acao:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.kanban-card-acao:focus-visible { outline: none; }
 
 /* No toque não existe hover: sem isto os botões ficariam inalcançáveis no
    celular. */
@@ -4016,9 +4012,6 @@ body.arrastando-painel {
 
 /* O `outline: none` acima não tinha reposição: sem isto a pílula não mostra
    foco de teclado, e sem a borda ela some de vez do rastreio. */
-.status-select-trigger:focus-visible {
-  box-shadow: 0 0 0 3px var(--yb);
-}
 
 .status-select-dot {
   width: 8px;
@@ -4212,6 +4205,94 @@ body.arrastando-painel {
   cursor: not-allowed;
 }
 
+/* ── Busca da secao de entregas ───────────────────────
+   Sempre a vista, com ordenar e agrupar dividindo a faixa. O campo tem a
+   moldura do `.form-input`, mas com a lupa dentro, entao ele e desenhado aqui
+   em vez de herdar. */
+.secao-busca {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.secao-busca-campo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  color: var(--gray2);
+  transition: border-color var(--transition);
+}
+.secao-busca-campo:hover,
+.secao-busca-campo:focus-within { border-color: var(--gray2); }
+.secao-busca-campo input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--black);
+}
+.secao-busca-campo button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.secao-busca-campo button:hover { background: var(--gray4); color: var(--black); }
+
+/* ── Arvore do grupo, no painel ───────────────────────
+   A mesma da pagina do cliente: tronco descendo do rotulo do grupo, alinhado
+   com a seta, e um ramo curto para cada entrega. O tronco morre no ramo da
+   ultima linha - descer ate o fim do bloco deixaria uma ponta solta no ar.
+
+   Os numeros mudam porque o vao entre as linhas aqui e de 8px (`gap` do
+   `.admin-file-list`) e a folga do cabecalho e de 6px. */
+.grupo-arvore .admin-file-list { padding-left: 20px; }
+.grupo-arvore .admin-file-item { position: relative; }
+.grupo-arvore .admin-file-item::before {
+  content: '';
+  position: absolute;
+  left: -14px;
+  top: -4px;
+  bottom: -4px;
+  width: 1px;
+  background: var(--gray3);
+}
+.grupo-arvore .admin-file-item:first-child::before { top: -10px; }
+.grupo-arvore .admin-file-item:last-child::before {
+  bottom: auto;
+  height: calc(50% + 4px);
+}
+.grupo-arvore .admin-file-item:first-child:last-child::before {
+  height: calc(50% + 10px);
+}
+.grupo-arvore .admin-file-item::after {
+  content: '';
+  position: absolute;
+  left: -14px;
+  top: 50%;
+  width: 10px;
+  height: 1px;
+  background: var(--gray3);
+}
+
 /* ── Cabeca de grupo (entregas agrupadas) ───────────── */
 /* A linha inteira e o botao: alvo largo, e o titulo do grupo ja diz o que
    abre. A seta gira em vez de trocar de icone, para o olho acompanhar. */
@@ -4236,7 +4317,7 @@ body.arrastando-painel {
   transition: background var(--transition), color var(--transition);
 }
 .grupo-cabeca:hover { background: var(--gray4); color: var(--black); }
-.grupo-cabeca:focus-visible { outline: 2px solid var(--yb); outline-offset: 2px; }
+.grupo-cabeca:focus-visible { outline: none; }
 .grupo-seta {
   width: 0;
   height: 0;
@@ -4403,7 +4484,6 @@ body.arrastando-painel {
 }
 .donut-legenda-item:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--yb);
 }
 
 .donut-ponto {
@@ -4558,7 +4638,7 @@ body.arrastando-painel {
   color: var(--black);
   font-weight: 700;
 }
-.rev-indice-item:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.rev-indice-item:focus-visible { outline: none; }
 
 .rev-indice-num {
   font-size: 10px;
@@ -4657,7 +4737,6 @@ body.arrastando-painel {
 .nt-titulo button:hover { border-bottom-color: var(--yellow); }
 .nt-titulo button:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--yb);
   border-radius: var(--radius-sm);
 }
 
@@ -4799,7 +4878,7 @@ body.arrastando-painel {
   transition: background var(--transition);
 }
 .nt-toggle-cabeca:hover { background: var(--gray4); }
-.nt-toggle-cabeca:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.nt-toggle-cabeca:focus-visible { outline: none; }
 
 .nt-triangulo {
   display: inline-flex;
@@ -4946,7 +5025,7 @@ body.arrastando-painel {
   transition: background var(--transition), border-color var(--transition), color var(--transition);
 }
 .nt-recorte button:hover { background: var(--gray4); color: var(--black); }
-.nt-recorte button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.nt-recorte button:focus-visible { outline: none; }
 
 /* A foto do responsável ao lado do título da entrega, sem roubar coluna. */
 .nt-entrega-dono { margin-left: 8px; vertical-align: middle; }
@@ -4981,7 +5060,7 @@ body.arrastando-painel {
 }
 .ativ-abas button:hover { background: var(--gray4); color: var(--black); }
 .ativ-abas button.ativa { background: var(--gray4); color: var(--black); }
-.ativ-abas button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.ativ-abas button:focus-visible { outline: none; }
 .ativ-conta {
   font-size: 10.5px;
   font-weight: 700;
@@ -5037,7 +5116,7 @@ body.arrastando-painel {
   transition: background var(--transition);
 }
 .ativ-mencoes button:hover { background: var(--gray4); }
-.ativ-mencoes button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.ativ-mencoes button:focus-visible { outline: none; }
 
 .ativ-acoes {
   display: flex;
@@ -5072,7 +5151,7 @@ body.arrastando-painel {
 }
 .ativ-botao-fraco:hover { background: var(--gray4); color: var(--black); }
 .ativ-botao:focus-visible,
-.ativ-botao-fraco:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.ativ-botao-fraco:focus-visible { outline: none; }
 
 .ativ-erro {
   display: flex;
@@ -5121,7 +5200,7 @@ body.arrastando-painel {
 .ativ-comentario:hover .ativ-apagar,
 .ativ-apagar:focus-visible { opacity: 1; }
 .ativ-apagar:hover { background: var(--gray4); color: var(--red); }
-.ativ-apagar:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.ativ-apagar:focus-visible { outline: none; }
 
 .ativ-texto {
   margin: 0;
@@ -5152,7 +5231,7 @@ body.arrastando-painel {
   transition: color var(--transition);
 }
 .ativ-link:hover { color: var(--black); }
-.ativ-link:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.ativ-link:focus-visible { outline: none; }
 .ativ-responder { margin: 8px 0 0 36px; }
 
 /* ── Anexos ───────────────────────────────────────── */
@@ -5194,7 +5273,7 @@ body.arrastando-painel {
   transition: background var(--transition), color var(--transition);
 }
 .ativ-anexos button:hover { background: var(--gray4); color: var(--black); }
-.ativ-anexos button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.ativ-anexos button:focus-visible { outline: none; }
 
 /* ── Diário ───────────────────────────────────────── */
 .ativ-diario {
@@ -5360,7 +5439,7 @@ body.arrastando-painel {
   /* Alinha com a primeira linha do título, e não com o bloco todo. */
   margin-top: 1px;
 }
-.nt-card-marca:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.nt-card-marca:focus-visible { outline: none; }
 .nt-card-marca:disabled { opacity: .4; cursor: default; }
 .nt-card[draggable="true"] { cursor: grab; }
 .nt-card[draggable="true"]:active { cursor: grabbing; }
@@ -5384,7 +5463,7 @@ body.arrastando-painel {
   cursor: pointer;
   border-radius: var(--radius-sm);
 }
-.nt-card-abrir:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.nt-card-abrir:focus-visible { outline: none; }
 
 .nt-card p {
   margin: 0;
@@ -5518,7 +5597,6 @@ body.arrastando-painel {
 .admin-table tbody tr:focus-visible,
 .admin-file-item:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 2px var(--yb);
 }
 
 .admin-file-download {
@@ -6874,7 +6952,6 @@ body.arrastando-painel {
 
   .nav-inferior-item:focus-visible {
     outline: none;
-    box-shadow: inset 0 0 0 2px var(--yb);
     border-radius: var(--radius-sm);
   }
 }
@@ -8178,7 +8255,6 @@ body.arrastando-painel {
   gap: 20px;
 }
 
-.sidebar-section {}
 
 .sidebar-section-label {
   font-size: 10px;
@@ -9178,7 +9254,7 @@ body.arrastando-painel {
   transition: background var(--transition), border-color var(--transition);
 }
 .topbar-conta:hover { background: var(--gray4); border-color: var(--gray3); }
-.topbar-conta:focus-visible { outline: none; border-color: transparent; box-shadow: 0 0 0 3px var(--yb); }
+.topbar-conta:focus-visible { outline: none; border-color: transparent; }
 
 .topbar-conta-texto {
   display: flex;
@@ -9253,7 +9329,7 @@ body.arrastando-painel {
 }
 .conta-menu-item:hover:not(:disabled) { background: var(--gray4); color: var(--black); }
 .conta-menu-item:disabled { cursor: default; opacity: .7; }
-.conta-menu-item:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--yb); }
+.conta-menu-item:focus-visible { outline: none; }
 
 /* Autoria de um comentário / evento: avatar de iniciais + nome. */
 .autoria {
@@ -9453,14 +9529,13 @@ body.arrastando-painel {
 .usuarios-select:hover:not(:disabled),
 .usuarios-select.aberto { border-color: var(--gray2); color: var(--black); }
 .usuarios-select:disabled { opacity: .5; cursor: default; }
-.usuarios-select:focus-visible { border-color: var(--yellow); box-shadow: 0 0 0 3px var(--yb); }
+.usuarios-select:focus-visible { border-color: var(--yellow); }
 /* Marca da opção em vigor, no fim da linha da lista. */
 .usuarios-select-marca { margin-left: auto; display: inline-flex; color: var(--yellow); }
 /* A opção é uma div focável: sem isto o teclado andaria pela lista sem sinal. */
 .status-select-option:focus-visible {
   outline: none;
   background: var(--bg);
-  box-shadow: 0 0 0 2px var(--yb);
 }
 
 /* Papel do dono do painel: não é editável, então não se disfarça de campo. */
@@ -9501,7 +9576,7 @@ body.arrastando-painel {
 }
 .usuarios-btn-acesso:hover { color: var(--black); border-color: var(--gray2); background: var(--gray4); }
 .usuarios-btn-acesso.remover:hover { color: var(--red); border-color: var(--red); background: var(--red-soft); }
-.usuarios-btn-acesso:focus-visible { outline: none; border-color: var(--yellow); box-shadow: 0 0 0 3px var(--yb); }
+.usuarios-btn-acesso:focus-visible { outline: none; border-color: var(--yellow); }
 
 .usuarios-salvando { display: inline-flex; color: var(--gray2); }
 
@@ -9621,7 +9696,6 @@ body.arrastando-painel {
 .perm-cabeca-alvo:disabled { cursor: default; }
 .perm-cabeca-alvo:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--yb);
   border-radius: var(--radius-sm);
 }
 
@@ -9768,7 +9842,7 @@ body.arrastando-painel {
   mask: var(--icon-check) center / contain no-repeat;
 }
 .perm-check:disabled { cursor: default; opacity: .5; }
-.perm-check:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.perm-check:focus-visible { outline: none; }
 
 @media (max-width: 640px) {
   .perm-barra { align-items: stretch; }
@@ -9788,10 +9862,11 @@ body.arrastando-painel {
    não compartilha componente nenhum com ele: aqui não há nada clicável que
    grave, e o que parece botão só recorta a lista.
    ──────────────────────────────────────────────────────────────────────────── */
-/* Centralizada e com largura de leitura: o conteúdo é documento, e documento
-   largo demais cansa antes de informar. */
+/* Centralizada. A largura acompanha a lista de entregas, que tem titulo,
+   categoria, responsavel, prazo, contagem e percentual na mesma linha: em 900px
+   o titulo comecava a ser cortado antes do resto. */
 .pub {
-  max-width: 900px;
+  max-width: 1120px;
   margin: 0 auto;
   /* Menos folga no alto: o respiro agora e da faixa do cabecalho. */
   padding: 30px 24px 64px;
@@ -9900,7 +9975,7 @@ body.arrastando-painel {
   border-bottom: 1px solid var(--gray3);
 }
 .pub-topo-dentro {
-  max-width: 900px;
+  max-width: 1120px;
   margin: 0 auto;
   padding: 26px 24px 24px;
   display: flex;
@@ -9911,47 +9986,7 @@ body.arrastando-painel {
   gap: 24px;
 }
 .pub-topo-texto { flex: 1; min-width: 0; }
-/* Marca do cliente e, quando existe, o acesso ao que foi entregue. */
-.pub-topo-fim {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-.pub-acesso {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 0 14px;
-  height: 34px;
-  border: 1px solid var(--pub-cristal-borda);
-  border-radius: var(--radius-md);
-  background: var(--pub-cristal);
-  box-shadow: inset 0 1px 0 var(--pub-cristal-luz),
-    inset 0 -1px 0 var(--pub-cristal-base),
-    var(--pub-cristal-sombra);
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--black);
-  text-decoration: none;
-  white-space: nowrap;
-  transition: border-color var(--transition), transform var(--transition-spring);
-}
-.pub-acesso:hover {
-  border-color: var(--pub-cristal-borda-forte);
-  transform: translateY(-1px);
-}
-.pub-acesso:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
-
-@media (prefers-reduced-motion: reduce) {
-  .pub-acesso { transition: none; }
-  .pub-acesso:hover { transform: none; }
-}
-
-@media (max-width: 560px) {
-  /* Em coluna, o botao vem antes da marca e ocupa a linha toda. */
-  .pub-topo-fim { flex-direction: column-reverse; align-items: flex-start; gap: 12px; }
-}
+.pub-topo-marca { flex-shrink: 0; display: flex; align-items: center; }
 
 .pub-sobre {
   font-size: 11px;
@@ -9976,6 +10011,80 @@ body.arrastando-painel {
 }
 .pub-logo { display: block; object-fit: contain; }
 .pub-cliente-nome { font-size: 15px; font-weight: 800; color: var(--gray); }
+
+/* O endereco do que foi entregue, com cara de link de verdade: icone do
+   proprio site, rotulo, dominio e a marca de que abre fora. Assenta no mesmo
+   cristal das outras superficies. */
+.pub-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  max-width: 100%;
+  margin-top: 14px;
+  padding: 9px 13px;
+  border: 1px solid var(--pub-cristal-borda);
+  border-radius: var(--radius-md);
+  background: var(--pub-cristal);
+  box-shadow: inset 0 1px 0 var(--pub-cristal-luz),
+    inset 0 -1px 0 var(--pub-cristal-base),
+    var(--pub-cristal-sombra);
+  text-decoration: none;
+  transition: border-color var(--transition), transform var(--transition-spring),
+    box-shadow var(--transition-spring);
+}
+.pub-link:hover {
+  border-color: var(--pub-cristal-borda-forte);
+  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 var(--pub-cristal-luz), var(--shadow-card-hover);
+}
+.pub-link-icone {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+  /* Favicon quadrado costuma vir com fundo proprio; o fundo neutro so cobre o
+     caso do icone transparente sobre o cristal. */
+  background: var(--gray4);
+}
+.pub-link-inicial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--gray2);
+}
+.pub-link-texto {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+.pub-link-texto strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--black);
+}
+.pub-link-texto span {
+  font-size: 11.5px;
+  color: var(--gray2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pub-link-fora {
+  display: inline-flex;
+  margin-left: 4px;
+  color: var(--gray2);
+  flex: none;
+}
+.pub-link:hover .pub-link-fora { color: var(--black); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pub-link { transition: none; }
+  .pub-link:hover { transform: none; }
+}
 
 /* ── Seções ───────────────────────────────────────── */
 .pub-secao { margin-bottom: 22px; }
@@ -10283,7 +10392,7 @@ body.arrastando-painel {
   transition: color var(--transition);
 }
 .pub-limpar:hover { color: var(--black); }
-.pub-limpar:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.pub-limpar:focus-visible { outline: none; }
 
 .pub-barra-ferramentas {
   display: flex;
@@ -10325,7 +10434,7 @@ body.arrastando-painel {
   color: var(--black);
 }
 .pub-ferramentas > button:focus-visible,
-.pub-seletor > button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.pub-seletor > button:focus-visible { outline: none; }
 
 .pub-seletor { position: relative; }
 .pub-seletor-lista {
@@ -10356,7 +10465,7 @@ body.arrastando-painel {
 }
 .pub-seletor-lista button:hover { background: var(--gray4); color: var(--black); }
 .pub-seletor-lista button.ativo { color: var(--black); font-weight: 700; }
-.pub-seletor-lista button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.pub-seletor-lista button:focus-visible { outline: none; }
 
 /* Faixa propria, abaixo da barra e de ponta a ponta. Campo de busca larga
    perdoa o dedo e o olho: o alvo de clique e a linha inteira, e o texto
@@ -10470,7 +10579,7 @@ body.arrastando-painel {
   transition: background var(--transition), color var(--transition);
 }
 .pub-grupo-titulo:hover { background: var(--gray4); color: var(--black); }
-.pub-grupo-titulo:focus-visible { outline: 2px solid var(--yb); outline-offset: 2px; }
+.pub-grupo-titulo:focus-visible { outline: none; }
 .pub-grupo-seta {
   width: 0;
   height: 0;
@@ -10524,7 +10633,7 @@ body.arrastando-painel {
   cursor: pointer;
 }
 .pub-entrega-topo:disabled { cursor: default; }
-.pub-entrega-topo:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.pub-entrega-topo:focus-visible { outline: none; }
 .pub-entrega.abrivel:hover { border-color: var(--pub-cristal-borda-forte); }
 
 /* A mesma seta da seção de entregas do painel, no mesmo lugar: colada no
@@ -10620,7 +10729,7 @@ body.arrastando-painel {
   border-color: var(--pub-cristal-borda-forte);
   background: var(--gray4);
 }
-.pub-evidencias button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.pub-evidencias button:focus-visible { outline: none; }
 .pub-ev-etapa {
   flex-shrink: 0;
   padding: 1px 7px;
@@ -10733,7 +10842,7 @@ body.arrastando-painel {
   color: var(--black);
 }
 .pub-previa-pe button:disabled { opacity: .5; cursor: default; }
-.pub-previa-pe button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.pub-previa-pe button:focus-visible { outline: none; }
 
 @media (max-width: 640px) {
   .pub-detalhe-corpo { padding-left: 14px; }
@@ -10971,7 +11080,7 @@ body.arrastando-painel {
 .ao-vivo:hover:not(:disabled) .ao-vivo-ponto::after,
 .ao-vivo:focus-visible .ao-vivo-ponto::after { animation: none; opacity: 0; }
 
-.ao-vivo:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.ao-vivo:focus-visible { outline: none; }
 .ao-vivo:disabled { opacity: .55; cursor: default; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -10992,3 +11101,297 @@ body.arrastando-painel {
   .grupo-seta,
   .pub-grupo-seta { transition: none; }
 }
+
+/* ── Visoes do cliente: switcher, quadro e calendario ─
+   O switcher e o mesmo do portal (`.view-toggle`), so assentado no cristal
+   desta pagina. As duas visoes novas reusam o cartao e as cores da lista: o
+   que muda e o arranjo, nao o vocabulario. */
+/* A busca ocupa a faixa e o switcher fica encostado nela, na direita: os dois
+   sao o mesmo gesto - achar a entrega e escolher como olhar para ela. */
+.pub-linha-busca {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.pub-linha-busca .pub-busca { margin-bottom: 0; }
+.pub-linha-busca .pub-visoes { flex: none; }
+
+.pub-visoes {
+  background: var(--gray4);
+  border: 1px solid var(--pub-cristal-borda);
+}
+.pub-visoes .view-toggle-pill {
+  background: var(--pub-cristal);
+  box-shadow: inset 0 1px 0 var(--pub-cristal-luz), var(--pub-cristal-sombra);
+}
+
+/* ── Quadro ───────────────────────────────────────── */
+/* Rola de lado no lugar de espremer seis colunas ate o titulo sumir. */
+.pub-quadro {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scroll-snap-type: x proximity;
+}
+/* Do lado em que ainda ha coluna fora da tela, o conteudo se dissolve em vez
+   de terminar num corte reto - o veu tambem e o aviso de que ha mais ali. Ele
+   entra e sai conforme a rolagem, entao a ultima coluna nao fica apagada
+   depois de a pessoa chegar ao fim. */
+.pub-quadro.corta-dir {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 72px), transparent 100%);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 72px), transparent 100%);
+}
+.pub-quadro.corta-esq {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 72px);
+  mask-image: linear-gradient(90deg, transparent 0, #000 72px);
+}
+.pub-quadro.corta-esq.corta-dir {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 72px,
+    #000 calc(100% - 72px), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 72px,
+    #000 calc(100% - 72px), transparent 100%);
+}
+.pub-coluna {
+  flex: 0 0 232px;
+  min-width: 0;
+  scroll-snap-align: start;
+}
+.pub-coluna-topo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 8px;
+  padding: 0 2px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.pub-coluna-cor {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+.pub-coluna-topo span:last-child {
+  margin-left: auto;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+.pub-coluna-corpo { display: flex; flex-direction: column; gap: 8px; }
+.pub-coluna-vazia {
+  margin: 0;
+  padding: 10px 2px;
+  font-size: 11.5px;
+  color: var(--gray2);
+}
+
+.pub-cartao {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--pub-cristal-borda);
+  border-radius: var(--radius-md);
+  background: var(--pub-cristal);
+  box-shadow: inset 0 1px 0 var(--pub-cristal-luz),
+    inset 0 -1px 0 var(--pub-cristal-base),
+    var(--pub-cristal-sombra);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--transition), transform var(--transition-spring),
+    box-shadow var(--transition-spring);
+}
+.pub-cartao:hover {
+  border-color: var(--pub-cristal-borda-forte);
+  transform: translateY(-2px);
+  box-shadow: inset 0 1px 0 var(--pub-cristal-luz), var(--shadow-card-hover);
+}
+.pub-cartao:focus-visible { outline: none; }
+.pub-cartao-topo { display: flex; align-items: flex-start; gap: 8px; width: 100%; }
+.pub-cartao-titulo {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--black);
+  /* Duas linhas: titulo de entrega e frase, nao rotulo. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pub-cartao-pe {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  font-size: 11px;
+  color: var(--gray2);
+}
+.pub-cartao-pe .pub-pct { margin-left: auto; }
+
+/* ── Calendario ───────────────────────────────────── */
+.pub-cal-topo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+.pub-cal-topo strong {
+  min-width: 190px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+/* So a inicial: `capitalize` subiria tambem o "de" de "setembro de 2026". */
+.pub-cal-topo strong::first-letter { text-transform: uppercase; }
+.pub-cal-topo button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--pub-cristal-borda);
+  border-radius: var(--radius-md);
+  background: var(--pub-cristal);
+  color: var(--gray2);
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+.pub-cal-topo button:hover { border-color: var(--pub-cristal-borda-forte); color: var(--black); }
+.pub-cal-topo button:focus-visible { outline: none; }
+.pub-cal-seta {
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid currentColor;
+}
+.pub-cal-seta.esquerda {
+  border-left: 0;
+  border-right: 5px solid currentColor;
+}
+
+.pub-cal-grade {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.pub-cal-cabeca {
+  padding: 0 0 2px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.pub-cal-dia {
+  min-height: 84px;
+  padding: 5px;
+  border: 1px solid var(--pub-cristal-borda);
+  border-radius: var(--radius-md);
+  background: var(--pub-cristal);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+/* Dia de outro mes fica na grade para a semana nao ter buraco, mas recuado. */
+.pub-cal-dia.fora { background: none; border-color: transparent; }
+.pub-cal-dia.fora .pub-cal-numero { color: var(--gray3); }
+.pub-cal-dia.hoje { border-color: var(--pub-cristal-borda-forte); }
+.pub-cal-numero {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gray2);
+  font-variant-numeric: tabular-nums;
+}
+.pub-cal-dia.hoje .pub-cal-numero { color: var(--black); }
+
+.pub-cal-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 3px 5px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--gray4);
+  font-family: inherit;
+  font-size: 10.5px;
+  color: var(--black);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.pub-cal-chip:hover { background: var(--gray3); }
+.pub-cal-chip:focus-visible { outline: none; }
+.pub-cal-ponto {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.pub-cal-solta { margin-top: 16px; }
+.pub-cal-solta-titulo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 7px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.pub-cal-solta-titulo span {
+  letter-spacing: 0;
+  background: var(--gray4);
+  border-radius: var(--radius-pill);
+  padding: 1px 7px;
+  font-variant-numeric: tabular-nums;
+}
+.pub-cal-solta-lista {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pub-cal-solta-lista .pub-cal-chip { width: auto; max-width: 260px; }
+
+/* A linha que a pessoa acabou de abrir vindo do quadro ou do calendario pisca
+   uma vez: sem isso, a troca de visao a joga numa lista de dezenas e ela
+   precisa procurar de novo o que ja tinha achado. */
+.pub-entrega.realcada {
+  border-color: var(--pub-cristal-borda-forte);
+  animation: pub-realce 2.2s var(--curva-anti) both;
+}
+@keyframes pub-realce {
+  100% { box-shadow: 0 0 0 0 rgba(0, 201, 167, 0); }
+}
+
+@media (max-width: 560px) {
+  .pub-cal-dia { min-height: 62px; padding: 3px; }
+  .pub-cal-chip { font-size: 9.5px; padding: 2px 4px; }
+  .pub-cal-topo strong { min-width: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pub-cartao { transition: none; }
+  .pub-cartao:hover { transform: none; }
+  .pub-entrega.realcada { animation: none; }
+}
+

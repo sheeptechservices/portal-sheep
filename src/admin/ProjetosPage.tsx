@@ -124,7 +124,7 @@ const COR_ENTREGA: Record<string, string> = {
   'Bloqueada': '#D93025',
   'Entregue': '#7C3AED',
   'Validada': '#23A455',
-  'Cancelada': '#8A857A',
+  'Cancelada': '#D9730D',
 };
 
 /** Leitura semanal de saúde: semáforo mais o porquê. É histórico, não estado,
@@ -1679,7 +1679,6 @@ function SecaoEntregas({
   const total = entregas.length + pendentes.length;
 
   const [busca, setBusca] = useState('');
-  const [buscando, setBuscando] = useState(false);
   const [ordem, setOrdem] = useState<string>('criacao');
   const [agrupar, setAgrupar] = useState<string>('nenhum');
 
@@ -1757,16 +1756,7 @@ function SecaoEntregas({
           )}
         </p>
         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <button type="button" className="secao-add"
-            onClick={() => { setBuscando(b => !b); if (buscando) setBusca(''); }}
-            title="Buscar entrega" aria-label="Buscar entrega" aria-expanded={buscando}>
-            <IconSearch size={13} />
-          </button>
-          <SeletorLista valor={ordem} onChange={setOrdem} opcoes={ORDENS_ENTREGA}
-            icone={IconOrdenar} rotulo="Ordenar entregas" />
-          <SeletorLista valor={agrupar} onChange={setAgrupar} opcoes={AGRUPAMENTOS_ENTREGA}
-            icone={IconAgrupar} rotulo="Agrupar entregas" />
-          {/* Buscar, ordenar e agrupar continuam: são leitura. Só o acrescentar
+          {/* Ordenar e agrupar continuam aqui: são leitura. Só o acrescentar
               sai, junto com o resto do que grava. */}
           {!somenteLeitura && (
             <button type="button" className="secao-add"
@@ -1778,13 +1768,28 @@ function SecaoEntregas({
         </span>
       </div>
 
-      {buscando && (
-        <input autoFocus className="form-input" value={busca}
-          onChange={e => setBusca(e.target.value)}
-          placeholder="Buscar por título ou descritivo"
-          onKeyDown={e => { if (e.key === 'Escape') { setBusca(''); setBuscando(false); } }}
-          style={{ marginBottom: 10, height: 36, fontSize: 13 }} />
-      )}
+      {/* A busca fica à vista, e não atrás de um botão: num projeto com dezenas
+          de entregas, procurar uma é o primeiro gesto de quem abre a seção.
+          Ordenar e agrupar dividem a faixa com ela - procurar e escolher como
+          olhar são o mesmo momento. */}
+      <div className="secao-busca">
+        <span className="secao-busca-campo">
+          <IconSearch size={13} />
+          <input value={busca} aria-label="Buscar entrega"
+            onChange={e => setBusca(e.target.value)}
+            placeholder="Buscar por título ou descritivo"
+            onKeyDown={e => { if (e.key === 'Escape') setBusca(''); }} />
+          {busca && (
+            <button type="button" aria-label="Limpar a busca" onClick={() => setBusca('')}>
+              <IconX size={12} />
+            </button>
+          )}
+        </span>
+        <SeletorLista valor={ordem} onChange={setOrdem} opcoes={ORDENS_ENTREGA}
+          icone={IconOrdenar} rotulo="Ordenar entregas" />
+        <SeletorLista valor={agrupar} onChange={setAgrupar} opcoes={AGRUPAMENTOS_ENTREGA}
+          icone={IconAgrupar} rotulo="Agrupar entregas" />
+      </div>
 
       {(editando === 'novo' || editandoPendente === -1) && (
         <EditorEntrega
@@ -1815,7 +1820,10 @@ function SecaoEntregas({
       {blocos.map(bloco => {
       const fechado = recolhidos.has(bloco.titulo);
       return (
-      <div key={bloco.titulo} style={{ marginBottom: bloco.titulo ? 12 : 0 }}>
+      // A árvore só existe havendo cabeçalho: sem agrupamento não há de onde
+      // os ramos sairem.
+      <div key={bloco.titulo} className={bloco.titulo ? 'grupo-arvore' : undefined}
+        style={{ marginBottom: bloco.titulo ? 12 : 0 }}>
       {bloco.titulo && (
         <button type="button" className={`grupo-cabeca${fechado ? '' : ' aberto'}`}
           aria-expanded={!fechado}
@@ -1879,6 +1887,23 @@ function SecaoEntregas({
                   <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
                     fontSize: 11.5, color: 'var(--gray2)' }}>
                     {e.prazo && <span>{fmtData(e.prazo)}</span>}
+                    {/* Quem responde pela entrega, colado na contagem de
+                        tarefas: as duas respondem a mesma pergunta - quanto
+                        falta e com quem falo sobre isso. O detalhe aberto
+                        repete as fotos com o nome, e aqui elas sao so o
+                        lembrete. */}
+                    {e.responsaveis.length > 0 && (
+                      <span style={{ display: 'flex', gap: 3 }}>
+                        {e.responsaveis.map(id => {
+                          const p = pessoas.find(x => x.id === id);
+                          return (
+                            <span key={id} title={p?.nome ?? 'Usuário removido'}>
+                              <Avatar nome={p?.nome ?? '?'} foto={p?.foto_url} size={18} />
+                            </span>
+                          );
+                        })}
+                      </span>
+                    )}
                     <ContagemTarefas
                       tarefas={tarefas.filter(t => t.entrega_id === e.id)}
                       caminho={[...caminho, e.titulo]}

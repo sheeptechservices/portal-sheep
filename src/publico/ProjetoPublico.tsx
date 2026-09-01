@@ -15,9 +15,9 @@ import { logoDoCliente } from '../lib/marcas';
 // portal junto, e o filtro fica com o mesmo desenho dos dois lados.
 import FilterDropdown from '../components/FilterDropdown';
 import {
-  IconAgrupar, IconChevronRight, IconExternal, IconMarcoAndamento, IconMarcoBloqueado,
-  IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado, IconMarcoValidado, IconOrdenar,
-  IconSearch, IconX,
+  IconAgrupar, IconCalendario, IconChevronRight, IconExternal, IconMarcoAndamento,
+  IconMarcoBloqueado, IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado,
+  IconMarcoValidado, IconOrdenar, IconSearch, IconVisaoLista, IconVisaoQuadro, IconX,
 } from '../components/icons';
 import { porNivelDeContato } from '../lib/papeisDeEquipe';
 
@@ -89,6 +89,28 @@ const ORDEM_GRUPOS = [
   'Bloqueada', 'Entregue', 'Em andamento', 'Validada', 'Planejada', 'Cancelada',
 ];
 
+/** No quadro a ordem é outra, e de propósito: colunas lado a lado leem como um
+ *  caminho, da esquerda para a direita, então elas seguem o fluxo do trabalho.
+ *  Na lista, que se lê de cima para baixo, o que importa é a urgência - por
+ *  isso lá o bloqueado vem primeiro. */
+const ORDEM_QUADRO = [
+  'Planejada', 'Em andamento', 'Bloqueada', 'Entregue', 'Validada', 'Cancelada',
+];
+
+/** As três leituras da mesma lista. Lista é a padrão: é a que responde "o que
+ *  está acontecendo", e as outras duas são recortes de quem já sabe o que
+ *  procura - por situação, no quadro, ou por data, no calendário. */
+const VISOES = [
+  { valor: 'lista', label: 'Lista', Icone: IconVisaoLista },
+  { valor: 'quadro', label: 'Quadro', Icone: IconVisaoQuadro },
+  { valor: 'calendario', label: 'Calendário', Icone: IconCalendario },
+] as const;
+
+const MESES = [
+  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+];
+
 const AGRUPAMENTOS = [
   { valor: 'nenhum', label: 'Sem agrupamento' },
   { valor: 'categoria', label: 'Categoria' },
@@ -103,13 +125,19 @@ const COR: Record<string, string> = {
   'Bloqueada': '#D93025',
   'Entregue': '#7C3AED',
   'Validada': '#23A455',
-  'Cancelada': '#8A857A',
+  'Cancelada': '#D9730D',
 };
 
 /** Onde a situação entra na ordem dos grupos. Desconhecida vai para o fim. */
 const posicaoDoGrupo = (st: string) => {
   const i = ORDEM_GRUPOS.indexOf(st);
   return i === -1 ? ORDEM_GRUPOS.length : i;
+};
+
+/** O mesmo, para as colunas do quadro. */
+const posicaoNoQuadro = (st: string) => {
+  const i = ORDEM_QUADRO.indexOf(st);
+  return i === -1 ? ORDEM_QUADRO.length : i;
 };
 
 const fmtData = (v: string | null) => {
@@ -170,6 +198,41 @@ function Logo({ cliente }: { cliente: string | null }) {
   );
 }
 
+/** O endereço do que foi entregue, no formato de um link com cara de link: o
+ *  ícone do próprio site, o endereço e a marca de que abre fora daqui.
+ *
+ *  O ícone vem do `/favicon.ico` do próprio destino, e não de um serviço de
+ *  terceiros que resolve favicon: aquele caminho contaria a um estranho qual
+ *  site o cliente está abrindo. Se não houver ícone, entra a inicial do
+ *  domínio - a falha de uma imagem não pode deixar um quadrado vazio. */
+function LinkDoPortal({ url }: { url: string }) {
+  const [semIcone, setSemIcone] = useState(false);
+  let destino: URL | null = null;
+  try {
+    destino = new URL(url.includes('://') ? url : `https://${url}`);
+  } catch { /* endereço torto não vira link */ }
+  if (!destino) return null;
+
+  const host = destino.host.replace(/^www\./, '');
+  return (
+    <a className="pub-link" href={destino.href} target="_blank" rel="noopener noreferrer">
+      {semIcone ? (
+        <span className="pub-link-icone pub-link-inicial" aria-hidden="true">
+          {host[0]?.toUpperCase() ?? '?'}
+        </span>
+      ) : (
+        <img className="pub-link-icone" src={`${destino.origin}/favicon.ico`} alt=""
+          referrerPolicy="no-referrer" onError={() => setSemIcone(true)} />
+      )}
+      <span className="pub-link-texto">
+        <strong>Acessar o portal</strong>
+        <span>{host}</span>
+      </span>
+      <span className="pub-link-fora" aria-hidden="true"><IconExternal size={13} /></span>
+    </a>
+  );
+}
+
 /** Seletor de uma opção só, no desenho enxuto da página: gatilho de ícone e a
  *  lista logo abaixo. Não é o do portal - nada aqui importa de `src/admin`. */
 function Seletor({ valor, opcoes, icone: Icone, rotulo, onChange }: {
@@ -222,9 +285,12 @@ function Seletor({ valor, opcoes, icone: Icone, rotulo, onChange }: {
 /** A linha da entrega, no mesmo desenho do painel de dentro: o marco da
  *  situação abre a linha, o título ocupa o meio, e prazo, contagem de tarefas
  *  e percentual fecham à direita. */
-function LinhaEntrega({ e, aberta, onAlternar, onAbrirPrevia }: {
+function LinhaEntrega({ e, aberta, realcada, onAlternar, onAbrirPrevia }: {
   e: Entrega;
   aberta: boolean;
+  /** Piscada curta depois de vir do quadro ou do calendário, para o olho achar
+   *  a linha. */
+  realcada?: boolean;
   onAlternar: () => void;
   onAbrirPrevia: (ev: Evidencia) => void;
 }) {
@@ -241,7 +307,9 @@ function LinhaEntrega({ e, aberta, onAlternar, onAbrirPrevia }: {
   if (aberta && !jaAbriu) setJaAbriu(true);
 
   return (
-    <li className={`pub-entrega${aberta ? ' aberta' : ''}${temDetalhe ? ' abrivel' : ''}`}>
+    <li className={`pub-entrega${aberta ? ' aberta' : ''}${temDetalhe ? ' abrivel' : ''}`
+      + `${realcada ? ' realcada' : ''}`}
+      ref={el => { if (realcada && el) el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }}>
       <button type="button" className="pub-entrega-topo"
         disabled={!temDetalhe} aria-expanded={temDetalhe ? aberta : undefined}
         onClick={onAlternar}>
@@ -258,8 +326,10 @@ function LinhaEntrega({ e, aberta, onAlternar, onAbrirPrevia }: {
         {e.descricao && <span className="pub-entrega-desc">{e.descricao}</span>}
       </span>
       <span className="pub-entrega-fim">
-        {/* Quem responde pela entrega, antes do prazo: é a pergunta que vem
-            junto com "como está" - com quem falo sobre isso. */}
+        {fmtData(e.prazo) && <span className="pub-prazo">{fmtData(e.prazo)}</span>}
+        {/* Quem responde pela entrega, colado na contagem de tarefas: as duas
+            respondem a mesma pergunta - quanto falta e com quem falo sobre
+            isso. */}
         {e.responsaveis.length > 0 && (
           <span className="pub-donos">
             {e.responsaveis.map(p => (
@@ -269,7 +339,6 @@ function LinhaEntrega({ e, aberta, onAlternar, onAbrirPrevia }: {
             ))}
           </span>
         )}
-        {fmtData(e.prazo) && <span className="pub-prazo">{fmtData(e.prazo)}</span>}
         {e.tarefas_total > 0 && (
           <span className="pub-tarefas" title={`${e.tarefas_feitas} de ${e.tarefas_total} tarefas concluídas`}>
             {e.tarefas_feitas}/{e.tarefas_total} tarefas
@@ -314,6 +383,197 @@ function LinhaEntrega({ e, aberta, onAlternar, onAbrirPrevia }: {
         </div>
       )}
     </li>
+  );
+}
+
+/** O cartão da entrega, usado no quadro e no calendário. É a mesma linha da
+ *  lista, dobrada em duas: a situação e o título em cima, o resto embaixo. */
+function CartaoEntrega({ e, onAbrir }: { e: Entrega; onAbrir: () => void }) {
+  const cor = COR[e.status] ?? '#8A8B84';
+  const Marco = ICONE[e.status] ?? IconMarcoPlanejado;
+  return (
+    <button type="button" className="pub-cartao" onClick={onAbrir}
+      title={`Ver ${e.titulo} na lista`}>
+      <span className="pub-cartao-topo">
+        <span className="pub-marco" style={{ ['--mc' as string]: cor }}>
+          <Marco size={13} />
+        </span>
+        <span className="pub-cartao-titulo">{e.titulo}</span>
+      </span>
+      {e.categoria && <span className="pub-categoria">{e.categoria}</span>}
+      <span className="pub-cartao-pe">
+        {e.responsaveis.length > 0 && (
+          <span className="pub-donos">
+            {e.responsaveis.map(p => (
+              <span key={p.nome} title={p.nome}>
+                <Avatar nome={p.nome} foto={p.foto_url} />
+              </span>
+            ))}
+          </span>
+        )}
+        {fmtData(e.prazo) && <span className="pub-prazo">{fmtData(e.prazo)}</span>}
+        <span className="pub-pct" style={{ color: e.status === 'Validada' ? cor : undefined }}>
+          {e.progresso}%
+        </span>
+      </span>
+    </button>
+  );
+}
+
+/** Quadro por situação. As colunas são as mesmas seis da lista agrupada, na
+ *  mesma ordem, e aparecem mesmo vazias: coluna que some esconde que não há
+ *  nada travado. */
+function Quadro({ lista, situacoes, onAbrir }: {
+  lista: Entrega[];
+  situacoes: string[];
+  onAbrir: (id: number) => void;
+}) {
+  const caixa = useRef<HTMLDivElement>(null);
+  /** De que lado ainda há coluna fora da tela. O véu só entra desse lado: um
+   *  degradê fixo na direita continuaria apagando a última coluna depois de a
+   *  pessoa rolar até o fim, e aí ele mente. */
+  const [corta, setCorta] = useState({ esq: false, dir: false });
+
+  useEffect(() => {
+    const el = caixa.current;
+    if (!el) return;
+    const medir = () => setCorta({
+      esq: el.scrollLeft > 4,
+      dir: el.scrollLeft + el.clientWidth < el.scrollWidth - 4,
+    });
+    medir();
+    el.addEventListener('scroll', medir, { passive: true });
+    // O corte também muda quando a janela muda de tamanho, sem ninguém rolar.
+    const olho = new ResizeObserver(medir);
+    olho.observe(el);
+    return () => { el.removeEventListener('scroll', medir); olho.disconnect(); };
+  }, [situacoes.length, lista.length]);
+
+  return (
+    <div ref={caixa}
+      className={`pub-quadro${corta.esq ? ' corta-esq' : ''}${corta.dir ? ' corta-dir' : ''}`}>
+      {situacoes.map(st => {
+        const itens = lista.filter(e => e.status === st);
+        return (
+          <div key={st} className="pub-coluna">
+            <p className="pub-coluna-topo">
+              <span className="pub-coluna-cor" style={{ background: COR[st] ?? '#8A8B84' }} />
+              {st}
+              <span>{itens.length}</span>
+            </p>
+            <div className="pub-coluna-corpo">
+              {itens.map(e => <CartaoEntrega key={e.id} e={e} onAbrir={() => onAbrir(e.id)} />)}
+              {itens.length === 0 && <p className="pub-coluna-vazia">Nada aqui.</p>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Calendário do mês, pelo prazo de cada entrega. Começa no mês da entrega mais
+ *  próxima que ainda não fechou, e não em hoje: um projeto que só tem prazo em
+ *  novembro abriria numa grade vazia. */
+function Calendario({ lista, onAbrir }: {
+  lista: Entrega[];
+  onAbrir: (id: number) => void;
+}) {
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  const comPrazo = lista.filter(e => e.prazo);
+  const primeiro = [...comPrazo]
+    .filter(e => (e.prazo ?? '').slice(0, 10) >= iso(hoje))
+    .sort((a, b) => (a.prazo ?? '').localeCompare(b.prazo ?? ''))[0]
+    ?? [...comPrazo].sort((a, b) => (b.prazo ?? '').localeCompare(a.prazo ?? ''))[0];
+  const inicial = primeiro?.prazo
+    ? new Date(`${primeiro.prazo.slice(0, 10)}T00:00:00`)
+    : hoje;
+  const [mes, setMes] = useState(() => new Date(inicial.getFullYear(), inicial.getMonth(), 1));
+
+  const porDia = new Map<string, Entrega[]>();
+  for (const e of comPrazo) {
+    const k = (e.prazo ?? '').slice(0, 10);
+    const l = porDia.get(k);
+    if (l) l.push(e); else porDia.set(k, [e]);
+  }
+
+  // A grade sempre começa no domingo da semana do dia 1 e fecha a última
+  // semana inteira: mês que começa numa quarta não pode abrir com buracos.
+  const comeco = new Date(mes);
+  comeco.setDate(1 - mes.getDay());
+  const dias: Date[] = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(comeco);
+    d.setDate(comeco.getDate() + i);
+    dias.push(d);
+  }
+  // Sexta semana só entra se tiver dia do mês: senão sobra uma faixa vazia.
+  const semanas = [0, 1, 2, 3, 4, 5]
+    .map(i => dias.slice(i * 7, i * 7 + 7))
+    .filter(sem => sem.some(d => d.getMonth() === mes.getMonth()));
+
+  const semPrazo = lista.filter(e => !e.prazo);
+
+  return (
+    <div className="pub-calendario">
+      <div className="pub-cal-topo">
+        <button type="button" onClick={() => setMes(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+          aria-label="Mês anterior">
+          <span className="pub-cal-seta esquerda" aria-hidden="true" />
+        </button>
+        <strong>{MESES[mes.getMonth()]} de {mes.getFullYear()}</strong>
+        <button type="button" onClick={() => setMes(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+          aria-label="Próximo mês">
+          <span className="pub-cal-seta" aria-hidden="true" />
+        </button>
+      </div>
+
+      <div className="pub-cal-grade">
+        {['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'].map(d => (
+          <span key={d} className="pub-cal-cabeca">{d}</span>
+        ))}
+        {semanas.flat().map(d => {
+          const chave = iso(d);
+          const doMes = d.getMonth() === mes.getMonth();
+          const ehHoje = chave === iso(hoje);
+          const itens = porDia.get(chave) ?? [];
+          return (
+            <div key={chave} className={`pub-cal-dia${doMes ? '' : ' fora'}${ehHoje ? ' hoje' : ''}`}>
+              <span className="pub-cal-numero">{d.getDate()}</span>
+              {itens.map(e => (
+                <button key={e.id} type="button" className="pub-cal-chip"
+                  onClick={() => onAbrir(e.id)}
+                  title={`${e.titulo} - ${e.status}`}>
+                  <span className="pub-cal-ponto" style={{ background: COR[e.status] ?? '#8A8B84' }} />
+                  {e.titulo}
+                </button>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+
+      {semPrazo.length > 0 && (
+        <div className="pub-cal-solta">
+          <p className="pub-cal-solta-titulo">
+            Sem data definida
+            <span>{semPrazo.length}</span>
+          </p>
+          <div className="pub-cal-solta-lista">
+            {semPrazo.map(e => (
+              <button key={e.id} type="button" className="pub-cal-chip"
+                onClick={() => onAbrir(e.id)} title={`${e.titulo} - ${e.status}`}>
+                <span className="pub-cal-ponto" style={{ background: COR[e.status] ?? '#8A8B84' }} />
+                {e.titulo}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -464,6 +724,21 @@ export default function ProjetoPublico({ token }: { token: string }) {
   /** Grupos recolhidos, por nome. */
   const [recolhidos, setRecolhidos] = useState<Set<string>>(new Set());
   const [ordem, setOrdem] = useState<string>('padrao');
+  /** Lista é a padrão: é a leitura que responde "o que está acontecendo". */
+  const [visao, setVisao] = useState<string>('lista');
+
+  /** Clicar num cartão do quadro ou numa marca do calendário leva a pessoa à
+   *  lista, com aquela entrega já aberta: é lá que moram a descrição e as
+   *  evidências, e duplicar o detalhe nas três visões seria manter três. */
+  const verNaLista = (id: number) => {
+    setVisao('lista');
+    setAbertas(a => new Set(a).add(id));
+    // O destaque some sozinho: ele serve para o olho achar a linha depois da
+    // troca de visão, não para marcá-la.
+    setRealcada(id);
+    setTimeout(() => setRealcada(r => (r === id ? null : r)), 2200);
+  };
+  const [realcada, setRealcada] = useState<number | null>(null);
   // Agrupado por situação desde a primeira olhada: a lista corrida obrigava o
   // cliente a varrer 46 linhas para descobrir o que está travado.
   const [agrupamento, setAgrupamento] = useState<string>('status');
@@ -507,6 +782,13 @@ export default function ProjetoPublico({ token }: { token: string }) {
   const situacoes = ordem_status
     .filter(st => entregas.some(e => e.status === st))
     .sort((x, y) => posicaoDoGrupo(x) - posicaoDoGrupo(y));
+
+  /** As colunas do quadro. Todas as seis, na ordem do fluxo, mesmo vazias -
+   *  coluna que some esconde justamente que não há nada travado. Com filtro de
+   *  situação ligado, só as escolhidas. */
+  const situacoesDoQuadro = ordem_status
+    .filter(st => fSituacao.length === 0 || fSituacao.includes(st))
+    .sort((x, y) => posicaoNoQuadro(x) - posicaoNoQuadro(y));
 
   const categorias = [...new Set(entregas.map(e => e.categoria).filter(Boolean))]
     .sort((a, b) => a!.localeCompare(b!, 'pt-BR')) as string[];
@@ -582,29 +864,22 @@ export default function ProjetoPublico({ token }: { token: string }) {
             <p className="pub-sobre">Acompanhamento do projeto</p>
             <h1 className="pub-nome">{projeto.nome}</h1>
           </div>
-          <div className="pub-topo-fim">
-            {/* O acesso ao que foi entregue fica no cabeçalho, ao lado da
-                marca: e a acao que o cliente vem fazer, quando ela existe. */}
-            {projeto.link && (
-              <a className="pub-acesso" href={projeto.link}
-                target="_blank" rel="noopener noreferrer">
-                Acessar o portal
-                <IconExternal size={13} />
-              </a>
-            )}
-            <Logo cliente={projeto.cliente} />
-          </div>
+          <div className="pub-topo-marca"><Logo cliente={projeto.cliente} /></div>
         </div>
       </header>
 
       <div className="pub">
 
-      {projeto.descricao && (
+      {(projeto.descricao || projeto.link) && (
         <section className="pub-secao">
           <div className="pub-secao-cabeca">
             <h2 className="pub-secao-titulo">Sobre</h2>
           </div>
-          <p className="pub-descricao">{projeto.descricao}</p>
+          {projeto.descricao && <p className="pub-descricao">{projeto.descricao}</p>}
+          {/* O endereço do que foi entregue mora junto da descrição, e não no
+              cabeçalho: ali ele disputava com a marca do cliente, e aqui ele é
+              a continuação natural de "o que é este projeto". */}
+          {projeto.link && <LinkDoPortal url={projeto.link} />}
         </section>
       )}
 
@@ -673,16 +948,22 @@ export default function ProjetoPublico({ token }: { token: string }) {
           {/* Agrupar e ordenar, no mesmo canto do quadro de dentro. Nenhum
               deles grava nada. */}
           <div className="pub-ferramentas">
-            <Seletor valor={agrupamento} opcoes={AGRUPAMENTOS} icone={IconAgrupar}
-              rotulo="Agrupar entregas" onChange={setAgrupamento} />
+            {/* Agrupar só existe na lista: o quadro já é agrupado por situação
+                e o calendário, por data. Ordenar continua valendo nos três. */}
+            {visao === 'lista' && (
+              <Seletor valor={agrupamento} opcoes={AGRUPAMENTOS} icone={IconAgrupar}
+                rotulo="Agrupar entregas" onChange={setAgrupamento} />
+            )}
             <Seletor valor={ordem} opcoes={ORDENS} icone={IconOrdenar}
               rotulo="Ordenar entregas" onChange={setOrdem} />
           </div>
         </div>
 
-        {/* Numa faixa própria, de ponta a ponta. Sempre à vista, e não atrás de
-            um botão: numa lista de dezenas de entregas, procurar uma é o
-            primeiro gesto de quem chega. */}
+        {/* Numa faixa própria, sempre à vista e não atrás de um botão: numa
+            lista de dezenas de entregas, procurar uma é o primeiro gesto de
+            quem chega. O switcher divide a faixa com ela - procurar e escolher
+            como olhar são o mesmo momento. */}
+        <div className="pub-linha-busca">
         <div className="pub-busca">
           <IconSearch size={14} />
           <input
@@ -699,10 +980,29 @@ export default function ProjetoPublico({ token }: { token: string }) {
           )}
         </div>
 
+        <div className="view-toggle pub-visoes">
+          <div className="view-toggle-pill"
+            style={{ left: 3 + VISOES.findIndex(v => v.valor === visao) * 32 }} />
+          {VISOES.map(v => (
+            <button key={v.valor} type="button"
+              className={visao === v.valor ? 'active' : ''}
+              onClick={() => setVisao(v.valor)}
+              title={v.label} aria-label={`Ver em ${v.label.toLocaleLowerCase('pt-BR')}`}
+              aria-pressed={visao === v.valor}>
+              <v.Icone size={14} />
+            </button>
+          ))}
+        </div>
+        </div>
+
         {lista.length === 0 ? (
           <p className="pub-nada">
             {q ? 'Nenhuma entrega encontrada para essa busca.' : 'Nenhuma entrega neste recorte.'}
           </p>
+        ) : visao === 'quadro' ? (
+          <Quadro lista={lista} situacoes={situacoesDoQuadro} onAbrir={verNaLista} />
+        ) : visao === 'calendario' ? (
+          <Calendario lista={lista} onAbrir={verNaLista} />
         ) : grupos.map(g => {
           const fechado = recolhidos.has(g.nome);
           return (
@@ -732,6 +1032,7 @@ export default function ProjetoPublico({ token }: { token: string }) {
                 <LinhaEntrega
                   key={e.id}
                   e={e}
+                  realcada={realcada === e.id}
                   aberta={abertas.has(e.id)}
                   onAlternar={() => setAbertas(a => {
                     const n = new Set(a);
