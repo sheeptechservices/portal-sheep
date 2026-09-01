@@ -4742,12 +4742,38 @@ body.arrastando-painel {
   border-left: 3px solid var(--green, #23A455);
   border-radius: var(--radius-sm);
   padding: 7px 8px;
-  transition: border-color var(--transition), box-shadow var(--transition-spring);
+  /* A opacidade entra aqui: marcar como feita esmaece o card, e o corte seco
+     no meio do clique lia como o card tendo sumido. */
+  transition: border-color var(--transition), opacity var(--transition),
+    box-shadow var(--transition-spring);
 }
 .nt-card:hover { box-shadow: var(--shadow-card); }
 /* Planejada, não registrada: o traço na borda diz que o dia é intenção e não
    fato, sem precisar de uma segunda cor no quadro. */
 .nt-card.planejada { border-left-style: dashed; border-left-color: var(--gray2); }
+
+/* Feita sai do caminho: continua legível e continua arrastável, mas para de
+   competir com o que ainda falta. Volta ao normal no hover, para quando a
+   pessoa for reler ou reabrir. */
+.nt-card.feita { opacity: .55; }
+.nt-card.feita:hover,
+.nt-card.feita:focus-within { opacity: 1; }
+.nt-card.feita .nt-card-abrir p { text-decoration: line-through; }
+
+/* A caixa e o título na mesma linha, com o título ocupando o resto. */
+.nt-card-topo {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+.nt-card-marca {
+  width: 14px;
+  height: 14px;
+  /* Alinha com a primeira linha do título, e não com o bloco todo. */
+  margin-top: 1px;
+}
+.nt-card-marca:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.nt-card-marca:disabled { opacity: .4; cursor: default; }
 .nt-card[draggable="true"] { cursor: grab; }
 .nt-card[draggable="true"]:active { cursor: grabbing; }
 /* O card que está sendo levado fica apagado, e não sumido: some, e a coluna
@@ -4759,7 +4785,8 @@ body.arrastando-painel {
    que o teclado chega nele. */
 .nt-card-abrir {
   display: block;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   border: none;
   background: none;
   padding: 0;
@@ -4865,6 +4892,7 @@ body.arrastando-painel {
 
 @media (prefers-reduced-motion: reduce) {
   .nt-pagina { opacity: 1; transform: none; transition: none; }
+  .nt-card { transition: none; }
   .nt-triangulo,
   .nt-toggle-corpo,
   .nt-toggle.aberto .nt-toggle-corpo { transition: none; }

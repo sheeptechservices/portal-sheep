@@ -2682,12 +2682,23 @@ function segundaDaSemana(): Date {
   return d;
 }
 
-/** Entre a segunda desta semana e hoje. Comparação por texto: os campos são
- *  uns data pura e outros carimbo completo, e o recorte dos dez primeiros
- *  caracteres serve aos dois sem passar por fuso. */
+/** Entre a segunda desta semana e hoje, no fuso de quem lê. */
+/** O dia de um carimbo, no fuso de quem lê.
+ *
+ *  O servidor grava `concluida_em` em UTC: às 22h de Brasília ele já está no
+ *  dia seguinte, e recortar os dez primeiros caracteres punha o card na coluna
+ *  de amanhã. Campo de data pura - prazo, data de reunião - já é local e passa
+ *  direto: convertê-lo jogaria o dia para trás. */
+const diaLocal = (iso: string | undefined | null): string => {
+  if (!iso) return '';
+  if (!iso.includes('T')) return iso.slice(0, 10);
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso.slice(0, 10) : iso10(d);
+};
+
 const dentroDaSemana = (iso: string | undefined | null) => {
   if (!iso) return false;
-  const dia = iso.slice(0, 10);
+  const dia = diaLocal(iso);
   return dia >= iso10(segundaDaSemana()) && dia <= hojeIso();
 };
 
@@ -2731,7 +2742,7 @@ function tarefasDaSemana(p: Projeto): ItemDaSemana[] {
   const dias = diasUteisDaSemana();
   const itens: ItemDaSemana[] = [];
   for (const t of p.tarefas ?? []) {
-    const feito = (t.concluida_em ?? '').slice(0, 10);
+    const feito = diaLocal(t.concluida_em);
     if (feito && dentroDaSemana(t.concluida_em)) {
       itens.push({ tarefa: t, dia: feito, feita: true });
     } else if (!t.concluida_em && t.prazo && dias.includes(t.prazo.slice(0, 10))) {
@@ -3013,19 +3024,24 @@ function EntregasDoProjeto({ entregas, equipe }: { entregas: Entrega[]; equipe: 
 /** Um card do quadro. Mostra e arrasta - editar é trabalho de mesa e mora no
  *  modal, que abre no clique. Edição no lugar convivia mal com o arraste: o
  *  mesmo gesto ora movia, ora entrava no campo. */
-function CardDaSemana({ tarefa: t, equipe, feita, podeArrastar, arrastando, onAbrir, onArrastar, onSoltar }: {
+function CardDaSemana({ tarefa: t, equipe, feita, podeArrastar, podeMarcar, arrastando,
+  onAbrir, onMarcar, onArrastar, onSoltar }: {
   tarefa: Tarefa;
   equipe: Membro[];
   feita: boolean;
   podeArrastar: boolean;
+  /** Falso enquanto a configuração de etapas não chegou: sem ela não há para
+   *  onde levar a tarefa ao marcar. */
+  podeMarcar: boolean;
   arrastando: boolean;
   onAbrir: (t: Tarefa) => void;
+  onMarcar: (t: Tarefa, feita: boolean) => void;
   onArrastar: (id: number) => void;
   onSoltar: () => void;
 }) {
   return (
     <div
-      className={`nt-card${feita ? '' : ' planejada'}${arrastando ? ' arrastando' : ''}`}
+      className={`nt-card${feita ? ' feita' : ' planejada'}${arrastando ? ' arrastando' : ''}`}
       draggable={podeArrastar}
       onDragStart={e => {
         e.dataTransfer.effectAllowed = 'move';
@@ -3036,10 +3052,21 @@ function CardDaSemana({ tarefa: t, equipe, feita, podeArrastar, arrastando, onAb
       }}
       onDragEnd={onSoltar}
     >
-      <button type="button" className="nt-card-abrir" onClick={() => onAbrir(t)}
-        title={`${feita ? 'Concluída' : 'Planejada'}: ${t.titulo}`}>
-        <p>{t.titulo}</p>
-      </button>
+      <div className="nt-card-topo">
+        <input
+          type="checkbox"
+          className="form-checkbox nt-card-marca"
+          checked={feita}
+          disabled={!podeMarcar}
+          aria-label={feita ? `Reabrir "${t.titulo}"` : `Marcar "${t.titulo}" como feita`}
+          title={feita ? 'Reabrir' : 'Marcar como feita'}
+          onChange={e => onMarcar(t, e.target.checked)}
+        />
+        <button type="button" className="nt-card-abrir" onClick={() => onAbrir(t)}
+          title={`${feita ? 'Concluída' : 'Planejada'}: ${t.titulo}`}>
+          <p>{t.titulo}</p>
+        </button>
+      </div>
       {t.responsavel_nome && (
         <span className="nt-card-pe">
           <PessoaFoto nome={t.responsavel_nome} id={t.responsavel_id} equipe={equipe} tamanho={16} />
@@ -3049,12 +3076,15 @@ function CardDaSemana({ tarefa: t, equipe, feita, podeArrastar, arrastando, onAb
   );
 }
 
-function QuadroDaSemana({ projeto: p, itens, etapaDeEntrada, podeEditar, onAbrirTarefa, onSalvarTarefa }: {
+function QuadroDaSemana({ projeto: p, itens, etapaDeEntrada, etapaDeConclusao, podeEditar,
+  onAbrirTarefa, onSalvarTarefa }: {
   projeto: Projeto;
   itens: ItemDaSemana[];
-  /** Onde a tarefa volta a nascer quando é reaberta pelo arraste. Vazio
-   *  enquanto a configuração de etapas não chegou. */
+  /** Onde a tarefa volta a nascer quando é reaberta. Vazio enquanto a
+   *  configuração de etapas não chegou. */
   etapaDeEntrada: string;
+  /** A etapa de conversão, para onde a tarefa vai ao ser marcada como feita. */
+  etapaDeConclusao: string;
   podeEditar: boolean;
   onAbrirTarefa: (t: Tarefa) => void;
   onSalvarTarefa: (t: Tarefa, mudancas: Record<string, unknown>) => void;
@@ -3086,6 +3116,26 @@ function QuadroDaSemana({ projeto: p, itens, etapaDeEntrada, podeEditar, onAbrir
   const noFimDeSemana = itens.filter(x => !dias.some(d => d.iso === x.dia)).length;
 
   const emArraste = itens.find(x => x.tarefa.id === arrastando) ?? null;
+
+  /** Marca ou desmarca a tarefa pela caixa do card.
+   *
+   *  Marcar leva à etapa de conversão e carimba a conclusão agora - o card
+   *  anda para a coluna de hoje, porque é hoje que a tarefa ficou pronta.
+   *  Desmarcar devolve à etapa de entrada e deixa a tarefa planejada para o dia
+   *  em que ela estava, senão ela sumiria do quadro se o prazo fosse de outra
+   *  semana. */
+  const marcar = (item: ItemDaSemana, feita: boolean) => {
+    if (feita) {
+      onSalvarTarefa(item.tarefa, {
+        status: etapaDeConclusao,
+        concluida_em: new Date().toISOString(),
+      });
+    } else {
+      onSalvarTarefa(item.tarefa, {
+        status: etapaDeEntrada, concluida_em: null, prazo: item.dia,
+      });
+    }
+  };
 
   /** Todo dia da semana recebe card. O que muda é o que o gesto grava: para
    *  trás vira registro de conclusão, para frente vira plano. Uma concluída
@@ -3123,8 +3173,13 @@ function QuadroDaSemana({ projeto: p, itens, etapaDeEntrada, podeEditar, onAbrir
             if (item.feita && !d.futuro) {
               // Mantém a hora e troca só o dia: a hora do dia continua sendo a
               // que foi registrada, e mover de coluna não a inventa de novo.
-              const hora = (item.tarefa.concluida_em ?? '').slice(11) || '12:00:00.000Z';
-              onSalvarTarefa(item.tarefa, { concluida_em: `${d.iso}T${hora}` });
+              // Mantém a hora do dia e troca só a data, tudo no fuso local: o
+              // carimbo vai para o servidor em UTC, e é `diaLocal` que o traz
+              // de volta para a coluna certa.
+              const antes = item.tarefa.concluida_em ? new Date(item.tarefa.concluida_em) : new Date();
+              const quando = new Date(`${d.iso}T00:00:00`);
+              quando.setHours(antes.getHours(), antes.getMinutes(), antes.getSeconds(), 0);
+              onSalvarTarefa(item.tarefa, { concluida_em: quando.toISOString() });
             } else if (item.feita) {
               // Reabre: quem leva uma concluída para depois de hoje está dizendo
               // que ela não estava pronta, e agora tem data para ficar. O aviso
@@ -3152,8 +3207,10 @@ function QuadroDaSemana({ projeto: p, itens, etapaDeEntrada, podeEditar, onAbrir
                 equipe={p.equipe}
                 feita={x.feita}
                 podeArrastar={podeEditar}
+                podeMarcar={podeEditar && !!etapaDeConclusao && !!etapaDeEntrada}
                 arrastando={arrastando === x.tarefa.id}
                 onAbrir={onAbrirTarefa}
+                onMarcar={(_, feita) => marcar(x, feita)}
                 onArrastar={setArrastando}
                 onSoltar={() => { setArrastando(null); setSobre(null); }}
               />
@@ -3175,7 +3232,8 @@ function QuadroDaSemana({ projeto: p, itens, etapaDeEntrada, podeEditar, onAbrir
 }
 
 function Capitulo({ projeto: p, numero, registrar, pessoas, onAbrir, onRegistrarSaude,
-  onSalvarTarefa, onAbrirTarefa, etapaDeEntrada, podeEditar, podeEditarTarefa }: {
+  onSalvarTarefa, onAbrirTarefa, etapaDeEntrada, etapaDeConclusao,
+  podeEditar, podeEditarTarefa }: {
   projeto: Projeto;
   numero: number;
   /** Entrega o nó ao índice, que precisa dele para rolar até aqui. */
@@ -3186,6 +3244,7 @@ function Capitulo({ projeto: p, numero, registrar, pessoas, onAbrir, onRegistrar
   onSalvarTarefa: (t: Tarefa, mudancas: Record<string, unknown>) => void;
   onAbrirTarefa: (t: Tarefa, p: Projeto) => void;
   etapaDeEntrada: string;
+  etapaDeConclusao: string;
   podeEditar: boolean;
   /** Mexer na tarefa é outra permissão: a revista vive em Projetos, mas o
    *  servidor cobra `tarefas:editar` de quem grava. */
@@ -3319,7 +3378,8 @@ function Capitulo({ projeto: p, numero, registrar, pessoas, onAbrir, onRegistrar
           <>
             {itensDaSemana.length > 0 && (
               <QuadroDaSemana projeto={p} itens={itensDaSemana}
-                etapaDeEntrada={etapaDeEntrada} podeEditar={podeEditarTarefa}
+                etapaDeEntrada={etapaDeEntrada} etapaDeConclusao={etapaDeConclusao}
+                podeEditar={podeEditarTarefa}
                 onAbrirTarefa={x => onAbrirTarefa(x, p)} onSalvarTarefa={onSalvarTarefa} />
             )}
           </>
@@ -3370,8 +3430,8 @@ function Capitulo({ projeto: p, numero, registrar, pessoas, onAbrir, onRegistrar
 }
 
 function AbaGestao({
-  projetos, pessoas, onAbrir, onRegistrarSaude, onSalvarTarefa, onAbrirTarefa, etapaDeEntrada,
-  podeEditar, podeEditarTarefa,
+  projetos, pessoas, onAbrir, onRegistrarSaude, onSalvarTarefa, onAbrirTarefa,
+  etapaDeEntrada, etapaDeConclusao, podeEditar, podeEditarTarefa,
 }: {
   projetos: Projeto[];
   pessoas: Pessoa[];
@@ -3380,6 +3440,7 @@ function AbaGestao({
   onSalvarTarefa: (t: Tarefa, mudancas: Record<string, unknown>) => void;
   onAbrirTarefa: (t: Tarefa, p: Projeto) => void;
   etapaDeEntrada: string;
+  etapaDeConclusao: string;
   podeEditar: boolean;
   podeEditarTarefa: boolean;
 }) {
@@ -3503,6 +3564,7 @@ function AbaGestao({
                 onSalvarTarefa={onSalvarTarefa}
                 onAbrirTarefa={onAbrirTarefa}
                 etapaDeEntrada={etapaDeEntrada}
+                etapaDeConclusao={etapaDeConclusao}
                 podeEditar={podeEditar}
                 podeEditarTarefa={podeEditarTarefa}
               />
@@ -4006,6 +4068,9 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
   /** Para onde volta uma tarefa reaberta no quadro da semana. */
   const etapaDeEntrada = etapasTarefa.find(e => Number(e.is_entrada) === 1)?.nome
     ?? etapasTarefa[0]?.nome ?? '';
+  /** A etapa de conversão, para onde vai a tarefa marcada como feita. Vem de
+   *  Configurações > Etapas: é a mesma que faz a entrega contar progresso. */
+  const etapaDeConclusao = etapasTarefa.find(e => Number(e.is_conclusao) === 1)?.nome ?? '';
 
 
   const podeExcluir = pode('projetos:excluir');
@@ -4768,6 +4833,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
           onSalvarTarefa={salvarTarefa}
           onAbrirTarefa={abrirTarefa}
           etapaDeEntrada={etapaDeEntrada}
+          etapaDeConclusao={etapaDeConclusao}
           podeEditarTarefa={pode('tarefas:editar')}
           onAbrir={p => setForm({ editando: p })}
           onRegistrarSaude={(p, estado) => setLendoSaude({ projeto: p, estado })}
