@@ -5,7 +5,7 @@ import {
   IconAlert, IconArrowRight, IconClip, IconClipboard, IconDoc, IconDownload,
   IconImage, IconInbox,
   IconChevronDown, IconChevronRight, IconChevronUp, IconChevronUpDown,
-  IconEdit, IconEye, IconLink, IconMarcoAndamento, IconMarcoBloqueado,
+  IconEdit, IconEye, IconGlobo, IconLink, IconMarcoAndamento, IconMarcoBloqueado,
   IconAgrupar, IconCalendario, IconCheck, IconExternal, IconOrdenar, IconSearch,
   IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado, IconMarcoValidado,
   IconPlus, IconPrioridadeAlta, IconPrioridadeBaixa, IconPrioridadeMaxima,
@@ -15,7 +15,7 @@ import {
 } from '../components/icons';
 import FilterDropdown from '../components/FilterDropdown';
 import { logoDoCliente } from '../lib/marcas';
-import { PAPEIS_EQUIPE } from '../lib/papeisDeEquipe';
+import { PAPEIS_EQUIPE, porNivelDeContato } from '../lib/papeisDeEquipe';
 import { SkeletonCards, SkeletonTabela } from '../components/Skeleton';
 import { CartaoKpi, CartoesKpiEsqueleto } from '../components/CartaoKpi';
 import { Abas, AbaPainel } from '../components/Abas';
@@ -291,6 +291,9 @@ export interface Projeto {
   /** Todas as do projeto, presas a uma entrega ou soltas. */
   tarefas: Tarefa[];
   criado_em: string;
+  /** Chave da página de acompanhamento do cliente. Nulo é não publicado. */
+  publico_token: string | null;
+  publicado_em: string | null;
 }
 
 interface Cliente { id: string; nome: string }
@@ -2520,8 +2523,18 @@ function SecaoEquipe({ titulo, pessoas, valor, somenteLeitura, onChange }: {
       {valor.length === 0 ? (
         <p style={{ fontSize: 12, color: 'var(--gray2)', margin: 0 }}>Ninguém na equipe ainda.</p>
       ) : (
-        <div className="admin-file-list">
-          {valor.map(m => {
+        <div className="equipe-niveis">
+          {/* O aviso não é decoração: em lista escalonada a leitura automática é
+              "quem manda em quem", e aqui a ordem é outra. */}
+          <p className="equipe-legenda">Do mais próximo ao mais distante do cliente</p>
+          {porNivelDeContato(valor, m => m.papel).map(nivel => (
+            <div key={nivel.rotulo} className="equipe-nivel">
+              <p className="equipe-nivel-rotulo">
+                {nivel.rotulo}
+                <span>{nivel.membros.length}</span>
+              </p>
+              <div className="admin-file-list">
+          {nivel.membros.map(m => {
             const p = pessoas.find(x => x.id === m.usuario_id);
             const nome = p?.nome ?? 'Usuário removido';
             return (
@@ -2559,6 +2572,9 @@ function SecaoEquipe({ titulo, pessoas, valor, somenteLeitura, onChange }: {
               </div>
             );
           })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -3499,7 +3515,7 @@ function FormularioProjeto({
   editando, pessoas, clientes, salvando, onFechar, onSalvar, onBaixarAnexo, onVerAnexo, onEtiquetar,
   categorias, onExcluir, somenteLeitura, onVerTarefasDaEntrega,
   onRegistrarSaude, onExcluirSaude, onRegistrarReuniao, onExcluirReuniao,
-  onSalvarEntrega, onExcluirEntrega, onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
+  onPublicar, onSalvarEntrega, onExcluirEntrega, onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
 }: {
   editando: Projeto | null;
   pessoas: Pessoa[];
@@ -3525,6 +3541,9 @@ function FormularioProjeto({
    *  agrupa, busca, baixa e pré-visualiza. Só não grava. */
   somenteLeitura: boolean;
   onExcluir: (p: Projeto) => void;
+  /** Publica ou tira do ar. Devolve o token novo, `null` ao despublicar, ou
+   *  `undefined` quando a gravação falhou. */
+  onPublicar: (p: Projeto, publicar: boolean) => Promise<string | null | undefined>;
   onSalvarEntrega: (p: Projeto, dados: EntregaPendente, id?: number) => Promise<void>;
   onExcluirEntrega: (e: Entrega) => void;
   onSubirEvidencia: (e: Entrega, arquivos: FileList | null, comentario?: string, etapa?: string) => Promise<void>;
@@ -3563,23 +3582,51 @@ function FormularioProjeto({
   // `editando` é um retrato de quando o modal abriu: sem guardar a troca aqui,
   // o arquivo reetiquetado só mudaria de grupo depois de fechar e reabrir.
   const [copiado, setCopiado] = useState(false);
+  const [copiadoPublico, setCopiadoPublico] = useState(false);
+  const [publicando, setPublicando] = useState(false);
+  /** Token da página do cliente. Vem do projeto e é atualizado aqui para o
+   *  botão reagir na hora, sem esperar a listagem recarregar. */
+  const [tokenPublico, setTokenPublico] = useState<string | null>(
+    editando?.publico_token ?? null);
+  useEffect(() => { setTokenPublico(editando?.publico_token ?? null); }, [editando?.publico_token]);
+  const linkPublico = tokenPublico ? `${window.location.origin}/p/${tokenPublico}` : null;
   const { largura, arrastando, setArrastando, porTecla } = useLarguraPainel('projeto');
   const fundo = useFecharNoFundo(onFechar);
 
   /** Link que abre este projeto direto, para quem já tem acesso ao portal. É o
    *  mesmo formato que o Funil usa em `?lead=`. */
+  /** Copia um endereço, com o `prompt` como plano B: sem HTTPS ou com a
+   *  permissão negada, a área de transferência não existe. */
+  async function copiar(url: string, marcar: (v: boolean) => void, rotulo: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      marcar(true);
+      window.setTimeout(() => marcar(false), 2000);
+    } catch {
+      window.prompt(rotulo, url);
+    }
+  }
+
+  async function alternarPublicacao() {
+    if (!editando) return;
+    setPublicando(true);
+    try {
+      const r = await onPublicar(editando, !tokenPublico);
+      if (r === undefined) return;
+      setTokenPublico(r);
+      // Publicou agora: o link já vai para a área de transferência, que é o
+      // passo seguinte em todo caso.
+      if (r) void copiar(`${window.location.origin}/p/${r}`, setCopiadoPublico,
+        'Copie o link de acompanhamento:');
+    } finally {
+      setPublicando(false);
+    }
+  }
+
   async function copiarLink() {
     if (!editando) return;
     const url = `${window.location.origin}/?projeto=${editando.id}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopiado(true);
-      window.setTimeout(() => setCopiado(false), 2000);
-    } catch {
-      // Área de transferência bloqueada (sem HTTPS, ou permissão negada):
-      // mostrar o link ainda deixa a pessoa copiar à mão.
-      window.prompt('Copie o link do projeto:', url);
-    }
+    await copiar(url, setCopiado, 'Copie o link do projeto:');
   }
 
   // Projeto novo não tem reuniões nem saúde a que se prender, então só existe
@@ -3686,19 +3733,35 @@ function FormularioProjeto({
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
               {editando && (
                 <>
+                  {/* Publicar abre a página de acompanhamento do cliente. O
+                      globo aceso diz que está no ar; ao lado dele, o botão que
+                      copia o endereço. */}
+                  <button type="button" className={`secao-add${tokenPublico ? ' publicado' : ''}`}
+                    style={{ width: 30, height: 30 }}
+                    disabled={publicando || somenteLeitura}
+                    title={tokenPublico
+                      ? 'Publicado para o cliente. Clique para tirar do ar.'
+                      : 'Publicar uma página de acompanhamento para o cliente'}
+                    aria-label={tokenPublico ? 'Despublicar projeto' : 'Publicar projeto'}
+                    aria-pressed={!!tokenPublico}
+                    onClick={() => void alternarPublicacao()}>
+                    <IconGlobo size={15} />
+                  </button>
+                  {linkPublico && (
+                    <button type="button" className="secao-add" style={{ width: 30, height: 30 }}
+                      title={copiadoPublico ? 'Link copiado' : 'Copiar o link do cliente'}
+                      aria-label="Copiar o link de acompanhamento do cliente"
+                      onClick={() => void copiar(linkPublico, setCopiadoPublico,
+                        'Copie o link de acompanhamento:')}>
+                      {copiadoPublico ? <IconCheck size={15} /> : <IconExternal size={15} />}
+                    </button>
+                  )}
                   <button type="button" className="secao-add" style={{ width: 30, height: 30 }}
                     title={copiado ? 'Link copiado' : 'Copiar link do projeto'}
                     aria-label="Copiar link para compartilhar o projeto"
                     onClick={() => void copiarLink()}>
                     {copiado ? <IconCheck size={15} /> : <IconLink size={15} />}
                   </button>
-                  {!somenteLeitura && (
-                    <button type="button" className="secao-add" style={{ width: 30, height: 30 }}
-                      title="Excluir projeto" aria-label="Excluir projeto"
-                      onClick={() => onExcluir(editando)}>
-                      <IconTrash size={15} />
-                    </button>
-                  )}
                 </>
               )}
               <button className="admin-modal-close" aria-label="Fechar" onClick={onFechar}><IconX size={16} /></button>
@@ -3737,7 +3800,13 @@ function FormularioProjeto({
             o que animar - e uma caixa de verdade quebraria a rolagem daqui. A
             chave repete a entrada a cada aba, e de quebra devolve a rolagem ao
             topo, que é onde a aba nova começa. */}
-        <div className="admin-modal-body aba-painel" key={abaModal}>
+        {/* `fieldset` desabilitado, e não uma coleção de `disabled` espalhados:
+            ele desliga todo controle de formulário que estiver dentro, inclusive
+            os que forem acrescentados depois, e tira todos da ordem de tabulação
+            de uma vez. Em modo leitura o painel tem de ser uma folha impressa -
+            os dropdowns nem abrem, e o cursor não promete clique. */}
+        <fieldset className="admin-modal-body aba-painel painel-leitura" key={abaModal}
+          disabled={somenteLeitura}>
 
           {editando && abaModal === 'reunioes' && (
             <SecaoReunioes
@@ -3930,9 +3999,20 @@ function FormularioProjeto({
 
           </div>
 
-        </div>
+        </fieldset>
 
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--gray3)', display: 'flex', justifyContent: 'flex-end', gap: 8, flexShrink: 0 }}>
+        {/* Mesmo rodapé do painel de tarefa: ações sobre a coisa inteira à
+            esquerda, longe do botão que se aperta o tempo todo. */}
+        <div className="painel-rodape">
+          <span className="painel-rodape-lado">
+            {editando && !somenteLeitura && (
+              <button type="button" className="rodape-icone perigo"
+                title="Excluir projeto" aria-label="Excluir projeto"
+                disabled={salvando} onClick={() => onExcluir(editando)}>
+                <IconTrash size={15} />
+              </button>
+            )}
+          </span>
           <button type="button" className="modal-acao" onClick={onFechar} disabled={salvando}>
             {somenteLeitura ? 'Fechar' : 'Cancelar'}
           </button>
@@ -4238,6 +4318,25 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     await api('', 'POST', { action: 'registrar_saude_projeto', projeto_id: p.id, estado, descricao });
     toast('success', 'Leitura registrada');
     await recarregar();
+  }
+
+  /** Publica ou tira do ar a página de acompanhamento do cliente. Devolve o
+   *  token para o painel montar o link, ou `undefined` se o servidor recusou. */
+  async function publicarProjeto(p: Projeto, publicar: boolean) {
+    const r = await api('', 'POST', {
+      action: publicar ? 'publicar_projeto' : 'despublicar_projeto', id: p.id,
+    });
+    if (r?.error) {
+      toast('error', publicar ? 'Não foi possível publicar' : 'Não foi possível despublicar', r.error);
+      return undefined;
+    }
+    const token: string | null = r?.token ?? null;
+    mudancasRef.current++;
+    setProjetos(ps => ps.map(x => (x.id === p.id
+      ? { ...x, publico_token: token, publicado_em: token ? new Date().toISOString() : null } : x)));
+    toast('success', publicar ? 'Página publicada' : 'Página fora do ar',
+      publicar ? 'O link foi copiado para a área de transferência.' : undefined);
+    return token;
   }
 
   async function salvarEntrega(p: Projeto, dados: EntregaPendente, id?: number) {
@@ -4848,6 +4947,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
           onExcluirSaude={excluirSaude}
           onRegistrarReuniao={registrarReuniao}
           onExcluirReuniao={excluirReuniao}
+          onPublicar={publicarProjeto}
           onSalvarEntrega={salvarEntrega}
           onExcluirEntrega={excluirEntrega}
           onSubirEvidencia={subirEvidencia}

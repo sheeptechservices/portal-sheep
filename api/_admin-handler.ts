@@ -594,6 +594,18 @@ async function migrarSchema(db: Client) {
       expires_at TEXT NOT NULL
     )
   `);
+  // Publicação do projeto para o cliente. O token é a chave da página pública:
+  // nulo quer dizer não publicado, e despublicar apaga em vez de guardar - assim
+  // republicar gera link novo e o antigo, que pode ter sido encaminhado adiante,
+  // morre de vez.
+  try { await ddl(`ALTER TABLE projetos ADD COLUMN publico_token TEXT`); } catch {}
+  try { await ddl(`ALTER TABLE projetos ADD COLUMN publicado_em TEXT`); } catch {}
+  try { await ddl(`ALTER TABLE projetos ADD COLUMN publicado_por_nome TEXT`); } catch {}
+  try {
+    await ddl(`CREATE UNIQUE INDEX IF NOT EXISTS idx_projetos_publico
+               ON projetos (publico_token) WHERE publico_token IS NOT NULL`);
+  } catch { /* índice já existe */ }
+
   // Dono da sessão. Fica nulo nas sessões abertas pela senha compartilhada, que
   // segue existindo como plano B - nesse caso a autoria é a da casa, não a de
   // uma pessoa (ver AUTOR_COMPARTILHADO).
@@ -1950,6 +1962,42 @@ async function despacharAdminData(
     // ação `usuarios`, que é exclusiva do dono do painel: escolher quem recebe
     // aviso não exige poder gerenciar gente, só chegar em Configurações.
     if (action === 'usuarios_notificaveis') {
+      // Membro só enxerga quem divide projeto com ele. É a mesma regra da
+      // listagem de projetos, aplicada à lista que alimenta todo seletor de
+      // pessoa da tela - responsável de tarefa, marcação em comentário,
+      // filtros. Sem isso o quadro vinha cortado por equipe mas o dropdown ao
+      // lado dele mostrava a casa inteira.
+      //
+      // Entra também quem responde por alguma tarefa desses projetos, mesmo
+      // fora da equipe: senão o seletor da tarefa apareceria vazio justamente
+      // na tarefa que a pessoa está olhando.
+      if (papelEfetivo(usuario?.email, usuario?.papel) === 'membro') {
+        const r = await db.execute({
+          sql: `
+            SELECT DISTINCT u.id, u.nome, u.email, u.foto_url
+            FROM usuarios u
+            WHERE u.ativo = 1 AND (
+              u.id = ?
+              OR u.id IN (
+                SELECT e.usuario_id FROM projeto_equipe e
+                WHERE e.projeto_id IN (
+                  SELECT projeto_id FROM projeto_equipe WHERE usuario_id = ?
+                )
+              )
+              OR u.id IN (
+                SELECT t.responsavel_id FROM projeto_tarefas t
+                WHERE t.responsavel_id IS NOT NULL AND t.projeto_id IN (
+                  SELECT projeto_id FROM projeto_equipe WHERE usuario_id = ?
+                )
+              )
+            )
+            ORDER BY u.nome
+          `,
+          args: [usuario?.id ?? '', usuario?.id ?? '', usuario?.id ?? ''],
+        });
+        return { status: 200, body: { usuarios: r.rows } };
+      }
+
       const r = await db.execute(`
         SELECT id, nome, email, foto_url FROM usuarios
         WHERE ativo = 1 ORDER BY nome
@@ -2898,6 +2946,45 @@ function faltaEmProjeto(p: any): string | null {
       });
       if (p.equipe !== undefined) await gravarEquipe(String(p.id), p.equipe);
       return { status: 200, body: { ok: true } };
+    }
+
+    // ── Página pública do projeto ───────────────────────────────────────────
+
+    if (action === 'publicar_projeto' || action === 'despublicar_projeto') {
+      const id = String(body?.id ?? '');
+      if (!id) return { status: 400, body: { error: 'id ausente.' } };
+      { const barrado = await guardaDaEquipe(db, usuario, id); if (barrado) return barrado; }
+
+      if (action === 'despublicar_projeto') {
+        // Apaga o token em vez de guardar desligado: republicar gera link novo,
+        // e o antigo - que pode ter sido encaminhado adiante - morre de vez.
+        await db.execute({
+          sql: `UPDATE projetos SET publico_token = NULL, publicado_em = NULL,
+                       publicado_por_nome = NULL WHERE id = ?`,
+          args: [id],
+        });
+        return { status: 200, body: { ok: true, token: null } };
+      }
+
+      // Já publicado devolve o mesmo link: apertar o botão duas vezes não pode
+      // invalidar o que já foi mandado ao cliente.
+      const atual = await db.execute({
+        sql: 'SELECT publico_token FROM projetos WHERE id = ? AND ativo = 1',
+        args: [id],
+      });
+      if (!atual.rows[0]) return { status: 404, body: { error: 'Projeto não encontrado.' } };
+      const jaTem = atual.rows[0].publico_token;
+      if (jaTem) return { status: 200, body: { ok: true, token: String(jaTem) } };
+
+      // 32 hexadecimais de aleatoriedade criptográfica: o link é a única
+      // credencial da página, então adivinhá-lo tem de ser inviável.
+      const token = randomUUID().replace(/-/g, '');
+      await db.execute({
+        sql: `UPDATE projetos SET publico_token = ?, publicado_em = ?, publicado_por_nome = ?
+              WHERE id = ?`,
+        args: [token, new Date().toISOString(), autorNome, id],
+      });
+      return { status: 200, body: { ok: true, token } };
     }
 
     if (action === 'delete_projeto') {

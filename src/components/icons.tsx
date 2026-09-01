@@ -103,6 +103,15 @@ export function IconCheck({ size = 14 }: { size?: number }) {
 export function IconCheckCircle({ size = 14 }: { size?: number }) {
   return <Ico size={size}><circle cx="12" cy="12" r="9" /><path d="M8 12.3l2.7 2.7L16.2 9.4" /></Ico>;
 }
+// Publicar para fora - globo com meridiano e paralelo.
+export function IconGlobo({ size = 14 }: { size?: number }) {
+  return (
+    <Ico size={size}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18" />
+    </Ico>
+  );
+}
 // Duplicar - dois retângulos deslocados, um por cima do outro.
 export function IconDuplicar({ size = 14 }: { size?: number }) {
   return (

@@ -2613,6 +2613,15 @@ body.arrastando-painel {
   background: var(--gray4);
 }
 
+/* Globo aceso: a pagina do cliente esta no ar. Estado que muda o que existe
+   fora do portal nao pode ficar so no tooltip. */
+.secao-add.publicado {
+  color: var(--green);
+  border-color: var(--green);
+  background: var(--green-soft);
+}
+.secao-add.publicado:hover { background: var(--green); color: var(--white); }
+
 .secao-add:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--yb);
@@ -9678,4 +9687,450 @@ body.arrastando-painel {
 @media (prefers-reduced-motion: reduce) {
   .perm-acoes { animation: none; }
   .perm-seta { transition: none; }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   PÁGINA PÚBLICA DO PROJETO
+   O que o cliente vê. Usa os mesmos tokens do portal - é a mesma casa -, mas
+   não compartilha componente nenhum com ele: aqui não há nada clicável que
+   grave, e o que parece botão só recorta a lista.
+   ──────────────────────────────────────────────────────────────────────────── */
+.pub {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+  color: var(--black);
+}
+
+.pub-vazio {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  color: var(--gray);
+}
+.pub-vazio h1 { font-size: 20px; font-weight: 800; color: var(--black); }
+.pub-vazio p { font-size: 14px; max-width: 420px; line-height: 1.5; }
+.pub-girando {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--gray3);
+  border-top-color: var(--yellow);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+
+/* ── Topo ─────────────────────────────────────────── */
+.pub-topo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 28px;
+  margin-bottom: 32px;
+  border-bottom: 1px solid var(--gray3);
+}
+.pub-topo-texto { flex: 1; min-width: 0; }
+.pub-topo-marca { flex-shrink: 0; display: flex; align-items: center; }
+
+.pub-sobre {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--gray2);
+  margin: 0 0 6px;
+}
+.pub-nome {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin: 0;
+}
+.pub-descricao {
+  margin: 10px 0 0;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--gray);
+  max-width: 62ch;
+}
+.pub-logo { display: block; object-fit: contain; }
+.pub-cliente-nome { font-size: 15px; font-weight: 800; color: var(--gray); }
+
+/* ── Seções ───────────────────────────────────────── */
+.pub-secao { margin-bottom: 36px; }
+.pub-secao-cabeca { display: flex; align-items: center; gap: 8px; }
+.pub-secao-titulo {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--gray2);
+  margin: 0 0 14px;
+}
+.pub-conta {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gray2);
+  background: var(--gray4);
+  border-radius: var(--radius-pill);
+  padding: 1px 8px;
+  margin-bottom: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.pub-nada { font-size: 13.5px; color: var(--gray2); margin: 0; }
+
+/* ── Equipe ───────────────────────────────────────── */
+.pub-equipe {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.pub-equipe li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  transition: border-color var(--transition), box-shadow var(--transition-spring);
+}
+.pub-equipe li:hover { border-color: var(--gray2); box-shadow: var(--shadow-card); }
+.pub-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.pub-avatar-vazio {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--yellow);
+  color: var(--on-yellow);
+  font-size: 13px;
+  font-weight: 800;
+}
+.pub-equipe-texto { display: flex; flex-direction: column; min-width: 0; }
+.pub-equipe-texto strong {
+  font-size: 13.5px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pub-equipe-texto span { font-size: 11.5px; color: var(--gray2); }
+
+/* ── Entregas ─────────────────────────────────────── */
+.pub-barra {
+  display: flex;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: var(--gray3);
+  margin-bottom: 14px;
+}
+
+.pub-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+/* Parece botão e é botão, mas só recorta a lista: nada aqui grava. */
+.pub-filtros button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-pill);
+  background: none;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.pub-filtros button:hover { background: var(--gray4); color: var(--black); }
+.pub-filtros button.ativo { border-color: var(--black); color: var(--black); background: var(--gray4); }
+.pub-filtros button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.pub-filtros button > span:last-child {
+  font-size: 11px;
+  color: var(--gray2);
+  font-variant-numeric: tabular-nums;
+}
+.pub-ponto { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+.pub-entregas {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pub-entregas li {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  transition: border-color var(--transition), box-shadow var(--transition-spring), transform var(--transition-spring);
+}
+.pub-entregas li:hover {
+  border-color: var(--gray2);
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-2px);
+}
+.pub-entrega-marca { width: 3px; border-radius: 2px; flex-shrink: 0; }
+.pub-entrega-corpo { flex: 1; min-width: 0; }
+.pub-entrega-titulo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+.pub-categoria {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--gray2);
+  background: var(--gray4);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+}
+.pub-entrega-desc {
+  margin: 5px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--gray);
+}
+.pub-progresso {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 9px;
+  font-size: 11px;
+  color: var(--gray2);
+  font-variant-numeric: tabular-nums;
+}
+.pub-progresso-barra {
+  display: block;
+  width: 110px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--gray3);
+  overflow: hidden;
+}
+.pub-progresso-barra span { display: block; height: 100%; border-radius: var(--radius-pill); }
+
+.pub-entrega-lado {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.pub-chip {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+.pub-prazo { font-size: 11.5px; color: var(--gray2); font-variant-numeric: tabular-nums; }
+
+.pub-rodape {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 20px;
+  border-top: 1px solid var(--gray3);
+  font-size: 11.5px;
+  color: var(--gray2);
+}
+
+@media (max-width: 640px) {
+  .pub { padding: 28px 16px 48px; }
+  .pub-topo { flex-direction: column-reverse; align-items: flex-start; gap: 16px; }
+  .pub-nome { font-size: 22px; }
+  .pub-entregas li { flex-wrap: wrap; }
+  .pub-entrega-lado { flex-direction: row; align-items: center; width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pub-equipe li,
+  .pub-entregas li { transition: none; }
+  .pub-entregas li:hover { transform: none; }
+  .pub-girando { animation: none; }
+}
+
+/* ── Equipe em degraus de contato ─────────────────────
+   A lista escalonada, do mais próximo ao mais distante do cliente. O fio
+   vertical liga os degraus; o recuo crescente é o que faz a leitura de
+   escada sem precisar desenhar caixas e setas. */
+.equipe-niveis {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.equipe-legenda {
+  margin: 0 0 2px;
+  font-size: 10.5px;
+  color: var(--gray2);
+}
+
+.equipe-nivel {
+  position: relative;
+  padding-left: 14px;
+}
+/* O fio que liga um degrau ao outro. Não desce no último: linha que termina
+   no vazio sugere que falta alguém embaixo. */
+.equipe-nivel::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 6px;
+  bottom: -12px;
+  width: 1px;
+  background: var(--gray3);
+}
+.equipe-nivel:last-child::before { bottom: auto; height: 10px; }
+/* O nó do degrau, na altura do rótulo. */
+.equipe-nivel::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gray3);
+}
+
+.equipe-nivel-rotulo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 6px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.equipe-nivel-rotulo span {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--gray2);
+  background: var(--gray4);
+  border-radius: var(--radius-pill);
+  padding: 0 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── O mesmo escalonamento na página do cliente ─────── */
+.pub-nivel { margin-bottom: 18px; }
+.pub-nivel:last-child { margin-bottom: 0; }
+.pub-nivel-rotulo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.pub-nivel-rotulo::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--gray3);
+}
+
+/* ── Painel em modo leitura ───────────────────────────
+   O corpo do painel é um `fieldset`: sem `disabled` ele se comporta como uma
+   div qualquer, e com ele todo controle de dentro sai de circulação. Estas
+   regras tiram o resto da promessa de interação - cursor, hover e realce -,
+   para a tela parecer uma folha impressa em vez de um formulário travado. */
+/* Só o que o `fieldset` traz de fábrica e atrapalha: a borda entalhada, a
+   margem lateral e o `min-inline-size: min-content`, que impede o elemento de
+   encolher abaixo do conteúdo. O recuo NÃO entra aqui - `.admin-modal-body` já
+   define o dele, e zerar por cima jogava os campos para fora do painel. */
+.painel-leitura {
+  border: none;
+  margin: 0;
+  min-inline-size: 0;
+}
+
+.painel-leitura:disabled,
+.painel-leitura[disabled] { opacity: 1; }
+
+/* Cursor de seta em tudo, menos no texto, que continua selecionável: leitura
+   sem poder copiar seria pior que o formulário travado. */
+.painel-leitura[disabled] button,
+.painel-leitura[disabled] .status-select-trigger,
+.painel-leitura[disabled] .anexo-cat-trigger,
+.painel-leitura[disabled] .secao-add,
+.painel-leitura[disabled] .file-delete-btn,
+.painel-leitura[disabled] [role="button"] {
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Nada de hover: o realce é a promessa de que o clique faz alguma coisa. */
+.painel-leitura[disabled] *:hover {
+  box-shadow: none;
+}
+.painel-leitura[disabled] .status-select-trigger:hover,
+.painel-leitura[disabled] .anexo-cat-trigger:hover,
+.painel-leitura[disabled] .secao-add:hover,
+.painel-leitura[disabled] .admin-file-item:hover {
+  background: inherit;
+  border-color: var(--gray3);
+  color: inherit;
+  transform: none;
+}
+
+/* Campo desabilitado pelo `fieldset` mantém a cor do texto: cinza claro
+   sugeriria que o dado está por preencher, quando ele está preenchido e é
+   justamente o que se veio ler. */
+.painel-leitura[disabled] .form-input,
+.painel-leitura[disabled] .form-select,
+.painel-leitura[disabled] textarea {
+  color: var(--gray);
+  background: var(--white);
+  opacity: 1;
+  -webkit-text-fill-color: var(--gray);
+  cursor: text;
+}
+
+/* A seta do dropdown some: ela existe para anunciar que abre. */
+.painel-leitura[disabled] .status-select-trigger svg,
+.painel-leitura[disabled] .anexo-cat-trigger svg {
+  display: none;
 }

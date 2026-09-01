@@ -110,6 +110,10 @@ const SEM_PORTEIRO_PROPRIO = new Set([
   'submit.ts',       // formulário público
   'submit-file.ts',  // formulário público
   'submissions.ts',  // formulário público
+  // Página de acompanhamento do cliente. Responde sem sessão de propósito: a
+  // credencial é o token do link. Não chama `exigir` porque não há matriz a
+  // consultar - o que a tranca é a lista de campos escrita no próprio arquivo.
+  'projeto-publico.ts',
 ]);
 const proprios = readdirSync(join(raiz, 'api'))
   .filter(f => f.endsWith('.ts') && !f.startsWith('_') && !SEM_PORTEIRO_PROPRIO.has(f));

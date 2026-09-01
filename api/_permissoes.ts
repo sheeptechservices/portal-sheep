@@ -209,6 +209,9 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   toggle_bloqueio_tarefa_etiqueta: 'configuracoes:etapas',
   add_tarefa_status_notif: 'configuracoes:etapas',
   remove_tarefa_status_notif: 'configuracoes:etapas',
+  // Publicar é decidir o que o cliente vê: mesma permissão de editar o projeto.
+  publicar_projeto: 'projetos:editar',
+  despublicar_projeto: 'projetos:editar',
   salvar_tarefa: 'tarefas:editar',
   excluir_tarefa: 'tarefas:excluir',
   // O diário e a conversa do card: ler é leitura de tarefa, escrever é a

@@ -12,6 +12,12 @@ export default defineConfig(({ mode }) => {
   // como `membro`. Na Vercel o problema não existe, porque lá as variáveis já
   // nascem em `process.env`.
   if (env.ADMIN_EMAIL) process.env.ADMIN_EMAIL = env.ADMIN_EMAIL
+  // Pelo mesmo motivo: `api/projeto-publico.ts` roda aqui o mesmo codigo que
+  // roda na Vercel, e la ele abre a conexao lendo `process.env` direto. Sem
+  // estas duas linhas ele so falharia em dev, que e o pior lugar para uma
+  // diferenca entre o que se testa e o que sobe.
+  if (env.TURSO_DATABASE_URL) process.env.TURSO_DATABASE_URL = env.TURSO_DATABASE_URL
+  if (env.TURSO_AUTH_TOKEN) process.env.TURSO_AUTH_TOKEN = env.TURSO_AUTH_TOKEN
 
   return {
     plugins: [
@@ -284,6 +290,37 @@ export default defineConfig(({ mode }) => {
             })().catch(err => {
               console.error('[api/cnpj-lookup]', err)
               res.statusCode = 500
+              res.end(JSON.stringify({ error: 'Internal error' }))
+            })
+          })
+
+          // /api/projeto-publico - a pagina de acompanhamento do cliente. Roda
+          // o mesmo handler que a Vercel executa em producao, com um `res` de
+          // mentira: assim o que se testa aqui e o codigo que vai para o ar.
+          server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
+            const url = new URL(req.url ?? '/', `http://localhost`)
+            if (!url.pathname.startsWith('/api/projeto-publico')) return next()
+            ;(async () => {
+              const { default: handler } = await import('./api/projeto-publico')
+              let status = 200
+              const falso = {
+                setHeader: (k: string, v: string) => { res.setHeader(k, v); return falso },
+                status: (s: number) => { status = s; return falso },
+                json: (b: unknown) => {
+                  res.statusCode = status
+                  res.setHeader('Content-Type', 'application/json')
+                  res.end(JSON.stringify(b))
+                  return falso
+                },
+              }
+              await handler(
+                { method: req.method, query: Object.fromEntries(url.searchParams) } as never,
+                falso as never,
+              )
+            })().catch(err => {
+              console.error('[api/projeto-publico]', err)
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
               res.end(JSON.stringify({ error: 'Internal error' }))
             })
           })

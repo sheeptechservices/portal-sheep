@@ -172,7 +172,11 @@ function ToastContainer({ items, onDismiss }: { items: ToastItem[]; onDismiss: (
 // O catálogo de páginas e ferramentas vive em ./destinos - é dele que saem o
 // breadcrumb do hub de Ferramentas e os destinos navegáveis da busca rápida.
 
-type NavLeaf = { page?: Page; label: string; icon: JSX.Element; disabled?: boolean };
+/** `perm` existe para o item que ainda não tem página. O Dashboard é assim: a
+ *  chave já está no catálogo e já é marcável por papel, mas a tela não nasceu -
+ *  e sem `page` o filtro por `podeAbrirPagina` deixava ele passar para todo
+ *  mundo, inclusive para quem teve o acesso desmarcado. */
+type NavLeaf = { page?: Page; perm?: string; label: string; icon: JSX.Element; disabled?: boolean };
 const NAV_SECTIONS: { section: string; items: NavLeaf[] }[] = [
   // Grupo sem título: fica solto no topo, antes das seções nomeadas.
   {
@@ -180,6 +184,7 @@ const NAV_SECTIONS: { section: string; items: NavLeaf[] }[] = [
     items: [
       {
         label: 'Dashboard',
+        perm: 'dashboard:ver',
         disabled: true,
         icon: <IconDashboard size={15} />,
       },
@@ -622,7 +627,11 @@ function Sidebar({
   const { pode, usuario } = useAuth();
   const admin = podeGerenciarUsuarios(usuario);
   const secoes = NAV_SECTIONS
-    .map(g => ({ ...g, items: g.items.filter(i => !i.page || podeAbrirPagina(pode, i.page, admin)) }))
+    .map(g => ({
+      ...g,
+      items: g.items.filter(i =>
+        (!i.page || podeAbrirPagina(pode, i.page, admin)) && (!i.perm || pode(i.perm))),
+    }))
     .filter(g => g.items.length > 0);
 
   const renderLeaf = (item: NavLeaf) => {
