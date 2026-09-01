@@ -65,6 +65,111 @@ async function guardaDaEquipe(
   return membro.rows.length ? null : FORA_DA_EQUIPE;
 }
 
+/** Os campos da tarefa que viram linha no diário, e como cada um se lê.
+ *  `descricao` entra sem os valores: o texto inteiro no histórico faria o
+ *  diário virar o rascunho, e "editou a descrição" já é o fato. */
+/** Teto de um anexo, igual ao da tela: 8 MB. O conteúdo vai para o banco em
+ *  base64, e arquivo grande aqui pesa em toda leitura da conversa. */
+const LIMITE_ANEXO = 8 * 1024 * 1024;
+
+const CAMPOS_NO_DIARIO = [
+  'titulo', 'descricao', 'status', 'prioridade', 'responsavel', 'prazo', 'entrega', 'etiquetas',
+] as const;
+
+type FotoDaTarefa = Record<string, string>;
+
+/** O estado da tarefa reduzido a texto, para comparar antes com depois. */
+function fotoDaTarefa(r: Record<string, any> | null | undefined): FotoDaTarefa | null {
+  if (!r) return null;
+  const etiquetas = (() => {
+    try { const v = JSON.parse(String(r.etiquetas ?? '[]')); return Array.isArray(v) ? v.join(', ') : ''; }
+    catch { return ''; }
+  })();
+  return {
+    titulo: String(r.titulo ?? ''),
+    descricao: String(r.descricao ?? ''),
+    status: String(r.status ?? ''),
+    prioridade: String(r.prioridade ?? ''),
+    responsavel: String(r.responsavel_id ?? ''),
+    prazo: String(r.prazo ?? '').slice(0, 10),
+    entrega: String(r.entrega_id ?? ''),
+    etiquetas,
+  };
+}
+
+/**
+ * Escreve o diário da tarefa: uma linha por campo que mudou.
+ *
+ * Nunca derruba a gravação. O diário é importante, mas desfazer uma alteração
+ * que já deu certo por causa do registro dela seria pior - é a mesma regra da
+ * auditoria geral.
+ */
+async function registrarEventosDaTarefa(
+  db: Client,
+  tarefaId: number | string,
+  autorId: string | null,
+  autorNome: string,
+  antes: FotoDaTarefa | null,
+  depois: FotoDaTarefa,
+  fechou: { antes: boolean; depois: boolean },
+): Promise<void> {
+  try {
+    const agora = new Date().toISOString();
+    const linhas: { acao: string; campo: string | null; de: string | null; para: string | null }[] = [];
+
+    if (!antes) {
+      linhas.push({ acao: 'criou', campo: null, de: null, para: null });
+    } else {
+      for (const campo of CAMPOS_NO_DIARIO) {
+        if (antes[campo] === depois[campo]) continue;
+        // A descrição entra sem os valores: ver CAMPOS_NO_DIARIO.
+        const guardaValores = campo !== 'descricao';
+        linhas.push({
+          acao: 'alterou',
+          campo,
+          de: guardaValores ? (antes[campo] || null) : null,
+          para: guardaValores ? (depois[campo] || null) : null,
+        });
+      }
+      // Concluir não é "mudou o status": é o fato que o resto do sistema conta.
+      if (fechou.antes !== fechou.depois) {
+        linhas.push({ acao: fechou.depois ? 'concluiu' : 'reabriu', campo: null, de: null, para: null });
+      }
+    }
+    if (linhas.length === 0) return;
+
+    // Nomes no lugar dos ids: o diário é para ler, e "trocou o responsável de
+    // a3f2 para 91bc" não conta história nenhuma.
+    const ids = new Set<string>();
+    for (const l of linhas) {
+      if (l.campo !== 'responsavel') continue;
+      if (l.de) ids.add(l.de);
+      if (l.para) ids.add(l.para);
+    }
+    const nomes = new Map<string, string>();
+    if (ids.size > 0) {
+      const lista = [...ids];
+      const achados = await db.execute({
+        sql: `SELECT id, nome FROM usuarios WHERE id IN (${lista.map(() => '?').join(',')})`,
+        args: lista,
+      });
+      for (const r of achados.rows) nomes.set(String(r.id), String(r.nome));
+    }
+    const legivel = (campo: string | null, v: string | null) =>
+      campo === 'responsavel' && v ? (nomes.get(v) ?? v) : v;
+
+    for (const l of linhas) {
+      await db.execute({
+        sql: `INSERT INTO tarefa_eventos
+                (tarefa_id, usuario_id, usuario_nome, acao, campo, de, para, criado_em)
+              VALUES (?,?,?,?,?,?,?,?)`,
+        args: [tarefaId as never, autorId, autorNome, l.acao, l.campo,
+          legivel(l.campo, l.de), legivel(l.campo, l.para), agora],
+      });
+    }
+  } catch { /* o diário não desfaz o que já foi gravado */ }
+}
+
 /** "Entregue" é o que saiu da nossa mão; "Validada" é o que o cliente aceitou.
  *  Os dois falam do mundo fora do sistema, então os dois pedem prova. */
 const ENTREGA_ENTREGUE = 'Entregue';
@@ -493,6 +598,10 @@ async function migrarSchema(db: Client) {
   // segue existindo como plano B - nesse caso a autoria é a da casa, não a de
   // uma pessoa (ver AUTOR_COMPARTILHADO).
   try { await ddl(`ALTER TABLE admin_sessions ADD COLUMN usuario_id TEXT`); } catch {}
+  // Última vez que a sessão foi usada. É o que faz a validade andar para frente
+  // e o que responde quem está no painel agora - `expires_at` sozinho passou a
+  // significar "entrou no último mês", que é outra pergunta.
+  try { await ddl(`ALTER TABLE admin_sessions ADD COLUMN visto_em TEXT`); } catch {}
 
   // Quem tem acesso ao painel. A linha nasce no primeiro login com o Google e é
   // atualizada a cada entrada; o e-mail (sempre minúsculo) é a identidade, já que
@@ -565,7 +674,7 @@ async function migrarSchema(db: Client) {
     await ddl(`ALTER TABLE status_configs ADD COLUMN is_entrada INTEGER NOT NULL DEFAULT 0`);
   } catch (_) { /* already exists */ }
 
-  // Última taxa mensal usada por cedente — o Gerador de Documentos pré-preenche a
+  // Última taxa mensal usada por cedente - o Gerador de Documentos pré-preenche a
   // taxa da próxima proposta do mesmo cedente. Chaveado só pelo cedente, como no
   // "DUX Gerador de Propostas" (lá era o taxa_historico.json).
   await ddl(`
@@ -889,6 +998,81 @@ async function migrarSchema(db: Client) {
       criado_por_nome TEXT
     )
   `);
+
+  await ddl(`
+    -- Diário da tarefa: quem mexeu, quando e no quê. Uma linha por campo
+    -- alterado, e não por gravação: "mudou o prazo" e "trocou o responsável"
+    -- são fatos diferentes, e juntá-los num registro só obrigaria a tela a
+    -- desempacotar JSON para contar a história.
+    --
+    -- Guarda o nome junto do id de propósito. O nome é o que foi verdade no
+    -- momento do fato; o id serve para a foto e para o link. Só com o id, um
+    -- histórico de dois anos viraria "usuário removido" por toda parte.
+    CREATE TABLE IF NOT EXISTS tarefa_eventos (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      tarefa_id    INTEGER NOT NULL,
+      usuario_id   TEXT,
+      usuario_nome TEXT NOT NULL,
+      acao         TEXT NOT NULL,
+      campo        TEXT,
+      de           TEXT,
+      para         TEXT,
+      criado_em    TEXT NOT NULL
+    )
+  `);
+  try {
+    await ddl(`CREATE INDEX IF NOT EXISTS idx_tarefa_eventos
+               ON tarefa_eventos (tarefa_id, id DESC)`);
+  } catch { /* índice já existe */ }
+
+  await ddl(`
+    -- Comentário da tarefa. \`pai_id\` nulo abre uma conversa; preenchido é
+    -- resposta dentro dela. Um nível só de propósito: resposta de resposta
+    -- vira escada e ninguém acha o começo do assunto.
+    CREATE TABLE IF NOT EXISTS tarefa_comentarios (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      tarefa_id    INTEGER NOT NULL,
+      pai_id       INTEGER,
+      usuario_id   TEXT,
+      usuario_nome TEXT NOT NULL,
+      texto        TEXT NOT NULL,
+      criado_em    TEXT NOT NULL,
+      editado_em   TEXT
+    )
+  `);
+  try {
+    await ddl(`CREATE INDEX IF NOT EXISTS idx_tarefa_comentarios
+               ON tarefa_comentarios (tarefa_id, id)`);
+  } catch { /* índice já existe */ }
+
+  await ddl(`
+    -- Quem foi marcado num comentário. Tabela própria, e não só o texto: é por
+    -- ela que se pergunta "onde me citaram", coisa que varrer texto não
+    -- responde sem ler a tabela inteira.
+    CREATE TABLE IF NOT EXISTS tarefa_comentario_mencoes (
+      comentario_id INTEGER NOT NULL,
+      usuario_id    TEXT NOT NULL,
+      PRIMARY KEY (comentario_id, usuario_id)
+    )
+  `);
+
+  await ddl(`
+    -- Anexo do comentário. Mesmo formato das evidências de entrega: o conteúdo
+    -- mora no banco em base64, que é o que este portal já faz em toda parte.
+    CREATE TABLE IF NOT EXISTS tarefa_comentario_anexos (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      comentario_id INTEGER NOT NULL,
+      nome          TEXT NOT NULL,
+      tipo          TEXT NOT NULL,
+      tamanho       INTEGER NOT NULL,
+      base64        TEXT NOT NULL,
+      criado_em     TEXT NOT NULL
+    )
+  `);
+  try {
+    await ddl(`CREATE INDEX IF NOT EXISTS idx_tarefa_comentario_anexos
+               ON tarefa_comentario_anexos (comentario_id)`);
+  } catch { /* índice já existe */ }
 
   await ddl(`
     -- Registro de reunião do projeto. Participantes ficam num JSON de ids em
@@ -1249,17 +1433,67 @@ async function fotoDoPerfilGoogle(accessToken: string, emailSessao: string): Pro
   return `${url.replace(/=s\d+(-c)?$/, '')}=s96-c`;
 }
 
+/**
+ * Quanto tempo uma sessão sobrevive sem ser usada. A janela anda para frente a
+ * cada uso (ver `renovarSessao`), então quem abre o painel de vez em quando
+ * durante o mês nunca precisa entrar de novo - antes eram oito horas fixas
+ * desde o login, e entrar de manhã significava entrar de novo no dia seguinte.
+ */
+const SESSAO_OCIOSA_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Teto absoluto, contado da entrada e independente de uso. Sem ele a janela
+ * deslizante nunca fecharia, e uma aba esquecida aberta valeria para sempre.
+ */
+const SESSAO_MAXIMA_MS = 90 * 24 * 60 * 60 * 1000;
+
+/**
+ * Passo da renovação. Renovar a cada requisição somaria uma escrita no banco em
+ * toda chamada de API; adiar em uma hora não muda nada para quem está usando.
+ */
+const RENOVAR_APOS_MS = 60 * 60 * 1000;
+
+/**
+ * Janela de "está no painel agora", usada na tela de usuários. Tem de ser maior
+ * que o passo da renovação, senão quem está usando pisca para fora da lista no
+ * intervalo entre duas renovações.
+ */
+const SESSAO_ATIVA_MS = 2 * 60 * 60 * 1000;
+
 export async function createAdminSession(db: Client, usuarioId?: string | null): Promise<string> {
   await ensureAdminSchema(db);
   const token = randomUUID();
   const now = new Date().toISOString();
-  const exp = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
+  const exp = new Date(Date.now() + SESSAO_OCIOSA_MS).toISOString();
   await db.execute({ sql: 'DELETE FROM admin_sessions WHERE expires_at <= ?', args: [now] });
   await db.execute({
-    sql: 'INSERT INTO admin_sessions (token, created_at, expires_at, usuario_id) VALUES (?, ?, ?, ?)',
-    args: [token, now, exp, usuarioId ?? null],
+    sql: `INSERT INTO admin_sessions (token, created_at, expires_at, usuario_id, visto_em)
+          VALUES (?, ?, ?, ?, ?)`,
+    args: [token, now, exp, usuarioId ?? null, now],
   });
   return token;
+}
+
+/**
+ * Empurra a validade da sessão para frente enquanto ela está em uso, sem passar
+ * do teto absoluto. Silenciosa de propósito: se a escrita falhar, a sessão
+ * segue valendo até a validade que já tinha - derrubar quem está trabalhando
+ * por causa de um UPDATE seria pior do que renovar uma hora mais tarde.
+ */
+async function renovarSessao(db: Client, token: string, row: Record<string, any>): Promise<void> {
+  const agora = Date.now();
+  const visto = Date.parse(String(row.visto_em ?? row.created_at ?? ''));
+  if (Number.isFinite(visto) && agora - visto < RENOVAR_APOS_MS) return;
+
+  const nascimento = Date.parse(String(row.created_at ?? ''));
+  const teto = Number.isFinite(nascimento) ? nascimento + SESSAO_MAXIMA_MS : agora + SESSAO_OCIOSA_MS;
+  const nova = new Date(Math.min(agora + SESSAO_OCIOSA_MS, teto)).toISOString();
+  try {
+    await db.execute({
+      sql: 'UPDATE admin_sessions SET expires_at = ?, visto_em = ? WHERE token = ?',
+      args: [nova, new Date(agora).toISOString(), token],
+    });
+  } catch { /* a sessão continua valendo com a validade anterior */ }
 }
 
 /**
@@ -1270,7 +1504,8 @@ export async function getAdminSession(db: Client, token: string): Promise<Sessao
   await ensureAdminSchema(db);
   const now = new Date().toISOString();
   const res = await db.execute({
-    sql: `SELECT s.token, s.usuario_id, u.id, u.email, u.nome, u.foto_url, u.papel, u.ativo
+    sql: `SELECT s.token, s.usuario_id, s.created_at, s.visto_em,
+                 u.id, u.email, u.nome, u.foto_url, u.papel, u.ativo
           FROM admin_sessions s
           LEFT JOIN usuarios u ON u.id = s.usuario_id
           WHERE s.token = ? AND s.expires_at > ?`,
@@ -1285,6 +1520,8 @@ export async function getAdminSession(db: Client, token: string): Promise<Sessao
   // formulário na tela.
   if (row.usuario_id == null) return null;
   if (row.id == null || !Number(row.ativo)) return null;
+  // Sessão boa e em uso: a validade anda para frente.
+  await renovarSessao(db, token, row);
   return { token, usuario: rowToUsuario(row) };
 }
 
@@ -1736,9 +1973,13 @@ async function despacharAdminData(
         // Quem está com o painel aberto agora. Uma pessoa pode ter mais de uma
         // sessão viva (outro navegador, outro computador), daí o COUNT.
         db.execute({
+          // Pelo último uso, e não pela validade: com a janela deslizante de 30
+          // dias, "sessão viva" passou a significar "entrou no último mês".
           sql: `SELECT usuario_id, COUNT(*) c FROM admin_sessions
-                WHERE expires_at > ? AND usuario_id IS NOT NULL GROUP BY usuario_id`,
-          args: [agora],
+                WHERE expires_at > ? AND usuario_id IS NOT NULL
+                  AND COALESCE(visto_em, created_at) > ?
+                GROUP BY usuario_id`,
+          args: [agora, new Date(Date.now() - SESSAO_ATIVA_MS).toISOString()],
         }),
       ]);
       const abertas = new Map(sessoes.rows.map(r => [String(r.usuario_id), Number(r.c)]));
@@ -2141,6 +2382,93 @@ async function despacharAdminData(
         })),
       }));
       return { status: 200, body: { projetos, clientes: clientes.rows } };
+    }
+
+    if (action === 'tarefa_atividade') {
+      const id = Number(query.get('id'));
+      if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };
+      // Mesmo corte da listagem: membro fora da equipe não lê a conversa de uma
+      // tarefa que não enxerga.
+      const barrado = await guardaDaEquipe(db, usuario, id, 'tarefa');
+      if (barrado) return barrado;
+
+      const [eventos, comentarios, mencoes, anexos] = await Promise.all([
+        db.execute({
+          sql: `SELECT id, usuario_id, usuario_nome, acao, campo, de, para, criado_em
+                FROM tarefa_eventos WHERE tarefa_id = ? ORDER BY id DESC`,
+          args: [id],
+        }),
+        db.execute({
+          sql: `SELECT c.id, c.pai_id, c.usuario_id, c.usuario_nome, c.texto, c.criado_em,
+                       c.editado_em, u.foto_url
+                FROM tarefa_comentarios c
+                LEFT JOIN usuarios u ON u.id = c.usuario_id
+                WHERE c.tarefa_id = ? ORDER BY c.id`,
+          args: [id],
+        }),
+        db.execute({
+          sql: `SELECT m.comentario_id, m.usuario_id, u.nome
+                FROM tarefa_comentario_mencoes m
+                JOIN tarefa_comentarios c ON c.id = m.comentario_id
+                LEFT JOIN usuarios u ON u.id = m.usuario_id
+                WHERE c.tarefa_id = ?`,
+          args: [id],
+        }),
+        // Sem o base64: a lista traz o que descreve o anexo, e o conteúdo só
+        // desce quando alguém clica. Uma conversa com cinco imagens não pode
+        // custar cinco imagens a cada abertura do card.
+        db.execute({
+          sql: `SELECT a.id, a.comentario_id, a.nome, a.tipo, a.tamanho
+                FROM tarefa_comentario_anexos a
+                JOIN tarefa_comentarios c ON c.id = a.comentario_id
+                WHERE c.tarefa_id = ? ORDER BY a.id`,
+          args: [id],
+        }),
+      ]);
+
+      const porComentario = <T,>(linhas: T[], chave: (l: T) => number) => {
+        const mapa = new Map<number, T[]>();
+        for (const l of linhas) {
+          const k = chave(l);
+          const lista = mapa.get(k);
+          if (lista) lista.push(l); else mapa.set(k, [l]);
+        }
+        return mapa;
+      };
+      const marcados = porComentario(mencoes.rows, r => Number(r.comentario_id));
+      const arquivos = porComentario(anexos.rows, r => Number(r.comentario_id));
+
+      return {
+        status: 200,
+        body: {
+          eventos: eventos.rows,
+          comentarios: comentarios.rows.map(c => ({
+            ...c,
+            mencoes: (marcados.get(Number(c.id)) ?? []).map(m => ({
+              usuario_id: String(m.usuario_id), nome: m.nome ?? null,
+            })),
+            anexos: arquivos.get(Number(c.id)) ?? [],
+          })),
+        },
+      };
+    }
+
+    if (action === 'tarefa_comentario_anexo_base64') {
+      const id = Number(query.get('id'));
+      if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };
+      const dono = await db.execute({
+        sql: `SELECT c.tarefa_id FROM tarefa_comentario_anexos a
+              JOIN tarefa_comentarios c ON c.id = a.comentario_id WHERE a.id = ?`,
+        args: [id],
+      });
+      if (!dono.rows[0]) return { status: 404, body: { error: 'Anexo não encontrado.' } };
+      const barrado = await guardaDaEquipe(db, usuario, dono.rows[0].tarefa_id, 'tarefa');
+      if (barrado) return barrado;
+      const r = await db.execute({
+        sql: 'SELECT nome, tipo, base64 FROM tarefa_comentario_anexos WHERE id = ?',
+        args: [id],
+      });
+      return { status: 200, body: r.rows[0] };
     }
 
     if (action === 'entrega_evidencia_base64') {
@@ -2630,9 +2958,17 @@ function faltaEmProjeto(p: any): string | null {
         : null;
       const concluida = fecha ? (dataValida ?? agora.toISOString()) : null;
 
+      // A foto do que a gravação está pedindo, para o diário comparar.
+      const depois = fotoDaTarefa({
+        titulo, descricao: t.descricao, status: statusPedido, prioridade: t.prioridade ?? 'Média',
+        responsavel_id: t.responsavel_id, prazo: t.prazo, entrega_id: t.entrega_id, etiquetas,
+      })!;
+
       if (t.id) {
         const antes = await db.execute({
-          sql: 'SELECT status, concluida_em FROM projeto_tarefas WHERE id = ?',
+          sql: `SELECT titulo, descricao, status, prioridade, responsavel_id, prazo,
+                       entrega_id, etiquetas, concluida_em
+                FROM projeto_tarefas WHERE id = ?`,
           args: [t.id],
         });
         if (!antes.rows[0]) return { status: 404, body: { error: 'Tarefa não encontrada.' } };
@@ -2655,6 +2991,9 @@ function faltaEmProjeto(p: any): string | null {
             t.prioridade ?? 'Média', t.responsavel_id || null, t.prazo || null, etiquetas,
             carimbo as never, t.id],
         });
+        await registrarEventosDaTarefa(db, t.id, autorId, autorNome,
+          fotoDaTarefa(antes.rows[0]), depois,
+          { antes: etapas.conclusivas.has(String(antes.rows[0].status)), depois: fecha });
       } else {
         const ordem = await db.execute({
           sql: 'SELECT COALESCE(MAX(ordem), -1) + 1 AS proxima FROM projeto_tarefas WHERE projeto_id = ?',
@@ -2670,6 +3009,15 @@ function faltaEmProjeto(p: any): string | null {
             t.prazo || null, etiquetas, Number(ordem.rows[0].proxima), concluida,
             new Date().toISOString(), autorId, autorNome],
         });
+        const nova = await db.execute({
+          sql: 'SELECT id FROM projeto_tarefas WHERE projeto_id = ? ORDER BY id DESC LIMIT 1',
+          args: [t.projeto_id],
+        });
+        const novaId = nova.rows[0]?.id;
+        if (novaId != null) {
+          await registrarEventosDaTarefa(db, novaId as number, autorId, autorNome,
+            null, depois, { antes: false, depois: fecha });
+        }
       }
       // Avisa por e-mail quem acompanha a etapa de destino, como no funil.
       if (mudouDeEtapa) {
@@ -2705,6 +3053,116 @@ function faltaEmProjeto(p: any): string | null {
     if (action === 'excluir_tarefa') {
       { const barrado = await guardaDaEquipe(db, usuario, body.id, 'tarefa'); if (barrado) return barrado; }
       await db.execute({ sql: 'DELETE FROM projeto_tarefas WHERE id = ?', args: [body.id] });
+      // O que pendia da tarefa vai junto: diário, conversa, marcações e anexos.
+      // Sem isto o banco acumula conversa órfã, que ninguém mais alcança.
+      await db.execute({ sql: 'DELETE FROM tarefa_eventos WHERE tarefa_id = ?', args: [body.id] });
+      const conversas = await db.execute({
+        sql: 'SELECT id FROM tarefa_comentarios WHERE tarefa_id = ?', args: [body.id],
+      });
+      for (const c of conversas.rows) {
+        await db.execute({ sql: 'DELETE FROM tarefa_comentario_mencoes WHERE comentario_id = ?', args: [c.id as never] });
+        await db.execute({ sql: 'DELETE FROM tarefa_comentario_anexos WHERE comentario_id = ?', args: [c.id as never] });
+      }
+      await db.execute({ sql: 'DELETE FROM tarefa_comentarios WHERE tarefa_id = ?', args: [body.id] });
+      return { status: 200, body: { ok: true } };
+    }
+
+    // ── Diário e conversa da tarefa ─────────────────────────────────────────
+
+    if (action === 'add_tarefa_comentario') {
+      const tarefaId = Number(body?.tarefa_id);
+      if (!Number.isFinite(tarefaId)) return { status: 400, body: { error: 'tarefa_id ausente.' } };
+      { const barrado = await guardaDaEquipe(db, usuario, tarefaId, 'tarefa'); if (barrado) return barrado; }
+      const texto = String(body?.texto ?? '').trim();
+      const anexos: any[] = Array.isArray(body?.anexos) ? body.anexos : [];
+      // Comentário só com anexo é legítimo; vazio de tudo, não.
+      if (!texto && anexos.length === 0) {
+        return { status: 400, body: { error: 'Escreva alguma coisa ou anexe um arquivo.' } };
+      }
+
+      // Resposta só desce um nível: se o pai já for resposta, a nova entra na
+      // mesma conversa, e não pendurada nele. É o que impede a escada.
+      let pai: number | null = null;
+      if (body?.pai_id != null && body.pai_id !== '') {
+        const alvo = await db.execute({
+          sql: 'SELECT id, pai_id, tarefa_id FROM tarefa_comentarios WHERE id = ?',
+          args: [Number(body.pai_id)],
+        });
+        const linha = alvo.rows[0];
+        if (!linha || Number(linha.tarefa_id) !== tarefaId) {
+          return { status: 400, body: { error: 'A conversa não pertence a esta tarefa.' } };
+        }
+        pai = linha.pai_id != null ? Number(linha.pai_id) : Number(linha.id);
+      }
+
+      const agora = new Date().toISOString();
+      await db.execute({
+        sql: `INSERT INTO tarefa_comentarios (tarefa_id, pai_id, usuario_id, usuario_nome, texto, criado_em)
+              VALUES (?,?,?,?,?,?)`,
+        args: [tarefaId, pai, autorId, autorNome, texto, agora],
+      });
+      const criado = await db.execute({
+        sql: 'SELECT id FROM tarefa_comentarios WHERE tarefa_id = ? ORDER BY id DESC LIMIT 1',
+        args: [tarefaId],
+      });
+      const comentarioId = Number(criado.rows[0]?.id);
+
+      // As marcações são conferidas contra os usuários que existem: o texto vem
+      // da tela, e id inventado viraria menção a ninguém.
+      const cruas: unknown[] = Array.isArray(body?.mencoes) ? body.mencoes : [];
+      const pedidas: string[] = [...new Set(cruas.map(v => String(v)))];
+      if (pedidas.length > 0) {
+        const validos = await db.execute({
+          sql: `SELECT id FROM usuarios WHERE ativo = 1 AND id IN (${pedidas.map(() => '?').join(',')})`,
+          args: pedidas,
+        });
+        for (const r of validos.rows) {
+          await db.execute({
+            sql: 'INSERT OR IGNORE INTO tarefa_comentario_mencoes (comentario_id, usuario_id) VALUES (?,?)',
+            args: [comentarioId, String(r.id)],
+          });
+        }
+      }
+
+      for (const a of anexos) {
+        const tamanho = Number(a?.tamanho ?? 0);
+        if (!a?.nome || !a?.base64) continue;
+        if (tamanho > LIMITE_ANEXO) {
+          return { status: 400, body: { error: `"${String(a.nome)}" passa do limite de anexo.` } };
+        }
+        await db.execute({
+          sql: `INSERT INTO tarefa_comentario_anexos (comentario_id, nome, tipo, tamanho, base64, criado_em)
+                VALUES (?,?,?,?,?,?)`,
+          args: [comentarioId, String(a.nome), String(a.tipo ?? 'application/octet-stream'),
+            tamanho, String(a.base64), agora],
+        });
+      }
+      return { status: 200, body: { ok: true, id: comentarioId } };
+    }
+
+    if (action === 'excluir_tarefa_comentario') {
+      const id = Number(body?.id);
+      const alvo = await db.execute({
+        sql: 'SELECT id, tarefa_id, usuario_id FROM tarefa_comentarios WHERE id = ?', args: [id],
+      });
+      const linha = alvo.rows[0];
+      if (!linha) return { status: 404, body: { error: 'Comentário não encontrado.' } };
+      { const barrado = await guardaDaEquipe(db, usuario, linha.tarefa_id, 'tarefa'); if (barrado) return barrado; }
+      // Comentário é fala de alguém: só o autor apaga a própria, e quem manda no
+      // sistema apaga qualquer uma. Ninguém edita a fala de outro.
+      const dono = String(linha.usuario_id ?? '') === String(usuario?.id ?? '');
+      if (!dono && papelEfetivo(usuario?.email, usuario?.papel) === 'membro') {
+        return { status: 403, body: { error: 'Só quem escreveu pode apagar este comentário.' } };
+      }
+      // As respostas vão junto: sem o começo, elas ficam sem assunto.
+      const filhas = await db.execute({
+        sql: 'SELECT id FROM tarefa_comentarios WHERE pai_id = ?', args: [id],
+      });
+      for (const c of [...filhas.rows.map(r => Number(r.id)), id]) {
+        await db.execute({ sql: 'DELETE FROM tarefa_comentario_mencoes WHERE comentario_id = ?', args: [c] });
+        await db.execute({ sql: 'DELETE FROM tarefa_comentario_anexos WHERE comentario_id = ?', args: [c] });
+        await db.execute({ sql: 'DELETE FROM tarefa_comentarios WHERE id = ?', args: [c] });
+      }
       return { status: 200, body: { ok: true } };
     }
 

@@ -103,6 +103,15 @@ export function IconCheck({ size = 14 }: { size?: number }) {
 export function IconCheckCircle({ size = 14 }: { size?: number }) {
   return <Ico size={size}><circle cx="12" cy="12" r="9" /><path d="M8 12.3l2.7 2.7L16.2 9.4" /></Ico>;
 }
+// Duplicar - dois retângulos deslocados, um por cima do outro.
+export function IconDuplicar({ size = 14 }: { size?: number }) {
+  return (
+    <Ico size={size}>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
+    </Ico>
+  );
+}
 // Fechar / remover - botões de modal, chips, itens de lista.
 export function IconX({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M6 6l12 12M18 6L6 18" /></Ico>;

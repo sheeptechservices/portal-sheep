@@ -9,13 +9,18 @@
 //  telas importam este arquivo, e um valor vindo de lá fecharia o ciclo.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AtividadeDaTarefa } from './AtividadeDaTarefa';
 import { createPortal } from 'react-dom';
 import { iniciais } from './AdminApp';
-import { IconAlert, IconCheck, IconChevronDown, IconUser, IconX } from '../components/icons';
+import {
+  IconAlert, IconCheck, IconChevronDown, IconDuplicar, IconTrash, IconUser, IconX,
+} from '../components/icons';
 import { SelectSistema } from '../components/SelectSistema';
 import { DatePicker } from '../components/DatePicker';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
+import { ancorar } from '../lib/ancorar';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
+import { PAINEL_MAX, PAINEL_MIN, useLarguraPainel } from '../lib/painelLateral';
 import { PRIORIDADES } from '../lib/prioridades';
 import type { Projeto, Tarefa } from './ProjetosPage';
 
@@ -307,9 +312,102 @@ export function SeletorEtiquetas({ valor, opcoes, etq, onChange, desabilitado }:
   );
 }
 
+/** A etapa como pílula no cabeçalho do painel, e não como campo no meio do
+ *  formulário. É o mesmo desenho do status no painel de projeto: a etapa é o
+ *  estado da tarefa, a coisa que mais se olha e mais se troca, e ela se perde
+ *  quando vira um seletor entre outros quatro. */
+function PilulaEtapa({ valor, etapas, desabilitado, onChange }: {
+  valor: string;
+  etapas: EtapaTarefa[];
+  desabilitado: boolean;
+  onChange: (v: string) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+  const gatilho = useRef<HTMLButtonElement>(null);
+  const lista = useRef<HTMLDivElement>(null);
+  // Etapa que saiu da configuração continua sendo o estado da tarefa: cai no
+  // cinza em vez de sumir do gatilho.
+  const cor = etapas.find(e => e.nome === valor)?.cor ?? '#6E6F69';
+
+  useDropdownDismiss(aberto, [gatilho, lista], () => setAberto(false));
+
+  return (
+    <>
+      <button
+        ref={gatilho}
+        type="button"
+        className="status-select-trigger sem-contorno"
+        style={{ ['--sc' as string]: cor, cursor: desabilitado ? 'default' : 'pointer' }}
+        disabled={desabilitado}
+        aria-label={`Etapa: ${valor || 'sem etapa'}`}
+        onClick={() => {
+          if (desabilitado || !gatilho.current) return;
+          setPos(ancorar(gatilho.current, etapas.length, 200));
+          setAberto(true);
+        }}
+      >
+        <span className="status-select-dot" style={{ background: cor }} />
+        <span>{valor || 'Sem etapa'}</span>
+        {!desabilitado && <IconChevronDown size={10} />}
+      </button>
+
+      {aberto && createPortal(
+        <div ref={lista} className="status-select-dropdown"
+          style={{ top: pos.top, left: pos.left, width: pos.width }}>
+          {etapas.map(e => {
+            const ativo = e.nome === valor;
+            return (
+              <div key={e.id} className={`status-select-option${ativo ? ' active' : ''}`}
+                onClick={() => { onChange(e.nome); setAberto(false); }}>
+                <span className="status-select-dot" style={{ background: e.cor }} />
+                <span>{e.nome}</span>
+                {ativo && (
+                  <span style={{ marginLeft: 'auto', color: e.cor, display: 'inline-flex' }}>
+                    <IconCheck size={12} />
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
+// ── Confirmação de exclusão ──────────────────────────────────────────────
+
+export function ConfirmarExclusao({ tarefa, onCancelar, onConfirmar }: {
+  tarefa: Tarefa;
+  onCancelar: () => void;
+  onConfirmar: () => void;
+}) {
+  const fundo = useFecharNoFundo(onCancelar);
+  return createPortal(
+    <div className="admin-modal-overlay"
+      style={{ zIndex: 10001, alignItems: 'center', justifyContent: 'center' }} {...fundo}>
+      <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
+        <p className="delete-confirm-title">Excluir tarefa</p>
+        <p className="delete-confirm-desc">
+          Tem certeza que deseja excluir "<strong>{tarefa.titulo}</strong>"? Esta ação não pode ser desfeita.
+        </p>
+        <div className="delete-confirm-actions">
+          <button type="button" className="delete-confirm-cancel" onClick={onCancelar}>Cancelar</button>
+          <button type="button" className="delete-confirm-ok" onClick={onConfirmar}>Excluir</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 // ── O formulário ──────────────────────────────────────────────────────────────
 
-export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etiquetaPorPapel, usuarioId, etq, pessoas, salvando, somenteLeitura, onMudar, onFechar, onSalvar }: {
+export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etiquetaPorPapel,
+  usuarioId, etq, pessoas, salvando, somenteLeitura, podeComentar, api,
+  onMudar, onFechar, onSalvar, onExcluir, onDuplicar }: {
   rascunho: Rascunho;
   projetos: Projeto[];
   etapas: EtapaTarefa[];
@@ -320,52 +418,94 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
   pessoas: Pessoa[];
   salvando: boolean;
   somenteLeitura: boolean;
+  /** Sem isto o diário e a conversa não aparecem: tarefa que ainda não existe
+   *  não tem histórico, e a tela que não passa `api` não sabe buscá-lo. */
+  podeComentar?: boolean;
+  api?: (path: string, method?: string, body?: unknown) => Promise<any>;
   onMudar: (r: Rascunho) => void;
   onFechar: () => void;
   onSalvar: () => void;
+  /** Ausente para quem não pode excluir, e em tarefa que ainda não existe. */
+  onExcluir?: () => void;
+  /** Cria uma cópia da tarefa. Ausente para quem não pode criar. */
+  onDuplicar?: () => void;
 }) {
   const set = <K extends keyof Rascunho>(k: K, v: Rascunho[K]) => onMudar({ ...rascunho, [k]: v });
   const projeto = projetos.find(p => p.id === rascunho.projeto_id);
   const fundo = useFecharNoFundo(onFechar);
+  // Mesma gaveta do painel de projeto, com largura e modo tela cheia próprios.
+  const { largura, arrastando, setArrastando, porTecla } = useLarguraPainel('tarefa');
   const trava = rascunho.etiquetas.some(e => etq.trava(e));
   // A lista muda com o projeto escolhido: é lá que a pessoa tem um papel.
   const etiquetasVisiveis = etiquetasParaOPapel(etiquetas, etiquetaPorPapel, projeto, usuarioId);
   const escondidas = etiquetas.length - etiquetasVisiveis.length;
 
   return createPortal(
-    <div className="admin-modal-overlay"
-      style={{ zIndex: 10000, alignItems: 'center', justifyContent: 'center' }} {...fundo}>
-      <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}
-        style={{ width: 1040, maxHeight: 'calc(100vh - 64px)', display: 'flex', flexDirection: 'column' }}>
+    <div className="admin-modal-overlay" style={{ zIndex: 10000 }} {...fundo}>
+      {/* Fora do painel: dentro dele, que rola, o puxador sumiria ao descer o
+          conteúdo. Em tela cheia não existe - não há borda para arrastar. */}
+      <button
+        type="button"
+        className={`painel-puxador${arrastando ? ' arrastando' : ''}`}
+        style={{ right: `min(${largura}px, 96vw)` }}
+        onClick={e => e.stopPropagation()}
+        onMouseDown={e => { e.preventDefault(); setArrastando(true); }}
+        onKeyDown={porTecla}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Ajustar a largura do painel"
+        aria-valuenow={largura}
+        aria-valuemin={PAINEL_MIN}
+        aria-valuemax={PAINEL_MAX}
+        title="Arraste para ajustar a largura"
+      />
+      <div className="admin-modal painel-tarefa"
+        style={{ width: `min(${largura}px, 96vw)` }}
+        onClick={e => e.stopPropagation()}>
 
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        {/* Grudento: rolando a conversa lá embaixo, o título da tarefa e o
+            botão de salvar continuam à vista. */}
+        <div className="admin-modal-header">
+          {/* `flex: 1` porque sem ele o bloco encolhe para o tamanho natural de
+              um input (~20 caracteres) e o título corta muito antes da borda,
+              deixando um vão até os botões. */}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p className="delete-confirm-title" style={{ marginBottom: 4 }}>
+            <p style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 600,
+              textTransform: 'uppercase', letterSpacing: '0.08em' }}>
               {rascunho.id ? 'Tarefa' : 'Nova tarefa'}
             </p>
-            <p className="delete-confirm-desc" style={{ marginBottom: 0 }}>
-              {projeto ? projeto.nome : 'Escolha o projeto abaixo'}
-            </p>
+            {/* O título é editado onde ele é lido, e não num campo lá embaixo.
+                Cresce em várias linhas quando é comprido: cortar com reticências
+                o texto que a pessoa está escrevendo esconde o que ela digitou. */}
+            {somenteLeitura ? (
+              <h3 className="painel-titulo">{rascunho.titulo || 'Sem título'}</h3>
+            ) : (
+              <input
+                className="painel-titulo painel-titulo-campo"
+                value={rascunho.titulo}
+                autoFocus={rascunho.id == null}
+                placeholder="Título da tarefa"
+                aria-label="Título da tarefa"
+                title={rascunho.titulo}
+                onChange={e => set('titulo', e.target.value)}
+                // Enter sai do campo, que é o que a mão espera depois de
+                // escrever o nome de uma coisa.
+                onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+              />
+            )}
+            <div style={{ marginTop: 6 }}>
+              <PilulaEtapa valor={rascunho.status} etapas={etapas}
+                desabilitado={somenteLeitura} onChange={v => set('status', v)} />
+            </div>
           </div>
-          <button type="button" className="admin-modal-close" aria-label="Fechar" onClick={onFechar}>
-            <IconX size={16} />
-          </button>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <button type="button" className="admin-modal-close" aria-label="Fechar" onClick={onFechar}>
+              <IconX size={16} />
+            </button>
+          </span>
         </div>
 
-        {/* A margem negativa devolve espaço para o anel de foco dos campos, que
-            seria cortado pelo recorte da área rolável. */}
-        {/* A margem negativa devolve espaço para o anel de foco dos campos, que
-            seria cortado pelo recorte da área rolável. `overflowX: hidden` é o
-            par obrigatório do `auto` vertical: sem ele, um rótulo longo de
-            seletor empurra a barra horizontal para dentro do modal. */}
-        <div style={{ overflowY: 'auto', overflowX: 'hidden', margin: '16px -4px 0', padding: '0 4px',
-          display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-          <div className="form-group">
-            <label className="form-label">Título *</label>
-            <input className="form-input" value={rascunho.titulo} autoFocus disabled={somenteLeitura}
-              onChange={e => set('titulo', e.target.value)} placeholder="Levantar requisitos" />
-          </div>
+        <div className="admin-modal-body">
 
           <div className="form-group">
             <label className="form-label">Descrição</label>
@@ -377,7 +517,8 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
           {/* `minmax(0, 1fr)` e não `1fr`: item de grade não encolhe abaixo do
               próprio conteúdo por padrão, e o rótulo comprido de uma entrega
               esticava a coluna para fora do modal. */}
-          <div className="campos-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+          <div className="campos-2" style={{ display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
             <div className="form-group" style={{ minWidth: 0 }}>
               <label className="form-label">Projeto *</label>
               <SelectSistema
@@ -399,15 +540,11 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
               />
             </div>
           </div>
-          {/* Com o modal largo, os quatro campos curtos cabem numa linha só -
-              em duas colunas cada um ficaria com meio modal de largura para
-              guardar uma palavra. */}
-          <div className="campos-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10 }}>
-            <div className="form-group" style={{ minWidth: 0 }}>
-              <label className="form-label">Status</label>
-              <SelectSistema valor={rascunho.status} onChange={v => set('status', v)}
-                opcoes={etapas.map(e => ({ valor: e.nome, label: e.nome }))} />
-            </div>
+          {/* Três campos desde que a etapa subiu para o cabeçalho. `auto-fit`
+              acomoda: no painel estreito viram dois por linha sozinhos, e em
+              tela cheia cabem os três numa linha. */}
+          <div className="campos-4" style={{ display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }}>
             <div className="form-group" style={{ minWidth: 0 }}>
               <label className="form-label">Prioridade</label>
               <SelectSistema valor={rascunho.prioridade} onChange={v => set('prioridade', v)}
@@ -452,9 +589,39 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
               </p>
             )}
           </div>
+
+          {/* Só em tarefa que já existe: diário de tarefa não gravada não é
+              nada, e o comentário não teria onde pendurar. */}
+          {rascunho.id != null && api && (
+            <AtividadeDaTarefa
+              tarefaId={rascunho.id}
+              pessoas={pessoas}
+              usuarioId={usuarioId}
+              podeComentar={!!podeComentar}
+              api={api}
+            />
+          )}
         </div>
 
-        <div className="delete-confirm-actions" style={{ marginTop: 16, flexShrink: 0 }}>
+        <div className="painel-rodape">
+          {/* Longe de Salvar de propósito: excluir e duplicar são ações sobre a
+              tarefa inteira, e ficar ao lado do botão que se aperta o tempo
+              todo convida ao clique errado. */}
+          <span className="painel-rodape-lado">
+            {rascunho.id != null && onExcluir && (
+              <button type="button" className="rodape-icone perigo"
+                title="Excluir tarefa" aria-label="Excluir tarefa" onClick={onExcluir}>
+                <IconTrash size={15} />
+              </button>
+            )}
+            {rascunho.id != null && onDuplicar && (
+              <button type="button" className="rodape-icone"
+                title="Duplicar tarefa" aria-label="Duplicar tarefa"
+                disabled={salvando} onClick={onDuplicar}>
+                <IconDuplicar size={15} />
+              </button>
+            )}
+          </span>
           <button type="button" className="delete-confirm-cancel" onClick={onFechar} disabled={salvando}>
             {somenteLeitura ? 'Fechar' : 'Cancelar'}
           </button>

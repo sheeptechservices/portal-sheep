@@ -15,8 +15,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { iniciais, useAuth, useToast } from './AdminApp';
 import {
-  IconAgrupar, IconAlert, IconCalendario, IconCheck, IconChevronDown, IconInbox,
-  IconOrdenar, IconSearch, IconTrash, IconUser, IconVisaoLista, IconVisaoQuadro,
+  IconAgrupar, IconAlert, IconCalendario, IconCheck, IconChevronDown, IconInbox, IconRecolher,
+  IconDuplicar, IconOrdenar, IconSearch, IconTrash, IconUser, IconVisaoLista, IconVisaoQuadro,
   IconVisaoTabela, IconX,
 } from '../components/icons';
 import { SelectSistema } from '../components/SelectSistema';
@@ -34,7 +34,7 @@ import {
 // O formulário e o vocabulário de tarefa moram fora desta tela: o relatório de
 // Gestão abre o mesmo modal, e duas cópias divergiriam no primeiro campo novo.
 import {
-  Avatar, AvatarVazio, ChipEtiqueta, ETAPAS_PADRAO, FormularioTarefa,
+  Avatar, AvatarVazio, ChipEtiqueta, ConfirmarExclusao, ETAPAS_PADRAO, FormularioTarefa,
   etiquetasParaOPapel, indexar, indexarEtiquetas, type EtapaTarefa,
   type Etapario, type EtiquetaTarefa, type Etiquetario, type Pessoa, type Rascunho,
 } from './FormularioTarefa';
@@ -74,6 +74,7 @@ interface Grupo {
   /** Desenho ao lado do rótulo, quando a dimensão tem um. */
   icone?: React.ReactNode;
   /** Só existem no agrupamento por status, e vêm da configuração da etapa. */
+  etapaId?: number;
   recolhida?: boolean;
   desconsiderada?: boolean;
   tarefas: TarefaComProjeto[];
@@ -133,6 +134,7 @@ function montarGrupos(
     chave: e.nome,
     rotulo: e.nome,
     cor: e.cor,
+    etapaId: e.id,
     recolhida: !!e.always_collapsed,
     desconsiderada: !!e.is_excluded,
     tarefas: mapa.get(e.nome) ?? [],
@@ -217,32 +219,6 @@ export interface FiltroInicialTarefas {
   projeto: string;
   entrega: number;
   nonce: number;
-}
-
-// ── Exclusão ────────────────────────────────────────────────────────────────
-
-function ConfirmarExclusao({ tarefa, onCancelar, onConfirmar }: {
-  tarefa: Tarefa;
-  onCancelar: () => void;
-  onConfirmar: () => void;
-}) {
-  const fundo = useFecharNoFundo(onCancelar);
-  return createPortal(
-    <div className="admin-modal-overlay"
-      style={{ zIndex: 10001, alignItems: 'center', justifyContent: 'center' }} {...fundo}>
-      <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-        <p className="delete-confirm-title">Excluir tarefa</p>
-        <p className="delete-confirm-desc">
-          Tem certeza que deseja excluir "<strong>{tarefa.titulo}</strong>"? Esta ação não pode ser desfeita.
-        </p>
-        <div className="delete-confirm-actions">
-          <button type="button" className="delete-confirm-cancel" onClick={onCancelar}>Cancelar</button>
-          <button type="button" className="delete-confirm-ok" onClick={onConfirmar}>Excluir</button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
 }
 
 export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: {
@@ -512,6 +488,9 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
 
   async function excluir(t: Tarefa) {
     setExcluindo(null);
+    // Fecha o painel se a tarefa apagada for a que está aberta: deixá-lo no ar
+    // mostrando uma tarefa que não existe mais convida a salvar de volta.
+    setForm(f => (f?.id === t.id ? null : f));
     const antes = projetos;
     mudancasRef.current++;
     setProjetos(ps => ps.map(p => ({
@@ -521,6 +500,55 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
     if (r?.error) { setProjetos(antes); toast('error', 'Não foi possível excluir', r.error); return; }
     toast('success', 'Tarefa excluída');
     reconciliar();
+  }
+
+  /** Marca ou desmarca a etapa como recolhida por padrão, direto do quadro.
+   *  Pinta na hora e grava: é ajuste de um clique, e esperar a resposta para a
+   *  coluna reagir faria o botão parecer travado. */
+  async function fixarRecolhida(etapaId: number) {
+    setEtapas(es => es.map(e => (e.id === etapaId
+      ? { ...e, always_collapsed: e.always_collapsed ? 0 : 1 } : e)));
+    const r = await api('', 'POST', { action: 'toggle_collapsed_tarefa_status', id: etapaId });
+    if (r?.error) {
+      setEtapas(es => es.map(e => (e.id === etapaId
+        ? { ...e, always_collapsed: e.always_collapsed ? 0 : 1 } : e)));
+      toast('error', 'Não foi possível mudar a etapa', r.error);
+    }
+  }
+
+  /** Rascunho de tarefa nova. Nasce com quem está criando como responsável: é
+   *  quem vai tocar a tarefa na maioria das vezes, e deixar o campo vazio
+   *  produzia uma fila de tarefas sem dono que ninguém revisava depois. Continua
+   *  sendo um padrão, não uma regra - o campo está aberto para trocar ou para
+   *  deixar sem responsável antes de salvar. */
+  const tarefaNova = (): Rascunho => ({
+    ...VAZIO,
+    status: entrada,
+    projeto_id: projetos[0]?.id ?? '',
+    responsavel_id: usuario?.id ?? '',
+  });
+
+  /** Cria uma cópia da tarefa, igual em tudo: mesma etapa, mesmo responsável,
+   *  mesmo prazo, mesmas etiquetas - e a mesma data de conclusão, quando há uma,
+   *  para a cópia nascer na mesma coluna e no mesmo dia da original. Só o título
+   *  ganha " (cópia)", senão ficam duas linhas idênticas no quadro. */
+  async function duplicar(t: Tarefa) {
+    setSalvando(true);
+    try {
+      const r = await api('', 'POST', {
+        action: 'salvar_tarefa',
+        projeto_id: t.projeto_id, entrega_id: t.entrega_id,
+        titulo: `${t.titulo} (cópia)`, descricao: t.descricao,
+        status: t.status, prioridade: t.prioridade,
+        responsavel_id: t.responsavel_id, prazo: t.prazo, etiquetas: t.etiquetas,
+        concluida_em: t.concluida_em,
+      });
+      if (r?.error) { toast('error', 'Não foi possível duplicar', r.error); return; }
+      await recarregar();
+      toast('success', 'Tarefa duplicada');
+    } finally {
+      setSalvando(false);
+    }
   }
 
   const abrirEdicao = (t: Tarefa) => setForm({
@@ -549,12 +577,31 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
           <h1 className="admin-page-title">Tarefas</h1>
           <p className="admin-page-desc">O trabalho dos projetos, e o que move as entregas</p>
         </div>
-        {podeEditar && projetos.length > 0 && (
-          <button className="btn btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13, flexShrink: 0 }}
-            onClick={() => setForm({ ...VAZIO, status: entrada, projeto_id: projetos[0].id })}>
-            + Nova tarefa
-          </button>
-        )}
+        {/* Buscar, agrupar e ordenar sobem para cá: são controles da tela
+            inteira, e não recorte de lista como os filtros. Ficavam na barra de
+            filtros só por vizinhança. Aparecem sob a mesma condição da barra -
+            sem tarefa não há o que buscar nem ordenar. */}
+        <div className="admin-page-acoes">
+          {!carregando && tarefas.length > 0 && (
+            <>
+              <button type="button" className="admin-toolbar-btn"
+                onClick={() => { setBuscando(b => !b); if (buscando) setBusca(''); }}
+                title="Buscar tarefa" aria-label="Buscar tarefa" aria-expanded={buscando}>
+                <IconSearch size={14} />
+              </button>
+              <SeletorLista valor={agrupamento} onChange={setAgrupamento} opcoes={AGRUPAMENTOS}
+                icone={IconAgrupar} rotulo="Agrupar tarefas" />
+              <SeletorLista valor={ordem} onChange={setOrdem} opcoes={ORDENS}
+                icone={IconOrdenar} rotulo="Ordenar tarefas" />
+            </>
+          )}
+          {podeEditar && projetos.length > 0 && (
+            <button className="btn btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13, flexShrink: 0 }}
+              onClick={() => setForm(tarefaNova())}>
+              + Nova tarefa
+            </button>
+          )}
+        </div>
       </div>
 
       {carregando ? (
@@ -600,16 +647,6 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
               </button>
             )}
             <div className="admin-toolbar-spacer" />
-
-            <button type="button" className="admin-toolbar-btn"
-              onClick={() => { setBuscando(b => !b); if (buscando) setBusca(''); }}
-              title="Buscar tarefa" aria-label="Buscar tarefa" aria-expanded={buscando}>
-              <IconSearch size={14} />
-            </button>
-            <SeletorLista valor={agrupamento} onChange={setAgrupamento} opcoes={AGRUPAMENTOS}
-              icone={IconAgrupar} rotulo="Agrupar tarefas" />
-            <SeletorLista valor={ordem} onChange={setOrdem} opcoes={ORDENS}
-              icone={IconOrdenar} rotulo="Ordenar tarefas" />
 
             <div className="view-toggle">
               <div className="view-toggle-pill"
@@ -659,7 +696,10 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
         </div>
       ) : view === 'quadro' ? (
         <Quadro grupos={grupos} agrupamento={agrupamento} et={et} etq={etq} podeEditar={podeEditar}
-          onAbrir={abrirEdicao} onMover={mover} />
+          onAbrir={abrirEdicao} onMover={mover}
+          onFixarRecolhida={pode('configuracoes:etapas') ? fixarRecolhida : undefined}
+          onExcluir={podeExcluir ? setExcluindo : undefined}
+          onDuplicar={podeEditar ? (x => void duplicar(x)) : undefined} />
       ) : view === 'lista' ? (
         <Lista grupos={grupos} et={et} etq={etq} podeExcluir={podeExcluir}
           onAbrir={abrirEdicao} onExcluir={setExcluindo} />
@@ -680,9 +720,19 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
           pessoas={pessoas}
           salvando={salvando}
           somenteLeitura={!podeEditar}
+          podeComentar={pode('tarefas:comentar')}
+          api={api}
           onMudar={setForm}
           onFechar={() => setForm(null)}
           onSalvar={() => void salvar(form)}
+          onExcluir={podeExcluir && form.id ? () => {
+            const alvo = tarefas.find(x => x.id === form.id);
+            if (alvo) setExcluindo(alvo);
+          } : undefined}
+          onDuplicar={podeEditar && form.id ? () => {
+            const alvo = tarefas.find(x => x.id === form.id);
+            if (alvo) void duplicar(alvo);
+          } : undefined}
         />
       )}
 
@@ -753,7 +803,7 @@ const INTENCAO_MS = 200;
 /** Uma coluna do quadro. Recolhe quando está vazia (padrão de todo board da
  *  casa) ou quando a etapa foi marcada como pontual em Configurações, e volta a
  *  abrir com intenção: mouse parado em cima, ou uma tarefa arrastada até ela. */
-function Coluna({ grupo, et, etq, podeEditar, arrastando, isOver, onAbrir, onDragOver, onDragLeave, onDrop, onArrastar, onSoltar }: {
+function Coluna({ grupo, et, etq, podeEditar, arrastando, isOver, onAbrir, onDragOver, onDragLeave, onDrop, onArrastar, onSoltar, onFixarRecolhida, onExcluir, onDuplicar }: {
   grupo: Grupo;
   et: Etapario;
   etq: Etiquetario;
@@ -766,8 +816,26 @@ function Coluna({ grupo, et, etq, podeEditar, arrastando, isOver, onAbrir, onDra
   onDrop: () => void;
   onArrastar: (id: number) => void;
   onSoltar: () => void;
+  /** Ausente para quem não configura etapas, e fora do agrupamento por status. */
+  onFixarRecolhida?: (etapaId: number) => void;
+  /** Ausentes para quem não pode excluir / criar tarefa. */
+  onExcluir?: (t: TarefaComProjeto) => void;
+  onDuplicar?: (t: TarefaComProjeto) => void;
 }) {
   const [aberta, setAberta] = useState(false);
+  /** O corpo esmaece no pé enquanto há card abaixo. A barra de rolagem da
+   *  coluna é escondida, então sem este sinal o card cortado no fim lê como
+   *  defeito da tela em vez de "role para ver o resto". */
+  const corpo = useRef<HTMLDivElement>(null);
+  const [noFim, setNoFim] = useState(true);
+  const conferirFim = useCallback(() => {
+    const el = corpo.current;
+    if (!el) return;
+    setNoFim(el.scrollTop + el.clientHeight >= el.scrollHeight - 2);
+  }, []);
+  // Confere ao montar e a cada mudança na lista: card que entra ou sai muda o
+  // que há para rolar.
+  useEffect(conferirFim, [conferirFim, grupo.tarefas.length, aberta]);
   const abrirTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fecharTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const limparAbrir = () => { if (abrirTimer.current) { clearTimeout(abrirTimer.current); abrirTimer.current = null; } };
@@ -827,12 +895,30 @@ function Coluna({ grupo, et, etq, podeEditar, arrastando, isOver, onAbrir, onDra
             : <span className="kanban-dot" style={{ background: grupo.cor }} />}
           {grupo.rotulo}
         </div>
+        {/* Manter a etapa recolhida é decisão sobre o quadro, e agora se toma
+            olhando para ele. Só aparece no agrupamento por status: nas outras
+            dimensões a coluna não é uma etapa configurável. */}
+        {onFixarRecolhida && grupo.etapaId != null && (
+          <button
+            type="button"
+            className="kanban-column-fixar"
+            aria-pressed={!!grupo.recolhida}
+            title={grupo.recolhida
+              ? 'Etapa recolhida por padrão. Clique para mantê-la aberta.'
+              : 'Manter esta etapa recolhida, mesmo com tarefas dentro'}
+            aria-label={grupo.recolhida ? 'Manter a etapa aberta' : 'Manter a etapa recolhida'}
+            onClick={e => { e.stopPropagation(); onFixarRecolhida(grupo.etapaId!); }}
+          >
+            <IconRecolher size={12} aberta={!grupo.recolhida} />
+          </button>
+        )}
         <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--gray2)' }}>
           {tarefas.length}
         </span>
       </div>
 
-      <div className="kanban-column-body">
+      <div ref={corpo} onScroll={conferirFim}
+        className={`kanban-column-body${noFim ? ' no-fim' : ''}`}>
         {tarefas.map(t => (
           <div key={t.id} className="kanban-card"
             draggable={podeEditar}
@@ -845,6 +931,33 @@ function Coluna({ grupo, et, etq, podeEditar, arrastando, isOver, onAbrir, onDra
               <p style={{ fontWeight: 600, fontSize: 13, color: 'var(--black)', margin: 0, flex: 1 }}>
                 {t.titulo}
               </p>
+              {/* Aparece com o ponteiro no card. Sempre visível seria um lixo
+                  por cartão numa coluna cheia, e o clique que interessa no card
+                  é o de abrir. */}
+              <span className="kanban-card-acoes">
+                {onDuplicar && (
+                  <button
+                    type="button"
+                    className="kanban-card-acao"
+                    title="Duplicar tarefa"
+                    aria-label={`Duplicar "${t.titulo}"`}
+                    onClick={e => { e.stopPropagation(); onDuplicar(t); }}
+                  >
+                    <IconDuplicar size={12} />
+                  </button>
+                )}
+                {onExcluir && (
+                  <button
+                    type="button"
+                    className="kanban-card-acao perigo"
+                    title="Excluir tarefa"
+                    aria-label={`Excluir "${t.titulo}"`}
+                    onClick={e => { e.stopPropagation(); onExcluir(t); }}
+                  >
+                    <IconTrash size={12} />
+                  </button>
+                )}
+              </span>
             </div>
             <p style={{ fontSize: 11, color: 'var(--gray2)', margin: 0 }}>{t.projeto.nome}</p>
             {t.etiquetas.length > 0 && (
@@ -875,7 +988,7 @@ function Coluna({ grupo, et, etq, podeEditar, arrastando, isOver, onAbrir, onDra
   );
 }
 
-function Quadro({ grupos, agrupamento, et, etq, podeEditar, onAbrir, onMover }: {
+function Quadro({ grupos, agrupamento, et, etq, podeEditar, onAbrir, onMover, onFixarRecolhida, onExcluir, onDuplicar }: {
   grupos: Grupo[];
   agrupamento: string;
   et: Etapario;
@@ -883,6 +996,9 @@ function Quadro({ grupos, agrupamento, et, etq, podeEditar, onAbrir, onMover }: 
   podeEditar: boolean;
   onAbrir: (t: Tarefa) => void;
   onMover: (t: TarefaComProjeto, campo: 'status' | 'prioridade', valor: string) => void;
+  onFixarRecolhida?: (etapaId: number) => void;
+  onExcluir?: (t: TarefaComProjeto) => void;
+  onDuplicar?: (t: TarefaComProjeto) => void;
 }) {
   const [arrastando, setArrastando] = useState<number | null>(null);
   const [sobre, setSobre] = useState<string | null>(null);
@@ -915,6 +1031,9 @@ function Quadro({ grupos, agrupamento, et, etq, podeEditar, onAbrir, onMover }: 
           }}
           onArrastar={setArrastando}
           onSoltar={() => { setArrastando(null); setSobre(null); }}
+          onFixarRecolhida={onFixarRecolhida}
+          onExcluir={onExcluir}
+          onDuplicar={onDuplicar}
         />
       ))}
     </div>

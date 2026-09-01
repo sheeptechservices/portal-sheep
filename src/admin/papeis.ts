@@ -67,13 +67,20 @@ export const PAGINAS_DE_FERRAMENTA = ['gerador-documentos'];
 export const PAGINAS_SO_ADMIN = ['usuarios'];
 
 /**
- * Monta o teste de permissão. `null` é "ainda não chegou do servidor": responde
- * que pode, de propósito, para o menu não piscar cheio e esvaziar na primeira
- * volta do `me`. A janela é de uma requisição, e a trava de verdade é o servidor.
+ * Monta o teste de permissão. `null` é "ainda não chegou do servidor", e nega:
+ * na dúvida a tela não oferece nada.
+ *
+ * Já foi o contrário - `null` respondia que pode, para o menu não piscar cheio
+ * e esvaziar na volta do `me`. O preço era alto demais: se o `me` falhasse por
+ * qualquer motivo, o `null` durava a sessão inteira e a tela ficava destravada
+ * para todo mundo. O servidor continuava recusando, mas quem usava via os
+ * controles de edição e clicava neles. Quem cuida do piscar agora é a tela, que
+ * espera as permissões antes de montar o conteúdo.
  */
 export function criarPode(permissoes: Permissoes | null) {
   return function pode(chave: string | string[]): boolean {
-    if (permissoes === null || permissoes === '*') return true;
+    if (permissoes === null) return false;
+    if (permissoes === '*') return true;
     const lista = Array.isArray(chave) ? chave : [chave];
     return lista.some(c => permissoes.includes(c));
   };

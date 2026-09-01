@@ -8,7 +8,7 @@ import { DepsMark } from '../components/DepsMark';
 import { descreveProdutoDeps, PRODUTO_PJ_DEFAULT } from '../lib/depsProdutos';
 import {
   IconAlert, IconAlertOctagon, IconArrastar, IconCheck, IconChevronDown, IconClipboard,
-  IconEntrada, IconEstrela, IconPlus, IconProibido, IconRecolher, IconTrash, IconUser, IconX,
+  IconEntrada, IconEstrela, IconPlus, IconProibido, IconTrash, IconUser, IconX,
 } from '../components/icons';
 import { SegSwitch } from '../components/SegSwitch';
 import { Abas, AbaPainel } from '../components/Abas';
@@ -1250,7 +1250,7 @@ interface EtapaTarefa {
 function EtapaTarefaRow({
   etapa, todas, token, isDragging, dropIndicator,
   onDragStart, onDragOver, onClearIndicator, onDrop, onDragEnd,
-  onUpdate, onDelete, onSetEntrada, onSetConversao, onToggleDesconsiderada, onToggleRecolhida,
+  onUpdate, onDelete, onSetEntrada, onSetConversao, onToggleDesconsiderada,
 }: {
   etapa: EtapaTarefa;
   todas: EtapaTarefa[];
@@ -1267,7 +1267,6 @@ function EtapaTarefaRow({
   onSetEntrada: (id: number | null) => void;
   onSetConversao: (id: number | null) => void;
   onToggleDesconsiderada: (id: number) => void;
-  onToggleRecolhida: (id: number) => void;
 }) {
   const api = useApi(token);
   const { toast } = useToast();
@@ -1466,18 +1465,6 @@ function EtapaTarefaRow({
           </button>
 
           <button
-            className="status-action-btn"
-            title={etapa.always_collapsed
-              ? 'Etapa pontual: fica recolhida no quadro. Clique para mantê-la sempre aberta.'
-              : 'Manter esta etapa recolhida no quadro, mesmo com tarefas dentro'}
-            aria-pressed={!!etapa.always_collapsed}
-            style={etapa.always_collapsed ? { color: 'var(--gray)', background: 'var(--gray4)' } : {}}
-            onClick={() => onToggleRecolhida(etapa.id)}
-          >
-            <IconRecolher size={12} aberta={!etapa.always_collapsed} />
-          </button>
-
-          <button
             className="status-action-btn danger"
             title={todas.length <= 1 ? 'O quadro precisa de ao menos uma etapa' : 'Excluir etapa'}
             aria-label={`Excluir ${etapa.nome}`}
@@ -1634,11 +1621,6 @@ function EtapasTarefaTab({ token, adicionando, onFecharNova }: {
     await api('', 'POST', { action: 'toggle_desconsiderada_tarefa_status', id });
   }
 
-  async function alternarRecolhida(id: number) {
-    setEtapas(prev => prev.map(e => (e.id === id ? { ...e, always_collapsed: e.always_collapsed ? 0 : 1 } : e)));
-    await api('', 'POST', { action: 'toggle_collapsed_tarefa_status', id });
-  }
-
   if (loading) return <ConfiguracoesSkeleton />;
 
   const semConclusao = etapas.length > 0 && !etapas.some(e => e.is_conclusao);
@@ -1705,7 +1687,6 @@ function EtapasTarefaTab({ token, adicionando, onFecharNova }: {
           onSetEntrada={id => void definirEntrada(id)}
           onSetConversao={id => void definirConversao(id)}
           onToggleDesconsiderada={id => void alternarDesconsiderada(id)}
-          onToggleRecolhida={id => void alternarRecolhida(id)}
         />
       ))}
 

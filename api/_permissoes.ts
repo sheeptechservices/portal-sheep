@@ -1,6 +1,6 @@
 import type { Client } from '@libsql/client';
 import type { UsuarioAdmin } from './_admin-handler.js';
-import { ehEmailAdmin, type Papel } from './_papeis.js';
+import { papelEfetivo, type Papel } from './_papeis.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Controle de acesso por página e por ação, do papel `membro`.
@@ -112,6 +112,10 @@ export const CATALOGO: PermGrupo[] = [
       { chave: 'tarefas:ver', label: 'Ver o quadro de tarefas', acesso: true },
       { chave: 'tarefas:editar', label: 'Criar e editar tarefa' },
       { chave: 'tarefas:excluir', label: 'Excluir tarefa' },
+      // Separada de `editar` de propósito: comentar é participar da conversa, e
+      // não mexer na tarefa. Quem acompanha um projeto sem tocar no quadro
+      // ainda precisa poder responder.
+      { chave: 'tarefas:comentar', label: 'Comentar na tarefa' },
     ],
   },
   {
@@ -207,6 +211,13 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   remove_tarefa_status_notif: 'configuracoes:etapas',
   salvar_tarefa: 'tarefas:editar',
   excluir_tarefa: 'tarefas:excluir',
+  // O diário e a conversa do card: ler é leitura de tarefa, escrever é a
+  // permissão própria. Apagar entra em `comentar` porque o servidor já limita a
+  // quem escreveu - quem manda no sistema passa por cima disso lá dentro.
+  tarefa_atividade: 'tarefas:ver',
+  tarefa_comentario_anexo_base64: 'tarefas:ver',
+  add_tarefa_comentario: 'tarefas:comentar',
+  excluir_tarefa_comentario: 'tarefas:comentar',
   salvar_entrega: 'projetos:editar',
   excluir_entrega: 'projetos:editar',
   add_entrega_evidencia: 'projetos:editar',
@@ -399,7 +410,10 @@ export async function matrizDoPapel(db: Client, papel: string): Promise<MatrizPa
  */
 export async function permissoesDoUsuario(db: Client, usuario: UsuarioAdmin | null | undefined): Promise<Permissoes> {
   if (!usuario) return new Set();
-  if (ehEmailAdmin(usuario.email) || usuario.papel !== 'membro') return TUDO;
+  // Pelo papel efetivo, e não pelo que veio no objeto: `rowToUsuario` já
+  // normaliza, mas assim um `UsuarioAdmin` montado em qualquer outro ponto não
+  // vira "pode tudo" só por trazer o papel escrito de outro jeito.
+  if (papelEfetivo(usuario.email, usuario.papel) !== 'membro') return TUDO;
   const matriz = await matrizDoPapel(db, 'membro');
   if (!matriz.configurado) return TUDO;
   return new Set(matriz.chaves);

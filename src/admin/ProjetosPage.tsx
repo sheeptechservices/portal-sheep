@@ -20,6 +20,7 @@ import { SkeletonCards, SkeletonTabela } from '../components/Skeleton';
 import { CartaoKpi, CartoesKpiEsqueleto } from '../components/CartaoKpi';
 import { Abas, AbaPainel } from '../components/Abas';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
+import { ancorar } from '../lib/ancorar';
 // Reexportadas: moraram aqui e metade do sistema as importa deste arquivo. A
 // definição saiu para a lib porque o formulário de tarefa, compartilhado com a
 // tela de Tarefas, também precisa delas - e importá-las daqui fecharia um ciclo.
@@ -31,11 +32,12 @@ import {
   COR_PRIORIDADE, ICONE_PRIORIDADE, PRIORIDADES, PRIORIDADE_PADRAO,
 } from '../lib/prioridades';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
+import { PAINEL_MAX, PAINEL_MIN, useLarguraPainel } from '../lib/painelLateral';
 import { Donut, type FatiaDonut } from '../components/Donut';
 // O mesmo formulário da tela de Tarefas: o quadro da semana abre a tarefa aqui,
 // e uma cópia local divergiria dela no primeiro campo novo.
 import {
-  FormularioTarefa, indexarEtiquetas,
+  ConfirmarExclusao, FormularioTarefa, indexarEtiquetas,
   type EtapaTarefa, type EtiquetaTarefa, type Rascunho as RascunhoTarefa,
 } from './FormularioTarefa';
 import { SelectSistema } from '../components/SelectSistema';
@@ -517,28 +519,6 @@ function Gestor({ nome, email, foto }: { nome: string | null; email: string | nu
   );
 }
 
-/** Onde a lista de um dropdown deve nascer. Ela vive num portal no `body`, e
- *  portal não é cortado por `overflow` - mas nada impede que passe da borda da
- *  janela. Na vertical: sem espaço embaixo e com espaço em cima, abre para
- *  cima. Na horizontal: gatilho estreito e encostado na direita empurraria a
- *  lista para fora, então o canto é preso dentro da janela. */
-function ancorar(el: HTMLElement, itens: number, larguraMin = 150) {
-  const r = el.getBoundingClientRect();
-  const MARGEM = 8;
-  const altura = Math.min(MARGEM + itens * 36, 320);
-  const cabeAbaixo = window.innerHeight - r.bottom - MARGEM >= altura;
-  // Largura fixa, e não mínima: com `minWidth` a caixa cresce com o conteúdo
-  // (um email longo, por exemplo) e passa do tamanho que este cálculo reservou,
-  // furando o limite abaixo. Quem usa isto precisa cortar o texto com
-  // reticências.
-  const width = Math.min(Math.max(r.width, larguraMin), window.innerWidth - 2 * MARGEM);
-  return {
-    top: cabeAbaixo || r.top < altura ? r.bottom + 4 : r.top - altura - 4,
-    left: Math.max(MARGEM, Math.min(r.left, window.innerWidth - width - MARGEM)),
-    width,
-  };
-}
-
 // ── Anexos ──────────────────────────────────────────────────────────────────
 
 /** Cor e desenho pelo tipo do arquivo. As classes `pdf`, `img` e `zip` já
@@ -880,69 +860,6 @@ function CampoCategoria({ valor, sugestoes, onChange }: {
 // ── Fechar clicando no fundo ────────────────────────────────────────────────
 
 // ── Largura do painel ───────────────────────────────────────────────────────
-
-/** O mínimo é a largura que o painel sempre teve; o máximo evita que ele engula
- *  a listagem atrás, que é a referência de onde a pessoa está. */
-const PAINEL_MIN = 560;
-const PAINEL_MAX = 1100;
-const PAINEL_CHAVE = 'portal-sheep:largura-painel';
-
-function larguraGuardada(): number {
-  try {
-    const n = Number(localStorage.getItem(PAINEL_CHAVE));
-    return Number.isFinite(n) && n >= PAINEL_MIN ? Math.min(n, PAINEL_MAX) : PAINEL_MIN;
-  } catch {
-    // Navegador com armazenamento bloqueado: vale o padrão.
-    return PAINEL_MIN;
-  }
-}
-
-/** Largura do painel, ajustável arrastando a borda esquerda. Fica guardada no
- *  navegador: quem alargou uma vez não quer refazer isso a cada abertura. */
-function useLarguraPainel() {
-  const [largura, setLargura] = useState(larguraGuardada);
-  const [arrastando, setArrastando] = useState(false);
-
-  useEffect(() => {
-    if (!arrastando) return;
-
-    // O painel é ancorado à direita, então a largura é o que sobra da borda
-    // direita da janela até o ponteiro.
-    const mover = (e: MouseEvent) =>
-      setLargura(Math.round(Math.min(
-        Math.max(window.innerWidth - e.clientX, PAINEL_MIN),
-        Math.min(PAINEL_MAX, window.innerWidth - 40),
-      )));
-
-    const soltar = () => setArrastando(false);
-    document.body.classList.add('arrastando-painel');
-    window.addEventListener('mousemove', mover);
-    window.addEventListener('mouseup', soltar);
-    return () => {
-      document.body.classList.remove('arrastando-painel');
-      window.removeEventListener('mousemove', mover);
-      window.removeEventListener('mouseup', soltar);
-    };
-  }, [arrastando]);
-
-  // Guarda ao largar, e não a cada pixel: escrever no armazenamento a cada
-  // quadro do arrasto é trabalho jogado fora.
-  useEffect(() => {
-    if (arrastando) return;
-    try { localStorage.setItem(PAINEL_CHAVE, String(largura)); } catch { /* sem armazenamento */ }
-  }, [arrastando, largura]);
-
-  /** Teclado também ajusta: seta move 40px, e o painel não pode depender do
-   *  arrasto para ser usável. */
-  const porTecla = (e: React.KeyboardEvent) => {
-    const passo = e.key === 'ArrowLeft' ? 40 : e.key === 'ArrowRight' ? -40 : 0;
-    if (!passo) return;
-    e.preventDefault();
-    setLargura(l => Math.min(Math.max(l + passo, PAINEL_MIN), PAINEL_MAX));
-  };
-
-  return { largura, arrastando, setArrastando, porTecla };
-}
 
 // ── Prévia de arquivo ───────────────────────────────────────────────────────
 
@@ -3646,7 +3563,7 @@ function FormularioProjeto({
   // `editando` é um retrato de quando o modal abriu: sem guardar a troca aqui,
   // o arquivo reetiquetado só mudaria de grupo depois de fechar e reabrir.
   const [copiado, setCopiado] = useState(false);
-  const { largura, arrastando, setArrastando, porTecla } = useLarguraPainel();
+  const { largura, arrastando, setArrastando, porTecla } = useLarguraPainel('projeto');
   const fundo = useFecharNoFundo(onFechar);
 
   /** Link que abre este projeto direto, para quem já tem acesso ao portal. É o
@@ -3710,7 +3627,8 @@ function FormularioProjeto({
   return createPortal(
     <div className="admin-modal-overlay" {...fundo}>
       {/* Fora do painel de propósito: dentro dele, que rola, o puxador sumiria
-          ao descer o conteúdo. Ancorado pela direita, acompanha a largura. */}
+          ao descer o conteúdo. Ancorado pela direita, acompanha a largura.
+          Em tela cheia não existe: não há borda para arrastar. */}
       <button
         type="button"
         className={`painel-puxador${arrastando ? ' arrastando' : ''}`}
@@ -3736,14 +3654,34 @@ function FormularioProjeto({
 
 
         <div className="admin-modal-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-            <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            {/* `flex: 1` porque sem ele o bloco encolhe para o tamanho natural
+                de um input e o nome corta muito antes da borda. */}
+            <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                 {editando ? `Projeto ${editando.codigo ?? ''}`.trim() : 'Novo projeto'}
               </p>
-              <h3 style={{ fontSize: 16, fontWeight: 800 }}>
-                {editando ? editando.nome : 'Criar manualmente'}
-              </h3>
+              {/* O nome é editado onde ele é lido. Ligado ao rascunho, e não ao
+                  projeto gravado: enquanto não se salva, o cabeçalho mostra o
+                  que está sendo escrito. */}
+              {somenteLeitura ? (
+                <h3 className="painel-titulo">{r.nome || 'Sem nome'}</h3>
+              ) : (
+                <>
+                  <input
+                    className={`painel-titulo painel-titulo-campo${erros.nome ? ' erro' : ''}`}
+                    value={r.nome}
+                    autoFocus={!editando}
+                    placeholder="Nome do projeto"
+                    aria-label="Nome do projeto"
+                    aria-invalid={!!erros.nome}
+                    title={r.nome}
+                    onChange={e => set('nome', e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                  />
+                  {erros.nome && <p className="form-error" style={{ marginTop: 2 }}>{erros.nome}</p>}
+                </>
+              )}
             </div>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
               {editando && (
@@ -3828,13 +3766,6 @@ function FormularioProjeto({
           <section>
             <p className="admin-section-title">Identificação</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div className="form-group">
-                <label className="form-label">Nome do projeto *</label>
-                <input className={`form-input${erros.nome ? ' error' : ''}`} value={r.nome}
-                  autoFocus={!somenteLeitura} readOnly={somenteLeitura}
-                  onChange={e => set('nome', e.target.value)} placeholder="Portal de gestão" />
-                {erros.nome && <p className="form-error">{erros.nome}</p>}
-              </div>
               <div className="form-group">
                 <label className="form-label">Descrição</label>
                 <textarea className="form-input" rows={2} value={r.descricao} readOnly={somenteLeitura}
@@ -4042,6 +3973,8 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
   /** Tarefa aberta pelo quadro da semana, em rascunho: é o que o formulário
    *  compartilhado edita, e ele é o mesmo da tela de Tarefas. */
   const [rascunhoTarefa, setRascunhoTarefa] = useState<RascunhoTarefa | null>(null);
+  /** Tarefa esperando confirmação para ser excluída, aberta pelo painel. */
+  const [excluindoTarefa, setExcluindoTarefa] = useState<Tarefa | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [form, setForm] = useState<{ editando: Projeto | null } | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -4157,6 +4090,38 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
   const etq = useMemo(() => indexarEtiquetas(etiquetasTarefa), [etiquetasTarefa]);
 
   /** Abre a tarefa do quadro no mesmo formulário da tela de Tarefas. */
+  /** Exclui a tarefa aberta no painel. Some da tela na hora e volta se o
+   *  servidor recusar - mesma regra do resto do relatório. */
+  const excluirTarefa = useCallback(async (t: Tarefa) => {
+    setExcluindoTarefa(null);
+    setRascunhoTarefa(null);
+    const antes = projetos;
+    mudancasRef.current++;
+    setProjetos(ps => ps.map(p => ({
+      ...p, tarefas: (p.tarefas ?? []).filter(x => x.id !== t.id),
+    })));
+    const r = await api('', 'POST', { action: 'excluir_tarefa', id: t.id });
+    if (r?.error) { setProjetos(antes); toast('error', 'Não foi possível excluir', r.error); return; }
+    toast('success', 'Tarefa excluída');
+    reconciliar();
+  }, [api, projetos, reconciliar, toast]);
+
+  /** Cópia da tarefa, a partir do relatório. Mesma regra da tela de Tarefas:
+   *  igual em tudo, inclusive etapa e data de conclusão. */
+  const duplicarTarefa = useCallback(async (t: Tarefa) => {
+    const r = await api('', 'POST', {
+      action: 'salvar_tarefa',
+      projeto_id: t.projeto_id, entrega_id: t.entrega_id,
+      titulo: `${t.titulo} (cópia)`, descricao: t.descricao,
+      status: t.status, prioridade: t.prioridade,
+      responsavel_id: t.responsavel_id, prazo: t.prazo, etiquetas: t.etiquetas,
+      concluida_em: t.concluida_em,
+    });
+    if (r?.error) { toast('error', 'Não foi possível duplicar', r.error); return; }
+    toast('success', 'Tarefa duplicada');
+    await recarregar();
+  }, [api, recarregar, toast]);
+
   const abrirTarefa = useCallback((t: Tarefa) => setRascunhoTarefa({
     id: t.id, projeto_id: t.projeto_id, entrega_id: t.entrega_id ? String(t.entrega_id) : '',
     titulo: t.titulo, descricao: t.descricao ?? '', status: t.status,
@@ -4352,28 +4317,37 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     await recarregar();
   }
 
-  function excluirReuniao(r: Reuniao) {
+  async function excluirReuniao(r: Reuniao) {
+    const antes = projetos;
+    mudancasRef.current++;
     setProjetos(ps => ps.map(p => (
       p.id === r.projeto_id ? { ...p, reunioes: p.reunioes.filter(x => x.id !== r.id) } : p
     )));
-    void api('', 'POST', { action: 'excluir_reuniao_projeto', id: r.id });
+    const resp = await api('', 'POST', { action: 'excluir_reuniao_projeto', id: r.id });
+    if (resp?.error) { setProjetos(antes); toast('error', 'Não foi possível excluir', resp.error); }
   }
 
-  function excluirSaude(r: RegistroSaude) {
+  async function excluirSaude(r: RegistroSaude) {
+    const antes = projetos;
+    mudancasRef.current++;
     setProjetos(ps => ps.map(p => (
       p.id === r.projeto_id ? { ...p, saude: p.saude.filter(x => x.id !== r.id) } : p
     )));
-    void api('', 'POST', { action: 'excluir_saude_projeto', id: r.id });
+    const resp = await api('', 'POST', { action: 'excluir_saude_projeto', id: r.id });
+    if (resp?.error) { setProjetos(antes); toast('error', 'Não foi possível excluir', resp.error); }
   }
 
   /** Reetiqueta na hora e grava. Sem o otimismo o arquivo demoraria a pular de
    *  grupo, e o efeito da troca ficaria invisível. */
   async function etiquetarAnexo(a: Arquivo, etiqueta: string) {
+    const antes = projetos;
+    mudancasRef.current++;
     setProjetos(ps => ps.map(p => ({
       ...p,
       arquivos: p.arquivos.map(x => (x.id === a.id ? { ...x, etiqueta } : x)),
     })));
-    await api('', 'POST', { action: 'etiquetar_projeto_arquivo', id: a.id, etiqueta });
+    const r = await api('', 'POST', { action: 'etiquetar_projeto_arquivo', id: a.id, etiqueta });
+    if (r?.error) { setProjetos(antes); toast('error', 'Não foi possível etiquetar', r.error); }
   }
 
   async function baixarAnexo(a: Arquivo) {
@@ -4399,6 +4373,8 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
    *  reenviar a linha inteira arriscaria sobrescrever o que outra pessoa
    *  acabou de mudar. */
   async function definirGestor(p: Projeto, usuarioId: string) {
+    const antes = projetos;
+    mudancasRef.current++;
     // Otimista na equipe: quem era gestor vira Dev, o novo assume. É o mesmo
     // que o servidor faz, para a linha não esperar o recarregamento.
     setProjetos(ps => ps.map(x => {
@@ -4414,12 +4390,19 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
           : [...semGestor, { ...pessoa, papel: 'Gestor' }],
       };
     }));
-    await api('', 'POST', { action: 'definir_gestor_projeto', projeto_id: p.id, usuario_id: usuarioId });
+    const r = await api('', 'POST', { action: 'definir_gestor_projeto', projeto_id: p.id, usuario_id: usuarioId });
+    if (r?.error) { setProjetos(antes); toast('error', 'Não foi possível trocar o gestor', r.error); }
   }
 
+  /** Ajuste de um campo, direto da listagem. Pinta na hora e desfaz se o
+   *  servidor recusar - sem isto, quem não tem permissão de editar via a
+   *  célula mudar na tela enquanto o servidor devolvia 403 em silêncio. */
   async function ajustar(p: Projeto, campo: 'status' | 'prioridade' | 'previsao_entrega', valor: string) {
+    const antes = projetos;
+    mudancasRef.current++;
     setProjetos(ps => ps.map(x => (x.id === p.id ? { ...x, [campo]: valor } as Projeto : x)));
-    await api('', 'POST', { action: 'update_projeto', id: p.id, [campo]: valor });
+    const r = await api('', 'POST', { action: 'update_projeto', id: p.id, [campo]: valor });
+    if (r?.error) { setProjetos(antes); toast('error', 'Não foi possível salvar', r.error); }
   }
 
   /** Categorias de entrega já escritas, de todos os projetos. Sugerir só as do
@@ -4896,9 +4879,27 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
           pessoas={pessoas}
           salvando={salvando}
           somenteLeitura={!pode('tarefas:editar')}
+          podeComentar={pode('tarefas:comentar')}
+          api={api}
           onMudar={setRascunhoTarefa}
           onFechar={() => setRascunhoTarefa(null)}
           onSalvar={() => void salvarRascunho(rascunhoTarefa)}
+          onExcluir={pode('tarefas:excluir') && rascunhoTarefa.id ? () => {
+            const alvo = projetos.flatMap(p => p.tarefas ?? []).find(x => x.id === rascunhoTarefa.id);
+            if (alvo) setExcluindoTarefa(alvo);
+          } : undefined}
+          onDuplicar={pode('tarefas:editar') && rascunhoTarefa.id ? () => {
+            const alvo = projetos.flatMap(p => p.tarefas ?? []).find(x => x.id === rascunhoTarefa.id);
+            if (alvo) void duplicarTarefa(alvo);
+          } : undefined}
+        />
+      )}
+
+      {excluindoTarefa && (
+        <ConfirmarExclusao
+          tarefa={excluindoTarefa}
+          onCancelar={() => setExcluindoTarefa(null)}
+          onConfirmar={() => void excluirTarefa(excluindoTarefa)}
         />
       )}
 

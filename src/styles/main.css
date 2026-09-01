@@ -434,11 +434,15 @@ body {
   border-color: var(--gray2);
 }
 
+/* Foco de campo: borda fina em cinza e um halo claro. O anel amarelo de 4px
+   com elevação chamava mais atenção que o próprio conteúdo do campo, e num
+   formulário inteiro de campos empilhados isso cansa. A largura da borda não
+   muda entre repouso e foco de propósito - mudar empurraria o texto um pixel a
+   cada clique. */
 .form-input:focus,
 .form-select:focus {
-  border-color: var(--yellow);
-  box-shadow: 0 0 0 4px var(--yd), 0 2px 8px rgba(0, 201, 167,0.12);
-  transform: translateY(-1px);
+  border-color: var(--gray2);
+  box-shadow: 0 0 0 3px var(--gray4);
 }
 
 .form-input.error,
@@ -2722,6 +2726,116 @@ body.arrastando-painel {
   gap: 24px;
 }
 
+/* O painel da tarefa rola por dentro, e não como um todo. Assim o cabeçalho e
+   o rodapé ficam parados por serem itens de flex, sem depender de `sticky` -
+   que aqui competiria com as duas definições de `.admin-modal-body` que o CSS
+   já carrega, e a que vence não é a desta gaveta. */
+.admin-modal.painel-tarefa {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.admin-modal.painel-tarefa .admin-modal-header {
+  position: static;
+  flex-shrink: 0;
+}
+.admin-modal.painel-tarefa .admin-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* `overflow-x: hidden` é o par obrigatório do `auto` vertical: sem ele, um
+     rótulo longo de seletor empurra a barra horizontal para dentro do painel. */
+  overflow-x: hidden;
+  padding: 20px 24px 24px;
+  gap: 12px;
+}
+.admin-modal.painel-tarefa .painel-rodape {
+  position: static;
+  flex-shrink: 0;
+}
+
+/* Título do painel, e o campo que o edita no lugar. Os dois com a mesma
+   métrica, para o texto não pular quando um vira o outro. */
+.painel-titulo {
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.35;
+  color: var(--black);
+  margin: 0;
+  /* Uma linha só. Título comprido em três linhas empurra a etapa e os campos
+     para baixo, e o cabeçalho deixa de ser cabeçalho. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.painel-titulo-campo {
+  display: block;
+  width: 100%;
+  padding: 2px 6px;
+  margin: 0 -6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-family: inherit;
+  /* Reticências quando o texto não cabe; escrevendo, o campo rola de lado
+     sozinho e acompanha o cursor. */
+  text-overflow: ellipsis;
+  transition: background var(--transition), border-color var(--transition);
+}
+/* A borda só aparece quando a pessoa chega perto: um campo com contorno
+   permanente no cabeçalho lê como formulário, e o que se quer é um título. */
+.painel-titulo-campo:hover { background: var(--gray4); }
+.painel-titulo-campo:focus {
+  outline: none;
+  background: var(--white);
+  border-color: var(--gray2);
+  box-shadow: 0 0 0 3px var(--gray4);
+}
+.painel-titulo-campo::placeholder { color: var(--gray2); font-weight: 700; }
+/* Título obrigatório em falta: o contorno vermelho aparece mesmo em repouso,
+   senão o aviso embaixo apontaria para um campo sem nenhuma marca. */
+.painel-titulo-campo.erro { border-color: var(--red); background: var(--red-soft); }
+
+/* O lado esquerdo do rodapé: ações sobre a coisa inteira, longe de Salvar. */
+.painel-rodape-lado {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+}
+.rodape-icone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.rodape-icone:hover { background: var(--gray4); color: var(--black); }
+.rodape-icone.perigo:hover { background: var(--red-soft); border-color: var(--red); color: var(--red); }
+.rodape-icone:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.rodape-icone:disabled { opacity: .5; cursor: default; }
+
+/* Rodapé de ações da gaveta. Grudento como o cabeçalho, e pelo mesmo motivo:
+   com a conversa lá embaixo o formulário fica longo, e o botão de salvar não
+   pode depender de rolar até o fim para reaparecer. */
+.painel-rodape {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 24px;
+  background: var(--white);
+  border-top: 1px solid var(--gray3);
+}
+
 .admin-section-title {
   font-size: 10px;
   font-weight: 800;
@@ -2846,10 +2960,13 @@ body.arrastando-painel {
   flex-direction: column;
 }
 
+/* O respiro do rodapé era de 80px e sobrava vazio embaixo de toda página - no
+   quadro de tarefas ele comia a altura das colunas, cortando os cards. 28px
+   iguala os outros lados e devolve essa faixa ao conteúdo. */
 .admin-content-wrap {
   flex: 1;
   overflow: auto;
-  padding: 28px 28px 80px;
+  padding: 28px 28px 28px;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -2860,6 +2977,14 @@ body.arrastando-painel {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+}
+
+/* Os controles da tela ao lado do botão de ação. */
+.admin-page-acoes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .admin-page-title {
@@ -3259,7 +3384,12 @@ body.arrastando-painel {
   padding-bottom: 16px;
   min-height: 0;
   flex: 1;
-  align-items: flex-start;
+  /* As colunas esticam até a altura do quadro. Antes era `flex-start` com um
+     teto em porcentagem: teto percentual depende de o quadro ter altura
+     definida, e quando ela não resolve o teto vira `none` e a coluna cresce
+     com o conteúdo, passando por baixo da borda da janela. Esticando, a altura
+     vem do próprio flex e não há conta que possa falhar. */
+  align-items: stretch;
   scrollbar-width: none;
 }
 
@@ -3275,8 +3405,9 @@ body.arrastando-painel {
   border-radius: 12px;
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 160px);
-  transition: border-color 0.15s, background 0.15s;
+  /* Sem teto: quem limita é o `align-items: stretch` do quadro. */
+  min-height: 0;
+  transition: border-color var(--transition), background var(--transition);
 }
 
 .kanban-column.drag-over {
@@ -3289,9 +3420,40 @@ body.arrastando-painel {
   padding: 10px 12px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   border-bottom: 1px solid var(--gray3);
   flex-shrink: 0;
+}
+/* O título empurra o resto para a direita; a contagem e o botão de fixar ficam
+   colados no canto. Com `space-between` e três itens, a contagem ficava solta
+   no meio da barra. */
+.kanban-column-header .kanban-column-title { flex: 1; min-width: 0; }
+
+/* Fixar a etapa recolhida. Apagado em repouso: é ajuste de arrumação, e não
+   pode competir com a contagem de tarefas da coluna. */
+.kanban-column-fixar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  /* Sempre à vista, mas quieto: fica na cor do texto secundário, a mesma da
+     contagem ao lado, e não disputa atenção com o nome da etapa. */
+  color: var(--gray2);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition), color var(--transition);
+}
+.kanban-column-fixar[aria-pressed="true"] { color: var(--gray); background: var(--gray4); }
+.kanban-column-fixar:hover { background: var(--gray4); color: var(--gray); }
+.kanban-column-fixar:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+
+@media (prefers-reduced-motion: reduce) {
+  .kanban-column-fixar { transition: none; }
 }
 
 .kanban-column-title {
@@ -3329,13 +3491,20 @@ body.arrastando-painel {
 
 .kanban-column-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   scrollbar-width: none;
   padding: 8px;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  /* Esmaece o último centímetro quando ainda há card abaixo. A barra de rolagem
+     é escondida aqui, então sem este sinal o card cortado no pé da coluna lê
+     como defeito, e não como "tem mais". */
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent 100%);
 }
+/* Rolou até o fim: nada mais abaixo, nada a esmaecer. */
+.kanban-column-body.no-fim { mask-image: none; }
 
 .kanban-column-body::-webkit-scrollbar {
   display: none;
@@ -3599,6 +3768,47 @@ body.arrastando-painel {
 .kanban-card-files-btn:hover { background: var(--gray3); color: var(--black); }
 
 /* Rodapé do card: anexos + comentários lado a lado */
+/* Ações do card, no canto do título. Só com o ponteiro no card: sempre
+   visíveis, viram uma fileira de ícones por cartão numa coluna cheia, e ainda
+   disputam o clique com o de abrir a tarefa. */
+.kanban-card-acoes {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin: -2px -3px 0 0;
+  flex-shrink: 0;
+}
+.kanban-card-acao {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  opacity: 0;
+  flex-shrink: 0;
+  transition: background var(--transition), color var(--transition), opacity var(--transition);
+}
+.kanban-card:hover .kanban-card-acao,
+.kanban-card-acao:focus-visible { opacity: 1; }
+.kanban-card-acao:hover { background: var(--gray4); color: var(--black); }
+.kanban-card-acao.perigo:hover { background: var(--red-soft); color: var(--red); }
+.kanban-card-acao:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+
+/* No toque não existe hover: sem isto os botões ficariam inalcançáveis no
+   celular. */
+@media (hover: none) {
+  .kanban-card-acao { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kanban-card-acao { transition: none; }
+}
+
 .kanban-card-footer {
   display: flex;
   align-items: center;
@@ -4648,6 +4858,292 @@ body.arrastando-painel {
 
 /* A foto do responsável ao lado do título da entrega, sem roubar coluna. */
 .nt-entrega-dono { margin-left: 8px; vertical-align: middle; }
+
+/* ── Atividade da tarefa ──────────────────────────────
+   Diário e conversa, no rodapé do modal de tarefa. */
+.ativ {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--gray3);
+}
+
+.ativ-abas {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+.ativ-abas button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.ativ-abas button:hover { background: var(--gray4); color: var(--black); }
+.ativ-abas button.ativa { background: var(--gray4); color: var(--black); }
+.ativ-abas button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.ativ-conta {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--gray2);
+  background: var(--white);
+  border-radius: var(--radius-pill);
+  padding: 0 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ativ-vazio {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: var(--gray2);
+}
+
+/* ── Caixa de escrita ─────────────────────────────── */
+.ativ-escrever { margin-bottom: 16px; }
+.ativ-campo-caixa { position: relative; }
+.ativ-campo { font-size: 13px; resize: vertical; }
+
+/* Lista de gente aberta pelo `@`, presa embaixo da caixa. */
+.ativ-mencoes {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--white);
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card-hover);
+}
+.ativ-mencoes button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--black);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.ativ-mencoes button:hover { background: var(--gray4); }
+.ativ-mencoes button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+
+.ativ-acoes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.ativ-botao,
+.ativ-botao-fraco {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.ativ-botao {
+  border: 1px solid var(--yellow);
+  background: var(--yellow);
+  color: var(--on-yellow);
+}
+.ativ-botao:hover { filter: brightness(0.95); }
+.ativ-botao:disabled { opacity: .5; cursor: default; filter: none; }
+.ativ-botao-fraco {
+  border: 1px solid var(--gray3);
+  background: none;
+  color: var(--gray);
+}
+.ativ-botao-fraco:hover { background: var(--gray4); color: var(--black); }
+.ativ-botao:focus-visible,
+.ativ-botao-fraco:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+
+.ativ-erro {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  color: var(--red);
+}
+
+/* ── Conversa ─────────────────────────────────────── */
+.ativ-thread { margin-bottom: 14px; }
+.ativ-comentario {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 2px 0;
+}
+/* Resposta recuada e alinhada com o texto de quem começou. */
+.ativ-comentario.resposta { margin-left: 36px; margin-top: 8px; }
+
+.ativ-corpo { flex: 1; min-width: 0; }
+.ativ-cabeca {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 3px;
+  font-size: 11.5px;
+  color: var(--gray2);
+}
+.ativ-cabeca strong { font-size: 12.5px; font-weight: 700; color: var(--black); }
+
+.ativ-apagar {
+  display: inline-flex;
+  padding: 2px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  opacity: 0;
+  transition: background var(--transition), color var(--transition), opacity var(--transition);
+}
+/* Aparece ao passar pelo comentário: um lixo por linha, sempre visível, deixa a
+   conversa parecendo um painel de administração. */
+.ativ-comentario:hover .ativ-apagar,
+.ativ-apagar:focus-visible { opacity: 1; }
+.ativ-apagar:hover { background: var(--gray4); color: var(--red); }
+.ativ-apagar:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+
+.ativ-texto {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--black);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ativ-marca {
+  font-weight: 700;
+  color: var(--on-yellow);
+  background: var(--yd);
+  border-radius: var(--radius-sm);
+  padding: 0 4px;
+}
+
+.ativ-link {
+  margin-left: 36px;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.ativ-link:hover { color: var(--black); }
+.ativ-link:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+.ativ-responder { margin: 8px 0 0 36px; }
+
+/* ── Anexos ───────────────────────────────────────── */
+.ativ-anexos {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ativ-anexos li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  color: var(--gray);
+}
+.ativ-anexo-nome {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--black);
+}
+.ativ-anexo-peso { color: var(--gray2); font-variant-numeric: tabular-nums; }
+.ativ-anexos button {
+  display: inline-flex;
+  padding: 2px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.ativ-anexos button:hover { background: var(--gray4); color: var(--black); }
+.ativ-anexos button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+
+/* ── Diário ───────────────────────────────────────── */
+.ativ-diario {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ativ-diario li {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 5px 0;
+  font-size: 12.5px;
+  color: var(--gray);
+}
+.ativ-ponto {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--gray3);
+  flex-shrink: 0;
+  transform: translateY(-2px);
+}
+.ativ-diario-texto { flex: 1; min-width: 0; line-height: 1.5; }
+.ativ-diario-texto strong { color: var(--black); font-weight: 700; }
+.ativ-diario-texto em {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--black);
+  background: var(--gray4);
+  border-radius: var(--radius-sm);
+  padding: 0 4px;
+}
+.ativ-diario-quando {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--gray2);
+}
 
 /* ── Quadro da semana ─────────────────────────────────
    Uma coluna por dia, com as tarefas concluídas naquele dia. Rola de lado em
@@ -6318,7 +6814,11 @@ body.arrastando-painel {
     align-items: stretch;
     gap: 12px;
   }
-  .admin-page-header .btn { width: 100%; justify-content: center; }
+  /* No celular a linha vira: ícones à esquerda, botão de ação ocupando o
+     resto. Empilhar os dois deixaria o cabeçalho com três alturas antes de a
+     lista começar. */
+  .admin-page-acoes { width: 100%; }
+  .admin-page-header .btn { flex: 1; justify-content: center; }
 
   /* Barras que rolam de lado em vez de quebrar em três linhas. A borda some
      na rolagem, então o corte fica suave. */

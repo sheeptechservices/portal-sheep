@@ -1164,6 +1164,9 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
         setUsuario(d.usuario ?? null);
         setPermissoes(d.permissoes ?? '*');
       })
+      // Falhou: `permissoes` fica em `null`, que agora nega tudo, e a ronda
+      // abaixo tenta de novo em um minuto. Antes o erro era engolido e a tela
+      // seguia destravada pelo resto da sessão.
       .catch(() => {});
     return () => { vivo = false; };
   }, [token]);
@@ -1180,7 +1183,18 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
       if (document.hidden) return;
       try {
         const r = await fetch('/api/admin-data?action=me', { headers: { 'x-admin-session': token } });
-        if (vivo && r.status === 401) onLogout();
+        if (!vivo) return;
+        if (r.status === 401) { onLogout(); return; }
+        // A ronda também traz a matriz. Duas coisas dependem disso: uma primeira
+        // carga que falhou se conserta sozinha, e mudar a permissão de um papel
+        // chega a quem está com a tela aberta em até um minuto, sem depender de
+        // a pessoa recarregar.
+        if (!r.ok) return;
+        const d = await r.json().catch(() => null);
+        if (vivo && d) {
+          setUsuario(d.usuario ?? null);
+          setPermissoes(d.permissoes ?? '*');
+        }
       } catch {
         // Rede fora não é sessão perdida: deixa para a próxima volta.
       }
@@ -1250,7 +1264,7 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
       setPinned(isDesktop);
       // Carga inicial: abre no desktop, fecha no mobile. Ao virar mobile: fecha o
       // overlay. Ao VOLTAR pro desktop: preserva a escolha do usuário (não reabre
-      // um sidebar que ele tinha recolhido — o zoom não deve expandir de novo).
+      // um sidebar que ele tinha recolhido - o zoom não deve expandir de novo).
       if (primeira) setOpen(isDesktop);
       else if (!isDesktop) setOpen(false);
     }
@@ -1369,7 +1383,12 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
               pessoa de uma página que ela não alcança; isto cobre o resto:
               deep link, ⌘K com cache velho, permissão revogada com a tela
               aberta. Cada página também é trancada no servidor. */}
-          {!paginaLiberada(page) ? (
+          {/* Enquanto as permissões não chegam, esqueleto - e não a página.
+              É o que substitui o antigo "na dúvida pode": a tela não pisca cheia
+              e também não oferece nada que o servidor vá recusar. */}
+          {permissoes === null ? (
+            <SkeletonPagina />
+          ) : !paginaLiberada(page) ? (
             <SemAcesso />
           ) : (
           // Esqueleto, e não giro: ele já ocupa o formato da página que vem,
