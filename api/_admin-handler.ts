@@ -2075,7 +2075,7 @@ async function despacharAdminData(
         // Histórico inteiro: são poucas linhas de texto por projeto, e a tela
         // mostra a série toda para leitura da evolução.
         db.execute(`
-          SELECT id, projeto_id, estado, descricao, criado_em, criado_por_nome
+          SELECT id, projeto_id, estado, descricao, criado_em, criado_por_id, criado_por_nome
           FROM projeto_saude ORDER BY criado_em DESC
         `),
         db.execute(`
@@ -2095,7 +2095,7 @@ async function despacharAdminData(
         `),
         db.execute(`
           SELECT t.id, t.projeto_id, t.entrega_id, t.titulo, t.descricao, t.status, t.prioridade,
-                 t.responsavel_id, t.prazo, t.etiquetas, t.ordem, t.concluida_em,
+                 t.responsavel_id, t.prazo, t.etiquetas, t.ordem, t.concluida_em, t.criado_em,
                  u.nome AS responsavel_nome, u.email AS responsavel_email, u.foto_url AS responsavel_foto
           FROM projeto_tarefas t
           LEFT JOIN usuarios u ON u.id = t.responsavel_id
@@ -2619,7 +2619,16 @@ function faltaEmProjeto(p: any): string | null {
       // novo não é notícia para ninguém. Tarefa nova sempre é.
       let mudouDeEtapa = true;
       const fecha = etapas.conclusivas.has(statusPedido);
-      const concluida = fecha ? new Date().toISOString() : null;
+      // A data de conclusão continua sendo carimbada pelo servidor por padrão.
+      // O corpo só a substitui quando alguém a corrige de propósito - mover o
+      // card de quinta para quarta no relatório, por exemplo - e nunca para
+      // frente: não se conclui coisa amanhã.
+      const agora = new Date();
+      const corrigida = t.concluida_em ? new Date(String(t.concluida_em)) : null;
+      const dataValida = corrigida && !Number.isNaN(corrigida.getTime()) && corrigida <= agora
+        ? corrigida.toISOString()
+        : null;
+      const concluida = fecha ? (dataValida ?? agora.toISOString()) : null;
 
       if (t.id) {
         const antes = await db.execute({
@@ -2629,7 +2638,12 @@ function faltaEmProjeto(p: any): string | null {
         if (!antes.rows[0]) return { status: 404, body: { error: 'Tarefa não encontrada.' } };
         // Já estava concluída e continua: preserva o carimbo original.
         const carimbo = fecha
-          ? (etapas.conclusivas.has(String(antes.rows[0].status)) ? antes.rows[0].concluida_em : concluida)
+          ? (dataValida
+            // Já estava concluída e ninguém corrigiu a data: preserva o
+            // carimbo original.
+            ?? (etapas.conclusivas.has(String(antes.rows[0].status))
+              ? antes.rows[0].concluida_em
+              : concluida))
           : null;
         mudouDeEtapa = String(antes.rows[0].status) !== statusPedido;
         await db.execute({

@@ -351,6 +351,17 @@ export function IconRecolher({ size = 14, aberta }: { size?: number; aberta?: bo
     ? <Ico size={size}><path d="M20 17l-5-5 5-5M4 7l5 5-5 5" /></Ico>
     : <Ico size={size}><path d="M9 7l-5 5 5 5M15 7l5 5-5 5" /></Ico>;
 }
+// Triangulo do bloco recolhivel, no desenho de editor de texto: preenchido,
+// pequeno, apontando para a direita fechado e para baixo aberto (o giro fica no
+// CSS). Preenchido de proposito - o contorno some no tamanho em que ele aparece.
+export function IconTriangulo({ size = 10 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"
+      fill="currentColor" stroke="none">
+      <path d="M8 4.5l10 7.5-10 7.5z" />
+    </svg>
+  );
+}
 // Punho de arrastar: seis pontos, o mesmo desenho ja usado nas etapas do funil.
 // Os circulos vao preenchidos de proposito - o ponto vazado some no tamanho em
 // que o punho aparece.

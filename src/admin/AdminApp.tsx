@@ -376,14 +376,24 @@ function Topbar({ onToggle, onLogout, onQuickSearch, usuario, onAbrirPerfil }: {
         </div>
 
         {/* Brand text */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--black)', lineHeight: 1 }}>Portal Sheep</div>
-          <div style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 500, lineHeight: 1 }}>Gestão geral dos projetos</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+          <div className="topbar-marca-nome"
+            style={{ fontSize: 15, fontWeight: 700, color: 'var(--black)', lineHeight: 1,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            Portal Sheep
+          </div>
+          <div className="topbar-marca-sub"
+            style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 500, lineHeight: 1,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            Gestão geral dos projetos
+          </div>
         </div>
       </div>
 
-      {/* Center: busca rápida (centralizada no header) */}
-      <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}>
+      {/* Busca rápida: centralizada na tela grande, item da própria linha no
+          celular - em posição absoluta ela caía por cima do nome do portal. */}
+      <div className="topbar-busca"
+        style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}>
         <button type="button" className="qs-trigger" onClick={onQuickSearch} title="Busca rápida (Ctrl+K)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
             <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="1.8"/>
@@ -499,6 +509,61 @@ function SemAcesso() {
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
+/** Navegação do celular: barra fixa no rodapé, ao alcance do polegar.
+ *
+ *  Leva no máximo quatro destinos e um "Mais", que abre a mesma sidebar - com
+ *  cinco itens de largura igual, a barra ainda dá alvo confortável, e o resto
+ *  do menu continua a um toque. Só aparece abaixo de 768px, por CSS: decidir
+ *  isso em JavaScript faria a barra piscar a cada giro do aparelho. */
+function NavInferior({ page, setPage, onMais }: {
+  page: Page;
+  setPage: (p: Page) => void;
+  onMais: () => void;
+}) {
+  const { pode, usuario } = useAuth();
+  const admin = podeGerenciarUsuarios(usuario);
+
+  // A ordem é a da sidebar, filtrada pelo que a pessoa alcança: sem isso a
+  // barra ofereceria uma tela que devolve "sem acesso".
+  const candidatos = NAV_SECTIONS
+    .flatMap(g => g.items)
+    .filter(i => i.page && !i.disabled && podeAbrirPagina(pode, i.page, admin));
+
+  const principais = candidatos.slice(0, 4);
+  const sobra = candidatos.length > principais.length;
+
+  if (principais.length === 0) return null;
+
+  return (
+    <nav className="nav-inferior" aria-label="Navegação principal">
+      {principais.map(i => (
+        <button
+          key={i.page}
+          type="button"
+          className={`nav-inferior-item${page === i.page ? ' ativo' : ''}`}
+          aria-current={page === i.page ? 'page' : undefined}
+          onClick={() => setPage(i.page as Page)}
+        >
+          {i.icon}
+          <span>{i.label}</span>
+        </button>
+      ))}
+      {sobra && (
+        <button type="button" className="nav-inferior-item" onClick={onMais}
+          aria-label="Mais telas">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"
+            stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+            <circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none" />
+            <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+            <circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none" />
+          </svg>
+          <span>Mais</span>
+        </button>
+      )}
+    </nav>
+  );
+}
+
 function Sidebar({
   page, setPage, open, pinned, onClose,
 }: {
@@ -1075,6 +1140,9 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
   // o mesmo card é escolhido duas vezes; a página zera o pedido ao consumi-lo, para
   // não reabrir o detalhe quando o usuário voltar à página pelo menu.
   const [openCard, setOpenCard] = useState<{ page: Page; id: string; nonce: number } | null>(null);
+  // Pedido vindo da tela de Projetos: abrir Tarefas já estreitada numa entrega.
+  const [tarefasDaEntrega, setTarefasDaEntrega] = useState<
+    { projeto: string; entrega: number; nonce: number } | null>(null);
 
   // Quem é o dono desta sessão. Vem do servidor, nunca do que o navegador
   // guardou: é essa identidade que assina cada ação daqui pra frente.
@@ -1265,8 +1333,18 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
           onClose={() => setOpen(false)}
         />
 
+        <NavInferior page={page} setPage={setPage} onMais={() => setOpen(true)} />
+
+        {/* Coluna flexível, e não bloco com rolagem própria. O `.admin-content-wrap`
+            já se declara `flex: 1; overflow: auto`, mas isso só vale se o pai
+            for um flex: como bloco, o wrap crescia com o conteúdo, nunca
+            rolava, e quem rolava era o `main`. O efeito colateral era um
+            `position: sticky` lá dentro preso a um scrollport parado - o índice
+            do relatório escapava ao rolar. */}
         <main style={{
-          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
           background: 'var(--bg)',
           minHeight: 0,
         }}>
@@ -1297,8 +1375,22 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
           // Esqueleto, e não giro: ele já ocupa o formato da página que vem,
           // então a troca de tela não pisca de vazio para cheio.
           <Suspense fallback={<SkeletonPagina />}>
-            {page === 'projetos'      && <ProjetosPage      token={token} />}
-            {page === 'tarefas'       && <TarefasPage       token={token} />}
+            {page === 'projetos'      && (
+              <ProjetosPage
+                token={token}
+                onVerTarefasDaEntrega={(projeto: string, entrega: number) => {
+                  setTarefasDaEntrega({ projeto, entrega, nonce: Date.now() });
+                  setPage('tarefas');
+                }}
+              />
+            )}
+            {page === 'tarefas'       && (
+              <TarefasPage
+                token={token}
+                filtroInicial={tarefasDaEntrega ?? undefined}
+                onFiltroAplicado={() => setTarefasDaEntrega(null)}
+              />
+            )}
             {page === 'leads'  && <LeadsPage  token={token} openCard={openCard?.page === 'leads' ? openCard : undefined} onCardOpened={() => setOpenCard(null)} />}
             {page === 'cadastros'     && <CadastrosPage     token={token} newCedente={newCedente} />}
             {page === 'configuracoes' && <ConfiguracoesPage token={token} />}

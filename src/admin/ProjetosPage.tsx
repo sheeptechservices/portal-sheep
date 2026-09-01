@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { iniciais, useAuth, useToast } from './AdminApp';
 import {
-  IconAlert, IconClip, IconDoc, IconDownload, IconImage, IconInbox,
+  IconAlert, IconArrowRight, IconClip, IconClipboard, IconDoc, IconDownload,
+  IconImage, IconInbox,
   IconChevronDown, IconChevronRight, IconChevronUp, IconChevronUpDown,
   IconEdit, IconEye, IconLink, IconMarcoAndamento, IconMarcoBloqueado,
   IconAgrupar, IconCalendario, IconCheck, IconExternal, IconOrdenar, IconSearch,
   IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado, IconMarcoValidado,
   IconPlus, IconPrioridadeAlta, IconPrioridadeBaixa, IconPrioridadeMaxima,
   IconPrioridadeMedia, IconTrash, IconTrendDown, IconTrendFlat, IconTrendUp, IconTrendWavy,
-  IconVisaoLista, IconVisaoQuadro,
+  IconTriangulo, IconVisaoLista, IconVisaoQuadro,
   IconX, IconZip,
 } from '../components/icons';
 import FilterDropdown from '../components/FilterDropdown';
@@ -17,7 +18,26 @@ import { logoDoCliente } from '../lib/marcas';
 import { PAPEIS_EQUIPE } from '../lib/papeisDeEquipe';
 import { SkeletonCards, SkeletonTabela } from '../components/Skeleton';
 import { CartaoKpi, CartoesKpiEsqueleto } from '../components/CartaoKpi';
+import { Abas, AbaPainel } from '../components/Abas';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
+// Reexportadas: moraram aqui e metade do sistema as importa deste arquivo. A
+// definição saiu para a lib porque o formulário de tarefa, compartilhado com a
+// tela de Tarefas, também precisa delas - e importá-las daqui fecharia um ciclo.
+export {
+  COR_PRIORIDADE, ICONE_PRIORIDADE, PRIORIDADES, PRIORIDADE_PADRAO,
+} from '../lib/prioridades';
+export { useFecharNoFundo } from '../lib/useFecharNoFundo';
+import {
+  COR_PRIORIDADE, ICONE_PRIORIDADE, PRIORIDADES, PRIORIDADE_PADRAO,
+} from '../lib/prioridades';
+import { useFecharNoFundo } from '../lib/useFecharNoFundo';
+import { Donut, type FatiaDonut } from '../components/Donut';
+// O mesmo formulário da tela de Tarefas: o quadro da semana abre a tarefa aqui,
+// e uma cópia local divergiria dela no primeiro campo novo.
+import {
+  FormularioTarefa, indexarEtiquetas,
+  type EtapaTarefa, type EtiquetaTarefa, type Rascunho as RascunhoTarefa,
+} from './FormularioTarefa';
 import { SelectSistema } from '../components/SelectSistema';
 import { DatePicker } from '../components/DatePicker';
 
@@ -104,38 +124,6 @@ const COR_ENTREGA: Record<string, string> = {
   'Cancelada': '#8A857A',
 };
 
-/** Prioridade do projeto. Sai como "Média" porque a maioria é: exigir a
- *  escolha consciente em todo cadastro só produziria ruído. */
-export const PRIORIDADES = ['Urgente', 'Alta', 'Média', 'Baixa'] as const;
-export const PRIORIDADE_PADRAO = 'Média';
-
-export const COR_PRIORIDADE: Record<string, string> = {
-  'Urgente': '#D93025',
-  'Alta': '#C2410C',
-  'Média': '#B58300',
-  'Baixa': '#6E6F69',
-};
-
-/** Barras que crescem com o nível; o topo da escala usa desenho próprio. */
-const DESENHO_PRIORIDADE: Record<string, (p: { size?: number }) => JSX.Element> = {
-  'Urgente': IconPrioridadeMaxima,
-  'Alta': IconPrioridadeAlta,
-  'Média': IconPrioridadeMedia,
-  'Baixa': IconPrioridadeBaixa,
-};
-
-/** O ícone já sai na cor do nível. A cor mora aqui, e não em cada uso, senão a
- *  célula editável e a de leitura acabam divergindo. */
-export const ICONE_PRIORIDADE: Record<string, (p: { size?: number }) => JSX.Element> =
-  Object.fromEntries(PRIORIDADES.map(nivel => [
-    nivel,
-    ({ size = 14 }: { size?: number }) => (
-      <span style={{ color: COR_PRIORIDADE[nivel], display: 'inline-flex' }}>
-        {DESENHO_PRIORIDADE[nivel]({ size })}
-      </span>
-    ),
-  ]));
-
 /** Leitura semanal de saúde: semáforo mais o porquê. É histórico, não estado,
  *  então a saúde atual é sempre a leitura mais recente. */
 export const SAUDES = ['Saudável', 'Em risco', 'Com problemas'] as const;
@@ -192,6 +180,7 @@ export interface RegistroSaude {
   estado: string;
   descricao: string;
   criado_em: string;
+  criado_por_id: string | null;
   criado_por_nome: string | null;
 }
 
@@ -225,6 +214,8 @@ export interface Entrega {
    *  acima já chega deduzido junto - só resolução manual sobrevive à dedução. */
   tarefas_total: number;
   tarefas_feitas: number;
+  /** Fração concluída das tarefas desta entrega, já calculada pelo servidor. */
+  progresso: number;
 }
 
 /** Tarefa do projeto. Mora aqui, e não na tela de Tarefas, porque é dado de
@@ -246,6 +237,7 @@ export interface Tarefa {
   etiquetas: string[];
   ordem: number;
   concluida_em: string | null;
+  criado_em: string;
 }
 
 /** Entrega ainda sem id, montada no cadastro de um projeto novo. */
@@ -411,17 +403,6 @@ function rotuloDoLink(url: string): string {
   } catch {
     return url;
   }
-}
-
-/** Há quanto tempo foi a última leitura de saúde. A idade importa tanto quanto
- *  o estado: "Saudável" de dois meses atrás não diz nada sobre hoje. */
-function idadeDaLeitura(iso: string | undefined, hoje = new Date()): string {
-  if (!iso) return '';
-  const dias = Math.floor((hoje.getTime() - new Date(iso).getTime()) / 86400000);
-  if (dias <= 0) return 'hoje';
-  if (dias < 7) return `${dias}d`;
-  const semanas = Math.floor(dias / 7);
-  return semanas < 9 ? `${semanas}sem` : `${Math.floor(dias / 30)}m`;
 }
 
 /** Anel de progresso, no lugar da barra: ocupa a largura de um ícone e a fatia
@@ -898,22 +879,6 @@ function CampoCategoria({ valor, sugestoes, onChange }: {
 
 // ── Fechar clicando no fundo ────────────────────────────────────────────────
 
-/** Props do sobreposto para fechar ao clicar fora, sem fechar por engano.
- *
- *  O clique do navegador nasce no ancestral comum de onde o botão desceu e onde
- *  subiu. Arrastar para selecionar texto de dentro do painel e soltar fora faz
- *  o clique nascer no fundo - e o painel fechava no meio da seleção. Por isso o
- *  fecho exige que o gesto tenha começado e terminado no fundo. */
-export function useFecharNoFundo(onFechar: () => void) {
-  const comecouNoFundo = useRef(false);
-  return {
-    onMouseDown: (e: React.MouseEvent) => { comecouNoFundo.current = e.target === e.currentTarget; },
-    onClick: (e: React.MouseEvent) => {
-      if (comecouNoFundo.current && e.target === e.currentTarget) onFechar();
-    },
-  };
-}
-
 // ── Largura do painel ───────────────────────────────────────────────────────
 
 /** O mínimo é a largura que o painel sempre teve; o máximo evita que ele engula
@@ -1158,15 +1123,14 @@ function CelulaSaude({ registro, onEscolher }: {
   const botao = useRef<HTMLButtonElement>(null);
   return (
     <>
+      {/* Só o chip: a idade da leitura vivia aqui dentro e alargava o botão,
+          o que espalhava o realce do hover e a dica por meia célula. Na aba
+          Gestão ela tem coluna própria, que é onde a comparação entre projetos
+          acontece. */}
       <CelulaEditavel refBotao={botao}
         titulo={registro?.descricao ?? 'Registrar leitura de saúde'}
         onAbrir={() => setAberto(a => !a)}>
         <ChipSaude estado={registro?.estado ?? SEM_LEITURA} size={11} />
-        {registro && (
-          <span style={{ fontSize: 11, color: 'var(--gray2)' }}>
-            {idadeDaLeitura(registro.criado_em)}
-          </span>
-        )}
       </CelulaEditavel>
       <ListaDaCelula aberto={aberto} ancora={botao} onFechar={() => setAberto(false)}
         itens={SAUDES.map(e => ({
@@ -1327,6 +1291,137 @@ function DialogoSaude({ projeto, inicial, salvando, onRegistrar, onFechar }: {
       </div>
     </div>,
     document.body,
+  );
+}
+
+/** As tarefas de uma entrega, num balão preso à contagem.
+ *
+ *  Fica aqui, e não numa ida à tela de Tarefas, porque a pergunta nasce dentro
+ *  do projeto aberto: sair daqui fecharia o painel e obrigaria a refazer o
+ *  caminho para voltar. O cabeçalho repete cliente, projeto e entrega, que é o
+ *  caminho que levou até esta lista. */
+function TarefasDaEntrega({ tarefas, caminho, ancora, onAbrirNaPagina, onFechar }: {
+  tarefas: Tarefa[];
+  caminho: string[];
+  ancora: React.RefObject<HTMLButtonElement | null>;
+  /** Sai para a tela de Tarefas, que é onde se edita. Ausente quando o projeto
+   *  ainda não foi salvo. */
+  onAbrirNaPagina?: () => void;
+  onFechar: () => void;
+}) {
+  const dropRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const LARGURA = 340;
+
+  useEffect(() => {
+    const el = ancora.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const altura = Math.min(120 + tarefas.length * 44, 400);
+    const paraCima = window.innerHeight - r.bottom - 8 < altura && r.top > altura;
+    setPos({
+      top: paraCima ? r.top - altura - 4 : r.bottom + 6,
+      // Ancorado pela direita: a contagem fica no fim da linha.
+      left: Math.max(8, Math.min(r.right - LARGURA, window.innerWidth - LARGURA - 8)),
+    });
+  }, [ancora, tarefas.length]);
+
+  useDropdownDismiss(true, [ancora, dropRef], onFechar);
+
+  return createPortal(
+    <div ref={dropRef} className="status-select-dropdown"
+      style={{ top: pos.top, left: pos.left, width: LARGURA, maxHeight: 400, zIndex: 10001,
+        display: 'flex', flexDirection: 'column' }}>
+      <p style={{ padding: '6px 10px 8px', margin: 0, flexShrink: 0, fontSize: 10.5,
+        color: 'var(--gray2)', borderBottom: '1px solid var(--gray3)', lineHeight: 1.4 }}>
+        {caminho.filter(Boolean).join(' > ')}
+      </p>
+
+      <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
+      {tarefas.map(t => (
+        <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8,
+          padding: '8px 10px', borderRadius: 'var(--radius-sm)' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--black)', margin: 0,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {t.titulo}
+            </p>
+            <p style={{ fontSize: 11, color: 'var(--gray2)', margin: '2px 0 0',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {t.status}
+              {t.responsavel_nome ? ` - ${t.responsavel_nome}` : ''}
+              {t.prazo ? ` - ${fmtData(t.prazo)}` : ''}
+            </p>
+          </div>
+          {t.responsavel_nome && (
+            <Avatar nome={t.responsavel_nome} foto={t.responsavel_foto} size={20} />
+          )}
+        </div>
+      ))}
+
+      {tarefas.length === 0 && (
+        <p style={{ padding: '12px 10px', margin: 0, fontSize: 12, color: 'var(--gray2)' }}>
+          Nenhuma tarefa ligada a esta entrega ainda.
+        </p>
+      )}
+      </div>
+
+      {/* O balão responde "quais são" de relance; editar, comentar prazo e
+          trocar responsável é trabalho de mesa, e mora na tela de Tarefas. */}
+      {onAbrirNaPagina && (
+        <button type="button" className="modal-acao" onClick={onAbrirNaPagina}
+          style={{ margin: '6px 4px 2px', width: 'calc(100% - 8px)', justifyContent: 'center',
+            display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          Abrir em Tarefas
+          <IconArrowRight size={13} />
+        </button>
+      )}
+    </div>,
+    document.body,
+  );
+}
+
+/** A contagem na linha da entrega. Só abre quando há o que mostrar. */
+function ContagemTarefas({ tarefas, caminho, onAbrirNaPagina }: {
+  tarefas: Tarefa[];
+  caminho: string[];
+  onAbrirNaPagina?: () => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const botao = useRef<HTMLButtonElement>(null);
+  const total = tarefas.length;
+
+  return (
+    <>
+      <button
+        ref={botao}
+        type="button"
+        disabled={total === 0}
+        aria-expanded={aberto}
+        title={total === 0
+          ? 'Nenhuma tarefa ligada a esta entrega'
+          : `Ver as ${total} tarefa(s) desta entrega`}
+        onClick={e => { e.stopPropagation(); setAberto(a => !a); }}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+          fontFamily: 'inherit', fontSize: 11.5, fontWeight: 600,
+          padding: '2px 7px', borderRadius: 'var(--radius-pill)',
+          border: '1px solid transparent', background: 'none',
+          color: total === 0 ? 'var(--gray3)' : 'var(--gray2)',
+          cursor: total === 0 ? 'default' : 'pointer',
+          borderColor: aberto ? 'var(--gray3)' : 'transparent',
+          transition: 'border-color var(--transition), color var(--transition)',
+        }}
+      >
+        <IconClipboard size={12} />
+        {total}
+      </button>
+      {aberto && (
+        <TarefasDaEntrega tarefas={tarefas} caminho={caminho} ancora={botao}
+          onAbrirNaPagina={onAbrirNaPagina}
+          onFechar={() => setAberto(false)} />
+      )}
+    </>
   );
 }
 
@@ -1512,7 +1607,7 @@ function EditorEntrega({ inicial, pessoas, categorias, salvando, onSalvar, onCan
 
       {/* Status não é campo de formulário: ou é resolução, tomada no marco da
           linha, ou vem das tarefas. */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+      <div className="campos-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <div className="form-group">
           <label className="form-label">Categoria</label>
           <CampoCategoria valor={categoria} sugestoes={categorias} onChange={setCategoria} />
@@ -1584,12 +1679,18 @@ function EditorEntrega({ inicial, pessoas, categorias, salvando, onSalvar, onCan
 /** Lista de entregas. Num projeto já criado cada mudança grava na hora; num
  *  projeto novo elas ficam em memória até o projeto existir. */
 function SecaoEntregas({
-  entregas, pendentes, pessoas, categorias, salvando, somenteLeitura,
+  entregas, pendentes, tarefas, caminho, onVerTarefasDaEntrega, pessoas, categorias, salvando, somenteLeitura,
   onSalvarEntrega, onExcluirEntrega, onAlterarPendentes,
   onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
 }: {
   /** Já gravadas. Vazio enquanto o projeto não existe. */
   entregas: Entrega[];
+  /** Todas as do projeto. Cada entrega filtra as suas pelo `entrega_id`. */
+  tarefas: Tarefa[];
+  /** Cliente e projeto, para o balão dizer de onde a lista veio. */
+  caminho: string[];
+  /** Abre a tela de Tarefas estreitada nesta entrega. */
+  onVerTarefasDaEntrega?: (entregaId: number) => void;
   /** Em memória, no cadastro de um projeto novo. */
   pendentes: EntregaPendente[];
   pessoas: Pessoa[];
@@ -1813,8 +1914,17 @@ function SecaoEntregas({
                   <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
                     fontSize: 11.5, color: 'var(--gray2)' }}>
                     {e.prazo && <span>{fmtData(e.prazo)}</span>}
+                    <ContagemTarefas
+                      tarefas={tarefas.filter(t => t.entrega_id === e.id)}
+                      caminho={[...caminho, e.titulo]}
+                      onAbrirNaPagina={onVerTarefasDaEntrega
+                        ? () => onVerTarefasDaEntrega(e.id)
+                        : undefined} />
+                    {/* Validada vale 100 mesmo com tarefa em aberto: o aceite do
+                        cliente é o que encerra. Fora disso, quem manda é a
+                        fração de tarefas concluídas que o servidor calculou. */}
                     <span style={{ fontWeight: 700, color: feita ? cor : 'var(--gray2)', minWidth: 30, textAlign: 'right' }}>
-                      {feita ? 100 : 0}%
+                      {feita ? 100 : (e.progresso ?? 0)}%
                     </span>
                   </span>
                 </div>
@@ -2273,7 +2383,7 @@ function SecaoReunioes({ registros, pessoas, equipe, salvando, somenteLeitura, o
 
       {abrindo && (
         <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div className="campos-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div className="form-group">
               <label className="form-label">Data *</label>
               <DatePicker compact allowPast value={data}
@@ -2538,11 +2648,877 @@ function SecaoEquipe({ titulo, pessoas, valor, somenteLeitura, onChange }: {
   );
 }
 
+
+// ── Aba Gestão ──────────────────────────────────────────────────────────────
+//
+//  Revista: cada projeto é um capítulo, e a pessoa rola de um para o outro
+//  lendo a mesma sequência - como está, o que andou, o que vem, o que preocupa.
+//  A ordem das seções é a da narrativa, não a da conveniência do banco: começa
+//  pelo diagnóstico (saúde), passa pelo movimento (semana e entregas), mostra o
+//  tempo (o que houve e o que vem) e fecha nos pontos de atenção.
+//
+//  Sem tabela de propósito. Oito colunas viram rolagem lateral no celular, e a
+//  pergunta de quem lê isto não é "compare estes números", é "me conte como
+//  está cada projeto".
+
+/** Semana é o passo do acompanhamento: define o que é leitura velha, o recorte
+ *  da atividade recente e a janela do que está planejado. */
+const DIAS_DA_SEMANA = 7;
+
+function idadeEmDias(iso: string | undefined | null): number | null {
+  if (!iso) return null;
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+}
+
+/** Segunda-feira desta semana. A semana da casa começa na segunda, e é ela que
+ *  o bloco de ações mostra - não uma janela móvel de sete dias, que na quarta
+ *  arrastaria metade da semana passada junto. */
+function segundaDaSemana(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  // `getDay` põe domingo em 0; aqui o domingo fecha a semana que começou na
+  // segunda anterior, e não abre uma nova.
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d;
+}
+
+/** Entre a segunda desta semana e hoje. Comparação por texto: os campos são
+ *  uns data pura e outros carimbo completo, e o recorte dos dez primeiros
+ *  caracteres serve aos dois sem passar por fuso. */
+const dentroDaSemana = (iso: string | undefined | null) => {
+  if (!iso) return false;
+  const dia = iso.slice(0, 10);
+  return dia >= iso10(segundaDaSemana()) && dia <= hojeIso();
+};
+
+/** A data local em texto. Montada a partir dos componentes, e não por
+ *  `toISOString`, que converte para UTC: a leste de Greenwich a meia-noite
+ *  local cai no dia anterior em UTC, e o dia inteiro sairia deslocado. */
+const iso10 = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+const hojeIso = () => iso10(new Date());
+
+/** Ordem de leitura da revista: o capítulo que pede ação vem primeiro, e dentro
+ *  do mesmo estado vem o que ninguém olha há mais tempo. */
+const PESO_SAUDE: Record<string, number> = {
+  'Com problemas': 0,
+  'Em risco': 1,
+  [SEM_LEITURA]: 2,
+  'Saudável': 3,
+};
+
+/** Segunda a sexta desta semana, em ISO. É a régua do quadro: as colunas, o
+ *  que conta como "da semana" e o que sobra para o rodapé do fim de semana. */
+function diasUteisDaSemana(): string[] {
+  const s = segundaDaSemana();
+  return Array.from({ length: 5 }, (_, i) => {
+    const d = new Date(s);
+    d.setDate(d.getDate() + i);
+    return iso10(d);
+  });
+}
+
+type ItemDaSemana = { tarefa: Tarefa; dia: string; feita: boolean };
+
+/** Os cards do quadro: as concluídas na semana, no dia em que foram concluídas,
+ *  e as abertas com prazo na semana, no dia do prazo.
+ *
+ *  Sem as abertas o quadro só olhava para trás, e numa segunda-feira não havia
+ *  para onde arrastar nada - a semana inteira estava no futuro. Com elas, o
+ *  bloco vira o plano da semana e o arraste passa a servir para montá-lo. */
+function tarefasDaSemana(p: Projeto): ItemDaSemana[] {
+  const dias = diasUteisDaSemana();
+  const itens: ItemDaSemana[] = [];
+  for (const t of p.tarefas ?? []) {
+    const feito = (t.concluida_em ?? '').slice(0, 10);
+    if (feito && dentroDaSemana(t.concluida_em)) {
+      itens.push({ tarefa: t, dia: feito, feita: true });
+    } else if (!t.concluida_em && t.prazo && dias.includes(t.prazo.slice(0, 10))) {
+      itens.push({ tarefa: t, dia: t.prazo.slice(0, 10), feita: false });
+    }
+  }
+  return itens;
+}
+
+/** O que aconteceu no projeto nos últimos sete dias. Sai todo do que a listagem
+ *  já traz - nenhuma consulta a mais para montar a revista. */
+function semanaDoProjeto(p: Projeto) {
+  return {
+    tarefasFeitas: (p.tarefas ?? []).filter(t => dentroDaSemana(t.concluida_em)),
+    tarefasNovas: (p.tarefas ?? []).filter(t => dentroDaSemana(t.criado_em)).length,
+    leituras: p.saude.filter(r => dentroDaSemana(r.criado_em)),
+    reunioes: p.reunioes.filter(r => dentroDaSemana(r.data)),
+    // Evidência nova é o sinal de que uma entrega andou de verdade: ela é
+    // exigida tanto para marcar entregue quanto para marcar validada.
+    evidencias: p.entregas.flatMap(e => e.evidencias.filter(v => dentroDaSemana(v.criado_em))),
+  };
+}
+
+/** O que está fora do lugar neste projeto. Só entra o que de fato disparou:
+ *  uma lista com "nada a apontar" repetido seis vezes ensina a pular a seção. */
+function pontosDeAtencao(p: Projeto): { texto: string; grave: boolean }[] {
+  const pontos: { texto: string; grave: boolean }[] = [];
+  const hoje = hojeIso();
+
+  const atrasadas = (p.tarefas ?? []).filter(t => t.prazo && !t.concluida_em && t.prazo < hoje);
+  if (atrasadas.length) {
+    pontos.push({ texto: `${atrasadas.length} tarefa(s) com prazo vencido e ainda abertas`, grave: true });
+  }
+
+  const bloqueadas = p.entregas.filter(e => e.status === 'Bloqueada');
+  if (bloqueadas.length) {
+    pontos.push({
+      texto: `${bloqueadas.length} entrega(s) bloqueada(s): ${bloqueadas.slice(0, 3).map(e => e.titulo).join(', ')}`,
+      grave: true,
+    });
+  }
+
+  const dias = diasPara(p.previsao_entrega);
+  if (dias !== null && dias < 0 && p.status !== 'Concluído' && p.status !== 'Cancelado') {
+    pontos.push({ texto: `Fim previsto passou há ${Math.abs(dias)} dia(s)`, grave: true });
+  }
+
+  const idadeLeitura = idadeEmDias(p.saude[0]?.criado_em);
+  if (idadeLeitura === null) {
+    pontos.push({ texto: 'Nenhuma leitura de saúde registrada até hoje', grave: false });
+  } else if (idadeLeitura > DIAS_DA_SEMANA) {
+    pontos.push({ texto: `Última leitura de saúde há ${idadeLeitura} dias`, grave: false });
+  }
+
+  const semDono = (p.tarefas ?? []).filter(t => !t.responsavel_id && !t.concluida_em);
+  if (semDono.length) {
+    pontos.push({ texto: `${semDono.length} tarefa(s) aberta(s) sem responsável`, grave: false });
+  }
+
+  if (!p.equipe.some(m => m.papel === 'Gestor')) {
+    pontos.push({ texto: 'Projeto sem gestor definido', grave: true });
+  }
+
+  return pontos;
+}
+
+/** Pessoa com foto. Nome sozinho obriga a lembrar quem é; a foto resolve isso
+ *  antes da leitura. Quando o registro só guardou o nome - leituras antigas,
+ *  antes de o id ser gravado - as iniciais entram no lugar. */
+function PessoaFoto({ nome, id, equipe, tamanho = 20 }: {
+  nome: string | null | undefined;
+  id?: string | null;
+  /** Onde procurar a foto: a equipe do projeto já vem com ela. */
+  equipe: Membro[];
+  tamanho?: number;
+}) {
+  if (!nome) return null;
+  const achado = equipe.find(m => (id && m.id === id) || m.nome === nome);
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+      <Avatar nome={nome} foto={achado?.foto_url} size={tamanho} />
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {nome}
+      </span>
+    </span>
+  );
+}
+
+/** Índice do relatório: por onde a pessoa navega e onde ela vê onde está.
+ *
+ *  Fica preso na lateral enquanto a leitura corre. O item aceso não é escolha
+ *  do clique, é do que está sendo lido - por isso um observador de interseção,
+ *  e não um estado guardado ao clicar: rolar com a roda também tem de acender
+ *  o item certo. */
+function Indice({ lista, ativo, progressoDe: pct, estadoDe, onIr }: {
+  lista: Projeto[];
+  ativo: string | null;
+  progressoDe: (p: Projeto) => number;
+  estadoDe: (p: Projeto) => string;
+  onIr: (id: string) => void;
+}) {
+  return (
+    <nav className="rev-indice" aria-label="Índice dos projetos">
+      <p className="rev-indice-titulo">Índice</p>
+      <ol>
+        {lista.map((p, i) => (
+          <li key={p.id}>
+            <button
+              type="button"
+              className={`rev-indice-item${ativo === p.id ? ' ativo' : ''}`}
+              aria-current={ativo === p.id ? 'true' : undefined}
+              // O índice lista clientes, mas dois projetos podem ser do mesmo:
+              // a dica diz de qual deles é a linha, sem poluir a lista.
+              title={p.cliente_nome ? `${p.cliente_nome} - ${p.nome}` : p.nome}
+              onClick={() => onIr(p.id)}
+            >
+              <span className="rev-indice-num">{String(i + 1).padStart(2, '0')}</span>
+              {/* O ícone de prioridade no índice: é ele que explica a ordem da
+                  lista, que de outro modo pareceria arbitrária. */}
+              <span className="rev-indice-prio"
+                style={{ color: COR_PRIORIDADE[p.prioridade ?? PRIORIDADE_PADRAO] ?? 'var(--gray2)' }}
+                title={`Prioridade: ${p.prioridade ?? PRIORIDADE_PADRAO}`}>
+                {ICONE_PRIORIDADE[p.prioridade ?? PRIORIDADE_PADRAO]?.({ size: 13 })}
+              </span>
+              <span className="rev-indice-ponto"
+                style={{ background: COR_SAUDE[estadoDe(p)] ?? 'var(--gray3)' }} />
+              <span className="rev-indice-nome">{p.cliente_nome ?? 'Sem cliente'}</span>
+              <span className="rev-indice-pct">{pct(p)}%</span>
+            </button>
+          </li>
+        ))}
+      </ol>
+    </nav>
+  );
+}
+
+// ── Página do projeto ───────────────────────────────────────────────────────
+//
+//  O capítulo é montado como uma página de editor de texto: título, uma tabela
+//  de propriedades, um destaque com a leitura da semana e blocos recolhíveis
+//  para o resto. O vocabulário é o de quem escreve documento, não o de painel:
+//  toggle, destaque, divisor, lista.
+//
+//  Os blocos nascem abertos. O triângulo está ali para quem quiser fechar o que
+//  já leu, e não para esconder coisa de quem chega.
+
+const VERDE = '#23A455';
+const AMARELO = '#B58300';
+const VERMELHO = '#D93025';
+const NEUTRO = '#8A8B84';
+
+/** Etiqueta colorida de propriedade, no desenho de tag de editor: fundo pálido
+ *  da própria cor, texto na cor cheia. */
+function Tag({ texto, cor = NEUTRO }: { texto: string; cor?: string }) {
+  return (
+    <span className="nt-tag" style={{ color: cor, background: `${cor}1A` }}>{texto}</span>
+  );
+}
+
+/** Uma linha da tabela de propriedades: rótulo apagado à esquerda, valor à
+ *  direita. É o cabeçalho de página do editor, e resume o projeto antes de
+ *  qualquer texto. */
+function Prop({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
+  return (
+    <div className="nt-prop">
+      <span className="nt-prop-rotulo">{rotulo}</span>
+      <span className="nt-prop-valor">{children}</span>
+    </div>
+  );
+}
+
+/** Bloco recolhível. Abre e fecha deslizando a altura, no tempo de revelação
+ *  da casa - o corte seco fazia o documento inteiro pular sob o cursor. */
+function Bloco({ titulo, contagem, children }: {
+  titulo: string;
+  contagem?: number;
+  children: React.ReactNode;
+}) {
+  const [aberto, setAberto] = useState(true);
+  return (
+    <div className={`nt-toggle${aberto ? ' aberto' : ''}`}>
+      <button type="button" className="nt-toggle-cabeca" aria-expanded={aberto}
+        onClick={() => setAberto(a => !a)}>
+        <span className="nt-triangulo"><IconTriangulo size={10} /></span>
+        <span className="nt-toggle-titulo">{titulo}</span>
+        {contagem != null && contagem > 0 && (
+          <span className="nt-toggle-contagem">{contagem}</span>
+        )}
+      </button>
+      {/* O conteúdo fica montado mesmo fechado: é o que permite animar a
+          altura. Três camadas porque a técnica exige - a de fora é a grade que
+          anima, a do meio recorta, e o respiro mora na de dentro, senão ele
+          sobraria como faixa visível no estado fechado. */}
+      <div className="nt-toggle-corpo">
+        <div>
+          <div className="nt-toggle-conteudo">{children}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Barra segmentada com a composição das entregas. Uma barra só, e não seis
+ *  números soltos: a proporção é a leitura que interessa. */
+/** As entregas do projeto: a composição por situação no anel, e a lista logo
+ *  abaixo. Clicar numa fatia recorta a lista - a pergunta que vinha depois da
+ *  barra era sempre "quais são as bloqueadas", e ela não respondia. */
+function EntregasDoProjeto({ entregas, equipe }: { entregas: Entrega[]; equipe: Membro[] }) {
+  const [foco, setFoco] = useState<string | null>(null);
+
+  const fatias: FatiaDonut[] = STATUS_ENTREGA.map(st => ({
+    chave: st,
+    rotulo: st,
+    valor: entregas.filter(e => e.status === st).length,
+    cor: COR_ENTREGA[st] ?? NEUTRO,
+  }));
+
+  if (entregas.length === 0) {
+    return <p className="nt-vazio">Sem entregas cadastradas.</p>;
+  }
+
+  const lista = foco ? entregas.filter(e => e.status === foco) : entregas;
+
+  return (
+    <div className="nt-entregas">
+      <Donut
+        fatias={fatias}
+        unidade="entregas"
+        esticar
+        tamanho={124}
+        onEscolher={ch => setFoco(f => (f === ch ? null : ch))}
+      />
+
+      {/* Só aparece quando há recorte: sem filtro, a linha era instrução, e
+          instrução fixa vira ruído depois da primeira vez. */}
+      {foco && (
+        <div className="nt-recorte">
+          <span>{lista.length} de {entregas.length}, em {foco.toLocaleLowerCase('pt-BR')}</span>
+          <button type="button" onClick={() => setFoco(null)}>
+            Ver todas
+            <IconX size={11} />
+          </button>
+        </div>
+      )}
+
+      <table className="nt-tabela">
+        <thead>
+          <tr><th>Entrega</th><th>Situação</th><th>Prazo</th><th>Tarefas</th></tr>
+        </thead>
+        <tbody>
+          {lista.map(e => {
+            const dono = e.responsaveis.map(id => equipe.find(m => m.id === id)).filter(Boolean)[0];
+            return (
+              <tr key={e.id}>
+                <td title={e.titulo}>
+                  {e.titulo}
+                  {dono && (
+                    <span className="nt-entrega-dono">
+                      <PessoaFoto nome={dono.nome} id={dono.id} equipe={equipe} tamanho={15} />
+                    </span>
+                  )}
+                </td>
+                <td><Tag texto={e.status} cor={COR_ENTREGA[e.status] ?? NEUTRO} /></td>
+                <td>{e.prazo
+                  ? fmtData(e.prazo)
+                  : <span className="nt-vazio">Sem prazo</span>}</td>
+                <td>{e.tarefas_total
+                  ? `${e.tarefas_feitas}/${e.tarefas_total}`
+                  : <span className="nt-vazio">Nenhuma</span>}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Um card do quadro. Mostra e arrasta - editar é trabalho de mesa e mora no
+ *  modal, que abre no clique. Edição no lugar convivia mal com o arraste: o
+ *  mesmo gesto ora movia, ora entrava no campo. */
+function CardDaSemana({ tarefa: t, equipe, feita, podeArrastar, arrastando, onAbrir, onArrastar, onSoltar }: {
+  tarefa: Tarefa;
+  equipe: Membro[];
+  feita: boolean;
+  podeArrastar: boolean;
+  arrastando: boolean;
+  onAbrir: (t: Tarefa) => void;
+  onArrastar: (id: number) => void;
+  onSoltar: () => void;
+}) {
+  return (
+    <div
+      className={`nt-card${feita ? '' : ' planejada'}${arrastando ? ' arrastando' : ''}`}
+      draggable={podeArrastar}
+      onDragStart={e => {
+        e.dataTransfer.effectAllowed = 'move';
+        // Sem carga o Firefox nem começa o arraste; o id vai junto por garantia,
+        // ainda que quem lê de fato seja o estado do quadro.
+        e.dataTransfer.setData('text/plain', String(t.id));
+        onArrastar(t.id);
+      }}
+      onDragEnd={onSoltar}
+    >
+      <button type="button" className="nt-card-abrir" onClick={() => onAbrir(t)}
+        title={`${feita ? 'Concluída' : 'Planejada'}: ${t.titulo}`}>
+        <p>{t.titulo}</p>
+      </button>
+      {t.responsavel_nome && (
+        <span className="nt-card-pe">
+          <PessoaFoto nome={t.responsavel_nome} id={t.responsavel_id} equipe={equipe} tamanho={16} />
+        </span>
+      )}
+    </div>
+  );
+}
+
+function QuadroDaSemana({ projeto: p, itens, etapaDeEntrada, podeEditar, onAbrirTarefa, onSalvarTarefa }: {
+  projeto: Projeto;
+  itens: ItemDaSemana[];
+  /** Onde a tarefa volta a nascer quando é reaberta pelo arraste. Vazio
+   *  enquanto a configuração de etapas não chegou. */
+  etapaDeEntrada: string;
+  podeEditar: boolean;
+  onAbrirTarefa: (t: Tarefa) => void;
+  onSalvarTarefa: (t: Tarefa, mudancas: Record<string, unknown>) => void;
+}) {
+  const [arrastando, setArrastando] = useState<number | null>(null);
+  const [sobre, setSobre] = useState<string | null>(null);
+  const { toast } = useToast();
+  const hoje = hojeIso();
+
+  // Cinco colunas fixas, de segunda a sexta: a semana de trabalho da casa.
+  const dias = diasUteisDaSemana().map(iso => {
+    const d = new Date(`${iso}T12:00:00`);
+    return {
+      iso,
+      // "seg", "ter": o dia da semana em três letras, sem o ponto que o
+      // navegador põe em algumas plataformas.
+      nome: d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '').slice(0, 3),
+      numero: d.getDate(),
+      hoje: iso === hoje,
+      // O que ainda não chegou fica apagado: coluna vazia na quinta, numa
+      // terça, é calendário e não falta de trabalho.
+      futuro: iso > hoje,
+      cards: itens.filter(x => x.dia === iso),
+    };
+  });
+
+  // Sábado e domingo não têm coluna, mas o trabalho feito neles existe e não
+  // pode sumir da conta sem aviso.
+  const noFimDeSemana = itens.filter(x => !dias.some(d => d.iso === x.dia)).length;
+
+  const emArraste = itens.find(x => x.tarefa.id === arrastando) ?? null;
+
+  /** Todo dia da semana recebe card. O que muda é o que o gesto grava: para
+   *  trás vira registro de conclusão, para frente vira plano. Uma concluída
+   *  levada para o futuro é reaberta, porque conclusão em data que não chegou
+   *  o servidor recusaria de todo jeito. */
+  const aceita = (futuro: boolean) =>
+    podeEditar && !!emArraste && (!futuro || !emArraste.feita || !!etapaDeEntrada);
+
+  return (
+    <>
+    <div className="nt-semana">
+      {dias.map(d => (
+        <div
+          key={d.iso}
+          // Não se conclui coisa amanhã: dia futuro não recebe card.
+          className={`nt-dia${d.hoje ? ' hoje' : ''}${d.futuro ? ' futuro' : ''}${sobre === d.iso ? ' alvo' : ''}`}
+          onDragOver={e => {
+            if (!aceita(d.futuro)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            setSobre(d.iso);
+          }}
+          onDragLeave={e => {
+            // Passar por cima de um card dispara `dragleave` na coluna; sem
+            // esta guarda o destaque piscava a cada card atravessado.
+            if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+            setSobre(x => (x === d.iso ? null : x));
+          }}
+          onDrop={e => {
+            e.preventDefault();
+            setSobre(null);
+            const item = emArraste;
+            setArrastando(null);
+            if (!item || !aceita(d.futuro) || item.dia === d.iso) return;
+            if (item.feita && !d.futuro) {
+              // Mantém a hora e troca só o dia: a hora do dia continua sendo a
+              // que foi registrada, e mover de coluna não a inventa de novo.
+              const hora = (item.tarefa.concluida_em ?? '').slice(11) || '12:00:00.000Z';
+              onSalvarTarefa(item.tarefa, { concluida_em: `${d.iso}T${hora}` });
+            } else if (item.feita) {
+              // Reabre: quem leva uma concluída para depois de hoje está dizendo
+              // que ela não estava pronta, e agora tem data para ficar. O aviso
+              // é obrigatório - o gesto foi "mudar de dia", e o efeito é maior.
+              onSalvarTarefa(item.tarefa, {
+                concluida_em: null, prazo: d.iso, status: etapaDeEntrada,
+              });
+              toast('info', 'Tarefa reaberta',
+                `Deixou de constar concluída e ficou planejada para ${d.nome} ${d.numero}, em "${etapaDeEntrada}".`);
+            } else {
+              onSalvarTarefa(item.tarefa, { prazo: d.iso });
+            }
+          }}
+        >
+          <div className="nt-dia-cabeca">
+            <span className="nt-dia-nome">{d.nome}</span>
+            <span className="nt-dia-numero">{d.numero}</span>
+            {d.cards.length > 0 && <span className="nt-dia-conta">{d.cards.length}</span>}
+          </div>
+          <div className="nt-dia-corpo">
+            {d.cards.map(x => (
+              <CardDaSemana
+                key={x.tarefa.id}
+                tarefa={x.tarefa}
+                equipe={p.equipe}
+                feita={x.feita}
+                podeArrastar={podeEditar}
+                arrastando={arrastando === x.tarefa.id}
+                onAbrir={onAbrirTarefa}
+                onArrastar={setArrastando}
+                onSoltar={() => { setArrastando(null); setSobre(null); }}
+              />
+            ))}
+            {d.cards.length === 0 && aceita(d.futuro) && (
+              <p className="nt-dia-alvo">Soltar aqui</p>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+    {noFimDeSemana > 0 && (
+      <p className="nt-vazio" style={{ marginTop: 8 }}>
+        Mais {noFimDeSemana} concluída(s) no fim de semana.
+      </p>
+    )}
+    </>
+  );
+}
+
+function Capitulo({ projeto: p, numero, registrar, pessoas, onAbrir, onRegistrarSaude,
+  onSalvarTarefa, onAbrirTarefa, etapaDeEntrada, podeEditar, podeEditarTarefa }: {
+  projeto: Projeto;
+  numero: number;
+  /** Entrega o nó ao índice, que precisa dele para rolar até aqui. */
+  registrar: (id: string, el: HTMLElement | null) => void;
+  pessoas: Pessoa[];
+  onAbrir: (p: Projeto) => void;
+  onRegistrarSaude: (p: Projeto, estado: string) => void;
+  onSalvarTarefa: (t: Tarefa, mudancas: Record<string, unknown>) => void;
+  onAbrirTarefa: (t: Tarefa, p: Projeto) => void;
+  etapaDeEntrada: string;
+  podeEditar: boolean;
+  /** Mexer na tarefa é outra permissão: a revista vive em Projetos, mas o
+   *  servidor cobra `tarefas:editar` de quem grava. */
+  podeEditarTarefa: boolean;
+}) {
+  const leitura = p.saude[0];
+  const idade = idadeEmDias(leitura?.criado_em);
+  const semana = semanaDoProjeto(p);
+  const itensDaSemana = tarefasDaSemana(p);
+  const pontos = pontosDeAtencao(p);
+  const gestor = p.equipe.find(m => m.papel === 'Gestor');
+  const progresso = progressoDe(p);
+  const hoje = hojeIso();
+
+  const dias = diasPara(p.previsao_entrega);
+  // "Aberta" sai do carimbo do servidor: quais etapas encerram é configuração
+  // de outra tela, e o relatório não deveria depender dela para contar.
+  const atrasadas = (p.tarefas ?? [])
+    .filter(t => !t.concluida_em && t.prazo && t.prazo < hoje);
+
+  const acoes = [
+    semana.tarefasFeitas.length && `${semana.tarefasFeitas.length} tarefa(s) concluída(s)`,
+    semana.tarefasNovas && `${semana.tarefasNovas} criada(s)`,
+    semana.evidencias.length && `${semana.evidencias.length} evidência(s) anexada(s)`,
+    semana.reunioes.length && `${semana.reunioes.length} reunião(ões)`,
+  ].filter(Boolean) as string[];
+
+  const questoes = [
+    ...p.entregas.filter(e => e.status === 'Bloqueada').map(e => ({
+      nome: e.titulo,
+      estado: 'Bloqueada',
+      cor: VERMELHO,
+      dono: e.responsaveis.map(id => p.equipe.find(m => m.id === id)).filter(Boolean)[0] ?? null,
+    })),
+    ...atrasadas
+      .sort((a, b) => a.prazo!.localeCompare(b.prazo!))
+      .slice(0, 5)
+      .map(t => ({
+        nome: t.titulo,
+        estado: `Atrasada ${Math.abs(diasPara(t.prazo)!)}d`,
+        cor: AMARELO,
+        dono: p.equipe.find(m => m.id === t.responsavel_id) ?? null,
+      })),
+  ];
+
+  return (
+    <article className="nt-pagina" id={`capitulo-${p.id}`} data-id={p.id}
+      ref={el => registrar(p.id, el)}>
+
+      <header className="nt-cabeca">
+        <span className="nt-numero">{String(numero).padStart(2, '0')}</span>
+        <h2 className="nt-titulo">
+          <button type="button" onClick={() => onAbrir(p)}>{p.nome}</button>
+        </h2>
+      </header>
+
+      {/* Tabela de propriedades: o cabeçalho de página do editor. Resume o
+          projeto antes de qualquer parágrafo. */}
+      <div className="nt-props">
+        <Prop rotulo="Cliente">{p.cliente_nome ?? 'Sem cliente'}</Prop>
+        <Prop rotulo="Gestor">
+          {gestor
+            ? <PessoaFoto nome={gestor.nome} id={gestor.id} equipe={p.equipe} tamanho={18} />
+            : <span className="nt-vazio">Sem gestor</span>}
+        </Prop>
+        <Prop rotulo="Prioridade">
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6,
+            color: COR_PRIORIDADE[p.prioridade ?? PRIORIDADE_PADRAO] ?? 'var(--gray)' }}>
+            {ICONE_PRIORIDADE[p.prioridade ?? PRIORIDADE_PADRAO]?.({ size: 14 })}
+            {p.prioridade ?? PRIORIDADE_PADRAO}
+          </span>
+        </Prop>
+        <Prop rotulo="Saúde">
+          {podeEditar ? (
+            <CelulaSaude registro={leitura} onEscolher={e => onRegistrarSaude(p, e)} />
+          ) : (
+            <ChipSaude estado={leitura?.estado ?? SEM_LEITURA} size={11} />
+          )}
+        </Prop>
+        <Prop rotulo="Fim previsto">
+          {p.previsao_entrega ? (
+            <>
+              {fmtData(p.previsao_entrega)}
+              {dias !== null && (
+                <Tag
+                  texto={dias < 0 ? `venceu há ${Math.abs(dias)}d` : `faltam ${dias}d`}
+                  cor={dias < 0 ? VERMELHO : dias <= DIAS_DA_SEMANA ? AMARELO : VERDE}
+                />
+              )}
+            </>
+          ) : <span className="nt-vazio">Sem data</span>}
+        </Prop>
+        <Prop rotulo="Progresso">
+          <span className="nt-progresso">
+            <span className="nt-progresso-barra">
+              <span style={{ width: `${progresso}%` }} />
+            </span>
+            {progresso}%
+          </span>
+        </Prop>
+      </div>
+
+      {/* Destaque com a leitura da semana: a barra e o ícone tomam a cor da
+          saúde, para o diagnóstico e a frase que o explica lerem como um só. */}
+      <div className="nt-destaque"
+        style={{ ['--cor-saude' as string]: COR_SAUDE[leitura?.estado ?? ''] ?? 'var(--gray3)' }}>
+        <span className="nt-destaque-icone">
+          <IconAlert size={15} />
+        </span>
+        <div className="nt-destaque-texto">
+          {leitura ? (
+            <>
+              <p>{leitura.descricao}</p>
+              <p className="nt-destaque-pe">
+                <PessoaFoto nome={leitura.criado_por_nome ?? 'Alguém da equipe'}
+                  id={leitura.criado_por_id} equipe={p.equipe} tamanho={16} />
+                <span className="nt-sep">·</span>
+                {idade === null ? '' : idade === 0 ? 'hoje' : `há ${idade} dia${idade > 1 ? 's' : ''}`}
+              </p>
+            </>
+          ) : (
+            <p className="nt-vazio">Ninguém registrou como este projeto está indo.</p>
+          )}
+        </div>
+      </div>
+
+      <Bloco titulo="Ações da semana" contagem={semana.tarefasFeitas.length}>
+        {acoes.length === 0 && itensDaSemana.length === 0 ? (
+          <p className="nt-vazio">Nada registrado nem planejado nesta semana.</p>
+        ) : (
+          <>
+            {itensDaSemana.length > 0 && (
+              <QuadroDaSemana projeto={p} itens={itensDaSemana}
+                etapaDeEntrada={etapaDeEntrada} podeEditar={podeEditarTarefa}
+                onAbrirTarefa={x => onAbrirTarefa(x, p)} onSalvarTarefa={onSalvarTarefa} />
+            )}
+          </>
+        )}
+      </Bloco>
+
+      <Bloco titulo="Entregas" contagem={p.entregas.length}>
+        <EntregasDoProjeto entregas={p.entregas} equipe={p.equipe} />
+      </Bloco>
+
+      <Bloco titulo="Pontos de atenção" contagem={questoes.length + pontos.length}>
+        {questoes.length === 0 && pontos.length === 0 ? (
+          <p className="nt-vazio">Nada fora do lugar neste projeto.</p>
+        ) : (
+          <>
+            {questoes.length > 0 && (
+              <table className="nt-tabela">
+                <thead>
+                  <tr><th>Item</th><th>Situação</th><th>Responsável</th></tr>
+                </thead>
+                <tbody>
+                  {questoes.map((q, k) => (
+                    <tr key={k}>
+                      <td title={q.nome}>{q.nome}</td>
+                      <td><Tag texto={q.estado} cor={q.cor} /></td>
+                      <td>
+                        {q.dono
+                          ? <PessoaFoto nome={q.dono.nome} id={q.dono.id} equipe={p.equipe} tamanho={16} />
+                          : <span className="nt-vazio">Sem dono</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {pontos.length > 0 && (
+              <ul className="nt-lista" style={{ marginTop: questoes.length ? 14 : 0 }}>
+                {pontos.map((x, k) => (
+                  <li key={k} className={x.grave ? 'grave' : undefined}>{x.texto}</li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </Bloco>
+    </article>
+  );
+}
+
+function AbaGestao({
+  projetos, pessoas, onAbrir, onRegistrarSaude, onSalvarTarefa, onAbrirTarefa, etapaDeEntrada,
+  podeEditar, podeEditarTarefa,
+}: {
+  projetos: Projeto[];
+  pessoas: Pessoa[];
+  onAbrir: (p: Projeto) => void;
+  onRegistrarSaude: (p: Projeto, estado: string) => void;
+  onSalvarTarefa: (t: Tarefa, mudancas: Record<string, unknown>) => void;
+  onAbrirTarefa: (t: Tarefa, p: Projeto) => void;
+  etapaDeEntrada: string;
+  podeEditar: boolean;
+  podeEditarTarefa: boolean;
+}) {
+  // Guardado por id de quem está fechado, e não de quem está aberto: assim um
+  // projeto novo na lista nasce aberto, que é o padrão da revista.
+  const [ativo, setAtivo] = useState<string | null>(null);
+  const nos = useRef(new Map<string, HTMLElement>());
+
+  const registrar = useCallback((id: string, el: HTMLElement | null) => {
+    if (el) nos.current.set(id, el);
+    else nos.current.delete(id);
+  }, []);
+
+  const estadoDe = (p: Projeto) => p.saude[0]?.estado ?? SEM_LEITURA;
+
+  // A revista é da operação corrente: projeto concluído, pausado ou cancelado
+  // não tem semana que valha a pena contar.
+  const emAndamento = useMemo(
+    () => projetos.filter(p => p.status === 'Em andamento'),
+    [projetos],
+  );
+
+  // A ordem do relatório: prioridade primeiro, porque é a decisão que a casa
+  // já tomou sobre o que importa mais. Dentro da mesma prioridade decide a
+  // saúde, e no empate, quem está sem leitura há mais tempo - dois projetos
+  // urgentes não são igualmente urgentes se um deles está com problemas.
+  const ordem = (p: Projeto) => {
+    const i = PRIORIDADES.indexOf((p.prioridade ?? PRIORIDADE_PADRAO) as typeof PRIORIDADES[number]);
+    return i < 0 ? PRIORIDADES.length : i;
+  };
+
+  const lista = useMemo(() => {
+    return [...emAndamento].sort((a, b) => {
+      const oa = ordem(a);
+      const ob = ordem(b);
+      if (oa !== ob) return oa - ob;
+      const pa = PESO_SAUDE[estadoDe(a)] ?? 9;
+      const pb = PESO_SAUDE[estadoDe(b)] ?? 9;
+      if (pa !== pb) return pa - pb;
+      const ia = idadeEmDias(a.saude[0]?.criado_em);
+      const ib = idadeEmDias(b.saude[0]?.criado_em);
+      // Sem leitura nenhuma é o mais antigo que existe.
+      return (ib ?? Infinity) - (ia ?? Infinity);
+    });
+  }, [emAndamento]);
+
+  const chaves = lista.map(p => p.id).join('|');
+
+  // Um observador só, com duas funções: acender o item do índice e deixar o
+  // capítulo entrar quando ele aparece pela primeira vez. A faixa é estreita e
+  // fica no alto da área de leitura - é ali que está o capítulo "atual".
+  useEffect(() => {
+    const alvos = [...nos.current.values()];
+    if (alvos.length === 0) return;
+
+    // Sem observador não há entrada nem item aceso, mas o capítulo tem de
+    // aparecer: a regra de entrada o deixa invisível até a classe chegar.
+    if (typeof IntersectionObserver === 'undefined') {
+      for (const el of alvos) el.classList.add('entrou');
+      return;
+    }
+
+    const raiz = alvos[0].closest('.admin-content-wrap') as HTMLElement | null;
+
+    const espia = new IntersectionObserver(entradas => {
+      const visiveis = entradas
+        .filter(e => e.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      const alvo = visiveis[0]?.target as HTMLElement | undefined;
+      if (alvo) setAtivo(alvo.dataset.id ?? null);
+    }, { root: raiz, rootMargin: '-12% 0px -72% 0px', threshold: 0 });
+
+    // A entrada usa margem folgada: o capítulo já começa a aparecer antes de
+    // chegar à faixa do índice, senão o movimento acontece fora de vista.
+    const entrada = new IntersectionObserver(entradas => {
+      for (const e of entradas) {
+        if (e.isIntersecting) {
+          e.target.classList.add('entrou');
+          entrada.unobserve(e.target);
+        }
+      }
+    }, { root: raiz, rootMargin: '0px 0px -8% 0px', threshold: 0.02 });
+
+    for (const el of alvos) { espia.observe(el); entrada.observe(el); }
+    return () => { espia.disconnect(); entrada.disconnect(); };
+  }, [chaves]);
+
+  const suave = typeof window !== 'undefined'
+    && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function irPara(id: string) {
+    setAtivo(id);
+    nos.current.get(id)?.scrollIntoView({
+      behavior: suave ? 'smooth' : 'auto',
+      block: 'start',
+    });
+  }
+
+  return (
+    <>
+      {lista.length === 0 ? (
+        <div className="admin-empty" style={{ padding: '48px 0' }}>
+          <p style={{ color: 'var(--gray2)', marginBottom: 6 }}><IconInbox size={30} /></p>
+          <p>Nenhum projeto em andamento.</p>
+        </div>
+      ) : (
+        <div className="rev-pagina">
+          <Indice lista={lista} ativo={ativo} progressoDe={progressoDe}
+            estadoDe={estadoDe} onIr={irPara} />
+
+          <div className="rev-revista">
+            {lista.map((p, i) => (
+              <Capitulo
+                key={p.id}
+                projeto={p}
+                numero={i + 1}
+                registrar={registrar}
+                pessoas={pessoas}
+                onAbrir={onAbrir}
+                onRegistrarSaude={onRegistrarSaude}
+                onSalvarTarefa={onSalvarTarefa}
+                onAbrirTarefa={onAbrirTarefa}
+                etapaDeEntrada={etapaDeEntrada}
+                podeEditar={podeEditar}
+                podeEditarTarefa={podeEditarTarefa}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ── Formulário ───────────────────────────────────────────────────────────────
 
 function FormularioProjeto({
   editando, pessoas, clientes, salvando, onFechar, onSalvar, onBaixarAnexo, onVerAnexo, onEtiquetar,
-  categorias, onExcluir, somenteLeitura,
+  categorias, onExcluir, somenteLeitura, onVerTarefasDaEntrega,
   onRegistrarSaude, onExcluirSaude, onRegistrarReuniao, onExcluirReuniao,
   onSalvarEntrega, onExcluirEntrega, onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
 }: {
@@ -2550,6 +3526,8 @@ function FormularioProjeto({
   pessoas: Pessoa[];
   clientes: Cliente[];
   salvando: boolean;
+  /** Sai para a tela de Tarefas, estreitada numa entrega deste projeto. */
+  onVerTarefasDaEntrega?: (entregaId: number) => void;
   onFechar: () => void;
   onSalvar: (r: Rascunho, anexos: AnexoPendente[], removidos: number[]) => void;
   onBaixarAnexo: (a: Arquivo) => void;
@@ -2741,18 +3719,25 @@ function FormularioProjeto({
           </div>
 
           {editando && (
-            <div className="config-tabs" style={{ marginBottom: 0, marginTop: 6 }}>
-              <button type="button" className={`config-tab${abaModal === 'geral' ? ' active' : ''}`}
-                onClick={() => setAbaModal('geral')}>Geral</button>
-              <button type="button" className={`config-tab${abaModal === 'reunioes' ? ' active' : ''}`}
-                onClick={() => setAbaModal('reunioes')}>Reuniões</button>
-              <button type="button" className={`config-tab${abaModal === 'saude' ? ' active' : ''}`}
-                onClick={() => setAbaModal('saude')}>Saúde</button>
-            </div>
+            <Abas
+              valor={abaModal}
+              onChange={setAbaModal}
+              style={{ marginBottom: 0, marginTop: 6 }}
+              opcoes={[
+                { valor: 'geral', label: 'Geral' },
+                { valor: 'reunioes', label: 'Reuniões' },
+                { valor: 'saude', label: 'Saúde' },
+              ]}
+            />
           )}
         </div>
 
-        <div className="admin-modal-body">
+        {/* A classe da animação vai no próprio corpo, e não num invólucro:
+            `display: contents` num invólucro não gera caixa, e sem caixa não há
+            o que animar - e uma caixa de verdade quebraria a rolagem daqui. A
+            chave repete a entrada a cada aba, e de quebra devolve a rolagem ao
+            topo, que é onde a aba nova começa. */}
+        <div className="admin-modal-body aba-painel" key={abaModal}>
 
           {editando && abaModal === 'reunioes' && (
             <SecaoReunioes
@@ -2806,7 +3791,7 @@ function FormularioProjeto({
               </div>
               {/* Lado a lado, como as datas: são duas listas curtas de
                   classificação e ocupar uma linha cada desperdiçava altura. */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div className="campos-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div className="form-group">
                   <label className="form-label">Tipo *</label>
                   <SelectSistema
@@ -2841,7 +3826,7 @@ function FormularioProjeto({
 
           <section>
             <p className="admin-section-title">Prazo</p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div className="campos-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div className="form-group">
                 <label className="form-label">Data de início *</label>
                 <DatePicker compact allowPast value={r.data_inicio}
@@ -2865,6 +3850,9 @@ function FormularioProjeto({
             somenteLeitura={somenteLeitura}
             entregas={editando?.entregas ?? []}
             pendentes={r.entregas}
+            tarefas={editando?.tarefas ?? []}
+            caminho={[editando?.cliente_nome ?? '', editando?.nome ?? '']}
+            onVerTarefasDaEntrega={onVerTarefasDaEntrega}
             pessoas={pessoas}
             categorias={categorias}
             salvando={salvando}
@@ -2972,14 +3960,26 @@ function FormularioProjeto({
 
 type Aba = 'geral' | 'gestao';
 
-export default function ProjetosPage({ token }: { token: string }) {
-  const { pode, onSessionExpired } = useAuth();
+export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
+  token: string;
+  /** Entregue pelo painel: leva à tela de Tarefas já filtrada numa entrega. */
+  onVerTarefasDaEntrega?: (projetoId: string, entregaId: number) => void;
+}) {
+  const { pode, usuario, onSessionExpired } = useAuth();
   const { toast } = useToast();
 
   const [aba, setAba] = useState<Aba>('geral');
   const [projetos, setProjetos] = useState<Projeto[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+  /** As etapas de tarefa, de Configurações > Etapas. Só o relatório usa: é o
+   *  seletor do modal e o destino de uma tarefa reaberta no quadro. */
+  const [etapasTarefa, setEtapasTarefa] = useState<EtapaTarefa[]>([]);
+  const [etiquetasTarefa, setEtiquetasTarefa] = useState<EtiquetaTarefa[]>([]);
+  const [etiquetaPorPapel, setEtiquetaPorPapel] = useState(false);
+  /** Tarefa aberta pelo quadro da semana, em rascunho: é o que o formulário
+   *  compartilhado edita, e ele é o mesmo da tela de Tarefas. */
+  const [rascunhoTarefa, setRascunhoTarefa] = useState<RascunhoTarefa | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [form, setForm] = useState<{ editando: Projeto | null } | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -3003,7 +4003,13 @@ export default function ProjetosPage({ token }: { token: string }) {
 
   const podeCriar = pode('projetos:criar');
   const podeEditar = pode('projetos:editar');
+  /** Para onde volta uma tarefa reaberta no quadro da semana. */
+  const etapaDeEntrada = etapasTarefa.find(e => Number(e.is_entrada) === 1)?.nome
+    ?? etapasTarefa[0]?.nome ?? '';
+
+
   const podeExcluir = pode('projetos:excluir');
+
 
   const api = useCallback(async (path: string, method = 'GET', body?: unknown) => {
     const res = await fetch(`/api/admin-data${path}`, {
@@ -3015,16 +4021,23 @@ export default function ProjetosPage({ token }: { token: string }) {
     return res.json();
   }, [token, onSessionExpired]);
 
+  /** A carga inteira, com esqueleto. Só na entrada da tela: depois de uma ação
+   *  quem recarrega é `recarregar`, sem trocar a tela pelo esqueleto. */
   const carregar = useCallback(async () => {
     setCarregando(true);
     try {
-      const [p, u] = await Promise.all([
+      const [p, u, e, tags] = await Promise.all([
         api('?action=projetos'),
         api('?action=usuarios_notificaveis'),
+        api('?action=tarefa_status_configs'),
+        api('?action=tarefa_etiquetas'),
       ]);
       setProjetos(p?.projetos ?? []);
       setClientes(p?.clientes ?? []);
       setPessoas(u?.usuarios ?? []);
+      setEtapasTarefa(e?.statuses ?? []);
+      setEtiquetasTarefa(tags?.etiquetas ?? []);
+      setEtiquetaPorPapel(!!tags?.porPapel);
     } catch {
       toast('error', 'Não foi possível carregar', 'A lista de projetos não veio. Tente de novo.');
     } finally {
@@ -3033,6 +4046,120 @@ export default function ProjetosPage({ token }: { token: string }) {
   }, [api, toast]);
 
   useEffect(() => { void carregar(); }, [carregar]);
+
+  /** Reconcilia a tela com o servidor depois de uma ação, sem esqueleto e sem
+   *  prender ninguém: a mudança já foi pintada, isto só traz o que o servidor
+   *  deduz sozinho - status e progresso da entrega, principalmente.
+   *
+   *  Puxa apenas a listagem: etapas, etiquetas e usuários não mudam por causa
+   *  de uma tarefa arrastada, e refazer as quatro chamadas era metade da
+   *  demora. */
+  /** Conta as mudanças pintadas na tela. A resposta que sai daqui é uma foto do
+   *  servidor no instante do pedido: se alguém mexeu enquanto ela vinha, ela já
+   *  nasceu velha, e aplicá-la desfaria o gesto na cara da pessoa. */
+  const mudancasRef = useRef(0);
+
+  const recarregar = useCallback(async () => {
+    const marca = mudancasRef.current;
+    const p = await api('?action=projetos');
+    if (marca !== mudancasRef.current) return;
+    if (p?.projetos) { setProjetos(p.projetos); setClientes(p.clientes ?? []); }
+  }, [api]);
+
+  /** Junta rajadas: arrastar três cards seguidos reconcilia uma vez, e não três
+   *  vezes com a listagem inteira no meio do caminho. */
+  const reconciliarRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconciliar = useCallback(() => {
+    if (reconciliarRef.current) clearTimeout(reconciliarRef.current);
+    reconciliarRef.current = setTimeout(() => {
+      reconciliarRef.current = null;
+      void recarregar();
+    }, 450);
+  }, [recarregar]);
+  useEffect(() => () => {
+    if (reconciliarRef.current) clearTimeout(reconciliarRef.current);
+  }, []);
+
+  /** Pinta a mudança na tarefa antes de o servidor responder. */
+  const pintarTarefa = useCallback((id: number, mudancas: Partial<Tarefa>) => {
+    mudancasRef.current++;
+    setProjetos(ps => ps.map(p => ({
+      ...p,
+      tarefas: (p.tarefas ?? []).map(t => (t.id === id ? { ...t, ...mudancas } : t)),
+    })));
+  }, []);
+
+  const etq = useMemo(() => indexarEtiquetas(etiquetasTarefa), [etiquetasTarefa]);
+
+  /** Abre a tarefa do quadro no mesmo formulário da tela de Tarefas. */
+  const abrirTarefa = useCallback((t: Tarefa) => setRascunhoTarefa({
+    id: t.id, projeto_id: t.projeto_id, entrega_id: t.entrega_id ? String(t.entrega_id) : '',
+    titulo: t.titulo, descricao: t.descricao ?? '', status: t.status,
+    prioridade: t.prioridade ?? PRIORIDADE_PADRAO, responsavel_id: t.responsavel_id ?? '',
+    prazo: t.prazo ?? '', etiquetas: t.etiquetas,
+  }), []);
+
+  /** Grava o rascunho inteiro, como faz a tela de Tarefas. Diferente do arraste
+   *  no quadro, aqui a pessoa apertou "Salvar": vale o formulário todo. */
+  const salvarRascunho = useCallback(async (r: RascunhoTarefa) => {
+    if (!r.titulo.trim()) { toast('error', 'Falta o título', 'A tarefa precisa de um título.'); return; }
+    setSalvando(true);
+    try {
+      const resposta = await api('', 'POST', {
+        action: 'salvar_tarefa', ...r,
+        entrega_id: r.entrega_id ? Number(r.entrega_id) : null,
+      });
+      if (resposta?.error) { toast('error', 'Não foi possível salvar', resposta.error); return; }
+      if (r.id) {
+        const dono = pessoas.find(x => x.id === r.responsavel_id);
+        pintarTarefa(r.id, {
+          titulo: r.titulo, descricao: r.descricao, status: r.status,
+          prioridade: r.prioridade, prazo: r.prazo || null, etiquetas: r.etiquetas,
+          entrega_id: r.entrega_id ? Number(r.entrega_id) : null,
+          responsavel_id: r.responsavel_id || null,
+          responsavel_nome: dono?.nome ?? null,
+          responsavel_foto: dono?.foto_url ?? null,
+        });
+      }
+      setRascunhoTarefa(null);
+      toast('success', 'Tarefa salva');
+      reconciliar();
+    } finally {
+      setSalvando(false);
+    }
+  }, [api, pessoas, pintarTarefa, reconciliar, toast]);
+  /** Grava uma mudança pontual numa tarefa, a partir do relatório. Manda a
+   *  tarefa inteira e sobrescreve o que mudou: a ação do servidor grava todos
+   *  os campos, e um corpo parcial apagaria o resto. */
+  const salvarTarefa = useCallback(async (t: Tarefa, mudancas: Record<string, unknown>) => {
+    // Pinta antes de perguntar: arrastar um card tem de responder no gesto, e
+    // o servidor não decide nada aqui que a tela não saiba prever. O nome do
+    // responsável anda junto do id, senão o card mostraria a foto antiga.
+    const naTela: Partial<Tarefa> = { ...mudancas } as Partial<Tarefa>;
+    if ('responsavel_id' in mudancas) {
+      const dono = pessoas.find(x => x.id === mudancas.responsavel_id);
+      naTela.responsavel_nome = dono?.nome ?? null;
+      naTela.responsavel_foto = dono?.foto_url ?? null;
+    }
+    pintarTarefa(t.id, naTela);
+
+    const r = await api('', 'POST', {
+      action: 'salvar_tarefa',
+      id: t.id, projeto_id: t.projeto_id, entrega_id: t.entrega_id,
+      titulo: t.titulo, descricao: t.descricao, status: t.status,
+      prioridade: t.prioridade, responsavel_id: t.responsavel_id,
+      prazo: t.prazo, etiquetas: t.etiquetas, concluida_em: t.concluida_em,
+      ...mudancas,
+    });
+    if (r?.error) {
+      pintarTarefa(t.id, t);  // desfaz: a tela volta ao que era antes do gesto
+      toast('error', 'Não foi possível salvar', r.error);
+      return;
+    }
+    // Status e progresso da entrega o servidor deduz das tarefas; é o que a
+    // reconciliação vem buscar, já com a tela pintada.
+    reconciliar();
+  }, [api, pessoas, pintarTarefa, reconciliar, toast]);
 
   // Link compartilhável: ?projeto=<id> abre o projeto assim que a lista chega.
   // Roda uma vez, e limpa a query para não reabrir a cada recarregamento.
@@ -3067,7 +4194,7 @@ export default function ProjetosPage({ token }: { token: string }) {
 
       setForm(null);
       toast('success', editando ? 'Projeto atualizado' : 'Projeto criado');
-      await carregar();
+      await recarregar();
     } finally {
       setSalvando(false);
     }
@@ -3079,20 +4206,45 @@ export default function ProjetosPage({ token }: { token: string }) {
    *  divergência. */
   async function registrarSaude(p: Projeto, estado: string, descricao: string) {
     await api('', 'POST', { action: 'registrar_saude_projeto', projeto_id: p.id, estado, descricao });
-    await carregar();
     toast('success', 'Leitura registrada');
+    await recarregar();
   }
 
   async function salvarEntrega(p: Projeto, dados: EntregaPendente, id?: number) {
+    // Entrega que já existe muda na tela primeiro: trocar o status de uma linha
+    // é o gesto mais repetido do painel, e ele esperava a listagem inteira
+    // voltar do servidor para mudar de cor. Entrega nova não dá para adiantar -
+    // o id nasce lá.
+    const antes = id ? p.entregas.find(e => e.id === id) : null;
+    if (antes) {
+      mudancasRef.current++;
+      setProjetos(ps => ps.map(x => (x.id !== p.id ? x : {
+        ...x,
+        entregas: x.entregas.map(e => (e.id === id ? { ...e, ...dados } as Entrega : e)),
+      })));
+    }
     const r = await api('', 'POST', { action: 'salvar_entrega', projeto_id: p.id, id, ...dados });
-    if (r?.error) { toast('error', 'Não deu', r.error); return; }
-    await carregar();
+    if (r?.error) {
+      if (antes) {
+        setProjetos(ps => ps.map(x => (x.id !== p.id ? x : {
+          ...x, entregas: x.entregas.map(e => (e.id === id ? antes : e)),
+        })));
+      }
+      toast('error', 'Não deu', r.error);
+      return;
+    }
+    reconciliar();
   }
 
   async function excluirEntrega(e: Entrega) {
+    const antes = projetos;
+    mudancasRef.current++;
+    setProjetos(ps => ps.map(p => (p.id !== e.projeto_id ? p : {
+      ...p, entregas: p.entregas.filter(x => x.id !== e.id),
+    })));
     const r = await api('', 'POST', { action: 'excluir_entrega', id: e.id });
-    if (r?.error) { toast('error', 'Não deu', r.error); return; }
-    await carregar();
+    if (r?.error) { setProjetos(antes); toast('error', 'Não deu', r.error); return; }
+    reconciliar();
   }
 
   async function subirEvidencia(e: Entrega, arquivos: FileList | null, comentario?: string, etapa?: string) {
@@ -3112,7 +4264,7 @@ export default function ProjetosPage({ token }: { token: string }) {
       });
       primeiro = false;
     }
-    await carregar();
+    await recarregar();
   }
 
   async function baixarEvidencia(ev: Evidencia) {
@@ -3131,8 +4283,8 @@ export default function ProjetosPage({ token }: { token: string }) {
     reg: { data: string; assunto: string; notas: string; participantes: string[] },
   ) {
     await api('', 'POST', { action: 'registrar_reuniao_projeto', projeto_id: p.id, ...reg });
-    await carregar();
     toast('success', 'Reunião registrada');
+    await recarregar();
   }
 
   function excluirReuniao(r: Reuniao) {
@@ -3170,9 +4322,10 @@ export default function ProjetosPage({ token }: { token: string }) {
 
   async function excluir(p: Projeto) {
     setExcluindo(null);
+    setProjetos(ps => ps.filter(x => x.id !== p.id));
     await api('', 'POST', { action: 'delete_projeto', id: p.id });
     toast('success', 'Projeto excluído');
-    await carregar();
+    await recarregar();
   }
 
   /** Muda só um campo, sem abrir o formulário. Usado na aba de gestão. */
@@ -3297,10 +4450,11 @@ export default function ProjetosPage({ token }: { token: string }) {
 
   return (
     <div className="admin-content-wrap">
-      <div className="config-tabs">
-        <button className={`config-tab${aba === 'geral' ? ' active' : ''}`} onClick={() => setAba('geral')}>Geral</button>
-        <button className={`config-tab${aba === 'gestao' ? ' active' : ''}`} onClick={() => setAba('gestao')}>Gestão</button>
-      </div>
+      <Abas
+        valor={aba}
+        onChange={setAba}
+        opcoes={[{ valor: 'geral', label: 'Geral' }, { valor: 'gestao', label: 'Gestão' }]}
+      />
 
       <div className="admin-page-header">
         <div>
@@ -3319,7 +4473,13 @@ export default function ProjetosPage({ token }: { token: string }) {
         )}
       </div>
 
-      {carregando ? (
+      {/* O cabeçalho fica de fora: o título é o mesmo nas duas abas, e vê-lo
+          reanimar a cada troca daria a impressão de que a página inteira
+          recarregou. */}
+      <AbaPainel key={aba} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Os cartões são da aba Geral. Na Gestão nem o esqueleto deles aparece,
+          senão a tela prometeria uma faixa que não vem. */}
+      {aba === 'gestao' ? null : carregando ? (
         <CartoesKpiEsqueleto cartoes={5} />
       ) : projetos.length > 0 && (
         <div className="admin-stats" style={{ marginBottom: 18 }}>
@@ -3341,7 +4501,10 @@ export default function ProjetosPage({ token }: { token: string }) {
         </div>
       )}
 
-      {!carregando && projetos.length > 0 && (
+      {/* A barra de filtros é da aba Geral. Na Gestão o relatório é a carteira
+          inteira: recortá-la por cliente ou por tipo daria um panorama que não
+          é panorama de nada. */}
+      {aba === 'geral' && !carregando && projetos.length > 0 && (
         <div className="admin-toolbar">
           <span className="admin-toolbar-label">Filtrar</span>
           <FilterDropdown label="Status" values={fStatus} options={opcoes.status} onChange={setFStatus} />
@@ -3599,119 +4762,19 @@ export default function ProjetosPage({ token }: { token: string }) {
           </table>
         </div>
       ) : (
-        <>
-          {/* Os cartões desta aba subiram para o topo da página: eram os mesmos
-              números, e ter uma fileira só serve as duas abas. */}
-          <div className="admin-table-wrap">
-            <table className="admin-table sem-quebra">
-              <thead>
-                <tr>
-                  <th>Projeto</th><th>Gestor</th><th>Equipe</th><th>Entrega</th>
-                  <th>Saúde</th><th>Prioridade</th>
-                  <th>Status</th><th style={{ minWidth: 160 }}>Progresso</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtrados.map(p => {
-                  const dias = diasPara(p.previsao_entrega);
-                  const atrasado = dias !== null && dias < 0
-                    && p.status !== 'Concluído' && p.status !== 'Cancelado';
-                  return (
-                    <tr key={p.id}>
-                      <td>
-                        <div style={{ fontWeight: 600, color: 'var(--black)' }}>{p.nome}</div>
-                        <div style={{ fontSize: 11.5, color: 'var(--gray2)', marginTop: 2 }}>
-                          {p.codigo}{p.cliente_nome ? ` · ${p.cliente_nome}` : ''}
-                        </div>
-                      </td>
-                      <td><Gestor nome={gestorDe(p)?.nome ?? null} email={gestorDe(p)?.email ?? null}
-                          foto={gestorDe(p)?.foto_url} /></td>
-                      <td>
-                        {p.equipe.filter(m => m.papel !== 'Gestor').length === 0
-                          ? <span style={{ color: 'var(--gray2)' }}>-</span>
-                          : (
-                            <span style={{ display: 'inline-flex', gap: 3, alignItems: 'center' }}>
-                              {p.equipe.filter(m => m.papel !== 'Gestor').slice(0, 4).map(m => (
-                                <span key={m.id} title={`${m.nome} - ${m.papel}`}>
-                                  <Avatar nome={m.nome} foto={m.foto_url} size={20} />
-                                </span>
-                              ))}
-                              {p.equipe.filter(m => m.papel !== 'Gestor').length > 4 && (
-                                <span style={{ fontSize: 11, color: 'var(--gray2)' }}>
-                                  +{p.equipe.filter(m => m.papel !== 'Gestor').length - 4}
-                                </span>
-                              )}
-                            </span>
-                          )}
-                      </td>
-                      <td>
-                        {fmtData(p.previsao_entrega)}
-                        {atrasado && (
-                          <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: '#B45309' }}>
-                            {Math.abs(dias!)}d de atraso
-                          </span>
-                        )}
-                      </td>
-                      <td>
-                        {/* Mesma interação da tabela Geral: as vizinhas desta
-                            célula são editáveis, e a saúde ficar morta aqui era
-                            o que destoava. */}
-                        {podeEditar ? (
-                          <CelulaSaude registro={p.saude[0]}
-                            onEscolher={estado => setLendoSaude({ projeto: p, estado })} />
-                        ) : (
-                          <span title={p.saude[0]?.descricao ?? 'Nenhuma leitura de saúde registrada.'}>
-                            <ChipSaude estado={p.saude[0]?.estado ?? SEM_LEITURA} />
-                          </span>
-                        )}
-                      </td>
-                      <td>
-                        {podeEditar ? (
-                          <SeletorCompacto
-                            valor={p.prioridade ?? PRIORIDADE_PADRAO}
-                            opcoes={PRIORIDADES}
-                            titulo="Prioridade"
-                            icones={ICONE_PRIORIDADE}
-                            onChange={v => void ajustar(p, 'prioridade', v)}
-                          />
-                        ) : (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5,
-                            fontSize: 11.5, fontWeight: 700,
-                            color: COR_PRIORIDADE[p.prioridade] ?? 'var(--gray)' }}>
-                            {ICONE_PRIORIDADE[p.prioridade]?.({ size: 13 })}
-                            {p.prioridade ?? PRIORIDADE_PADRAO}
-                          </span>
-                        )}
-                      </td>
-                      <td>
-                        {podeEditar ? (
-                          <SelectSistema
-                            valor={p.status}
-                            onChange={v => void ajustar(p, 'status', v)}
-                            opcoes={STATUS_PROJETO.map(s => ({ valor: s as string, label: s }))}
-                            minWidth={150}
-                          />
-                        ) : <ChipStatus status={p.status} />}
-                      </td>
-                      <td>
-                        {/* Deixou de ser estimativa digitada: é a fração de
-                            entregas concluídas, que o sistema sabe contar. */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-                          title={`${p.entregas.filter(e => e.status === ENTREGA_VALIDADA).length} de ${p.entregas.length} entrega(s) validada(s)`}>
-                          <span style={{ flex: 1, minWidth: 90 }}><Barra valor={progressoDe(p)} /></span>
-                          <span style={{ fontSize: 11, color: 'var(--gray2)', whiteSpace: 'nowrap' }}>
-                            {p.entregas.filter(e => e.status === ENTREGA_VALIDADA).length}/{p.entregas.length}
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </>
+        <AbaGestao
+          projetos={projetos}
+          pessoas={pessoas}
+          onSalvarTarefa={salvarTarefa}
+          onAbrirTarefa={abrirTarefa}
+          etapaDeEntrada={etapaDeEntrada}
+          podeEditarTarefa={pode('tarefas:editar')}
+          onAbrir={p => setForm({ editando: p })}
+          onRegistrarSaude={(p, estado) => setLendoSaude({ projeto: p, estado })}
+          podeEditar={podeEditar}
+        />
       )}
+      </AbaPainel>
 
       {form && (
         <FormularioProjeto
@@ -3719,6 +4782,9 @@ export default function ProjetosPage({ token }: { token: string }) {
           // leitura de saúde recarrega os projetos, e o retrato antigo não
           // mostraria o registro recém-criado.
           editando={form.editando ? projetos.find(p => p.id === form.editando!.id) ?? form.editando : null}
+          onVerTarefasDaEntrega={form.editando && onVerTarefasDaEntrega
+            ? entregaId => onVerTarefasDaEntrega(form.editando!.id, entregaId)
+            : undefined}
           pessoas={pessoas}
           clientes={clientes}
           salvando={salvando}
@@ -3749,6 +4815,24 @@ export default function ProjetosPage({ token }: { token: string }) {
           salvando={salvando}
           onFechar={() => setLendoSaude(null)}
           onRegistrar={(estado, descricao) => registrarSaude(lendoSaude.projeto, estado, descricao)}
+        />
+      )}
+
+      {rascunhoTarefa && (
+        <FormularioTarefa
+          rascunho={rascunhoTarefa}
+          projetos={projetos}
+          etapas={etapasTarefa}
+          etiquetas={etiquetasTarefa}
+          etiquetaPorPapel={etiquetaPorPapel}
+          usuarioId={usuario?.id}
+          etq={etq}
+          pessoas={pessoas}
+          salvando={salvando}
+          somenteLeitura={!pode('tarefas:editar')}
+          onMudar={setRascunhoTarefa}
+          onFechar={() => setRascunhoTarefa(null)}
+          onSalvar={() => void salvarRascunho(rascunhoTarefa)}
         />
       )}
 

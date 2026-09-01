@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, type CSSProperties, type Reac
 import { createPortal } from 'react-dom';
 import { useToast, useAuth } from './AdminApp';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
+import { Abas, AbaPainel } from '../components/Abas';
 import { IconDoc, IconZip, IconImage, IconCheck, IconSpinner, IconExternal } from '../components/icons';
 
 function useApi(token: string) {
@@ -2023,18 +2024,17 @@ export default function CadastrosPage({ token, newCedente }: { token: string; ne
 
   return (
     <div className="admin-content-wrap">
-      <div className="config-tabs">
-        <button className={`config-tab${activeTab === 'cedentes' ? ' active' : ''}`} onClick={() => setActiveTab('cedentes')}>
-          Cedentes
-        </button>
-        <button className={`config-tab${activeTab === 'sacados' ? ' active' : ''}`} onClick={() => setActiveTab('sacados')}>
-          Sacados
-        </button>
-      </div>
+      <Abas
+        valor={activeTab}
+        onChange={setActiveTab}
+        opcoes={[{ valor: 'cedentes', label: 'Cedentes' }, { valor: 'sacados', label: 'Sacados' }]}
+      />
 
+      <AbaPainel key={activeTab}>
       {activeTab === 'cedentes' && <CedentesTab token={token} newCedente={newCedente} />}
 
       {activeTab === 'sacados' && <SacadosTab token={token} />}
+      </AbaPainel>
     </div>
   );
 }

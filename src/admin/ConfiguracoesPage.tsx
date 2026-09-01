@@ -7,10 +7,11 @@ import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { DepsMark } from '../components/DepsMark';
 import { descreveProdutoDeps, PRODUTO_PJ_DEFAULT } from '../lib/depsProdutos';
 import {
-  IconAlert, IconAlertOctagon, IconArrastar, IconCheck, IconClipboard, IconEntrada,
-  IconEstrela, IconPlus, IconProibido, IconRecolher, IconTrash, IconX,
+  IconAlert, IconAlertOctagon, IconArrastar, IconCheck, IconChevronDown, IconClipboard,
+  IconEntrada, IconEstrela, IconPlus, IconProibido, IconRecolher, IconTrash, IconUser, IconX,
 } from '../components/icons';
 import { SegSwitch } from '../components/SegSwitch';
+import { Abas, AbaPainel } from '../components/Abas';
 import { PAPEIS_EQUIPE } from '../lib/papeisDeEquipe';
 
 // ── Move target dropdown ─────────────────────────────
@@ -1739,42 +1740,112 @@ interface EtiquetaTarefa {
   papeis: string[];
 }
 
-/** Escolha múltipla dos papéis que enxergam a etiqueta. Nada marcado é "todo
- *  mundo": obrigar a marcar os seis para dizer "sem restrição" seria trabalho
- *  para chegar ao estado que já é o padrão. */
+/** Escolha múltipla dos papéis que enxergam a etiqueta, no formato dos outros
+ *  botões da linha. Nada marcado é "todo mundo": obrigar a marcar os seis para
+ *  dizer "sem restrição" seria trabalho para chegar ao estado que já é o padrão.
+ *
+ *  Como as etapas, este dropdown não fecha ao escolher - papel quase sempre vem
+ *  em conjunto - e por isso tem dispensa própria: rolagem recoloca a lista em
+ *  vez de fechá-la. */
 function SeletorPapeis({ valor, onChange }: {
   valor: string[];
   onChange: (v: string[]) => void;
 }) {
+  const [aberto, setAberto] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  const LARGURA = 190;
+  const ALTURA = 8 + PAPEIS_EQUIPE.length * 36;
+
+  const medir = useCallback(() => {
+    const r = triggerRef.current!.getBoundingClientRect();
+    const paraCima = window.innerHeight - r.bottom - 8 < ALTURA && r.top > ALTURA;
+    return {
+      top: paraCima ? r.top - ALTURA - 4 : r.bottom + 4,
+      // Ancorado pela direita: o botão fica no fim da linha, e abrir para a
+      // direita jogaria a lista para fora da tela.
+      left: Math.max(8, Math.min(r.right - LARGURA, window.innerWidth - LARGURA - 8)),
+    };
+  }, [ALTURA]);
+
+  useEffect(() => {
+    if (!aberto) return;
+    const dentro = (alvo: Node | null) => !!alvo
+      && (triggerRef.current?.contains(alvo) || dropRef.current?.contains(alvo));
+    const aoClicar = (e: MouseEvent) => { if (!dentro(e.target as Node)) setAberto(false); };
+    const recolocar = (e?: Event) => {
+      if (e && dropRef.current?.contains(e.target as Node)) return;
+      setPos(medir());
+    };
+    document.addEventListener('mousedown', aoClicar);
+    window.addEventListener('scroll', recolocar, true);
+    window.addEventListener('resize', recolocar);
+    return () => {
+      document.removeEventListener('mousedown', aoClicar);
+      window.removeEventListener('scroll', recolocar, true);
+      window.removeEventListener('resize', recolocar);
+    };
+  }, [aberto, medir]);
+
+  // O rótulo diz o estado sem precisar abrir: quem vê, ou "todos".
+  const rotulo = valor.length === 0
+    ? 'Todos'
+    : valor.length <= 2 ? valor.join(', ') : `${valor[0]} +${valor.length - 1}`;
+
   return (
-    <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 4 }}>
-      {PAPEIS_EQUIPE.map(p => {
-        const ativo = valor.includes(p);
-        return (
-          <button
-            key={p}
-            type="button"
-            aria-pressed={ativo}
-            onClick={() => onChange(ativo ? valor.filter(x => x !== p) : [...valor, p])}
-            style={{
-              fontFamily: 'inherit', fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
-              padding: '2px 9px', borderRadius: 'var(--radius-pill)',
-              border: `1px solid ${ativo ? 'var(--yellow)' : 'var(--gray3)'}`,
-              background: ativo ? 'var(--yd)' : 'var(--white)',
-              color: ativo ? 'var(--black)' : 'var(--gray2)',
-              transition: 'border-color var(--transition), background var(--transition), color var(--transition)',
-            }}
-          >
-            {p}
-          </button>
-        );
-      })}
-      {valor.length === 0 && (
-        <span style={{ fontSize: 11, color: 'var(--gray2)', alignSelf: 'center', marginLeft: 2 }}>
-          visível a todos
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="status-action-btn"
+        aria-expanded={aberto}
+        title={valor.length === 0
+          ? 'Quem vê esta etiqueta: todos os papéis da equipe'
+          : `Quem vê esta etiqueta: ${valor.join(', ')}`}
+        onClick={() => { setPos(medir()); setAberto(a => !a); }}
+        style={valor.length > 0
+          ? { borderColor: 'var(--yellow)', color: 'var(--black)' }
+          : undefined}
+      >
+        <IconUser size={12} />
+        <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {rotulo}
         </span>
+        <span aria-hidden="true" style={{
+          display: 'inline-flex', color: 'var(--gray2)',
+          transform: aberto ? 'rotate(180deg)' : 'none',
+          transition: 'transform var(--transition)',
+        }}>
+          <IconChevronDown size={11} />
+        </span>
+      </button>
+
+      {aberto && createPortal(
+        <div ref={dropRef} className="status-select-dropdown"
+          role="listbox" aria-multiselectable="true"
+          style={{ top: pos.top, left: pos.left, width: LARGURA, zIndex: 10002 }}>
+          {PAPEIS_EQUIPE.map(p => {
+            const ativo = valor.includes(p);
+            return (
+              <div key={p} role="option" aria-selected={ativo}
+                className={`status-select-option${ativo ? ' active' : ''}`}
+                onClick={() => onChange(ativo ? valor.filter(x => x !== p) : [...valor, p])}>
+                <span style={{ flex: 1 }}>{p}</span>
+                <span aria-hidden="true" style={{
+                  display: 'inline-flex', color: 'var(--yellow)',
+                  visibility: ativo ? 'visible' : 'hidden',
+                }}>
+                  <IconCheck size={13} />
+                </span>
+              </div>
+            );
+          })}
+        </div>,
+        document.body,
       )}
-    </span>
+    </>
   );
 }
 
@@ -1944,6 +2015,11 @@ function EtiquetaTarefaRow({
         </div>
 
         <div className="status-row-right" onClick={e => e.stopPropagation()}>
+          {porPapel && (
+            <SeletorPapeis valor={etiqueta.papeis}
+              onChange={p => void salvar(nome, cor, descricao, p)} />
+          )}
+
           <button className="status-action-btn"
             title={etiqueta.bloqueia
               ? 'Trava a entrega: enquanto uma tarefa aberta tiver esta etiqueta, a entrega dela aparece como bloqueada'
@@ -1966,19 +2042,7 @@ function EtiquetaTarefaRow({
         </div>
       </div>
 
-      {/* A escolha de papéis continua embaixo: são seis pastilhas, e elas não
-          cabem na linha do nome sem espremer a descrição. */}
-      {porPapel && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
-          padding: '0 12px 10px 46px' }} onClick={e => e.stopPropagation()}>
-          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em',
-            textTransform: 'uppercase', color: 'var(--gray2)' }}>
-            Quem vê
-          </span>
-          <SeletorPapeis valor={etiqueta.papeis}
-            onChange={p => void salvar(nome, cor, descricao, p)} />
-        </div>
-      )}
+
 
       {paletaPos && createPortal(
         <div ref={paletaRef} className="status-color-picker-popover"
@@ -2278,10 +2342,11 @@ export default function ConfiguracoesPage({ token }: { token: string }) {
 
   return (
     <div className="admin-content-wrap">
-      <div className="config-tabs">
-        <button className={`config-tab${activeTab === 'etapas' ? ' active' : ''}`} onClick={() => setActiveTab('etapas')}>Etapas</button>
-        <button className={`config-tab${activeTab === 'integracoes' ? ' active' : ''}`} onClick={() => setActiveTab('integracoes')}>Integrações</button>
-      </div>
+      <Abas
+        valor={activeTab}
+        onChange={setActiveTab}
+        opcoes={[{ valor: 'etapas', label: 'Etapas' }, { valor: 'integracoes', label: 'Integrações' }]}
+      />
 
       <div className="admin-page-header">
         <div>
@@ -2315,6 +2380,7 @@ export default function ConfiguracoesPage({ token }: { token: string }) {
         )}
       </div>
 
+      <AbaPainel key={`${activeTab}-${escopo}`} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {activeTab === 'integracoes' ? (
         <IntegracoesTab token={token} />
       ) : escopo === 'tarefas' ? (
@@ -2418,6 +2484,7 @@ export default function ConfiguracoesPage({ token }: { token: string }) {
         </div>
       </>
       )}
+      </AbaPainel>
     </div>
   );
 }

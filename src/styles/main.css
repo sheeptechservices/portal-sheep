@@ -96,7 +96,7 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   .tema-trocando, .tema-trocando * { transition: none !important; }
 }
 
-/* Ícone dos itens do sidebar — "pop" com bounce no hover (e leve recuo no clique) */
+/* Ícone dos itens do sidebar - "pop" com bounce no hover (e leve recuo no clique) */
 .nav-leaf-ico { transition: transform .24s cubic-bezier(0.34, 1.56, 0.64, 1); }
 .nav-leaf:not(:disabled):hover .nav-leaf-ico { transform: scale(1.2); }
 .nav-leaf:not(:disabled):active .nav-leaf-ico { transform: scale(0.92); }
@@ -4017,6 +4017,872 @@ body.arrastando-painel {
    mesmo anel amarelo dos outros controles. */
 /* Faixa que abre um grupo na tabela. Não é linha de dado: não clica, não passa
    o mouse e não entra na navegação por teclado. */
+/* ── Rosca ────────────────────────────────────────────
+   Anel de composição, com legenda ao lado e dica que segue o cursor. */
+.donut {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.donut-anel {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.donut-anel circle {
+  transition: stroke-width var(--transition), opacity var(--transition);
+}
+
+/* O total no buraco do anel. Sem eventos de ponteiro: ele fica por cima das
+   fatias, e sem isto roubaria o hover de quem passa pelo meio. */
+.donut-centro {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  pointer-events: none;
+  text-align: center;
+  padding: 0 18px;
+}
+.donut-centro strong {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--black);
+}
+.donut-centro span {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--gray2);
+  line-height: 1.15;
+}
+
+.donut-legenda {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* Larga o bastante para o rótulo e estreita o bastante para o número ficar
+     ao lado dele: esticada, a contagem ia parar na outra ponta do bloco. */
+  flex: 0 1 auto;
+  min-width: 150px;
+  max-width: 240px;
+}
+
+.donut-legenda-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--gray);
+  text-align: left;
+  transition: background var(--transition), color var(--transition);
+}
+.donut-legenda-item:hover,
+.donut-legenda-item.ativa {
+  background: var(--gray4);
+  color: var(--black);
+}
+.donut-legenda-item:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--yb);
+}
+
+.donut-ponto {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.donut-legenda-rotulo {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.donut-legenda-valor {
+  font-weight: 800;
+  color: var(--black);
+  flex-shrink: 0;
+}
+
+/* A dica segue o cursor. Deslocada para cima e para a direita do ponteiro, e
+   sem eventos: encostar nela tiraria o hover da fatia e ela piscaria. */
+.donut-dica {
+  position: absolute;
+  z-index: 5;
+  transform: translate(12px, -100%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--black);
+  color: var(--white);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 14px rgba(0,0,0,.18);
+  animation: fadeIn .1s ease both;
+}
+.donut-dica strong { font-weight: 800; }
+.donut-dica-pct {
+  opacity: 0.65;
+  font-weight: 600;
+}
+
+.donut-vazio {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.donut-vazio p {
+  font-size: 12px;
+  color: var(--gray2);
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .donut { gap: 14px; }
+  .donut-legenda { flex-basis: 100%; max-width: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .donut-anel circle { transition: none; }
+  .donut-dica { animation: none; }
+}
+
+/* ── Revista da aba Gestão ────────────────────────────
+   Cada projeto é um capítulo. Coluna única e larga de leitura, títulos grandes,
+   citação de abertura e linha do tempo - o formato de quem lê uma história, e
+   não de quem compara uma planilha. É também o que sobrevive ao celular sem
+   virar rolagem lateral. */
+/* Uma folha só para o relatório inteiro, e não uma ficha por projeto. O que
+   separa capítulo de capítulo e seção de seção é um fio, não uma borda: a
+   leitura corre de cima a baixo como num documento. */
+.rev-revista {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--white);
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-lg);
+  padding: 4px 26px 8px;
+}
+
+/* ── Página com índice ────────────────────────────────
+   O índice fica preso na lateral enquanto a leitura corre, e é por ele que se
+   navega. Numa página de uma tela só, saber onde se está vale tanto quanto
+   poder pular para outro ponto. */
+.rev-pagina {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+
+.rev-indice {
+  position: sticky;
+  top: 4px;
+  align-self: start;
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.rev-indice::-webkit-scrollbar { display: none; }
+
+.rev-indice-titulo {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gray2);
+  margin: 0 0 10px 8px;
+}
+
+.rev-indice ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.rev-indice-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--gray2);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition),
+              border-color var(--transition);
+}
+.rev-indice-item:hover { background: var(--gray4); color: var(--black); }
+/* O item aceso é o que está sendo lido, e não o que foi clicado. */
+.rev-indice-item.ativo {
+  background: var(--gray4);
+  border-left-color: var(--yellow);
+  color: var(--black);
+  font-weight: 700;
+}
+.rev-indice-item:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+
+.rev-indice-num {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--gray3);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.rev-indice-item.ativo .rev-indice-num { color: var(--gray2); }
+
+.rev-indice-prio { display: inline-flex; flex-shrink: 0; }
+.rev-indice-ponto { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+.rev-indice-nome {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rev-indice-pct {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gray2);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+/* ── Relatório em página de editor ────────────────────
+   Uma folha branca só, com margem generosa e coluna única de leitura. Os
+   projetos vêm um sob o outro, separados por divisor - não há ficha em volta
+   de cada um. */
+.rev-revista {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--white);
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-lg);
+  padding: 10px 40px 24px;
+}
+
+/* Um fio separa um projeto do outro. No documento corrido, só o respiro não
+   dizia onde um capítulo acabava - o título seguinte podia passar por seção do
+   projeto anterior. */
+.nt-pagina {
+  /* Mesmo respiro dos dois lados do fio: com 10px embaixo, o traço colava no
+     último bloco do capítulo e parecia pertencer a ele. */
+  padding: 40px 0;
+  border-top: 1px solid var(--gray3);
+  scroll-margin-top: 12px;
+  /* Entra ao aparecer pela primeira vez; o observador põe `entrou`. */
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity .4s var(--curva-anti), transform .4s var(--curva-anti);
+}
+.nt-pagina:first-child { padding-top: 18px; border-top: none; }
+.nt-pagina.entrou { opacity: 1; transform: none; }
+
+.nt-cabeca {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.nt-numero {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--gray3);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.nt-titulo {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.022em;
+  line-height: 1.2;
+  color: var(--black);
+  min-width: 0;
+}
+.nt-titulo button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  border-bottom: 2px solid transparent;
+  transition: border-color var(--transition);
+}
+.nt-titulo button:hover { border-bottom-color: var(--yellow); }
+.nt-titulo button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--yb);
+  border-radius: var(--radius-sm);
+}
+
+/* ── Propriedades ─────────────────────────────────────
+   O cabeçalho de página: rótulo apagado à esquerda, valor à direita. */
+/* Propriedades lado a lado, com o rótulo em cima e o valor embaixo. Em coluna
+   única elas ocupavam sete linhas antes de o texto começar; deitadas, o
+   cabeçalho da página cabe em uma faixa e o `auto-fit` decide quantas cabem por
+   linha em cada largura. */
+.nt-props {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+  gap: 4px 8px;
+  /* Sem fio embaixo: a faixa de propriedades pertence ao cabeçalho do capítulo,
+     e o traço a lia como bloco à parte. O respiro já a separa do texto. */
+  margin-bottom: 26px;
+}
+
+.nt-prop {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition);
+}
+.nt-prop:hover { background: var(--gray4); }
+
+.nt-prop-rotulo {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--gray2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nt-prop-valor {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  font-size: 13.5px;
+  color: var(--black);
+}
+
+.nt-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.nt-progresso {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+/* Base fixa, e não `width: 100%`: dentro de um flex de largura dada pelo
+   conteúdo, a porcentagem resolve contra si mesma e a barra some. */
+.nt-progresso-barra {
+  display: block;
+  flex: 0 0 118px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--gray3);
+  overflow: hidden;
+}
+.nt-progresso-barra span {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--yellow);
+}
+
+/* ── Destaque ─────────────────────────────────────────
+   O bloco de chamada do editor, com a cor da saúde: ícone à esquerda, texto à
+   direita, fundo pálido. */
+.nt-destaque {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 20px;
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--cor-saude, var(--gray3));
+  background: color-mix(in srgb, var(--cor-saude, var(--gray3)) 7%, var(--white));
+}
+.nt-destaque-icone {
+  display: inline-flex;
+  color: var(--cor-saude, var(--gray2));
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.nt-destaque-texto { flex: 1; min-width: 0; }
+/* No mesmo corpo do resto da página. Maior, o destaque virava manchete e
+   competia com o título do projeto. */
+.nt-destaque-texto p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--black);
+  white-space: pre-wrap;
+}
+.nt-destaque-pe {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px !important;
+  font-size: 11.5px !important;
+  color: var(--gray2) !important;
+}
+.nt-sep { color: var(--gray3); }
+
+/* ── Bloco recolhível ─────────────────────────────────
+   O toggle do editor: triângulo que gira, título ao lado, conteúdo recuado. */
+.nt-toggle { margin: 2px 0; }
+
+.nt-toggle-cabeca {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.nt-toggle-cabeca:hover { background: var(--gray4); }
+.nt-toggle-cabeca:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+
+.nt-triangulo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-sm);
+  color: var(--gray2);
+  flex-shrink: 0;
+  /* No mesmo tempo e curva da caixa: girando mais rápido, o triângulo termina
+     com o bloco ainda em movimento e os dois parecem coisas separadas. */
+  transition: transform .3s var(--curva-anti), color var(--transition);
+}
+.nt-toggle.aberto .nt-triangulo { transform: rotate(90deg); }
+.nt-toggle-cabeca:hover .nt-triangulo { color: var(--black); }
+
+.nt-toggle-titulo {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--black);
+  letter-spacing: -0.01em;
+}
+
+.nt-toggle-contagem {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gray2);
+  background: var(--gray4);
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Abre e fecha animando a altura. `grid-template-rows: 0fr -> 1fr` porque
+   `height: auto` não anima; o tempo é o de revelação, não o de realce. */
+.nt-toggle-corpo {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows .3s var(--curva-anti), opacity .14s ease;
+}
+.nt-toggle-corpo > * {
+  overflow: hidden;
+  min-height: 0;
+}
+/* O conteúdo alinha com o título do bloco, sem fio de guia: o recuo já diz que
+   ele pertence ao título, e a linha competia com os cards do quadro.
+   O respiro vem aqui, uma camada abaixo do que recorta: margem e padding não
+   encolhem com a linha da grade e sobrariam visíveis no fechado. */
+.nt-toggle-conteudo {
+  margin: 4px 0 12px 32px;
+  padding: 2px 0 4px;
+}
+.nt-toggle.aberto .nt-toggle-corpo {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  /* Abrindo, o conteúdo espera a caixa ganhar espaço; fechando, some antes de
+     ela terminar de subir. */
+  transition: grid-template-rows .3s var(--curva-anti), opacity .24s ease .08s;
+}
+
+.nt-texto {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--gray);
+  margin: 0;
+}
+.nt-vazio {
+  font-size: 13px;
+  color: var(--gray2);
+  margin: 0;
+}
+
+.nt-lista {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.nt-lista li {
+  position: relative;
+  padding-left: 18px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--gray);
+}
+.nt-lista li::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 9px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--gray2);
+}
+.nt-lista li.grave { color: var(--black); font-weight: 600; }
+.nt-lista li.grave::before { background: var(--red); }
+
+/* Anel e legenda ocupando a faixa inteira. Encolhido à esquerda, o donut
+   deixava metade da linha vazia num bloco que vai de ponta a ponta. */
+.donut.donut-largo { width: 100%; }
+.donut.donut-largo .donut-legenda {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 2px 10px;
+}
+
+/* Anel, recorte e lista numa coluna com respiro próprio: a linha do recorte só
+   existe quando há filtro, e o espaçamento não pode depender dela. */
+.nt-entregas {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* A linha entre o anel e a lista: diz o que está filtrado e desfaz o filtro. */
+.nt-recorte {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  color: var(--gray2);
+}
+.nt-recorte button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-pill);
+  background: none;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.nt-recorte button:hover { background: var(--gray4); color: var(--black); }
+.nt-recorte button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+
+/* A foto do responsável ao lado do título da entrega, sem roubar coluna. */
+.nt-entrega-dono { margin-left: 8px; vertical-align: middle; }
+
+/* ── Quadro da semana ─────────────────────────────────
+   Uma coluna por dia, com as tarefas concluídas naquele dia. Rola de lado em
+   vez de espremer sete colunas numa tela estreita. */
+.nt-semana {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(140px, 1fr);
+  gap: 6px;
+  margin-top: 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.nt-semana::-webkit-scrollbar { display: none; }
+
+.nt-dia {
+  min-width: 0;
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  padding: 8px 8px 10px;
+}
+/* O dia que ainda não chegou fica só com o contorno: preenchido, ele parecia
+   um dia de trabalho que não rendeu. */
+.nt-dia.futuro {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--gray4);
+}
+/* Apagado, mas legível: a coluna do futuro agora carrega o que está planejado
+   para ela, e não só espaço vazio. */
+.nt-dia.futuro .nt-dia-nome,
+.nt-dia.futuro .nt-dia-numero { color: var(--gray2); }
+.nt-dia.hoje {
+  background: var(--yd);
+  box-shadow: inset 0 0 0 1px var(--yellow);
+}
+/* Coluna sob o card arrastado. Tracejado, e não preenchido: é convite, não
+   estado. */
+.nt-dia.alvo {
+  box-shadow: inset 0 0 0 2px var(--yellow);
+  background: var(--yd);
+}
+.nt-dia-alvo {
+  margin: 0;
+  padding: 10px 4px;
+  border: 1.5px dashed var(--gray3);
+  border-radius: var(--radius-sm);
+  font-size: 10.5px;
+  color: var(--gray2);
+  text-align: center;
+}
+
+.nt-dia-cabeca {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 0 2px 8px;
+}
+.nt-dia-nome {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.nt-dia.hoje .nt-dia-nome { color: var(--black); }
+.nt-dia-numero {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gray);
+  font-variant-numeric: tabular-nums;
+}
+.nt-dia-conta {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--gray2);
+  font-variant-numeric: tabular-nums;
+}
+
+.nt-dia-corpo {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-height: 26px;
+}
+
+.nt-card {
+  background: var(--white);
+  border: 1px solid var(--gray3);
+  border-left: 3px solid var(--green, #23A455);
+  border-radius: var(--radius-sm);
+  padding: 7px 8px;
+  transition: border-color var(--transition), box-shadow var(--transition-spring);
+}
+.nt-card:hover { box-shadow: var(--shadow-card); }
+/* Planejada, não registrada: o traço na borda diz que o dia é intenção e não
+   fato, sem precisar de uma segunda cor no quadro. */
+.nt-card.planejada { border-left-style: dashed; border-left-color: var(--gray2); }
+.nt-card[draggable="true"] { cursor: grab; }
+.nt-card[draggable="true"]:active { cursor: grabbing; }
+/* O card que está sendo levado fica apagado, e não sumido: some, e a coluna
+   de origem colapsa no meio do gesto. */
+.nt-card.arrastando { opacity: .4; }
+
+
+/* O título do card abre o detalhe. Botão, e não parágrafo com clique: é assim
+   que o teclado chega nele. */
+.nt-card-abrir {
+  display: block;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.nt-card-abrir:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
+
+.nt-card p {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--black);
+  /* Duas linhas: um título comprido não pode esticar a coluna do dia. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.nt-card-pe {
+  display: flex;
+  align-items: center;
+  margin-top: 7px;
+  font-size: 10.5px;
+  color: var(--gray2);
+  min-width: 0;
+}
+
+/* ── Tabela ───────────────────────────────────────────
+   Linhas finas, cabeçalho apagado: a tabela do editor, não a do painel. */
+.nt-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.nt-tabela th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray2);
+  padding: 0 10px 7px 0;
+  border-bottom: 1px solid var(--gray3);
+}
+.nt-tabela td {
+  padding: 9px 10px 9px 0;
+  border-bottom: 1px solid var(--gray4);
+  color: var(--gray);
+  vertical-align: middle;
+}
+.nt-tabela td:first-child {
+  color: var(--black);
+  max-width: 0;
+  width: 52%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nt-tabela tr:last-child td { border-bottom: none; }
+
+@media (max-width: 1100px) {
+  /* Sem largura para a coluna lateral, o índice vira uma faixa presa no alto,
+     que rola de lado. Continua sendo por onde se navega. */
+  .rev-pagina { grid-template-columns: 1fr; gap: 14px; }
+  .rev-indice {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    max-height: none;
+    overflow-x: auto;
+    padding: 8px 0;
+    background: var(--bg);
+    border-bottom: 1px solid var(--gray3);
+  }
+  .rev-indice-titulo { display: none; }
+  .rev-indice ol { flex-direction: row; gap: 6px; }
+  .rev-indice-item {
+    width: auto;
+    flex-shrink: 0;
+    border-left: none;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--gray3);
+    background: var(--white);
+    padding: 6px 12px;
+  }
+  .rev-indice-item.ativo { border-color: var(--yellow); background: var(--yd); }
+  .rev-indice-nome { max-width: 140px; }
+}
+
+@media (max-width: 768px) {
+  .rev-revista { padding: 8px 16px 20px; }
+  .nt-pagina { padding: 30px 0; }
+  .nt-titulo { font-size: 21px; }
+  /* Duas por linha: com `minmax(158px, 1fr)` numa tela de 375px caberia só
+     uma, e o cabeçalho voltaria a ter sete linhas. */
+  .nt-props { grid-template-columns: 1fr 1fr; }
+  .nt-progresso-barra { width: 84px; }
+  .nt-toggle-conteudo { margin-left: 14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nt-pagina { opacity: 1; transform: none; transition: none; }
+  .nt-triangulo,
+  .nt-toggle-corpo,
+  .nt-toggle.aberto .nt-toggle-corpo { transition: none; }
+}
+
+/* Histórico aberto embaixo de uma linha: recuado e sem o realce de linha
+   clicável, para ler como continuação dela e não como um registro a mais. */
+.admin-table tbody tr.linha-historico,
+.admin-table tbody tr.linha-historico:hover {
+  cursor: default;
+  background: var(--bg);
+}
+.admin-table tbody tr.linha-historico td {
+  padding: 14px 16px 16px 46px;
+  white-space: normal;
+  border-top: none;
+}
+
 .admin-table tbody tr.linha-grupo,
 .admin-table tbody tr.linha-grupo:hover {
   cursor: default;
@@ -4461,7 +5327,39 @@ body.arrastando-painel {
 
 .config-tab.active {
   color: var(--black);
-  border-bottom-color: var(--yellow);
+}
+
+/* O traço da aba ativa é um só, que desliza. Continua no `border-bottom` das
+   abas antigas que ainda não usam o componente `Abas`, por isso a regra acima
+   deixou de acender a borda: quem tem o traço deslizante não deve ter os dois. */
+.config-tabs {
+  position: relative;
+}
+
+.config-tab-traco {
+  position: absolute;
+  bottom: -1.5px;
+  height: 2px;
+  background: var(--yellow);
+  border-radius: 2px 2px 0 0;
+  pointer-events: none;
+  transition: left var(--transition-spring), width var(--transition-spring);
+}
+
+/* O conteúdo da aba entra subindo de leve. Curto de propósito: a troca precisa
+   parecer contínua, não encenada. */
+.aba-painel {
+  animation: abaEntra .22s var(--curva-anti) both;
+}
+
+@keyframes abaEntra {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .config-tab-traco { transition: none; }
+  .aba-painel { animation: none; }
 }
 
 /* ── Sub-switch de escopo (segmented control de texto) ── */
@@ -5288,17 +6186,182 @@ body.arrastando-painel {
 }
 
 /* ── Responsive admin ────────────────────────────────── */
+/* ── Barra inferior (celular) ─────────────────────────────
+   No celular a sidebar sai do caminho e a navegação vira uma barra fixa
+   embaixo, ao alcance do polegar. Some acima de 768px, onde a sidebar já
+   resolve. */
+.nav-inferior {
+  display: none;
+}
+
 @media (max-width: 768px) {
-  .admin-stats { flex-wrap: wrap; }
-  .admin-stat-card { min-width: 120px; }
-  .kanban-board { gap: 10px; }
-  .kanban-column { flex: 0 0 240px; }
-  /* Repete o flex-basis porque o atalho `flex` da regra acima o zera. Continua
-     saindo de --rail-w, para o trilho seguir centrado também aqui. */
-  .kanban-column.kanban-column-collapsible { flex-basis: var(--rail-w); }
-  .kanban-column.kanban-column-collapsible.is-open { flex-basis: 240px; }
+  .nav-inferior {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 300;
+    display: flex;
+    align-items: stretch;
+    background: var(--white);
+    border-top: 1px solid var(--gray3);
+    /* A faixa de gestos do aparelho fica por baixo da barra; sem isto o último
+       item cai debaixo dela. */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .nav-inferior-item {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 8px 2px 7px;
+    border: none;
+    background: none;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--gray2);
+    cursor: pointer;
+    position: relative;
+    transition: color var(--transition);
+  }
+
+  .nav-inferior-item span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nav-inferior-item.ativo {
+    color: var(--black);
+  }
+
+  /* Traço curto no topo do item, no lugar do fundo cheio: a barra fica com
+     menos peso e o item ativo continua evidente. */
+  .nav-inferior-item.ativo::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 26px;
+    height: 2.5px;
+    border-radius: 0 0 3px 3px;
+    background: var(--yellow);
+  }
+
+  .nav-inferior-item:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--yb);
+    border-radius: var(--radius-sm);
+  }
+}
+
+@media (max-width: 768px) {
+  /* ── Cabeçalho ────────────────────────────────────────
+     A busca deixa de ser centralizada em posição absoluta: no celular ela
+     caía por cima do nome do portal. Vira item do meio da própria linha. */
+  .topbar-busca {
+    position: static !important;
+    transform: none !important;
+    flex-shrink: 0;
+  }
+  .topbar-marca-sub { display: none; }
+  .topbar-marca-nome { font-size: 14px; }
+
+  /* ── Conteúdo ─────────────────────────────────────────
+     O respiro no rodapé passa a contar com a barra inferior. */
+  .admin-content-wrap {
+    padding: 14px 14px 92px;
+    gap: 16px;
+  }
+  .admin-page-title { font-size: 20px; }
+
+  /* Cabeçalho de página empilha, e o botão de ação ocupa a linha inteira: no
+     celular um botão largo é mais fácil de acertar que um encostado no canto. */
+  .admin-page-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .admin-page-header .btn { width: 100%; justify-content: center; }
+
+  /* Barras que rolam de lado em vez de quebrar em três linhas. A borda some
+     na rolagem, então o corte fica suave. */
+  .admin-toolbar,
+  .admin-stats,
+  .config-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+  }
+  .admin-toolbar::-webkit-scrollbar,
+  .admin-stats::-webkit-scrollbar,
+  .config-tabs::-webkit-scrollbar { display: none; }
+  .admin-toolbar > *, .config-tabs > * { flex-shrink: 0; }
+  /* Dois nomes de classe de propósito: a regra larga do topo do arquivo
+     (`.admin-stats .admin-stat-card-v2`) tem mais peso, e uma seletora de um
+     nome só perderia dela mesmo dentro da media query. */
+  .admin-stats .admin-stat-card-v2 {
+    flex: 0 0 auto;
+    min-width: 132px;
+    scroll-snap-align: start;
+  }
+
+  /* Tabela rola de lado com o dedo, em vez de espremer oito colunas. */
+  .admin-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Painel lateral vira folha de tela cheia. */
   .admin-modal { width: 100vw; }
-  .admin-content-wrap { padding: 16px 16px 80px; }
+  .delete-confirm-modal { width: calc(100vw - 24px) !important; }
+
+  /* Linha de etapa e de etiqueta: os botões vão para baixo do nome em vez de
+     espremer o texto até sumir. */
+  .status-row-bar { flex-wrap: wrap; row-gap: 8px; }
+  .status-row-left { flex: 1 1 100%; }
+  .status-row-right { flex: 1 1 100%; justify-content: flex-start; }
+
+  /* ── Quadro ───────────────────────────────────────────
+     Coluna quase da largura da tela, com encaixe: passar o dedo troca de
+     coluna inteira, e não para no meio de duas. */
+  .kanban-board {
+    gap: 10px;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+  .kanban-column {
+    flex: 0 0 82vw;
+    min-width: 0;
+    max-height: none;
+    scroll-snap-align: start;
+  }
+  .kanban-column.kanban-column-collapsible { flex-basis: var(--rail-w); }
+  .kanban-column.kanban-column-collapsible.is-open { flex-basis: 82vw; }
+
+  /* Formulário de duas ou quatro colunas passa a uma só. */
+  .campos-2, .campos-4 { grid-template-columns: 1fr !important; }
+}
+
+/* Duas colunas ainda cabem no tablet; quatro, não. */
+@media (min-width: 769px) and (max-width: 1100px) {
+  .campos-4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
+
+@media (max-width: 480px) {
+  .admin-content-wrap { padding: 12px 12px 92px; }
+  .kanban-column { flex-basis: 88vw; }
+  .kanban-column.kanban-column-collapsible.is-open { flex-basis: 88vw; }
 }
 
 /* ── Detail party grid ──────────────────────────────── */
