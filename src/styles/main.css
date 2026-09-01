@@ -9820,6 +9820,78 @@ body.arrastando-painel {
   animation: spin .7s linear infinite;
 }
 
+/* ── Cristal ──────────────────────────────────────────
+   As superficies da pagina do cliente sao vidro solido: um degrade de branco
+   que escurece de cima para baixo, fio de luz na aresta superior, sombra baixa
+   e larga por fora. Sem `backdrop-filter` de proposito - nao ha cor por tras
+   para filtrar, o desfoque custaria GPU a toa e nem todo navegador o entrega
+   igual. O que da a leitura de vidro aqui e a aresta, nao o borrao. */
+.pub-pagina {
+  --pub-cristal: linear-gradient(180deg, rgba(255, 255, 255, .96) 0%,
+    rgba(255, 255, 255, .82) 100%);
+  --pub-cristal-borda: rgba(23, 21, 15, .08);
+  /* Um degrau acima da borda em repouso, e ainda longe do `--gray2`: o hover
+     precisa aparecer sem virar contorno preto em volta da linha. */
+  --pub-cristal-borda-forte: rgba(23, 21, 15, .24);
+  /* Entre a borda em repouso e a de hover: o tronco precisa ser visto sem
+     virar o desenho principal da lista. */
+  --pub-arvore: rgba(23, 21, 15, .16);
+  --pub-cristal-luz: rgba(255, 255, 255, 1);
+  --pub-cristal-base: rgba(23, 21, 15, .04);
+  --pub-cristal-sombra: 0 1px 2px rgba(20, 22, 30, .04),
+    0 12px 26px -22px rgba(20, 22, 30, .5);
+  position: relative;
+  min-height: 100vh;
+}
+/* No escuro o degrade inverte de material: branco translucido viraria um veu
+   leitoso sobre o fundo quase preto. */
+:root[data-theme="dark"] .pub-pagina {
+  --pub-cristal: linear-gradient(180deg, rgba(30, 31, 36, .96) 0%,
+    rgba(20, 21, 24, .86) 100%);
+  --pub-cristal-borda: rgba(255, 255, 255, .10);
+  --pub-cristal-borda-forte: rgba(255, 255, 255, .30);
+  --pub-arvore: rgba(255, 255, 255, .20);
+  --pub-cristal-luz: rgba(255, 255, 255, .08);
+  --pub-cristal-base: rgba(0, 0, 0, .18);
+  --pub-cristal-sombra: 0 1px 2px rgba(0, 0, 0, .25),
+    0 12px 26px -22px rgba(0, 0, 0, .8);
+}
+
+/* O filtro e um componente do portal, entao a troca fica presa a esta pagina:
+   no painel de dentro ele continua com o contorno de la. */
+.pub-barra-ferramentas .filter-dropdown-btn:hover,
+.pub-barra-ferramentas .filter-dropdown-btn.active {
+  border-color: var(--pub-cristal-borda-forte);
+  color: var(--black);
+}
+
+/* O mesmo acabamento em tudo que e superficie: faixa do topo, cartao de
+   indicador, linha de entrega, campo de busca e botoes da barra. Um material
+   so para a pagina inteira. */
+.pub-topo,
+.pub-kpis .admin-stat-card-v2,
+.pub-entrega,
+.pub-busca,
+.pub-barra-ferramentas .filter-dropdown-btn,
+.pub-ferramentas > button,
+.pub-seletor > button {
+  background: var(--pub-cristal);
+  border-color: var(--pub-cristal-borda);
+  box-shadow: inset 0 1px 0 var(--pub-cristal-luz),
+    inset 0 -1px 0 var(--pub-cristal-base),
+    var(--pub-cristal-sombra);
+}
+/* A borda esquerda do cartao e a cor da situacao, e continua sendo. */
+.pub-kpis .admin-stat-card-v2 { border-left-color: var(--accent-color, var(--yellow)); }
+/* Os estados de hover repoem o fio de luz junto com a elevacao: sem isto o
+   cartao perderia a aresta justo quando sobe. */
+.pub-kpis .admin-stat-card-v2:hover,
+.pub-entrega:hover {
+  box-shadow: inset 0 1px 0 var(--pub-cristal-luz),
+    inset 0 -1px 0 var(--pub-cristal-base),
+    var(--shadow-card-hover);
+}
+
 /* ── Topo ─────────────────────────────────────────── */
 /* A faixa vai de ponta a ponta e o conteudo dela para na mesma coluna do
    resto: o cabecalho vira uma peca, e nao um paragrafo perdido no alto. */
@@ -9951,13 +10023,24 @@ body.arrastando-painel {
 .pub-galeria .pub-avatar {
   width: 52px;
   height: 52px;
-  box-shadow: 0 0 0 1px var(--gray3);
+  /* A profundidade do cartao, na escala da bolinha: aro fino, um contato curto
+     logo abaixo e uma sombra larga e baixa. A sombra do cartao e calibrada
+     para 200px de largura e sumiria num circulo de 52px. Nada de brilho por
+     cima: sobre um rosto, o reflexo branco vira mancha. */
+  box-shadow:
+    0 0 0 1px var(--pub-cristal-borda),
+    0 2px 5px rgba(20, 22, 30, .07),
+    0 10px 20px -14px rgba(20, 22, 30, .55);
   transition: box-shadow var(--transition), transform var(--transition-spring);
 }
 .pub-galeria li:hover .pub-avatar {
-  box-shadow: 0 0 0 1px var(--gray2), var(--shadow-card-hover);
+  box-shadow:
+    0 0 0 1px var(--pub-cristal-borda-forte),
+    0 4px 10px rgba(20, 22, 30, .10),
+    0 16px 28px -16px rgba(20, 22, 30, .6);
   transform: translateY(-2px);
 }
+
 .pub-galeria .pub-avatar-vazio { font-size: 18px; }
 
 .pub-galeria strong {
@@ -10016,7 +10099,12 @@ body.arrastando-painel {
   background: var(--white);
   transition: border-color var(--transition), box-shadow var(--transition-spring);
 }
-.pub-entrega:hover { border-color: var(--gray2); box-shadow: var(--shadow-card); }
+/* Cinza medio no hover: um degrau visivel acima da borda em repouso, sem o
+   contorno escuro de antes, que competia com o marco colorido da situacao. */
+.pub-entrega:hover {
+  border-color: var(--pub-cristal-borda-forte);
+  box-shadow: var(--shadow-card);
+}
 
 /* O marco: círculo com o ícone da situação, no tom dela sobre um fundo de 14%.
    Mesma construção da bolha do painel. */
@@ -10187,10 +10275,15 @@ body.arrastando-painel {
   cursor: pointer;
   transition: background var(--transition), border-color var(--transition), color var(--transition);
 }
+/* Hover e selecao usam a mesma borda de toda a pagina. O que separa um estado
+   do outro e a cor do texto, e nao dois cinzas diferentes de contorno. */
 .pub-ferramentas > button:hover,
-.pub-seletor > button:hover { border-color: var(--gray2); color: var(--black); }
+.pub-seletor > button:hover,
 .pub-ferramentas > button.aberto,
-.pub-seletor > button.aberto { border-color: var(--black); color: var(--black); }
+.pub-seletor > button.aberto {
+  border-color: var(--pub-cristal-borda-forte);
+  color: var(--black);
+}
 .pub-ferramentas > button:focus-visible,
 .pub-seletor > button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
 
@@ -10242,7 +10335,8 @@ body.arrastando-painel {
   color: var(--gray2);
   transition: border-color var(--transition);
 }
-.pub-busca:focus-within { border-color: var(--gray2); }
+.pub-busca:hover,
+.pub-busca:focus-within { border-color: var(--pub-cristal-borda-forte); }
 .pub-busca input {
   flex: 1;
   min-width: 0;
@@ -10267,6 +10361,54 @@ body.arrastando-painel {
 
 /* ── Grupos ───────────────────────────────────────── */
 .pub-grupo + .pub-grupo { margin-top: 18px; }
+
+/* ── Arvore do grupo ──────────────────────────────────
+   Um tronco que desce do rotulo do grupo e um ramo curto para cada entrega,
+   como numa arvore de arquivos: fica visivel de quem cada linha depende, e o
+   grupo deixa de ser so um titulo solto acima de uma lista.
+
+   O tronco nasce alinhado com a seta do cabecalho e morre no ramo da ultima
+   linha - descer ate o fim do bloco deixaria uma ponta solta no ar. */
+.pub-grupo.arvore .pub-entregas,
+.pub-grupo.arvore .pub-grupo-vazio { padding-left: 20px; }
+/* Grupo sem nada: uma linha discreta no lugar da lista, para o bloco nao ficar
+   com o rotulo pairando sobre o vazio. */
+.pub-grupo-vazio {
+  margin: 0;
+  padding: 2px 0 4px;
+  font-size: 12px;
+  color: var(--gray2);
+}
+.pub-grupo.arvore .pub-entrega { position: relative; }
+/* O tronco de cada linha estica 4px para cada lado para cobrir o vao entre
+   elas; sem isso a linha vertical sairia tracejada. */
+.pub-grupo.arvore .pub-entrega::before {
+  content: '';
+  position: absolute;
+  left: -14px;
+  top: -4px;
+  bottom: -4px;
+  width: 1px;
+  background: var(--pub-arvore);
+}
+/* A primeira sobe mais: alcanca o rotulo do grupo, 7px acima do bloco. */
+.pub-grupo.arvore .pub-entrega:first-child::before { top: -11px; }
+.pub-grupo.arvore .pub-entrega:last-child::before {
+  bottom: auto;
+  height: calc(50% + 4px);
+}
+.pub-grupo.arvore .pub-entrega:first-child:last-child::before {
+  height: calc(50% + 11px);
+}
+.pub-grupo.arvore .pub-entrega::after {
+  content: '';
+  position: absolute;
+  left: -14px;
+  top: 50%;
+  width: 10px;
+  height: 1px;
+  background: var(--pub-arvore);
+}
 .pub-grupo-titulo {
   display: flex;
   align-items: center;
@@ -10300,7 +10442,9 @@ body.arrastando-painel {
   transition: transform var(--transition-spring);
 }
 .pub-grupo-titulo.aberto .pub-grupo-seta { transform: rotate(90deg); }
-.pub-grupo-titulo span {
+/* A seta tambem e um `span` aqui dentro: sem o `:not`, ela herdava a pilula
+   cinza da contagem e virava um chip vazio atras do triangulo. */
+.pub-grupo-titulo span:not(.pub-grupo-seta) {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0;
@@ -10341,7 +10485,7 @@ body.arrastando-painel {
 }
 .pub-entrega-topo:disabled { cursor: default; }
 .pub-entrega-topo:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
-.pub-entrega.abrivel:hover { border-color: var(--gray2); }
+.pub-entrega.abrivel:hover { border-color: var(--pub-cristal-borda-forte); }
 
 /* A mesma seta da seção de entregas do painel, no mesmo lugar: colada no
    título, e não no fim da linha. Quem usa os dois lados encontra o mesmo gesto
@@ -10432,7 +10576,10 @@ body.arrastando-painel {
   cursor: pointer;
   transition: border-color var(--transition), background var(--transition);
 }
-.pub-evidencias button:hover { border-color: var(--gray2); background: var(--gray4); }
+.pub-evidencias button:hover {
+  border-color: var(--pub-cristal-borda-forte);
+  background: var(--gray4);
+}
 .pub-evidencias button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
 .pub-ev-etapa {
   flex-shrink: 0;
@@ -10540,7 +10687,11 @@ body.arrastando-painel {
   cursor: pointer;
   transition: background var(--transition), border-color var(--transition), color var(--transition);
 }
-.pub-previa-pe button:hover:not(:disabled) { background: var(--gray4); border-color: var(--gray2); color: var(--black); }
+.pub-previa-pe button:hover:not(:disabled) {
+  background: var(--gray4);
+  border-color: var(--pub-cristal-borda-forte);
+  color: var(--black);
+}
 .pub-previa-pe button:disabled { opacity: .5; cursor: default; }
 .pub-previa-pe button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--yb); }
 

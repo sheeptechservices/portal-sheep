@@ -77,6 +77,15 @@ const ORDENS = [
   { valor: 'progresso', label: 'Mais avançadas' },
 ] as const;
 
+/** A ordem em que os grupos de situação aparecem para o cliente. Não é a ordem
+ *  do fluxo de trabalho, que vem da rota em `ordem_status`: é a ordem da
+ *  conversa. Primeiro o que está travado e o que acabou de chegar para ele
+ *  olhar, depois o que está em curso, e por último o que já se resolveu ou nem
+ *  começou. Situação que não estiver nesta lista cai no fim. */
+const ORDEM_GRUPOS = [
+  'Bloqueada', 'Entregue', 'Em andamento', 'Validada', 'Planejada', 'Cancelada',
+];
+
 const AGRUPAMENTOS = [
   { valor: 'nenhum', label: 'Sem agrupamento' },
   { valor: 'categoria', label: 'Categoria' },
@@ -92,6 +101,12 @@ const COR: Record<string, string> = {
   'Entregue': '#7C3AED',
   'Validada': '#23A455',
   'Cancelada': '#8A857A',
+};
+
+/** Onde a situação entra na ordem dos grupos. Desconhecida vai para o fim. */
+const posicaoDoGrupo = (st: string) => {
+  const i = ORDEM_GRUPOS.indexOf(st);
+  return i === -1 ? ORDEM_GRUPOS.length : i;
 };
 
 const fmtData = (v: string | null) => {
@@ -446,7 +461,9 @@ export default function ProjetoPublico({ token }: { token: string }) {
   /** Grupos recolhidos, por nome. */
   const [recolhidos, setRecolhidos] = useState<Set<string>>(new Set());
   const [ordem, setOrdem] = useState<string>('padrao');
-  const [agrupamento, setAgrupamento] = useState<string>('nenhum');
+  // Agrupado por situação desde a primeira olhada: a lista corrida obrigava o
+  // cliente a varrer 46 linhas para descobrir o que está travado.
+  const [agrupamento, setAgrupamento] = useState<string>('status');
 
   // Trocar o critério de agrupamento reabre tudo: senão a pessoa muda de eixo e
   // encontra uma lista fechada que ela não fechou.
@@ -482,7 +499,11 @@ export default function ProjetoPublico({ token }: { token: string }) {
   }
 
   const { projeto, equipe, entregas, ordem_status } = dados;
-  const situacoes = ordem_status.filter(st => entregas.some(e => e.status === st));
+  // Na mesma ordem dos grupos: o filtro lista as situações como a página as
+  // mostra, senão a primeira opção da lista seria a última da tela.
+  const situacoes = ordem_status
+    .filter(st => entregas.some(e => e.status === st))
+    .sort((x, y) => posicaoDoGrupo(x) - posicaoDoGrupo(y));
 
   const categorias = [...new Set(entregas.map(e => e.categoria).filter(Boolean))]
     .sort((a, b) => a!.localeCompare(b!, 'pt-BR')) as string[];
@@ -520,6 +541,16 @@ export default function ProjetoPublico({ token }: { token: string }) {
         : ['Sem responsável'];
     };
     const mapa = new Map<string, Entrega[]>();
+    // Por situação, todas aparecem, mesmo as vazias: o cliente lê "nada
+    // bloqueado" em vez de ter que deduzir isso da ausência de um bloco. Com
+    // um filtro de situação ligado, só as escolhidas: ali ele já disse o que
+    // quer ver. Categoria e responsável não entram nisso - a lista deles vem
+    // dos próprios dados, e nomes de gente sem entrega nenhuma seria ruído.
+    if (agrupamento === 'status') {
+      for (const st of ordem_status) {
+        if (fSituacao.length === 0 || fSituacao.includes(st)) mapa.set(st, []);
+      }
+    }
     for (const e of lista) {
       for (const k of chavesDe(e)) {
         const itens = mapa.get(k);
@@ -530,7 +561,7 @@ export default function ProjetoPublico({ token }: { token: string }) {
     // lista.
     const sobra = agrupamento === 'categoria' ? 'Sem categoria' : 'Sem responsável';
     const ordena = agrupamento === 'status'
-      ? (a: string, b: string) => ordem_status.indexOf(a) - ordem_status.indexOf(b)
+      ? (a: string, b: string) => posicaoDoGrupo(a) - posicaoDoGrupo(b)
       : (a: string, b: string) => (a === sobra ? 1 : b === sobra ? -1
         : a.localeCompare(b, 'pt-BR'));
     return [...mapa.entries()].sort((x, y) => ordena(x[0], y[0]))
@@ -538,7 +569,7 @@ export default function ProjetoPublico({ token }: { token: string }) {
   })();
 
   return (
-    <>
+    <div className="pub-pagina">
       {/* Faixa de ponta a ponta com o essencial: de que projeto se trata e de
           quem ele é. A descrição desceu para uma seção própria - no cabeçalho
           ela empurrava a marca do cliente para longe do nome. */}
@@ -661,7 +692,9 @@ export default function ProjetoPublico({ token }: { token: string }) {
         ) : grupos.map(g => {
           const fechado = recolhidos.has(g.nome);
           return (
-          <div key={g.nome} className="pub-grupo">
+          // A árvore só existe havendo cabeçalho: sem agrupamento não há de
+          // onde os ramos sairem.
+          <div key={g.nome} className={`pub-grupo${g.nome ? ' arvore' : ''}`}>
             {g.nome && (
               <button type="button" className={`pub-grupo-titulo${fechado ? '' : ' aberto'}`}
                 aria-expanded={!fechado}
@@ -677,6 +710,9 @@ export default function ProjetoPublico({ token }: { token: string }) {
             )}
             <div className={`grupo-corpo${fechado ? '' : ' aberto'}`}>
              <div>
+            {g.itens.length === 0 ? (
+              <p className="pub-grupo-vazio">Nenhuma entrega nesta situação.</p>
+            ) : (
             <ul className="pub-entregas lista-anima" key={assinatura}>
               {g.itens.map(e => (
                 <LinhaEntrega
@@ -692,6 +728,7 @@ export default function ProjetoPublico({ token }: { token: string }) {
                 />
               ))}
             </ul>
+            )}
              </div>
             </div>
           </div>
@@ -708,6 +745,6 @@ export default function ProjetoPublico({ token }: { token: string }) {
         {fmtData(projeto.publicado_em) && <span>Publicado em {fmtData(projeto.publicado_em)}</span>}
       </footer>
       </div>
-    </>
+    </div>
   );
 }
