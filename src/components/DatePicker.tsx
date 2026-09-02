@@ -199,10 +199,13 @@ export function DatePicker({ value, onChange, label, required, error, disabled, 
   const todayBlocked = todayDow === 0 || todayDow === 6 || todayIsHoliday
 
   const hasError = !!error
-  const borderColor = hasError ? 'var(--red)' : open ? 'var(--yellow)' : 'var(--gray3)'
+  const borderColor = hasError ? 'var(--red)' : open ? 'var(--gray2)' : 'var(--gray3)'
+  // Fechado, sem sombra em linha: assim o acabamento do painel (fio de luz e
+  // sombra larga) alcanca o campo, como alcanca os outros. Aberto, o halo
+  // substitui o acabamento, que e o que `.form-input` faz no foco.
   const boxShadow = open
-    ? (hasError ? '0 0 0 4px rgba(217,48,37,0.10)' : '0 0 0 4px var(--yd), 0 2px 8px rgba(0, 201, 167,0.12)')
-    : 'none'
+    ? (hasError ? '0 0 0 4px rgba(217,48,37,0.10)' : '0 0 0 3px var(--gray4)')
+    : undefined
 
   const dropdown = open && createPortal(
     <div
@@ -347,6 +350,7 @@ export function DatePicker({ value, onChange, label, required, error, disabled, 
       <div ref={triggerRef} style={{ position: 'relative', width: '100%' }}>
         {label && <label className="form-label" style={{ display: 'block', marginBottom: 6 }}>{label}{required && <span style={{ color: 'var(--red)', marginLeft: 2 }}>*</span>}</label>}
         <div
+          className="campo-data"
           tabIndex={disabled ? -1 : 0}
           role="button"
           aria-haspopup="dialog"
@@ -356,10 +360,14 @@ export function DatePicker({ value, onChange, label, required, error, disabled, 
             if (e.key === 'Escape') setOpen(false)
           }}
           onClick={toggle}
+          // A cor da borda viaja num token para o hover poder viver no CSS: com
+          // `border` inline, nenhuma regra de folha alcancava este campo, e ele
+          // era o unico da tela que nao reagia ao passar do mouse.
           style={{
+            ['--bc' as string]: borderColor,
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             height: 38, padding: '0 11px', borderRadius: 'var(--radius-sm)',
-            border: `1.5px solid ${borderColor}`, background: 'var(--white)',
+            background: 'var(--white)',
             fontSize: 13.5, color: display ? 'var(--black)' : 'var(--gray2)',
             cursor: disabled ? 'not-allowed' : 'pointer', userSelect: 'none',
             opacity: disabled ? 0.6 : 1, width: '100%', boxSizing: 'border-box',
@@ -382,6 +390,7 @@ export function DatePicker({ value, onChange, label, required, error, disabled, 
   return (
     <div ref={triggerRef} style={{ position: 'relative', width: '100%' }}>
       <div
+        className="campo-data"
         tabIndex={disabled ? -1 : 0}
         role="button"
         aria-haspopup="dialog"
@@ -392,6 +401,7 @@ export function DatePicker({ value, onChange, label, required, error, disabled, 
         }}
         onClick={toggle}
         style={{
+          ['--bc' as string]: borderColor,
           fontFamily: "'Manrope', sans-serif",
           fontSize: 15,
           fontWeight: display ? 500 : 400,
@@ -406,7 +416,6 @@ export function DatePicker({ value, onChange, label, required, error, disabled, 
           boxSizing: 'border-box',
           borderWidth: 1,
           borderStyle: 'solid',
-          borderColor,
           borderRadius: 'var(--radius-sm)',
           outline: 'none',
           transition: 'border-color .2s ease, box-shadow .2s ease, transform .2s ease',
@@ -570,7 +579,7 @@ function LegendItem({ color, label }: { color: string; label: string }) {
 function CalendarIcon({ active }: { active: boolean }) {
   return (
     <svg width="15" height="15" viewBox="0 0 16 16" fill="none"
-      style={{ flexShrink: 0, color: active ? 'var(--yellow)' : 'var(--gray2)', marginLeft: 6, transition: 'color .2s' }}>
+      style={{ flexShrink: 0, color: active ? 'var(--black)' : 'var(--gray2)', marginLeft: 6, transition: 'color .2s' }}>
       <rect x="1" y="2" width="14" height="13" rx="2" stroke="currentColor" strokeWidth="1.5" />
       <path d="M1 6h14" stroke="currentColor" strokeWidth="1.5" />
       <path d="M5 1v2M11 1v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />

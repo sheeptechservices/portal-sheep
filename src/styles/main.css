@@ -365,10 +365,12 @@ body {
   box-shadow: var(--shadow-card-hover);
 }
 
+/* O cartao que contem o campo em foco tambem deixa de ficar verde: o realce
+   e do campo, e o cartao so acompanha com elevacao. */
 .card:has(.form-input:focus),
 .card:has(.form-input-float:focus) {
-  border-color: var(--yb);
-  box-shadow: 0 6px 28px rgba(0, 201, 167,0.10), 0 2px 8px rgba(0,0,0,0.06);
+  border-color: var(--gray2);
+  box-shadow: var(--shadow-card-hover);
 }
 
 /* ─── Eyebrow ─────────────────────────────────────────────────────────── */
@@ -601,9 +603,10 @@ body {
 
 .form-input-float::placeholder { color: transparent; }
 
+/* Mesmo realce de `.form-input`: o campo em foco fica cinza, nao verde. */
 .form-input-float:focus {
-  border-color: var(--yellow);
-  box-shadow: 0 0 0 4px var(--yd), 0 2px 8px rgba(0, 201, 167,0.12);
+  border-color: var(--gray2);
+  box-shadow: 0 0 0 3px var(--gray4);
   transform: translateY(-1px);
 }
 
@@ -653,6 +656,18 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.07em;
 }
+
+/* O campo de data se comporta como qualquer outro campo: a cor da borda vem do
+   token que o componente calcula (repouso, erro, aberto) e o hover mora aqui,
+   como em `.form-input`. */
+.campo-data {
+  /* A largura mora aqui tambem: o compacto usa 1.5px como `.form-input`, e o
+     flutuante ja declarava a dele em linha. */
+  border-width: 1.5px;
+  border-style: solid;
+  border-color: var(--bc, var(--gray3));
+}
+.campo-data:hover { border-color: var(--gray2); }
 
 /* Date input - always show label lifted */
 .date-input {
@@ -4203,6 +4218,118 @@ body.arrastando-painel {
 .detail-status-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ── Cristal do painel lateral ────────────────────────
+   O material do chip: a linha que carrega conteudo - membro da equipe,
+   entrega, arquivo, reuniao, leitura de saude. Os tokens moram no painel para
+   nao repetir os valores em cada peca. */
+.admin-modal {
+  /* Aqui o degrade e cinza, e nao branco: a folha do painel ja e branca, e uma
+     superficie branca sobre folha branca so existia pela borda. Na pagina do
+     cliente e o contrario - la a folha e cinza e a superficie e que clareia.
+
+     O tom e de leve: o suficiente para o campo se separar da folha, longe de
+     virar um bloco cinza no meio do formulario. */
+  --cristal: linear-gradient(180deg,
+    color-mix(in srgb, var(--gray4) 18%, var(--white)) 0%,
+    color-mix(in srgb, var(--gray4) 62%, var(--white)) 100%);
+  --cristal-borda: rgba(23, 21, 15, .08);
+  --cristal-borda-forte: rgba(23, 21, 15, .24);
+  --cristal-luz: rgba(255, 255, 255, 1);
+  --cristal-base: rgba(23, 21, 15, .04);
+  /* Espalhamento curto de proposito. Com o -22px da pagina do cliente, a
+     sombra depende da altura da peca: num campo de 38px ela quase se anula, e
+     num campo de texto de 70px sobra sombra de sobra. Assim ela pesa o mesmo
+     embaixo de qualquer altura. */
+  --cristal-sombra: 0 1px 2px rgba(20, 22, 30, .05),
+    0 4px 10px -6px rgba(20, 22, 30, .14);
+}
+:root[data-theme="dark"] .admin-modal {
+  --cristal: linear-gradient(180deg, rgba(30, 31, 36, .96) 0%,
+    rgba(20, 21, 24, .86) 100%);
+  --cristal-borda: rgba(255, 255, 255, .10);
+  --cristal-borda-forte: rgba(255, 255, 255, .30);
+  --cristal-luz: rgba(255, 255, 255, .08);
+  --cristal-base: rgba(0, 0, 0, .18);
+  --cristal-sombra: 0 1px 2px rgba(0, 0, 0, .25),
+    0 4px 10px -6px rgba(0, 0, 0, .45);
+}
+
+/* ── Tom dos icones do painel ──────────────────────────
+   O mesmo da pagina do cliente: `--gray2` em repouso, `--black` no hover. O
+   icone e apoio do texto, nao par dele - em `--gray` ele tinha quase o peso da
+   palavra ao lado.
+
+   O que carrega cor propria fica fora: excluir continua vermelho no hover, e a
+   bolha de situacao continua na cor da situacao. */
+.admin-modal .secao-add,
+.admin-modal .admin-file-download,
+.admin-modal .file-eye-btn,
+.admin-modal .file-delete-btn,
+.admin-modal .modal-acao {
+  color: var(--gray2);
+}
+.admin-modal .secao-add:hover:not(:disabled),
+.admin-modal .admin-file-download:hover,
+.admin-modal .file-eye-btn:hover,
+.admin-modal .modal-acao:hover {
+  color: var(--black);
+}
+
+/* As superficies do painel. Vale para o que repousa sobre a folha e tem
+   moldura propria: campo de formulario, linha de arquivo (que serve a anexo,
+   reuniao, leitura de saude e entrega), campo de busca, botao de secao e o
+   botao secundario do rodape.
+
+   Fica de fora o que nao e superficie: o fundo do painel, que e a folha e nao
+   um objeto sobre ela; as pilulas de situacao, etiqueta e prioridade, que tem
+   linguagem de cor propria; o botao primario, que e acao e nao apoio; os
+   icones dentro de uma linha, que ja estao sobre cristal - cristal sobre
+   cristal vira sujeira; e os menus flutuantes, que pedem a elevacao de quem
+   paira, nao a de quem repousa. */
+/* O preenchimento cinza e so do chip: a linha que carrega conteudo - membro da
+   equipe, entrega, arquivo, reuniao, leitura de saude. */
+.admin-modal .admin-file-item {
+  background: var(--cristal);
+}
+
+/* O acabamento, esse vale para tudo: fio de luz na aresta de cima, sombra fina
+   na de baixo e sombra larga por fora. Sobre o branco ele nao pinta nada - so
+   levanta a peca meio milimetro da folha. */
+.admin-modal .admin-file-item,
+.admin-modal .form-input,
+.admin-modal .form-select,
+.admin-modal textarea.form-input,
+.admin-modal .liquidez-trigger,
+.admin-modal .campo-data,
+.admin-modal .form-checkbox:not(:checked),
+.admin-modal .secao-busca-campo,
+.admin-modal .secao-add,
+.admin-modal .btn-secondary {
+  border-color: var(--cristal-borda);
+  box-shadow: inset 0 1px 0 var(--cristal-luz),
+    inset 0 -1px 0 var(--cristal-base),
+    var(--cristal-sombra);
+  transition: border-color var(--transition), box-shadow var(--transition-spring);
+}
+.admin-modal .admin-file-item:hover,
+.admin-modal .form-input:hover:not(:disabled),
+.admin-modal .form-select:hover:not(:disabled),
+.admin-modal .liquidez-trigger:hover,
+.admin-modal .campo-data:hover,
+.admin-modal .form-checkbox:hover:not(:checked),
+.admin-modal .secao-busca-campo:hover,
+.admin-modal .secao-busca-campo:focus-within,
+.admin-modal .secao-add:hover:not(:disabled),
+.admin-modal .btn-secondary:hover:not(:disabled) {
+  border-color: var(--cristal-borda-forte);
+}
+/* Campo em foco troca o acabamento pelo halo: e o realce que diz onde a
+   escrita esta indo, e dois efeitos somados viravam borrao. */
+.admin-modal .form-input:focus,
+.admin-modal .form-select:focus {
+  box-shadow: 0 0 0 3px var(--gray4);
 }
 
 /* ── Busca da secao de entregas ───────────────────────
@@ -9937,18 +10064,18 @@ body.arrastando-painel {
    para filtrar, o desfoque custaria GPU a toa e nem todo navegador o entrega
    igual. O que da a leitura de vidro aqui e a aresta, nao o borrao. */
 .pub-pagina {
-  --pub-cristal: linear-gradient(180deg, rgba(255, 255, 255, .96) 0%,
+  --cristal: linear-gradient(180deg, rgba(255, 255, 255, .96) 0%,
     rgba(255, 255, 255, .82) 100%);
-  --pub-cristal-borda: rgba(23, 21, 15, .08);
+  --cristal-borda: rgba(23, 21, 15, .08);
   /* Um degrau acima da borda em repouso, e ainda longe do `--gray2`: o hover
      precisa aparecer sem virar contorno preto em volta da linha. */
-  --pub-cristal-borda-forte: rgba(23, 21, 15, .24);
+  --cristal-borda-forte: rgba(23, 21, 15, .24);
   /* Entre a borda em repouso e a de hover: o tronco precisa ser visto sem
      virar o desenho principal da lista. */
   --pub-arvore: rgba(23, 21, 15, .16);
-  --pub-cristal-luz: rgba(255, 255, 255, 1);
-  --pub-cristal-base: rgba(23, 21, 15, .04);
-  --pub-cristal-sombra: 0 1px 2px rgba(20, 22, 30, .04),
+  --cristal-luz: rgba(255, 255, 255, 1);
+  --cristal-base: rgba(23, 21, 15, .04);
+  --cristal-sombra: 0 1px 2px rgba(20, 22, 30, .04),
     0 12px 26px -22px rgba(20, 22, 30, .5);
   position: relative;
   min-height: 100vh;
@@ -9956,14 +10083,14 @@ body.arrastando-painel {
 /* No escuro o degrade inverte de material: branco translucido viraria um veu
    leitoso sobre o fundo quase preto. */
 :root[data-theme="dark"] .pub-pagina {
-  --pub-cristal: linear-gradient(180deg, rgba(30, 31, 36, .96) 0%,
+  --cristal: linear-gradient(180deg, rgba(30, 31, 36, .96) 0%,
     rgba(20, 21, 24, .86) 100%);
-  --pub-cristal-borda: rgba(255, 255, 255, .10);
-  --pub-cristal-borda-forte: rgba(255, 255, 255, .30);
+  --cristal-borda: rgba(255, 255, 255, .10);
+  --cristal-borda-forte: rgba(255, 255, 255, .30);
   --pub-arvore: rgba(255, 255, 255, .20);
-  --pub-cristal-luz: rgba(255, 255, 255, .08);
-  --pub-cristal-base: rgba(0, 0, 0, .18);
-  --pub-cristal-sombra: 0 1px 2px rgba(0, 0, 0, .25),
+  --cristal-luz: rgba(255, 255, 255, .08);
+  --cristal-base: rgba(0, 0, 0, .18);
+  --cristal-sombra: 0 1px 2px rgba(0, 0, 0, .25),
     0 12px 26px -22px rgba(0, 0, 0, .8);
 }
 
@@ -9971,7 +10098,7 @@ body.arrastando-painel {
    no painel de dentro ele continua com o contorno de la. */
 .pub-barra-ferramentas .filter-dropdown-btn:hover,
 .pub-barra-ferramentas .filter-dropdown-btn.active {
-  border-color: var(--pub-cristal-borda-forte);
+  border-color: var(--cristal-borda-forte);
   color: var(--black);
 }
 
@@ -9985,11 +10112,11 @@ body.arrastando-painel {
 .pub-barra-ferramentas .filter-dropdown-btn,
 .pub-ferramentas > button,
 .pub-seletor > button {
-  background: var(--pub-cristal);
-  border-color: var(--pub-cristal-borda);
-  box-shadow: inset 0 1px 0 var(--pub-cristal-luz),
-    inset 0 -1px 0 var(--pub-cristal-base),
-    var(--pub-cristal-sombra);
+  background: var(--cristal);
+  border-color: var(--cristal-borda);
+  box-shadow: inset 0 1px 0 var(--cristal-luz),
+    inset 0 -1px 0 var(--cristal-base),
+    var(--cristal-sombra);
 }
 /* A borda esquerda do cartao e a cor da situacao, e continua sendo. */
 .pub-kpis .admin-stat-card-v2 { border-left-color: var(--accent-color, var(--yellow)); }
@@ -9997,8 +10124,8 @@ body.arrastando-painel {
    cartao perderia a aresta justo quando sobe. */
 .pub-kpis .admin-stat-card-v2:hover,
 .pub-entrega:hover {
-  box-shadow: inset 0 1px 0 var(--pub-cristal-luz),
-    inset 0 -1px 0 var(--pub-cristal-base),
+  box-shadow: inset 0 1px 0 var(--cristal-luz),
+    inset 0 -1px 0 var(--cristal-base),
     var(--shadow-card-hover);
 }
 
@@ -10057,20 +10184,20 @@ body.arrastando-painel {
   max-width: 100%;
   margin-top: 14px;
   padding: 9px 13px;
-  border: 1px solid var(--pub-cristal-borda);
+  border: 1px solid var(--cristal-borda);
   border-radius: var(--radius-md);
-  background: var(--pub-cristal);
-  box-shadow: inset 0 1px 0 var(--pub-cristal-luz),
-    inset 0 -1px 0 var(--pub-cristal-base),
-    var(--pub-cristal-sombra);
+  background: var(--cristal);
+  box-shadow: inset 0 1px 0 var(--cristal-luz),
+    inset 0 -1px 0 var(--cristal-base),
+    var(--cristal-sombra);
   text-decoration: none;
   transition: border-color var(--transition), transform var(--transition-spring),
     box-shadow var(--transition-spring);
 }
 .pub-link:hover {
-  border-color: var(--pub-cristal-borda-forte);
+  border-color: var(--cristal-borda-forte);
   transform: translateY(-1px);
-  box-shadow: inset 0 1px 0 var(--pub-cristal-luz), var(--shadow-card-hover);
+  box-shadow: inset 0 1px 0 var(--cristal-luz), var(--shadow-card-hover);
 }
 .pub-link-icone {
   width: 26px;
@@ -10212,14 +10339,14 @@ body.arrastando-painel {
      para 200px de largura e sumiria num circulo de 52px. Nada de brilho por
      cima: sobre um rosto, o reflexo branco vira mancha. */
   box-shadow:
-    0 0 0 1px var(--pub-cristal-borda),
+    0 0 0 1px var(--cristal-borda),
     0 2px 5px rgba(20, 22, 30, .07),
     0 10px 20px -14px rgba(20, 22, 30, .55);
   transition: box-shadow var(--transition), transform var(--transition-spring);
 }
 .pub-galeria li:hover .pub-avatar {
   box-shadow:
-    0 0 0 1px var(--pub-cristal-borda-forte),
+    0 0 0 1px var(--cristal-borda-forte),
     0 4px 10px rgba(20, 22, 30, .10),
     0 16px 28px -16px rgba(20, 22, 30, .6);
   transform: translateY(-2px);
@@ -10286,7 +10413,7 @@ body.arrastando-painel {
 /* Cinza medio no hover: um degrau visivel acima da borda em repouso, sem o
    contorno escuro de antes, que competia com o marco colorido da situacao. */
 .pub-entrega:hover {
-  border-color: var(--pub-cristal-borda-forte);
+  border-color: var(--cristal-borda-forte);
   box-shadow: var(--shadow-card);
 }
 
@@ -10465,7 +10592,7 @@ body.arrastando-painel {
 .pub-seletor > button:hover,
 .pub-ferramentas > button.aberto,
 .pub-seletor > button.aberto {
-  border-color: var(--pub-cristal-borda-forte);
+  border-color: var(--cristal-borda-forte);
   color: var(--black);
 }
 .pub-ferramentas > button:focus-visible,
@@ -10520,7 +10647,7 @@ body.arrastando-painel {
   transition: border-color var(--transition);
 }
 .pub-busca:hover,
-.pub-busca:focus-within { border-color: var(--pub-cristal-borda-forte); }
+.pub-busca:focus-within { border-color: var(--cristal-borda-forte); }
 .pub-busca input {
   flex: 1;
   min-width: 0;
@@ -10669,7 +10796,7 @@ body.arrastando-painel {
 }
 .pub-entrega-topo:disabled { cursor: default; }
 .pub-entrega-topo:focus-visible { outline: none; }
-.pub-entrega.abrivel:hover { border-color: var(--pub-cristal-borda-forte); }
+.pub-entrega.abrivel:hover { border-color: var(--cristal-borda-forte); }
 
 /* A mesma seta da seção de entregas do painel, no mesmo lugar: colada no
    título, e não no fim da linha. Quem usa os dois lados encontra o mesmo gesto
@@ -10761,7 +10888,7 @@ body.arrastando-painel {
   transition: border-color var(--transition), background var(--transition);
 }
 .pub-evidencias button:hover {
-  border-color: var(--pub-cristal-borda-forte);
+  border-color: var(--cristal-borda-forte);
   background: var(--gray4);
 }
 .pub-evidencias button:focus-visible { outline: none; }
@@ -10873,7 +11000,7 @@ body.arrastando-painel {
 }
 .pub-previa-pe button:hover:not(:disabled) {
   background: var(--gray4);
-  border-color: var(--pub-cristal-borda-forte);
+  border-color: var(--cristal-borda-forte);
   color: var(--black);
 }
 .pub-previa-pe button:disabled { opacity: .5; cursor: default; }
@@ -11202,11 +11329,11 @@ body.arrastando-painel {
 
 .visoes-switch {
   background: var(--gray4);
-  border: 1px solid var(--pub-cristal-borda, var(--gray3));
+  border: 1px solid var(--cristal-borda, var(--gray3));
 }
 .visoes-switch .view-toggle-pill {
-  background: var(--pub-cristal, var(--white));
-  box-shadow: inset 0 1px 0 var(--pub-cristal-luz, transparent), var(--pub-cristal-sombra, var(--shadow-card));
+  background: var(--cristal, var(--white));
+  box-shadow: inset 0 1px 0 var(--cristal-luz, transparent), var(--cristal-sombra, var(--shadow-card));
 }
 
 /* ── Quadro ───────────────────────────────────────── */
@@ -11279,12 +11406,12 @@ body.arrastando-painel {
   gap: 7px;
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid var(--pub-cristal-borda, var(--gray3));
+  border: 1px solid var(--cristal-borda, var(--gray3));
   border-radius: var(--radius-md);
-  background: var(--pub-cristal, var(--white));
-  box-shadow: inset 0 1px 0 var(--pub-cristal-luz, transparent),
-    inset 0 -1px 0 var(--pub-cristal-base, transparent),
-    var(--pub-cristal-sombra, var(--shadow-card));
+  background: var(--cristal, var(--white));
+  box-shadow: inset 0 1px 0 var(--cristal-luz, transparent),
+    inset 0 -1px 0 var(--cristal-base, transparent),
+    var(--cristal-sombra, var(--shadow-card));
   font-family: inherit;
   text-align: left;
   cursor: pointer;
@@ -11292,9 +11419,9 @@ body.arrastando-painel {
     box-shadow var(--transition-spring);
 }
 .visao-cartao:hover {
-  border-color: var(--pub-cristal-borda-forte, var(--gray2));
+  border-color: var(--cristal-borda-forte, var(--gray2));
   transform: translateY(-2px);
-  box-shadow: inset 0 1px 0 var(--pub-cristal-luz, transparent), var(--shadow-card-hover);
+  box-shadow: inset 0 1px 0 var(--cristal-luz, transparent), var(--shadow-card-hover);
 }
 .visao-cartao:focus-visible { outline: none; }
 .visao-cartao-topo { display: flex; align-items: flex-start; gap: 8px; width: 100%; }
@@ -11343,14 +11470,14 @@ body.arrastando-painel {
   justify-content: center;
   width: 28px;
   height: 28px;
-  border: 1px solid var(--pub-cristal-borda, var(--gray3));
+  border: 1px solid var(--cristal-borda, var(--gray3));
   border-radius: var(--radius-md);
-  background: var(--pub-cristal, var(--white));
+  background: var(--cristal, var(--white));
   color: var(--gray2);
   cursor: pointer;
   transition: border-color var(--transition), color var(--transition);
 }
-.visao-cal-topo button:hover { border-color: var(--pub-cristal-borda-forte, var(--gray2)); color: var(--black); }
+.visao-cal-topo button:hover { border-color: var(--cristal-borda-forte, var(--gray2)); color: var(--black); }
 .visao-cal-topo button:focus-visible { outline: none; }
 .visao-cal-seta {
   width: 0;
@@ -11381,9 +11508,9 @@ body.arrastando-painel {
 .visao-cal-dia {
   min-height: 84px;
   padding: 5px;
-  border: 1px solid var(--pub-cristal-borda, var(--gray3));
+  border: 1px solid var(--cristal-borda, var(--gray3));
   border-radius: var(--radius-md);
-  background: var(--pub-cristal, var(--white));
+  background: var(--cristal, var(--white));
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -11392,7 +11519,7 @@ body.arrastando-painel {
 /* Dia de outro mes fica na grade para a semana nao ter buraco, mas recuado. */
 .visao-cal-dia.fora { background: none; border-color: transparent; }
 .visao-cal-dia.fora .visao-cal-numero { color: var(--gray3); }
-.visao-cal-dia.hoje { border-color: var(--pub-cristal-borda-forte, var(--gray2)); }
+.visao-cal-dia.hoje { border-color: var(--cristal-borda-forte, var(--gray2)); }
 .visao-cal-numero {
   font-size: 11px;
   font-weight: 700;
@@ -11459,7 +11586,7 @@ body.arrastando-painel {
    uma vez: sem isso, a troca de visao a joga numa lista de dezenas e ela
    precisa procurar de novo o que ja tinha achado. */
 .pub-entrega.realcada {
-  border-color: var(--pub-cristal-borda-forte);
+  border-color: var(--cristal-borda-forte);
   animation: pub-realce 2.2s var(--curva-anti) both;
 }
 @keyframes pub-realce {

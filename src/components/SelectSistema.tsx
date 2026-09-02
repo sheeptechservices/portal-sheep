@@ -108,8 +108,11 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
           height: 42, padding: '0 14px', borderRadius: 'var(--radius-md)',
           fontFamily: "'Manrope', sans-serif", fontSize: 14, fontWeight: 500,
           background: 'var(--white)',
-          borderColor: aberto ? 'var(--yellow)' : undefined,
-          boxShadow: aberto ? '0 0 0 3px var(--yd)' : undefined,
+          // Aberto, o gatilho usa o mesmo realce de `.form-input`: cinza. O
+          // verde ali dizia "atencao" onde a unica coisa acontecendo era o
+          // cursor estar naquele campo.
+          borderColor: aberto ? 'var(--gray2)' : undefined,
+          boxShadow: aberto ? '0 0 0 3px var(--gray4)' : undefined,
         }}
       >
         {atual ? marca(atual) : <span style={{ color: 'var(--gray2)' }}>{placeholder ?? ''}</span>}
