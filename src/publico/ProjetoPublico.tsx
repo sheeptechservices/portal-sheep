@@ -556,11 +556,30 @@ export default function ProjetoPublico({ token }: { token: string }) {
 
   useEffect(() => {
     let vivo = true;
-    fetch(`/api/projeto-publico?token=${encodeURIComponent(token)}`)
+    const buscar = () => fetch(`/api/projeto-publico?token=${encodeURIComponent(token)}`)
       .then(r => (r.ok ? r.json() : Promise.reject(new Error('sem acesso'))))
       .then(d => { if (vivo) setDados(d); })
       .catch(() => { if (vivo) setErro(true); });
-    return () => { vivo = false; };
+
+    void buscar();
+
+    // A página fica aberta na tela de quem acompanha, às vezes o dia inteiro.
+    // Sem isto ela mostra o projeto do momento em que foi aberta, e a mudança
+    // feita no painel só aparece se alguém recarregar. Volta a olhar a aba, ou
+    // passa um minuto com ela à vista, e o conteúdo se atualiza sozinho.
+    //
+    // Só com a aba visível: recarregar de fundo uma aba esquecida gasta a
+    // função e o banco para ninguém.
+    const aoVoltar = () => { if (document.visibilityState === 'visible') void buscar(); };
+    const relogio = setInterval(aoVoltar, 60_000);
+    document.addEventListener('visibilitychange', aoVoltar);
+    window.addEventListener('focus', aoVoltar);
+    return () => {
+      vivo = false;
+      clearInterval(relogio);
+      document.removeEventListener('visibilitychange', aoVoltar);
+      window.removeEventListener('focus', aoVoltar);
+    };
   }, [token]);
 
   useEffect(() => {

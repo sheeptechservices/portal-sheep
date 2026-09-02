@@ -17,6 +17,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@libsql/client';
+import { etapasDeTarefa, progressoDaEntrega, statusDeduzido } from './_entregas.js';
 
 /** Estados de entrega que o cliente vê. O nome é o mesmo de dentro: inventar um
  *  vocabulário só para fora produziria duas verdades sobre a mesma entrega. */
@@ -86,13 +87,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               FROM projeto_entregas WHERE projeto_id = ? ORDER BY ordem, id`,
         args: [p.id as string],
       }),
-      // Só a contagem por entrega, para a barra de progresso. Título de tarefa
-      // é conversa interna e não sai daqui.
+      // A etapa e as etiquetas de cada tarefa, e não a contagem pronta: é delas
+      // que saem o estado e o percentual da entrega, pela mesma regra do painel
+      // de dentro. Título de tarefa continua sendo conversa interna e não sai
+      // daqui - nada disto chega ao navegador do cliente, só o resultado.
       db.execute({
-        sql: `SELECT entrega_id, COUNT(*) AS total,
-                     SUM(CASE WHEN concluida_em IS NOT NULL THEN 1 ELSE 0 END) AS feitas
-              FROM projeto_tarefas WHERE projeto_id = ? AND entrega_id IS NOT NULL
-              GROUP BY entrega_id`,
+        sql: `SELECT entrega_id, status, etiquetas
+              FROM projeto_tarefas WHERE projeto_id = ? AND entrega_id IS NOT NULL`,
         args: [p.id as string],
       }),
       // A prova do que foi entregue e do que foi validado. Sem o `base64`: a
@@ -136,15 +137,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    const contagem = new Map(tarefas.rows.map(t => [
-      Number(t.entrega_id),
-      { total: Number(t.total ?? 0), feitas: Number(t.feitas ?? 0) },
-    ]));
+    // As etapas configuradas em Configurações > Etapas: quais concluem, quais
+    // são desconsideradas e quais etiquetas travam.
+    const etapas = await etapasDeTarefa(db);
+    const daEntrega = (id: number) => tarefas.rows.filter(t => Number(t.entrega_id) === id);
 
-    // Uma hora de cache na borda: a página muda quando alguém mexe no projeto,
-    // e não a cada visita. `stale-while-revalidate` deixa a visita seguinte
-    // instantânea enquanto a versão nova é buscada por trás.
-    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=3600');
+    // Sem cache na borda. Havia cinco minutos de cache mais uma hora de
+    // `stale-while-revalidate`, e o efeito era o oposto do que a página promete:
+    // mexer no projeto e o cliente continuar vendo o estado antigo por minutos,
+    // porque a visita que dispara a revalidação ainda recebe a cópia velha. É
+    // uma página de acompanhamento; o que ela mostra tem de ser o que é agora.
+    // O custo é uma leitura por visita, e a visita aqui é rara.
+    res.setHeader('Cache-Control', 'no-store');
     // A página não é para buscador: link encaminhado adiante não deveria virar
     // resultado de pesquisa.
     res.setHeader('X-Robots-Tag', 'noindex, nofollow');
@@ -168,21 +172,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         foto_url: e.foto_url != null ? String(e.foto_url) : null,
       })),
       entregas: entregas.rows.map(e => {
-        const c = contagem.get(Number(e.id)) ?? { total: 0, feitas: 0 };
+        const suas = daEntrega(Number(e.id));
+        // O estado gravado só vale quando é resolução de alguém; nos demais
+        // casos quem manda são as tarefas. É exatamente o que o painel faz, e
+        // é o que faltava aqui: o cliente via "Planejada" numa entrega que lá
+        // dentro já estava em andamento.
+        const status = ['Planejada', 'Entregue', 'Validada', 'Cancelada'].includes(String(e.status))
+          && String(e.status) !== 'Planejada'
+          ? String(e.status)
+          : statusDeduzido(suas, etapas);
         return {
           id: Number(e.id),
           titulo: String(e.titulo),
           descricao: e.descricao != null ? String(e.descricao) : null,
           marcador: e.marcador != null ? String(e.marcador) : null,
           submarcador: e.submarcador != null ? String(e.submarcador) : null,
-          status: String(e.status),
+          status,
           prazo: e.prazo != null ? String(e.prazo) : null,
           // `progresso` não é coluna: sai das tarefas, como no painel de dentro.
           // Validada vale 100 mesmo com tarefa em aberto - o aceite do cliente
           // é o que encerra a entrega.
-          progresso: String(e.status) === 'Validada'
-            ? 100
-            : (c.total > 0 ? Math.round((c.feitas / c.total) * 100) : 0),
+          progresso: status === 'Validada' ? 100 : progressoDaEntrega(suas, etapas),
           evidencias: evidencias.rows
             .filter(v => Number(v.entrega_id) === Number(e.id))
             .map(v => ({
@@ -196,8 +206,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           responsaveis: idsDe(e.responsaveis)
             .map(id => pessoas.get(id))
             .filter((x): x is { nome: string; foto_url: string | null } => !!x),
-          tarefas_total: c.total,
-          tarefas_feitas: c.feitas,
+          // A contagem que o cliente vê é a mesma da conta do progresso: tarefa
+          // em etapa desconsiderada fica de fora das duas.
+          tarefas_total: suas.filter(t => !etapas.desconsideradas.has(String(t.status))).length,
+          tarefas_feitas: suas.filter(t => etapas.conclusivas.has(String(t.status))).length,
         };
       }),
       ordem_status: ORDEM_STATUS,
