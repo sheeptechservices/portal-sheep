@@ -314,7 +314,15 @@ export default defineConfig(({ mode }) => {
                 },
               }
               await handler(
-                { method: req.method, query: Object.fromEntries(url.searchParams) } as never,
+                {
+                  method: req.method,
+                  query: Object.fromEntries(url.searchParams),
+                  // Cabecalhos e socket vao junto: e deles que sai o IP de quem
+                  // pediu, e sem eles o limite de taxa nao teria como rodar aqui
+                  // - justamente o que este atalho promete evitar.
+                  headers: req.headers,
+                  socket: req.socket,
+                } as never,
                 falso as never,
               )
             })().catch(err => {

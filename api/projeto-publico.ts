@@ -19,6 +19,58 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@libsql/client';
 import { etapasDeTarefa, progressoDaEntrega, statusDeduzido } from './_entregas.js';
 
+// ── Limite de taxa ──────────────────────────────────────────────────────────
+//
+//  Na memória da instância, e não numa tabela como o limitador do login. São
+//  problemas diferentes: lá o que se protege é credencial, o volume é baixo e a
+//  contagem precisa valer entre instâncias, então uma gravação por tentativa se
+//  justifica. Aqui o que se protege é o próprio banco de uma enxurrada - gravar
+//  uma linha por requisição para contar requisições seria pagar exatamente o
+//  custo que se quer evitar.
+//
+//  A borda faz a primeira metade do trabalho: com cinco segundos de cache, uma
+//  repetição no mesmo link nem chega até aqui. Isto pega o resto.
+
+/** Janela e teto. Sessenta por minuto é folgado para gente: a página busca uma
+ *  vez por minuto com a aba à vista, e um escritório inteiro atrás do mesmo IP
+ *  cabe com sobra. Enxurrada de máquina passa disso na primeira fração de
+ *  segundo. */
+const JANELA_MS = 60_000;
+const TETO = 60;
+
+/** IP → quando cada requisição da janela chegou. */
+const visitas = new Map<string, number[]>();
+
+/** O IP de quem pediu. Atrás da borda da Vercel, o primeiro da lista do
+ *  `x-forwarded-for` é o cliente; o resto são os saltos até aqui. */
+function ipDe(req: VercelRequest): string {
+  // Tudo opcional: o `req` chega montado de jeitos diferentes conforme quem
+  // executa o handler, e ficar sem IP não pode derrubar a página do cliente.
+  return String(
+    (req.headers?.['x-forwarded-for'] as string | undefined)?.split(',')[0].trim()
+    ?? req.socket?.remoteAddress
+    ?? '0.0.0.0'
+  );
+}
+
+/** Passou do teto na janela? Conta a requisição atual antes de responder. */
+function passouDoTeto(ip: string): boolean {
+  const agora = Date.now();
+  const desde = agora - JANELA_MS;
+  const recentes = (visitas.get(ip) ?? []).filter(t => t > desde);
+  recentes.push(agora);
+  visitas.set(ip, recentes);
+  // A instância fica de pé entre requisições, então o mapa precisa de poda: sem
+  // ela, um bombardeio com IP forjado cresceria a memória até derrubar a função.
+  // A varredura só acontece quando o mapa já está grande, e não a cada visita.
+  if (visitas.size > 5_000) {
+    for (const [chave, quando] of visitas) {
+      if (!quando.some(t => t > desde)) visitas.delete(chave);
+    }
+  }
+  return recentes.length > TETO;
+}
+
 /** Estados de entrega que o cliente vê. O nome é o mesmo de dentro: inventar um
  *  vocabulário só para fora produziria duas verdades sobre a mesma entrega. */
 const ORDEM_STATUS = [
@@ -36,6 +88,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Formato conferido antes de ir ao banco: o token é sempre 32 hexadecimais,
   // e qualquer coisa fora disso é ruído ou tentativa.
   if (!/^[0-9a-f]{32}$/.test(token)) return res.status(404).json({ error: 'Página não encontrada.' });
+
+  // Antes de abrir conexão com o banco: requisição barrada não custa consulta.
+  if (passouDoTeto(ipDe(req))) {
+    res.setHeader('Retry-After', String(Math.ceil(JANELA_MS / 1000)));
+    // Sem cache: a resposta é sobre quem pediu, não sobre a página.
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(429).json({ error: 'Muitas requisições. Tente de novo em um minuto.' });
+  }
 
   const db = createClient({
     url: process.env.TURSO_DATABASE_URL!,
