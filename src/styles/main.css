@@ -7353,13 +7353,8 @@ body.arrastando-painel {
   .kanban-column.kanban-column-collapsible { flex-basis: var(--rail-w); }
   .kanban-column.kanban-column-collapsible.is-open { flex-basis: 82vw; }
 
-  /* Formulário de duas ou quatro colunas passa a uma só. */
-  .campos-2, .campos-4 { grid-template-columns: 1fr !important; }
-}
-
-/* Duas colunas ainda cabem no tablet; quatro, não. */
-@media (min-width: 769px) and (max-width: 1100px) {
-  .campos-4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  /* Formulário de duas colunas passa a uma só. */
+  .campos-2 { grid-template-columns: 1fr !important; }
 }
 
 @media (max-width: 480px) {

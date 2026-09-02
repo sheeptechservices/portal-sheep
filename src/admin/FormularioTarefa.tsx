@@ -560,17 +560,24 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
               />
             </div>
           </div>
-          {/* Três campos desde que a etapa subiu para o cabeçalho. `auto-fit`
-              acomoda: no painel estreito viram dois por linha sozinhos, e em
-              tela cheia cabem os três numa linha. */}
-          <div className="campos-4" style={{ display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }}>
-            <div className="form-group" style={{ minWidth: 0 }}>
+          {/* Três campos desde que a etapa subiu para o cabeçalho, em fila que
+              quebra, e não em grade: numa grade de duas colunas o terceiro campo
+              cai sozinho e deixa um buraco do lado, e a largura da janela ainda
+              forçava duas colunas mesmo com espaço para as três. Aqui quem sobra
+              estica e ocupa a linha inteira. */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            <div className="form-group" style={{ flex: '1 1 190px', minWidth: 0 }}>
               <label className="form-label">Prioridade</label>
+              {/* Com o desenho da prioridade, como no cadastro de projeto: as
+                  quatro se reconhecem pelo ícone antes da palavra. */}
               <SelectSistema valor={rascunho.prioridade} onChange={v => set('prioridade', v)}
-                opcoes={PRIORIDADES.map(x => ({ valor: x as string, label: x }))} />
+                opcoes={PRIORIDADES.map(x => ({
+                  valor: x as string,
+                  label: x,
+                  icone: ICONE_PRIORIDADE[x]?.({ size: 15 }),
+                }))} />
             </div>
-            <div className="form-group" style={{ minWidth: 0 }}>
+            <div className="form-group" style={{ flex: '1 1 190px', minWidth: 0 }}>
               <label className="form-label">Responsável</label>
               <SelectSistema
                 valor={rascunho.responsavel_id}
@@ -585,7 +592,7 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
                 ]}
               />
             </div>
-            <div className="form-group" style={{ minWidth: 0 }}>
+            <div className="form-group" style={{ flex: '1 1 190px', minWidth: 0 }}>
               <label className="form-label">Prazo</label>
               <DatePicker compact allowPast value={rascunho.prazo} onChange={v => set('prazo', v)} />
             </div>
