@@ -142,13 +142,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const etapas = await etapasDeTarefa(db);
     const daEntrega = (id: number) => tarefas.rows.filter(t => Number(t.entrega_id) === id);
 
-    // Sem cache na borda. Havia cinco minutos de cache mais uma hora de
-    // `stale-while-revalidate`, e o efeito era o oposto do que a página promete:
-    // mexer no projeto e o cliente continuar vendo o estado antigo por minutos,
-    // porque a visita que dispara a revalidação ainda recebe a cópia velha. É
-    // uma página de acompanhamento; o que ela mostra tem de ser o que é agora.
-    // O custo é uma leitura por visita, e a visita aqui é rara.
-    res.setHeader('Cache-Control', 'no-store');
+    // Cinco segundos na borda, e nada de `stale-while-revalidate`.
+    //
+    // Eram cinco minutos mais uma hora de revalidação preguiçosa, e o efeito era
+    // o oposto do que a página promete: mexer no projeto e o cliente continuar
+    // vendo o estado antigo, porque até a visita que dispara a revalidação
+    // recebe a cópia velha. Tirar o cache por completo resolvia isso e trocava
+    // por outro problema - sem limite de taxa neste endereço, uma enxurrada de
+    // requisições no mesmo link passa a bater direto no banco.
+    //
+    // Cinco segundos são invisíveis para quem acompanha e devolvem à borda o
+    // trabalho de absorver repetição. E limitam o que mais importa: despublicar
+    // o projeto tira a página do ar em cinco segundos, e não em uma hora.
+    //
+    // `max-age=0` mantém o navegador fora dessa conta: ele revalida sempre, e
+    // quem guarda é a borda, que é onde a repetição acontece. A chave do cache
+    // inclui o token, então uma cópia nunca atende outro projeto.
+    res.setHeader('Cache-Control', 'max-age=0, s-maxage=5');
     // A página não é para buscador: link encaminhado adiante não deveria virar
     // resultado de pesquisa.
     res.setHeader('X-Robots-Tag', 'noindex, nofollow');
