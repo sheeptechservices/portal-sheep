@@ -4692,32 +4692,69 @@ function FormularioProjeto({
                       que o clique faz, em vermelho - o rótulo não muda para quem
                       lê por leitor de tela, que recebe o `aria-label`. */}
                   {tokenPublico ? (
-                    <button type="button" className="ao-vivo"
-                      disabled={publicando || somenteLeitura}
-                      title="A página do cliente está no ar. Clique para tirar."
-                      aria-label="Tirar a página do cliente do ar"
-                      aria-pressed
-                      onClick={() => void alternarPublicacao()}>
-                      <span className="ao-vivo-ponto" aria-hidden="true" />
-                      <span className="ao-vivo-texto" aria-hidden="true">Ao vivo</span>
-                      <span className="ao-vivo-acao" aria-hidden="true">Tirar do ar</span>
-                    </button>
+                    // Um chip só: o estado da publicação e os dois gestos que
+                    // vêm com ela - abrir para conferir, copiar para mandar.
+                    // Eram três peças soltas na barra, e as três dizem respeito
+                    // ao mesmo endereço. A caixa é um `span` porque botão dentro
+                    // de botão não existe: quem carrega a borda é ela, e cada
+                    // parte é um alvo próprio.
+                    <span className={`ao-vivo-caixa${publicando ? ' publicando' : ''}`}>
+                      <button type="button" className="ao-vivo"
+                        disabled={publicando || somenteLeitura}
+                        title="A página do cliente está no ar. Clique para tirar."
+                        aria-label="Tirar a página do cliente do ar"
+                        aria-pressed
+                        onClick={() => void alternarPublicacao()}>
+                        {publicando ? (
+                          <span className="dux-spinner sm na-cor" aria-hidden="true" />
+                        ) : (
+                          <span className="ao-vivo-ponto" aria-hidden="true" />
+                        )}
+                        <span className="ao-vivo-texto" aria-hidden="true">
+                          {publicando ? 'Tirando do ar' : 'Ao vivo'}
+                        </span>
+                        {!publicando && (
+                          <span className="ao-vivo-acao" aria-hidden="true">Tirar do ar</span>
+                        )}
+                      </button>
+                      {/* Abrir e copiar continuam valendo para quem só lê: são
+                          leitura do que já está publicado. */}
+                      {linkPublico && !publicando && (
+                        <>
+                          <span className="ao-vivo-fio" aria-hidden="true" />
+                          <a className="ao-vivo-icone" href={linkPublico}
+                            target="_blank" rel="noopener noreferrer"
+                            title="Abrir a página do cliente numa aba nova"
+                            aria-label="Abrir a página do cliente numa aba nova">
+                            <IconExternal size={13} />
+                          </a>
+                          <button type="button" className="ao-vivo-icone"
+                            title={copiadoPublico ? 'Link copiado' : 'Copiar o link do cliente'}
+                            aria-label="Copiar o link de acompanhamento do cliente"
+                            onClick={() => void copiar(linkPublico, setCopiadoPublico,
+                              'Copie o link de acompanhamento:')}>
+                            {copiadoPublico ? <IconCheck size={13} /> : <IconLink size={13} />}
+                          </button>
+                        </>
+                      )}
+                    </span>
                   ) : (
-                    <button type="button" className="secao-add" style={{ width: 30, height: 30 }}
+                    // Publicando, o botão deixa de ser um ícone e diz o que está
+                    // acontecendo: pôr uma página no ar leva alguns segundos, e
+                    // um ícone apagado nesse tempo parece travamento.
+                    <button type="button"
+                      className={`secao-add${publicando ? ' publicando' : ''}`}
+                      style={publicando ? undefined : { width: 30, height: 30 }}
                       disabled={publicando || somenteLeitura}
                       title="Publicar uma página de acompanhamento para o cliente"
                       aria-label="Publicar a página do cliente"
                       onClick={() => void alternarPublicacao()}>
-                      <IconGlobo size={15} />
-                    </button>
-                  )}
-                  {linkPublico && (
-                    <button type="button" className="secao-add" style={{ width: 30, height: 30 }}
-                      title={copiadoPublico ? 'Link copiado' : 'Copiar o link do cliente'}
-                      aria-label="Copiar o link de acompanhamento do cliente"
-                      onClick={() => void copiar(linkPublico, setCopiadoPublico,
-                        'Copie o link de acompanhamento:')}>
-                      {copiadoPublico ? <IconCheck size={15} /> : <IconExternal size={15} />}
+                      {publicando ? (
+                        <>
+                          <span className="dux-spinner sm na-cor" aria-hidden="true" />
+                          <span aria-hidden="true">Publicando</span>
+                        </>
+                      ) : <IconGlobo size={15} />}
                     </button>
                   )}
                   <button type="button" className="secao-add" style={{ width: 30, height: 30 }}

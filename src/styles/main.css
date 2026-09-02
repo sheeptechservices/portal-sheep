@@ -11925,15 +11925,46 @@ body.arrastando-painel {
    A página do cliente está no ar. Não é um ícone entre outros: publicar cria
    um endereço que existe fora do portal, e o estado disso precisa ser lido de
    relance, não descoberto num tooltip. */
+/* A caixa carrega a borda e a chapa; dentro dela, o selo e os dois icones sao
+   alvos separados. Botao dentro de botao nao existe, e o que o olho le como uma
+   peca so nao precisa ser um elemento so. */
+.ao-vivo-caixa {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 4px 0 0;
+  border: 1px solid var(--green);
+  border-radius: var(--radius-pill);
+  background: var(--green-soft);
+  transition: background var(--transition), border-color var(--transition);
+}
+/* Passar o mouse no selo pinta a caixa inteira de vermelho: o aviso e sobre a
+   peca, nao sobre o texto. Nos icones, nao - eles nao tiram nada do ar. */
+.ao-vivo-caixa:has(.ao-vivo:hover:not(:disabled)),
+.ao-vivo-caixa:has(.ao-vivo:focus-visible) {
+  border-color: var(--red);
+  background: var(--red-soft);
+}
+/* O fio e os icones acompanham: verde dentro de uma peca vermelha leria como
+   duas coisas empilhadas, e nao como um aviso sobre a peca inteira. */
+.ao-vivo-caixa:has(.ao-vivo:hover:not(:disabled)) .ao-vivo-fio,
+.ao-vivo-caixa:has(.ao-vivo:focus-visible) .ao-vivo-fio { background: var(--red); }
+.ao-vivo-caixa:has(.ao-vivo:hover:not(:disabled)) .ao-vivo-icone,
+.ao-vivo-caixa:has(.ao-vivo:focus-visible) .ao-vivo-icone { color: var(--red); }
+.ao-vivo-caixa:has(.ao-vivo:hover:not(:disabled)) .ao-vivo-icone:hover,
+.ao-vivo-caixa:has(.ao-vivo:focus-visible) .ao-vivo-icone:hover {
+  background: rgba(217, 48, 37, .14);
+}
+
 .ao-vivo {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  height: 30px;
-  padding: 0 12px 0 10px;
-  border: 1px solid var(--green);
+  height: 100%;
+  padding: 0 10px;
+  border: none;
   border-radius: var(--radius-pill);
-  background: var(--green-soft);
+  background: none;
   color: var(--green);
   font-family: inherit;
   font-size: 11.5px;
@@ -11942,11 +11973,57 @@ body.arrastando-painel {
   text-transform: uppercase;
   white-space: nowrap;
   cursor: pointer;
-  transition: background var(--transition), border-color var(--transition), color var(--transition);
+  transition: color var(--transition);
 }
+
+/* O fio que separa o estado dos gestos: eles moram na mesma peca, mas fazem
+   coisas diferentes - um desliga, os outros levam o endereco adiante. */
+.ao-vivo-fio {
+  width: 1px;
+  height: 15px;
+  margin: 0 3px 0 1px;
+  background: var(--green);
+  opacity: .35;
+  flex-shrink: 0;
+}
+.ao-vivo-icone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--green);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background var(--transition);
+}
+.ao-vivo-icone:hover { background: rgba(35, 164, 85, .16); }
+.ao-vivo-icone:focus-visible { outline: none; background: rgba(35, 164, 85, .16); }
+/* Tirando do ar, os icones somem e a caixa encolhe para o selo: o fio e os
+   gestos ficariam apontando para um endereco que esta deixando de existir. */
+.ao-vivo-caixa.publicando { padding-right: 0; }
 
 /* O ponto e o anel que abre a partir dele: é o pulso que diz "agora", e é o
    que separa um selo de estado de um chip qualquer. */
+/* Publicando: o botao de icone vira um botao com texto, porque por uma pagina no
+   ar leva alguns segundos e um icone apagado nesse tempo parece travamento. A
+   largura cresce com o conteudo, entao a barra nao pisca de tamanho quando o
+   selo "Ao vivo" toma o lugar dele. */
+.secao-add.publicando {
+  width: auto;
+  height: 30px;
+  gap: 7px;
+  padding: 0 12px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: .02em;
+  color: var(--gray2);
+  cursor: default;
+  opacity: 1;
+}
 .ao-vivo-ponto {
   position: relative;
   width: 7px;
@@ -11974,11 +12051,7 @@ body.arrastando-painel {
    carrega o próprio `aria-label`, que diz o que o clique faz. */
 .ao-vivo-acao { display: none; }
 .ao-vivo:hover:not(:disabled),
-.ao-vivo:focus-visible {
-  border-color: var(--red);
-  background: var(--red-soft);
-  color: var(--red);
-}
+.ao-vivo:focus-visible { color: var(--red); }
 .ao-vivo:hover:not(:disabled) .ao-vivo-texto,
 .ao-vivo:focus-visible .ao-vivo-texto { display: none; }
 .ao-vivo:hover:not(:disabled) .ao-vivo-acao,
