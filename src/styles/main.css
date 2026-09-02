@@ -2606,6 +2606,157 @@ body.arrastando-painel {
 
 .entrega-linha:hover .entrega-seta { color: var(--black); }
 
+/* ── Tarefas dentro da entrega ─────────────────────────
+   A lista aninhada que o detalhe da entrega abre. A contagem na linha e o
+   gatilho: ela abria um balao so de leitura, e eram duas maneiras de ver a
+   mesma lista com so uma deixando mexer. */
+.entrega-conta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: none;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition),
+    color var(--transition);
+}
+.entrega-conta:hover {
+  background: var(--gray4);
+  color: var(--black);
+}
+.entrega-conta[aria-expanded="true"] { border-color: var(--gray3); }
+
+.entrega-tarefas-bloco {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--gray3);
+}
+.entrega-tarefas-cabeca {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.entrega-tarefas-titulo {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+/* O caminho para a tela de Tarefas continua existindo, agora como saida e nao
+   como unico lugar onde da para mexer. */
+.entrega-tarefas-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.entrega-tarefas-link:hover { color: var(--black); }
+
+/* O cabecalho da secao e a mesma cabeca de grupo das entregas: a seta que gira,
+   o rotulo em caixa alta e a contagem. Aqui ela divide a linha com o atalho
+   para a tela de Tarefas, entao nao ocupa a largura toda. */
+.entrega-tarefas-cabeca > .grupo-cabeca {
+  width: auto;
+  margin: 0;
+  flex: none;
+}
+
+/* O quadro da entrega e o mesmo da tela de Tarefas, em tamanho de painel: as
+   mesmas colunas, cores e arraste, so que estreitas o bastante para caberem
+   varias a vista. Rola de lado dentro do bloco, e nunca empurra a largura do
+   painel. */
+.entrega-kanban {
+  flex: none;
+  gap: 8px;
+  padding: 2px 0 4px;
+}
+.entrega-kanban .kanban-column {
+  flex: 0 0 170px;
+  min-width: 170px;
+  border-width: 1px;
+  border-radius: 10px;
+}
+.entrega-kanban .kanban-column-header {
+  padding: 6px 8px;
+  gap: 6px;
+}
+/* Coluna estreita: o nome da etapa nao quebra em duas linhas, que deixaria uma
+   cabeca mais alta que as vizinhas. Corta com reticencias, e o nome inteiro
+   continua na dica. */
+.entrega-kanban .kanban-column-title {
+  font-size: 10.5px;
+  gap: 5px;
+  letter-spacing: .05em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  line-height: 18px;
+}
+.entrega-kanban .kanban-column-title .kanban-dot {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 5px;
+}
+.entrega-kanban .kanban-column-body {
+  padding: 6px;
+  gap: 5px;
+  max-height: 240px;
+}
+.entrega-kanban .kanban-card {
+  padding: 7px 8px 7px 7px;
+  border-radius: 8px;
+  gap: 5px;
+}
+.entrega-kanban .kanban-card-title {
+  font-size: 11.5px;
+  -webkit-line-clamp: 3;
+}
+.entrega-kanban-conta {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gray2);
+}
+/* O pe do card: prazo a esquerda, quem cuida e a lixeira a direita. A lixeira
+   so aparece com o ponteiro no card - uma por cartao numa coluna cheia seria
+   lixo, e o clique que interessa no card e o de abrir. */
+.entrega-kanban-pe {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--gray2);
+}
+.entrega-kanban-pe .kanban-card-acao {
+  opacity: 0;
+  transition: opacity var(--transition), background var(--transition),
+    color var(--transition);
+}
+.kanban-card:hover .entrega-kanban-pe .kanban-card-acao,
+.entrega-kanban-pe .kanban-card-acao:focus-visible { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .entrega-conta,
+  .entrega-tarefas-link,
+  .entrega-kanban-pe .kanban-card-acao { transition: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .entrega-detalhe,
   .entrega-seta {

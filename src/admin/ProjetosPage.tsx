@@ -47,7 +47,7 @@ import { Donut, type FatiaDonut } from '../components/Donut';
 // O mesmo formulário da tela de Tarefas: o quadro da semana abre a tarefa aqui,
 // e uma cópia local divergiria dela no primeiro campo novo.
 import {
-  ConfirmarExclusao, FormularioTarefa, indexarEtiquetas, tarefaGravada,
+  ConfirmarExclusao, FormularioTarefa, indexarEtiquetas, tarefaGravada, TITULO_PADRAO,
   type EtapaTarefa, type EtiquetaTarefa, type Rascunho as RascunhoTarefa,
 } from './FormularioTarefa';
 import { SelectSistema } from '../components/SelectSistema';
@@ -1271,137 +1271,6 @@ function DialogoSaude({ projeto, inicial, salvando, onRegistrar, onFechar }: {
   );
 }
 
-/** As tarefas de uma entrega, num balão preso à contagem.
- *
- *  Fica aqui, e não numa ida à tela de Tarefas, porque a pergunta nasce dentro
- *  do projeto aberto: sair daqui fecharia o painel e obrigaria a refazer o
- *  caminho para voltar. O cabeçalho repete cliente, projeto e entrega, que é o
- *  caminho que levou até esta lista. */
-function TarefasDaEntrega({ tarefas, caminho, ancora, onAbrirNaPagina, onFechar }: {
-  tarefas: Tarefa[];
-  caminho: string[];
-  ancora: React.RefObject<HTMLButtonElement | null>;
-  /** Sai para a tela de Tarefas, que é onde se edita. Ausente quando o projeto
-   *  ainda não foi salvo. */
-  onAbrirNaPagina?: () => void;
-  onFechar: () => void;
-}) {
-  const dropRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
-  const LARGURA = 340;
-
-  useEffect(() => {
-    const el = ancora.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const altura = Math.min(120 + tarefas.length * 44, 400);
-    const paraCima = window.innerHeight - r.bottom - 8 < altura && r.top > altura;
-    setPos({
-      top: paraCima ? r.top - altura - 4 : r.bottom + 6,
-      // Ancorado pela direita: a contagem fica no fim da linha.
-      left: Math.max(8, Math.min(r.right - LARGURA, window.innerWidth - LARGURA - 8)),
-    });
-  }, [ancora, tarefas.length]);
-
-  useDropdownDismiss(true, [ancora, dropRef], onFechar);
-
-  return createPortal(
-    <div ref={dropRef} className="status-select-dropdown"
-      style={{ top: pos.top, left: pos.left, width: LARGURA, maxHeight: 400, zIndex: 10001,
-        display: 'flex', flexDirection: 'column' }}>
-      <p style={{ padding: '6px 10px 8px', margin: 0, flexShrink: 0, fontSize: 10.5,
-        color: 'var(--gray2)', borderBottom: '1px solid var(--gray3)', lineHeight: 1.4 }}>
-        {caminho.filter(Boolean).join(' > ')}
-      </p>
-
-      <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
-      {tarefas.map(t => (
-        <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8,
-          padding: '8px 10px', borderRadius: 'var(--radius-sm)' }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--black)', margin: 0,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {t.titulo}
-            </p>
-            <p style={{ fontSize: 11, color: 'var(--gray2)', margin: '2px 0 0',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {t.status}
-              {t.responsavel_nome ? ` - ${t.responsavel_nome}` : ''}
-              {t.prazo ? ` - ${fmtData(t.prazo)}` : ''}
-            </p>
-          </div>
-          {t.responsavel_nome && (
-            <Avatar nome={t.responsavel_nome} foto={t.responsavel_foto} size={20} />
-          )}
-        </div>
-      ))}
-
-      {tarefas.length === 0 && (
-        <p style={{ padding: '12px 10px', margin: 0, fontSize: 12, color: 'var(--gray2)' }}>
-          Nenhuma tarefa ligada a esta entrega ainda.
-        </p>
-      )}
-      </div>
-
-      {/* O balão responde "quais são" de relance; editar, comentar prazo e
-          trocar responsável é trabalho de mesa, e mora na tela de Tarefas. */}
-      {onAbrirNaPagina && (
-        <button type="button" className="modal-acao" onClick={onAbrirNaPagina}
-          style={{ margin: '6px 4px 2px', width: 'calc(100% - 8px)', justifyContent: 'center',
-            display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          Abrir em Tarefas
-          <IconArrowRight size={13} />
-        </button>
-      )}
-    </div>,
-    document.body,
-  );
-}
-
-/** A contagem na linha da entrega. Só abre quando há o que mostrar. */
-function ContagemTarefas({ tarefas, caminho, onAbrirNaPagina }: {
-  tarefas: Tarefa[];
-  caminho: string[];
-  onAbrirNaPagina?: () => void;
-}) {
-  const [aberto, setAberto] = useState(false);
-  const botao = useRef<HTMLButtonElement>(null);
-  const total = tarefas.length;
-
-  return (
-    <>
-      <button
-        ref={botao}
-        type="button"
-        disabled={total === 0}
-        aria-expanded={aberto}
-        title={total === 0
-          ? 'Nenhuma tarefa ligada a esta entrega'
-          : `Ver as ${total} tarefa(s) desta entrega`}
-        onClick={e => { e.stopPropagation(); setAberto(a => !a); }}
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: 4,
-          fontFamily: 'inherit', fontSize: 11.5, fontWeight: 600,
-          padding: '2px 7px', borderRadius: 'var(--radius-pill)',
-          border: '1px solid transparent', background: 'none',
-          color: total === 0 ? 'var(--gray3)' : 'var(--gray2)',
-          cursor: total === 0 ? 'default' : 'pointer',
-          borderColor: aberto ? 'var(--gray3)' : 'transparent',
-          transition: 'border-color var(--transition), color var(--transition)',
-        }}
-      >
-        <IconClipboard size={12} />
-        {total}
-      </button>
-      {aberto && (
-        <TarefasDaEntrega tarefas={tarefas} caminho={caminho} ancora={botao}
-          onAbrirNaPagina={onAbrirNaPagina}
-          onFechar={() => setAberto(false)} />
-      )}
-    </>
-  );
-}
-
 // ── Escolha de pessoas ──────────────────────────────────────────────────────
 
 /** Seleção múltipla de pessoas num campo só. Com a lista de usuários crescendo,
@@ -1516,6 +1385,106 @@ function SeletorPessoas({ pessoas, valor, onChange, vazio = 'Escolher pessoas' }
 }
 
 // ── Entregas do projeto ─────────────────────────────────────────────────────
+
+/** As tarefas de uma entrega, em quadro.
+ *
+ *  Mesmo quadro da tela de Tarefas, em tamanho de painel: as mesmas colunas, na
+ *  mesma ordem do fluxo, com as mesmas cores e o mesmo arraste. Duas leituras
+ *  diferentes da mesma coisa fariam a pessoa reaprender o que ela já sabe.
+ *
+ *  Todas as etapas aparecem, inclusive as vazias: coluna que some esconde
+ *  justamente que não há nada ali, e é nela que o "+" cria a tarefa já no lugar
+ *  certo. O quadro rola de lado dentro do próprio bloco, e nunca empurra a
+ *  largura do painel.
+ *
+ *  Quem abre o quadro é a seção de tarefas, que nasce fechada: a entrega aberta
+ *  responde primeiro sobre ela mesma. */
+function KanbanDaEntrega({ tarefas, etapas, podeEditar, onAbrir, onCriar, onExcluir, onMover }: {
+  tarefas: Tarefa[];
+  etapas: EtapaTarefa[];
+  podeEditar: boolean;
+  onAbrir: (t: Tarefa) => void;
+  /** Nasce já na coluna em que foi pedida. */
+  onCriar: (status: string) => void;
+  onExcluir: (t: Tarefa) => void;
+  onMover: (t: Tarefa, status: string) => void;
+}) {
+  const [arrastando, setArrastando] = useState<number | null>(null);
+  const [sobre, setSobre] = useState<string | null>(null);
+
+  return (
+    <div className="kanban-board entrega-kanban">
+      {etapas.map(et => {
+        const daEtapa = tarefas.filter(x => x.status === et.nome);
+        return (
+          <div key={et.id}
+            className={`kanban-column${sobre === et.nome ? ' drag-over' : ''}`}
+            style={{ ['--col-color' as string]: et.cor }}
+            onDragOver={ev => {
+              if (!podeEditar || arrastando === null) return;
+              ev.preventDefault();
+              setSobre(et.nome);
+            }}
+            onDragLeave={() => setSobre(x => (x === et.nome ? null : x))}
+            onDrop={ev => {
+              ev.preventDefault();
+              setSobre(null);
+              const alvo = tarefas.find(x => x.id === arrastando);
+              setArrastando(null);
+              if (alvo && alvo.status !== et.nome) onMover(alvo, et.nome);
+            }}>
+
+            <div className="kanban-column-header">
+              {/* A descrição da etapa vira a dica, como no quadro grande. */}
+              <div className="kanban-column-title" title={et.descricao ?? undefined}>
+                <span className="kanban-dot" style={{ background: et.cor }} />
+                {et.nome}
+              </div>
+              <span className="entrega-kanban-conta">{daEtapa.length}</span>
+              {podeEditar && (
+                <button type="button" className="kanban-column-fixar"
+                  title={`Nova tarefa em "${et.nome}"`}
+                  aria-label={`Nova tarefa em ${et.nome}`}
+                  onClick={() => onCriar(et.nome)}>
+                  <IconPlus size={12} />
+                </button>
+              )}
+            </div>
+
+            <div className="kanban-column-body">
+              {daEtapa.map(x => (
+                <div key={x.id} className="kanban-card"
+                  draggable={podeEditar}
+                  onDragStart={() => setArrastando(x.id)}
+                  onDragEnd={() => { setArrastando(null); setSobre(null); }}
+                  onClick={() => podeEditar && onAbrir(x)}
+                  style={{ cursor: podeEditar ? 'pointer' : 'default',
+                    opacity: arrastando === x.id ? 0.45 : 1 }}>
+                  <p className="kanban-card-title">{x.titulo}</p>
+                  <div className="entrega-kanban-pe">
+                    {x.prazo && <span>{fmtData(x.prazo)}</span>}
+                    {x.responsavel_nome && (
+                      <span title={x.responsavel_nome} style={{ marginLeft: 'auto' }}>
+                        <Avatar nome={x.responsavel_nome} foto={x.responsavel_foto} size={16} />
+                      </span>
+                    )}
+                    {podeEditar && (
+                      <button type="button" className="kanban-card-acao perigo"
+                        title="Excluir tarefa" aria-label={`Excluir ${x.titulo}`}
+                        onClick={ev => { ev.stopPropagation(); onExcluir(x); }}>
+                        <IconTrash size={11} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function ChipEntrega({ status }: { status: string }) {
   const cor = COR_ENTREGA[status] ?? 'var(--gray2)';
@@ -1675,7 +1644,9 @@ function EditorEntrega({ inicial, pessoas, marcadores, submarcadores, salvando, 
 /** Lista de entregas. Num projeto já criado cada mudança grava na hora; num
  *  projeto novo elas ficam em memória até o projeto existir. */
 function SecaoEntregas({
-  entregas, pendentes, tarefas, caminho, onVerTarefasDaEntrega, pessoas, marcadores, submarcadores,
+  entregas, pendentes, tarefas, onVerTarefasDaEntrega, onCriarTarefa, onAbrirTarefa,
+  onExcluirTarefa, onMoverTarefa, podeEditarTarefa, etapasTarefa,
+  pessoas, marcadores, submarcadores,
   salvando, somenteLeitura,
   reunioes, focada, onVincular, onAbrirReuniao,
   onSalvarEntrega, onExcluirEntrega, onAlterarPendentes,
@@ -1691,10 +1662,21 @@ function SecaoEntregas({
   onAbrirReuniao: (reuniaoId: number) => void;
   /** Todas as do projeto. Cada entrega filtra as suas pelo `entrega_id`. */
   tarefas: Tarefa[];
-  /** Cliente e projeto, para o balão dizer de onde a lista veio. */
-  caminho: string[];
   /** Abre a tela de Tarefas estreitada nesta entrega. */
   onVerTarefasDaEntrega?: (entregaId: number) => void;
+  /** Cria uma tarefa já ligada a esta entrega, na coluna pedida, e abre o
+   *  painel dela. */
+  onCriarTarefa: (entregaId: number, status?: string) => void;
+  /** Abre a tarefa no mesmo painel da tela de Tarefas. */
+  onAbrirTarefa: (t: Tarefa) => void;
+  /** Pede a exclusão: quem confirma é o diálogo da página. */
+  onExcluirTarefa: (t: Tarefa) => void;
+  /** Arrastou de uma coluna para outra. */
+  onMoverTarefa: (t: Tarefa, status: string) => void;
+  /** As colunas do quadro, na ordem do fluxo. */
+  etapasTarefa: EtapaTarefa[];
+  /** Sem isto a lista continua à vista, só que sem criar, abrir nem excluir. */
+  podeEditarTarefa: boolean;
   /** Em memória, no cadastro de um projeto novo. */
   pendentes: EntregaPendente[];
   pessoas: Pessoa[];
@@ -1712,6 +1694,15 @@ function SecaoEntregas({
   onBaixarEvidencia: (ev: Evidencia) => void;
   onVerEvidencia: (ev: Evidencia) => void;
 }) {
+  /** Entregas com a seção de tarefas aberta. Fechada por padrão: a lista é o
+   *  segundo passo de quem abriu a entrega, e não a primeira coisa que ela diz.
+   */
+  const [tarefasAbertas, setTarefasAbertas] = useState<number[]>([]);
+  const abrirTarefas = (id: number) =>
+    setTarefasAbertas(a => (a.includes(id) ? a : [...a, id]));
+  const alternarTarefas = (id: number) =>
+    setTarefasAbertas(a => (a.includes(id) ? a.filter(x => x !== id) : [...a, id]));
+
   const [editando, setEditando] = useState<number | 'novo' | null>(null);
   const [editandoPendente, setEditandoPendente] = useState<number | null>(null);
   // Fechadas por padrão: a lista serve para varrer o projeto de relance, e o
@@ -2007,6 +1998,7 @@ function SecaoEntregas({
               onCancelar={() => setEditando(null)} />
           ) : (() => {
             const aberta = abertas.includes(e.id);
+            const daEntrega = tarefas.filter(x => x.entrega_id === e.id);
             const feita = e.status === ENTREGA_VALIDADA;
             const cor = COR_ENTREGA[e.status] ?? 'var(--gray2)';
             return (
@@ -2070,12 +2062,24 @@ function SecaoEntregas({
                         })}
                       </span>
                     )}
-                    <ContagemTarefas
-                      tarefas={tarefas.filter(t => t.entrega_id === e.id)}
-                      caminho={[...caminho, e.titulo]}
-                      onAbrirNaPagina={onVerTarefasDaEntrega
-                        ? () => onVerTarefasDaEntrega(e.id)
-                        : undefined} />
+                    {/* A contagem abre a entrega, que é onde as tarefas moram.
+                        Antes ela abria um balão só de leitura: duas maneiras de
+                        ver a mesma lista, e só uma delas deixava mexer. */}
+                    <button type="button" className="entrega-conta" aria-expanded={aberta}
+                      title={daEntrega.length === 0
+                        ? 'Nenhuma tarefa nesta entrega'
+                        : `${daEntrega.length} tarefa(s) nesta entrega`}
+                      onClick={ev => {
+                        ev.stopPropagation();
+                        // A contagem é sobre tarefas: abrir a entrega por ela e
+                        // ainda ter de abrir a seção seria pedir dois cliques
+                        // para uma pergunta só.
+                        if (!aberta) abrirTarefas(e.id);
+                        alternar(e.id);
+                      }}>
+                      <IconClipboard size={12} />
+                      {daEntrega.length}
+                    </button>
                     {/* Validada vale 100 mesmo com tarefa em aberto: o aceite do
                         cliente é o que encerra. Fora disso, quem manda é a
                         fração de tarefas concluídas que o servidor calculou. */}
@@ -2088,6 +2092,7 @@ function SecaoEntregas({
                 <div className={`entrega-detalhe${aberta ? ' aberta' : ''}`}>
                   <div>
                    {jaAbertas.includes(e.id) && (
+                    <>
                     <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--gray3)',
                       display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -2227,6 +2232,50 @@ function SecaoEntregas({
                         </>
                       )}
                     </div>
+
+                    {/* As tarefas desta entrega, no pé do chip e em toda a
+                        largura dele. Encaixadas ao lado do resto elas ficavam
+                        espremidas numa coluna, e uma lista de linhas inteiras
+                        não se lê num canto. A pergunta "o que falta aqui"
+                        nasce com o projeto aberto, e sair para a tela de
+                        Tarefas obrigaria a refazer o caminho de volta: criar,
+                        abrir e excluir acontecem daqui. */}
+                    <div className="entrega-tarefas-bloco">
+                      <div className="entrega-tarefas-cabeca">
+                        {/* A seção nasce fechada: a entrega aberta responde
+                            primeiro sobre ela mesma, e o quadro de tarefas é o
+                            segundo passo de quem quiser descer. Aberta, ela
+                            fica assim enquanto o painel estiver aberto. */}
+                        <button type="button" aria-expanded={tarefasAbertas.includes(e.id)}
+                          className={`grupo-cabeca${tarefasAbertas.includes(e.id) ? ' aberto' : ''}`}
+                          onClick={() => alternarTarefas(e.id)}>
+                          <span className="grupo-seta" aria-hidden="true" />
+                          Tarefas
+                          <span className="grupo-conta">{daEntrega.length}</span>
+                        </button>
+                        {onVerTarefasDaEntrega && (
+                          <button type="button" className="entrega-tarefas-link"
+                            onClick={() => onVerTarefasDaEntrega(e.id)}>
+                            Abrir em Tarefas
+                            <IconArrowRight size={12} />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className={`revelar${tarefasAbertas.includes(e.id) ? ' aberto' : ''}`}>
+                        <div>
+                          <KanbanDaEntrega
+                            tarefas={daEntrega}
+                            etapas={etapasTarefa}
+                            podeEditar={!somenteLeitura && podeEditarTarefa}
+                            onAbrir={onAbrirTarefa}
+                            onCriar={status => onCriarTarefa(e.id, status)}
+                            onExcluir={onExcluirTarefa}
+                            onMover={onMoverTarefa} />
+                        </div>
+                      </div>
+                    </div>
+                    </>
                    )}
                   </div>
                 </div>
@@ -4482,7 +4531,9 @@ function AbaGestao({
 // ── Formulário ───────────────────────────────────────────────────────────────
 
 function FormularioProjeto({
-  editando, base, pessoas, clientes, salvando, onFechar, onSalvar, onBaixarAnexo, onVerAnexo, onEtiquetar,
+  editando, base, pessoas, clientes, salvando, onFechar, onSalvar,
+  onCriarTarefaNaEntrega, onAbrirTarefa, onExcluirTarefa, onMoverTarefa,
+  podeEditarTarefa, etapasTarefa, onBaixarAnexo, onVerAnexo, onEtiquetar,
   marcadores, submarcadores, onExcluir, somenteLeitura, onVerTarefasDaEntrega,
   onRegistrarSaude, onExcluirSaude, onRegistrarReuniao, onVincularReuniao,
   onBuscarReunioesFireflies, onBuscarGravacaoFireflies, onAnexarReuniaoFireflies,
@@ -4498,6 +4549,13 @@ function FormularioProjeto({
   salvando: boolean;
   /** Sai para a tela de Tarefas, estreitada numa entrega deste projeto. */
   onVerTarefasDaEntrega?: (entregaId: number) => void;
+  /** Cria uma tarefa dentro da entrega, do próprio painel do projeto. */
+  onCriarTarefaNaEntrega: (p: Projeto, entregaId: number, status?: string) => void;
+  onAbrirTarefa: (t: Tarefa) => void;
+  onExcluirTarefa: (t: Tarefa) => void;
+  onMoverTarefa: (t: Tarefa, status: string) => void;
+  podeEditarTarefa: boolean;
+  etapasTarefa: EtapaTarefa[];
   /** `intacto` diz que ninguém mexeu no projeto desde que ele nasceu: abrir e
    *  desistir não deveria deixar "Projeto sem nome" no quadro da casa. */
   onFechar: (intacto: boolean) => void;
@@ -5056,8 +5114,15 @@ function FormularioProjeto({
             onAbrirReuniao={id => { setAbaModal('reunioes'); setReuniaoFocada(id); }}
             pendentes={r.entregas}
             tarefas={editando?.tarefas ?? []}
-            caminho={[editando?.cliente_nome ?? '', editando?.nome ?? '']}
             onVerTarefasDaEntrega={onVerTarefasDaEntrega}
+            // Sem projeto gravado não há entrega gravada, e a lista nem aparece.
+            onCriarTarefa={(entregaId, status) =>
+              editando && onCriarTarefaNaEntrega(editando, entregaId, status)}
+            onAbrirTarefa={onAbrirTarefa}
+            onExcluirTarefa={onExcluirTarefa}
+            onMoverTarefa={onMoverTarefa}
+            podeEditarTarefa={podeEditarTarefa}
+            etapasTarefa={etapasTarefa}
             pessoas={pessoas}
             marcadores={marcadores}
             submarcadores={submarcadores}
@@ -5426,6 +5491,35 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     reconciliar();
   }, [api, inserirTarefa, reconciliar, toast]);
 
+  /** A tarefa que acabou de nascer do "+" de uma entrega, enquanto o id não
+   *  volta. A gravação automática do painel pode sair antes dele, e sem esta
+   *  espera ela criaria uma segunda tarefa com o mesmo conteúdo. */
+  const criandoTarefa = useRef<Promise<number | null> | null>(null);
+
+  /** Cria a tarefa dentro da entrega e abre o painel dela na mesma batida. Ela
+   *  nasce como na tela de Tarefas: título de partida, etapa de entrada e quem
+   *  clicou como responsável. */
+  const criarTarefaNaEntrega = useCallback((p: Projeto, entregaId: number, status?: string) => {
+    const base: RascunhoTarefa = {
+      projeto_id: p.id, entrega_id: String(entregaId), titulo: TITULO_PADRAO,
+      descricao: '', status: status || etapaDeEntrada, prioridade: PRIORIDADE_PADRAO,
+      responsavel_id: usuario?.id ?? '', prazo: '', etiquetas: [],
+    };
+    setRascunhoTarefa(base);
+    criandoTarefa.current = api('', 'POST', {
+      action: 'salvar_tarefa', ...base, entrega_id: entregaId,
+    }).then(r => {
+      if (r?.error) { toast('error', 'Não foi possível criar', r.error); return null; }
+      const id = Number(r.id);
+      inserirTarefa(tarefaGravada(base, r, pessoas));
+      // O id chega depois da abertura: sem ele no rascunho, a gravação seguinte
+      // criaria outra tarefa.
+      setRascunhoTarefa(f => (f && !f.id ? { ...f, id } : f));
+      reconciliar();
+      return id;
+    });
+  }, [api, etapaDeEntrada, inserirTarefa, pessoas, reconciliar, toast, usuario]);
+
   const abrirTarefa = useCallback((t: Tarefa) => setRascunhoTarefa({
     id: t.id, projeto_id: t.projeto_id, entrega_id: t.entrega_id ? String(t.entrega_id) : '',
     titulo: t.titulo, descricao: t.descricao ?? '', status: t.status,
@@ -5435,8 +5529,12 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
 
   /** Grava o rascunho inteiro, como faz a tela de Tarefas. Diferente do arraste
    *  no quadro, aqui a pessoa apertou "Salvar": vale o formulário todo. */
-  const salvarRascunho = useCallback(async (r: RascunhoTarefa) => {
-    if (!r.titulo.trim()) { toast('error', 'Falta o título', 'A tarefa precisa de um título.'); return; }
+  const salvarRascunho = useCallback(async (rascunho: RascunhoTarefa) => {
+    if (!rascunho.titulo.trim()) { toast('error', 'Falta o título', 'A tarefa precisa de um título.'); return; }
+    // Rascunho sem id com uma criação em curso: espera o id e grava por cima,
+    // em vez de criar uma segunda tarefa com o mesmo conteúdo.
+    const jaCriada = !rascunho.id && criandoTarefa.current ? await criandoTarefa.current : null;
+    const r = jaCriada ? { ...rascunho, id: jaCriada } : rascunho;
     // O painel não fecha ao gravar: quem está escrevendo continua escrevendo, e
     // a gravação acontece por baixo. A mudança já aparece na lista; se o
     // servidor recusar, ela volta ao que era.
@@ -5518,6 +5616,21 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     // reconciliação vem buscar, já com a tela pintada.
     reconciliar();
   }, [api, pessoas, pintarTarefa, reconciliar, toast]);
+
+  /** Arrastou o card de uma coluna para outra dentro da entrega. Cair na etapa
+   *  de conversão conclui a tarefa, e sair dela reabre: é a mesma regra do
+   *  quadro grande, e um card em "Concluída" que não contasse como concluída
+   *  faria a entrega mentir sobre o próprio progresso. */
+  const moverTarefaDeEtapa = useCallback((t: Tarefa, status: string) => {
+    const mudancas: Record<string, unknown> = { status };
+    if (etapaDeConclusao && status === etapaDeConclusao && !t.concluida_em) {
+      mudancas.concluida_em = new Date().toISOString();
+    }
+    if (etapaDeConclusao && status !== etapaDeConclusao && t.concluida_em) {
+      mudancas.concluida_em = null;
+    }
+    salvarTarefa(t, mudancas);
+  }, [etapaDeConclusao, salvarTarefa]);
 
   // Link compartilhável: ?projeto=<id> abre o projeto assim que a lista chega.
   // Roda uma vez, e limpa a query para não reabrir a cada recarregamento.
@@ -6385,6 +6498,12 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
           onVerTarefasDaEntrega={form.editando && onVerTarefasDaEntrega
             ? entregaId => onVerTarefasDaEntrega(form.editando!.id, entregaId)
             : undefined}
+          onCriarTarefaNaEntrega={criarTarefaNaEntrega}
+          onAbrirTarefa={abrirTarefa}
+          onExcluirTarefa={setExcluindoTarefa}
+          onMoverTarefa={moverTarefaDeEtapa}
+          podeEditarTarefa={pode('tarefas:editar')}
+          etapasTarefa={etapasTarefa}
           pessoas={pessoas}
           clientes={clientes}
           salvando={salvando}
