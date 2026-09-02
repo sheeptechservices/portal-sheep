@@ -11,7 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  IconAlert, IconClip, IconDownload, IconTrash, IconX,
+  IconAlert, IconChevronRight, IconClip, IconDownload, IconTrash, IconX,
 } from '../components/icons';
 import { Avatar, type Pessoa } from './FormularioTarefa';
 
@@ -298,6 +298,8 @@ function Comentario({ c, respostas, pessoas, usuarioId, podeComentar, enviando,
   onBaixar: (a: AnexoDoComentario) => void;
 }) {
   const meu = !!usuarioId && c.usuario_id === usuarioId;
+  /** Respostas à vista. Nascem fechadas. */
+  const [abertas, setAbertas] = useState(false);
 
   const bloco = (x: Comentario, resposta: boolean) => (
     <div key={x.id} className={`ativ-comentario${resposta ? ' resposta' : ''}`}>
@@ -335,7 +337,30 @@ function Comentario({ c, respostas, pessoas, usuarioId, podeComentar, enviando,
   return (
     <div className="ativ-thread">
       {bloco(c, false)}
-      {respostas.map(r => bloco(r, true))}
+
+      {/* As respostas nascem recolhidas: uma conversa com quatro comentários e
+          quinze respostas vira uma parede, e o que se procura é o comentário,
+          não cada volta dele. Abre uma vez e fica aberta - é o `.revelar` da
+          casa, que precisa do conteúdo montado para a altura ter de onde
+          crescer. */}
+      {respostas.length > 0 && (
+        <>
+          <button type="button" className="ativ-link ativ-abrir-respostas"
+            aria-expanded={abertas} onClick={() => setAbertas(v => !v)}>
+            <span className={`entrega-seta${abertas ? ' aberta' : ''}`}>
+              <IconChevronRight size={11} />
+            </span>
+            {abertas
+              ? 'Ocultar respostas'
+              : `${respostas.length} resposta${respostas.length > 1 ? 's' : ''}`}
+          </button>
+          <div className={`revelar${abertas ? ' aberto' : ''}`}>
+            <div>
+              {respostas.map(r => bloco(r, true))}
+            </div>
+          </div>
+        </>
+      )}
       {podeComentar && (
         respondendo
           ? (
@@ -368,6 +393,8 @@ export function AtividadeDaTarefa({ tarefaId, pessoas, usuarioId, podeComentar, 
   const [carregando, setCarregando] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [respondendo, setRespondendo] = useState<number | null>(null);
+  /** O que o servidor recusou, com o texto de volta para não se perder. */
+  const [falhou, setFalhou] = useState<{ texto: string; erro: string } | null>(null);
 
   const carregar = useCallback(async () => {
     const r = await api(`?action=tarefa_atividade&id=${tarefaId}`);
@@ -379,19 +406,45 @@ export function AtividadeDaTarefa({ tarefaId, pessoas, usuarioId, podeComentar, 
   useEffect(() => { setCarregando(true); void carregar(); }, [carregar]);
 
   async function enviar(texto: string, anexos: AnexoPendente[], paiId: number | null) {
-    setEnviando(true);
-    try {
-      const r = await api('', 'POST', {
-        action: 'add_tarefa_comentario',
-        tarefa_id: tarefaId, pai_id: paiId, texto,
-        mencoes: idsMarcados(texto), anexos,
-      });
-      if (r?.error) return;
-      setRespondendo(null);
-      await carregar();
-    } finally {
-      setEnviando(false);
+    // O balão sobe no gesto. Antes eram duas idas ao servidor antes de aparecer
+    // qualquer coisa - gravar e depois reler a conversa inteira -, e o que se
+    // escreveu ficava sumido nesse meio tempo.
+    const eu = pessoas.find(p => p.id === usuarioId);
+    const provisorio: Comentario = {
+      // Id negativo: não colide com nenhum do servidor, e some quando a
+      // conversa é relida com o id de verdade.
+      id: -Date.now(),
+      pai_id: paiId,
+      usuario_id: usuarioId ?? null,
+      usuario_nome: eu?.nome ?? 'Você',
+      foto_url: eu?.foto_url ?? null,
+      texto,
+      criado_em: new Date().toISOString(),
+      editado_em: null,
+      mencoes: [],
+      anexos: anexos.map((a, i) => ({
+        id: -Date.now() - i, nome: a.nome, tipo: a.tipo, tamanho: a.tamanho,
+      })),
+    };
+    setComentarios(cs => [...cs, provisorio]);
+    setRespondendo(null);
+    setFalhou(null);
+
+    const r = await api('', 'POST', {
+      action: 'add_tarefa_comentario',
+      tarefa_id: tarefaId, pai_id: paiId, texto,
+      mencoes: idsMarcados(texto), anexos,
+    });
+    if (r?.error) {
+      // Tira o balão e devolve o texto: quem escreveu não perde o que escreveu
+      // porque o servidor recusou.
+      setComentarios(cs => cs.filter(c => c.id !== provisorio.id));
+      setFalhou({ texto, erro: String(r.error) });
+      return;
     }
+    // Troca o provisório pelo gravado: id de verdade, menções conferidas e
+    // anexos com o id com que serão baixados.
+    void carregar();
   }
 
   async function excluir(c: Comentario) {
@@ -431,14 +484,18 @@ export function AtividadeDaTarefa({ tarefaId, pessoas, usuarioId, podeComentar, 
         </button>
       </div>
 
+      {/* A chave é a aba: trocá-la remonta o conteúdo, e é a remontagem que faz
+          a entrada tocar. É o mesmo `.aba-painel` das abas do painel de
+          projeto - trocar de aba num quadro só não é lido, é notado. */}
+      <div className="aba-painel" key={aba}>
       {carregando ? (
         <div className="dux-spinner-row"><span className="dux-spinner sm" /></div>
       ) : aba === 'conversa' ? (
+        // A conversa vem antes do campo, e o campo fecha a coluna: quem chega
+        // lê o que foi dito e escreve embaixo, que é a ordem de qualquer
+        // conversa. Com o campo em cima, o último comentário ficava longe de
+        // onde se responde.
         <>
-          {podeComentar && (
-            <Escrever pessoas={pessoas} rotuloEnvio="Comentar" enviando={enviando}
-              onEnviar={(t, a) => void enviar(t, a, null)} />
-          )}
           {conversas.length === 0
             ? <p className="ativ-vazio">Nenhum comentário ainda.</p>
             : conversas.map(c => (
@@ -457,6 +514,21 @@ export function AtividadeDaTarefa({ tarefaId, pessoas, usuarioId, podeComentar, 
                 onBaixar={a => void baixar(a)}
               />
             ))}
+          {podeComentar && (
+            <div className="ativ-escrever-pe">
+              {falhou && (
+                <p className="ativ-falha surge">
+                  <IconAlert size={13} />
+                  <span>
+                    {falhou.erro}
+                    <em>{falhou.texto}</em>
+                  </span>
+                </p>
+              )}
+              <Escrever pessoas={pessoas} rotuloEnvio="Comentar" enviando={enviando}
+                onEnviar={(t, a) => void enviar(t, a, null)} />
+            </div>
+          )}
         </>
       ) : eventos.length === 0 ? (
         <p className="ativ-vazio">Nada registrado ainda.</p>
@@ -485,6 +557,7 @@ export function AtividadeDaTarefa({ tarefaId, pessoas, usuarioId, podeComentar, 
           })}
         </ul>
       )}
+      </div>
     </div>
   );
 }

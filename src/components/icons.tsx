@@ -462,6 +462,16 @@ export function IconDashboard({ size = 14 }: { size?: number }) {
   return <Ico size={size}><rect x="3" y="3" width="7.5" height="7.5" rx="1.6" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6" /></Ico>;
 }
 
+// Conversa: o balão do comentário.
+export function IconComentario({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 13.5a3 3 0 0 1-3 3H9l-4.5 3.5v-3.5H4a3 3 0 0 1-3-3v-7a3 3 0 0 1 3-3h13a3 3 0 0 1 3 3Z" />
+    </svg>
+  );
+}
+
 // Assistir: o triângulo do play, em traço como o resto.
 export function IconPlay({ size = 14 }: { size?: number }) {
   return (

@@ -247,6 +247,11 @@ export interface Tarefa {
   ordem: number;
   concluida_em: string | null;
   criado_em: string;
+  /** Quantos comentários a conversa tem. Só o número: o conteúdo desce quando
+   *  o card abre. */
+  comentarios?: number;
+  /** Quantos arquivos vieram pendurados nesses comentários. */
+  anexos?: number;
 }
 
 /** Entrega ainda sem id, montada no cadastro de um projeto novo. */

@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { iniciais, useAuth, useToast } from './AdminApp';
 import {
-  IconAgrupar, IconAlert, IconCalendario, IconCheck, IconChevronDown, IconInbox, IconRecolher,
+  IconAgrupar, IconAlert, IconCalendario, IconCheck, IconChevronDown, IconClip, IconComentario, IconInbox, IconRecolher,
   IconDownload, IconDuplicar, IconOrdenar, IconSearch, IconTrash, IconUser,
   IconVisaoLista, IconVisaoQuadro,
   IconVisaoTabela, IconX,
@@ -181,6 +181,32 @@ function diasPara(iso: string | null): number | null {
 const semAcento = (t: string) =>
   t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLocaleLowerCase('pt-BR');
 
+
+/** O que a tarefa carrega além do título: conversa e arquivos.
+ *
+ *  Só aparece havendo algo - zero comentário não é uma informação, é a
+ *  ausência dela, e um "0" em cada cartão de uma coluna cheia vira sujeira. */
+function SinaisDaTarefa({ t }: { t: Tarefa }) {
+  const conversa = t.comentarios ?? 0;
+  const arquivos = t.anexos ?? 0;
+  if (conversa === 0 && arquivos === 0) return null;
+  return (
+    <span className="tarefa-sinais">
+      {conversa > 0 && (
+        <span title={`${conversa} comentário${conversa > 1 ? 's' : ''}`}>
+          <IconComentario size={12} />
+          {conversa}
+        </span>
+      )}
+      {arquivos > 0 && (
+        <span title={`${arquivos} anexo${arquivos > 1 ? 's' : ''}`}>
+          <IconClip size={12} />
+          {arquivos}
+        </span>
+      )}
+    </span>
+  );
+}
 
 function ChipStatus({ status, cor }: { status: string; cor: string }) {
   return (
@@ -1080,6 +1106,7 @@ function Coluna({ grupo, et, etq, podeEditar, arrastando, isOver, onAbrir, onDra
               {t.responsavel_nome && (
                 <Avatar nome={t.responsavel_nome} foto={t.responsavel_foto} size={20} />
               )}
+              <SinaisDaTarefa t={t} />
               <span style={{ marginLeft: 'auto' }}>
                 {/* Etapa desconsiderada não cobra prazo: a tarefa saiu da conta. */}
                 <Prazo iso={t.prazo} concluida={et.fecha(t.status) || !!grupo.desconsiderada} />
@@ -1203,6 +1230,7 @@ function Lista({ grupos, et, etq, podeExcluir, onAbrir, onExcluir }: {
                   </p>
                 </div>
                 {t.etiquetas.map(e => <ChipEtiqueta key={e} etiqueta={e} cor={etq.cor(e)} />)}
+                <SinaisDaTarefa t={t} />
                 <Prioridade valor={t.prioridade} />
                 <Prazo iso={t.prazo} concluida={et.fecha(t.status) || !!grupo.desconsiderada} />
                 {t.responsavel_nome && <Avatar nome={t.responsavel_nome} foto={t.responsavel_foto} size={22} />}

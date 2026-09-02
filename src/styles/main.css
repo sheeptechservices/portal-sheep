@@ -5248,6 +5248,26 @@ body.arrastando-painel {
   font-variant-numeric: tabular-nums;
 }
 
+/* O botao que abre as respostas: alinhado com o corpo do comentario, nao com o
+   retrato, para a thread ler como um bloco so. */
+.ativ-abrir-respostas {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 4px 0 0 36px;
+  padding: 0;
+}
+.ativ-abrir-respostas .entrega-seta { color: var(--gray2); }
+.ativ-abrir-respostas:hover .entrega-seta { color: var(--black); }
+
+/* O campo de escrever fecha a coluna, separado do ultimo balao por um fio: e
+   o fim da conversa, e nao mais um balao dela. */
+.ativ-escrever-pe {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--gray3);
+}
+
 .ativ-vazio {
   margin: 10px 0 0;
   font-size: 12.5px;
@@ -5339,17 +5359,67 @@ body.arrastando-painel {
   color: var(--red);
 }
 
+/* O comentário que o servidor recusou, com o texto de volta embaixo: perder o
+   que se escreveu porque a gravação falhou é o pior desfecho possível. */
+.ativ-falha {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-size: 11.5px;
+  color: var(--red);
+  line-height: 1.5;
+}
+.ativ-falha svg { flex-shrink: 0; margin-top: 2px; }
+.ativ-falha em {
+  display: block;
+  margin-top: 3px;
+  font-style: normal;
+  color: var(--gray);
+}
+
 /* ── Conversa ─────────────────────────────────────── */
-.ativ-thread { margin-bottom: 14px; }
+/* Cada conversa e um bloco proprio, no cristal do painel: sem moldura, dois
+   comentarios seguidos do mesmo autor viravam um so texto corrido, e a
+   resposta de um parecia continuacao do outro. */
+.ativ-thread {
+  padding: 10px 12px;
+  border: 1px solid var(--cristal-borda, var(--gray3));
+  border-radius: var(--radius-md);
+  background: var(--cristal, var(--white));
+  box-shadow: inset 0 1px 0 var(--cristal-luz, transparent),
+    var(--cristal-sombra, none);
+  transition: border-color var(--transition);
+}
+.ativ-thread + .ativ-thread { margin-top: 8px; }
+.ativ-thread:hover { border-color: var(--cristal-borda-forte, var(--gray2)); }
 .ativ-comentario {
   display: flex;
   align-items: flex-start;
   gap: 10px;
   padding: 2px 0;
 }
-/* Resposta recuada e alinhada com o texto de quem começou. */
-.ativ-comentario.resposta { margin-left: 36px; margin-top: 8px; }
+/* Cada resposta é um chip próprio dentro da conversa, recuada e alinhada com o
+   texto de quem começou. A moldura é o que separa: soltas, três respostas
+   seguidas viram um texto corrido e não se vê onde uma acaba e a outra começa.
 
+   O chip é de outra superfície, e não do mesmo cristal da conversa: com o mesmo
+   tom, só a borda separava e a resposta quase desaparecia dentro do cartão.
+   No tema claro ele clareia sobre o cristal; no escuro ele escurece - é o mesmo
+   par de tokens dos dois lados, cada um no seu tema. */
+.ativ-comentario.resposta {
+  margin-left: 36px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--cristal-borda, var(--gray3));
+  border-radius: var(--radius-md);
+  background: var(--white);
+  box-shadow: var(--cristal-sombra, none);
+  transition: border-color var(--transition);
+}
+.ativ-comentario.resposta:hover {
+  border-color: var(--cristal-borda-forte, var(--gray2));
+}
 .ativ-corpo { flex: 1; min-width: 0; }
 .ativ-cabeca {
   display: flex;
