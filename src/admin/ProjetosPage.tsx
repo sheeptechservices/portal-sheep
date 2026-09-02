@@ -1588,15 +1588,21 @@ function EditorEntrega({ inicial, pessoas, marcadores, submarcadores, salvando, 
         </div>
       </div>
 
-      <div className="form-group" style={{ maxWidth: 220 }}>
-        <label className="form-label">Prazo</label>
-        <DatePicker compact allowPast value={prazo} onChange={setPrazo} />
-      </div>
-
-      <div className="form-group">
-        <label className="form-label">Responsáveis</label>
-        <SeletorPessoas pessoas={pessoas} valor={responsaveis} onChange={setResponsaveis}
-          vazio="Escolher responsáveis" />
+      {/* Prazo e responsáveis na mesma linha: são as duas perguntas do
+          compromisso - para quando e com quem. A data tem largura fixa porque
+          não cresce com o conteúdo; quem fica com a sobra é a lista de
+          pessoas, que cresce. */}
+      <div className="campos-2" style={{ display: 'grid',
+        gridTemplateColumns: '220px minmax(0, 1fr)', gap: 10 }}>
+        <div className="form-group">
+          <label className="form-label">Prazo</label>
+          <DatePicker compact allowPast value={prazo} onChange={setPrazo} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Responsáveis</label>
+          <SeletorPessoas pessoas={pessoas} valor={responsaveis} onChange={setResponsaveis}
+            vazio="Escolher responsáveis" />
+        </div>
       </div>
 
       <div className="form-group">
