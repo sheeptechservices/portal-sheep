@@ -4257,6 +4257,16 @@ body.arrastando-painel {
 }
 .secao-busca-campo button:hover { background: var(--gray4); color: var(--black); }
 
+/* A linha que a pessoa acabou de abrir vindo do quadro ou do calendario pisca
+   uma vez, tambem no painel. */
+.admin-file-item.realcada {
+  border-color: var(--gray2);
+  animation: pub-realce 2.2s var(--curva-anti) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-file-item.realcada { animation: none; }
+}
+
 /* ── Arvore do grupo, no painel ───────────────────────
    A mesma da pagina do cliente: tronco descendo do rotulo do grupo, alinhado
    com a seta, e um ramo curto para cada entrega. O tronco morre no ramo da
@@ -6029,6 +6039,18 @@ body.arrastando-painel {
 .config-tabs {
   position: relative;
 }
+
+/* ── Abas assentadas na linha do cabecalho ────────────
+   Sem isto sao duas linhas a poucos pixels uma da outra: a do cabecalho e a
+   das abas. A das abas sai, a do cabecalho fica - e ela quem atravessa o
+   painel inteiro -, e o traco da aba ativa desce um pixel para pousar em cima
+   dela. */
+.admin-modal-header.com-abas { padding-bottom: 0; }
+.admin-modal-header.com-abas .config-tabs {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+.admin-modal-header.com-abas .config-tab-traco { bottom: -1px; }
 
 .config-tab-traco {
   position: absolute;
@@ -11102,7 +11124,55 @@ body.arrastando-painel {
   .pub-grupo-seta { transition: none; }
 }
 
-/* ── Visoes do cliente: switcher, quadro e calendario ─
+/* O marco, o retrato, a etiqueta e os numeros dentro do cartao do quadro. Na
+   pagina do cliente eles ja existiam como `.pub-*`; aqui ficam neutros, porque
+   o painel do projeto desenha o mesmo cartao. */
+.visao-marco {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  color: var(--mc, var(--gray2));
+  background: color-mix(in srgb, var(--mc, var(--gray2)) 14%, transparent);
+}
+.visao-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+.visao-avatar-vazio {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--gray3);
+  color: var(--gray);
+  font-size: 8.5px;
+  font-weight: 800;
+}
+.visao-donos { display: flex; gap: 3px; }
+.visao-categoria {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--gray2);
+  background: var(--gray4);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.visao-prazo { font-variant-numeric: tabular-nums; }
+.visao-pct { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* ── Visoes da entrega: switcher, quadro e calendario ─
    O switcher e o mesmo do portal (`.view-toggle`), so assentado no cristal
    desta pagina. As duas visoes novas reusam o cartao e as cores da lista: o
    que muda e o arranjo, nao o vocabulario. */
@@ -11115,20 +11185,20 @@ body.arrastando-painel {
   margin-bottom: 14px;
 }
 .pub-linha-busca .pub-busca { margin-bottom: 0; }
-.pub-linha-busca .pub-visoes { flex: none; }
+.pub-linha-busca .visoes-switch { flex: none; }
 
-.pub-visoes {
+.visoes-switch {
   background: var(--gray4);
-  border: 1px solid var(--pub-cristal-borda);
+  border: 1px solid var(--pub-cristal-borda, var(--gray3));
 }
-.pub-visoes .view-toggle-pill {
-  background: var(--pub-cristal);
-  box-shadow: inset 0 1px 0 var(--pub-cristal-luz), var(--pub-cristal-sombra);
+.visoes-switch .view-toggle-pill {
+  background: var(--pub-cristal, var(--white));
+  box-shadow: inset 0 1px 0 var(--pub-cristal-luz, transparent), var(--pub-cristal-sombra, var(--shadow-card));
 }
 
 /* ── Quadro ───────────────────────────────────────── */
 /* Rola de lado no lugar de espremer seis colunas ate o titulo sumir. */
-.pub-quadro {
+.visao-quadro {
   display: flex;
   gap: 10px;
   overflow-x: auto;
@@ -11139,26 +11209,26 @@ body.arrastando-painel {
    de terminar num corte reto - o veu tambem e o aviso de que ha mais ali. Ele
    entra e sai conforme a rolagem, entao a ultima coluna nao fica apagada
    depois de a pessoa chegar ao fim. */
-.pub-quadro.corta-dir {
+.visao-quadro.corta-dir {
   -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 72px), transparent 100%);
   mask-image: linear-gradient(90deg, #000 calc(100% - 72px), transparent 100%);
 }
-.pub-quadro.corta-esq {
+.visao-quadro.corta-esq {
   -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 72px);
   mask-image: linear-gradient(90deg, transparent 0, #000 72px);
 }
-.pub-quadro.corta-esq.corta-dir {
+.visao-quadro.corta-esq.corta-dir {
   -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 72px,
     #000 calc(100% - 72px), transparent 100%);
   mask-image: linear-gradient(90deg, transparent 0, #000 72px,
     #000 calc(100% - 72px), transparent 100%);
 }
-.pub-coluna {
+.visao-coluna {
   flex: 0 0 232px;
   min-width: 0;
   scroll-snap-align: start;
 }
-.pub-coluna-topo {
+.visao-coluna-topo {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -11170,52 +11240,52 @@ body.arrastando-painel {
   text-transform: uppercase;
   color: var(--gray2);
 }
-.pub-coluna-cor {
+.visao-coluna-cor {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   flex: none;
 }
-.pub-coluna-topo span:last-child {
+.visao-coluna-topo span:last-child {
   margin-left: auto;
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
 }
-.pub-coluna-corpo { display: flex; flex-direction: column; gap: 8px; }
-.pub-coluna-vazia {
+.visao-coluna-corpo { display: flex; flex-direction: column; gap: 8px; }
+.visao-coluna-vazia {
   margin: 0;
   padding: 10px 2px;
   font-size: 11.5px;
   color: var(--gray2);
 }
 
-.pub-cartao {
+.visao-cartao {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 7px;
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid var(--pub-cristal-borda);
+  border: 1px solid var(--pub-cristal-borda, var(--gray3));
   border-radius: var(--radius-md);
-  background: var(--pub-cristal);
-  box-shadow: inset 0 1px 0 var(--pub-cristal-luz),
-    inset 0 -1px 0 var(--pub-cristal-base),
-    var(--pub-cristal-sombra);
+  background: var(--pub-cristal, var(--white));
+  box-shadow: inset 0 1px 0 var(--pub-cristal-luz, transparent),
+    inset 0 -1px 0 var(--pub-cristal-base, transparent),
+    var(--pub-cristal-sombra, var(--shadow-card));
   font-family: inherit;
   text-align: left;
   cursor: pointer;
   transition: border-color var(--transition), transform var(--transition-spring),
     box-shadow var(--transition-spring);
 }
-.pub-cartao:hover {
-  border-color: var(--pub-cristal-borda-forte);
+.visao-cartao:hover {
+  border-color: var(--pub-cristal-borda-forte, var(--gray2));
   transform: translateY(-2px);
-  box-shadow: inset 0 1px 0 var(--pub-cristal-luz), var(--shadow-card-hover);
+  box-shadow: inset 0 1px 0 var(--pub-cristal-luz, transparent), var(--shadow-card-hover);
 }
-.pub-cartao:focus-visible { outline: none; }
-.pub-cartao-topo { display: flex; align-items: flex-start; gap: 8px; width: 100%; }
-.pub-cartao-titulo {
+.visao-cartao:focus-visible { outline: none; }
+.visao-cartao-topo { display: flex; align-items: flex-start; gap: 8px; width: 100%; }
+.visao-cartao-titulo {
   flex: 1;
   min-width: 0;
   font-size: 12.5px;
@@ -11228,7 +11298,7 @@ body.arrastando-painel {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.pub-cartao-pe {
+.visao-cartao-pe {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -11236,57 +11306,57 @@ body.arrastando-painel {
   font-size: 11px;
   color: var(--gray2);
 }
-.pub-cartao-pe .pub-pct { margin-left: auto; }
+.visao-cartao-pe .pub-pct { margin-left: auto; }
 
 /* ── Calendario ───────────────────────────────────── */
-.pub-cal-topo {
+.visao-cal-topo {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 14px;
   margin-bottom: 10px;
 }
-.pub-cal-topo strong {
+.visao-cal-topo strong {
   min-width: 190px;
   text-align: center;
   font-size: 13px;
   font-weight: 700;
 }
 /* So a inicial: `capitalize` subiria tambem o "de" de "setembro de 2026". */
-.pub-cal-topo strong::first-letter { text-transform: uppercase; }
-.pub-cal-topo button {
+.visao-cal-topo strong::first-letter { text-transform: uppercase; }
+.visao-cal-topo button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 28px;
   height: 28px;
-  border: 1px solid var(--pub-cristal-borda);
+  border: 1px solid var(--pub-cristal-borda, var(--gray3));
   border-radius: var(--radius-md);
-  background: var(--pub-cristal);
+  background: var(--pub-cristal, var(--white));
   color: var(--gray2);
   cursor: pointer;
   transition: border-color var(--transition), color var(--transition);
 }
-.pub-cal-topo button:hover { border-color: var(--pub-cristal-borda-forte); color: var(--black); }
-.pub-cal-topo button:focus-visible { outline: none; }
-.pub-cal-seta {
+.visao-cal-topo button:hover { border-color: var(--pub-cristal-borda-forte, var(--gray2)); color: var(--black); }
+.visao-cal-topo button:focus-visible { outline: none; }
+.visao-cal-seta {
   width: 0;
   height: 0;
   border-top: 4px solid transparent;
   border-bottom: 4px solid transparent;
   border-left: 5px solid currentColor;
 }
-.pub-cal-seta.esquerda {
+.visao-cal-seta.esquerda {
   border-left: 0;
   border-right: 5px solid currentColor;
 }
 
-.pub-cal-grade {
+.visao-cal-grade {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 4px;
 }
-.pub-cal-cabeca {
+.visao-cal-cabeca {
   padding: 0 0 2px;
   text-align: center;
   font-size: 10px;
@@ -11295,30 +11365,30 @@ body.arrastando-painel {
   text-transform: uppercase;
   color: var(--gray2);
 }
-.pub-cal-dia {
+.visao-cal-dia {
   min-height: 84px;
   padding: 5px;
-  border: 1px solid var(--pub-cristal-borda);
+  border: 1px solid var(--pub-cristal-borda, var(--gray3));
   border-radius: var(--radius-md);
-  background: var(--pub-cristal);
+  background: var(--pub-cristal, var(--white));
   display: flex;
   flex-direction: column;
   gap: 3px;
   min-width: 0;
 }
 /* Dia de outro mes fica na grade para a semana nao ter buraco, mas recuado. */
-.pub-cal-dia.fora { background: none; border-color: transparent; }
-.pub-cal-dia.fora .pub-cal-numero { color: var(--gray3); }
-.pub-cal-dia.hoje { border-color: var(--pub-cristal-borda-forte); }
-.pub-cal-numero {
+.visao-cal-dia.fora { background: none; border-color: transparent; }
+.visao-cal-dia.fora .visao-cal-numero { color: var(--gray3); }
+.visao-cal-dia.hoje { border-color: var(--pub-cristal-borda-forte, var(--gray2)); }
+.visao-cal-numero {
   font-size: 11px;
   font-weight: 700;
   color: var(--gray2);
   font-variant-numeric: tabular-nums;
 }
-.pub-cal-dia.hoje .pub-cal-numero { color: var(--black); }
+.visao-cal-dia.hoje .visao-cal-numero { color: var(--black); }
 
-.pub-cal-chip {
+.visao-cal-chip {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -11337,17 +11407,17 @@ body.arrastando-painel {
   cursor: pointer;
   transition: background var(--transition);
 }
-.pub-cal-chip:hover { background: var(--gray3); }
-.pub-cal-chip:focus-visible { outline: none; }
-.pub-cal-ponto {
+.visao-cal-chip:hover { background: var(--gray3); }
+.visao-cal-chip:focus-visible { outline: none; }
+.visao-cal-ponto {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   flex: none;
 }
 
-.pub-cal-solta { margin-top: 16px; }
-.pub-cal-solta-titulo {
+.visao-cal-solta { margin-top: 16px; }
+.visao-cal-solta-titulo {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -11358,19 +11428,19 @@ body.arrastando-painel {
   text-transform: uppercase;
   color: var(--gray2);
 }
-.pub-cal-solta-titulo span {
+.visao-cal-solta-titulo span {
   letter-spacing: 0;
   background: var(--gray4);
   border-radius: var(--radius-pill);
   padding: 1px 7px;
   font-variant-numeric: tabular-nums;
 }
-.pub-cal-solta-lista {
+.visao-cal-solta-lista {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
-.pub-cal-solta-lista .pub-cal-chip { width: auto; max-width: 260px; }
+.visao-cal-solta-lista .visao-cal-chip { width: auto; max-width: 260px; }
 
 /* A linha que a pessoa acabou de abrir vindo do quadro ou do calendario pisca
    uma vez: sem isso, a troca de visao a joga numa lista de dezenas e ela
@@ -11380,18 +11450,19 @@ body.arrastando-painel {
   animation: pub-realce 2.2s var(--curva-anti) both;
 }
 @keyframes pub-realce {
+  0%   { box-shadow: 0 0 0 3px rgba(0, 201, 167, .40); }
   100% { box-shadow: 0 0 0 0 rgba(0, 201, 167, 0); }
 }
 
 @media (max-width: 560px) {
-  .pub-cal-dia { min-height: 62px; padding: 3px; }
-  .pub-cal-chip { font-size: 9.5px; padding: 2px 4px; }
-  .pub-cal-topo strong { min-width: 0; }
+  .visao-cal-dia { min-height: 62px; padding: 3px; }
+  .visao-cal-chip { font-size: 9.5px; padding: 2px 4px; }
+  .visao-cal-topo strong { min-width: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pub-cartao { transition: none; }
-  .pub-cartao:hover { transform: none; }
+  .visao-cartao { transition: none; }
+  .visao-cartao:hover { transform: none; }
   .pub-entrega.realcada { animation: none; }
 }
 

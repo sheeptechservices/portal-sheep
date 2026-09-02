@@ -32,6 +32,11 @@ import {
   COR_PRIORIDADE, ICONE_PRIORIDADE, PRIORIDADES, PRIORIDADE_PADRAO,
 } from '../lib/prioridades';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
+// O quadro e o calendário são os mesmos da página do cliente: uma
+// implementação só, para os dois lados não divergirem no primeiro ajuste.
+import {
+  CalendarioEntregas, QuadroEntregas, SwitcherVisao, type ItemVisao, type Visao,
+} from '../components/VisoesEntregas';
 import { PAINEL_MAX, PAINEL_MIN, useLarguraPainel } from '../lib/painelLateral';
 import { Donut, type FatiaDonut } from '../components/Donut';
 // O mesmo formulário da tela de Tarefas: o quadro da semana abre a tarefa aqui,
@@ -1738,6 +1743,41 @@ function SecaoEntregas({
     }));
   }, [visiveis, agrupar, pessoas]);
 
+  /** Lista é a padrão: é a leitura que responde "o que está acontecendo". */
+  const [visao, setVisao] = useState<Visao>('lista');
+  /** Entrega que acabou de ser aberta pelo quadro ou pelo calendário. */
+  const [realcada, setRealcada] = useState<number | null>(null);
+
+  /** As visíveis no formato enxuto que o quadro e o calendário pedem. Os
+   *  responsáveis são ids no painel, e viram nome e foto aqui. */
+  const paraVisao: ItemVisao[] = visiveis.map(e => ({
+    id: e.id,
+    titulo: e.titulo,
+    categoria: e.categoria ?? null,
+    status: e.status,
+    prazo: e.prazo,
+    progresso: e.status === ENTREGA_VALIDADA ? 100 : (e.progresso ?? 0),
+    donos: e.responsaveis
+      .map(id => pessoas.find(p => p.id === id))
+      .filter((p): p is Pessoa => !!p)
+      .map(p => ({ nome: p.nome, foto: p.foto_url ?? null })),
+  }));
+
+  /** As colunas do quadro, na ordem do fluxo, todas mesmo vazias: coluna que
+   *  some esconde que não há nada travado. */
+  const situacoesDoQuadro = [...STATUS_ENTREGA];
+
+  /** Clicar num cartão ou numa marca leva de volta à lista, com a entrega
+   *  aberta e piscando: o detalhe mora lá, e mantê-lo em três lugares seria
+   *  manter três. */
+  const verNaLista = (id: number) => {
+    setVisao('lista');
+    setAbertas(a => (a.includes(id) ? a : [...a, id]));
+    setJaAbertas(a => (a.includes(id) ? a : [...a, id]));
+    setRealcada(id);
+    setTimeout(() => setRealcada(r => (r === id ? null : r)), 2200);
+  };
+
   /** Grupos recolhidos. Guardado por título: com a lista longa, fechar o que
    *  não interessa é o que faz o agrupamento valer a pena. Trocar o critério
    *  reabre tudo, senão a pessoa mudaria de eixo e veria uma lista vazia. */
@@ -1756,8 +1796,12 @@ function SecaoEntregas({
           )}
         </p>
         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {/* Ordenar e agrupar continuam aqui: são leitura. Só o acrescentar
-              sai, junto com o resto do que grava. */}
+          <SeletorLista valor={ordem} onChange={setOrdem} opcoes={ORDENS_ENTREGA}
+            icone={IconOrdenar} rotulo="Ordenar entregas" />
+          <SeletorLista valor={agrupar} onChange={setAgrupar} opcoes={AGRUPAMENTOS_ENTREGA}
+            icone={IconAgrupar} rotulo="Agrupar entregas" />
+          {/* Ordenar e agrupar continuam: são leitura. Só o acrescentar sai,
+              junto com o resto do que grava. */}
           {!somenteLeitura && (
             <button type="button" className="secao-add"
               onClick={() => (gravado ? setEditando('novo') : setEditandoPendente(-1))}
@@ -1769,9 +1813,9 @@ function SecaoEntregas({
       </div>
 
       {/* A busca fica à vista, e não atrás de um botão: num projeto com dezenas
-          de entregas, procurar uma é o primeiro gesto de quem abre a seção.
-          Ordenar e agrupar dividem a faixa com ela - procurar e escolher como
-          olhar são o mesmo momento. */}
+          de entregas, procurar uma é o primeiro gesto de quem abre a seção. O
+          switcher divide a faixa com ela - procurar e escolher como olhar são o
+          mesmo momento. */}
       <div className="secao-busca">
         <span className="secao-busca-campo">
           <IconSearch size={13} />
@@ -1785,10 +1829,7 @@ function SecaoEntregas({
             </button>
           )}
         </span>
-        <SeletorLista valor={ordem} onChange={setOrdem} opcoes={ORDENS_ENTREGA}
-          icone={IconOrdenar} rotulo="Ordenar entregas" />
-        <SeletorLista valor={agrupar} onChange={setAgrupar} opcoes={AGRUPAMENTOS_ENTREGA}
-          icone={IconAgrupar} rotulo="Agrupar entregas" />
+        <SwitcherVisao valor={visao} onChange={setVisao} />
       </div>
 
       {(editando === 'novo' || editandoPendente === -1) && (
@@ -1817,7 +1858,16 @@ function SecaoEntregas({
         </p>
       )}
 
-      {blocos.map(bloco => {
+      {visao === 'quadro' && (
+        <QuadroEntregas itens={paraVisao} situacoes={situacoesDoQuadro}
+          cores={COR_ENTREGA} icones={ICONE_ENTREGA} onAbrir={verNaLista} />
+      )}
+      {visao === 'calendario' && (
+        <CalendarioEntregas itens={paraVisao} cores={COR_ENTREGA}
+          fechados={[ENTREGA_VALIDADA, ENTREGA_CANCELADA]} onAbrir={verNaLista} />
+      )}
+
+      {visao === 'lista' && blocos.map(bloco => {
       const fechado = recolhidos.has(bloco.titulo);
       return (
       // A árvore só existe havendo cabeçalho: sem agrupamento não há de onde
@@ -1855,7 +1905,12 @@ function SecaoEntregas({
             const feita = e.status === ENTREGA_VALIDADA;
             const cor = COR_ENTREGA[e.status] ?? 'var(--gray2)';
             return (
-              <div key={e.id} className="admin-file-item"
+              <div key={e.id}
+                className={`admin-file-item${realcada === e.id ? ' realcada' : ''}`}
+                // Depois de vir do quadro ou do calendario, a linha rola ate o
+                // meio e pisca uma vez: sem isso a pessoa cai numa lista de
+                // dezenas e procura de novo o que ja tinha achado.
+                ref={el => { if (realcada === e.id && el) el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }}
                 style={{ flexDirection: 'column', alignItems: 'stretch', gap: 0, padding: '8px 12px' }}>
 
                 {/* Linha fechada: marco, título e o essencial à direita. */}
@@ -3774,7 +3829,10 @@ function FormularioProjeto({
         onClick={e => e.stopPropagation()}>
 
 
-        <div className="admin-modal-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+        {/* `com-abas`: a linha que separa cabeçalho e corpo passa a ser a
+            linha das abas, em vez de haver uma logo abaixo da outra. */}
+        <div className="admin-modal-header com-abas"
+          style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
             {/* `flex: 1` porque sem ele o bloco encolhe para o tamanho natural
                 de um input e o nome corta muito antes da borda. */}

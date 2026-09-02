@@ -15,10 +15,15 @@ import { logoDoCliente } from '../lib/marcas';
 // portal junto, e o filtro fica com o mesmo desenho dos dois lados.
 import FilterDropdown from '../components/FilterDropdown';
 import {
-  IconAgrupar, IconCalendario, IconChevronRight, IconExternal, IconMarcoAndamento,
-  IconMarcoBloqueado, IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado,
-  IconMarcoValidado, IconOrdenar, IconSearch, IconVisaoLista, IconVisaoQuadro, IconX,
+  IconAgrupar, IconChevronRight, IconExternal, IconMarcoAndamento, IconMarcoBloqueado,
+  IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado, IconMarcoValidado,
+  IconOrdenar, IconSearch, IconX,
 } from '../components/icons';
+// O quadro e o calendário são os mesmos do painel do projeto: uma implementação
+// só, para os dois lados não divergirem no primeiro ajuste.
+import {
+  CalendarioEntregas, QuadroEntregas, SwitcherVisao, type ItemVisao,
+} from '../components/VisoesEntregas';
 import { porNivelDeContato } from '../lib/papeisDeEquipe';
 
 interface Evidencia {
@@ -95,20 +100,6 @@ const ORDEM_GRUPOS = [
  *  isso lá o bloqueado vem primeiro. */
 const ORDEM_QUADRO = [
   'Planejada', 'Em andamento', 'Bloqueada', 'Entregue', 'Validada', 'Cancelada',
-];
-
-/** As três leituras da mesma lista. Lista é a padrão: é a que responde "o que
- *  está acontecendo", e as outras duas são recortes de quem já sabe o que
- *  procura - por situação, no quadro, ou por data, no calendário. */
-const VISOES = [
-  { valor: 'lista', label: 'Lista', Icone: IconVisaoLista },
-  { valor: 'quadro', label: 'Quadro', Icone: IconVisaoQuadro },
-  { valor: 'calendario', label: 'Calendário', Icone: IconCalendario },
-] as const;
-
-const MESES = [
-  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
-  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
 ];
 
 const AGRUPAMENTOS = [
@@ -386,197 +377,6 @@ function LinhaEntrega({ e, aberta, realcada, onAlternar, onAbrirPrevia }: {
   );
 }
 
-/** O cartão da entrega, usado no quadro e no calendário. É a mesma linha da
- *  lista, dobrada em duas: a situação e o título em cima, o resto embaixo. */
-function CartaoEntrega({ e, onAbrir }: { e: Entrega; onAbrir: () => void }) {
-  const cor = COR[e.status] ?? '#8A8B84';
-  const Marco = ICONE[e.status] ?? IconMarcoPlanejado;
-  return (
-    <button type="button" className="pub-cartao" onClick={onAbrir}
-      title={`Ver ${e.titulo} na lista`}>
-      <span className="pub-cartao-topo">
-        <span className="pub-marco" style={{ ['--mc' as string]: cor }}>
-          <Marco size={13} />
-        </span>
-        <span className="pub-cartao-titulo">{e.titulo}</span>
-      </span>
-      {e.categoria && <span className="pub-categoria">{e.categoria}</span>}
-      <span className="pub-cartao-pe">
-        {e.responsaveis.length > 0 && (
-          <span className="pub-donos">
-            {e.responsaveis.map(p => (
-              <span key={p.nome} title={p.nome}>
-                <Avatar nome={p.nome} foto={p.foto_url} />
-              </span>
-            ))}
-          </span>
-        )}
-        {fmtData(e.prazo) && <span className="pub-prazo">{fmtData(e.prazo)}</span>}
-        <span className="pub-pct" style={{ color: e.status === 'Validada' ? cor : undefined }}>
-          {e.progresso}%
-        </span>
-      </span>
-    </button>
-  );
-}
-
-/** Quadro por situação. As colunas são as mesmas seis da lista agrupada, na
- *  mesma ordem, e aparecem mesmo vazias: coluna que some esconde que não há
- *  nada travado. */
-function Quadro({ lista, situacoes, onAbrir }: {
-  lista: Entrega[];
-  situacoes: string[];
-  onAbrir: (id: number) => void;
-}) {
-  const caixa = useRef<HTMLDivElement>(null);
-  /** De que lado ainda há coluna fora da tela. O véu só entra desse lado: um
-   *  degradê fixo na direita continuaria apagando a última coluna depois de a
-   *  pessoa rolar até o fim, e aí ele mente. */
-  const [corta, setCorta] = useState({ esq: false, dir: false });
-
-  useEffect(() => {
-    const el = caixa.current;
-    if (!el) return;
-    const medir = () => setCorta({
-      esq: el.scrollLeft > 4,
-      dir: el.scrollLeft + el.clientWidth < el.scrollWidth - 4,
-    });
-    medir();
-    el.addEventListener('scroll', medir, { passive: true });
-    // O corte também muda quando a janela muda de tamanho, sem ninguém rolar.
-    const olho = new ResizeObserver(medir);
-    olho.observe(el);
-    return () => { el.removeEventListener('scroll', medir); olho.disconnect(); };
-  }, [situacoes.length, lista.length]);
-
-  return (
-    <div ref={caixa}
-      className={`pub-quadro${corta.esq ? ' corta-esq' : ''}${corta.dir ? ' corta-dir' : ''}`}>
-      {situacoes.map(st => {
-        const itens = lista.filter(e => e.status === st);
-        return (
-          <div key={st} className="pub-coluna">
-            <p className="pub-coluna-topo">
-              <span className="pub-coluna-cor" style={{ background: COR[st] ?? '#8A8B84' }} />
-              {st}
-              <span>{itens.length}</span>
-            </p>
-            <div className="pub-coluna-corpo">
-              {itens.map(e => <CartaoEntrega key={e.id} e={e} onAbrir={() => onAbrir(e.id)} />)}
-              {itens.length === 0 && <p className="pub-coluna-vazia">Nada aqui.</p>}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/** Calendário do mês, pelo prazo de cada entrega. Começa no mês da entrega mais
- *  próxima que ainda não fechou, e não em hoje: um projeto que só tem prazo em
- *  novembro abriria numa grade vazia. */
-function Calendario({ lista, onAbrir }: {
-  lista: Entrega[];
-  onAbrir: (id: number) => void;
-}) {
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
-  const comPrazo = lista.filter(e => e.prazo);
-  const primeiro = [...comPrazo]
-    .filter(e => (e.prazo ?? '').slice(0, 10) >= iso(hoje))
-    .sort((a, b) => (a.prazo ?? '').localeCompare(b.prazo ?? ''))[0]
-    ?? [...comPrazo].sort((a, b) => (b.prazo ?? '').localeCompare(a.prazo ?? ''))[0];
-  const inicial = primeiro?.prazo
-    ? new Date(`${primeiro.prazo.slice(0, 10)}T00:00:00`)
-    : hoje;
-  const [mes, setMes] = useState(() => new Date(inicial.getFullYear(), inicial.getMonth(), 1));
-
-  const porDia = new Map<string, Entrega[]>();
-  for (const e of comPrazo) {
-    const k = (e.prazo ?? '').slice(0, 10);
-    const l = porDia.get(k);
-    if (l) l.push(e); else porDia.set(k, [e]);
-  }
-
-  // A grade sempre começa no domingo da semana do dia 1 e fecha a última
-  // semana inteira: mês que começa numa quarta não pode abrir com buracos.
-  const comeco = new Date(mes);
-  comeco.setDate(1 - mes.getDay());
-  const dias: Date[] = [];
-  for (let i = 0; i < 42; i++) {
-    const d = new Date(comeco);
-    d.setDate(comeco.getDate() + i);
-    dias.push(d);
-  }
-  // Sexta semana só entra se tiver dia do mês: senão sobra uma faixa vazia.
-  const semanas = [0, 1, 2, 3, 4, 5]
-    .map(i => dias.slice(i * 7, i * 7 + 7))
-    .filter(sem => sem.some(d => d.getMonth() === mes.getMonth()));
-
-  const semPrazo = lista.filter(e => !e.prazo);
-
-  return (
-    <div className="pub-calendario">
-      <div className="pub-cal-topo">
-        <button type="button" onClick={() => setMes(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
-          aria-label="Mês anterior">
-          <span className="pub-cal-seta esquerda" aria-hidden="true" />
-        </button>
-        <strong>{MESES[mes.getMonth()]} de {mes.getFullYear()}</strong>
-        <button type="button" onClick={() => setMes(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
-          aria-label="Próximo mês">
-          <span className="pub-cal-seta" aria-hidden="true" />
-        </button>
-      </div>
-
-      <div className="pub-cal-grade">
-        {['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'].map(d => (
-          <span key={d} className="pub-cal-cabeca">{d}</span>
-        ))}
-        {semanas.flat().map(d => {
-          const chave = iso(d);
-          const doMes = d.getMonth() === mes.getMonth();
-          const ehHoje = chave === iso(hoje);
-          const itens = porDia.get(chave) ?? [];
-          return (
-            <div key={chave} className={`pub-cal-dia${doMes ? '' : ' fora'}${ehHoje ? ' hoje' : ''}`}>
-              <span className="pub-cal-numero">{d.getDate()}</span>
-              {itens.map(e => (
-                <button key={e.id} type="button" className="pub-cal-chip"
-                  onClick={() => onAbrir(e.id)}
-                  title={`${e.titulo} - ${e.status}`}>
-                  <span className="pub-cal-ponto" style={{ background: COR[e.status] ?? '#8A8B84' }} />
-                  {e.titulo}
-                </button>
-              ))}
-            </div>
-          );
-        })}
-      </div>
-
-      {semPrazo.length > 0 && (
-        <div className="pub-cal-solta">
-          <p className="pub-cal-solta-titulo">
-            Sem data definida
-            <span>{semPrazo.length}</span>
-          </p>
-          <div className="pub-cal-solta-lista">
-            {semPrazo.map(e => (
-              <button key={e.id} type="button" className="pub-cal-chip"
-                onClick={() => onAbrir(e.id)} title={`${e.titulo} - ${e.status}`}>
-                <span className="pub-cal-ponto" style={{ background: COR[e.status] ?? '#8A8B84' }} />
-                {e.titulo}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 /** Prévia da evidência. Imagem abre aqui mesmo; o resto oferece o download,
  *  porque PDF e planilha o navegador abre melhor do que qualquer visualizador
  *  que eu desenhasse. */
@@ -815,6 +615,17 @@ export default function ProjetoPublico({ token }: { token: string }) {
    *  letra a mais que não muda o resultado não reanima nada. */
   const assinatura = lista.map(e => e.id).join(',');
 
+  /** A mesma lista, no formato enxuto que o quadro e o calendário pedem. */
+  const paraVisao: ItemVisao[] = lista.map(e => ({
+    id: e.id,
+    titulo: e.titulo,
+    categoria: e.categoria,
+    status: e.status,
+    prazo: e.prazo,
+    progresso: e.progresso,
+    donos: e.responsaveis.map(p => ({ nome: p.nome, foto: p.foto_url })),
+  }));
+
   const grupos = agrupamento === 'nenhum' ? [{ nome: '', itens: lista }] : (() => {
     // Entrega com dois responsáveis aparece nos dois grupos: ela é de ambos, e
     // esconder uma cópia faria o cliente procurar e não achar.
@@ -980,19 +791,7 @@ export default function ProjetoPublico({ token }: { token: string }) {
           )}
         </div>
 
-        <div className="view-toggle pub-visoes">
-          <div className="view-toggle-pill"
-            style={{ left: 3 + VISOES.findIndex(v => v.valor === visao) * 32 }} />
-          {VISOES.map(v => (
-            <button key={v.valor} type="button"
-              className={visao === v.valor ? 'active' : ''}
-              onClick={() => setVisao(v.valor)}
-              title={v.label} aria-label={`Ver em ${v.label.toLocaleLowerCase('pt-BR')}`}
-              aria-pressed={visao === v.valor}>
-              <v.Icone size={14} />
-            </button>
-          ))}
-        </div>
+        <SwitcherVisao valor={visao} onChange={setVisao} />
         </div>
 
         {lista.length === 0 ? (
@@ -1000,9 +799,11 @@ export default function ProjetoPublico({ token }: { token: string }) {
             {q ? 'Nenhuma entrega encontrada para essa busca.' : 'Nenhuma entrega neste recorte.'}
           </p>
         ) : visao === 'quadro' ? (
-          <Quadro lista={lista} situacoes={situacoesDoQuadro} onAbrir={verNaLista} />
+          <QuadroEntregas itens={paraVisao} situacoes={situacoesDoQuadro}
+            cores={COR} icones={ICONE} onAbrir={verNaLista} />
         ) : visao === 'calendario' ? (
-          <Calendario lista={lista} onAbrir={verNaLista} />
+          <CalendarioEntregas itens={paraVisao} cores={COR}
+            fechados={['Validada', 'Cancelada']} onAbrir={verNaLista} />
         ) : grupos.map(g => {
           const fechado = recolhidos.has(g.nome);
           return (
