@@ -19,7 +19,7 @@ export default function FilterDropdown({
   function openDropdown() {
     const rect = triggerRef.current!.getBoundingClientRect();
     setPos({ top: rect.bottom + 4, left: rect.left });
-    setOpen(true);
+    setOpen(o => !o);
   }
 
   useDropdownDismiss(open, [triggerRef, dropRef], () => setOpen(false));

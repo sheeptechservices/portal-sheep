@@ -1,4 +1,4 @@
-import { useState, useRef, type CSSProperties, type ReactNode } from 'react';
+import { useState, useRef, useLayoutEffect, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 
@@ -56,6 +56,20 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
   }
 
   useDropdownDismiss(aberto, [triggerRef, dropRef], () => setAberto(false));
+
+  // A lista cresce com a opção mais longa - é `min-width`, e não `width`, senão
+  // o nome da entrega ficaria cortado em toda linha. Só que crescendo para a
+  // direita ela passa da borda da janela, e o painel de tarefa fica justamente
+  // encostado nela: metade da lista sumia. A largura real só existe depois de
+  // montada, então é aqui que se corrige - passando da borda, a lista desliza
+  // para a esquerda em vez de ser cortada.
+  useLayoutEffect(() => {
+    if (!aberto || !dropRef.current) return;
+    const MARGEM = 8;
+    const r = dropRef.current.getBoundingClientRect();
+    if (r.right <= window.innerWidth - MARGEM) return;
+    setPos(p => ({ ...p, left: Math.max(MARGEM, window.innerWidth - MARGEM - r.width) }));
+  }, [aberto]);
 
   /** A altura vem da tabela óptica das marcas, reduzida para caber na linha:
    *  altura igual para todas deixaria assinatura larga minúscula ao lado de
@@ -123,7 +137,7 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
       </button>
       {aberto && createPortal(
         <div ref={dropRef} className="status-select-dropdown"
-          style={{ top: pos.top, left: pos.left, minWidth: pos.width, zIndex: 10000 }}>
+          style={{ top: pos.top, left: pos.left, minWidth: pos.width, zIndex: 10050 }}>
           {buscando && (
             <input autoFocus className="form-input" value={busca}
               onChange={e => setBusca(e.target.value)} placeholder="Buscar"

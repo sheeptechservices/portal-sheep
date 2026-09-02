@@ -128,7 +128,7 @@ function SeletorParte({
         ) : (
           <button
             type="button"
-            onClick={() => { setAberto(true); setTimeout(() => inputRef.current?.focus(), 0); }}
+            onClick={() => { setAberto(a => !a); setTimeout(() => inputRef.current?.focus(), 0); }}
             style={{
               width: '100%', height: 38, padding: '0 11px', textAlign: 'left',
               borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--gray3)',
@@ -318,7 +318,7 @@ function SeletorLead({ itens, valor, onChange, carregando }: {
       left: rect.left,
       width: rect.width,
     });
-    setAberto(true);
+    setAberto(a => !a);
     setTimeout(() => inputRef.current?.focus(), 0);
   }
 

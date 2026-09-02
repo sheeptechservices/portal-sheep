@@ -862,7 +862,7 @@ function CampoCategoria({ valor, sugestoes, onChange }: {
   function abrir() {
     if (!campoRef.current) return;
     setPos(ancorar(campoRef.current, Math.min(combinam.length, 6), 200));
-    setAberto(true);
+    setAberto(a => !a);
   }
   useDropdownDismiss(aberto, [campoRef, dropRef], () => setAberto(false));
 
@@ -3196,7 +3196,7 @@ function PilulaStatus({ valor, onChange, compacta }: {
 
   function abrir() {
     setPos(ancorar(triggerRef.current!, STATUS_PROJETO.length, 200));
-    setAberto(true);
+    setAberto(a => !a);
   }
 
   useDropdownDismiss(aberto, [triggerRef, dropRef], () => setAberto(false));

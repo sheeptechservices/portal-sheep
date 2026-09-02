@@ -95,6 +95,14 @@ tela.
 Não existe anel colorido de foco no sistema - ele saiu em 09/2026 porque ficava na
 tela depois do clique e lia como "selecionado". Não reintroduza.
 
+**Dropdown:** clicar no gatilho abre, clicar de novo fecha. Não existe dropdown que
+abre e no segundo clique não faz nada - o gatilho alterna (`setAberto(a => !a)`),
+mesmo quando ele também mede a posição antes. Fechar por clique fora, por rolagem e
+por redimensionar vem do `useDropdownDismiss`, com o gatilho e a lista nos refs. A
+lista mora num portal no `body`, com `position: fixed` e `z-index: 10050`: dentro do
+bloco ela sairia recortada pelo `overflow: hidden` do `.revelar`, e abaixo de 10050
+ela nasce atrás da gaveta de tarefa.
+
 **Abrir e recolher:** todo bloco que expande - detalhe de card, grupo de lista,
 formulário que nasce dentro de uma seção, painel de busca - usa a classe `.revelar`, que anima
 `grid-template-rows` de `0fr` a `1fr` com `--transition-spring`, e não `height` nem
@@ -153,4 +161,5 @@ troca de tema.
    aparece por condição com `.surge`.
 9. Modal fechando por `useSaidaSuave`, com todos os caminhos de fechar passando
    pelo `fechar` do gancho.
-10. Conferido nos dois temas (claro e escuro).
+10. Dropdown alternando no segundo clique, em portal e acima de qualquer painel.
+11. Conferido nos dois temas (claro e escuro).

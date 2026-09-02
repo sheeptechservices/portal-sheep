@@ -397,7 +397,7 @@ function FSelect({ value, onChange, options, placeholder, disabled, className }:
     if (disabled) return;
     const rect = triggerRef.current!.getBoundingClientRect();
     setPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
-    setOpen(true);
+    setOpen(o => !o);
   }
 
   useDropdownDismiss(open, [triggerRef, dropRef], () => setOpen(false));
@@ -453,7 +453,7 @@ function FMultiSelect({ values, onChange, options, placeholder, className }: {
   function openDropdown() {
     const rect = triggerRef.current!.getBoundingClientRect();
     setPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
-    setOpen(true);
+    setOpen(o => !o);
   }
 
   useDropdownDismiss(open, [triggerRef, dropRef], () => setOpen(false));
@@ -628,7 +628,7 @@ function CreatableField({ value, onChange, options, onAdd, placeholder }: {
     setPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
     setAdding(false);
     setNewVal('');
-    setOpen(true);
+    setOpen(o => !o);
   }
 
   useDropdownDismiss(open, [triggerRef, dropRef], () => setOpen(false));

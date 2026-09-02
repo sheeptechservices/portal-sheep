@@ -3174,7 +3174,10 @@ body.arrastando-painel {
   border: 1px solid var(--gray3);
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-  z-index: 9999;
+  /* Acima de qualquer gaveta: o painel de tarefa abre em 10000 para cobrir o
+     painel de projeto, e uma lista em 9999 nasce atrás dele - o clique abre o
+     menu e nada aparece na tela. */
+  z-index: 10050;
   min-width: 180px;
   max-height: 260px;
   overflow-y: auto;
@@ -4084,7 +4087,10 @@ body.arrastando-painel {
 
 .status-select-dropdown {
   position: fixed;
-  z-index: 9999;
+  /* Acima de qualquer gaveta: o painel de tarefa abre em 10000 para cobrir o
+     painel de projeto, e uma lista em 9999 nasce atrás dele - o clique abre o
+     menu e nada aparece na tela. */
+  z-index: 10050;
   background: var(--white);
   border: 1.5px solid var(--gray3);
   border-radius: var(--radius-md);
@@ -4093,11 +4099,16 @@ body.arrastando-painel {
   animation: fadeUp 0.08s ease both;
   max-height: 320px;
   overflow-y: auto;
+  /* Teto de largura: a lista cresce com a opção mais longa, e sem isto um nome
+     comprido a leva para fora da janela. Passando do teto, quem corta com
+     reticências é a opção. */
+  max-width: calc(100vw - 16px);
 }
 
 .status-select-option {
   display: flex;
   align-items: center;
+  min-width: 0;
   gap: 9px;
   padding: 8px 10px;
   border-radius: var(--radius-sm);

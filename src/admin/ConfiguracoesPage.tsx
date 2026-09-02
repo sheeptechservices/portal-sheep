@@ -32,7 +32,7 @@ function MoveTargetSelect({
   function openDropdown() {
     const rect = triggerRef.current!.getBoundingClientRect();
     setPos({ top: rect.bottom + 6, left: rect.left, width: Math.max(rect.width, 220) });
-    setOpen(true);
+    setOpen(o => !o);
   }
 
   useDropdownDismiss(open, [triggerRef, dropRef], () => setOpen(false));

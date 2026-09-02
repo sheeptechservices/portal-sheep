@@ -145,7 +145,7 @@ function LiquidezSelect({ value, onChange }: { value: string | null; onChange: (
   function openDropdown() {
     const rect = triggerRef.current!.getBoundingClientRect();
     setPos({ top: rect.bottom + 6, left: rect.left, width: Math.max(rect.width, 140) });
-    setOpen(true);
+    setOpen(o => !o);
   }
 
   useDropdownDismiss(open, [triggerRef, dropRef], () => setOpen(false));
@@ -448,7 +448,7 @@ function StatusSelect({
     if (disabled) return;
     const rect = triggerRef.current!.getBoundingClientRect();
     setPos({ top: rect.bottom + 6, left: rect.left, width: Math.max(rect.width, 200) });
-    setOpen(true);
+    setOpen(o => !o);
   }
 
   useDropdownDismiss(open, [triggerRef, dropRef], () => setOpen(false));
@@ -1207,7 +1207,12 @@ function CedenteSearch({ token, value, onChange }: {
       )
     : options;
 
-  function handleOpen() { setOpen(true); setTimeout(() => inputRef.current?.focus(), 0); }
+  function handleOpen() {
+    // Clicar de novo fecha, e não reabre: é o padrão da casa.
+    if (open) { setOpen(false); return; }
+    setOpen(true);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }
   function select(c: CedenteOpt) { onChange(c); setOpen(false); setQuery(''); }
   function clear() { onChange(null); setQuery(''); }
 
@@ -1330,7 +1335,12 @@ function SacadoSearch({ token, value, onChange }: {
   const exactCnpj = options.find(o => (o.cnpj_cpf ?? '').replace(/\D/g, '') === qDigits);
   const canAddNew = qDigits.length === 14 && !exactCnpj;
 
-  function handleOpen() { setOpen(true); setTimeout(() => inputRef.current?.focus(), 0); }
+  function handleOpen() {
+    // Clicar de novo fecha, e não reabre: é o padrão da casa.
+    if (open) { setOpen(false); return; }
+    setOpen(true);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }
   function select(s: SacadoOpt) { onChange(s); setOpen(false); setQuery(''); }
   function clear() { onChange(null); setQuery(''); }
 

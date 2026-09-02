@@ -106,7 +106,7 @@ function SelectPapel({ valor, travado, rotulo, onEscolher }: {
   function abrir() {
     const r = gatilho.current!.getBoundingClientRect();
     setPos({ top: r.bottom + 6, left: r.left, largura: r.width });
-    setAberto(true);
+    setAberto(a => !a);
   }
 
   /** Fecha e devolve o foco ao gatilho, senão ele se perde no fim da página. */

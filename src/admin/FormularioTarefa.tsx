@@ -346,7 +346,7 @@ function PilulaEtapa({ valor, etapas, desabilitado, onChange }: {
         onClick={() => {
           if (desabilitado || !gatilho.current) return;
           setPos(ancorar(gatilho.current, etapas.length, 200));
-          setAberto(true);
+          setAberto(a => !a);
         }}
       >
         <span className="status-select-dot" style={{ background: cor }} />
