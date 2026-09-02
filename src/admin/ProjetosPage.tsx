@@ -32,6 +32,7 @@ export { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import {
   COR_PRIORIDADE, ICONE_PRIORIDADE, PRIORIDADES, PRIORIDADE_PADRAO,
 } from '../lib/prioridades';
+import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 // O quadro e o calendário são os mesmos da página do cliente: uma
 // implementação só, para os dois lados não divergirem no primeiro ajuste.
@@ -908,7 +909,8 @@ function PreviaArquivo({ arquivo, onCarregar, onBaixar, onFechar }: {
 }) {
   const [conteudo, setConteudo] = useState<{ tipo: string; url: string } | null>(null);
   const [erro, setErro] = useState('');
-  const fundo = useFecharNoFundo(onFechar);
+  const { saindo, fechar } = useSaidaSuave(onFechar);
+  const fundo = useFecharNoFundo(fechar);
 
   useEffect(() => {
     let vivo = true;
@@ -941,7 +943,8 @@ function PreviaArquivo({ arquivo, onCarregar, onBaixar, onFechar }: {
   const pdf = conteudo?.tipo === 'application/pdf';
 
   return createPortal(
-    <div className="file-preview-backdrop" style={{ zIndex: 10002 }} {...fundo}>
+    <div className={`file-preview-backdrop${saindo ? ' saindo' : ''}`}
+      style={{ zIndex: 10002 }} {...fundo}>
       <div className="file-preview-modal" onClick={e => e.stopPropagation()}>
         <div className="file-preview-header">
           <span className="file-preview-name">{arquivo.nome}</span>
@@ -950,7 +953,7 @@ function PreviaArquivo({ arquivo, onCarregar, onBaixar, onFechar }: {
               <IconDownload size={13} />
               Baixar
             </button>
-            <button type="button" className="file-preview-close" aria-label="Fechar" onClick={onFechar}>
+            <button type="button" className="file-preview-close" aria-label="Fechar" onClick={fechar}>
               <IconX size={16} />
             </button>
           </div>
@@ -1186,7 +1189,8 @@ function DialogoSaude({ projeto, inicial, salvando, onRegistrar, onFechar }: {
   const [estado, setEstado] = useState<string>(inicial ?? projeto.saude[0]?.estado ?? 'Saudável');
   const [descricao, setDescricao] = useState('');
   const [erro, setErro] = useState('');
-  const fundo = useFecharNoFundo(onFechar);
+  const { saindo, fechar } = useSaidaSuave(onFechar);
+  const fundo = useFecharNoFundo(fechar);
 
   async function registrar() {
     if (!descricao.trim()) { setErro('Descreva a situação do projeto.'); return; }
@@ -1195,7 +1199,7 @@ function DialogoSaude({ projeto, inicial, salvando, onRegistrar, onFechar }: {
   }
 
   return createPortal(
-    <div className="admin-modal-overlay" style={{ zIndex: 10001, alignItems: 'center', justifyContent: 'center' }}
+    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`} style={{ zIndex: 10001, alignItems: 'center', justifyContent: 'center' }}
       {...fundo}>
       <div className="delete-confirm-modal" style={{ width: 420 }} onClick={e => e.stopPropagation()}>
         <p className="delete-confirm-title">Registrar leitura de saúde</p>
@@ -2369,12 +2373,13 @@ function DialogoEvidencia({ entrega, alvo, salvando, onConcluir, onFechar }: {
   const [comentario, setComentario] = useState('');
   const input = useRef<HTMLInputElement>(null);
   const nomes = Array.from(escolhidos ?? []);
-  const fundo = useFecharNoFundo(onFechar);
+  const { saindo, fechar } = useSaidaSuave(onFechar);
+  const fundo = useFecharNoFundo(fechar);
 
   return createPortal(
     // Mesmo molde da confirmação de exclusão: caixa centrada, título,
     // descrição e as duas ações no rodapé.
-    <div className="admin-modal-overlay" style={{ zIndex: 10001, alignItems: 'center', justifyContent: 'center' }}
+    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`} style={{ zIndex: 10001, alignItems: 'center', justifyContent: 'center' }}
       {...fundo}>
       <div className="delete-confirm-modal" style={{ width: 400 }} onClick={e => e.stopPropagation()}>
         <p className="delete-confirm-title">
@@ -2668,7 +2673,8 @@ function GravacaoReuniao({ reuniao, topicos, onBuscar, onFechar }: {
   onBuscar: (firefliesId: string) => Promise<{ video?: string | null; audio?: string | null; error?: string }>;
   onFechar: () => void;
 }) {
-  const fundo = useFecharNoFundo(onFechar);
+  const { saindo, fechar } = useSaidaSuave(onFechar);
+  const fundo = useFecharNoFundo(fechar);
   const player = useRef<HTMLVideoElement>(null);
   const [midia, setMidia] = useState<{ video: string | null; audio: string | null } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -2697,12 +2703,15 @@ function GravacaoReuniao({ reuniao, topicos, onBuscar, onFechar }: {
   const emCurso = topicos.reduce((atual, t, i) => (t.inicio <= agora ? i : atual), -1);
 
   return createPortal(
-    <div className="admin-modal-overlay" style={{ zIndex: 10002 }} {...fundo}>
+    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`}
+      style={{ zIndex: 10002 }} {...fundo}>
       <div className="gravacao-modal" onClick={e => e.stopPropagation()}>
+        {/* Título, data e atalho na mesma linha: o vídeo é o conteúdo, e o
+            cabeçalho não pode comer altura de tela por causa de duas linhas. */}
         <div className="gravacao-topo">
-          <div>
-            <p className="gravacao-titulo">{reuniao.assunto}</p>
-            <p className="gravacao-meta">
+          <p className="gravacao-titulo">
+            <span className="gravacao-nome" title={reuniao.assunto}>{reuniao.assunto}</span>
+            <span className="gravacao-meta">
               {fmtData(reuniao.data)}
               {reuniao.link ? ' · ' : ''}
               {reuniao.link && (
@@ -2710,9 +2719,9 @@ function GravacaoReuniao({ reuniao, topicos, onBuscar, onFechar }: {
                   ver no Fireflies
                 </a>
               )}
-            </p>
-          </div>
-          <button type="button" className="admin-modal-close" onClick={onFechar}
+            </span>
+          </p>
+          <button type="button" className="admin-modal-close" onClick={fechar}
             aria-label="Fechar a gravação">
             <IconX size={16} />
           </button>
@@ -4381,7 +4390,8 @@ function FormularioProjeto({
   useEffect(() => { setTokenPublico(editando?.publico_token ?? null); }, [editando?.publico_token]);
   const linkPublico = tokenPublico ? `${window.location.origin}/p/${tokenPublico}` : null;
   const { largura, arrastando, setArrastando, porTecla } = useLarguraPainel('projeto');
-  const fundo = useFecharNoFundo(onFechar);
+  const { saindo, fechar } = useSaidaSuave(onFechar);
+  const fundo = useFecharNoFundo(fechar);
 
   /** Link que abre este projeto direto, para quem já tem acesso ao portal. É o
    *  mesmo formato que o Funil usa em `?lead=`. */
@@ -4466,7 +4476,7 @@ function FormularioProjeto({
 
 
   return createPortal(
-    <div className="admin-modal-overlay" {...fundo}>
+    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`} {...fundo}>
       {/* Fora do painel de propósito: dentro dele, que rola, o puxador sumiria
           ao descer o conteúdo. Ancorado pela direita, acompanha a largura.
           Em tela cheia não existe: não há borda para arrastar. */}

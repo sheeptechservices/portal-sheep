@@ -121,6 +121,21 @@ rascunho de quem está digitando se uma atualização de fundo mudasse o resulta
 uma escolha - leva `.surge`. É a mesma entrada, aplicada ao bloco inteiro em vez de
 aos filhos.
 
+**Modal, popup e diálogo:** abrem e fecham com animação, nunca com um corte. A
+entrada já vem das classes (`.admin-modal-overlay`, `.delete-confirm-modal`); a
+saída precisa do gancho `useSaidaSuave`, porque o React desmonta no instante em que
+a condição vira falsa e a animação de saída nunca chega a rodar:
+
+```tsx
+const { saindo, fechar } = useSaidaSuave(onFechar);
+const fundo = useFecharNoFundo(fechar);
+<div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`} {...fundo}>
+```
+
+Todo caminho de fechar - o fundo, o botão de fechar, o Cancelar, o Escape - chama
+`fechar`, e não `onFechar`. Gaveta lateral sai pela direita; diálogo centrado
+encolhe de leve, porque ele não veio da borda.
+
 **Movimento reduzido:** animação de entrada, deslocamento e revelação precisa de um
 bloco `@media (prefers-reduced-motion: reduce)` que a desligue, como já é feito na
 troca de tema.
@@ -136,4 +151,6 @@ troca de tema.
 7. Bloco que expande usando `.revelar`, com o conteúdo montado uma vez e mantido.
 8. Lista que responde a busca com `.lista-anima` e `key` do resultado; peça que
    aparece por condição com `.surge`.
-9. Conferido nos dois temas (claro e escuro).
+9. Modal fechando por `useSaidaSuave`, com todos os caminhos de fechar passando
+   pelo `fechar` do gancho.
+10. Conferido nos dois temas (claro e escuro).

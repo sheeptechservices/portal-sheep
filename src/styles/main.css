@@ -3949,6 +3949,11 @@ body.arrastando-painel {
 }
 
 /* ── Detail Modal ───────────────────────────────────── */
+/* ── Entrada e saida de modal ─────────────────────────
+   Abrir ja tinha animacao; fechar era um corte, porque o React desmonta no
+   instante em que a condicao vira falsa. A saida vem da classe `.saindo`, que
+   o gancho `useSaidaSuave` poe antes de avisar quem monta - e o padrao da casa
+   para qualquer modal, popup ou dialogo. */
 .admin-modal-overlay {
   position: fixed;
   inset: 0;
@@ -3958,7 +3963,39 @@ body.arrastando-painel {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  animation: fadeIn 0.08s ease both;
+  animation: fadeIn 0.14s var(--curva-anti) both;
+}
+.admin-modal-overlay.saindo {
+  animation: fadeOut .18s var(--curva-anti) both;
+}
+.admin-modal-overlay.saindo .admin-modal { animation: saiDireita .18s var(--curva-anti) both; }
+/* Dialogo centrado - confirmacao, previa, gravacao - encolhe de leve em vez de
+   escorregar: ele nao veio da borda. */
+.admin-modal-overlay.saindo .delete-confirm-modal,
+.admin-modal-overlay.saindo .gravacao-modal,
+.admin-modal-overlay.saindo .previa-caixa {
+  animation: encolhe .18s var(--curva-anti) both;
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes saiDireita {
+  from { transform: translateX(0);    opacity: 1; }
+  to   { transform: translateX(100%); opacity: 0; }
+}
+@keyframes encolhe {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(.96); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-modal-overlay,
+  .admin-modal-overlay.saindo,
+  .admin-modal-overlay.saindo .admin-modal,
+  .admin-modal-overlay.saindo .delete-confirm-modal,
+  .admin-modal-overlay.saindo .gravacao-modal { animation: none; }
 }
 
 @keyframes fadeIn {
@@ -8282,6 +8319,7 @@ body.arrastando-painel {
 
 /* ── O modal da gravacao ────────────────────────────── */
 .gravacao-modal {
+  animation: scaleIn .16s var(--curva-anti) both;
   width: min(880px, calc(100vw - 32px));
   max-height: calc(100vh - 48px);
   margin: auto;
@@ -8610,6 +8648,8 @@ body.arrastando-painel {
   width: 340px;
   max-width: calc(100vw - 32px);
   box-shadow: 0 8px 32px rgba(0,0,0,.14);
+  /* Entra crescendo de leve, e a saida espelha isso na classe `.saindo`. */
+  animation: scaleIn .16s var(--curva-anti) both;
 }
 .delete-confirm-title {
   font-size: 15px;
@@ -8674,6 +8714,15 @@ body.arrastando-painel {
   align-items: center;
   justify-content: center;
   padding: 24px;
+  animation: fadeIn .14s var(--curva-anti) both;
+}
+/* A previa fecha como os demais dialogos: o fundo apaga e a caixa encolhe. */
+.file-preview-backdrop.saindo { animation: fadeOut .18s var(--curva-anti) both; }
+.file-preview-backdrop.saindo .file-preview-modal { animation: encolhe .18s var(--curva-anti) both; }
+@media (prefers-reduced-motion: reduce) {
+  .file-preview-backdrop,
+  .file-preview-backdrop.saindo,
+  .file-preview-backdrop.saindo .file-preview-modal { animation: none; }
 }
 
 .file-preview-modal {

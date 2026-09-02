@@ -389,9 +389,12 @@ export function ConfirmarExclusao({ titulo, oQue = 'tarefa', onCancelar, onConfi
   onCancelar: () => void;
   onConfirmar: () => void;
 }) {
-  const fundo = useFecharNoFundo(onCancelar);
+  // A saída é do gancho da casa: fechar sem animação é um corte, e o diálogo
+  // some antes de a pessoa registrar que clicou.
+  const { saindo, fechar } = useSaidaSuave(onCancelar);
+  const fundo = useFecharNoFundo(fechar);
   return createPortal(
-    <div className="admin-modal-overlay"
+    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`}
       style={{ zIndex: 10001, alignItems: 'center', justifyContent: 'center' }} {...fundo}>
       <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
         <p className="delete-confirm-title">Excluir {oQue}</p>
@@ -399,7 +402,7 @@ export function ConfirmarExclusao({ titulo, oQue = 'tarefa', onCancelar, onConfi
           Tem certeza que deseja excluir "<strong>{titulo}</strong>"? Esta ação não pode ser desfeita.
         </p>
         <div className="delete-confirm-actions">
-          <button type="button" className="delete-confirm-cancel" onClick={onCancelar}>Cancelar</button>
+          <button type="button" className="delete-confirm-cancel" onClick={fechar}>Cancelar</button>
           <button type="button" className="delete-confirm-ok" onClick={onConfirmar}>Excluir</button>
         </div>
       </div>
@@ -457,7 +460,8 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
   const escondidas = etiquetas.length - etiquetasVisiveis.length;
 
   return createPortal(
-    <div className="admin-modal-overlay" style={{ zIndex: 10000 }} {...fundo}>
+    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`}
+      style={{ zIndex: 10000 }} {...fundo}>
       {/* Fora do painel: dentro dele, que rola, o puxador sumiria ao descer o
           conteúdo. Em tela cheia não existe - não há borda para arrastar. */}
       <button
@@ -515,7 +519,7 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
             </div>
           </div>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-            <button type="button" className="admin-modal-close" aria-label="Fechar" onClick={onFechar}>
+            <button type="button" className="admin-modal-close" aria-label="Fechar" onClick={fechar}>
               <IconX size={16} />
             </button>
           </span>
@@ -661,7 +665,7 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
               </button>
             )}
           </span>
-          <button type="button" className="delete-confirm-cancel" onClick={onFechar} disabled={salvando}>
+          <button type="button" className="delete-confirm-cancel" onClick={fechar} disabled={salvando}>
             {somenteLeitura ? 'Fechar' : 'Cancelar'}
           </button>
           {!somenteLeitura && (
