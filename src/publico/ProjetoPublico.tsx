@@ -613,12 +613,30 @@ export default function ProjetoPublico({ token }: { token: string }) {
     setTimeout(() => setRealcada(r => (r === id ? null : r)), 2200);
   };
   const [realcada, setRealcada] = useState<number | null>(null);
-  // Agrupado por situação desde a primeira olhada: a lista corrida obrigava o
-  // cliente a varrer 46 linhas para descobrir o que está travado.
-  // Dois níveis, escolhidos na tela. Situação por padrão: é a primeira pergunta
-  // de quem abre a página para acompanhar.
-  const [maior, setMaior] = useState<Dimensao>('status');
-  const [menor, setMenor] = useState<Dimensao>('nenhum');
+  // Agrupado desde a primeira olhada: a lista corrida obrigava o cliente a
+  // varrer 46 linhas para descobrir o que está travado.
+  //
+  // Dois níveis, escolhidos na tela, e a página abre no marcador com o
+  // submarcador dentro dele - a empresa e, dentro dela, a área. É como o
+  // trabalho foi organizado, e é onde o cliente procura o que é dele.
+  const [maior, setMaior] = useState<Dimensao>('marcador');
+  const [menor, setMenor] = useState<Dimensao>('submarcador');
+
+  /** Alguém já escolheu o agrupamento nesta visita: daí em diante a página não
+   *  mexe mais nele. */
+  const escolheuAgrupamento = useRef(false);
+
+  // Projeto cujas entregas não têm marcador: repartir por ele daria uma seção
+  // só, chamada "Sem marcador", que é pior do que não agrupar. Aí a primeira
+  // pergunta volta a ser a situação.
+  useEffect(() => {
+    if (escolheuAgrupamento.current || !dados) return;
+    escolheuAgrupamento.current = true;
+    if (!dados.entregas.some(e => (e.marcador ?? '').trim())) {
+      setMaior('status');
+      setMenor('nenhum');
+    }
+  }, [dados]);
 
   // Trocar o critério de agrupamento reabre tudo: senão a pessoa muda de eixo e
   // encontra uma lista fechada que ela não fechou.
