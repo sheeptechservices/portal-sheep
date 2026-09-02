@@ -345,6 +345,19 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
     if (p?.projetos) setProjetos(p.projetos);
   }, [api]);
 
+  // A aba fica aberta o dia inteiro, e o quadro muda pelas mãos do time. Sem
+  // isto ele mostra o estado do momento em que foi aberto e só se atualiza
+  // depois de uma ação sua. Volta a olhar a aba e ele se reconcilia.
+  useEffect(() => {
+    const aoVoltar = () => { if (document.visibilityState === 'visible') void recarregar(); };
+    document.addEventListener('visibilitychange', aoVoltar);
+    window.addEventListener('focus', aoVoltar);
+    return () => {
+      document.removeEventListener('visibilitychange', aoVoltar);
+      window.removeEventListener('focus', aoVoltar);
+    };
+  }, [recarregar]);
+
   /** Junta rajadas: mover três cards em sequência reconcilia uma vez. */
   const reconciliarRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconciliar = useCallback(() => {

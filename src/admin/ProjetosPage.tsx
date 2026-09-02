@@ -5133,6 +5133,20 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     if (p?.projetos) { setProjetos(comOsResumos(p.projetos)); setClientes(p.clientes ?? []); }
   }, [api, comOsResumos]);
 
+  // A aba fica aberta o dia inteiro, e o projeto muda pelas mãos de outras
+  // pessoas. Sem isto o painel mostra o estado do momento em que foi aberto e
+  // só se atualiza depois de uma ação sua. Volta a olhar a aba e ele se
+  // reconcilia - sem esqueleto, que a tela já tem conteúdo.
+  useEffect(() => {
+    const aoVoltar = () => { if (document.visibilityState === 'visible') void recarregar(); };
+    document.addEventListener('visibilitychange', aoVoltar);
+    window.addEventListener('focus', aoVoltar);
+    return () => {
+      document.removeEventListener('visibilitychange', aoVoltar);
+      window.removeEventListener('focus', aoVoltar);
+    };
+  }, [recarregar]);
+
   /** Junta rajadas: arrastar três cards seguidos reconcilia uma vez, e não três
    *  vezes com a listagem inteira no meio do caminho. */
   const reconciliarRef = useRef<ReturnType<typeof setTimeout> | null>(null);
