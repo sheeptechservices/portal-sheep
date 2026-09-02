@@ -2986,20 +2986,20 @@ function faltaEntregaNoCorpo(p: any): string | null {
   return null;
 }
 
-/** Campos obrigatórios do projeto. Só observações é livre - e os anexos e as
- *  evidências, que sobem depois, em ação própria, porque só existem depois que
- *  o projeto e a entrega têm id. Anexo é opcional; a evidência é cobrada na
- *  conclusão da entrega, não aqui. */
+/** O que impede o projeto de ser gravado.
+ *
+ *  Só o nome. Desde que a criação passou a acontecer no clique em "Novo
+ *  projeto", o cliente, o tipo, as datas e a equipe são escolhidos com o painel
+ *  já aberto e o projeto já existindo - e recusar a gravação no meio do
+ *  preenchimento jogaria fora o que a pessoa acabou de escrever, que é
+ *  exatamente o oposto de gravar sozinho.
+ *
+ *  Eles continuam sendo cobrados, no formulário: o campo que falta se anuncia
+ *  enquanto se escreve e o rodapé lista o que resta. Aviso, e não porta
+ *  trancada. Anexo é opcional; a evidência é cobrada na conclusão da entrega,
+ *  não aqui. */
 function faltaEmProjeto(p: any): string | null {
   if (!String(p?.nome ?? '').trim()) return 'O nome do projeto é obrigatório.';
-  if (!p?.cliente_id) return 'O cliente é obrigatório.';
-  if (!String(p?.tipo ?? '').trim()) return 'O tipo do projeto é obrigatório.';
-  if (!String(p?.prioridade ?? '').trim()) return 'A prioridade é obrigatória.';
-  if (!p?.data_inicio) return 'A data de início é obrigatória.';
-  if (!p?.previsao_entrega) return 'O fim previsto é obrigatório.';
-  if (!Array.isArray(p?.equipe) || p.equipe.length === 0) {
-    return 'O projeto precisa de ao menos uma pessoa na equipe.';
-  }
   return null;
 }
 
@@ -3032,11 +3032,12 @@ function faltaEmProjeto(p: any): string | null {
       for (const [i, e] of (p.entregas as any[]).entries()) {
         await db.execute({
           sql: `INSERT INTO projeto_entregas
-                  (projeto_id, titulo, descricao, categoria, status, prazo, responsaveis, links, ordem,
-                   criado_em, criado_por_id, criado_por_nome)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+                  (projeto_id, titulo, descricao, marcador, submarcador, status, prazo, responsaveis,
+                   links, ordem, criado_em, criado_por_id, criado_por_nome)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
           args: [
-            id, String(e.titulo).trim(), e.descricao ?? null, String(e.categoria ?? '').trim() || null,
+            id, String(e.titulo).trim(), e.descricao ?? null,
+            String(e.marcador ?? '').trim() || null, String(e.submarcador ?? '').trim() || null,
             // Concluída exige evidência, que só pode ser anexada depois de a
             // entrega existir. Por isso a criacao nunca nasce entregue.
             e.status === ENTREGA_CANCELADA ? ENTREGA_CANCELADA : 'Planejada',

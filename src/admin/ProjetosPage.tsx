@@ -389,6 +389,28 @@ function entregasDePartida(): EntregaPendente[] {
   }));
 }
 
+/** O nome com que o projeto nasce. Ele é criado no clique, e nome vazio não
+ *  passa pela gravação - este fica no campo, já selecionado, para a primeira
+ *  tecla o trocar. */
+export const NOME_PADRAO = 'Projeto sem nome';
+
+/** O rascunho de um projeto recém-nascido. Só entra aqui o que é verdade sem
+ *  perguntar a ninguém: quem clicou é o gestor, e os ritos da casa são os
+ *  mesmos de sempre. Cliente, tipo e datas ficam vazios de propósito - chutá-los
+ *  poria no quadro de todo mundo um projeto dizendo coisas que ninguém decidiu.
+ *
+ *  O formulário abre exatamente com isto, e é isto que vai para o banco no
+ *  clique: se os dois divergissem, a primeira gravação automática devolveria
+ *  campos vazios por cima do que acabou de ser criado. */
+function rascunhoDePartida(usuarioId?: string): Rascunho {
+  return {
+    ...VAZIO,
+    nome: NOME_PADRAO,
+    equipe: usuarioId ? [{ usuario_id: usuarioId, papel: 'Gestor' }] : [],
+    entregas: entregasDePartida(),
+  };
+}
+
 const fmtData = (v: string | null) =>
   v ? new Date(`${v}T00:00:00`).toLocaleDateString('pt-BR') : '-';
 
@@ -4460,7 +4482,7 @@ function AbaGestao({
 // ── Formulário ───────────────────────────────────────────────────────────────
 
 function FormularioProjeto({
-  editando, pessoas, clientes, salvando, onFechar, onSalvar, onBaixarAnexo, onVerAnexo, onEtiquetar,
+  editando, base, pessoas, clientes, salvando, onFechar, onSalvar, onBaixarAnexo, onVerAnexo, onEtiquetar,
   marcadores, submarcadores, onExcluir, somenteLeitura, onVerTarefasDaEntrega,
   onRegistrarSaude, onExcluirSaude, onRegistrarReuniao, onVincularReuniao,
   onBuscarReunioesFireflies, onBuscarGravacaoFireflies, onAnexarReuniaoFireflies,
@@ -4468,13 +4490,18 @@ function FormularioProjeto({
   onPublicar, onSalvarEntrega, onExcluirEntrega, onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
 }: {
   editando: Projeto | null;
+  /** Com que rascunho o painel abre enquanto o projeto ainda não voltou do
+   *  servidor. É o mesmo objeto que foi gravado no clique. */
+  base?: Rascunho;
   pessoas: Pessoa[];
   clientes: Cliente[];
   salvando: boolean;
   /** Sai para a tela de Tarefas, estreitada numa entrega deste projeto. */
   onVerTarefasDaEntrega?: (entregaId: number) => void;
-  onFechar: () => void;
-  onSalvar: (r: Rascunho, anexos: AnexoPendente[], removidos: number[]) => void;
+  /** `intacto` diz que ninguém mexeu no projeto desde que ele nasceu: abrir e
+   *  desistir não deveria deixar "Projeto sem nome" no quadro da casa. */
+  onFechar: (intacto: boolean) => void;
+  onSalvar: (r: Rascunho, anexos: AnexoPendente[], removidos: number[]) => Promise<void>;
   onBaixarAnexo: (a: Arquivo) => void;
   onVerAnexo: (a: Arquivo) => void;
   onEtiquetar: (a: Arquivo, etiqueta: string) => Promise<void>;
@@ -4518,22 +4545,45 @@ function FormularioProjeto({
     equipe: editando.equipe.map(m => ({ usuario_id: m.id, papel: m.papel })),
     data_inicio: editando.data_inicio ?? '', previsao_entrega: editando.previsao_entrega ?? '',
     progresso: editando.progresso ?? 0, observacoes: editando.observacoes ?? '',
-  } : { ...VAZIO, entregas: entregasDePartida() });
+  } : (base ?? { ...VAZIO, entregas: entregasDePartida() }));
   const [novos, setNovos] = useState<AnexoPendente[]>([]);
   const [removidos, setRemovidos] = useState<number[]>([]);
   const [erroAnexo, setErroAnexo] = useState('');
   const inputArquivo = useRef<HTMLInputElement>(null);
 
-  // Erro por campo, preenchido só quando a pessoa tenta salvar. O botão fica
-  // sempre ativo: bloquear a ação esconde o motivo, e o objetivo aqui é
-  // justamente mostrar onde está o problema.
-  const [erros, setErros] = useState<Record<string, string>>({});
+  // O que ainda falta preencher. Vive junto com o rascunho, e não num "tentar
+  // salvar" que não existe mais: sem botão de gravar não há o instante em que
+  // conferir tudo faria sentido. E nada disto impede a gravação - o projeto
+  // existe desde o clique, e travá-lo por um campo vazio perderia o que já foi
+  // escrito.
+  const faltando: Record<string, string> = {};
+  if (!r.nome.trim()) faltando.nome = 'Informe o nome do projeto.';
+  if (!r.cliente_id) faltando.cliente_id = 'Escolha o cliente.';
+  if (!r.tipo) faltando.tipo = 'Escolha o tipo do projeto.';
+  if (!r.prioridade) faltando.prioridade = 'Escolha a prioridade.';
+  if (!r.data_inicio) faltando.data_inicio = 'Informe a data de início.';
+  if (!r.previsao_entrega) faltando.previsao_entrega = 'Informe o fim previsto.';
+  if (r.equipe.length === 0) faltando.equipe = 'Adicione ao menos uma pessoa à equipe.';
+
+  // O vermelho só aparece no campo em que a pessoa mexeu. O projeto novo abre
+  // com metade dos campos em branco de propósito, e pintar todos de vermelho na
+  // abertura seria acusar quem acabou de chegar. O que falta continua dito, uma
+  // vez só e sem alarde, no rodapé.
+  // O mesmo que falta, dito em uma linha no rodapé. Nome curto: o rodapé é
+  // estreito, e "Informe a data de início" repetido sete vezes não cabe.
+  const CURTO: Record<string, string> = {
+    nome: 'nome', cliente_id: 'cliente', tipo: 'tipo', prioridade: 'prioridade',
+    data_inicio: 'início', previsao_entrega: 'fim previsto', equipe: 'equipe',
+  };
+  const pendencias = Object.keys(faltando).map(k => CURTO[k]).filter(Boolean);
+
+  const [tocados, setTocados] = useState<Record<string, boolean>>({});
+  const erros: Record<string, string> = {};
+  for (const [k, v] of Object.entries(faltando)) if (tocados[k]) erros[k] = v;
 
   const set = <K extends keyof Rascunho>(k: K, v: Rascunho[K]) => {
     setR(p => ({ ...p, [k]: v }));
-    // O erro some assim que o campo é mexido: manter o vermelho enquanto a
-    // pessoa corrige é ruído.
-    setErros(e => (e[k as string] ? { ...e, [k as string]: '' } : e));
+    setTocados(x => (x[k as string] ? x : { ...x, [k as string]: true }));
   };
   // `editando` é um retrato de quando o modal abriu: sem guardar a troca aqui,
   // o arquivo reetiquetado só mudaria de grupo depois de fechar e reabrir.
@@ -4547,7 +4597,7 @@ function FormularioProjeto({
   useEffect(() => { setTokenPublico(editando?.publico_token ?? null); }, [editando?.publico_token]);
   const linkPublico = tokenPublico ? `${window.location.origin}/p/${tokenPublico}` : null;
   const { largura, arrastando, setArrastando, porTecla } = useLarguraPainel('projeto');
-  const { saindo, fechar } = useSaidaSuave(onFechar);
+  const { saindo, fechar } = useSaidaSuave(() => onFechar(intactoRef.current));
   const fundo = useFecharNoFundo(fechar);
 
   /** Link que abre este projeto direto, para quem já tem acesso ao portal. É o
@@ -4598,21 +4648,69 @@ function FormularioProjeto({
     .filter(a => !removidos.includes(a.id))
     .map(a => (reetiquetados[a.id] ? { ...a, etiqueta: reetiquetados[a.id] } : a));
 
-  function tentarSalvar() {
-    const novosErros: Record<string, string> = {};
-    if (!r.nome.trim()) novosErros.nome = 'Informe o nome do projeto.';
-    if (!r.cliente_id) novosErros.cliente_id = 'Escolha o cliente.';
-    if (!r.tipo) novosErros.tipo = 'Escolha o tipo do projeto.';
-    if (!r.prioridade) novosErros.prioridade = 'Escolha a prioridade.';
-    if (!r.data_inicio) novosErros.data_inicio = 'Informe a data de início.';
-    if (!r.previsao_entrega) novosErros.previsao_entrega = 'Informe o fim previsto.';
-    if (r.equipe.length === 0) novosErros.equipe = 'Adicione ao menos uma pessoa à equipe.';
-    if (!editando && r.entregas.length === 0) {
-      novosErros.entregas = 'Adicione ao menos uma entrega.';
+  /** Grava sozinho, um tempo depois da última tecla. Não existe mais botão de
+   *  salvar: o projeto já está no banco desde o clique, e cada alteração é uma
+   *  atualização dele.
+   *
+   *  Os anexos vão na mesma viagem e saem da fila quando chegam - mandar a lista
+   *  inteira a cada gravação subiria o mesmo arquivo de novo a cada tecla. */
+  const assinatura = JSON.stringify([r, novos.map(a => `${a.nome}:${a.tamanho}`), removidos]);
+  const ultimoGravado = useRef(assinatura);
+  const removidosEnviados = useRef<number[]>([]);
+  const podeGravar = !somenteLeitura && !!r.nome.trim();
+
+  async function gravar() {
+    const anexos = novos;
+    const fora = removidos.filter(id => !removidosEnviados.current.includes(id));
+    removidosEnviados.current = [...removidosEnviados.current, ...fora];
+    await onSalvar(r, anexos, fora);
+    // Só os que subiram nesta viagem: quem escolheu outro arquivo enquanto ela
+    // corria continua na fila.
+    setNovos(p => p.filter(a => !anexos.includes(a)));
+  }
+
+  // As entregas de partida viraram linhas do projeto no instante em que ele
+  // nasceu. Deixá-las também no rascunho as mostraria duas vezes: uma vinda do
+  // servidor e outra ainda pendente.
+  const idGravado = editando?.id ?? null;
+  useEffect(() => {
+    if (!idGravado) return;
+    setR(x => {
+      if (x.entregas.length === 0) return x;
+      const limpo = { ...x, entregas: [] };
+      // Tirar da lista o que já é do servidor não é alteração de ninguém: marcar
+      // aqui evita uma gravação que só devolveria ao banco o que ele mandou.
+      if (novos.length === 0) {
+        ultimoGravado.current = JSON.stringify([limpo, [], removidos]);
+      }
+      return limpo;
+    });
+  }, [idGravado]);
+
+  useEffect(() => {
+    if (!podeGravar || assinatura === ultimoGravado.current) return;
+    const t = window.setTimeout(() => { ultimoGravado.current = assinatura; void gravar(); }, 700);
+    return () => window.clearTimeout(t);
+  }, [assinatura, podeGravar]);
+
+  /** Ninguém mexeu desde que o projeto nasceu. O painel usa isto para decidir se
+   *  fecha deixando ou apagando o que foi criado no clique. As entregas saem da
+   *  conta depois que o servidor as devolve: elas continuam lá, só não no
+   *  rascunho. */
+  const molde = base ? { ...base, entregas: idGravado ? [] : base.entregas } : null;
+  const intacto = !!molde && novos.length === 0
+    && JSON.stringify(r) === JSON.stringify(molde);
+  const intactoRef = useRef(intacto);
+  intactoRef.current = intacto;
+
+  /** Fecha gravando o que ainda não foi: a pausa de 700ms pode não ter vencido,
+   *  e sair de um painel sem botão de salvar não pode custar a última frase. */
+  function fecharGravando() {
+    if (podeGravar && assinatura !== ultimoGravado.current) {
+      ultimoGravado.current = assinatura;
+      void gravar();
     }
-    setErros(novosErros);
-    if (Object.keys(novosErros).length > 0) return;
-    onSalvar(r, novos, removidos);
+    fechar();
   }
 
   async function escolherArquivos(lista: FileList | null) {
@@ -4684,7 +4782,8 @@ function FormularioProjeto({
                   <input
                     className={`painel-titulo painel-titulo-campo${erros.nome ? ' erro' : ''}`}
                     value={r.nome}
-                    autoFocus={!editando}
+                    autoFocus={r.nome === NOME_PADRAO}
+                    onFocus={e => { if (e.target.value === NOME_PADRAO) e.target.select(); }}
                     placeholder="Nome do projeto"
                     aria-label="Nome do projeto"
                     aria-invalid={!!erros.nome}
@@ -4778,7 +4877,7 @@ function FormularioProjeto({
                   </button>
                 </>
               )}
-              <button className="admin-modal-close" aria-label="Fechar" onClick={onFechar}><IconX size={16} /></button>
+              <button className="admin-modal-close" aria-label="Fechar" onClick={fecharGravando}><IconX size={16} /></button>
             </span>
           </div>
           <div style={{ marginTop: 2, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -4970,7 +5069,6 @@ function FormularioProjeto({
             onBaixarEvidencia={onBaixarEvidencia}
             onVerEvidencia={onVerEvidencia}
           />
-          {erros.entregas && <p className="form-error" style={{ marginTop: -4 }}>{erros.entregas}</p>}
 
           <fieldset className="painel-leitura campos-travaveis" disabled={somenteLeitura}>
 
@@ -5062,14 +5160,21 @@ function FormularioProjeto({
               </button>
             )}
           </span>
-          <button type="button" className="modal-acao" onClick={onFechar} disabled={salvando}>
-            {somenteLeitura ? 'Fechar' : 'Cancelar'}
-          </button>
+          {/* Sem Salvar: o projeto já está gravado. Fica o aviso do que está
+              acontecendo e, em repouso, o que ainda falta preencher - dito uma
+              vez, no lugar de sete campos vermelhos. */}
           {!somenteLeitura && (
-            <button type="button" className="modal-acao-primaria" onClick={tentarSalvar} disabled={salvando}>
-              {salvando ? 'Salvando…' : editando ? 'Salvar' : 'Criar projeto'}
-            </button>
+            <span className="painel-estado" aria-live="polite">
+              {!r.nome.trim() ? 'O projeto precisa de um nome'
+                : salvando ? 'Gravando…'
+                  : assinatura !== ultimoGravado.current ? 'Alterações não gravadas'
+                    : pendencias.length > 0 ? `Falta preencher: ${pendencias.join(', ')}`
+                      : ''}
+            </span>
           )}
+          <button type="button" className="delete-confirm-cancel" onClick={fecharGravando}>
+            Fechar
+          </button>
         </div>
 
       </div>
@@ -5105,7 +5210,14 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
   /** Tarefa esperando confirmação para ser excluída, aberta pelo painel. */
   const [excluindoTarefa, setExcluindoTarefa] = useState<Tarefa | null>(null);
   const [carregando, setCarregando] = useState(true);
-  const [form, setForm] = useState<{ editando: Projeto | null } | null>(null);
+  const [form, setForm] = useState<{ editando: Projeto | null; base?: Rascunho } | null>(null);
+  /** O projeto que acabou de nascer do clique em "Novo projeto", enquanto o
+   *  painel dele está aberto. A promessa existe porque a primeira gravação
+   *  automática pode sair antes de o servidor dizer que id ele deu. */
+  const nascendo = useRef<{ promessa: Promise<string | null>; id: string | null } | null>(null);
+  /** Id recém-nascido esperando aparecer na listagem para o painel trocar de
+   *  "novo" para "editando" - sem remontar, que o que já foi digitado fica. */
+  const [idNascido, setIdNascido] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [excluindo, setExcluindo] = useState<Projeto | null>(null);
   const fundoProjeto = useFecharNoFundo(() => setExcluindo(null));
@@ -5421,27 +5533,110 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     window.history.replaceState({}, '', window.location.pathname + window.location.hash);
   }, [projetos, toast]);
 
+  /** Abre o painel na mesma batida do clique e cria o projeto atrás dele. Não
+   *  há mais "Criar projeto": esperar a ida ao servidor para só então mostrar o
+   *  formulário é o que fazia a criação parecer lenta. */
+  function novoProjeto() {
+    const base = rascunhoDePartida(usuario?.id);
+    setForm({ editando: null, base });
+    const promessa = api('', 'POST', { action: 'create_projeto', ...base }).then(r => {
+      if (r?.error) { toast('error', 'Não foi possível criar', r.error); return null; }
+      const id = String(r.id);
+      if (nascendo.current) nascendo.current.id = id;
+      setIdNascido(id);
+      void recarregar();
+      return id;
+    });
+    nascendo.current = { promessa, id: null };
+  }
+
+  // O id chega depois da abertura. Quando o projeto aparece na listagem, o
+  // painel troca de "novo" para "editando" no lugar, sem remontar: o que já foi
+  // digitado continua lá, e as entregas, a saúde, as reuniões e a publicação
+  // passam a existir.
+  useEffect(() => {
+    if (!idNascido) return;
+    const p = projetos.find(x => x.id === idNascido);
+    if (!p) return;
+    setIdNascido(null);
+    setForm(f => (f && !f.editando ? { ...f, editando: p } : f));
+  }, [idNascido, projetos]);
+
+  /** Fecha o painel. O projeto que ninguém tocou não fica: abrir e desistir não
+   *  deveria deixar "Projeto sem nome" no quadro da casa. Qualquer alteração,
+   *  por menor que seja, já o torna trabalho de alguém - e aí ele permanece. */
+  async function fecharProjeto(intacto: boolean) {
+    setForm(null);
+    const novo = nascendo.current;
+    nascendo.current = null;
+    if (!novo || !intacto) return;
+    // Fechou antes de o id chegar: espera, senão o projeto nasceria logo depois
+    // e ficaria no quadro justamente por ter sido abandonado.
+    const id = novo.id ?? await novo.promessa;
+    if (!id) return;
+    mudancasRef.current++;
+    setProjetos(ps => ps.filter(p => p.id !== id));
+    await api('', 'POST', { action: 'delete_projeto', id });
+  }
+
+  /** Grava o projeto aberto. Chamada pelo próprio painel a cada pausa na
+   *  digitação: não fecha nada, não comemora nada e não prende ninguém - o
+   *  gesto já foi pintado, e o que sai daqui é só o banco acompanhando.
+   *
+   *  `progresso` e `entregas` não vão junto de propósito: o progresso é deduzido
+   *  no servidor, e mandar o número do rascunho o devolveria velho; as entregas
+   *  já viraram linhas do projeto no instante em que ele nasceu. */
   async function salvar(r: Rascunho, anexos: AnexoPendente[], removidos: number[]) {
+    const novo = nascendo.current;
+    let alvo = form?.editando?.id ?? novo?.id ?? (novo ? await novo.promessa : null);
+    if (!alvo) {
+      // A criação do clique não vingou - a rede caiu, o servidor recusou. Perder
+      // o que está sendo escrito seria o pior desfecho de um painel que grava
+      // sozinho, então a criação acontece agora, com o que já está na tela.
+      const resp = await api('', 'POST', {
+        action: 'create_projeto', ...r,
+        entregas: r.entregas.length > 0 ? r.entregas : entregasDePartida(),
+      });
+      if (resp?.error || !resp?.id) {
+        toast('error', 'Não foi possível salvar', resp?.error ?? 'Tente de novo em instantes.');
+        return;
+      }
+      alvo = String(resp.id);
+      nascendo.current = { promessa: Promise.resolve(alvo), id: alvo };
+      setIdNascido(alvo);
+      // O que acabou de ser criado já leva tudo o que estava na tela: seguir
+      // para o update logo em seguida seria gravar duas vezes a mesma coisa.
+      await recarregar();
+      return;
+    }
+    const { entregas: _entregas, progresso: _progresso, ...campos } = r;
     setSalvando(true);
     try {
-      const editando = form?.editando ?? null;
-      const resposta = editando
-        ? await api('', 'POST', { action: 'update_projeto', id: editando.id, ...r })
-        : await api('', 'POST', { action: 'create_projeto', ...r });
+      const resposta = await api('', 'POST', { action: 'update_projeto', id: alvo, ...campos });
       if (resposta?.error) { toast('error', 'Não foi possível salvar', resposta.error); return; }
-
-      const projetoId = editando?.id ?? String(resposta?.id ?? '');
       // Os anexos vão juntos. Um de cada vez, três arquivos custavam três idas
       // e voltas em fila, com o formulário parado na tela o tempo todo.
-      await Promise.all([
-        ...removidos.map(id => api('', 'POST', { action: 'delete_projeto_arquivo', id })),
-        ...anexos.map(a => api('', 'POST', { action: 'add_projeto_arquivo', projeto_id: projetoId, ...a })),
-      ]);
-
-      setForm(null);
-      toast('success', editando ? 'Projeto atualizado' : 'Projeto criado');
-      // Sem esperar: o formulário já fechou, e a listagem se atualiza atrás.
-      void recarregar();
+      if (anexos.length > 0 || removidos.length > 0) {
+        await Promise.all([
+          ...removidos.map(id => api('', 'POST', { action: 'delete_projeto_arquivo', id })),
+          ...anexos.map(a => api('', 'POST', { action: 'add_projeto_arquivo', projeto_id: alvo, ...a })),
+        ]);
+      }
+      mudancasRef.current++;
+      // A lista atrás do painel acompanha na hora: ver o nome antigo no cartão
+      // de trás é justamente o atraso que esta mudança veio tirar.
+      const cliente = clientes.find(c => c.id === campos.cliente_id);
+      setProjetos(ps => ps.map(p => (p.id === alvo ? {
+        ...p,
+        nome: campos.nome, descricao: campos.descricao,
+        cliente_id: campos.cliente_id || null, cliente_nome: cliente?.nome ?? null,
+        tipo: campos.tipo || null, status: campos.status, prioridade: campos.prioridade,
+        data_inicio: campos.data_inicio || null,
+        previsao_entrega: campos.previsao_entrega || null,
+        observacoes: campos.observacoes, repositorio: campos.repositorio,
+        drive: campos.drive, link_portal: campos.link_portal,
+      } : p)));
+      reconciliar();
     } finally {
       setSalvando(false);
     }
@@ -5867,7 +6062,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
         </div>
         {aba === 'geral' && podeCriar && (
           <button className="btn btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13, flexShrink: 0 }}
-            onClick={() => setForm({ editando: null })}>
+            onClick={novoProjeto}>
             + Novo projeto
           </button>
         )}
@@ -6186,13 +6381,14 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
           // leitura de saúde recarrega os projetos, e o retrato antigo não
           // mostraria o registro recém-criado.
           editando={form.editando ? projetos.find(p => p.id === form.editando!.id) ?? form.editando : null}
+          base={form.base}
           onVerTarefasDaEntrega={form.editando && onVerTarefasDaEntrega
             ? entregaId => onVerTarefasDaEntrega(form.editando!.id, entregaId)
             : undefined}
           pessoas={pessoas}
           clientes={clientes}
           salvando={salvando}
-          onFechar={() => setForm(null)}
+          onFechar={intacto => void fecharProjeto(intacto)}
           onSalvar={salvar}
           onBaixarAnexo={a => void baixarAnexo(a)}
           marcadores={marcadoresDeEntrega}
