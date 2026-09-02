@@ -4390,6 +4390,203 @@ body.arrastando-painel {
   box-shadow: 0 0 0 3px var(--gray4);
 }
 
+/* O esqueleto da conversa enquanto ela chega. Tres barras no formato dos
+   baloes: o bloco ja ocupa o tamanho do que vem, entao nada pula quando chega.
+   Pulsa devagar, como o resto dos esqueletos da casa. */
+.ativ-esqueleto {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0 4px;
+}
+.ativ-esqueleto > span {
+  height: 46px;
+  border-radius: var(--radius-md);
+  background: var(--gray4);
+  animation: pulsoEsqueleto 1.4s ease-in-out infinite;
+}
+.ativ-esqueleto > span:nth-child(2) { height: 62px; animation-delay: .12s; }
+.ativ-esqueleto > span:nth-child(3) { height: 38px; animation-delay: .24s; opacity: .6; }
+@keyframes pulsoEsqueleto {
+  0%, 100% { opacity: .55; }
+  50%      { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ativ-esqueleto > span { animation: none; }
+}
+
+/* O aviso do rodape do painel que grava sozinho. Fica a esquerda do Fechar,
+   discreto: e uma confirmacao, nao um pedido de atencao. */
+.painel-estado {
+  margin-right: auto;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--gray2);
+  white-space: nowrap;
+}
+
+/* ── Checklist da tarefa ──────────────────────────────
+   O passo a passo, abaixo da descricao. Linha simples, sem moldura por item: o
+   bloco ja e uma lista, e uma caixa em volta de cada passo faria cinco caixas
+   dentro de um formulario que ja tem varias. */
+.checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+.checklist-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition);
+}
+.checklist-item:hover { background: var(--gray4); }
+.checklist-item > label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--black);
+  cursor: pointer;
+}
+.checklist-item > label input { margin-top: 1px; flex-shrink: 0; }
+/* Feito continua legivel, e nao apagado: e historico do que foi andado, nao
+   lixo. O risco basta para dizer que saiu da fila. */
+.checklist-item.feito > label {
+  color: var(--gray2);
+  text-decoration: line-through;
+  text-decoration-color: var(--gray3);
+}
+/* O tirar so aparece na linha sob o cursor: cinco "x" numa lista de cinco itens
+   competem com o que esta escrito. */
+.checklist-tirar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition), background var(--transition), color var(--transition);
+}
+.checklist-item:hover .checklist-tirar,
+.checklist-tirar:focus-visible { opacity: 1; }
+.checklist-tirar:hover { background: var(--gray3); color: var(--red); }
+.checklist-tirar:focus-visible { outline: none; }
+/* O campo de acrescentar e mais discreto que os campos de verdade: ele fica
+   sempre aberto no fim da lista, e com a moldura cheia pareceria mais um campo
+   do formulario. */
+.checklist-novo {
+  height: 32px;
+  font-size: 12.5px;
+  border-style: dashed;
+}
+.checklist-novo:focus { border-style: solid; }
+/* O pai marca `span` em vermelho, que e o asterisco de campo obrigatorio. A
+   contagem nao e isso: ela e apoio, e precisa vencer aquela regra pelo nome. */
+.form-label > span.checklist-conta,
+.checklist-conta {
+  margin-left: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--gray2);
+}
+
+/* ── Cristal da tela de Tarefas ───────────────────────
+   O mesmo material do painel de projeto e da pagina do cliente. A tela de
+   Tarefas era a unica que tinha ficado para tras: botao chapado com borda dura,
+   card sem acabamento e hover que so trocava a cor da borda. E a mesma casa.
+
+   Os tokens moram na pagina, como no painel: assim cada peca so diz que usa
+   cristal, sem repetir os valores. O tom e mais leve que o do painel - a folha
+   aqui e a `--bg` da tela inteira, e o degrade forte de um painel estreito
+   viraria mancha numa area larga. */
+.pagina-tarefas {
+  --cristal: linear-gradient(180deg,
+    color-mix(in srgb, var(--gray4) 12%, var(--white)) 0%,
+    color-mix(in srgb, var(--gray4) 46%, var(--white)) 100%);
+  --cristal-borda: rgba(23, 21, 15, .08);
+  --cristal-borda-forte: rgba(23, 21, 15, .24);
+  --cristal-luz: rgba(255, 255, 255, 1);
+  --cristal-base: rgba(23, 21, 15, .04);
+  --cristal-sombra: 0 1px 2px rgba(20, 22, 30, .05),
+    0 4px 10px -6px rgba(20, 22, 30, .14);
+}
+:root[data-theme="dark"] .pagina-tarefas {
+  --cristal: linear-gradient(180deg, rgba(30, 31, 36, .96) 0%,
+    rgba(20, 21, 24, .86) 100%);
+  --cristal-borda: rgba(255, 255, 255, .10);
+  --cristal-borda-forte: rgba(255, 255, 255, .30);
+  --cristal-luz: rgba(255, 255, 255, .08);
+  --cristal-base: rgba(0, 0, 0, .18);
+  --cristal-sombra: 0 1px 2px rgba(0, 0, 0, .25),
+    0 4px 10px -6px rgba(0, 0, 0, .45);
+}
+
+/* As superficies da tela: o que repousa sobre a folha e tem moldura propria.
+   Mesma lista do painel, com os nomes que existem aqui. */
+.pagina-tarefas .admin-toolbar-btn,
+.pagina-tarefas .filter-dropdown-btn,
+.pagina-tarefas .secao-busca-campo,
+.pagina-tarefas .view-toggle,
+.pagina-tarefas .kanban-card,
+.pagina-tarefas .linha-grupo,
+.pagina-tarefas .admin-stat-card-v2 {
+  border-color: var(--cristal-borda);
+  box-shadow: inset 0 1px 0 var(--cristal-luz),
+    inset 0 -1px 0 var(--cristal-base),
+    var(--cristal-sombra);
+  transition: border-color var(--transition),
+    box-shadow var(--transition-spring),
+    transform var(--transition-spring),
+    background var(--transition);
+}
+/* A borda esquerda do card e do cartao e a cor da situacao, e continua sendo. */
+.pagina-tarefas .kanban-card { border-left-color: var(--col-color, var(--gray3)); }
+.pagina-tarefas .admin-stat-card-v2 { border-left-color: var(--accent-color, var(--yellow)); }
+
+.pagina-tarefas .admin-toolbar-btn:hover:not(:disabled),
+.pagina-tarefas .filter-dropdown-btn:hover,
+.pagina-tarefas .secao-busca-campo:hover,
+.pagina-tarefas .secao-busca-campo:focus-within,
+.pagina-tarefas .linha-grupo:hover {
+  border-color: var(--cristal-borda-forte);
+}
+
+/* Card e cartao sobem, como em todo card da casa: elevacao e o que diz que a
+   peca inteira e clicavel. Os estados repoem o fio de luz junto com a sombra -
+   sem isso o card perderia a aresta justo quando sobe. */
+.pagina-tarefas .kanban-card:hover,
+.pagina-tarefas .admin-stat-card-v2:hover {
+  transform: translateY(-2px);
+  border-color: var(--cristal-borda-forte);
+  box-shadow: inset 0 1px 0 var(--cristal-luz),
+    inset 0 -1px 0 var(--cristal-base),
+    var(--shadow-card-hover);
+}
+.pagina-tarefas .kanban-card:hover { background: var(--card-hover-bg, #FCFCFB); }
+/* Arrastando, o card afunda em vez de subir: a peca saiu do lugar, e continuar
+   elevada diria que ela ainda esta em repouso. */
+.pagina-tarefas .kanban-card:active {
+  transform: scale(0.97) rotate(0.5deg);
+  box-shadow: var(--cristal-sombra);
+}
+
+/* Icone de barra em `--gray2`, como no painel e na pagina do cliente: o icone e
+   apoio, nao par do texto. */
+.pagina-tarefas .admin-toolbar-btn { color: var(--gray2); }
+.pagina-tarefas .admin-toolbar-btn:hover:not(:disabled) { color: var(--black); }
+
 /* ── Busca da secao de entregas ───────────────────────
    Sempre a vista, com ordenar e agrupar dividindo a faixa. O campo tem a
    moldura do `.form-input`, mas com a lupa dentro, entao ele e desenhado aqui
@@ -4416,9 +4613,11 @@ body.arrastando-painel {
 }
 .secao-busca-campo:hover,
 .secao-busca-campo:focus-within { border-color: var(--gray2); }
-/* No painel o switcher e mais miudo: encosta na altura do campo, 34px, e
-   ocupa menos largura ao lado de uma busca que atravessa a secao. Sem borda,
-   porque ela somava dois pixels e o bloco ficava mais alto que o campo. */
+/* No painel o switcher e mais miudo: encosta na altura dos botoes de secao,
+   34px, e ocupa menos largura. Sem borda, porque ela somava dois pixels e o
+   bloco ficava mais alto que os vizinhos. Vale nos dois lugares onde ele
+   aparece - o cabecalho da secao e, antes, a linha da busca. */
+.admin-section-head .visoes-switch,
 .secao-busca .visoes-switch {
   padding: 3px;
   border: none;
@@ -11962,32 +12161,30 @@ body.arrastando-painel {
    alvos separados. Botao dentro de botao nao existe, e o que o olho le como uma
    peca so nao precisa ser um elemento so. */
 .ao-vivo-caixa {
+  /* Um tom só governa a peça inteira - texto, ponto, fio e ícones. Trocar de
+     estado é trocar esta variável, e não seis regras.
+
+     A tonalidade é a do chip de saúde, que é o vizinho direto no cabeçalho:
+     mesma lavagem leve ao fundo e a cor cheia no texto. A borda dura de antes
+     fazia o selo gritar mais alto que o estado do projeto ao lado dele. */
+  --tom: var(--green);
   display: inline-flex;
   align-items: center;
   height: 30px;
   padding: 0 4px 0 0;
-  border: 1px solid var(--green);
+  border: 1px solid color-mix(in srgb, var(--tom) 22%, transparent);
   border-radius: var(--radius-pill);
-  background: var(--green-soft);
+  background: color-mix(in srgb, var(--tom) 9%, transparent);
   transition: background var(--transition), border-color var(--transition);
 }
 /* Passar o mouse no selo pinta a caixa inteira de vermelho: o aviso e sobre a
    peca, nao sobre o texto. Nos icones, nao - eles nao tiram nada do ar. */
+/* Passar o mouse no selo vira a peça inteira para o vermelho: o aviso é sobre a
+   peça, não sobre o texto. Um tom, e tudo acompanha - inclusive o fio e os
+   ícones, que em verde dentro de uma peça vermelha leriam como duas coisas
+   empilhadas. */
 .ao-vivo-caixa:has(.ao-vivo:hover:not(:disabled)),
-.ao-vivo-caixa:has(.ao-vivo:focus-visible) {
-  border-color: var(--red);
-  background: var(--red-soft);
-}
-/* O fio e os icones acompanham: verde dentro de uma peca vermelha leria como
-   duas coisas empilhadas, e nao como um aviso sobre a peca inteira. */
-.ao-vivo-caixa:has(.ao-vivo:hover:not(:disabled)) .ao-vivo-fio,
-.ao-vivo-caixa:has(.ao-vivo:focus-visible) .ao-vivo-fio { background: var(--red); }
-.ao-vivo-caixa:has(.ao-vivo:hover:not(:disabled)) .ao-vivo-icone,
-.ao-vivo-caixa:has(.ao-vivo:focus-visible) .ao-vivo-icone { color: var(--red); }
-.ao-vivo-caixa:has(.ao-vivo:hover:not(:disabled)) .ao-vivo-icone:hover,
-.ao-vivo-caixa:has(.ao-vivo:focus-visible) .ao-vivo-icone:hover {
-  background: rgba(217, 48, 37, .14);
-}
+.ao-vivo-caixa:has(.ao-vivo:focus-visible) { --tom: var(--red); }
 
 .ao-vivo {
   display: inline-flex;
@@ -11998,7 +12195,7 @@ body.arrastando-painel {
   border: none;
   border-radius: var(--radius-pill);
   background: none;
-  color: var(--green);
+  color: var(--tom);
   font-family: inherit;
   font-size: 11.5px;
   font-weight: 800;
@@ -12015,7 +12212,7 @@ body.arrastando-painel {
   width: 1px;
   height: 15px;
   margin: 0 3px 0 1px;
-  background: var(--green);
+  background: var(--tom);
   opacity: .35;
   flex-shrink: 0;
 }
@@ -12028,13 +12225,14 @@ body.arrastando-painel {
   border: none;
   border-radius: 50%;
   background: none;
-  color: var(--green);
+  color: var(--tom);
   cursor: pointer;
   text-decoration: none;
-  transition: background var(--transition);
+  transition: background var(--transition), color var(--transition);
 }
-.ao-vivo-icone:hover { background: rgba(35, 164, 85, .16); }
-.ao-vivo-icone:focus-visible { outline: none; background: rgba(35, 164, 85, .16); }
+.ao-vivo-icone:hover,
+.ao-vivo-icone:focus-visible { background: color-mix(in srgb, var(--tom) 15%, transparent); }
+.ao-vivo-icone:focus-visible { outline: none; }
 /* Tirando do ar, os icones somem e a caixa encolhe para o selo: o fio e os
    gestos ficariam apontando para um endereco que esta deixando de existir. */
 .ao-vivo-caixa.publicando { padding-right: 0; }
@@ -12062,7 +12260,7 @@ body.arrastando-painel {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--green);
+  background: var(--tom);
   flex-shrink: 0;
 }
 .ao-vivo-ponto::after {
@@ -12070,7 +12268,7 @@ body.arrastando-painel {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: var(--green);
+  background: var(--tom);
   animation: pulsoAoVivo 1.8s var(--curva-anti) infinite;
 }
 @keyframes pulsoAoVivo {
@@ -12083,16 +12281,13 @@ body.arrastando-painel {
    invisível para leitor de tela - por isso os dois são `aria-hidden` e o botão
    carrega o próprio `aria-label`, que diz o que o clique faz. */
 .ao-vivo-acao { display: none; }
-.ao-vivo:hover:not(:disabled),
-.ao-vivo:focus-visible { color: var(--red); }
+/* O rótulo troca; a cor já vem do tom da peça. */
 .ao-vivo:hover:not(:disabled) .ao-vivo-texto,
 .ao-vivo:focus-visible .ao-vivo-texto { display: none; }
 .ao-vivo:hover:not(:disabled) .ao-vivo-acao,
 .ao-vivo:focus-visible .ao-vivo-acao { display: inline; }
-/* O ponto acompanha a cor e para de pulsar: no hover a promessa é desligar,
-   e um pulso ali continuaria dizendo o contrário. */
-.ao-vivo:hover:not(:disabled) .ao-vivo-ponto,
-.ao-vivo:focus-visible .ao-vivo-ponto { background: var(--red); }
+/* O ponto para de pulsar no hover: ali a promessa é desligar, e um pulso
+   continuaria dizendo o contrário. A cor ele já herda do tom da peça. */
 .ao-vivo:hover:not(:disabled) .ao-vivo-ponto::after,
 .ao-vivo:focus-visible .ao-vivo-ponto::after { animation: none; opacity: 0; }
 

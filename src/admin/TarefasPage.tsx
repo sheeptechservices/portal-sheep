@@ -39,7 +39,7 @@ import {
 // Gestão abre o mesmo modal, e duas cópias divergiriam no primeiro campo novo.
 import {
   Avatar, AvatarVazio, ChipEtiqueta, ConfirmarExclusao, ETAPAS_PADRAO, FormularioTarefa,
-  etiquetasParaOPapel, indexar, indexarEtiquetas, tarefaGravada, type EtapaTarefa,
+  etiquetasParaOPapel, indexar, indexarEtiquetas, tarefaGravada, TITULO_PADRAO, type EtapaTarefa,
   type Etapario, type EtiquetaTarefa, type Etiquetario, type Pessoa, type Rascunho,
 } from './FormularioTarefa';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
@@ -289,7 +289,6 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
   const [fEtiqueta, setFEtiqueta] = useState<string[]>([]);
   // Guardado por id: dois projetos podem ter entregas de mesmo nome.
   const [fEntrega, setFEntrega] = useState<string[]>([]);
-  const [buscando, setBuscando] = useState(false);
   const [busca, setBusca] = useState('');
   const [ordem, setOrdem] = useState<string>('prazo');
   const [agrupamento, setAgrupamento] = useState<string>('status');
@@ -341,6 +340,10 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
   /** Conta as mudanças pintadas na tela. A resposta que sai daqui é uma foto do
    *  servidor no instante do pedido: se alguém mexeu enquanto ela vinha, ela já
    *  nasceu velha, e aplicá-la desfaria o gesto na cara da pessoa. */
+  /** Enquanto a gravação automática está em curso. O painel mostra "Gravando…"
+   *  em vez de um botão. */
+  const [salvando, setSalvando] = useState(false);
+
   const mudancasRef = useRef(0);
 
   const recarregar = useCallback(async () => {
@@ -490,15 +493,15 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
 
   function limparFiltros() {
     setFProjeto([]); setFStatus([]); setFResponsavel([]); setFEtiqueta([]); setFEntrega([]);
-    setBusca(''); setBuscando(false);
+    setBusca('');
   }
 
   async function salvar(r: Rascunho) {
     if (!r.projeto_id) { toast('error', 'Falta o projeto', 'Escolha a que projeto a tarefa pertence.'); return; }
     if (!r.titulo.trim()) { toast('error', 'Falta o título', 'A tarefa precisa de um título.'); return; }
-    // O painel fecha no gesto: o que se grava aqui a tela já sabe desenhar, e
-    // segurá-la até a resposta chegar põe a ida e a volta na frente de quem
-    // apertou Salvar. Se o servidor recusar, a lista volta ao que era.
+    // O painel não fecha ao gravar: quem está escrevendo continua escrevendo, e
+    // a gravação acontece por baixo. O que aparece na lista é pintado na hora;
+    // se o servidor recusar, ela volta ao que era.
     const antes = projetos;
     if (r.id) {
       const dono = pessoas.find(x => x.id === r.responsavel_id);
@@ -511,20 +514,47 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
         responsavel_foto: dono?.foto_url ?? null,
       });
     }
-    setForm(null);
+    setSalvando(true);
+    // Rascunho sem id com uma criação em curso: espera o id e grava por cima,
+    // em vez de criar uma segunda tarefa com o mesmo conteúdo.
+    const jaCriada = !r.id && criando.current ? await criando.current : null;
+    const alvo = r.id ?? jaCriada ?? undefined;
     const resposta = await api('', 'POST', {
-      action: 'salvar_tarefa', ...r,
+      action: 'salvar_tarefa', ...r, id: alvo,
       entrega_id: r.entrega_id ? Number(r.entrega_id) : null,
-    });
+    }).finally(() => setSalvando(false));
     if (resposta?.error) {
       setProjetos(antes);
       toast('error', 'Não foi possível salvar', resposta.error);
       return;
     }
+    // A regra de uma etiqueta pode ter mudado a etapa e o responsável na
+    // gravação. O servidor devolve os dois, e a tela repinta com o que de fato
+    // ficou - senão o card mostraria o que foi pedido, e não o que valeu.
+    // `alvo`, e não `r.id`: a tarefa criada há instantes já tem id, mas o
+    // rascunho que disparou esta gravação ainda não o carregava.
+    if (alvo) {
+      const dono = pessoas.find(x => x.id === resposta?.responsavel_id);
+      pintarTarefa(alvo, {
+        titulo: r.titulo,
+        status: String(resposta?.status ?? r.status),
+        responsavel_id: resposta?.responsavel_id ?? null,
+        responsavel_nome: dono?.nome ?? null,
+        responsavel_foto: dono?.foto_url ?? null,
+      });
+    }
     // Tarefa nova: o id nasce no servidor, então ela entra na coluna agora -
     // montada do que a pessoa escreveu, sem recarregar a listagem inteira.
-    if (!r.id && resposta?.id) inserirTarefa(tarefaGravada(r, resposta, pessoas));
-    toast('success', r.id ? 'Tarefa salva' : 'Tarefa criada');
+    if (!alvo && resposta?.id) {
+      inserirTarefa(tarefaGravada(r, resposta, pessoas));
+      // O painel continua aberto e passa a editar a tarefa que acabou de
+      // nascer: sem o id, a gravação seguinte criaria outra.
+      setForm(f => (f && !f.id ? { ...f, id: Number(resposta.id) } : f));
+      toast('success', 'Tarefa criada');
+    }
+    // A explicação da etiqueta já virou comentário: mantê-la no rascunho a
+    // reenviaria na gravação seguinte.
+    if (r.comentario_etiqueta) setForm(f => (f ? { ...f, comentario_etiqueta: '' } : f));
     reconciliar();
   }
 
@@ -690,6 +720,60 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
     responsavel_id: usuario?.id ?? '',
   });
 
+  /** O estado em que a tarefa foi criada. Serve para saber, ao fechar, se
+   *  alguém chegou a mexer nela. */
+  const nasceuAssim = useRef<string | null>(null);
+
+  /** A criação em curso, enquanto o id não voltou. Quem precisar do id espera
+   *  por ela em vez de criar uma segunda tarefa. */
+  const criando = useRef<Promise<number | null> | null>(null);
+
+  /** "Nova tarefa" cria de verdade, e não abre um formulário em branco: daqui em
+   *  diante tudo o que se digita grava sozinho, e um rascunho que só existe na
+   *  tela seria a única coisa do sistema que ainda dependeria de alguém apertar
+   *  um botão.
+   *
+   *  O painel abre no clique, e a criação corre por baixo: esperar a ida e a
+   *  volta para abrir punha meio segundo de nada entre o clique e o cursor no
+   *  campo do título. */
+  function novaTarefa() {
+    const base = { ...tarefaNova(), titulo: TITULO_PADRAO };
+    nasceuAssim.current = JSON.stringify(base);
+    setForm(base);
+    criando.current = api('', 'POST', { action: 'salvar_tarefa', ...base, entrega_id: null })
+      .then(r => {
+        if (r?.error) { toast('error', 'Não foi possível criar', r.error); return null; }
+        const id = Number(r.id);
+        inserirTarefa(tarefaGravada({ ...base, id }, r, pessoas));
+        // O id chega depois da abertura: sem ele no rascunho, a gravação
+        // seguinte criaria outra tarefa.
+        setForm(f => (f && !f.id ? { ...f, id } : f));
+        reconciliar();
+        return id;
+      });
+  }
+
+  /** Fechar o painel. A tarefa que ninguém tocou não fica: abrir e desistir não
+   *  deveria deixar "Sem título" no quadro de todo mundo. Qualquer alteração,
+   *  por menor que seja, já a torna trabalho de alguém - e aí ela permanece. */
+  async function fecharTarefa() {
+    const atual = form;
+    setForm(null);
+    if (!atual || nasceuAssim.current === null) return;
+    const intacta = JSON.stringify({ ...atual, id: undefined }) === nasceuAssim.current;
+    nasceuAssim.current = null;
+    if (!intacta) return;
+    // Fechou antes de o id chegar: espera, senão a tarefa nasceria logo depois
+    // e ficaria no quadro justamente por ter sido abandonada.
+    const id = atual.id ?? (criando.current ? await criando.current : null);
+    if (!id) return;
+    mudancasRef.current++;
+    setProjetos(ps => ps.map(p => ({
+      ...p, tarefas: (p.tarefas ?? []).filter(x => x.id !== id),
+    })));
+    await api('', 'POST', { action: 'excluir_tarefa', id });
+  }
+
   /** Cria uma cópia da tarefa, igual em tudo: mesma etapa, mesmo responsável,
    *  mesmo prazo, mesmas etiquetas - e a mesma data de conclusão, quando há uma,
    *  para a cópia nascer na mesma coluna e no mesmo dia da original. Só o título
@@ -738,37 +822,19 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
   }
 
   return (
-    <div className="admin-content-wrap">
+    <div className="admin-content-wrap pagina-tarefas">
       <div className="admin-page-header">
         <div>
           <h1 className="admin-page-title">Tarefas</h1>
           <p className="admin-page-desc">O trabalho dos projetos, e o que move as entregas</p>
         </div>
-        {/* Buscar, agrupar e ordenar sobem para cá: são controles da tela
-            inteira, e não recorte de lista como os filtros. Ficavam na barra de
-            filtros só por vizinhança. Aparecem sob a mesma condição da barra -
-            sem tarefa não há o que buscar nem ordenar. */}
+        {/* Só "Nova tarefa" fica no cabeçalho. Buscar, agrupar, ordenar e
+            exportar desceram para a linha da busca: são o mesmo momento - achar
+            o que se procura e escolher como olhar. */}
         <div className="admin-page-acoes">
-          {!carregando && tarefas.length > 0 && (
-            <>
-              <button type="button" className="admin-toolbar-btn"
-                onClick={() => { setBuscando(b => !b); if (buscando) setBusca(''); }}
-                title="Buscar tarefa" aria-label="Buscar tarefa" aria-expanded={buscando}>
-                <IconSearch size={14} />
-              </button>
-              <SeletorLista valor={agrupamento} onChange={setAgrupamento} opcoes={AGRUPAMENTOS}
-                icone={IconAgrupar} rotulo="Agrupar tarefas" />
-              <SeletorLista valor={ordem} onChange={setOrdem} opcoes={ORDENS}
-                icone={IconOrdenar} rotulo="Ordenar tarefas" />
-              {/* Exporta o que está filtrado. O `.md` existe para virar contexto
-                  de uma IA; os outros três, para planilha e para mandar adiante. */}
-              <SeletorLista valor="" onChange={v => void exportarComo(v as FormatoExport)}
-                opcoes={FORMATOS} icone={IconDownload} rotulo="Exportar" />
-            </>
-          )}
           {podeEditar && projetos.length > 0 && (
             <button className="btn btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13, flexShrink: 0 }}
-              onClick={() => setForm(tarefaNova())}>
+              onClick={() => void novaTarefa()}>
               + Nova tarefa
             </button>
           )}
@@ -837,13 +903,32 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
             </div>
           </div>
 
-          {buscando && (
-            <input autoFocus className="form-input" value={busca}
-              onChange={e => setBusca(e.target.value)}
-              placeholder="Buscar por título ou descrição"
-              onKeyDown={e => { if (e.key === 'Escape') { setBusca(''); setBuscando(false); } }}
-              style={{ marginTop: 10, height: 36, fontSize: 13 }} />
-          )}
+          {/* A busca fica à vista, e não atrás de um botão: com dezenas de
+              tarefas, procurar uma é o primeiro gesto de quem abre a tela. É a
+              mesma faixa do painel de projeto e da página do cliente - campo de
+              um lado, controles da tela do outro. */}
+          <div className="secao-busca" style={{ marginTop: 10 }}>
+            <span className="secao-busca-campo">
+              <IconSearch size={13} />
+              <input value={busca} aria-label="Buscar tarefa"
+                onChange={e => setBusca(e.target.value)}
+                placeholder="Buscar por título ou descrição"
+                onKeyDown={e => { if (e.key === 'Escape') setBusca(''); }} />
+              {busca && (
+                <button type="button" aria-label="Limpar a busca" onClick={() => setBusca('')}>
+                  <IconX size={12} />
+                </button>
+              )}
+            </span>
+            <SeletorLista valor={agrupamento} onChange={setAgrupamento} opcoes={AGRUPAMENTOS}
+              icone={IconAgrupar} rotulo="Agrupar tarefas" />
+            <SeletorLista valor={ordem} onChange={setOrdem} opcoes={ORDENS}
+              icone={IconOrdenar} rotulo="Ordenar tarefas" />
+            {/* Exporta o que está filtrado. O `.md` existe para virar contexto
+                de uma IA; os outros três, para planilha e para mandar adiante. */}
+            <SeletorLista valor="" onChange={v => void exportarComo(v as FormatoExport)}
+              opcoes={FORMATOS} icone={IconDownload} rotulo="Exportar" />
+          </div>
         </>
       )}
 
@@ -889,12 +974,12 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
           usuarioId={usuario?.id}
           etq={etq}
           pessoas={pessoas}
-          salvando={false}
+          salvando={salvando}
           somenteLeitura={!podeEditar}
           podeComentar={pode('tarefas:comentar')}
           api={api}
           onMudar={setForm}
-          onFechar={() => setForm(null)}
+          onFechar={() => void fecharTarefa()}
           onSalvar={() => void salvar(form)}
           onExcluir={podeExcluir && form.id ? () => {
             const alvo = tarefas.find(x => x.id === form.id);

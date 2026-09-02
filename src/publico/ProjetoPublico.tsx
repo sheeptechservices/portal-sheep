@@ -882,17 +882,11 @@ export default function ProjetoPublico({ token }: { token: string }) {
             </button>
           )}
 
-          {/* Agrupar e ordenar, no mesmo canto do quadro de dentro. Nenhum
-              deles grava nada. */}
+          {/* No alto fica só a escolha de como olhar, que é a decisão que muda
+              a página inteira. Agrupar e ordenar desceram para a linha da
+              busca, junto do que opera sobre o que está à vista. */}
           <div className="pub-ferramentas">
-            {/* Agrupar só existe na lista: o quadro já é agrupado por situação
-                e o calendário, por data. Ordenar continua valendo nos três. */}
-            {visao === 'lista' && (
-              <SeletorAgrupamento maior={maior} menor={menor}
-                onMudar={(ma, me) => { setMaior(ma); setMenor(me); }} />
-            )}
-            <Seletor valor={ordem} opcoes={ORDENS} icone={IconOrdenar}
-              rotulo="Ordenar entregas" onChange={setOrdem} />
+            <SwitcherVisao valor={visao} onChange={setVisao} />
           </div>
         </div>
 
@@ -917,7 +911,17 @@ export default function ProjetoPublico({ token }: { token: string }) {
           )}
         </div>
 
-        <SwitcherVisao valor={visao} onChange={setVisao} />
+        {/* Agrupar só existe na lista: o quadro já é agrupado por situação e o
+            calendário, por data. Ordenar continua valendo nos três. */}
+        {visao === 'lista' && (
+          <SeletorAgrupamento maior={maior} menor={menor}
+            onMudar={(ma, me) => {
+              escolheuAgrupamento.current = true;
+              setMaior(ma); setMenor(me);
+            }} />
+        )}
+        <Seletor valor={ordem} opcoes={ORDENS} icone={IconOrdenar}
+          rotulo="Ordenar entregas" onChange={setOrdem} />
         </div>
 
         {lista.length === 0 ? (

@@ -1869,21 +1869,10 @@ function SecaoEntregas({
             </span>
           )}
         </p>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <SeletorLista valor={ordem} onChange={setOrdem} opcoes={ORDENS_ENTREGA}
-            icone={IconOrdenar} rotulo="Ordenar entregas" />
-          <SeletorAgrupamento maior={maior} menor={menor}
-            onMudar={(ma, me) => { setMaior(ma); setMenor(me); }} />
-          {/* Ordenar e agrupar continuam: são leitura. Só o acrescentar sai,
-              junto com o resto do que grava. */}
-          {!somenteLeitura && (
-            <button type="button" className="secao-add"
-              onClick={() => (gravado ? setEditando('novo') : setEditandoPendente(-1))}
-              title="Adicionar entrega" aria-label="Adicionar entrega">
-              <IconPlus size={14} />
-            </button>
-          )}
-        </span>
+        {/* No alto fica só a escolha de como olhar - lista, quadro ou
+            calendário -, que é a decisão que muda a seção inteira. O que opera
+            sobre o que está à vista desceu para a linha da busca. */}
+        <SwitcherVisao valor={visao} onChange={setVisao} />
       </div>
 
       {/* A busca fica à vista, e não atrás de um botão: num projeto com dezenas
@@ -1903,7 +1892,19 @@ function SecaoEntregas({
             </button>
           )}
         </span>
-        <SwitcherVisao valor={visao} onChange={setVisao} />
+        <SeletorLista valor={ordem} onChange={setOrdem} opcoes={ORDENS_ENTREGA}
+          icone={IconOrdenar} rotulo="Ordenar entregas" />
+        <SeletorAgrupamento maior={maior} menor={menor}
+          onMudar={(ma, me) => { setMaior(ma); setMenor(me); }} />
+        {/* Ordenar e agrupar continuam em leitura. Só o acrescentar sai, junto
+            com o resto do que grava. */}
+        {!somenteLeitura && (
+          <button type="button" className="secao-add"
+            onClick={() => (gravado ? setEditando('novo') : setEditandoPendente(-1))}
+            title="Adicionar entrega" aria-label="Adicionar entrega">
+            <IconPlus size={14} />
+          </button>
+        )}
       </div>
 
       {(editando === 'novo' || editandoPendente === -1) && (
@@ -5324,9 +5325,9 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
    *  no quadro, aqui a pessoa apertou "Salvar": vale o formulário todo. */
   const salvarRascunho = useCallback(async (r: RascunhoTarefa) => {
     if (!r.titulo.trim()) { toast('error', 'Falta o título', 'A tarefa precisa de um título.'); return; }
-    // O painel fecha no gesto e a mudança já aparece na lista. Segurar a tela
-    // até o servidor responder põe a ida e a volta inteiras na frente de quem
-    // apertou Salvar, e nada do que se grava aqui depende da resposta.
+    // O painel não fecha ao gravar: quem está escrevendo continua escrevendo, e
+    // a gravação acontece por baixo. A mudança já aparece na lista; se o
+    // servidor recusar, ela volta ao que era.
     const antes = projetos;
     if (r.id) {
       const dono = pessoas.find(x => x.id === r.responsavel_id);
@@ -5339,20 +5340,38 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
         responsavel_foto: dono?.foto_url ?? null,
       });
     }
-    setRascunhoTarefa(null);
+    setSalvando(true);
     const resposta = await api('', 'POST', {
       action: 'salvar_tarefa', ...r,
       entrega_id: r.entrega_id ? Number(r.entrega_id) : null,
-    });
+    }).finally(() => setSalvando(false));
     if (resposta?.error) {
       setProjetos(antes);
       toast('error', 'Não foi possível salvar', resposta.error);
       return;
     }
+    // A regra de uma etiqueta pode ter mudado a etapa e o responsável na
+    // gravação. O servidor devolve os dois, e a tela repinta com o que de fato
+    // ficou - senão o card mostraria o que foi pedido, e não o que valeu.
+    if (r.id) {
+      const dono = pessoas.find(x => x.id === resposta?.responsavel_id);
+      pintarTarefa(r.id, {
+        status: String(resposta?.status ?? r.status),
+        responsavel_id: resposta?.responsavel_id ?? null,
+        responsavel_nome: dono?.nome ?? null,
+        responsavel_foto: dono?.foto_url ?? null,
+      });
+    }
     // Tarefa nova: o id nasce lá, então ela só entra na lista agora - mas com o
     // que a tela já tem em mãos, e não com a listagem inteira de volta.
-    if (!r.id && resposta?.id) inserirTarefa(tarefaGravada(r, resposta, pessoas));
-    toast('success', r.id ? 'Tarefa salva' : 'Tarefa criada');
+    if (!r.id && resposta?.id) {
+      inserirTarefa(tarefaGravada(r, resposta, pessoas));
+      // O painel continua aberto e passa a editar a tarefa que acabou de
+      // nascer: sem o id, a gravação seguinte criaria outra.
+      setRascunhoTarefa(f => (f && !f.id ? { ...f, id: Number(resposta.id) } : f));
+      toast('success', 'Tarefa criada');
+    }
+    if (r.comentario_etiqueta) setRascunhoTarefa(f => (f ? { ...f, comentario_etiqueta: '' } : f));
     reconciliar();
   }, [api, inserirTarefa, pessoas, pintarTarefa, projetos, reconciliar, toast]);
   /** Grava uma mudança pontual numa tarefa, a partir do relatório. Manda a

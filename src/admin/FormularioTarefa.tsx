@@ -191,10 +191,16 @@ export interface Rascunho {
  *  gesto, em vez de esperar a listagem inteira voltar do servidor. */
 export function tarefaGravada(
   r: Rascunho,
-  resposta: { id?: number; ordem?: number; criado_em?: string; concluida_em?: string | null; status?: string },
+  resposta: {
+    id?: number; ordem?: number; criado_em?: string; concluida_em?: string | null;
+    status?: string; responsavel_id?: string | null;
+  },
   pessoas: Pessoa[],
 ): Tarefa {
-  const dono = pessoas.find(p => p.id === r.responsavel_id);
+  // O responsável que voltou vence o do rascunho: a regra de uma etiqueta pode
+  // ter trocado o dono na própria gravação.
+  const donoId = resposta.responsavel_id ?? r.responsavel_id;
+  const dono = pessoas.find(p => p.id === donoId);
   return {
     id: Number(resposta.id),
     projeto_id: r.projeto_id,
@@ -203,7 +209,7 @@ export function tarefaGravada(
     descricao: r.descricao || null,
     status: resposta.status ?? r.status,
     prioridade: r.prioridade,
-    responsavel_id: r.responsavel_id || null,
+    responsavel_id: donoId || null,
     // O nome e a foto a tela já tem: o servidor recebe só o id de quem cuida.
     responsavel_nome: dono?.nome ?? null,
     responsavel_email: dono?.email ?? null,
@@ -763,7 +769,11 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
               <input
                 className="painel-titulo painel-titulo-campo"
                 value={rascunho.titulo}
-                autoFocus={rascunho.id == null}
+                // Nasce em foco e com o texto marcado quando ainda é o título
+                // de partida: a primeira tecla substitui, em vez de escrever
+                // depois de "Sem título".
+                autoFocus={rascunho.titulo === TITULO_PADRAO}
+                onFocus={e => { if (e.target.value === TITULO_PADRAO) e.target.select(); }}
                 placeholder="Título da tarefa"
                 aria-label="Título da tarefa"
                 title={rascunho.titulo}
@@ -774,12 +784,14 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
               />
             )}
             <div style={{ marginTop: 6 }}>
-              <PilulaEtapa valor={rascunho.status} etapas={etapas}
+              <PilulaEtapa valor={rascunho.status}
+                etapas={etapasParaOPapel(etapas, projeto, usuarioId, rascunho.status)}
                 desabilitado={somenteLeitura} onChange={v => set('status', v)} />
             </div>
           </div>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-            <button type="button" className="admin-modal-close" aria-label="Fechar" onClick={fechar}>
+            <button type="button" className="admin-modal-close" aria-label="Fechar"
+              onClick={fecharGravando}>
               <IconX size={16} />
             </button>
           </span>
@@ -974,16 +986,24 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
               </button>
             )}
           </span>
-          <button type="button" className="delete-confirm-cancel" onClick={fechar} disabled={salvando}>
-            {somenteLeitura ? 'Fechar' : 'Cancelar'}
-          </button>
+          {/* Sem Salvar: a tarefa já está gravada. O que fica é o aviso do que
+              acabou de acontecer - e ele diz a verdade, inclusive quando ainda
+              falta alguma coisa para poder gravar. */}
           {!somenteLeitura && (
-            <button type="button" className="delete-confirm-ok" disabled={salvando}
-              style={{ background: 'var(--yellow)', color: 'var(--on-yellow)' }}
-              onClick={onSalvar}>
-              {salvando ? 'Salvando…' : rascunho.id ? 'Salvar' : 'Criar tarefa'}
-            </button>
+            <span className="painel-estado" aria-live="polite">
+              {/* Só fala quando há o que dizer: a gravação acontecendo e a
+                  alteração que ainda não foi. Em repouso o rodapé fica calado -
+                  "tudo gravado" é o estado normal, e anunciar o normal a cada
+                  pausa é ruído. */}
+              {!rascunho.titulo.trim() ? ''
+                : salvando ? 'Gravando…'
+                  : impresso !== ultimoGravado.current ? 'Alterações não gravadas'
+                    : ''}
+            </span>
           )}
+          <button type="button" className="delete-confirm-cancel" onClick={fecharGravando}>
+            Fechar
+          </button>
         </div>
 
       </div>

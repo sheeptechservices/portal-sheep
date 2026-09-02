@@ -380,6 +380,15 @@ function Comentario({ c, respostas, pessoas, usuarioId, podeComentar, enviando,
   );
 }
 
+/** A última conversa lida de cada tarefa, guardada enquanto a aba do navegador
+ *  viver.
+ *
+ *  Abrir a mesma tarefa duas vezes não deveria custar duas esperas: o conteúdo
+ *  volta na hora e a releitura acontece por baixo. Fora do componente de
+ *  propósito - dentro dele, o cache morreria junto com o painel, que é
+ *  exatamente quando ele precisa sobreviver. */
+const lidas = new Map<number, { eventos: Evento[]; comentarios: Comentario[] }>();
+
 export function AtividadeDaTarefa({ tarefaId, pessoas, usuarioId, podeComentar, api }: {
   tarefaId: number;
   pessoas: Pessoa[];
@@ -388,9 +397,11 @@ export function AtividadeDaTarefa({ tarefaId, pessoas, usuarioId, podeComentar, 
   api: (path: string, method?: string, body?: unknown) => Promise<any>;
 }) {
   const [aba, setAba] = useState<'conversa' | 'diario'>('conversa');
-  const [eventos, setEventos] = useState<Evento[]>([]);
-  const [comentarios, setComentarios] = useState<Comentario[]>([]);
-  const [carregando, setCarregando] = useState(true);
+  // Já lida antes: abre com o que estava e se atualiza por baixo.
+  const guardada = lidas.get(tarefaId);
+  const [eventos, setEventos] = useState<Evento[]>(guardada?.eventos ?? []);
+  const [comentarios, setComentarios] = useState<Comentario[]>(guardada?.comentarios ?? []);
+  const [carregando, setCarregando] = useState(!guardada);
   const [enviando, setEnviando] = useState(false);
   const [respondendo, setRespondendo] = useState<number | null>(null);
   /** O que o servidor recusou, com o texto de volta para não se perder. */
@@ -398,12 +409,25 @@ export function AtividadeDaTarefa({ tarefaId, pessoas, usuarioId, podeComentar, 
 
   const carregar = useCallback(async () => {
     const r = await api(`?action=tarefa_atividade&id=${tarefaId}`);
-    setEventos(r?.eventos ?? []);
-    setComentarios(r?.comentarios ?? []);
+    const eventos = (r?.eventos ?? []) as Evento[];
+    const comentarios = (r?.comentarios ?? []) as Comentario[];
+    lidas.set(tarefaId, { eventos, comentarios });
+    setEventos(eventos);
+    setComentarios(comentarios);
     setCarregando(false);
   }, [api, tarefaId]);
 
-  useEffect(() => { setCarregando(true); void carregar(); }, [carregar]);
+  useEffect(() => {
+    // Sem esqueleto quando já há o que mostrar: a releitura é para trazer o que
+    // mudou, não para esvaziar a tela e enchê-la de novo.
+    setCarregando(!lidas.has(tarefaId));
+    void carregar();
+  }, [carregar, tarefaId]);
+
+  // O que a tela mostra é o que fica guardado, inclusive o comentário que
+  // acabou de subir e ainda não voltou do servidor: reabrir a tarefa não pode
+  // mostrar a conversa de antes dele.
+  useEffect(() => { lidas.set(tarefaId, { eventos, comentarios }); }, [tarefaId, eventos, comentarios]);
 
   async function enviar(texto: string, anexos: AnexoPendente[], paiId: number | null) {
     // O balão sobe no gesto. Antes eram duas idas ao servidor antes de aparecer
@@ -489,7 +513,12 @@ export function AtividadeDaTarefa({ tarefaId, pessoas, usuarioId, podeComentar, 
           projeto - trocar de aba num quadro só não é lido, é notado. */}
       <div className="aba-painel" key={aba}>
       {carregando ? (
-        <div className="dux-spinner-row"><span className="dux-spinner sm" /></div>
+        // Esqueleto no formato do que vem, e não um giro no meio do vazio: o
+        // bloco já ocupa o tamanho da conversa, então nada pula quando ela
+        // chega.
+        <div className="ativ-esqueleto" aria-hidden="true">
+          <span /><span /><span />
+        </div>
       ) : aba === 'conversa' ? (
         // A conversa vem antes do campo, e o campo fecha a coluna: quem chega
         // lê o que foi dito e escreve embaixo, que é a ordem de qualquer
