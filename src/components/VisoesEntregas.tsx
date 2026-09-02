@@ -13,7 +13,7 @@
 //  Nada deste arquivo importa de `src/admin`: ele é usado pela página pública,
 //  que não pode arrastar o portal junto.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { IconCalendario, IconVisaoLista, IconVisaoQuadro } from './icons';
 
 /** A entrega achatada para o que estas duas visões precisam. Cada tela traduz
@@ -67,17 +67,45 @@ function Retrato({ nome, foto }: { nome: string; foto: string | null }) {
   return <span className="visao-avatar visao-avatar-vazio">{iniciais(nome)}</span>;
 }
 
-/** O switcher no padrão da casa: pastilha que desliza, um ícone por leitura. */
+/** O switcher no padrão da casa: pastilha que desliza, um ícone por leitura.
+ *
+ *  A pastilha se mede pelo botão ativo em vez de assumir uma largura fixa:
+ *  assim o mesmo componente serve à página do cliente e ao painel, onde ele é
+ *  mais compacto para acompanhar a altura da busca. Com a conta fixa, apertar
+ *  o botão por CSS deixava a pastilha fora de lugar. */
 export function SwitcherVisao({ valor, onChange }: {
   valor: string;
   onChange: (v: Visao) => void;
 }) {
+  const caixa = useRef<HTMLDivElement>(null);
+  const botoes = useRef<Array<HTMLButtonElement | null>>([]);
+  const [pastilha, setPastilha] = useState<{ left: number; width: number } | null>(null);
+
+  // Antes da pintura: medida depois, a pastilha apareceria uma vez no lugar
+  // errado.
+  useLayoutEffect(() => {
+    const medir = () => {
+      const i = VISOES.findIndex(v => v.valor === valor);
+      const btn = botoes.current[i];
+      if (btn) setPastilha({ left: btn.offsetLeft, width: btn.offsetWidth });
+    };
+    medir();
+    const el = caixa.current;
+    if (!el) return;
+    const olho = new ResizeObserver(medir);
+    olho.observe(el);
+    return () => olho.disconnect();
+  }, [valor]);
+
   return (
-    <div className="view-toggle visoes-switch">
-      <div className="view-toggle-pill"
-        style={{ left: 3 + Math.max(0, VISOES.findIndex(v => v.valor === valor)) * 32 }} />
-      {VISOES.map(v => (
+    <div ref={caixa} className="view-toggle visoes-switch">
+      {pastilha && (
+        <div className="view-toggle-pill"
+          style={{ left: pastilha.left, width: pastilha.width }} />
+      )}
+      {VISOES.map((v, i) => (
         <button key={v.valor} type="button"
+          ref={el => { botoes.current[i] = el; }}
           className={valor === v.valor ? 'active' : ''}
           onClick={() => onChange(v.valor)}
           title={v.label} aria-label={`Ver em ${v.label.toLocaleLowerCase('pt-BR')}`}

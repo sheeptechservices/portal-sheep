@@ -4231,6 +4231,19 @@ body.arrastando-painel {
 }
 .secao-busca-campo:hover,
 .secao-busca-campo:focus-within { border-color: var(--gray2); }
+/* No painel o switcher e mais miudo: encosta na altura do campo, 34px, e
+   ocupa menos largura ao lado de uma busca que atravessa a secao. Sem borda,
+   porque ela somava dois pixels e o bloco ficava mais alto que o campo. */
+.secao-busca .visoes-switch {
+  padding: 3px;
+  border: none;
+  border-radius: 9px;
+}
+.secao-busca .visoes-switch button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
 .secao-busca-campo input {
   flex: 1;
   min-width: 0;
