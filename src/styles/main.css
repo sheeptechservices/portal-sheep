@@ -11873,6 +11873,17 @@ body.arrastando-painel {
   min-inline-size: 0;
 }
 
+/* O `fieldset` que trava os campos nao pode existir para o layout: o corpo do
+   painel e uma coluna flex, e uma caixa a mais no meio dela mudaria o
+   espacamento entre as secoes. `display: contents` desliga a caixa e mantem o
+   `disabled`, que nao e coisa de desenho. */
+.campos-travaveis { display: contents; }
+/* A secao que fecha um bloco travado nao e a ultima do corpo - o divisor dela
+   continua, senao some justo a linha antes das entregas. */
+.admin-modal-body .campos-travaveis:not(:last-child) section:last-child {
+  border-bottom: 1px solid var(--gray3);
+}
+
 .painel-leitura:disabled,
 .painel-leitura[disabled] { opacity: 1; }
 
@@ -11889,6 +11900,23 @@ body.arrastando-painel {
 }
 
 /* Nada de hover: o realce é a promessa de que o clique faz alguma coisa. */
+/* Seta de dropdown e "x" de limpar sao promessas de interacao: em leitura eles
+   dizem que ha algo a escolher onde nao ha. O texto do campo fica; some so o
+   que convida ao clique. */
+.painel-leitura[disabled] .liquidez-trigger > svg,
+.painel-leitura[disabled] .status-select-trigger > svg,
+.painel-leitura[disabled] .anexo-cat-trigger > svg,
+.painel-leitura[disabled] .filter-dropdown-btn > svg { display: none; }
+
+/* O campo de data se apaga sozinho quando desabilitado, por estilo em linha. No
+   painel em leitura isso o deixa mais claro que os vizinhos, como se estivesse
+   quebrado - o resto da tela mantem o contraste. O `!important` e o unico jeito
+   de alcancar um estilo em linha. */
+.painel-leitura[disabled] .campo-data {
+  opacity: 1 !important;
+  cursor: default !important;
+}
+
 .painel-leitura[disabled] *:hover {
   box-shadow: none;
 }

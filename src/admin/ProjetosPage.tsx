@@ -2071,7 +2071,10 @@ function SecaoEntregas({
                         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <ChipEntrega status={e.status} />
                           {/* As reuniões em que esta entrega foi tratada. O
-                              mesmo vínculo do outro lado, criado daqui. */}
+                              mesmo vínculo do outro lado, criado daqui. Ligar e
+                              desligar é edição: quem só lê vê os chips abaixo,
+                              sem o gatilho. */}
+                          {!somenteLeitura && (
                           <SeletorVinculo
                             rotulo="Reuniões que trataram desta entrega"
                             acao="Vincular reunião"
@@ -2082,6 +2085,7 @@ function SecaoEntregas({
                             escolhidos={reunioes.filter(r => (r.entregas ?? []).includes(e.id)).map(r => r.id)}
                             onAlternar={(reuniaoId, ligar) => onVincular(reuniaoId, 'entrega', e.id, ligar)}
                           />
+                          )}
                         </span>
 
                         {reunioes.some(r => (r.entregas ?? []).includes(e.id)) && (
@@ -2091,7 +2095,9 @@ function SecaoEntregas({
                                 nome={r.assunto}
                                 titulo="Ver na aba de reuniões"
                                 onAbrir={() => onAbrirReuniao(r.id)}
-                                onSoltar={() => onVincular(r.id, 'entrega', e.id, false)}
+                                onSoltar={somenteLeitura
+                                  ? undefined
+                                  : () => onVincular(r.id, 'entrega', e.id, false)}
                               />
                             ))}
                           </div>
@@ -2690,11 +2696,14 @@ function lerAcoes(texto: string | null | undefined): AcaoReuniao[] {
  *
  *  Os assuntos e as ações são clicáveis quando há gravação: cada um leva ao
  *  minuto em que aquilo foi dito. */
-function CorpoReuniao({ reg, pessoas, entregas, onAssistir, onVincular, onAbrirEntrega }: {
+function CorpoReuniao({ reg, pessoas, entregas, somenteLeitura, onAssistir, onVincular, onAbrirEntrega }: {
   reg: Reuniao;
   pessoas: Pessoa[];
   /** As entregas do projeto, para escolher onde a reunião foi tratada. */
   entregas: Entrega[];
+  /** Quem só lê continua abrindo a reunião, os tópicos e a gravação. O que
+   *  some é o gatilho de vincular e o de soltar o vínculo. */
+  somenteLeitura: boolean;
   onAssistir: () => void;
   onVincular: (tipo: 'entrega', alvoId: number, ligar: boolean) => void;
   onAbrirEntrega: (entregaId: number) => void;
@@ -2716,6 +2725,7 @@ function CorpoReuniao({ reg, pessoas, entregas, onAssistir, onVincular, onAbrirE
         )}
         {dados?.duracao ? <span className="reuniao-duracao">{dados.duracao} min</span> : null}
         <span style={{ marginLeft: 'auto' }}>
+          {!somenteLeitura && (
           <SeletorVinculo
             rotulo="Entregas tratadas nesta reunião"
             acao="Vincular entrega"
@@ -2724,6 +2734,7 @@ function CorpoReuniao({ reg, pessoas, entregas, onAssistir, onVincular, onAbrirE
             escolhidos={reg.entregas ?? []}
             onAlternar={(id, ligar) => onVincular('entrega', id, ligar)}
           />
+          )}
         </span>
       </div>
 
@@ -2736,7 +2747,7 @@ function CorpoReuniao({ reg, pessoas, entregas, onAssistir, onVincular, onAbrirE
                 nome={e?.titulo ?? 'Entrega removida'}
                 titulo="Ver a entrega"
                 onAbrir={() => onAbrirEntrega(id)}
-                onSoltar={() => onVincular('entrega', id, false)}
+                onSoltar={somenteLeitura ? undefined : () => onVincular('entrega', id, false)}
               />
             );
           })}
@@ -3306,6 +3317,7 @@ function SecaoReunioes({ registros, pessoas, equipe, entregas, focada, salvando,
                       dez destes de saída, só os que forem abertos. */}
                   {jaAbertas.includes(reg.id) && (
                     <CorpoReuniao reg={reg} pessoas={pessoas} entregas={entregas}
+                      somenteLeitura={somenteLeitura}
                       onAssistir={() => setAssistindo(reg)}
                       onVincular={(tipo, alvo, ligar) => onVincular(reg.id, tipo, alvo, ligar)}
                       onAbrirEntrega={onAbrirEntrega} />
@@ -4801,13 +4813,13 @@ function FormularioProjeto({
             o que animar - e uma caixa de verdade quebraria a rolagem daqui. A
             chave repete a entrada a cada aba, e de quebra devolve a rolagem ao
             topo, que é onde a aba nova começa. */}
-        {/* `fieldset` desabilitado, e não uma coleção de `disabled` espalhados:
-            ele desliga todo controle de formulário que estiver dentro, inclusive
-            os que forem acrescentados depois, e tira todos da ordem de tabulação
-            de uma vez. Em modo leitura o painel tem de ser uma folha impressa -
-            os dropdowns nem abrem, e o cursor não promete clique. */}
-        <fieldset className="admin-modal-body aba-painel painel-leitura" key={abaModal}
-          disabled={somenteLeitura}>
+        {/* O corpo não é mais um `fieldset` travado inteiro. Ele desligava tudo
+            o que estivesse dentro, inclusive o que é leitura: quem só podia ver
+            não conseguia abrir um chip de entrega, buscar, agrupar, ordenar nem
+            trocar de visão. Ver um projeto é navegar por ele.
+            Quem trava agora são os `fieldset` de campo, logo abaixo, e cada
+            seção esconde os próprios botões de editar pelo `somenteLeitura`. */}
+        <div className="admin-modal-body aba-painel" key={abaModal}>
 
           {editando && abaModal === 'reunioes' && (
             <SecaoReunioes
@@ -4842,6 +4854,12 @@ function FormularioProjeto({
           )}
 
           <div style={{ display: abaModal === 'geral' ? 'block' : 'none' }}>
+
+          {/* `fieldset` desabilitado, e não uma coleção de `disabled`
+              espalhados: ele desliga todo controle de formulário que estiver
+              dentro, inclusive os que forem acrescentados depois, e tira todos
+              da ordem de tabulação de uma vez. */}
+          <fieldset className="painel-leitura campos-travaveis" disabled={somenteLeitura}>
 
           <section>
             <p className="admin-section-title">Identificação</p>
@@ -4906,12 +4924,12 @@ function FormularioProjeto({
             <div className="campos-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div className="form-group">
                 <label className="form-label">Data de início *</label>
-                <DatePicker compact allowPast value={r.data_inicio}
+                <DatePicker compact allowPast disabled={somenteLeitura} value={r.data_inicio}
                   onChange={v => set('data_inicio', v)} error={erros.data_inicio} />
               </div>
               <div className="form-group">
                 <label className="form-label">Fim previsto *</label>
-                <DatePicker compact allowPast value={r.previsao_entrega}
+                <DatePicker compact allowPast disabled={somenteLeitura} value={r.previsao_entrega}
                   onChange={v => set('previsao_entrega', v)} error={erros.previsao_entrega} />
               </div>
             </div>
@@ -4923,6 +4941,11 @@ function FormularioProjeto({
             {erros.equipe && <p className="form-error" style={{ marginTop: 6 }}>{erros.equipe}</p>}
           </section>
 
+          </fieldset>
+
+          {/* Fora do `fieldset`: abrir uma entrega, ver a prova anexada, buscar,
+              agrupar e trocar de visão é leitura, e continua valendo para quem
+              só olha. O que edita, a seção esconde sozinha. */}
           <SecaoEntregas
             somenteLeitura={somenteLeitura}
             entregas={editando?.entregas ?? []}
@@ -4947,6 +4970,8 @@ function FormularioProjeto({
             onVerEvidencia={onVerEvidencia}
           />
           {erros.entregas && <p className="form-error" style={{ marginTop: -4 }}>{erros.entregas}</p>}
+
+          <fieldset className="painel-leitura campos-travaveis" disabled={somenteLeitura}>
 
           <section>
             <p className="admin-section-title">Observações</p>
@@ -5018,9 +5043,11 @@ function FormularioProjeto({
             )}
           </section>
 
+          </fieldset>
+
           </div>
 
-        </fieldset>
+        </div>
 
         {/* Mesmo rodapé do painel de tarefa: ações sobre a coisa inteira à
             esquerda, longe do botão que se aperta o tempo todo. */}
