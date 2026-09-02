@@ -8,7 +8,7 @@ import {
   IconEdit, IconEye, IconGlobo, IconLink, IconMarcoAndamento, IconMarcoBloqueado,
   IconAgrupar, IconCalendario, IconCheck, IconExternal, IconOrdenar, IconSearch,
   IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado, IconMarcoValidado,
-  IconPlus, IconPrioridadeAlta, IconPrioridadeBaixa, IconPrioridadeMaxima,
+  IconPlay, IconPlus, IconPrioridadeAlta, IconPrioridadeBaixa, IconPrioridadeMaxima,
   IconPrioridadeMedia, IconTrash, IconTrendDown, IconTrendFlat, IconTrendUp, IconTrendWavy,
   IconTriangulo, IconVisaoLista, IconVisaoQuadro,
   IconX, IconZip,
@@ -260,6 +260,13 @@ export interface EntregaPendente {
 }
 
 export interface Reuniao {
+  /** Id da reunião no Fireflies, quando ela veio de lá. Nulo é registro à mão. */
+  fireflies_id?: string | null;
+  /** Link da transcrição, para quem quiser o detalhe que a nota resume. */
+  link?: string | null;
+  /** O que veio do Fireflies além da nota: tópicos com horário, palavras-chave
+   *  e itens de ação. Chega como JSON e é lido por `lerDados`. */
+  dados?: string | null;
   id: number;
   projeto_id: string;
   data: string;
@@ -1887,7 +1894,7 @@ function SecaoEntregas({
           <span className="grupo-conta">{bloco.itens.length}</span>
         </button>
       )}
-      <div className={`grupo-corpo${fechado ? '' : ' aberto'}`}>
+      <div className={`revelar${fechado ? '' : ' aberto'}`}>
        <div>
         {/* Com um editor aberto a chave congela: a remontagem que faz a
             animação tocar apagaria o rascunho de quem está digitando se uma
@@ -2376,7 +2383,460 @@ function DialogoEvidencia({ entrega, alvo, salvando, onConcluir, onFechar }: {
 
 /** Diário de reuniões. Mesma forma da saúde: cada registro é gravado na hora e
  *  o valor está na série, não no último item. */
-function SecaoReunioes({ registros, pessoas, equipe, salvando, somenteLeitura, onRegistrar, onExcluir }: {
+/** O texto do Fireflies vem em markdown, e o que ele usa é o negrito: sem
+ *  tratar, a nota aparece com `**` cru no meio da frase. Não é um interpretador
+ *  de markdown - é o mínimo que o conteúdo pede, e o resto passa como texto. */
+function ComNegrito({ texto }: { texto: string }) {
+  const partes = texto.split('**');
+  return (
+    <>
+      {partes.map((p, i) => (
+        // Índice ímpar é o que estava entre os dois asteriscos.
+        i % 2 === 1 ? <strong key={i}>{p}</strong> : <span key={i}>{p}</span>
+      ))}
+    </>
+  );
+}
+
+/** O detalhe que o Fireflies mandou junto com a reunião. */
+interface DadosReuniao {
+  duracao?: number | null;
+  participantes?: string[];
+  gist?: string | null;
+  curto?: string | null;
+  topicos?: string | null;
+  notas?: string | null;
+  palavras?: string[];
+  acoes?: string | null;
+  organizador?: string | null;
+  reuniao_url?: string | null;
+}
+
+/** JSON malformado - de uma gravação antiga, por exemplo - não pode derrubar a
+ *  aba inteira: vira ausência de detalhe. */
+function lerDados(bruto: string | null | undefined): DadosReuniao | null {
+  if (!bruto) return null;
+  try {
+    const d = JSON.parse(bruto);
+    return d && typeof d === 'object' ? d as DadosReuniao : null;
+  } catch { return null; }
+}
+
+/** Um bloco da conversa, com o momento em que ele começa. */
+interface TopicoReuniao {
+  titulo: string;
+  /** Segundos desde o início da gravação. */
+  inicio: number;
+  rotulo: string;
+  linhas: string[];
+}
+
+const emSegundos = (mmss: string): number => {
+  const p = mmss.split(':').map(n => Number(n));
+  if (p.some(n => !Number.isFinite(n))) return 0;
+  // "07:21" e "1:02:11" - o Fireflies usa os dois conforme a duração.
+  return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1];
+};
+
+/** Transforma o `shorthand_bullet` do Fireflies na linha do tempo.
+ *
+ *  O formato de lá é `EMOJI **Título** (01:48 - 02:00)` seguido das linhas de
+ *  descrição. O emoji é descartado: dentro do produto ele não entra, e aqui
+ *  seria decoração vinda de fora. */
+function lerTopicos(texto: string | null | undefined): TopicoReuniao[] {
+  if (!texto) return [];
+  const topicos: TopicoReuniao[] = [];
+  for (const linha of texto.split('\n')) {
+    const cabeca = linha.match(/\*\*(.+?)\*\*\s*\((\d{1,2}:\d{2}(?::\d{2})?)(?:\s*-\s*(\d{1,2}:\d{2}(?::\d{2})?))?\)/);
+    if (cabeca) {
+      topicos.push({
+        titulo: cabeca[1].trim(),
+        inicio: emSegundos(cabeca[2]),
+        rotulo: cabeca[2],
+        linhas: [],
+      });
+      continue;
+    }
+    const corpo = linha.trim();
+    if (corpo && topicos.length > 0) topicos[topicos.length - 1].linhas.push(corpo);
+  }
+  return topicos;
+}
+
+/** Os itens de ação, que vêm agrupados por pessoa em `**Nome**`. */
+interface AcaoReuniao { quem: string; itens: { texto: string; rotulo: string | null; inicio: number }[] }
+
+function lerAcoes(texto: string | null | undefined): AcaoReuniao[] {
+  if (!texto) return [];
+  const grupos: AcaoReuniao[] = [];
+  for (const linha of texto.split('\n')) {
+    const nome = linha.trim().match(/^\*\*(.+?)\*\*$/);
+    if (nome) { grupos.push({ quem: nome[1].trim(), itens: [] }); continue; }
+    const corpo = linha.trim();
+    if (!corpo || grupos.length === 0) continue;
+    const quando = corpo.match(/\((\d{1,2}:\d{2}(?::\d{2})?)\)\s*$/);
+    grupos[grupos.length - 1].itens.push({
+      texto: quando ? corpo.slice(0, quando.index).trim() : corpo,
+      rotulo: quando ? quando[1] : null,
+      inicio: quando ? emSegundos(quando[1]) : 0,
+    });
+  }
+  return grupos.filter(g => g.itens.length > 0);
+}
+
+/** O que a reunião carrega, aberto: resumo, assuntos com horário, itens de
+ *  ação por pessoa, palavras-chave e quem participou.
+ *
+ *  Os assuntos e as ações são clicáveis quando há gravação: cada um leva ao
+ *  minuto em que aquilo foi dito. */
+function CorpoReuniao({ reg, pessoas, onAssistir }: {
+  reg: Reuniao;
+  pessoas: Pessoa[];
+  onAssistir: () => void;
+}) {
+  const dados = lerDados(reg.dados);
+  const topicos = lerTopicos(dados?.topicos);
+  const acoes = lerAcoes(dados?.acoes);
+  const daCasa = reg.participantes
+    .map(id => pessoas.find(x => x.id === id))
+    .filter((p): p is Pessoa => !!p);
+
+  return (
+    <div className="reuniao-corpo">
+      {reg.fireflies_id && (
+        <div className="reuniao-acoes">
+          <button type="button" className="modal-acao-primaria" onClick={onAssistir}>
+            <IconPlay size={13} /> Assistir a gravação
+          </button>
+          {dados?.duracao ? <span className="reuniao-duracao">{dados.duracao} min</span> : null}
+        </div>
+      )}
+
+      <p className="reuniao-notas"><ComNegrito texto={reg.notas} /></p>
+
+      {topicos.length > 0 && (
+        <div className="reuniao-bloco">
+          <p className="reuniao-rotulo">Assuntos</p>
+          <div className="reuniao-topicos">
+            {topicos.map((t, i) => (
+              <div key={`${t.inicio}-${i}`} className="reuniao-topico">
+                <span className="reuniao-tempo">{t.rotulo}</span>
+                <span>
+                  <strong>{t.titulo}</strong>
+                  {t.linhas.length > 0 && <span> <ComNegrito texto={t.linhas.join(' ')} /></span>}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {acoes.length > 0 && (
+        <div className="reuniao-bloco">
+          <p className="reuniao-rotulo">Combinados</p>
+          {acoes.map(g => (
+            <div key={g.quem} className="reuniao-acao-grupo">
+              <p className="reuniao-quem">{g.quem}</p>
+              <ul>
+                {g.itens.map((it, i) => (
+                  <li key={i}>
+                    <ComNegrito texto={it.texto} />
+                    {it.rotulo && <span className="reuniao-tempo">{it.rotulo}</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {(dados?.palavras?.length ?? 0) > 0 && (
+        <div className="reuniao-palavras">
+          {dados!.palavras!.map(p => <span key={p} className="reuniao-palavra">{p}</span>)}
+        </div>
+      )}
+
+      {(dados?.participantes?.length ?? 0) > 0 && (
+        <p className="reuniao-gente">{dados!.participantes!.join(' · ')}</p>
+      )}
+
+      {daCasa.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 7 }}>
+          {daCasa.map(p => (
+            <span key={p.id} title={p.nome}>
+              <Avatar nome={p.nome} foto={p.foto_url} size={20} />
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A gravação da reunião, com a linha do tempo ao lado.
+ *
+ *  O endereço do vídeo é buscado quando o modal abre, e não guardado: a URL da
+ *  CDN do Fireflies vem assinada e expira em poucos dias. Clicar num tópico
+ *  move o vídeo para aquele instante - é o mesmo `currentTime` que a barra do
+ *  próprio player usa. */
+function GravacaoReuniao({ reuniao, topicos, onBuscar, onFechar }: {
+  reuniao: Reuniao;
+  topicos: TopicoReuniao[];
+  onBuscar: (firefliesId: string) => Promise<{ video?: string | null; audio?: string | null; error?: string }>;
+  onFechar: () => void;
+}) {
+  const fundo = useFecharNoFundo(onFechar);
+  const player = useRef<HTMLVideoElement>(null);
+  const [midia, setMidia] = useState<{ video: string | null; audio: string | null } | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [agora, setAgora] = useState(0);
+
+  useEffect(() => {
+    let vivo = true;
+    onBuscar(reuniao.fireflies_id ?? '')
+      .then(d => {
+        if (!vivo) return;
+        if (d?.error) setErro(d.error);
+        else setMidia({ video: d.video ?? null, audio: d.audio ?? null });
+      })
+      .catch(() => { if (vivo) setErro('Não foi possível buscar a gravação.'); });
+    return () => { vivo = false; };
+  }, [reuniao.fireflies_id]);
+
+  const irPara = (segundos: number) => {
+    const el = player.current;
+    if (!el) return;
+    el.currentTime = segundos;
+    void el.play().catch(() => { /* o navegador pode exigir gesto; a barra move igual */ });
+  };
+
+  // O tópico em curso é o último que já começou.
+  const emCurso = topicos.reduce((atual, t, i) => (t.inicio <= agora ? i : atual), -1);
+
+  return createPortal(
+    <div className="admin-modal-overlay" style={{ zIndex: 10002 }} {...fundo}>
+      <div className="gravacao-modal" onClick={e => e.stopPropagation()}>
+        <div className="gravacao-topo">
+          <div>
+            <p className="gravacao-titulo">{reuniao.assunto}</p>
+            <p className="gravacao-meta">
+              {fmtData(reuniao.data)}
+              {reuniao.link ? ' · ' : ''}
+              {reuniao.link && (
+                <a href={reuniao.link} target="_blank" rel="noopener noreferrer">
+                  ver no Fireflies
+                </a>
+              )}
+            </p>
+          </div>
+          <button type="button" className="admin-modal-close" onClick={onFechar}
+            aria-label="Fechar a gravação">
+            <IconX size={16} />
+          </button>
+        </div>
+
+        <div className="gravacao-corpo">
+          {erro ? (
+            <p className="ff-vazio ff-erro"><IconAlert size={13} /> {erro}</p>
+          ) : !midia ? (
+            <div className="dux-spinner-row" style={{ padding: '48px' }}>
+              <span className="dux-spinner" />
+            </div>
+          ) : midia.video ? (
+            <video ref={player} className="gravacao-video" src={midia.video} controls
+              onTimeUpdate={e => setAgora((e.target as HTMLVideoElement).currentTime)} />
+          ) : (
+            <div className="gravacao-so-audio">
+              <p>Esta reunião só tem áudio.</p>
+              {/* O `video` toca áudio também; assim a linha do tempo continua
+                  valendo, com o mesmo `currentTime`. */}
+              <video ref={player} className="gravacao-audio" src={midia.audio ?? undefined} controls
+                onTimeUpdate={e => setAgora((e.target as HTMLVideoElement).currentTime)} />
+            </div>
+          )}
+
+          {topicos.length > 0 && (
+            <div className="gravacao-linha-tempo">
+              <p className="gravacao-secao">Assuntos</p>
+              {topicos.map((t, i) => (
+                <button key={`${t.inicio}-${i}`} type="button"
+                  className={`gravacao-topico${i === emCurso ? ' agora' : ''}`}
+                  onClick={() => irPara(t.inicio)}>
+                  <span className="gravacao-tempo">{t.rotulo}</span>
+                  <span className="gravacao-topico-texto">
+                    <strong>{t.titulo}</strong>
+                    {t.linhas.length > 0 && <span><ComNegrito texto={t.linhas.join(' ')} /></span>}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/** Uma reunião da conta do Fireflies, como ela chega da rota. */
+interface ReuniaoFF {
+  id: string;
+  titulo: string;
+  data: string | null;
+  duracao: number | null;
+  participantes: string[];
+  url: string | null;
+}
+
+/** Busca no Fireflies e anexa ao projeto.
+ *
+ *  A lista vem das reuniões mais recentes da conta e é filtrada por título ou
+ *  participante. A busca é do servidor para cá porque a chave da API não sai do
+ *  cofre - a tela nunca fala com o Fireflies direto. */
+function BuscaFireflies({ jaAnexadas, salvando, onBuscar, onAnexar, onFechar }: {
+  /** Ids do Fireflies que este projeto já tem: essas saem da lista. */
+  jaAnexadas: string[];
+  salvando: boolean;
+  onBuscar: (busca: string) => Promise<{ reunioes?: ReuniaoFF[]; error?: string }>;
+  onAnexar: (ids: string[]) => Promise<void>;
+  onFechar: () => void;
+}) {
+  const [busca, setBusca] = useState('');
+  const [reunioes, setReunioes] = useState<ReuniaoFF[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
+  /** O que vai ser anexado quando a pessoa confirmar. */
+  const [escolhidas, setEscolhidas] = useState<string[]>([]);
+  /** Anexo em curso. O botão desliga enquanto isso: puxar dez reuniões leva
+   *  segundos, e sem o aviso a pessoa clica de novo - foi assim que nasceram as
+   *  cópias. */
+  const [anexando, setAnexando] = useState(false);
+
+  // A consulta espera a digitação parar: cada tecla seria uma ida ao Fireflies.
+  useEffect(() => {
+    let vivo = true;
+    const t = setTimeout(() => {
+      setCarregando(true);
+      onBuscar(busca.trim())
+        .then(d => {
+          if (!vivo) return;
+          if (d?.error) { setErro(d.error); setReunioes([]); }
+          else { setErro(null); setReunioes(d.reunioes ?? []); }
+          setCarregando(false);
+        })
+        .catch(() => { if (vivo) { setErro('Não foi possível falar com o Fireflies.'); setCarregando(false); } });
+    }, busca ? 350 : 0);
+    return () => { vivo = false; clearTimeout(t); };
+  }, [busca]);
+
+  /** O que já está no projeto sai da lista: oferecer de novo o que a pessoa
+   *  acabou de anexar só dá trabalho de reconhecer. */
+  const disponiveis = reunioes.filter(m => !jaAnexadas.includes(m.id));
+
+  const alternar = (id: string) =>
+    setEscolhidas(e => (e.includes(id) ? e.filter(x => x !== id) : [...e, id]));
+
+  async function anexar() {
+    if (anexando) return;
+    setAnexando(true);
+    try {
+      await onAnexar(escolhidas);
+      setEscolhidas([]);
+    } finally {
+      setAnexando(false);
+    }
+  }
+
+  return (
+    <div className="ff-busca">
+      <div className="secao-busca" style={{ marginBottom: 12 }}>
+        <span className="secao-busca-campo">
+          <IconSearch size={13} />
+          <input autoFocus value={busca} aria-label="Buscar reunião no Fireflies"
+            placeholder="Buscar por título ou participante"
+            onChange={e => setBusca(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Escape') onFechar(); }} />
+          {busca && (
+            <button type="button" aria-label="Limpar a busca" onClick={() => setBusca('')}>
+              <IconX size={12} />
+            </button>
+          )}
+        </span>
+        <button type="button" className="modal-acao" onClick={onFechar}>Fechar</button>
+      </div>
+
+      {erro ? (
+        <p className="ff-vazio ff-erro"><IconAlert size={13} /> {erro}</p>
+      ) : carregando ? (
+        <div className="dux-spinner-row" style={{ padding: '14px' }}>
+          <span className="dux-spinner sm" />
+        </div>
+      ) : disponiveis.length === 0 ? (
+        <p className="ff-vazio">
+          {busca.trim()
+            ? `Nenhuma reunião com "${busca.trim()}".`
+            : jaAnexadas.length > 0
+              ? 'Todas as reuniões da conta já estão anexadas.'
+              : 'Nenhuma reunião na conta.'}
+        </p>
+      ) : (
+        <>
+          {/* A `key` é a assinatura do resultado: quando ele muda, os itens
+              remontam e a entrada toca. */}
+          <div className="admin-file-list lista-anima"
+            key={disponiveis.map(m => m.id).join(',')}>
+            {disponiveis.map(m => {
+              const marcada = escolhidas.includes(m.id);
+              return (
+                <label key={m.id} className={`admin-file-item ff-item${marcada ? ' marcada' : ''}`}>
+                  <input type="checkbox" className="form-checkbox" checked={marcada}
+                    onChange={() => alternar(m.id)} />
+                  <div className="ff-item-texto">
+                    <p className="ff-item-titulo">{m.titulo}</p>
+                    <p className="ff-item-meta">
+                      {fmtData(m.data ? m.data.slice(0, 10) : null)}
+                      {m.duracao ? ` · ${m.duracao} min` : ''}
+                      {m.participantes.length ? ` · ${m.participantes.slice(0, 3).join(', ')}` : ''}
+                      {m.participantes.length > 3 ? ` +${m.participantes.length - 3}` : ''}
+                    </p>
+                  </div>
+                  {m.url && (
+                    <a className="admin-file-download" href={m.url} target="_blank" rel="noopener noreferrer"
+                      title="Abrir a transcrição no Fireflies"
+                      onClick={e => { e.stopPropagation(); e.preventDefault(); window.open(m.url!, '_blank', 'noopener'); }}>
+                      <IconExternal size={13} />
+                    </a>
+                  )}
+                </label>
+              );
+            })}
+          </div>
+
+          {/* A barra só aparece com algo escolhido: sem seleção ela seria um
+              botão apagado ocupando espaço. */}
+          {escolhidas.length > 0 && (
+            <div className="ff-barra surge">
+              <span>{escolhidas.length} selecionada{escolhidas.length > 1 ? 's' : ''}</span>
+              <button type="button" className="modal-acao" disabled={anexando}
+                onClick={() => setEscolhidas([])}>
+                Limpar
+              </button>
+              <button type="button" className="modal-acao-primaria" disabled={anexando || salvando}
+                onClick={() => void anexar()}>
+                {anexando
+                  ? <><span className="dux-spinner sm na-cor" /> Anexando…</>
+                  : `Anexar ${escolhidas.length}`}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function SecaoReunioes({ registros, pessoas, equipe, salvando, somenteLeitura, onRegistrar,
+  onBuscarFireflies, onBuscarGravacao, onAnexarFireflies, onExcluir }: {
   registros: Reuniao[];
   pessoas: Pessoa[];
   /** Quem está no projeto aparece primeiro na escolha de participantes. */
@@ -2384,9 +2844,33 @@ function SecaoReunioes({ registros, pessoas, equipe, salvando, somenteLeitura, o
   salvando: boolean;
   somenteLeitura: boolean;
   onRegistrar: (r: { data: string; assunto: string; notas: string; participantes: string[] }) => Promise<void>;
+  onBuscarFireflies: (busca: string) => Promise<{ reunioes?: ReuniaoFF[]; error?: string }>;
+  onBuscarGravacao: (firefliesId: string) => Promise<{ video?: string | null; audio?: string | null; error?: string }>;
+  onAnexarFireflies: (firefliesIds: string[]) => Promise<void>;
   onExcluir: (r: Reuniao) => void;
 }) {
   const [abrindo, setAbrindo] = useState(false);
+  const [buscandoFF, setBuscandoFF] = useState(false);
+  /** Os dois painéis desta seção nascem montados na primeira abertura e ficam:
+   *  é o que faz fechar ser suave, e de quebra a busca do Fireflies guarda o
+   *  que já tinha achado. */
+  const [jaAbriuForm, setJaAbriuForm] = useState(false);
+  const [jaAbriuFF, setJaAbriuFF] = useState(false);
+  /** Reuniões com o corpo aberto. Nasce vazio: o resumo de uma reunião do
+   *  Fireflies tem parágrafos, e três delas seguidas enterravam a lista. */
+  const [abertas, setAbertas] = useState<number[]>([]);
+  /** A reunião esperando confirmação. Excluir é definitivo, e a nota some com
+   *  ela - o link para a transcrição inclusive. */
+  const [excluindo, setExcluindo] = useState<Reuniao | null>(null);
+  /** A reunião com a gravação aberta. */
+  const [assistindo, setAssistindo] = useState<Reuniao | null>(null);
+  /** As que já foram abertas alguma vez: o conteúdo delas fica montado, e é
+   *  isso que faz o recolher ser suave. */
+  const [jaAbertas, setJaAbertas] = useState<number[]>([]);
+  const alternarReuniao = (id: number) => {
+    setJaAbertas(j => (j.includes(id) ? j : [...j, id]));
+    setAbertas(a => (a.includes(id) ? a.filter(x => x !== id) : [...a, id]));
+  };
   const [data, setData] = useState('');
   const [assunto, setAssunto] = useState('');
   const [notas, setNotas] = useState('');
@@ -2422,15 +2906,44 @@ function SecaoReunioes({ registros, pessoas, equipe, salvando, somenteLeitura, o
           {registros.length > 0 && <span style={{ marginLeft: 6, fontWeight: 600 }}>({registros.length})</span>}
         </p>
         {!somenteLeitura && (
-          <button type="button" className="secao-add" onClick={() => setAbrindo(a => !a)}
-            title="Registrar reunião" aria-label="Registrar reunião">
-            <IconPlus size={14} />
-          </button>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {/* Puxar do Fireflies e registrar à mão são o mesmo gesto - guardar
+                o que foi conversado -, então ficam lado a lado. */}
+            <button type="button" className="secao-add"
+              onClick={() => { setJaAbriuFF(true); setBuscandoFF(v => !v); setAbrindo(false); }}
+              title="Buscar reunião no Fireflies" aria-label="Buscar reunião no Fireflies">
+              <img src="/marcas/fireflies.webp" alt="" width={14} height={14}
+                style={{ display: 'block', objectFit: 'contain' }} />
+            </button>
+            <button type="button" className="secao-add"
+              onClick={() => { setJaAbriuForm(true); setAbrindo(a => !a); setBuscandoFF(false); }}
+              title="Registrar reunião" aria-label="Registrar reunião">
+              <IconPlus size={14} />
+            </button>
+          </span>
         )}
       </div>
 
-      {abrindo && (
-        <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {jaAbriuFF && (
+        <div className={`revelar${buscandoFF ? ' aberto' : ''}`}>
+          <div>
+            <BuscaFireflies
+              jaAnexadas={registros.map(r => r.fireflies_id).filter((x): x is string => !!x)}
+              salvando={salvando}
+              onBuscar={onBuscarFireflies}
+              onAnexar={async ids => { await onAnexarFireflies(ids); }}
+              onFechar={() => setBuscandoFF(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Montado na primeira abertura e mantido, como manda o `.revelar`: com
+          o formulário nascendo e morrendo, fechar era um corte seco. */}
+      {jaAbriuForm && (
+        <div className={`revelar${abrindo ? ' aberto' : ''}`}>
+          <div>
+            <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div className="campos-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div className="form-group">
               <label className="form-label">Data *</label>
@@ -2466,48 +2979,84 @@ function SecaoReunioes({ registros, pessoas, equipe, salvando, somenteLeitura, o
               onClick={() => void registrar()}>
               {salvando ? 'Registrando…' : 'Registrar'}
             </button>
+              </div>
+            </div>
           </div>
         </div>
+      )}
+
+      {assistindo && (
+        <GravacaoReuniao
+          reuniao={assistindo}
+          topicos={lerTopicos(lerDados(assistindo.dados)?.topicos)}
+          onBuscar={onBuscarGravacao}
+          onFechar={() => setAssistindo(null)}
+        />
+      )}
+
+      {excluindo && (
+        <ConfirmarExclusao
+          titulo={excluindo.assunto}
+          oQue="reunião"
+          onCancelar={() => setExcluindo(null)}
+          onConfirmar={() => { onExcluir(excluindo); setExcluindo(null); }}
+        />
       )}
 
       {registros.length === 0 ? (
         <p style={{ fontSize: 12, color: 'var(--gray2)', margin: 0 }}>Nenhuma reunião registrada.</p>
       ) : (
         <div className="admin-file-list">
-          {registros.map(reg => (
-            <div key={reg.id} className="admin-file-item" style={{ alignItems: 'flex-start' }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--black)', margin: 0 }}>
-                  {reg.assunto}
-                  <span style={{ marginLeft: 8, fontWeight: 500, color: 'var(--gray2)' }}>
+          {registros.map(reg => {
+            const aberta = abertas.includes(reg.id);
+            return (
+            <div key={reg.id} className="admin-file-item"
+              style={{ flexDirection: 'column', alignItems: 'stretch', gap: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button type="button" className="reuniao-cabeca" aria-expanded={aberta}
+                  onClick={() => alternarReuniao(reg.id)}>
+                  {reg.fireflies_id && (
+                    <img src="/marcas/fireflies.webp" alt="" width={13} height={13}
+                      title="Puxada do Fireflies"
+                      style={{ display: 'block', objectFit: 'contain', flexShrink: 0 }} />
+                  )}
+                  <strong>{reg.assunto}</strong>
+                  <span>
                     {fmtData(reg.data)}
                     {reg.criado_por_nome ? ` · ${reg.criado_por_nome}` : ''}
                   </span>
-                </p>
-                <p style={{ fontSize: 12, color: 'var(--gray)', margin: '3px 0 0', whiteSpace: 'pre-wrap' }}>
-                  {reg.notas}
-                </p>
-                {reg.participantes.length > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 7 }}>
-                    {reg.participantes.map(id => {
-                      const p = pessoas.find(x => x.id === id);
-                      return (
-                        <span key={id} title={p?.nome ?? 'Usuário removido'}>
-                          <Avatar nome={p?.nome ?? '?'} foto={p?.foto_url} size={20} />
-                        </span>
-                      );
-                    })}
-                  </div>
+                  <span className={`entrega-seta${aberta ? ' aberta' : ''}`}>
+                    <IconChevronRight size={12} />
+                  </span>
+                </button>
+                {reg.link && (
+                  <a href={reg.link} target="_blank" rel="noopener noreferrer"
+                    className="admin-file-download" title="Abrir a transcrição no Fireflies">
+                    <IconExternal size={13} />
+                  </a>
+                )}
+                {!somenteLeitura && (
+                  <button type="button" className="file-delete-btn" title="Excluir reunião"
+                    aria-label={`Excluir reunião ${reg.assunto}`} onClick={() => setExcluindo(reg)}>
+                    <IconX size={13} />
+                  </button>
                 )}
               </div>
-              {!somenteLeitura && (
-                <button type="button" className="file-delete-btn" title="Excluir reunião"
-                  aria-label={`Excluir reunião ${reg.assunto}`} onClick={() => onExcluir(reg)}>
-                  <IconX size={13} />
-                </button>
-              )}
+
+              <div className={`revelar${aberta ? ' aberto' : ''}`}>
+                <div>
+                  {/* Montado na primeira abertura e mantido: é o que faz o
+                      recolher ser suave. Uma aba com dez reuniões não constrói
+                      dez destes de saída, só os que forem abertos. */}
+                  {jaAbertas.includes(reg.id) && (
+                    <CorpoReuniao reg={reg} pessoas={pessoas}
+                      onAssistir={() => setAssistindo(reg)} />
+                  )}
+                </div>
+              </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>
@@ -3642,7 +4191,8 @@ function AbaGestao({
 function FormularioProjeto({
   editando, pessoas, clientes, salvando, onFechar, onSalvar, onBaixarAnexo, onVerAnexo, onEtiquetar,
   categorias, onExcluir, somenteLeitura, onVerTarefasDaEntrega,
-  onRegistrarSaude, onExcluirSaude, onRegistrarReuniao, onExcluirReuniao,
+  onRegistrarSaude, onExcluirSaude, onRegistrarReuniao, onBuscarReunioesFireflies,
+  onBuscarGravacaoFireflies, onAnexarReuniaoFireflies, onExcluirReuniao,
   onPublicar, onSalvarEntrega, onExcluirEntrega, onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
 }: {
   editando: Projeto | null;
@@ -3662,6 +4212,9 @@ function FormularioProjeto({
     p: Projeto,
     r: { data: string; assunto: string; notas: string; participantes: string[] },
   ) => Promise<void>;
+  onBuscarReunioesFireflies: (busca: string) => Promise<{ reunioes?: ReuniaoFF[]; error?: string }>;
+  onBuscarGravacaoFireflies: (firefliesId: string) => Promise<{ video?: string | null; audio?: string | null; error?: string }>;
+  onAnexarReuniaoFireflies: (p: Projeto, firefliesIds: string[]) => Promise<void>;
   onExcluirReuniao: (r: Reuniao) => void;
   /** Categorias de entrega já usadas, para sugerir no cadastro. */
   categorias: string[];
@@ -3829,9 +4382,11 @@ function FormularioProjeto({
         onClick={e => e.stopPropagation()}>
 
 
-        {/* `com-abas`: a linha que separa cabeçalho e corpo passa a ser a
-            linha das abas, em vez de haver uma logo abaixo da outra. */}
-        <div className="admin-modal-header com-abas"
+        {/* `com-abas` só quando há abas: a linha que separa cabeçalho e corpo
+            passa a ser a linha delas, em vez de haver uma logo abaixo da
+            outra. Em projeto novo não há abas, e sem o recuo de baixo a pílula
+            de situação encostava na borda. */}
+        <div className={`admin-modal-header${editando ? ' com-abas' : ''}`}
           style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
             {/* `flex: 1` porque sem ele o bloco encolhe para o tamanho natural
@@ -3959,6 +4514,9 @@ function FormularioProjeto({
               equipe={editando.equipe}
               salvando={salvando}
               onRegistrar={reg => onRegistrarReuniao(editando, reg)}
+              onBuscarFireflies={onBuscarReunioesFireflies}
+              onBuscarGravacao={onBuscarGravacaoFireflies}
+              onAnexarFireflies={ids => onAnexarReuniaoFireflies(editando, ids)}
               onExcluir={onExcluirReuniao}
             />
           )}
@@ -4563,6 +5121,34 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     await recarregar();
   }
 
+  /** A lista de reuniões da conta do Fireflies, filtrada por texto. A chave da
+   *  API não sai do cofre: quem fala com eles é o servidor. */
+  async function buscarReunioesFireflies(busca: string) {
+    const r = await api(`?action=fireflies_reunioes&busca=${encodeURIComponent(busca)}`);
+    return r ?? { error: 'Sessão expirada.' };
+  }
+
+  /** O endereço da gravação, buscado só quando alguém vai assistir: a URL vem
+   *  assinada pela CDN do Fireflies e expira em poucos dias. */
+  async function buscarGravacaoFireflies(firefliesId: string) {
+    const r = await api(`?action=fireflies_gravacao&id=${encodeURIComponent(firefliesId)}`);
+    return r ?? { error: 'Sessão expirada.' };
+  }
+
+  /** Puxa a reunião do Fireflies para dentro do projeto. O resumo vira a nota e
+   *  o link fica guardado; a transcrição inteira continua morando lá. */
+  async function anexarReuniaoFireflies(p: Projeto, firefliesIds: string[]) {
+    const r = await api('', 'POST', {
+      action: 'anexar_reuniao_fireflies', projeto_id: p.id, fireflies_ids: firefliesIds,
+    });
+    if (r?.error) { toast('error', 'Não foi possível anexar', r.error); return; }
+    const n = Number(r?.anexadas ?? firefliesIds.length);
+    toast('success', n > 1 ? `${n} reuniões anexadas` : 'Reunião anexada',
+      r?.falhas ? `${r.falhas} não vieram: o Fireflies recusou.`
+        : 'Puxadas do Fireflies, com o resumo e o link.');
+    await recarregar();
+  }
+
   async function excluirReuniao(r: Reuniao) {
     const antes = projetos;
     mudancasRef.current++;
@@ -5096,6 +5682,9 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
           onRegistrarSaude={registrarSaude}
           onExcluirSaude={excluirSaude}
           onRegistrarReuniao={registrarReuniao}
+          onBuscarReunioesFireflies={buscarReunioesFireflies}
+          onBuscarGravacaoFireflies={buscarGravacaoFireflies}
+          onAnexarReuniaoFireflies={anexarReuniaoFireflies}
           onExcluirReuniao={excluirReuniao}
           onPublicar={publicarProjeto}
           onSalvarEntrega={salvarEntrega}
@@ -5147,7 +5736,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
 
       {excluindoTarefa && (
         <ConfirmarExclusao
-          tarefa={excluindoTarefa}
+          titulo={excluindoTarefa.titulo}
           onCancelar={() => setExcluindoTarefa(null)}
           onConfirmar={() => void excluirTarefa(excluindoTarefa)}
         />

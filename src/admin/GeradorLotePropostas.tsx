@@ -461,7 +461,7 @@ export default function GeradorLotePropostas({ token }: { token: string }) {
           )}
         </div>
         {lendo
-          ? <span className="gd-spin" />
+          ? <span className="dux-spinner sm" />
           : <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--gray2)' }}>Escolher</span>}
       </div>
 
@@ -533,7 +533,7 @@ export default function GeradorLotePropostas({ token }: { token: string }) {
                       <td>
                         {l.status === 'lendo' ? (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--gray2)' }}>
-                            <span className="gd-spin" /> lendo…
+                            <span className="dux-spinner sm" /> lendo…
                           </span>
                         ) : (
                           <input

@@ -848,7 +848,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
       )}
 
       {excluindo && (
-        <ConfirmarExclusao tarefa={excluindo}
+        <ConfirmarExclusao titulo={excluindo.titulo}
           onCancelar={() => setExcluindo(null)}
           onConfirmar={() => void excluir(excluindo)} />
       )}
@@ -1177,7 +1177,10 @@ function Lista({ grupos, et, etq, podeExcluir, onAbrir, onExcluir }: {
             {grupo.rotulo}
             <span style={{ fontWeight: 600 }}>({grupo.tarefas.length})</span>
           </p>
-          <div className="admin-file-list">
+          {/* A `key` é a assinatura do bloco: quando a busca ou o filtro muda
+              o resultado, os itens remontam e a entrada toca. */}
+          <div className="admin-file-list lista-anima"
+            key={grupo.tarefas.map(t => t.id).join(',')}>
             {grupo.tarefas.map(t => (
               <div key={t.id} className="admin-file-item" style={{ cursor: 'pointer' }}
                 onClick={() => onAbrir(t)} tabIndex={0}

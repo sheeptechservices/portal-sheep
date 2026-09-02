@@ -432,7 +432,7 @@ export function AtividadeDaTarefa({ tarefaId, pessoas, usuarioId, podeComentar, 
       </div>
 
       {carregando ? (
-        <p className="ativ-vazio">Carregando…</p>
+        <div className="dux-spinner-row"><span className="dux-spinner sm" /></div>
       ) : aba === 'conversa' ? (
         <>
           {podeComentar && (

@@ -155,7 +155,7 @@ function SeletorParte({
                 onChange={e => setBusca(e.target.value)}
               />
             </div>
-            {carregando && <p style={{ padding: 12, fontSize: 12, color: 'var(--gray2)' }}>Carregando…</p>}
+            {carregando && <div className="dux-spinner-row" style={{ padding: '12px' }}><span className="dux-spinner sm" /></div>}
             {!carregando && filtrados.length === 0 && (
               <p style={{ padding: 12, fontSize: 12, color: 'var(--gray2)' }}>Nenhum resultado.</p>
             )}
@@ -386,7 +386,7 @@ function SeletorLead({ itens, valor, onChange, carregando }: {
             <input ref={inputRef} className="form-input" style={{ height: 34, fontSize: 13 }}
               placeholder="Buscar por cedente, sacado ou CNPJ..." value={busca} onChange={e => setBusca(e.target.value)} />
           </div>
-          {carregando && <p style={{ padding: 12, fontSize: 12, color: 'var(--gray2)' }}>Carregando...</p>}
+          {carregando && <div className="dux-spinner-row" style={{ padding: '12px' }}><span className="dux-spinner sm" /></div>}
           {!carregando && filtrados.length === 0 && (
             <p style={{ padding: 12, fontSize: 12, color: 'var(--gray2)' }}>Nenhum lead encontrada.</p>
           )}
@@ -1236,7 +1236,7 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
             )}
           </div>
           {lendo
-            ? <span className="gd-spin" />
+            ? <span className="dux-spinner sm" />
             : <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--gray2)' }}>{lido ? 'Trocar' : 'Escolher'}</span>}
         </div>
   );
@@ -1261,12 +1261,6 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
           color: var(--gray2); transition: border-color .15s, background .15s, color .15s;
         }
         .gd-drop:hover, .gd-drop.sobre { border-color: var(--yellow); background: var(--yd); color: var(--yellow); }
-        .gd-spin {
-          width: 15px; height: 15px; border-radius: 50%; flex-shrink: 0;
-          border: 2px solid var(--gray3); border-top-color: var(--yellow);
-          animation: gd-girar .7s linear infinite;
-        }
-        @keyframes gd-girar { to { transform: rotate(360deg); } }
         .gd-pct {
           width: 52px; text-align: right; font-family: inherit; font-size: 10.5px; font-weight: 700;
           color: var(--gray); background: var(--white); border: 1px solid var(--gray3);
@@ -1419,7 +1413,7 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
         {modulo === 'lote' && (
           <Suspense fallback={(
             <div className="gd-card" style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', padding: '48px 24px', fontSize: 12.5, color: 'var(--gray2)' }}>
-              <span className="gd-spin" /> Abrindo o lote…
+              <span className="dux-spinner sm" /> Abrindo o lote…
             </div>
           )}>
             <GeradorLotePropostas token={token} />
@@ -1479,7 +1473,7 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
               {/* Carregamento dos dados/anexos - abaixo do seletor */}
               {carregandoDemanda && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 12.5, color: 'var(--gray2)' }}>
-                  <span className="gd-spin" /> Carregando dados e anexos do lead…
+                  <span className="dux-spinner sm" /> Carregando dados e anexos do lead…
                 </div>
               )}
 

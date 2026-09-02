@@ -1,9 +1,11 @@
 import type { Client } from '@libsql/client';
 import { randomUUID, randomBytes } from 'crypto';
 import {
-  ANTHROPIC_KEY, DEFAULT_ANTHROPIC_MODEL,
+  ANTHROPIC_KEY, DEFAULT_ANTHROPIC_MODEL, FIREFLIES_KEY,
   getIntegrationCredential, saveIntegrationCredential,
   updateIntegrationMeta, removeIntegrationCredential, validateAnthropicKey,
+  validateFirefliesKey, listarReunioesFireflies, obterReuniaoFireflies,
+  obterGravacaoFireflies,
 } from './_credentials.js';
 import { obterDdl } from './_schema.js';
 import {
@@ -1106,6 +1108,23 @@ async function migrarSchema(db: Client) {
       criado_por_nome TEXT
     )
   `);
+
+  // Reunião puxada do Fireflies: o id de lá evita anexar a mesma duas vezes, e
+  // o link leva à transcrição, que é onde mora o detalhe que a nota resume.
+  try { await ddl(`ALTER TABLE projeto_reunioes ADD COLUMN fireflies_id TEXT`); } catch {}
+  try { await ddl(`ALTER TABLE projeto_reunioes ADD COLUMN link TEXT`); } catch {}
+  // O que o Fireflies devolve além do resumo - tópicos com horário,
+  // palavras-chave, itens de ação. JSON num campo só: é conteúdo de leitura,
+  // não dado que a casa consulte ou cruze.
+  try { await ddl(`ALTER TABLE projeto_reunioes ADD COLUMN dados TEXT`); } catch {}
+  // Quem garante que a mesma reunião não entra duas vezes é o banco, e não uma
+  // consulta antes do INSERT: dois cliques quase juntos passavam os dois pela
+  // conferência e inseriam os dois.
+  try {
+    await ddl(`CREATE UNIQUE INDEX IF NOT EXISTS idx_reuniao_fireflies
+               ON projeto_reunioes (projeto_id, fireflies_id)
+               WHERE fireflies_id IS NOT NULL`);
+  } catch { /* índice já existe, ou há duplicata antiga a limpar */ }
 
   await ddl(`
     -- Entregas do projeto: os marcos a que as tarefas serão penduradas depois.
@@ -2372,7 +2391,8 @@ async function despacharAdminData(
           FROM projeto_saude ORDER BY criado_em DESC
         `),
         db.execute(`
-          SELECT id, projeto_id, data, assunto, notas, participantes, criado_por_nome
+          SELECT id, projeto_id, data, assunto, notas, participantes, criado_por_nome,
+                 fireflies_id, link, dados
           FROM projeto_reunioes ORDER BY data DESC, id DESC
         `),
         db.execute(`
@@ -2604,6 +2624,55 @@ async function despacharAdminData(
           updated_at: cred.updatedAt ?? null,
         },
       };
+    }
+
+    if (action === 'fireflies_config') {
+      const cred = await getIntegrationCredential(db, FIREFLIES_KEY);
+      if (!cred?.value) {
+        return { status: 200, body: { has_key: false, connected: false, conta: null, updated_at: null } };
+      }
+      // A checagem e ao vivo, como na Anthropic: chave salva nao quer dizer
+      // chave valida, e a tela precisa saber a diferenca.
+      const teste = await validateFirefliesKey(cred.value);
+      return {
+        status: 200,
+        body: {
+          has_key: true,
+          connected: teste.ok,
+          error: teste.ok ? null : (teste.error ?? 'Conexão inválida.'),
+          conta: teste.conta ?? cred.meta?.conta ?? null,
+          updated_at: cred.updatedAt ?? null,
+        },
+      };
+    }
+
+    // As reuniões da conta do Fireflies, para escolher qual anexar. Não grava
+    // nada: é a vitrine de onde se puxa.
+    // O endereço da gravação, na hora de assistir. Não fica guardado: a URL da
+    // CDN deles é assinada e expira em dias.
+    if (action === 'fireflies_gravacao') {
+      const id = String(query.get('id') ?? '').trim();
+      if (!id) return { status: 400, body: { error: 'id ausente.' } };
+      const cred = await getIntegrationCredential(db, FIREFLIES_KEY);
+      if (!cred?.value) {
+        return { status: 400, body: { error: 'Fireflies não conectado.' } };
+      }
+      const r = await obterGravacaoFireflies(cred.value, id);
+      if (!r.ok) return { status: 400, body: { error: r.error } };
+      if (!r.video && !r.audio) {
+        return { status: 404, body: { error: 'Esta reunião não tem gravação disponível.' } };
+      }
+      return { status: 200, body: { video: r.video, audio: r.audio } };
+    }
+
+    if (action === 'fireflies_reunioes') {
+      const cred = await getIntegrationCredential(db, FIREFLIES_KEY);
+      if (!cred?.value) {
+        return { status: 400, body: { error: 'Fireflies não conectado. Configure em Configurações › Integrações.' } };
+      }
+      const r = await listarReunioesFireflies(cred.value, String(query.get('busca') ?? ''));
+      if (!r.ok) return { status: 400, body: { error: r.error } };
+      return { status: 200, body: { reunioes: r.reunioes } };
     }
 
     if (action === 'list_cedentes') {
@@ -3454,6 +3523,95 @@ function faltaEmProjeto(p: any): string | null {
         ],
       });
       return { status: 200, body: { ok: true } };
+    }
+
+    // Anexa uma reunião do Fireflies ao projeto. O resumo vira a nota, e o
+    // link fica guardado: a transcrição inteira mora lá, e copiá-la para cá
+    // seria manter duas versões da mesma conversa.
+    if (action === 'anexar_reuniao_fireflies') {
+      { const barrado = await guardaDaEquipe(db, usuario, body.projeto_id); if (barrado) return barrado; }
+      const projetoId = String(body?.projeto_id ?? '');
+      // Uma lista, e não uma por requisição: escolher cinco reuniões e esperar
+      // cinco idas ao servidor faria a tela piscar cinco vezes.
+      const ids: string[] = Array.isArray(body?.fireflies_ids)
+        ? body.fireflies_ids.map((x: unknown) => String(x).trim()).filter(Boolean)
+        : [String(body?.fireflies_id ?? '').trim()].filter(Boolean);
+      if (!projetoId) return { status: 400, body: { error: 'projeto_id ausente.' } };
+      if (ids.length === 0) return { status: 400, body: { error: 'Escolha a reunião.' } };
+
+      const cred = await getIntegrationCredential(db, FIREFLIES_KEY);
+      if (!cred?.value) {
+        return { status: 400, body: { error: 'Fireflies não conectado. Configure em Configurações › Integrações.' } };
+      }
+
+      // O que já está anexado sai da lista em silêncio: quem mandou cinco não
+      // quer um erro porque uma delas já estava lá.
+      const jaTem = await db.execute({
+        sql: `SELECT fireflies_id FROM projeto_reunioes
+              WHERE projeto_id = ? AND fireflies_id IS NOT NULL`,
+        args: [projetoId],
+      });
+      const conhecidos = new Set(jaTem.rows.map(r => String(r.fireflies_id)));
+      const novos = ids.filter(id => !conhecidos.has(id));
+      if (novos.length === 0) {
+        return { status: 400, body: { error: 'Essas reuniões já estão anexadas ao projeto.' } };
+      }
+
+      // As buscas vão juntas: eram uma por vez, e dez reuniões viravam dez
+      // idas em fila ao Fireflies - segundos de tela parada, que foi o que fez
+      // a pessoa clicar de novo.
+      const buscadas = await Promise.all(
+        novos.map(id => obterReuniaoFireflies(cred.value, id).then(r => ({ id, r }))),
+      );
+
+      const agora = new Date().toISOString();
+      let anexadas = 0;
+      const falhas: string[] = [];
+      for (const { id: firefliesId, r } of buscadas) {
+        if (!r.ok) { falhas.push(r.error); continue; }
+        const m = r.reuniao;
+        // Sem resumo, a nota diz de onde veio em vez de ficar vazia: o registro
+        // existe para apontar a conversa, e o link é o que ele carrega.
+        const notas = m.resumo?.trim()
+          || 'Reunião gravada no Fireflies. A transcrição e o resumo estão no link.';
+        // `OR IGNORE` com o índice único: se outra requisição inseriu a mesma
+        // reunião no meio do caminho, esta simplesmente não faz nada.
+        const ins = await db.execute({
+          sql: `INSERT OR IGNORE INTO projeto_reunioes
+                  (projeto_id, data, assunto, notas, participantes, fireflies_id, link,
+                   dados, criado_em, criado_por_id, criado_por_nome)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+          args: [
+            projetoId,
+            (m.data ?? agora).slice(0, 10),
+            m.titulo,
+            notas,
+            // Os participantes de lá são nomes e e-mails de fora, e não ids da
+            // casa: guardar no mesmo campo faria a tela procurar usuário que não
+            // existe. Vão no `dados`, junto do resto.
+            JSON.stringify([]),
+            firefliesId,
+            m.url,
+            JSON.stringify({
+              duracao: m.duracao,
+              participantes: m.participantes,
+              ...(m.detalhe ?? {}),
+            }),
+            agora, autorId, autorNome,
+          ],
+        });
+        if (Number(ins.rowsAffected ?? 0) > 0) anexadas++;
+      }
+      // Todas já estavam lá (o clique repetido chegou depois do primeiro): não
+      // é erro, é nada a fazer.
+      if (anexadas === 0 && falhas.length === 0) {
+        return { status: 200, body: { ok: true, anexadas: 0, falhas: 0 } };
+      }
+      // Nenhuma entrou: o motivo da primeira falha explica melhor que um "ok".
+      if (anexadas === 0) {
+        return { status: 400, body: { error: falhas[0] ?? 'Não foi possível anexar.' } };
+      }
+      return { status: 200, body: { ok: true, anexadas, falhas: falhas.length } };
     }
 
     if (action === 'excluir_reuniao_projeto') {
@@ -4383,6 +4541,23 @@ function faltaEmProjeto(p: any): string | null {
       const test = await validateAnthropicKey(cred.value);
       await updateIntegrationMeta(db, ANTHROPIC_KEY, { ...cred.meta, model, validated_at: new Date().toISOString() });
       return { status: 200, body: { ok: true, model, connected: test.ok } };
+    }
+
+    if (action === 'save_fireflies_key') {
+      const key = String(body?.key ?? '').trim();
+      if (!key) return { status: 400, body: { error: 'Informe a chave da API.' } };
+      const teste = await validateFirefliesKey(key);
+      if (!teste.ok) return { status: 400, body: { error: teste.error ?? 'Chave inválida.' } };
+      await saveIntegrationCredential(db, FIREFLIES_KEY, key, {
+        conta: teste.conta ?? null,
+        validated_at: new Date().toISOString(),
+      });
+      return { status: 200, body: { ok: true, connected: true, conta: teste.conta ?? null } };
+    }
+
+    if (action === 'remove_fireflies_key') {
+      await removeIntegrationCredential(db, FIREFLIES_KEY);
+      return { status: 200, body: { ok: true } };
     }
 
     if (action === 'remove_anthropic_key') {

@@ -823,7 +823,7 @@ export default function ProjetoPublico({ token }: { token: string }) {
                 <span>{g.itens.length}</span>
               </button>
             )}
-            <div className={`grupo-corpo${fechado ? '' : ' aberto'}`}>
+            <div className={`revelar${fechado ? '' : ' aberto'}`}>
              <div>
             {g.itens.length === 0 ? (
               <p className="pub-grupo-vazio">Nenhuma entrega nesta situação.</p>

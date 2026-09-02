@@ -1146,7 +1146,9 @@ function EditField({ label, value, onChange, type = 'text', readOnly = false, lo
       <label className="form-label">
         {label}
         {readOnly && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: 'var(--gray2)', textTransform: 'uppercase', letterSpacing: '.04em' }}>· automático</span>}
-        {loading && <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--yellow)' }}>consultando…</span>}
+        {/* O campo espera a Receita: o giro diz isso sem palavra, e no mesmo
+            desenho de toda espera do sistema. */}
+        {loading && <span className="dux-spinner sm" style={{ marginLeft: 6, verticalAlign: 'middle' }} />}
       </label>
       <input
         type={type}

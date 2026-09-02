@@ -91,8 +91,35 @@ comportam igual. O padrão da casa é card sobe (`translateY(-2px)` +
 ganha `--gray4` de fundo. Não invente um hover novo para um botão que já tem irmãos na
 tela.
 
-**Foco:** todo controle interativo mantém um `:focus-visible` visível (anel amarelo
-`var(--yb)`). Não remova outline sem repor algo equivalente.
+**Foco:** campo de texto realça a borda em `var(--gray2)` com halo `var(--gray4)`.
+Não existe anel colorido de foco no sistema - ele saiu em 09/2026 porque ficava na
+tela depois do clique e lia como "selecionado". Não reintroduza.
+
+**Abrir e recolher:** todo bloco que expande - detalhe de card, grupo de lista,
+formulário que nasce dentro de uma seção, painel de busca - usa a classe `.revelar`, que anima
+`grid-template-rows` de `0fr` a `1fr` com `--transition-spring`, e não `height` nem
+medição em JavaScript. Duas regras vêm junto com ela, e sem elas não há suavidade:
+
+1. O conteúdo tem de estar montado na primeira abertura e **permanecer montado**.
+   Montado só enquanto aberto, o bloco anima de nada para nada e o texto aparece de
+   supetão - guarde os ids já abertos, como `jaAbertas`.
+2. O filho direto do `.revelar` é um `<div>` só, que carrega `overflow: hidden`. O
+   conteúdo vai dentro dele.
+
+A seta que acompanha gira 90 graus (`.entrega-seta.aberta`), nunca troca de ícone.
+
+**Resultado de busca e filtro:** a lista que responde a uma busca leva
+`.lista-anima` no contêiner, com uma `key` que é a assinatura do resultado (os ids
+visíveis, juntos). É a troca da chave que remonta os itens e faz a entrada tocar;
+digitar uma letra que não muda o resultado não reanima nada. Trocar o conteúdo de
+uma lista em um quadro não é lido, é notado como falha.
+
+Com um editor aberto dentro da lista, congele a chave: a remontagem apagaria o
+rascunho de quem está digitando se uma atualização de fundo mudasse o resultado.
+
+**Peça que aparece por condição** - barra de ação, aviso, campo que nasce depois de
+uma escolha - leva `.surge`. É a mesma entrada, aplicada ao bloco inteiro em vez de
+aos filhos.
 
 **Movimento reduzido:** animação de entrada, deslocamento e revelação precisa de um
 bloco `@media (prefers-reduced-motion: reduce)` que a desligue, como já é feito na
@@ -106,4 +133,7 @@ troca de tema.
 4. Cores, raios e sombras via token; nada de hex solto.
 5. Transições usando `--transition` ou `--transition-spring`.
 6. Hover, foco e `prefers-reduced-motion` cobertos.
-7. Conferido nos dois temas (claro e escuro).
+7. Bloco que expande usando `.revelar`, com o conteúdo montado uma vez e mantido.
+8. Lista que responde a busca com `.lista-anima` e `key` do resultado; peça que
+   aparece por condição com `.surge`.
+9. Conferido nos dois temas (claro e escuro).

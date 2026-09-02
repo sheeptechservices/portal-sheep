@@ -230,6 +230,9 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   definir_gestor_projeto: 'projetos:editar',
   registrar_saude_projeto: 'projetos:editar',
   excluir_saude_projeto: 'projetos:editar',
+  fireflies_reunioes: 'projetos:editar',
+  fireflies_gravacao: 'projetos:ver',
+  anexar_reuniao_fireflies: 'projetos:editar',
   registrar_reuniao_projeto: 'projetos:editar',
   excluir_reuniao_projeto: 'projetos:editar',
   // ── Sempre liberado ────────────────────────────────────────────────────────
@@ -329,6 +332,9 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   remove_novo_lead_notif: 'configuracoes:notificacoes',
   novo_lead_notifs: 'configuracoes:notificacoes',
   anthropic_config: 'configuracoes:integracoes',
+  fireflies_config: 'configuracoes:integracoes',
+  save_fireflies_key: 'configuracoes:integracoes',
+  remove_fireflies_key: 'configuracoes:integracoes',
   save_anthropic_key: 'configuracoes:integracoes',
   remove_anthropic_key: 'configuracoes:integracoes',
 };

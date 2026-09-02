@@ -6,8 +6,8 @@ import { ajustarBannerDocx } from '../lib/docxBanner';
  * arquivo, então o que aparece aqui é o documento de verdade - não uma
  * reconstrução dos dados. Carregado sob demanda para não pesar o bundle inicial.
  *
- * O enquadramento (`.gd-docx`, `.gd-spin`) vem do Gerador de Contratos, que é
- * quem monta o modal em volta.
+ * O enquadramento (`.gd-docx`) vem do Gerador de Contratos, que é quem monta o
+ * modal em volta; o giro da espera e o da casa (`.dux-spinner`).
  */
 export function PreviaDocx({ blob }: { blob: Blob }) {
   const alvoRef = useRef<HTMLDivElement>(null);
@@ -43,7 +43,7 @@ export function PreviaDocx({ blob }: { blob: Blob }) {
     <div style={{ position: 'relative', minHeight: 240 }}>
       {estado === 'carregando' && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '60px 0', color: 'var(--gray2)', fontSize: 12.5 }}>
-          <span className="gd-spin" /> Montando a prévia…
+          <span className="dux-spinner sm" /> Montando a prévia…
         </div>
       )}
       {estado === 'erro' && (

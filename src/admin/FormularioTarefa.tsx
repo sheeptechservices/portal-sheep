@@ -379,8 +379,11 @@ function PilulaEtapa({ valor, etapas, desabilitado, onChange }: {
 
 // ── Confirmação de exclusão ──────────────────────────────────────────────
 
-export function ConfirmarExclusao({ tarefa, onCancelar, onConfirmar }: {
-  tarefa: Tarefa;
+export function ConfirmarExclusao({ titulo, oQue = 'tarefa', onCancelar, onConfirmar }: {
+  /** O nome do que vai sumir, para a pessoa reconhecer o que confirmou. */
+  titulo: string;
+  /** A palavra que descreve: "tarefa", "reunião". Entra no título e na frase. */
+  oQue?: string;
   onCancelar: () => void;
   onConfirmar: () => void;
 }) {
@@ -389,9 +392,9 @@ export function ConfirmarExclusao({ tarefa, onCancelar, onConfirmar }: {
     <div className="admin-modal-overlay"
       style={{ zIndex: 10001, alignItems: 'center', justifyContent: 'center' }} {...fundo}>
       <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-        <p className="delete-confirm-title">Excluir tarefa</p>
+        <p className="delete-confirm-title">Excluir {oQue}</p>
         <p className="delete-confirm-desc">
-          Tem certeza que deseja excluir "<strong>{tarefa.titulo}</strong>"? Esta ação não pode ser desfeita.
+          Tem certeza que deseja excluir "<strong>{titulo}</strong>"? Esta ação não pode ser desfeita.
         </p>
         <div className="delete-confirm-actions">
           <button type="button" className="delete-confirm-cancel" onClick={onCancelar}>Cancelar</button>

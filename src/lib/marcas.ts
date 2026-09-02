@@ -40,9 +40,12 @@ export const MARCAS: Marca[] = [
   // Duas cores sobre transparente, recortada do cartao claro do manual: no
   // carrossel vira silhueta como as outras, e nos seletores aparece direto.
   { nome: 'GR2', src: '/marcas/gr2.webp', altura: 26 },
-  { nome: 'Grupo 3SA', src: '/marcas/grupo-3sa.webp', altura: 28, fundoEscuro: true },
-  // Assinatura larga e desenhada em branco: altura baixa, e escurece onde o
-  // fundo é claro, como a do Grupo 3SA.
+  // Duas cores: o "3" no amarelo da marca e o resto na tinta. O arquivo veio
+  // desenhado em branco, para fundo escuro; o branco foi trocado por tinta no
+  // próprio arquivo em vez de escurecer a logo inteira por filtro, que apagava
+  // o amarelo junto.
+  { nome: 'Grupo 3SA', src: '/marcas/grupo-3sa.webp', altura: 28 },
+  // Assinatura larga, de uma cor só.
   { nome: 'Orteconte', src: '/marcas/orteconte.webp', altura: 26, cor: '#5B92C8', proporcao: 1536 / 301 },
   // Roxo fechado da marca no claro, e um tom acima no escuro, onde o original
   // se perde no fundo.

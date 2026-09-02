@@ -462,6 +462,16 @@ export function IconDashboard({ size = 14 }: { size?: number }) {
   return <Ico size={size}><rect x="3" y="3" width="7.5" height="7.5" rx="1.6" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6" /></Ico>;
 }
 
+// Assistir: o triângulo do play, em traço como o resto.
+export function IconPlay({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 4.8v14.4L19.5 12 7 4.8Z" />
+    </svg>
+  );
+}
+
 // Marca do Google, para o botão de entrada. É a única exceção à regra de traço
 // com currentColor deste arquivo: logotipo de terceiro tem cor própria fixada
 // pelas diretrizes de marca deles, não pode herdar o tema nem virar contorno.

@@ -109,6 +109,8 @@ export async function removeIntegrationCredential(db: Client, chave: string): Pr
 
 // ── Anthropic (conveniência) ────────────────────────────────────────────────
 export const ANTHROPIC_KEY = 'anthropic';
+/** Identificador do Fireflies no cofre. */
+export const FIREFLIES_KEY = 'fireflies';
 // Opus 5 custa o mesmo que o 4.8 ($5/$25 por MTok) e é melhor em compreensão de
 // documento/visão - o que importa direto na leitura dos anexos da análise.
 export const DEFAULT_ANTHROPIC_MODEL = 'claude-opus-5';
@@ -127,6 +129,200 @@ export async function validateAnthropicKey(apiKey: string): Promise<{ ok: boolea
   } catch (e: any) {
     return { ok: false, error: e?.message || 'Sem conexão com a Anthropic.' };
   }
+}
+
+/** A chave do Fireflies vale contra a API GraphQL deles: a consulta mais barata
+ *  que existe e o proprio usuario dono da chave, e ela ja devolve nome e e-mail
+ *  para a tela dizer de qual conta a integracao e - "conectado" sem dizer a
+ *  quem serve de pouco quando a casa tem mais de uma conta. */
+export async function validateFirefliesKey(
+  apiKey: string,
+): Promise<{ ok: boolean; conta?: { nome: string | null; email: string | null }; error?: string }> {
+  if (!apiKey || !apiKey.trim()) return { ok: false, error: 'Chave ausente.' };
+  try {
+    const res = await fetch('https://api.fireflies.ai/graphql', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey.trim()}`,
+      },
+      body: JSON.stringify({ query: '{ user { name email } }' }),
+    });
+    // O corpo e lido antes de olhar o status: o Fireflies responde 500 para
+    // chave invalida, e so o `errors` de dentro diz o que houve. Confiar no
+    // status devolveria "HTTP 500" para o caso mais comum de todos.
+    const corpo: any = await res.json().catch(() => null);
+    const erro: string | undefined = corpo?.errors?.[0]?.message;
+    const naoAutorizado = res.status === 401 || res.status === 403
+      || /unauthor|invalid|forbidden|token|authenticating|api key/i.test(erro ?? '');
+    if (naoAutorizado) return { ok: false, error: 'Chave inválida ou revogada.' };
+    if (erro) return { ok: false, error: erro };
+    if (!res.ok) return { ok: false, error: `Falha na validação (HTTP ${res.status}).` };
+    const u = corpo?.data?.user;
+    if (!u) return { ok: false, error: 'A API respondeu sem os dados da conta.' };
+    return {
+      ok: true,
+      conta: { nome: u.name ?? null, email: u.email ?? null },
+    };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Sem conexão com o Fireflies.' };
+  }
+}
+
+/** Uma reuniao do Fireflies, no que interessa para escolher e anexar. */
+export interface ReuniaoFireflies {
+  id: string;
+  titulo: string;
+  /** ISO. A API devolve milissegundos desde a época. */
+  data: string | null;
+  /** Em minutos, arredondado. */
+  duracao: number | null;
+  participantes: string[];
+  url: string | null;
+  resumo: string | null;
+  /** O resto do que a reunião carrega: resumos de outros tamanhos, tópicos com
+   *  horário, palavras-chave e itens de ação. Guardado como veio, para a tela
+   *  decidir o que mostrar sem uma ida nova à API. */
+  detalhe: {
+    gist: string | null;
+    curto: string | null;
+    topicos: string | null;
+    notas: string | null;
+    palavras: string[];
+    acoes: string | null;
+    organizador: string | null;
+    reuniao_url: string | null;
+  } | null;
+}
+
+/** Consulta a API do Fireflies. Isolada aqui porque tanto a listagem quanto o
+ *  anexo precisam dela, e porque erro de GraphQL nao vem no status HTTP - vem
+ *  no corpo, e quem chama nao deveria ter que saber disso. */
+async function consultarFireflies(
+  apiKey: string, query: string, variables?: Record<string, unknown>,
+): Promise<{ ok: true; dados: any } | { ok: false; error: string }> {
+  try {
+    const res = await fetch('https://api.fireflies.ai/graphql', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey.trim()}`,
+      },
+      body: JSON.stringify({ query, variables }),
+    });
+    const corpo: any = await res.json().catch(() => null);
+    const erro: string | undefined = corpo?.errors?.[0]?.message;
+    if (erro) return { ok: false, error: erro };
+    if (!res.ok) return { ok: false, error: `Falha na consulta (HTTP ${res.status}).` };
+    if (!corpo?.data) return { ok: false, error: 'A API respondeu sem dados.' };
+    return { ok: true, dados: corpo.data };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Sem conexão com o Fireflies.' };
+  }
+}
+
+/** A data vem como milissegundos desde a época, as vezes em texto. */
+function dataDeFireflies(v: unknown): string | null {
+  if (v == null) return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  if (Number.isFinite(n) && n > 0) return new Date(n).toISOString();
+  const d = new Date(String(v));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function reuniaoDeFireflies(t: any): ReuniaoFireflies {
+  // `meeting_attendees` traz nome quando existe; `participants` e a lista de
+  // e-mails. Prefere-se o nome, porque e ele que a pessoa reconhece.
+  const convidados: string[] = Array.isArray(t?.meeting_attendees)
+    ? t.meeting_attendees.map((p: any) => p?.displayName || p?.name || p?.email).filter(Boolean)
+    : [];
+  const emails: string[] = Array.isArray(t?.participants) ? t.participants.filter(Boolean) : [];
+  const texto = (v: unknown) => (v == null || v === '' ? null : String(v));
+  const r = t?.summary;
+  return {
+    id: String(t?.id ?? ''),
+    titulo: String(t?.title ?? 'Reunião sem título'),
+    data: dataDeFireflies(t?.date),
+    duracao: Number.isFinite(Number(t?.duration)) ? Math.round(Number(t.duration)) : null,
+    participantes: (convidados.length ? convidados : emails).slice(0, 12),
+    url: t?.transcript_url ? String(t.transcript_url) : null,
+    resumo: texto(r?.overview),
+    detalhe: r || t?.meeting_link ? {
+      gist: texto(r?.gist),
+      curto: texto(r?.short_summary),
+      topicos: texto(r?.shorthand_bullet),
+      notas: texto(r?.notes),
+      palavras: Array.isArray(r?.keywords) ? r.keywords.map((k: unknown) => String(k)) : [],
+      acoes: texto(r?.action_items),
+      organizador: texto(t?.organizer_email),
+      reuniao_url: texto(t?.meeting_link),
+    } : null,
+  };
+}
+
+/** As reunioes mais recentes da conta. O filtro por texto e feito aqui e nao na
+ *  API: o `transcripts` deles filtra por titulo exato, e quem busca "weekly"
+ *  quer achar "Weekly Orteconte" tambem. */
+export async function listarReunioesFireflies(
+  apiKey: string, busca: string, limite = 50,
+): Promise<{ ok: true; reunioes: ReuniaoFireflies[] } | { ok: false; error: string }> {
+  const query = `query($limit: Int) {
+    transcripts(limit: $limit) {
+      id title date duration transcript_url participants
+      meeting_attendees { displayName name email }
+    }
+  }`;
+  const r = await consultarFireflies(apiKey, query, { limit: limite });
+  if (!r.ok) return r;
+  const lista: ReuniaoFireflies[] = (r.dados?.transcripts ?? []).map(reuniaoDeFireflies);
+  const q = busca.trim().toLocaleLowerCase('pt-BR');
+  if (!q) return { ok: true, reunioes: lista };
+  return {
+    ok: true,
+    reunioes: lista.filter(m =>
+      m.titulo.toLocaleLowerCase('pt-BR').includes(q)
+      || m.participantes.some(p => p.toLocaleLowerCase('pt-BR').includes(q))),
+  };
+}
+
+/** O detalhe de uma reuniao, com o resumo - e ele que vira a nota no projeto. */
+export async function obterReuniaoFireflies(
+  apiKey: string, id: string,
+): Promise<{ ok: true; reuniao: ReuniaoFireflies } | { ok: false; error: string }> {
+  const query = `query($id: String!) {
+    transcript(id: $id) {
+      id title date duration transcript_url participants organizer_email meeting_link
+      meeting_attendees { displayName name email }
+      summary { overview gist short_summary shorthand_bullet notes keywords action_items }
+    }
+  }`;
+  const r = await consultarFireflies(apiKey, query, { id });
+  if (!r.ok) return r;
+  const t = r.dados?.transcript;
+  if (!t) return { ok: false, error: 'Reunião não encontrada no Fireflies.' };
+  return { ok: true, reuniao: reuniaoDeFireflies(t) };
+}
+
+/** O endereço da gravação, buscado na hora de assistir.
+ *
+ *  Nunca guardado: a URL vem assinada pela CDN deles e expira em poucos dias.
+ *  Salva no banco, ela funcionaria hoje e daria "acesso negado" na semana que
+ *  vem, sem ninguém entender por quê. */
+export async function obterGravacaoFireflies(
+  apiKey: string, id: string,
+): Promise<{ ok: true; video: string | null; audio: string | null } | { ok: false; error: string }> {
+  const query = `query($id: String!) {
+    transcript(id: $id) { video_url audio_url }
+  }`;
+  const r = await consultarFireflies(apiKey, query, { id });
+  if (!r.ok) return r;
+  const t = r.dados?.transcript;
+  if (!t) return { ok: false, error: 'Reunião não encontrada no Fireflies.' };
+  return {
+    ok: true,
+    video: t.video_url ? String(t.video_url) : null,
+    audio: t.audio_url ? String(t.audio_url) : null,
+  };
 }
 
 export interface AnthropicCredential {

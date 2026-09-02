@@ -4,11 +4,10 @@ import { createPortal } from 'react-dom';
 import type { StatusConfig, UsuarioNotificavel, Notificacao, NovaNotificacao } from './types';
 import { useToast, useAuth } from './AdminApp';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
-import { DepsMark } from '../components/DepsMark';
-import { descreveProdutoDeps, PRODUTO_PJ_DEFAULT } from '../lib/depsProdutos';
 import {
-  IconAlert, IconAlertOctagon, IconArrastar, IconCheck, IconChevronDown, IconClipboard,
-  IconEntrada, IconEstrela, IconPlus, IconProibido, IconTrash, IconUser, IconX,
+  IconAlert, IconAlertOctagon, IconArrastar, IconCheck, IconChevronDown, IconChevronRight,
+  IconClipboard, IconEntrada, IconEstrela, IconEye, IconEyeOff, IconPlus, IconProibido,
+  IconTrash, IconUser, IconX,
 } from '../components/icons';
 import { SegSwitch } from '../components/SegSwitch';
 import { Abas, AbaPainel } from '../components/Abas';
@@ -841,25 +840,12 @@ const ANTHROPIC_MODELS: { id: string; label: string; desc: string; tier: string 
   { id: 'claude-fable-5',             label: 'Fable 5',    desc: 'O mais capaz da Claude, porém ~2× o custo do Opus 5',                   tier: 'Máximo' },
 ];
 
-// Logomarca da Claude (spark/sunburst) - recriada em SVG, na laranja da marca.
-// 12 raios com comprimentos alternados (aspecto orgânico do símbolo da Claude).
-function ClaudeLogo({ size = 20, color = CLAUDE_ORANGE }: { size?: number; color?: string }) {
-  const cx = 12, cy = 12, inner = 1.8;
-  const rays = Array.from({ length: 12 }, (_, i) => {
-    const a = (i * 30 - 90) * Math.PI / 180;
-    const outer = i % 2 === 0 ? 10 : 7.6;
-    return {
-      x1: cx + inner * Math.cos(a), y1: cy + inner * Math.sin(a),
-      x2: cx + outer * Math.cos(a), y2: cy + outer * Math.sin(a),
-    };
-  });
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden style={{ flexShrink: 0 }}>
-      {rays.map((r, i) => (
-        <line key={i} x1={r.x1} y1={r.y1} x2={r.x2} y2={r.y2} stroke={color} strokeWidth="1.9" strokeLinecap="round" />
-      ))}
-    </svg>
-  );
+/** A marca da Claude, do arquivo oficial. Era um desenho recriado em SVG: doze
+ *  raios de comprimento alternado, parecido de longe e diferente de perto. Logo
+ *  de terceiro nao se aproxima - ou e ela, ou e um icone generico. */
+function ClaudeLogo({ size = 20 }: { size?: number }) {
+  return <img src="/marcas/claude.webp" alt="" width={size} height={size}
+    style={{ display: 'block', objectFit: 'contain', flexShrink: 0 }} />;
 }
 
 // Dropdown de modelo - customizado no padrão do sistema (substitui o <select> nativo)
@@ -940,7 +926,12 @@ function ModelSelect({ value, onChange, color = ANTHROPIC_COLOR }: { value: stri
 
 // Integração com a Anthropic (Claude). A chave da API é salva criptografada no
 // banco (não no .env) e usada na análise de crédito assistida por IA.
-function AnthropicIntegrationCard({ api }: { api: ReturnType<typeof useApi> }) {
+function AnthropicIntegrationCard({ api, inicial, onEstado }: {
+  api: ReturnType<typeof useApi>;
+  /** O que a tabela já descobriu, para não repetir a validação da chave. */
+  inicial: EstadoIntegracao;
+  onEstado: (e: EstadoIntegracao) => void;
+}) {
   const { toast } = useToast();
   const [apiKey, setApiKey] = useState('');
   const [hasKey, setHasKey] = useState(false);      // existe credencial salva no Turso
@@ -996,43 +987,22 @@ function AnthropicIntegrationCard({ api }: { api: ReturnType<typeof useApi> }) {
     setRemoving(false);
   }
 
+  // Depois da primeira carga, quem muda a situação é este cartão - e ele avisa
+  // a linha, para ela não ficar contando uma história velha.
+  const primeira = useRef(true);
+  useEffect(() => {
+    if (primeira.current) { primeira.current = false; return; }
+    onEstado({
+      temChave: hasKey,
+      conectada: connected,
+      detalhe: hasKey ? (ANTHROPIC_MODELS.find(m => m.id === model)?.label ?? model) : null,
+      em: inicial.em,
+      carregando: false,
+    });
+  }, [hasKey, connected, model]);
+
   return (
-    <div className={`integration-card${expanded ? ' expanded' : ''}`}>
-      <div className="integration-card-row" onClick={() => setExpanded(v => !v)}>
-        <div className="integration-logo" style={{ background: `${CLAUDE_ORANGE}14`, border: `1px solid ${CLAUDE_ORANGE}30` }}>
-          <ClaudeLogo size={24} />
-        </div>
-
-        <div className="integration-info">
-          <div className="integration-title">
-            Anthropic (Claude)
-            {loading ? null : connected ? (
-              <span className="integration-badge connected">
-                <span className="live-dot" />
-                Conectado
-              </span>
-            ) : hasKey ? (
-              <span className="integration-badge disconnected" title={connError ?? undefined}>
-                Chave inválida
-              </span>
-            ) : (
-              <span className="integration-badge disconnected">Não conectado</span>
-            )}
-          </div>
-          <div className="integration-desc">
-            IA que orquestra a análise de crédito - lê os relatórios e sugere um parecer na etapa Decisão.
-          </div>
-        </div>
-
-        <svg
-          className={`integration-chevron${expanded ? ' open' : ''}`}
-          width="14" height="14" viewBox="0 0 24 24" fill="none"
-        >
-          <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </div>
-
-      {expanded && (
+    <div className="integration-card expanded">
         <div className="integration-form">
           <div className="integration-form-group">
             <label className="integration-label">Chave da API</label>
@@ -1083,118 +1053,330 @@ function AnthropicIntegrationCard({ api }: { api: ReturnType<typeof useApi> }) {
             )}
           </div>
         </div>
-      )}
     </div>
   );
 }
 
-// ── DEPS (bureau de crédito) ─────────────────────────
-// Card informativo. As credenciais da DEPS ficam em variáveis de ambiente (como
-// as de integração), então aqui não há formulário: só o estado da conexão, a conta em
-// uso e os produtos configurados. Nada é editável nem enviado ao servidor.
-const DEPS_NAVY = '#1B2A4E';
+// ── Fireflies (reuniões) ─────────────────────────────
+// A chave da API fica criptografada no banco, como a da Anthropic, e vale contra
+// a API GraphQL deles. O que a integração destrava e' a conversa gravada: hoje
+// ela guarda a ligação e diz de que conta ela e'; puxar transcrição para dentro
+// do projeto e' o passo seguinte, e mora do lado do servidor.
+/** O magenta médio da marca, tirado do próprio arquivo. Serve à pastilha atrás
+ *  da logo e ao botão de salvar - a integração fala na cor de quem ela liga. */
+const FIREFLIES_COR = '#C5398D';
 
-interface DepsConfig {
-  has_credentials: boolean;
-  email: string;
-  produto_pj: string;
-  produto_pf: string;
+/** A marca oficial, e não um desenho de traço: aqui ela identifica um terceiro,
+ *  e o traço da casa vale para os ícones do sistema, não para logotipo alheio.
+ *  O arquivo vive em `public/marcas`, com o resto das marcas. */
+function FirefliesLogo({ size = 18 }: { size?: number }) {
+  return <img src="/marcas/fireflies.webp" alt="" width={size} height={size}
+    style={{ display: 'block', objectFit: 'contain' }} />;
 }
 
-function DepsIntegrationCard({ api }: { api: ReturnType<typeof useApi> }) {
-  const [cfg, setCfg] = useState<DepsConfig | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState(false);
+function FirefliesIntegrationCard({ api, inicial, onEstado }: {
+  api: ReturnType<typeof useApi>;
+  /** O que a tabela já descobriu: o cartão não repete a consulta, que valida a
+   *  chave contra o Fireflies e custa uma ida à API deles. */
+  inicial: EstadoIntegracao;
+  onEstado: (e: EstadoIntegracao) => void;
+}) {
+  const { toast } = useToast();
+  const [chave, setChave] = useState('');
+  const [temChave, setTemChave] = useState(inicial.temChave);
+  const [conectada, setConectada] = useState(inicial.conectada);
+  const [erro, setErro] = useState<string | null>(null);
+  const [conta, setConta] = useState<{ nome: string | null; email: string | null } | null>(
+    inicial.detalhe ? { nome: null, email: inicial.detalhe } : null,
+  );
+  const [desde, setDesde] = useState<string | null>(inicial.em);
+  const [verChave, setVerChave] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [removendo, setRemovendo] = useState(false);
+  const carregando = inicial.carregando;
+  const [salvo, setSalvo] = useState(false);
 
+  // A tabela pode terminar a consulta depois de a linha abrir.
   useEffect(() => {
-    api('?action=deps_config')
-      .then(d => { setCfg(d); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
+    setTemChave(inicial.temChave);
+    setConectada(inicial.conectada);
+    setDesde(inicial.em);
+    if (inicial.detalhe) setConta(c => c ?? { nome: null, email: inicial.detalhe });
+  }, [inicial.temChave, inicial.conectada, inicial.em, inicial.detalhe]);
 
-  const connected = !!cfg?.has_credentials;
+  async function salvar() {
+    if (!chave.trim()) return;
+    setSalvando(true);
+    const r = await api('', 'POST', { action: 'save_fireflies_key', key: chave.trim() });
+    setSalvando(false);
+    if (r?.error) {
+      setConectada(false);
+      setErro(r.error);
+      toast('error', 'Não foi possível conectar', r.error);
+      return;
+    }
+    setTemChave(true);
+    setConectada(true);
+    setErro(null);
+    setConta(r.conta ?? null);
+    setDesde(new Date().toISOString());
+    setChave('');
+    setSalvo(true);
+    setTimeout(() => setSalvo(false), 2500);
+    // A linha da tabela acompanha na hora: quem acabou de conectar não deveria
+    // precisar recarregar para ver "Conectada".
+    onEstado({
+      temChave: true, conectada: true,
+      detalhe: r?.conta?.email ?? r?.conta?.nome ?? null,
+      em: new Date().toISOString(), carregando: false,
+    });
+    toast('success', 'Fireflies conectado', r?.conta?.email ? `Conta ${r.conta.email}.` : 'Chave validada e salva.');
+  }
 
-  // Sem DEPS_PRODUTO_PJ no ambiente, a consulta cai no default do backend.
-  const produtoPj = cfg?.produto_pj
-    ? descreveProdutoDeps(cfg.produto_pj)
-    : `${descreveProdutoDeps(PRODUTO_PJ_DEFAULT)} (padrão)`;
-
-  const rows: { label: string; value: string }[] = [
-    { label: 'Conta (e-mail)', value: cfg?.email || '-' },
-    { label: 'Senha', value: connected ? '••••••••••••' : '-' },
-    { label: 'Produto PJ (CNPJ)', value: produtoPj },
-    { label: 'Produto PF (CPF)', value: cfg?.produto_pf ? descreveProdutoDeps(cfg.produto_pf) : 'Não configurado' },
-  ];
+  async function remover() {
+    if (!confirm('Remover a integração com o Fireflies? A chave sai do cofre.')) return;
+    setRemovendo(true);
+    await api('', 'POST', { action: 'remove_fireflies_key' });
+    setTemChave(false);
+    setConectada(false);
+    setConta(null);
+    setDesde(null);
+    setErro(null);
+    setRemovendo(false);
+    onEstado({ temChave: false, conectada: false, detalhe: null, em: null, carregando: false });
+  }
 
   return (
-    <div className={`integration-card${expanded ? ' expanded' : ''}`}>
-      <div className="integration-card-row" onClick={() => setExpanded(v => !v)}>
-        <div className="integration-logo" style={{ background: `${DEPS_NAVY}0F`, border: `1px solid ${DEPS_NAVY}26` }}>
-          <DepsMark size={22} />
+    <div className="integration-card expanded">
+      <div className="integration-form">
+        <div className="integration-form-group">
+          <label className="integration-label">Chave da API</label>
+          <div className="integration-input-wrap">
+            <input
+              className="integration-input"
+              type={verChave ? 'text' : 'password'}
+              placeholder={temChave ? '•••••••••••••••• (chave salva)' : 'Cole a chave do Fireflies'}
+              value={chave}
+              onChange={e => setChave(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && salvar()}
+              style={{ ['--focus-color' as string]: FIREFLIES_COR }}
+            />
+            <button className="integration-eye" type="button" onClick={() => setVerChave(v => !v)}
+              aria-label={verChave ? 'Ocultar a chave' : 'Mostrar a chave'}>
+              {verChave ? <IconEyeOff size={14} /> : <IconEye size={14} />}
+            </button>
+          </div>
+          <p className="integration-hint">
+            Gere a chave em <strong>app.fireflies.ai</strong> › Settings › Developer Settings.
+            Fica criptografada no banco, como as demais.
+          </p>
+          {!carregando && temChave && !conectada && erro && (
+            <p className="integration-hint" style={{ color: '#B91C1C', fontWeight: 600 }}>
+              <IconAlert size={12} /> {erro}
+            </p>
+          )}
         </div>
 
-        <div className="integration-info">
-          <div className="integration-title">
-            DEPS
-            {loading ? null : connected ? (
-              <span className="integration-badge connected">
-                <span className="live-dot" />
-                Conectado
-              </span>
-            ) : (
-              <span className="integration-badge disconnected">Não conectado</span>
-            )}
-          </div>
-          <div className="integration-desc">
-            Bureau de crédito - score, restritivos e protestos consultados na análise de crédito.
-          </div>
-        </div>
-
-        <svg
-          className={`integration-chevron${expanded ? ' open' : ''}`}
-          width="14" height="14" viewBox="0 0 24 24" fill="none"
-        >
-          <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </div>
-
-      {expanded && (
-        <div className="integration-form">
-          {rows.map(r => (
-            <div className="integration-form-group" key={r.label}>
-              <label className="integration-label">{r.label}</label>
-              <div className="integration-input-wrap">
-                <input className="integration-input readonly" value={r.value} readOnly tabIndex={-1} />
-              </div>
+        {conta && (
+          <div className="integration-form-group">
+            <label className="integration-label">Conta conectada</label>
+            <div className="integration-input-wrap">
+              <input className="integration-input readonly" readOnly tabIndex={-1}
+                value={[conta.nome, conta.email].filter(Boolean).join(' - ') || '-'} />
             </div>
-          ))}
+          </div>
+        )}
 
-          <p className="integration-hint">
-            Credenciais gerenciadas por variáveis de ambiente - <strong>DEPS_EMAIL</strong>, <strong>DEPS_SENHA</strong>,
-            {' '}<strong>DEPS_PRODUTO_PJ</strong> e <strong>DEPS_PRODUTO_PF</strong>. Para trocá-las, edite o ambiente
-            do projeto e faça um novo deploy.
-          </p>
-          <p className="integration-hint">
-            Cada consulta nova tem custo. O sistema tenta reaproveitar a última análise válida do histórico da DEPS
-            antes de gerar uma nova, e pede confirmação quando não há o que reaproveitar.
-          </p>
+        <div className="integration-form-actions">
+          <button className="integration-save-btn" style={{ background: FIREFLIES_COR }}
+            onClick={salvar} disabled={salvando || !chave.trim()}>
+            {salvando ? 'Salvando…' : salvo ? <><IconCheck size={12} /> Salvo!</> : temChave ? 'Trocar a chave' : 'Salvar chave'}
+          </button>
+          {temChave && (
+            <button className="integration-remove-btn" onClick={remover} disabled={removendo}>
+              {removendo ? 'Removendo…' : 'Remover integração'}
+            </button>
+          )}
         </div>
-      )}
+      </div>
     </div>
+  );
+}
+
+/** O que a tabela mostra de cada integração, para as três linhas serem lidas
+ *  do mesmo jeito. Quem preenche é cada cartão, que já sabe consultar o próprio
+ *  endpoint - a tabela não busca nada por conta própria. */
+interface EstadoIntegracao {
+  /** Existe credencial salva no cofre. */
+  temChave: boolean;
+  /** Salva e válida numa checagem ao vivo. */
+  conectada: boolean;
+  /** Conta, plano, modelo: o que identifica a ligação para quem lê a linha. */
+  detalhe: string | null;
+  /** Quando a credencial foi salva ou revalidada. */
+  em: string | null;
+  carregando: boolean;
+}
+
+const ESTADO_INICIAL: EstadoIntegracao = {
+  temChave: false, conectada: false, detalhe: null, em: null, carregando: true,
+};
+
+function fmtQuando(iso: string | null): string {
+  if (!iso) return '-';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '-';
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+/** A situação da integração, na mesma pílula das outras telas. */
+function PilulaIntegracao({ estado }: { estado: EstadoIntegracao }) {
+  if (estado.carregando) return <span className="integration-badge disconnected">Verificando</span>;
+  if (estado.conectada) {
+    return (
+      <span className="integration-badge connected">
+        <span className="live-dot" />
+        Conectada
+      </span>
+    );
+  }
+  if (estado.temChave) return <span className="integration-badge disconnected">Chave inválida</span>;
+  return <span className="integration-badge disconnected">Não conectada</span>;
+}
+
+/** Uma linha da tabela e, quando aberta, o formulário logo abaixo dela.
+ *
+ *  A configuração continua sendo do cartão de cada integração - o que muda é
+ *  que ele deixa de ser o item de uma lista e passa a ser o corpo expansível de
+ *  uma linha. Assim a tela responde de relance a pergunta que ela existe para
+ *  responder: o que está ligado, com que conta e desde quando. */
+function LinhaIntegracao({ nome, categoria, descricao, logo, estado, aberta, onAlternar, children }: {
+  nome: string;
+  categoria: string;
+  descricao: string;
+  logo: React.ReactNode;
+  estado: EstadoIntegracao;
+  aberta: boolean;
+  onAlternar: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <>
+      <tr className={`integracao-linha${aberta ? ' aberta' : ''}`} onClick={onAlternar}>
+        <td>
+          <div className="integracao-nome">
+            {logo}
+            <div>
+              <strong>{nome}</strong>
+              <span>{descricao}</span>
+            </div>
+          </div>
+        </td>
+        <td>{categoria}</td>
+        <td><PilulaIntegracao estado={estado} /></td>
+        <td className="integracao-conta">{estado.detalhe ?? '-'}</td>
+        <td className="integracao-quando">{fmtQuando(estado.em)}</td>
+        <td className="integracao-abrir">
+          <span className={`entrega-seta${aberta ? ' aberta' : ''}`}>
+            <IconChevronRight size={13} />
+          </span>
+        </td>
+      </tr>
+      {aberta && (
+        <tr className="integracao-corpo">
+          <td colSpan={6}>{children}</td>
+        </tr>
+      )}
+    </>
   );
 }
 
 function IntegracoesTab({ token: sessionToken }: { token: string }) {
   const api = useApi(sessionToken);
-  return (
-    <div className="integrations-list">
-      {/* Inteligência artificial */}
-      <div className="integration-section-label" style={{ marginTop: 24 }}>Inteligência artificial</div>
-      <AnthropicIntegrationCard api={api} />
+  /** Uma aberta por vez: são formulários de credencial, e duas abertas ao mesmo
+   *  tempo só empurram a de baixo para fora da tela. */
+  const [aberta, setAberta] = useState<string | null>(null);
+  const [estados, setEstados] = useState<Record<string, EstadoIntegracao>>({});
 
-      {/* Bureaus de crédito */}
-      <div className="integration-section-label" style={{ marginTop: 24 }}>Bureaus de crédito</div>
-      <DepsIntegrationCard api={api} />
+  /** A situação de cada linha é buscada aqui, e não dentro do cartão: o cartão
+   *  só existe enquanto a linha está aberta, então quem entrasse na tela veria
+   *  tudo como não conectado até abrir uma por uma. */
+  useEffect(() => {
+    let vivo = true;
+    api('?action=anthropic_config').then(d => {
+      if (!vivo || !d) return;
+      setEstados(m => ({ ...m, anthropic: {
+        temChave: !!d.has_key,
+        conectada: !!d.connected,
+        detalhe: d.has_key ? (ANTHROPIC_MODELS.find(x => x.id === d.model)?.label ?? d.model ?? null) : null,
+        em: d.updated_at ?? null,
+        carregando: false,
+      } }));
+    }).catch(() => {});
+    api('?action=fireflies_config').then(d => {
+      if (!vivo || !d) return;
+      setEstados(m => ({ ...m, fireflies: {
+        temChave: !!d.has_key,
+        conectada: !!d.connected,
+        detalhe: d.conta?.email ?? d.conta?.nome ?? null,
+        em: d.updated_at ?? null,
+        carregando: false,
+      } }));
+    }).catch(() => {});
+    return () => { vivo = false; };
+  }, []);
+  const anotar = useCallback((chave: string, e: EstadoIntegracao) => {
+    setEstados(m => (
+      m[chave] && m[chave].temChave === e.temChave && m[chave].conectada === e.conectada
+        && m[chave].detalhe === e.detalhe && m[chave].em === e.em && m[chave].carregando === e.carregando
+        ? m
+        : { ...m, [chave]: e }
+    ));
+  }, []);
+  const estadoDe = (chave: string) => estados[chave] ?? ESTADO_INICIAL;
+
+  const alternar = (chave: string) => setAberta(a => (a === chave ? null : chave));
+
+  return (
+    <div className="admin-table-wrap integracoes-tabela">
+      <table className="admin-table">
+        <thead>
+          <tr>
+            <th>Integração</th>
+            <th>Categoria</th>
+            <th>Situação</th>
+            <th>Conta</th>
+            <th>Desde</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          <LinhaIntegracao
+            nome="Anthropic (Claude)"
+            categoria="Inteligência artificial"
+            descricao="Lê os relatórios e sugere um parecer na análise de crédito."
+            logo={<span className="integracao-logo" style={{ background: `${CLAUDE_ORANGE}14`, border: `1px solid ${CLAUDE_ORANGE}30` }}><ClaudeLogo size={18} /></span>}
+            estado={estadoDe('anthropic')}
+            aberta={aberta === 'anthropic'}
+            onAlternar={() => alternar('anthropic')}>
+            <AnthropicIntegrationCard api={api} inicial={estadoDe('anthropic')}
+              onEstado={e => anotar('anthropic', e)} />
+          </LinhaIntegracao>
+
+          <LinhaIntegracao
+            nome="Fireflies"
+            categoria="Reuniões"
+            descricao="Transcrições e resumos das reuniões gravadas."
+            logo={<span className="integracao-logo" style={{ background: `${FIREFLIES_COR}14`, border: `1px solid ${FIREFLIES_COR}30` }}><FirefliesLogo size={18} /></span>}
+            estado={estadoDe('fireflies')}
+            aberta={aberta === 'fireflies'}
+            onAlternar={() => alternar('fireflies')}>
+            <FirefliesIntegrationCard api={api} inicial={estadoDe('fireflies')}
+              onEstado={e => anotar('fireflies', e)} />
+          </LinhaIntegracao>
+
+        </tbody>
+      </table>
     </div>
   );
 }

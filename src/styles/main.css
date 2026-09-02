@@ -116,6 +116,12 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   flex-shrink: 0;
 }
 .dux-spinner.sm { width: 16px; height: 16px; border-width: 2px; }
+/* Dentro de botao colorido o giro herda a cor do texto: o cinza com topo teal
+   sumiria no fundo. E a mesma peca, so que vestida do que estiver em volta. */
+.dux-spinner.na-cor {
+  border-color: color-mix(in srgb, currentColor 35%, transparent);
+  border-top-color: currentColor;
+}
 .dux-spinner-row { display: flex; align-items: center; justify-content: center; padding: 16px; }
 
 /* Giro do <IconSpinner /> (icons.tsx). O ícone é SVG e herda currentColor;
@@ -477,6 +483,10 @@ body {
   color: var(--black);
 }
 .modal-acao-primaria {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   font-weight: 700;
   border: none;
   background: var(--yellow);
@@ -4485,32 +4495,45 @@ body.arrastando-painel {
   font-variant-numeric: tabular-nums;
 }
 
-/* O grupo abre e fecha pela mesma técnica do detalhe da entrega: a altura sai
-   do conteúdo por `grid-template-rows`, sem ninguém medir nada em JavaScript.
-   Serve aos dois lados - o painel de dentro e a página do cliente. */
-.grupo-corpo {
+/* ── Revelar: o abrir e recolher da casa ──────────────
+   A altura sai do conteúdo por `grid-template-rows`, sem ninguém medir nada em
+   JavaScript, e a opacidade acompanha. É o padrão do sistema para qualquer
+   bloco que abre e fecha - grupo de entregas, detalhe da entrega, chip de
+   reunião - e vale a regra que faz a suavidade existir: o conteúdo tem de
+   estar montado na primeira abertura e permanecer montado. Montado só quando
+   aberto, o bloco anima de nada para nada e o texto aparece de supetão. */
+.revelar {
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
   transition: grid-template-rows var(--transition-spring), opacity var(--transition-spring);
 }
-.grupo-corpo > * {
+.revelar > * {
   overflow: hidden;
   min-height: 0;
 }
-.grupo-corpo.aberto {
+.revelar.aberto {
   grid-template-rows: 1fr;
   opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .grupo-corpo { transition: none; }
+  .revelar { transition: none; }
 }
 
-/* Entrada dos itens quando a busca ou o filtro muda o resultado. Sem isso a
-   lista trocava de conteúdo em um quadro, e o olho perdia onde estava.
-   `backwards` e não `both`: com `both` o estado final da animação ficaria
-   grudado no elemento e venceria o `transform` do hover. */
+/* ── Entrada de lista e de peca que aparece ───────────
+   Dois padroes do sistema, e os dois pela mesma razao: coisa que surge de um
+   quadro para o outro nao e lida, e' notada como falha.
+
+   `.lista-anima` vai no conteiner da lista, com uma `key` que muda quando o
+   resultado muda - e a troca de chave que remonta os itens e faz a animacao
+   tocar. Digitar uma letra que nao altera o resultado nao reanima nada.
+
+   `.surge` vai na peca que aparece por condicao: barra de acao, aviso, campo
+   que nasce depois de uma escolha.
+
+   Nos dois, `backwards` e nao `both`: com `both` o estado final da animacao
+   fica grudado no elemento e vence o `transform` do hover. */
 @keyframes entraLista {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: none; }
@@ -4519,8 +4542,12 @@ body.arrastando-painel {
   animation: entraLista .2s var(--curva-anti) backwards;
 }
 
+/* O que aparece por condicao entra do mesmo jeito, so que como bloco. */
+.surge { animation: entraLista .18s var(--curva-anti) backwards; }
+
 @media (prefers-reduced-motion: reduce) {
-  .lista-anima > * { animation: none; }
+  .lista-anima > *,
+  .surge { animation: none; }
 }
 
 /* ── Files in detail ────────────────────────────────── */
@@ -7962,6 +7989,346 @@ body.arrastando-painel {
   transition: border-color .15s, color .15s, background .15s;
 }
 .file-delete-btn:hover { border-color: var(--red); color: var(--red); background: rgba(217,48,37,.12); }
+
+/* ── Reuniao do Fireflies: corpo e gravacao ───────────
+   O chip aberto mostra o que veio de la - resumo, assuntos com horario,
+   combinados por pessoa e palavras-chave. A gravacao abre num modal proprio,
+   com a linha do tempo embaixo do video. */
+.reuniao-corpo { padding: 8px 0 2px; }
+.reuniao-acoes {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.reuniao-duracao { font-size: 11.5px; color: var(--gray2); }
+.reuniao-notas {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--gray);
+  white-space: pre-wrap;
+}
+.reuniao-bloco { margin-top: 12px; }
+.reuniao-rotulo {
+  margin: 0 0 6px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.reuniao-topicos { display: flex; flex-direction: column; gap: 6px; }
+.reuniao-topico {
+  display: flex;
+  gap: 9px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--gray);
+}
+.reuniao-topico strong { color: var(--black); font-weight: 700; }
+/* O horario alinhado em coluna: os numeros ficam um debaixo do outro e a
+   leitura vira uma linha do tempo mesmo sem desenho de linha. */
+.reuniao-tempo {
+  flex: none;
+  min-width: 42px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gray2);
+  font-variant-numeric: tabular-nums;
+}
+.reuniao-acao-grupo + .reuniao-acao-grupo { margin-top: 8px; }
+.reuniao-quem {
+  margin: 0 0 3px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--black);
+}
+.reuniao-acao-grupo ul {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.reuniao-acao-grupo li { font-size: 12px; line-height: 1.5; color: var(--gray); }
+.reuniao-acao-grupo li .reuniao-tempo { min-width: 0; margin-left: 6px; }
+.reuniao-palavras {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 12px;
+}
+.reuniao-palavra {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--gray2);
+  background: var(--gray4);
+  border-radius: var(--radius-sm);
+  padding: 2px 7px;
+}
+.reuniao-gente {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--gray2);
+  line-height: 1.5;
+}
+
+/* ── O modal da gravacao ────────────────────────────── */
+.gravacao-modal {
+  width: min(880px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card-hover);
+  overflow: hidden;
+}
+.gravacao-topo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--gray3);
+  flex-shrink: 0;
+}
+.gravacao-titulo {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--black);
+}
+.gravacao-meta {
+  margin: 3px 0 0;
+  font-size: 11.5px;
+  color: var(--gray2);
+}
+.gravacao-meta a { color: var(--gray2); }
+.gravacao-meta a:hover { color: var(--black); }
+
+.gravacao-corpo { overflow-y: auto; padding: 16px 20px 20px; }
+/* Fundo preto sob o video: a gravacao de tela quase nunca tem a proporcao da
+   caixa, e a sobra escura e menos ruidosa que a branca. */
+.gravacao-video {
+  width: 100%;
+  max-height: 56vh;
+  border-radius: var(--radius-md);
+  background: #000;
+  display: block;
+}
+.gravacao-so-audio { text-align: center; }
+.gravacao-so-audio p {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--gray2);
+}
+.gravacao-audio { width: 100%; height: 44px; }
+
+.gravacao-linha-tempo { margin-top: 16px; }
+.gravacao-secao {
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.gravacao-topico {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+.gravacao-topico:hover { background: var(--gray4); }
+/* O tópico em curso fica marcado: sem isso, o vídeo anda e a lista não
+   acompanha, e a pessoa perde de vista onde está. */
+.gravacao-topico.agora {
+  border-color: var(--cristal-borda-forte, var(--gray3));
+  background: var(--gray4);
+}
+.gravacao-tempo {
+  flex: none;
+  min-width: 46px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gray2);
+  font-variant-numeric: tabular-nums;
+  padding-top: 1px;
+}
+.gravacao-topico.agora .gravacao-tempo { color: var(--black); }
+.gravacao-topico-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--gray);
+}
+.gravacao-topico-texto strong { color: var(--black); font-weight: 700; }
+
+@media (max-width: 640px) {
+  .gravacao-modal { width: 100vw; max-height: 100vh; border-radius: 0; }
+  .gravacao-video { max-height: 40vh; }
+}
+
+/* ── Busca de reuniao no Fireflies ────────────────────
+   Painel que abre dentro da secao de reunioes: campo de busca em cima e o
+   resultado em linhas, no mesmo desenho das outras listas do painel. */
+.ff-busca { margin-bottom: 12px; }
+.ff-item-texto { flex: 1; min-width: 0; }
+.ff-item-titulo {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--black);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ff-item-meta {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--gray2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Cabeca da reuniao anexada: alvo largo, porque o titulo e a data ja dizem o
+   que abre. O resumo do Fireflies tem paragrafos, entao a linha nasce
+   recolhida - tres delas abertas enterrariam a lista. */
+.reuniao-cabeca {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.reuniao-cabeca strong {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--black);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reuniao-cabeca > span:not(.entrega-seta) {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--gray2);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.reuniao-cabeca:hover strong { color: var(--black); }
+.reuniao-cabeca:hover .entrega-seta { color: var(--black); }
+
+/* A linha inteira e o alvo do clique: e uma escolha, nao um formulario. */
+.ff-item { cursor: pointer; gap: 10px; }
+.ff-item.marcada { border-color: var(--cristal-borda-forte); }
+
+/* Barra de confirmacao, so com algo escolhido. */
+.ff-barra {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--gray3);
+}
+.ff-barra > span {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray2);
+}
+
+.ff-vazio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 2px;
+  font-size: 12px;
+  color: var(--gray2);
+}
+.ff-erro { color: var(--red); }
+
+/* ── Tabela de integracoes ────────────────────────────
+   A aba deixou de ser uma pilha de cartoes e virou tabela: a pergunta que ela
+   responde e "o que esta ligado, com que conta e desde quando", e isso se le
+   de relance numa grade, nao abrindo cartao por cartao. O formulario de cada
+   uma continua existindo, agora como corpo expansivel da linha. */
+.integracoes-tabela .integracao-linha { cursor: pointer; }
+.integracoes-tabela .integracao-linha:hover { background: var(--gray4); }
+.integracoes-tabela .integracao-linha.aberta { background: var(--gray4); }
+
+.integracao-nome {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+.integracao-nome div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.integracao-nome strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--black);
+}
+.integracao-nome span {
+  font-size: 11.5px;
+  color: var(--gray2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.integracao-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: var(--radius-md);
+}
+.integracao-conta,
+.integracao-quando {
+  font-size: 12px;
+  color: var(--gray2);
+  white-space: nowrap;
+}
+.integracao-abrir { width: 32px; text-align: right; }
+
+/* O corpo aberto ocupa a largura toda da tabela e nao repete a moldura do
+   cartao: a linha ja e a moldura. */
+.integracoes-tabela .integracao-corpo > td { padding: 0; background: var(--bg); }
+.integracoes-tabela .integracao-corpo .integration-card {
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
 
 /* ── Cadastros page ──────────────────────────────────── */
 .cadastro-empty {
