@@ -3475,17 +3475,18 @@ function faltaEmProjeto(p: any): string | null {
       const marcador = String(e.marcador ?? '').trim() || null;
       const submarcador = String(e.submarcador ?? '').trim() || null;
 
-      if (e.status !== undefined && !STATUS_MANUAL.includes(e.status)) {
-        return {
-          status: 400,
-          body: { error: `"${e.status}" é deduzido das tarefas da entrega e não pode ser escolhido à mão.` },
-        };
-      }
+      // O status só é uma escolha quando é resolução de alguém: planejada,
+      // entregue, validada ou cancelada. "Em andamento" e "Bloqueada" são
+      // deduzidos das tarefas a cada leitura, e a tela devolve no formulário o
+      // mesmo status que recebeu - recusar a gravação por causa disso impedia
+      // editar o prazo de qualquer entrega que já tivesse tarefa andando. Fora
+      // da lista manual, o pedido é ignorado e o que está gravado continua.
+      const mudaStatus = e.status !== undefined && STATUS_MANUAL.includes(String(e.status));
 
       let criada: { id?: number; ordem?: number; status?: string } = {};
 
       if (e.id) {
-        const etapaExigida = PROVA_DA_ETAPA[e.status];
+        const etapaExigida = mudaStatus ? PROVA_DA_ETAPA[e.status] : undefined;
         if (etapaExigida && !(await temProva(db, Number(e.id), etapaExigida))) {
           return {
             status: 400,
@@ -3496,13 +3497,14 @@ function faltaEmProjeto(p: any): string | null {
             },
           };
         }
+        const campos = [titulo, e.descricao ?? null, marcador, submarcador,
+          e.prazo || null, responsaveis, links];
         await db.execute({
           sql: `UPDATE projeto_entregas
-                SET titulo=?, descricao=?, marcador=?, submarcador=?, status=?, prazo=?,
-                    responsaveis=?, links=?
+                SET titulo=?, descricao=?, marcador=?, submarcador=?, prazo=?,
+                    responsaveis=?, links=?${mudaStatus ? ', status=?' : ''}
                 WHERE id=?`,
-          args: [titulo, e.descricao ?? null, marcador, submarcador,
-            e.status ?? 'Planejada', e.prazo || null, responsaveis, links, e.id],
+          args: mudaStatus ? [...campos, e.status, e.id] : [...campos, e.id],
         });
       } else {
         // Entrega nova nunca nasce entregue nem validada: nao ha prova a anexar.
