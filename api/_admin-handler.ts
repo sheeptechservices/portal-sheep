@@ -1113,6 +1113,27 @@ async function migrarSchema(db: Client) {
   // o link leva à transcrição, que é onde mora o detalhe que a nota resume.
   try { await ddl(`ALTER TABLE projeto_reunioes ADD COLUMN fireflies_id TEXT`); } catch {}
   try { await ddl(`ALTER TABLE projeto_reunioes ADD COLUMN link TEXT`); } catch {}
+  // Onde cada reunião foi tratada: as entregas que ela puxou.
+  //
+  // Tabela à parte, e não coluna: uma reunião trata de várias entregas, e uma
+  // entrega volta em várias reuniões. A tarefa não se liga direto - ela herda
+  // as reuniões da entrega a que pertence, que é onde a conversa acontece. O
+  // `tipo` continua na chave porque o dia em que outro destino existir, ele
+  // entra sem migração.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS reuniao_vinculos (
+      reuniao_id INTEGER NOT NULL,
+      tipo       TEXT NOT NULL,
+      alvo_id    INTEGER NOT NULL,
+      criado_em  TEXT NOT NULL,
+      PRIMARY KEY (reuniao_id, tipo, alvo_id)
+    )
+  `);
+  try {
+    await ddl(`CREATE INDEX IF NOT EXISTS idx_vinculo_alvo
+               ON reuniao_vinculos (tipo, alvo_id)`);
+  } catch { /* índice já existe */ }
+
   // O que o Fireflies devolve além do resumo - tópicos com horário,
   // palavras-chave, itens de ação. JSON num campo só: é conteúdo de leitura,
   // não dado que a casa consulte ou cruze.
@@ -2356,8 +2377,12 @@ async function despacharAdminData(
       // quem não deve vê-la.
       const soDaEquipe = papelEfetivo(usuario?.email, usuario?.papel) === 'membro';
 
-      const etapasTarefa = await etapasDeTarefa(db);
-      const [projs, equipe, arqs, clientes, saude, reunioes, entregas, evidencias, tarefas] = await Promise.all([
+      // As etapas entram na mesma leva. Sozinhas, antes das outras, elas
+      // custavam uma ida e volta inteira ao banco em cada recarregamento - e a
+      // listagem é o que roda depois de toda ação da tela.
+      const [etapasTarefa, projs, equipe, arqs, clientes, saude, reunioes, vinculos, entregas,
+        evidencias, tarefas, conversas, anexosDaConversa] = await Promise.all([
+        etapasDeTarefa(db),
         db.execute({
           sql: `
             SELECT p.*, c.nome AS cliente_nome
@@ -2414,7 +2439,21 @@ async function despacharAdminData(
           LEFT JOIN usuarios u ON u.id = t.responsavel_id
           ORDER BY t.ordem, t.id
         `),
+        // Quantos comentários e quantos anexos cada tarefa tem. Contagem por
+        // grupo, e não uma subconsulta por linha: o quadro carrega centenas de
+        // tarefas de uma vez, e ali a diferença aparece.
+        db.execute(`
+          SELECT tarefa_id, COUNT(*) AS n FROM tarefa_comentarios GROUP BY tarefa_id
+        `),
+        db.execute(`
+          SELECT c.tarefa_id, COUNT(*) AS n
+          FROM tarefa_comentario_anexos a
+          JOIN tarefa_comentarios c ON c.id = a.comentario_id
+          GROUP BY c.tarefa_id
+        `),
       ]);
+      const nComentarios = new Map(conversas.rows.map(r => [Number(r.tarefa_id), Number(r.n)]));
+      const nAnexos = new Map(anexosDaConversa.rows.map(r => [Number(r.tarefa_id), Number(r.n)]));
       const projetos = projs.rows.map(p => ({
         ...p,
         equipe: equipe.rows.filter(e => e.projeto_id === p.id)
@@ -2446,11 +2485,19 @@ async function despacharAdminData(
         tarefas: tarefas.rows.filter(t => t.projeto_id === p.id).map(t => ({
           ...t,
           etiquetas: JSON.parse(String(t.etiquetas ?? '[]')) as string[],
+          // Só os números: o conteúdo da conversa desce quando o card abre.
+          comentarios: nComentarios.get(Number(t.id)) ?? 0,
+          anexos: nAnexos.get(Number(t.id)) ?? 0,
         })),
         reunioes: reunioes.rows.filter(x => x.projeto_id === p.id).map(x => ({
           ...x,
           // O banco guarda JSON; a tela quer a lista pronta.
           participantes: JSON.parse(String(x.participantes ?? '[]')) as string[],
+          // Onde a reunião foi tratada. Vai junto para os dois lados poderem
+          // desenhar o vínculo sem uma segunda ida ao servidor.
+          entregas: vinculos.rows
+            .filter(v => Number(v.reuniao_id) === Number(x.id) && v.tipo === 'entrega')
+            .map(v => Number(v.alvo_id)),
         })),
       }));
       return { status: 200, body: { projetos, clientes: clientes.rows } };
@@ -3614,8 +3661,52 @@ function faltaEmProjeto(p: any): string | null {
       return { status: 200, body: { ok: true, anexadas, falhas: falhas.length } };
     }
 
+    // Liga ou desliga uma reunião de uma entrega ou de uma tarefa. O mesmo
+    // caminho serve aos dois lados da tela: o chip da reunião e o detalhe da
+    // entrega mandam a mesma coisa.
+    if (action === 'vincular_reuniao') {
+      { const barrado = await guardaDaEquipe(db, usuario, body.reuniao_id, 'reuniao'); if (barrado) return barrado; }
+      const reuniaoId = Number(body?.reuniao_id);
+      const alvoId = Number(body?.alvo_id);
+      const tipo = String(body?.tipo ?? '');
+      if (!Number.isFinite(reuniaoId) || !Number.isFinite(alvoId)) {
+        return { status: 400, body: { error: 'Vínculo inválido.' } };
+      }
+      // Só entrega: a tarefa vê as reuniões da entrega dela, e um segundo
+      // caminho para o mesmo fato daria duas verdades sobre a mesma conversa.
+      if (tipo !== 'entrega') {
+        return { status: 400, body: { error: 'O vínculo da reunião é com a entrega.' } };
+      }
+      // O alvo tem de ser do mesmo projeto da reunião: sem isso, uma reunião
+      // apontaria para a entrega de outro cliente.
+      const mesmo = await db.execute({
+        sql: `SELECT 1 FROM projeto_entregas a
+              JOIN projeto_reunioes r ON r.projeto_id = a.projeto_id
+              WHERE a.id = ? AND r.id = ?`,
+        args: [alvoId, reuniaoId],
+      });
+      if (mesmo.rows.length === 0) {
+        return { status: 400, body: { error: 'A reunião e o destino são de projetos diferentes.' } };
+      }
+
+      if (body?.ligar === false) {
+        await db.execute({
+          sql: 'DELETE FROM reuniao_vinculos WHERE reuniao_id = ? AND tipo = ? AND alvo_id = ?',
+          args: [reuniaoId, tipo, alvoId],
+        });
+        return { status: 200, body: { ok: true, ligado: false } };
+      }
+      await db.execute({
+        sql: `INSERT OR IGNORE INTO reuniao_vinculos (reuniao_id, tipo, alvo_id, criado_em)
+              VALUES (?,?,?,?)`,
+        args: [reuniaoId, tipo, alvoId, new Date().toISOString()],
+      });
+      return { status: 200, body: { ok: true, ligado: true } };
+    }
+
     if (action === 'excluir_reuniao_projeto') {
       { const barrado = await guardaDaEquipe(db, usuario, body.id, 'reuniao'); if (barrado) return barrado; }
+      await db.execute({ sql: 'DELETE FROM reuniao_vinculos WHERE reuniao_id = ?', args: [body.id] });
       await db.execute({ sql: 'DELETE FROM projeto_reunioes WHERE id = ?', args: [body.id] });
       return { status: 200, body: { ok: true } };
     }

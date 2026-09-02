@@ -20,6 +20,7 @@ import { SkeletonCards, SkeletonTabela } from '../components/Skeleton';
 import { CartaoKpi, CartoesKpiEsqueleto } from '../components/CartaoKpi';
 import { Abas, AbaPainel } from '../components/Abas';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
+import { SeletorVinculo, ChipVinculo } from '../components/VinculoReuniao';
 import { ancorar } from '../lib/ancorar';
 // Reexportadas: moraram aqui e metade do sistema as importa deste arquivo. A
 // definição saiu para a lib porque o formulário de tarefa, compartilhado com a
@@ -267,6 +268,9 @@ export interface Reuniao {
   /** O que veio do Fireflies além da nota: tópicos com horário, palavras-chave
    *  e itens de ação. Chega como JSON e é lido por `lerDados`. */
   dados?: string | null;
+  /** Entregas que esta reunião tratou. A tarefa não se liga direto: ela herda
+   *  as reuniões da entrega a que pertence. */
+  entregas?: number[];
   id: number;
   projeto_id: string;
   data: string;
@@ -1619,11 +1623,18 @@ function EditorEntrega({ inicial, pessoas, categorias, salvando, onSalvar, onCan
  *  projeto novo elas ficam em memória até o projeto existir. */
 function SecaoEntregas({
   entregas, pendentes, tarefas, caminho, onVerTarefasDaEntrega, pessoas, categorias, salvando, somenteLeitura,
+  reunioes, focada, onVincular, onAbrirReuniao,
   onSalvarEntrega, onExcluirEntrega, onAlterarPendentes,
   onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
 }: {
   /** Já gravadas. Vazio enquanto o projeto não existe. */
   entregas: Entrega[];
+  /** As do projeto, para vincular a entrega às que a trataram. */
+  reunioes: Reuniao[];
+  /** Entrega que a tela deve abrir e destacar, vinda do chip de uma reunião. */
+  focada?: number | null;
+  onVincular: (reuniaoId: number, tipo: 'entrega', alvoId: number, ligar: boolean) => void;
+  onAbrirReuniao: (reuniaoId: number) => void;
   /** Todas as do projeto. Cada entrega filtra as suas pelo `entrega_id`. */
   tarefas: Tarefa[];
   /** Cliente e projeto, para o balão dizer de onde a lista veio. */
@@ -1784,6 +1795,16 @@ function SecaoEntregas({
     setRealcada(id);
     setTimeout(() => setRealcada(r => (r === id ? null : r)), 2200);
   };
+
+  // Vindo do chip de uma reunião: abre a entrega pedida, rola até ela e pisca.
+  useEffect(() => {
+    if (focada == null) return;
+    setAbertas(a => (a.includes(focada) ? a : [...a, focada]));
+    setJaAbertas(j => (j.includes(focada) ? j : [...j, focada]));
+    setRealcada(focada);
+    const t = setTimeout(() => setRealcada(r => (r === focada ? null : r)), 2200);
+    return () => clearTimeout(t);
+  }, [focada]);
 
   /** Grupos recolhidos. Guardado por título: com a lista longa, fechar o que
    *  não interessa é o que faz o agrupamento valer a pena. Trocar o critério
@@ -1987,7 +2008,34 @@ function SecaoEntregas({
                     <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--gray3)',
                       display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <ChipEntrega status={e.status} />
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <ChipEntrega status={e.status} />
+                          {/* As reuniões em que esta entrega foi tratada. O
+                              mesmo vínculo do outro lado, criado daqui. */}
+                          <SeletorVinculo
+                            rotulo="Reuniões que trataram desta entrega"
+                            acao="Vincular reunião"
+                            vazio="O projeto ainda não tem reuniões."
+                            opcoes={reunioes.map(r => ({
+                              id: r.id, nome: r.assunto, nota: fmtData(r.data),
+                            }))}
+                            escolhidos={reunioes.filter(r => (r.entregas ?? []).includes(e.id)).map(r => r.id)}
+                            onAlternar={(reuniaoId, ligar) => onVincular(reuniaoId, 'entrega', e.id, ligar)}
+                          />
+                        </span>
+
+                        {reunioes.some(r => (r.entregas ?? []).includes(e.id)) && (
+                          <div className="vinculo-chips" style={{ marginTop: 8 }}>
+                            {reunioes.filter(r => (r.entregas ?? []).includes(e.id)).map(r => (
+                              <ChipVinculo key={r.id}
+                                nome={r.assunto}
+                                titulo="Ver na aba de reuniões"
+                                onAbrir={() => onAbrirReuniao(r.id)}
+                                onSoltar={() => onVincular(r.id, 'entrega', e.id, false)}
+                              />
+                            ))}
+                          </div>
+                        )}
 
                         {e.descricao && (
                           <p style={{ fontSize: 12, color: 'var(--gray)', margin: '8px 0 0', whiteSpace: 'pre-wrap' }}>
@@ -2489,10 +2537,14 @@ function lerAcoes(texto: string | null | undefined): AcaoReuniao[] {
  *
  *  Os assuntos e as ações são clicáveis quando há gravação: cada um leva ao
  *  minuto em que aquilo foi dito. */
-function CorpoReuniao({ reg, pessoas, onAssistir }: {
+function CorpoReuniao({ reg, pessoas, entregas, onAssistir, onVincular, onAbrirEntrega }: {
   reg: Reuniao;
   pessoas: Pessoa[];
+  /** As entregas do projeto, para escolher onde a reunião foi tratada. */
+  entregas: Entrega[];
   onAssistir: () => void;
+  onVincular: (tipo: 'entrega', alvoId: number, ligar: boolean) => void;
+  onAbrirEntrega: (entregaId: number) => void;
 }) {
   const dados = lerDados(reg.dados);
   const topicos = lerTopicos(dados?.topicos);
@@ -2503,12 +2555,38 @@ function CorpoReuniao({ reg, pessoas, onAssistir }: {
 
   return (
     <div className="reuniao-corpo">
-      {reg.fireflies_id && (
-        <div className="reuniao-acoes">
+      <div className="reuniao-acoes">
+        {reg.fireflies_id && (
           <button type="button" className="modal-acao-primaria" onClick={onAssistir}>
             <IconPlay size={13} /> Assistir a gravação
           </button>
-          {dados?.duracao ? <span className="reuniao-duracao">{dados.duracao} min</span> : null}
+        )}
+        {dados?.duracao ? <span className="reuniao-duracao">{dados.duracao} min</span> : null}
+        <span style={{ marginLeft: 'auto' }}>
+          <SeletorVinculo
+            rotulo="Entregas tratadas nesta reunião"
+            acao="Vincular entrega"
+            vazio="O projeto ainda não tem entregas."
+            opcoes={entregas.map(e => ({ id: e.id, nome: e.titulo, nota: e.status }))}
+            escolhidos={reg.entregas ?? []}
+            onAlternar={(id, ligar) => onVincular('entrega', id, ligar)}
+          />
+        </span>
+      </div>
+
+      {(reg.entregas?.length ?? 0) > 0 && (
+        <div className="vinculo-chips">
+          {reg.entregas!.map(id => {
+            const e = entregas.find(x => x.id === id);
+            return (
+              <ChipVinculo key={id}
+                nome={e?.titulo ?? 'Entrega removida'}
+                titulo="Ver a entrega"
+                onAbrir={() => onAbrirEntrega(id)}
+                onSoltar={() => onVincular('entrega', id, false)}
+              />
+            );
+          })}
         </div>
       )}
 
@@ -2835,8 +2913,9 @@ function BuscaFireflies({ jaAnexadas, salvando, onBuscar, onAnexar, onFechar }: 
   );
 }
 
-function SecaoReunioes({ registros, pessoas, equipe, salvando, somenteLeitura, onRegistrar,
-  onBuscarFireflies, onBuscarGravacao, onAnexarFireflies, onExcluir }: {
+function SecaoReunioes({ registros, pessoas, equipe, entregas, focada, salvando, somenteLeitura,
+  onRegistrar, onVincular, onAbrirEntrega, onBuscarFireflies, onBuscarGravacao,
+  onAnexarFireflies, onExcluir }: {
   registros: Reuniao[];
   pessoas: Pessoa[];
   /** Quem está no projeto aparece primeiro na escolha de participantes. */
@@ -2844,6 +2923,12 @@ function SecaoReunioes({ registros, pessoas, equipe, salvando, somenteLeitura, o
   salvando: boolean;
   somenteLeitura: boolean;
   onRegistrar: (r: { data: string; assunto: string; notas: string; participantes: string[] }) => Promise<void>;
+  /** As entregas do projeto, para vincular a reunião a elas. */
+  entregas: Entrega[];
+  onVincular: (reuniaoId: number, tipo: 'entrega', alvoId: number, ligar: boolean) => void;
+  onAbrirEntrega: (entregaId: number) => void;
+  /** Reunião que a tela deve abrir e destacar, vinda do chip de uma entrega. */
+  focada?: number | null;
   onBuscarFireflies: (busca: string) => Promise<{ reunioes?: ReuniaoFF[]; error?: string }>;
   onBuscarGravacao: (firefliesId: string) => Promise<{ video?: string | null; audio?: string | null; error?: string }>;
   onAnexarFireflies: (firefliesIds: string[]) => Promise<void>;
@@ -2864,6 +2949,18 @@ function SecaoReunioes({ registros, pessoas, equipe, salvando, somenteLeitura, o
   const [excluindo, setExcluindo] = useState<Reuniao | null>(null);
   /** A reunião com a gravação aberta. */
   const [assistindo, setAssistindo] = useState<Reuniao | null>(null);
+  /** A que acabou de ser aberta pelo chip de uma entrega. */
+  const [realcada, setRealcada] = useState<number | null>(null);
+
+  // Vindo do chip de uma entrega: abre a reunião pedida e pisca.
+  useEffect(() => {
+    if (focada == null) return;
+    setJaAbertas(j => (j.includes(focada) ? j : [...j, focada]));
+    setAbertas(a => (a.includes(focada) ? a : [...a, focada]));
+    setRealcada(focada);
+    const t = setTimeout(() => setRealcada(r => (r === focada ? null : r)), 2200);
+    return () => clearTimeout(t);
+  }, [focada]);
   /** As que já foram abertas alguma vez: o conteúdo delas fica montado, e é
    *  isso que faz o recolher ser suave. */
   const [jaAbertas, setJaAbertas] = useState<number[]>([]);
@@ -3010,7 +3107,9 @@ function SecaoReunioes({ registros, pessoas, equipe, salvando, somenteLeitura, o
           {registros.map(reg => {
             const aberta = abertas.includes(reg.id);
             return (
-            <div key={reg.id} className="admin-file-item"
+            <div key={reg.id}
+              className={`admin-file-item${realcada === reg.id ? ' realcada' : ''}`}
+              ref={el => { if (realcada === reg.id && el) el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }}
               style={{ flexDirection: 'column', alignItems: 'stretch', gap: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <button type="button" className="reuniao-cabeca" aria-expanded={aberta}
@@ -3049,8 +3148,10 @@ function SecaoReunioes({ registros, pessoas, equipe, salvando, somenteLeitura, o
                       recolher ser suave. Uma aba com dez reuniões não constrói
                       dez destes de saída, só os que forem abertos. */}
                   {jaAbertas.includes(reg.id) && (
-                    <CorpoReuniao reg={reg} pessoas={pessoas}
-                      onAssistir={() => setAssistindo(reg)} />
+                    <CorpoReuniao reg={reg} pessoas={pessoas} entregas={entregas}
+                      onAssistir={() => setAssistindo(reg)}
+                      onVincular={(tipo, alvo, ligar) => onVincular(reg.id, tipo, alvo, ligar)}
+                      onAbrirEntrega={onAbrirEntrega} />
                   )}
                 </div>
               </div>
@@ -4191,8 +4292,9 @@ function AbaGestao({
 function FormularioProjeto({
   editando, pessoas, clientes, salvando, onFechar, onSalvar, onBaixarAnexo, onVerAnexo, onEtiquetar,
   categorias, onExcluir, somenteLeitura, onVerTarefasDaEntrega,
-  onRegistrarSaude, onExcluirSaude, onRegistrarReuniao, onBuscarReunioesFireflies,
-  onBuscarGravacaoFireflies, onAnexarReuniaoFireflies, onExcluirReuniao,
+  onRegistrarSaude, onExcluirSaude, onRegistrarReuniao, onVincularReuniao,
+  onBuscarReunioesFireflies, onBuscarGravacaoFireflies, onAnexarReuniaoFireflies,
+  onExcluirReuniao,
   onPublicar, onSalvarEntrega, onExcluirEntrega, onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
 }: {
   editando: Projeto | null;
@@ -4212,6 +4314,7 @@ function FormularioProjeto({
     p: Projeto,
     r: { data: string; assunto: string; notas: string; participantes: string[] },
   ) => Promise<void>;
+  onVincularReuniao: (reuniaoId: number, tipo: 'entrega', alvoId: number, ligar: boolean) => void;
   onBuscarReunioesFireflies: (busca: string) => Promise<{ reunioes?: ReuniaoFF[]; error?: string }>;
   onBuscarGravacaoFireflies: (firefliesId: string) => Promise<{ video?: string | null; audio?: string | null; error?: string }>;
   onAnexarReuniaoFireflies: (p: Projeto, firefliesIds: string[]) => Promise<void>;
@@ -4314,6 +4417,10 @@ function FormularioProjeto({
   // Projeto novo não tem reuniões nem saúde a que se prender, então só existe
   // "Geral" até ele ser criado.
   const [abaModal, setAbaModal] = useState<'geral' | 'reunioes' | 'saude'>('geral');
+  /** Entrega para onde a tela deve ir, vinda do chip de uma reunião. */
+  const [entregaFocada, setEntregaFocada] = useState<number | null>(null);
+  /** E o caminho inverso: a reunião que o chip da entrega quer mostrar. */
+  const [reuniaoFocada, setReuniaoFocada] = useState<number | null>(null);
   const [reetiquetados, setReetiquetados] = useState<Record<number, string>>({});
   const jaAnexados = (editando?.arquivos ?? [])
     .filter(a => !removidos.includes(a.id))
@@ -4512,6 +4619,13 @@ function FormularioProjeto({
               registros={editando.reunioes ?? []}
               pessoas={pessoas}
               equipe={editando.equipe}
+              entregas={editando.entregas ?? []}
+              focada={reuniaoFocada}
+              onVincular={(reuniaoId, tipo, alvo, ligar) =>
+                onVincularReuniao(reuniaoId, tipo, alvo, ligar)}
+              // Clicar no chip volta para a aba Geral e abre a entrega: é lá
+              // que a entrega mora, e o vínculo só vale se levar a ela.
+              onAbrirEntrega={id => { setAbaModal('geral'); setEntregaFocada(id); }}
               salvando={salvando}
               onRegistrar={reg => onRegistrarReuniao(editando, reg)}
               onBuscarFireflies={onBuscarReunioesFireflies}
@@ -4616,6 +4730,11 @@ function FormularioProjeto({
           <SecaoEntregas
             somenteLeitura={somenteLeitura}
             entregas={editando?.entregas ?? []}
+            reunioes={editando?.reunioes ?? []}
+            focada={entregaFocada}
+            onVincular={onVincularReuniao}
+            // O caminho de volta: do chip da entrega para a aba de reuniões.
+            onAbrirReuniao={id => { setAbaModal('reunioes'); setReuniaoFocada(id); }}
             pendentes={r.entregas}
             tarefas={editando?.tarefas ?? []}
             caminho={[editando?.cliente_nome ?? '', editando?.nome ?? '']}
@@ -5126,6 +5245,37 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
   async function buscarReunioesFireflies(busca: string) {
     const r = await api(`?action=fireflies_reunioes&busca=${encodeURIComponent(busca)}`);
     return r ?? { error: 'Sessão expirada.' };
+  }
+
+  /** Liga ou desliga uma reunião de uma entrega. A tela muda na hora e volta
+   *  se o servidor recusar: o vínculo é uma marca, e esperar a ida e a volta
+   *  para vê-la faria a caixa parecer travada. */
+  async function vincularReuniao(
+    reuniaoId: number, tipo: 'entrega', alvoId: number, ligar: boolean,
+  ) {
+    const antes = projetos;
+    mudancasRef.current++;
+    const campo = 'entregas';
+    setProjetos(ps => ps.map(p => ({
+      ...p,
+      reunioes: (p.reunioes ?? []).map(r => {
+        if (r.id !== reuniaoId) return r;
+        const atual = (r[campo] as number[] | undefined) ?? [];
+        return {
+          ...r,
+          [campo]: ligar ? [...atual, alvoId] : atual.filter(x => x !== alvoId),
+        };
+      }),
+    })));
+    const resp = await api('', 'POST', {
+      action: 'vincular_reuniao', reuniao_id: reuniaoId, tipo, alvo_id: alvoId, ligar,
+    });
+    if (resp?.error) {
+      setProjetos(antes);
+      toast('error', 'Não foi possível vincular', resp.error);
+      return;
+    }
+    reconciliar();
   }
 
   /** O endereço da gravação, buscado só quando alguém vai assistir: a URL vem
@@ -5682,6 +5832,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
           onRegistrarSaude={registrarSaude}
           onExcluirSaude={excluirSaude}
           onRegistrarReuniao={registrarReuniao}
+          onVincularReuniao={vincularReuniao}
           onBuscarReunioesFireflies={buscarReunioesFireflies}
           onBuscarGravacaoFireflies={buscarGravacaoFireflies}
           onAnexarReuniaoFireflies={anexarReuniaoFireflies}

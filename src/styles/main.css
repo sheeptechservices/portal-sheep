@@ -7990,6 +7990,140 @@ body.arrastando-painel {
 }
 .file-delete-btn:hover { border-color: var(--red); color: var(--red); background: rgba(217,48,37,.12); }
 
+/* O que a tarefa carrega: conversa e arquivos. Numero colado no icone, em
+   tom de apoio - e um sinal de que ha mais ali dentro, nao um dado do card. */
+.tarefa-sinais {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray2);
+  font-variant-numeric: tabular-nums;
+}
+.tarefa-sinais > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+/* ── Vinculo entre reuniao e entrega ──────────────────
+   O mesmo desenho nos dois lados: um gatilho de corrente que abre a lista de
+   marcar, e o que ja esta ligado vira chip clicavel - clicar leva ao outro
+   lado do vinculo. */
+/* O gatilho tem texto: so o icone, ele some no meio da linha e ninguem acha o
+   que a tela oferece. */
+.vinculo-gatilho {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px 3px 7px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-pill);
+  background: var(--white);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+.vinculo-gatilho:hover,
+.vinculo-gatilho[aria-expanded="true"] {
+  border-color: var(--cristal-borda-forte, var(--gray2));
+  color: var(--black);
+}
+/* Presa a tela, num portal: dentro do bloco que abre e recolhe ela sairia
+   recortada pelo `overflow: hidden` do `.revelar`. */
+.vinculo-lista {
+  position: fixed;
+  z-index: 10050;
+  width: 280px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 8px;
+  background: var(--white);
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card-hover);
+}
+.vinculo-rotulo {
+  margin: 0 0 6px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.vinculo-vazio { margin: 0; padding: 6px 4px; font-size: 12px; color: var(--gray2); }
+.vinculo-opcao {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 4px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--black);
+  cursor: pointer;
+}
+.vinculo-opcao:hover { background: var(--gray4); }
+/* A nota - situacao da entrega, data da reuniao - desce para a segunda linha:
+   ela desempata dois titulos parecidos, e nao compete com o titulo. */
+.vinculo-nota { display: block; font-size: 11px; color: var(--gray2); }
+
+/* Rotulo e gatilho na mesma linha, com o gatilho encostado a direita. */
+.vinculo-cabeca {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.vinculo-cabeca .form-label { margin: 0; }
+
+.vinculo-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.vinculo-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-pill);
+  background: var(--white);
+  transition: border-color var(--transition);
+}
+.vinculo-chip:hover { border-color: var(--cristal-borda-forte, var(--gray2)); }
+/* Sem destino, o chip nao finge ser clicavel. */
+.vinculo-chip.parado { cursor: default; }
+.vinculo-chip.parado:hover { border-color: var(--gray3); }
+.vinculo-chip.parado > button:first-child { cursor: default; }
+.vinculo-chip > button:first-child {
+  max-width: 220px;
+  padding: 2px 4px 2px 9px;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vinculo-chip:hover > button:first-child { color: var(--black); }
+.vinculo-soltar {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 7px 0 3px;
+  border: 0;
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+}
+.vinculo-soltar:hover { color: var(--red); }
+
 /* ── Reuniao do Fireflies: corpo e gravacao ───────────
    O chip aberto mostra o que veio de la - resumo, assuntos com horario,
    combinados por pessoa e palavras-chave. A gravacao abre num modal proprio,
@@ -8090,23 +8224,41 @@ body.arrastando-painel {
 }
 .gravacao-topo {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 16px 20px;
+  padding: 13px 20px;
   border-bottom: 1px solid var(--gray3);
   flex-shrink: 0;
 }
+/* Titulo e a data na mesma linha: o titulo trunca quando e longo, e a data
+   nunca quebra - ela e curta e e o que ancora a reuniao no tempo. */
 .gravacao-titulo {
   margin: 0;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
   font-size: 15px;
   font-weight: 800;
   color: var(--black);
+  overflow: hidden;
+}
+/* O nome trunca; a data ao lado nao encolhe. */
+.gravacao-nome {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .gravacao-meta {
-  margin: 3px 0 0;
+  margin: 0;
+  flex: none;
   font-size: 11.5px;
+  font-weight: 500;
   color: var(--gray2);
+  white-space: nowrap;
 }
 .gravacao-meta a { color: var(--gray2); }
 .gravacao-meta a:hover { color: var(--black); }

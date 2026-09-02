@@ -19,9 +19,11 @@ import { SelectSistema } from '../components/SelectSistema';
 import { DatePicker } from '../components/DatePicker';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { ancorar } from '../lib/ancorar';
+import { useSaidaSuave } from '../lib/useSaidaSuave';
+import { ChipVinculo } from '../components/VinculoReuniao';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import { PAINEL_MAX, PAINEL_MIN, useLarguraPainel } from '../lib/painelLateral';
-import { PRIORIDADES } from '../lib/prioridades';
+import { ICONE_PRIORIDADE, PRIORIDADES } from '../lib/prioridades';
 import type { Projeto, Tarefa } from './ProjetosPage';
 
 // ── Etapas e etiquetas ────────────────────────────────────────────────────────
@@ -410,9 +412,13 @@ export function ConfirmarExclusao({ titulo, oQue = 'tarefa', onCancelar, onConfi
 
 export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etiquetaPorPapel,
   usuarioId, etq, pessoas, salvando, somenteLeitura, podeComentar, api,
+  onAbrirReuniao,
   onMudar, onFechar, onSalvar, onExcluir, onDuplicar }: {
   rascunho: Rascunho;
   projetos: Projeto[];
+  /** Leva à reunião, no painel do projeto. Ausente na tela de Tarefas, onde não
+   *  existe para onde levar - lá os chips só informam. */
+  onAbrirReuniao?: (reuniaoId: number) => void;
   etapas: EtapaTarefa[];
   etiquetas: EtiquetaTarefa[];
   etiquetaPorPapel: boolean;
@@ -435,7 +441,14 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
 }) {
   const set = <K extends keyof Rascunho>(k: K, v: Rascunho[K]) => onMudar({ ...rascunho, [k]: v });
   const projeto = projetos.find(p => p.id === rascunho.projeto_id);
-  const fundo = useFecharNoFundo(onFechar);
+  /** As reuniões da entrega a que esta tarefa pertence. Tarefa solta não herda
+   *  nada: não há entrega de onde. */
+  const reunioesDaEntrega = rascunho.entrega_id
+    ? (projeto?.reunioes ?? []).filter(r =>
+        (r.entregas ?? []).includes(Number(rascunho.entrega_id)))
+    : [];
+  const { saindo, fechar } = useSaidaSuave(onFechar);
+  const fundo = useFecharNoFundo(fechar);
   // Mesma gaveta do painel de projeto, com largura e modo tela cheia próprios.
   const { largura, arrastando, setArrastando, porTecla } = useLarguraPainel('tarefa');
   const trava = rascunho.etiquetas.some(e => etq.trava(e));
@@ -592,6 +605,29 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
               </p>
             )}
           </div>
+
+          {/* As reuniões vêm da entrega, e não da tarefa: é na entrega que a
+              conversa acontece, e a tarefa é um pedaço dela. Aqui só se lê -
+              vincular é do lado da entrega ou da própria reunião. */}
+          {reunioesDaEntrega.length > 0 && (
+            <div className="form-group">
+              <label className="form-label">
+                Reuniões da entrega
+                <span className="form-hint" style={{ display: 'block', marginTop: 2 }}>
+                  Onde esta entrega foi tratada.
+                </span>
+              </label>
+              <div className="vinculo-chips">
+                {reunioesDaEntrega.map(r => (
+                  <ChipVinculo key={r.id}
+                    nome={r.assunto}
+                    titulo={onAbrirReuniao ? 'Ver a reunião no projeto' : r.assunto}
+                    onAbrir={onAbrirReuniao ? () => onAbrirReuniao(r.id) : undefined}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Só em tarefa que já existe: diário de tarefa não gravada não é
               nada, e o comentário não teria onde pendurar. */}

@@ -232,7 +232,9 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   excluir_saude_projeto: 'projetos:editar',
   fireflies_reunioes: 'projetos:editar',
   fireflies_gravacao: 'projetos:ver',
+  reunioes_dados: 'projetos:ver',
   anexar_reuniao_fireflies: 'projetos:editar',
+  vincular_reuniao: 'projetos:editar',
   registrar_reuniao_projeto: 'projetos:editar',
   excluir_reuniao_projeto: 'projetos:editar',
   // ── Sempre liberado ────────────────────────────────────────────────────────
