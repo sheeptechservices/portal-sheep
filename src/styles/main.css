@@ -11095,8 +11095,12 @@ body.arrastando-painel {
 /* Etiqueta da categoria, ao lado do titulo. Perdeu o estilo numa limpeza e
    voltou como texto solto: sem a caixa, ela se confundia com a continuacao do
    nome da entrega, que e exatamente o que uma etiqueta nao pode fazer. */
-.pub-categoria {
+.pub-marcador {
   flex-shrink: 0;
+  /* Com dois níveis o texto cresce: corta em vez de empurrar a linha. */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding: 1px 7px;
   border-radius: var(--radius-sm);
   background: var(--gray4);
@@ -11939,7 +11943,25 @@ body.arrastando-painel {
   font-weight: 800;
 }
 .visao-donos { display: flex; gap: 3px; }
-.visao-categoria {
+/* Marcador e submarcador na linha da entrega. Mesmo desenho do cartão do
+   quadro: é a mesma informação, vista em outra visão. */
+.entrega-marca {
+  flex-shrink: 0;
+  max-width: 30%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  background: var(--gray4);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+
+.visao-marcador {
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: .06em;

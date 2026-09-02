@@ -39,7 +39,8 @@ interface Entrega {
   id: number;
   titulo: string;
   descricao: string | null;
-  categoria: string | null;
+  marcador: string | null;
+  submarcador: string | null;
   status: string;
   prazo: string | null;
   progresso: number;
@@ -104,7 +105,8 @@ const ORDEM_QUADRO = [
 
 const AGRUPAMENTOS = [
   { valor: 'nenhum', label: 'Sem agrupamento' },
-  { valor: 'categoria', label: 'Categoria' },
+  { valor: 'marcador', label: 'Marcador' },
+  { valor: 'submarcador', label: 'Submarcador' },
   { valor: 'status', label: 'Situação' },
   { valor: 'responsavel', label: 'Responsável' },
 ] as const;
@@ -313,7 +315,11 @@ function LinhaEntrega({ e, aberta, realcada, onAlternar, onAbrirPrevia }: {
         {temDetalhe && (
           <span className="pub-seta" aria-hidden="true"><IconChevronRight size={12} /></span>
         )}
-        {e.categoria && <span className="pub-categoria">{e.categoria}</span>}
+        {(e.marcador || e.submarcador) && (
+          <span className="pub-marcador">
+            {[e.marcador, e.submarcador].filter(Boolean).join(' · ')}
+          </span>
+        )}
         {e.descricao && <span className="pub-entrega-desc">{e.descricao}</span>}
       </span>
       <span className="pub-entrega-fim">
@@ -516,7 +522,7 @@ export default function ProjetoPublico({ token }: { token: string }) {
   const [erro, setErro] = useState(false);
   /** Recortes. Filtrar é olhar de outro jeito, não editar. */
   const [fSituacao, setFSituacao] = useState<string[]>([]);
-  const [fCategoria, setFCategoria] = useState<string[]>([]);
+  const [fMarcador, setFMarcador] = useState<string[]>([]);
   const [busca, setBusca] = useState('');
   /** Entregas com o detalhe aberto, e a evidência em prévia. */
   const [abertas, setAbertas] = useState<Set<number>>(new Set());
@@ -590,16 +596,18 @@ export default function ProjetoPublico({ token }: { token: string }) {
     .filter(st => fSituacao.length === 0 || fSituacao.includes(st))
     .sort((x, y) => posicaoNoQuadro(x) - posicaoNoQuadro(y));
 
-  const categorias = [...new Set(entregas.map(e => e.categoria).filter(Boolean))]
+  // O filtro é pelo primeiro nível: com os dois, a barra viraria duas listas
+  // longas para escolher de uma entrega só.
+  const marcadores = [...new Set(entregas.map(e => e.marcador).filter(Boolean))]
     .sort((a, b) => a!.localeCompare(b!, 'pt-BR')) as string[];
 
   const q = busca.trim().toLocaleLowerCase('pt-BR');
   const filtradas = entregas.filter(e =>
     (fSituacao.length === 0 || fSituacao.includes(e.status))
-    && (fCategoria.length === 0 || fCategoria.includes(e.categoria ?? ''))
-    // A busca olha título, categoria e descrição: é onde o cliente procura o
-    // nome do módulo que ele conhece, que nem sempre é o do título.
-    && (!q || [e.titulo, e.categoria, e.descricao].some(v =>
+    && (fMarcador.length === 0 || fMarcador.includes(e.marcador ?? ''))
+    // A busca olha título, marcador, submarcador e descrição: é onde o cliente
+    // procura o nome do módulo que ele conhece, que nem sempre é o do título.
+    && (!q || [e.titulo, e.marcador, e.submarcador, e.descricao].some(v =>
       (v ?? '').toLocaleLowerCase('pt-BR').includes(q))));
 
   const lista = [...filtradas].sort((a, b) => {
@@ -619,7 +627,8 @@ export default function ProjetoPublico({ token }: { token: string }) {
   const paraVisao: ItemVisao[] = lista.map(e => ({
     id: e.id,
     titulo: e.titulo,
-    categoria: e.categoria,
+    marcador: e.marcador,
+    submarcador: e.submarcador,
     status: e.status,
     prazo: e.prazo,
     progresso: e.progresso,
@@ -631,7 +640,8 @@ export default function ProjetoPublico({ token }: { token: string }) {
     // esconder uma cópia faria o cliente procurar e não achar.
     const chavesDe = (e: Entrega): string[] => {
       if (agrupamento === 'status') return [e.status];
-      if (agrupamento === 'categoria') return [e.categoria || 'Sem categoria'];
+      if (agrupamento === 'marcador') return [e.marcador || 'Sem marcador'];
+      if (agrupamento === 'submarcador') return [e.submarcador || 'Sem submarcador'];
       return e.responsaveis.length
         ? e.responsaveis.map(p => p.nome)
         : ['Sem responsável'];
@@ -640,7 +650,7 @@ export default function ProjetoPublico({ token }: { token: string }) {
     // Por situação, todas aparecem, mesmo as vazias: o cliente lê "nada
     // bloqueado" em vez de ter que deduzir isso da ausência de um bloco. Com
     // um filtro de situação ligado, só as escolhidas: ali ele já disse o que
-    // quer ver. Categoria e responsável não entram nisso - a lista deles vem
+    // quer ver. Marcador e responsável não entram nisso - a lista deles vem
     // dos próprios dados, e nomes de gente sem entrega nenhuma seria ruído.
     if (agrupamento === 'status') {
       for (const st of ordem_status) {
@@ -655,7 +665,8 @@ export default function ProjetoPublico({ token }: { token: string }) {
     }
     // O balde de sobra vai para o fim: o que não foi classificado não abre a
     // lista.
-    const sobra = agrupamento === 'categoria' ? 'Sem categoria' : 'Sem responsável';
+    const sobra = agrupamento === 'marcador' ? 'Sem marcador'
+      : agrupamento === 'submarcador' ? 'Sem submarcador' : 'Sem responsável';
     const ordena = agrupamento === 'status'
       ? (a: string, b: string) => posicaoDoGrupo(a) - posicaoDoGrupo(b)
       : (a: string, b: string) => (a === sobra ? 1 : b === sobra ? -1
@@ -738,20 +749,20 @@ export default function ProjetoPublico({ token }: { token: string }) {
             }))}
             onChange={setFSituacao}
           />
-          {categorias.length > 0 && (
+          {marcadores.length > 0 && (
             <FilterDropdown
-              label="Categoria"
-              values={fCategoria}
-              options={categorias.map(c => ({
+              label="Marcador"
+              values={fMarcador}
+              options={marcadores.map(c => ({
                 value: c,
-                label: `${c} (${entregas.filter(e => e.categoria === c).length})`,
+                label: `${c} (${entregas.filter(e => e.marcador === c).length})`,
               }))}
-              onChange={setFCategoria}
+              onChange={setFMarcador}
             />
           )}
-          {(fSituacao.length > 0 || fCategoria.length > 0) && (
+          {(fSituacao.length > 0 || fMarcador.length > 0) && (
             <button type="button" className="pub-limpar"
-              onClick={() => { setFSituacao([]); setFCategoria([]); }}>
+              onClick={() => { setFSituacao([]); setFMarcador([]); }}>
               Limpar
             </button>
           )}
@@ -780,7 +791,7 @@ export default function ProjetoPublico({ token }: { token: string }) {
           <input
             value={busca}
             aria-label="Buscar entrega"
-            placeholder="Buscar por título, categoria ou descrição"
+            placeholder="Buscar por título, marcador ou descrição"
             onChange={ev => setBusca(ev.target.value)}
             onKeyDown={ev => { if (ev.key === 'Escape') setBusca(''); }}
           />

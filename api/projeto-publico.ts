@@ -82,7 +82,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // em si não sai daqui. `links` continua de fora: aponta para Drive e
       // repositório, que são de dentro.
       db.execute({
-        sql: `SELECT id, titulo, descricao, categoria, status, prazo, ordem, responsaveis
+        sql: `SELECT id, titulo, descricao, marcador, submarcador, status, prazo, ordem, responsaveis
               FROM projeto_entregas WHERE projeto_id = ? ORDER BY ordem, id`,
         args: [p.id as string],
       }),
@@ -173,7 +173,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           id: Number(e.id),
           titulo: String(e.titulo),
           descricao: e.descricao != null ? String(e.descricao) : null,
-          categoria: e.categoria != null ? String(e.categoria) : null,
+          marcador: e.marcador != null ? String(e.marcador) : null,
+          submarcador: e.submarcador != null ? String(e.submarcador) : null,
           status: String(e.status),
           prazo: e.prazo != null ? String(e.prazo) : null,
           // `progresso` não é coluna: sai das tarefas, como no painel de dentro.

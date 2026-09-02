@@ -22,7 +22,10 @@ import { IconCalendario, IconVisaoLista, IconVisaoQuadro } from './icons';
 export interface ItemVisao {
   id: number;
   titulo: string;
-  categoria: string | null;
+  /** Os dois níveis da entrega, já prontos para ler: o cartão mostra os dois
+   *  juntos, porque nele não há cabeçalho de grupo que diga o primeiro. */
+  marcador: string | null;
+  submarcador: string | null;
   status: string;
   prazo: string | null;
   progresso: number;
@@ -134,7 +137,11 @@ function CartaoVisao({ e, cor, icone: Icone, onAbrir }: {
         </span>
         <span className="visao-cartao-titulo">{e.titulo}</span>
       </span>
-      {e.categoria && <span className="visao-categoria">{e.categoria}</span>}
+      {(e.marcador || e.submarcador) && (
+        <span className="visao-marcador">
+          {[e.marcador, e.submarcador].filter(Boolean).join(' · ')}
+        </span>
+      )}
       <span className="visao-cartao-pe">
         {fmtData(e.prazo) && <span className="visao-prazo">{fmtData(e.prazo)}</span>}
         {e.donos.length > 0 && (

@@ -602,7 +602,8 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
           previsao_entrega: p.previsao_entrega ?? null,
           equipe: p.equipe.map(m => ({ nome: m.nome, papel: m.papel })),
           entregas: (p.entregas ?? []).map(e => ({
-            titulo: e.titulo, status: e.status, prazo: e.prazo, categoria: e.categoria,
+            titulo: e.titulo, status: e.status, prazo: e.prazo,
+            marcador: e.marcador, submarcador: e.submarcador,
           })),
           tarefas: tarefas.map(t => ({
             titulo: t.titulo,

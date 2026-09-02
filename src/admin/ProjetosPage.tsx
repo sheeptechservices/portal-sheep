@@ -79,7 +79,8 @@ const COR_STATUS: Record<string, string> = {
 const AGRUPAMENTOS_ENTREGA = [
   { valor: 'nenhum', label: 'Sem agrupamento' },
   { valor: 'status', label: 'Agrupar por status' },
-  { valor: 'categoria', label: 'Agrupar por categoria' },
+  { valor: 'marcador', label: 'Agrupar por marcador' },
+  { valor: 'submarcador', label: 'Agrupar por submarcador' },
   { valor: 'responsavel', label: 'Agrupar por responsável' },
 ] as const;
 
@@ -213,7 +214,12 @@ export interface Entrega {
   projeto_id: string;
   titulo: string;
   descricao: string | null;
-  categoria: string | null;
+  /** Onde a entrega vive: o primeiro nível (empresa, frente, produto) e o
+   *  segundo (a área dentro dele). Era um campo só, "categoria" - e entrega de
+   *  duas naturezas virava texto colado com hífen no meio, que nenhum
+   *  agrupamento sabia separar. */
+  marcador: string | null;
+  submarcador: string | null;
   status: string;
   prazo: string | null;
   responsaveis: string[];
@@ -259,7 +265,8 @@ export interface Tarefa {
 export interface EntregaPendente {
   titulo: string;
   descricao: string;
-  categoria: string;
+  marcador: string;
+  submarcador: string;
   status: string;
   prazo: string;
   responsaveis: string[];
@@ -349,7 +356,7 @@ type Rascunho = typeof VAZIO;
  *  a uma e evita que cada projeto invente um nome diferente para a mesma coisa.
  *  São entregas comuns depois de criadas: dá para renomear, adiar ou apagar
  *  antes mesmo de salvar. */
-const CATEGORIA_DE_PARTIDA = 'Ritos';
+const MARCADOR_DE_PARTIDA = 'Ritos';
 
 const ENTREGAS_DE_PARTIDA = [
   {
@@ -382,7 +389,8 @@ function entregasDePartida(): EntregaPendente[] {
   return ENTREGAS_DE_PARTIDA.map(e => ({
     titulo: e.titulo,
     descricao: e.descricao,
-    categoria: CATEGORIA_DE_PARTIDA,
+    marcador: MARCADOR_DE_PARTIDA,
+    submarcador: '',
     status: ENTREGA_PLANEJADA,
     prazo: '', responsaveis: [], links: [],
   }));
@@ -840,14 +848,16 @@ function CampoEndereco({ rotulo, valor, placeholder, dica, somenteLeitura, onCha
   );
 }
 
-// ── Categoria da entrega ────────────────────────────────────────────────────
+// ── Marcador e submarcador da entrega ───────────────────────────────────────
 
 /** Campo livre que reaproveita o que já foi escrito. Lista fechada engessaria a
  *  casa; campo solto viraria "BI", "bi" e "B.I." na mesma base. A sugestão
- *  puxa a grafia existente sem impedir uma categoria nova. */
-function CampoCategoria({ valor, sugestoes, onChange }: {
+ *  puxa a grafia existente sem impedir um marcador novo. */
+function CampoMarcador({ valor, sugestoes, exemplo, onChange }: {
   valor: string;
   sugestoes: string[];
+  /** O que se escreve ali, como exemplo. */
+  exemplo: string;
   onChange: (v: string) => void;
 }) {
   const [aberto, setAberto] = useState(false);
@@ -871,7 +881,7 @@ function CampoCategoria({ valor, sugestoes, onChange }: {
       <input ref={campoRef} className="form-input" value={valor}
         onChange={e => { onChange(e.target.value); abrir(); }}
         onFocus={abrir}
-        placeholder="Automação, Relatório, Integração"
+        placeholder={exemplo}
         onKeyDown={e => { if (e.key === 'Escape') setAberto(false); }} />
       {aberto && combinam.length > 0 && createPortal(
         <div ref={dropRef} className="status-select-dropdown"
@@ -1509,18 +1519,20 @@ function ChipEntrega({ status }: { status: string }) {
 /** Editor de uma entrega. O mesmo componente serve a entrega já gravada e à que
  *  ainda está sendo montada num projeto novo. O status fica de fora: ele é
  *  resolvido no marco da linha ou deduzido das tarefas. */
-function EditorEntrega({ inicial, pessoas, categorias, salvando, onSalvar, onCancelar }: {
+function EditorEntrega({ inicial, pessoas, marcadores, submarcadores, salvando, onSalvar, onCancelar }: {
   inicial?: Entrega | EntregaPendente;
   pessoas: Pessoa[];
   /** Categorias já usadas, para a grafia não se multiplicar. */
-  categorias: string[];
+  marcadores: string[];
+  submarcadores: string[];
   salvando: boolean;
   onSalvar: (e: EntregaPendente) => void;
   onCancelar: () => void;
 }) {
   const [titulo, setTitulo] = useState(inicial?.titulo ?? '');
   const [descricao, setDescricao] = useState(inicial?.descricao ?? '');
-  const [categoria, setCategoria] = useState(inicial?.categoria ?? '');
+  const [marcador, setMarcador] = useState(inicial?.marcador ?? '');
+  const [submarcador, setSubmarcador] = useState(inicial?.submarcador ?? '');
   const status = inicial?.status ?? ENTREGA_PLANEJADA;
   const [prazo, setPrazo] = useState(inicial?.prazo ?? '');
   const [responsaveis, setResponsaveis] = useState<string[]>(inicial?.responsaveis ?? []);
@@ -1540,7 +1552,8 @@ function EditorEntrega({ inicial, pessoas, categorias, salvando, onSalvar, onCan
       setErros({ titulo: 'Informe o título da entrega.' });
       return;
     }
-    onSalvar({ titulo: titulo.trim(), descricao, categoria: categoria.trim(),
+    onSalvar({ titulo: titulo.trim(), descricao,
+      marcador: marcador.trim(), submarcador: submarcador.trim(),
       status, prazo, responsaveis, links });
   }
 
@@ -1559,15 +1572,25 @@ function EditorEntrega({ inicial, pessoas, categorias, salvando, onSalvar, onCan
 
       {/* Status não é campo de formulário: ou é resolução, tomada no marco da
           linha, ou vem das tarefas. */}
+      {/* Os dois níveis lado a lado, e o prazo na linha de baixo: marcador e
+          submarcador se leem juntos, e separá-los faria escolher um sem ver o
+          outro. */}
       <div className="campos-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <div className="form-group">
-          <label className="form-label">Categoria</label>
-          <CampoCategoria valor={categoria} sugestoes={categorias} onChange={setCategoria} />
+          <label className="form-label">Marcador</label>
+          <CampoMarcador valor={marcador} sugestoes={marcadores}
+            exemplo="Empresa, frente, produto" onChange={setMarcador} />
         </div>
         <div className="form-group">
-          <label className="form-label">Prazo</label>
-          <DatePicker compact allowPast value={prazo} onChange={setPrazo} />
+          <label className="form-label">Submarcador</label>
+          <CampoMarcador valor={submarcador} sugestoes={submarcadores}
+            exemplo="Área dentro do marcador" onChange={setSubmarcador} />
         </div>
+      </div>
+
+      <div className="form-group" style={{ maxWidth: 220 }}>
+        <label className="form-label">Prazo</label>
+        <DatePicker compact allowPast value={prazo} onChange={setPrazo} />
       </div>
 
       <div className="form-group">
@@ -1631,7 +1654,8 @@ function EditorEntrega({ inicial, pessoas, categorias, salvando, onSalvar, onCan
 /** Lista de entregas. Num projeto já criado cada mudança grava na hora; num
  *  projeto novo elas ficam em memória até o projeto existir. */
 function SecaoEntregas({
-  entregas, pendentes, tarefas, caminho, onVerTarefasDaEntrega, pessoas, categorias, salvando, somenteLeitura,
+  entregas, pendentes, tarefas, caminho, onVerTarefasDaEntrega, pessoas, marcadores, submarcadores,
+  salvando, somenteLeitura,
   reunioes, focada, onVincular, onAbrirReuniao,
   onSalvarEntrega, onExcluirEntrega, onAlterarPendentes,
   onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
@@ -1654,7 +1678,8 @@ function SecaoEntregas({
   pendentes: EntregaPendente[];
   pessoas: Pessoa[];
   /** Categorias já usadas em qualquer projeto: a grafia vem de lá. */
-  categorias: string[];
+  marcadores: string[];
+  submarcadores: string[];
   salvando: boolean;
   /** Filtrar, agrupar, buscar, baixar e pré-visualizar seguem valendo. O que
    *  sai é criar, editar, concluir e excluir. */
@@ -1691,7 +1716,8 @@ function SecaoEntregas({
    *  regrava a linha inteira. */
   function comStatus(e: Entrega, status: string): EntregaPendente {
     return {
-      titulo: e.titulo, descricao: e.descricao ?? '', categoria: e.categoria ?? '', status,
+      titulo: e.titulo, descricao: e.descricao ?? '',
+      marcador: e.marcador ?? '', submarcador: e.submarcador ?? '', status,
       prazo: e.prazo ?? '', responsaveis: e.responsaveis, links: e.links,
     };
   }
@@ -1737,6 +1763,15 @@ function SecaoEntregas({
    *  letra que não altera o resultado não reanima nada. */
   const assinatura = visiveis.map(e => e.id).join(',');
 
+  /** O nível que o cabeçalho do grupo não está dizendo. Agrupado por marcador,
+   *  a linha mostra o submarcador, e vice-versa: repetir "Alldax" em toda linha
+   *  de um bloco chamado "Alldax" é ruído. Sem agrupamento, mostra os dois. */
+  const marcaDaLinha = (e: Entrega) => (
+    agrupar === 'marcador' ? [e.submarcador]
+      : agrupar === 'submarcador' ? [e.marcador]
+        : [e.marcador, e.submarcador]
+  ).filter(Boolean).join(' · ');
+
   /** A lista já filtrada e ordenada, repartida em blocos. Sem agrupamento é um
    *  bloco só, sem título, e o desenho da lista não muda. */
   const blocos = useMemo(() => {
@@ -1746,7 +1781,8 @@ function SecaoEntregas({
     // esconder uma cópia faria o time procurar o que é dele e não achar.
     const chavesDe = (e: Entrega): string[] => {
       if (agrupar === 'status') return [e.status];
-      if (agrupar === 'categoria') return [(e.categoria ?? '').trim() || 'Sem categoria'];
+      if (agrupar === 'marcador') return [(e.marcador ?? '').trim() || 'Sem marcador'];
+      if (agrupar === 'submarcador') return [(e.submarcador ?? '').trim() || 'Sem submarcador'];
       const nomes = e.responsaveis
         .map(id => pessoas.find(p => p.id === id)?.nome)
         .filter((n): n is string => !!n);
@@ -1755,8 +1791,9 @@ function SecaoEntregas({
 
     // Por status a ordem é a da escala, não a alfabética: "Bloqueada" antes de
     // "Planejada" inverteria a leitura do andamento. Nos outros, o balde de
-    // sobra ("Sem categoria", "Sem responsável") vai para o fim.
-    const sobra = agrupar === 'categoria' ? 'Sem categoria' : 'Sem responsável';
+    // sobra ("Sem marcador", "Sem responsável") vai para o fim.
+    const sobra = agrupar === 'marcador' ? 'Sem marcador'
+      : agrupar === 'submarcador' ? 'Sem submarcador' : 'Sem responsável';
     const nomes = [...new Set(visiveis.flatMap(chavesDe))].sort((a, b) => (
       agrupar === 'status'
         ? STATUS_ENTREGA.indexOf(a as typeof STATUS_ENTREGA[number])
@@ -1780,7 +1817,8 @@ function SecaoEntregas({
   const paraVisao: ItemVisao[] = visiveis.map(e => ({
     id: e.id,
     titulo: e.titulo,
-    categoria: e.categoria ?? null,
+    marcador: e.marcador ?? null,
+    submarcador: e.submarcador ?? null,
     status: e.status,
     prazo: e.prazo,
     progresso: e.status === ENTREGA_VALIDADA ? 100 : (e.progresso ?? 0),
@@ -1872,7 +1910,8 @@ function SecaoEntregas({
       {(editando === 'novo' || editandoPendente === -1) && (
         <EditorEntrega
           pessoas={pessoas}
-          categorias={categorias}
+          marcadores={marcadores}
+          submarcadores={submarcadores}
           salvando={salvando}
           onSalvar={dados => {
             if (gravado || entregas.length) void onSalvarEntrega(dados);
@@ -1933,7 +1972,8 @@ function SecaoEntregas({
           key={editando === null ? assinatura : 'editando'}>
         {bloco.itens.map(e => (
           editando === e.id ? (
-            <EditorEntrega key={e.id} inicial={e} pessoas={pessoas} categorias={categorias}
+            <EditorEntrega key={e.id} inicial={e} pessoas={pessoas}
+              marcadores={marcadores} submarcadores={submarcadores}
               salvando={salvando}
               onSalvar={dados => { void onSalvarEntrega(dados, e.id); setEditando(null); }}
               onCancelar={() => setEditando(null)} />
@@ -1975,6 +2015,12 @@ function SecaoEntregas({
                       <IconChevronRight size={12} />
                     </span>
                   </button>
+
+                  {marcaDaLinha(e) && (
+                    <span className="entrega-marca" title="Marcador e submarcador">
+                      {marcaDaLinha(e)}
+                    </span>
+                  )}
 
                   <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
                     fontSize: 11.5, color: 'var(--gray2)' }}>
@@ -2164,7 +2210,8 @@ function SecaoEntregas({
       <div className="admin-file-list">
         {pendentes.map((e, i) => (
           editandoPendente === i ? (
-            <EditorEntrega key={`pend-${i}`} inicial={e} pessoas={pessoas} categorias={categorias}
+            <EditorEntrega key={`pend-${i}`} inicial={e} pessoas={pessoas}
+              marcadores={marcadores} submarcadores={submarcadores}
               salvando={salvando}
               onSalvar={dados => {
                 onAlterarPendentes(pendentes.map((x, j) => (j === i ? dados : x)));
@@ -4305,7 +4352,7 @@ function AbaGestao({
 
 function FormularioProjeto({
   editando, pessoas, clientes, salvando, onFechar, onSalvar, onBaixarAnexo, onVerAnexo, onEtiquetar,
-  categorias, onExcluir, somenteLeitura, onVerTarefasDaEntrega,
+  marcadores, submarcadores, onExcluir, somenteLeitura, onVerTarefasDaEntrega,
   onRegistrarSaude, onExcluirSaude, onRegistrarReuniao, onVincularReuniao,
   onBuscarReunioesFireflies, onBuscarGravacaoFireflies, onAnexarReuniaoFireflies,
   onExcluirReuniao,
@@ -4334,7 +4381,8 @@ function FormularioProjeto({
   onAnexarReuniaoFireflies: (p: Projeto, firefliesIds: string[]) => Promise<void>;
   onExcluirReuniao: (r: Reuniao) => void;
   /** Categorias de entrega já usadas, para sugerir no cadastro. */
-  categorias: string[];
+  marcadores: string[];
+  submarcadores: string[];
   /** Quem tem acesso ao projeto mas não à edição: enxerga tudo, e ainda filtra,
    *  agrupa, busca, baixa e pré-visualiza. Só não grava. */
   somenteLeitura: boolean;
@@ -4755,7 +4803,8 @@ function FormularioProjeto({
             caminho={[editando?.cliente_nome ?? '', editando?.nome ?? '']}
             onVerTarefasDaEntrega={onVerTarefasDaEntrega}
             pessoas={pessoas}
-            categorias={categorias}
+            marcadores={marcadores}
+            submarcadores={submarcadores}
             salvando={salvando}
             onSalvarEntrega={(dados, id) => onSalvarEntrega(editando!, dados, id)}
             onExcluirEntrega={onExcluirEntrega}
@@ -5279,7 +5328,8 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
       const nova: Entrega = {
         ...dados, id: Number(r.id), projeto_id: p.id,
         descricao: dados.descricao || null,
-        categoria: dados.categoria || null,
+        marcador: dados.marcador || null,
+        submarcador: dados.submarcador || null,
         prazo: dados.prazo || null,
         status: String(r.status ?? 'Planejada'),
         ordem: Number(r.ordem ?? 0),
@@ -5512,14 +5562,16 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     if (r?.error) { setProjetos(antes); toast('error', 'Não foi possível salvar', r.error); }
   }
 
-  /** Categorias de entrega já escritas, de todos os projetos. Sugerir só as do
-   *  projeto aberto faria a mesma categoria nascer com grafia diferente em cada
-   *  projeto novo. */
-  const categoriasDeEntrega = useMemo(() => [...new Set(
+  /** Marcadores e submarcadores já escritos, de todos os projetos. Sugerir só
+   *  os do projeto aberto faria a mesma área nascer com grafia diferente em
+   *  cada projeto novo. */
+  const usados = useCallback((campo: 'marcador' | 'submarcador') => [...new Set(
     projetos.flatMap(p => p.entregas ?? [])
-      .map(e => (e.categoria ?? '').trim())
+      .map(e => (e[campo] ?? '').trim())
       .filter(Boolean),
   )].sort((a, b) => a.localeCompare(b, 'pt-BR')), [projetos]);
+  const marcadoresDeEntrega = useMemo(() => usados('marcador'), [usados]);
+  const submarcadoresDeEntrega = useMemo(() => usados('submarcador'), [usados]);
 
   /** Opções vêm do que existe, não de uma lista fixa: filtro que oferece valor
    *  sem resultado é ruído. */
@@ -5950,7 +6002,8 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
           onFechar={() => setForm(null)}
           onSalvar={salvar}
           onBaixarAnexo={a => void baixarAnexo(a)}
-          categorias={categoriasDeEntrega}
+          marcadores={marcadoresDeEntrega}
+          submarcadores={submarcadoresDeEntrega}
           somenteLeitura={!podeEditar}
           onExcluir={setExcluindo}
           onEtiquetar={etiquetarAnexo}

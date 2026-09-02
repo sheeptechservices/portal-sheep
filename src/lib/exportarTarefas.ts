@@ -53,7 +53,10 @@ export interface ProjetoExport {
   data_inicio: string | null;
   previsao_entrega: string | null;
   equipe: { nome: string; papel: string }[];
-  entregas: { titulo: string; status: string; prazo: string | null; categoria: string | null }[];
+  entregas: {
+    titulo: string; status: string; prazo: string | null;
+    marcador: string | null; submarcador: string | null;
+  }[];
   tarefas: TarefaExport[];
 }
 
@@ -255,10 +258,10 @@ function markdown(pacote: Pacote): string {
 
     if (p.entregas.length) {
       L.push('### Entregas', '');
-      L.push('| Entrega | Situação | Prazo | Categoria |');
-      L.push('| --- | --- | --- | --- |');
+      L.push('| Entrega | Situação | Prazo | Marcador | Submarcador |');
+      L.push('| --- | --- | --- | --- | --- |');
       for (const e of p.entregas) {
-        L.push(`| ${e.titulo} | ${e.status} | ${dia(e.prazo) || '-'} | ${e.categoria ?? '-'} |`);
+        L.push(`| ${e.titulo} | ${e.status} | ${dia(e.prazo) || '-'} | ${e.marcador ?? '-'} | ${e.submarcador ?? '-'} |`);
       }
       L.push('');
     }

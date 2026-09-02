@@ -1158,7 +1158,12 @@ async function migrarSchema(db: Client) {
       projeto_id      TEXT NOT NULL,
       titulo          TEXT NOT NULL,
       descricao       TEXT,
-      categoria       TEXT,
+      -- Dois niveis de etiqueta, e nao um: uma entrega e de um lado da casa
+      -- (empresa, frente, produto) e de uma area dentro dele. Com um campo so,
+      -- "Alldax - Fiscal" virava texto colado e o agrupamento so sabia ler a
+      -- linha inteira.
+      marcador        TEXT,
+      submarcador     TEXT,
       status          TEXT NOT NULL DEFAULT 'Planejada',
       prazo           TEXT,
       responsaveis    TEXT,
@@ -1196,10 +1201,24 @@ async function migrarSchema(db: Client) {
     await ddl(`ALTER TABLE projetos ADD COLUMN drive TEXT`);
   } catch { /* coluna já existe */ }
 
-  // Categoria da entrega, acrescentada depois da tabela existir.
+  // A categoria da entrega virou marcador e ganhou um segundo nível. O `ddl`
+  // sabe pular o que já está feito: em base nova a coluna já nasce com o nome
+  // certo e o RENAME não chega a ser enviado.
+  await ddl(`ALTER TABLE projeto_entregas RENAME COLUMN categoria TO marcador`);
   try {
-    await ddl(`ALTER TABLE projeto_entregas ADD COLUMN categoria TEXT`);
+    await ddl(`ALTER TABLE projeto_entregas ADD COLUMN marcador TEXT`);
   } catch { /* coluna já existe */ }
+  try {
+    await ddl(`ALTER TABLE projeto_entregas ADD COLUMN submarcador TEXT`);
+  } catch { /* coluna já existe */ }
+  // A coluna antiga sai quando este código sobe. Ela existe apenas na base que
+  // passou pela renomeação e depois teve `categoria` devolvida à mão, para a
+  // versão ainda publicada continuar lendo as entregas enquanto o deploy não
+  // saía - a consulta de lá pede a coluna pelo nome, e sem ela a listagem
+  // inteira falhava.
+  try {
+    await ddl(`ALTER TABLE projeto_entregas DROP COLUMN categoria`);
+  } catch { /* já saiu, ou nunca existiu nesta base */ }
 
   // Etapa da evidência, acrescentada depois. As que já existiam provam a
   // entrega: era o único estado que pedia prova quando foram anexadas.
@@ -2426,7 +2445,7 @@ async function despacharAdminData(
         `),
         db.execute(`SELECT reuniao_id, tipo, alvo_id FROM reuniao_vinculos`),
         db.execute(`
-          SELECT id, projeto_id, titulo, descricao, categoria, status, prazo,
+          SELECT id, projeto_id, titulo, descricao, marcador, submarcador, status, prazo,
                  responsaveis, links, ordem
           FROM projeto_entregas ORDER BY ordem, id
         `),
@@ -3451,6 +3470,10 @@ function faltaEmProjeto(p: any): string | null {
 
       const responsaveis = JSON.stringify(Array.isArray(e.responsaveis) ? e.responsaveis : []);
       const links = JSON.stringify(Array.isArray(e.links) ? e.links : []);
+      // Vazio vira nulo: "" e "sem marcador" são a mesma coisa, e guardar os dois
+      // faria a lista de sugestões oferecer um item em branco.
+      const marcador = String(e.marcador ?? '').trim() || null;
+      const submarcador = String(e.submarcador ?? '').trim() || null;
 
       if (e.status !== undefined && !STATUS_MANUAL.includes(e.status)) {
         return {
@@ -3475,9 +3498,10 @@ function faltaEmProjeto(p: any): string | null {
         }
         await db.execute({
           sql: `UPDATE projeto_entregas
-                SET titulo=?, descricao=?, categoria=?, status=?, prazo=?, responsaveis=?, links=?
+                SET titulo=?, descricao=?, marcador=?, submarcador=?, status=?, prazo=?,
+                    responsaveis=?, links=?
                 WHERE id=?`,
-          args: [titulo, e.descricao ?? null, String(e.categoria ?? '').trim() || null,
+          args: [titulo, e.descricao ?? null, marcador, submarcador,
             e.status ?? 'Planejada', e.prazo || null, responsaveis, links, e.id],
         });
       } else {
@@ -3488,11 +3512,11 @@ function faltaEmProjeto(p: any): string | null {
         });
         const inserida = await db.execute({
           sql: `INSERT INTO projeto_entregas
-                  (projeto_id, titulo, descricao, categoria, status, prazo, responsaveis, links, ordem,
-                   criado_em, criado_por_id, criado_por_nome)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+                  (projeto_id, titulo, descricao, marcador, submarcador, status, prazo, responsaveis,
+                   links, ordem, criado_em, criado_por_id, criado_por_nome)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
           args: [
-            e.projeto_id, titulo, e.descricao ?? null, String(e.categoria ?? '').trim() || null,
+            e.projeto_id, titulo, e.descricao ?? null, marcador, submarcador,
             // Entrega nova nasce planejada: concluir exige prova, que ainda não
             // tem onde se prender.
             e.status === ENTREGA_CANCELADA ? ENTREGA_CANCELADA : 'Planejada',
