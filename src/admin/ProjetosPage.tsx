@@ -2354,16 +2354,14 @@ function SeletorAgrupamento({ maior, menor, onMudar }: {
 
   const linha = (d: { valor: Dimensao; label: string }, atual: Dimensao, escolher: () => void,
     desabilitada = false) => (
-    <div key={d.valor}
-      className={`status-select-option${d.valor === atual ? ' active' : ''}${desabilitada ? ' apagada' : ''}`}
-      onClick={() => { if (!desabilitada) escolher(); }}>
+    <button key={d.valor} type="button" disabled={desabilitada}
+      className={`agrupar-opcao${d.valor === atual && !desabilitada ? ' marcada' : ''}`}
+      onClick={escolher}>
       <span>{d.label}</span>
       {d.valor === atual && !desabilitada && (
-        <span style={{ marginLeft: 'auto', color: 'var(--yellow)', display: 'inline-flex' }}>
-          <IconCheck size={12} />
-        </span>
+        <span className="agrupar-marca"><IconCheck size={12} /></span>
       )}
-    </div>
+    </button>
   );
 
   return (
@@ -2373,7 +2371,7 @@ function SeletorAgrupamento({ maior, menor, onMudar }: {
         <IconAgrupar size={13} />
       </button>
       {aberto && createPortal(
-        <div ref={dropRef} className="status-select-dropdown"
+        <div ref={dropRef} className="status-select-dropdown agrupar-lista"
           style={{ top: pos.top, left: pos.left, width: pos.width, zIndex: 10050 }}>
           <p className="agrupar-titulo">Grupo maior</p>
           {DIMENSOES.map(d => linha(d, maior, () => {

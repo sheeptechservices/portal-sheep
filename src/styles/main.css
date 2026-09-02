@@ -4501,7 +4501,59 @@ body.arrastando-painel {
   background: var(--gray3);
 }
 
-/* ── Seletor de agrupamento (dois niveis) ───────────── */
+/* ── Seletor de agrupamento (dois niveis) ─────────────
+   A mesma lista nas duas telas. O painel e a pagina do cliente escolhem a
+   hierarquia da mesma maneira, e duas aparencias para a mesma decisao fariam
+   parecer dois recursos diferentes. */
+.agrupar-lista {
+  padding: 4px;
+  border: 1px solid var(--gray3);
+  box-shadow: var(--shadow-card-hover);
+}
+/* O pai entra no seletor de propósito: `.pub-seletor-lista button` tem
+   especificidade maior que uma classe sozinha e devolveria o `display: block`
+   dela, desmontando a linha. */
+.agrupar-lista .agrupar-opcao {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--gray);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.agrupar-lista .agrupar-opcao:hover { background: var(--gray4); color: var(--black); }
+.agrupar-lista .agrupar-opcao:focus-visible { outline: none; }
+/* O escolhido se anuncia de tres jeitos: peso, chapa e marca. Um so nao basta -
+   negrito sozinho se perde numa lista curta, e a chapa sozinha nao diz se aquilo
+   e o escolhido ou so o que esta sob o cursor. */
+.agrupar-lista .agrupar-opcao.marcada {
+  background: var(--gray4);
+  color: var(--black);
+  font-weight: 700;
+}
+.agrupar-marca {
+  margin-left: auto;
+  display: inline-flex;
+  color: var(--yellow);
+}
+/* Indisponivel: sem grupo maior nao ha dentro do que, e a dimensao ja usada no
+   maior nao reparte nada de novo. Fica visivel, e nao escondida - some e
+   reaparece a cada escolha, e a lista pula na cara de quem esta escolhendo. */
+.agrupar-lista .agrupar-opcao:disabled {
+  opacity: .38;
+  cursor: default;
+}
+.agrupar-lista .agrupar-opcao:disabled:hover { background: none; color: var(--gray); }
+
 /* O rotulo de cada lista dentro do dropdown. Sem ele, as duas listas iguais uma
    embaixo da outra nao dizem qual e o grupo maior e qual e o de dentro. */
 .agrupar-titulo {
@@ -4514,20 +4566,16 @@ body.arrastando-painel {
   color: var(--gray2);
 }
 .agrupar-titulo:first-child { margin-top: 2px; }
-/* Opcao indisponivel: sem grupo maior nao ha dentro do que, e a dimensao ja
-   usada no maior nao reparte nada de novo. Fica visivel, e nao escondida - some
-   e reaparece a cada escolha e a lista pula na cara de quem esta escolhendo. */
-.status-select-option.apagada {
-  opacity: .38;
-  cursor: default;
+/* Um fio entre as duas listas: sao dois grupos de opcoes iguais um debaixo do
+   outro, e so o rotulo nao basta para dizer onde um acaba. Vale para a segunda
+   em diante, nunca para a primeira - linha no topo do menu seria moldura. O
+   `padding-top` vem depois do recuo de cada tela, senao um sobrescreveria o
+   outro. */
+.agrupar-titulo:not(:first-child) {
+  margin-top: 7px;
+  padding-top: 8px;
+  border-top: 1px solid var(--gray3);
 }
-.status-select-option.apagada:hover { background: none; }
-.pub-seletor-lista .agrupar-titulo { padding: 0 12px; }
-.pub-seletor-lista > button:disabled {
-  opacity: .38;
-  cursor: default;
-}
-.pub-seletor-lista > button:disabled:hover { background: none; }
 
 /* Segundo nivel do agrupamento: os blocos de submarcador ficam recuados sob o
    marcador, e e o recuo que faz o par ler como um encaixe em vez de duas

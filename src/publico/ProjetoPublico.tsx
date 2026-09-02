@@ -18,7 +18,7 @@ import { logoDoCliente } from '../lib/marcas';
 // portal junto, e o filtro fica com o mesmo desenho dos dois lados.
 import FilterDropdown from '../components/FilterDropdown';
 import {
-  IconAgrupar, IconChevronRight, IconExternal, IconMarcoAndamento, IconMarcoBloqueado,
+  IconAgrupar, IconCheck, IconChevronRight, IconExternal, IconMarcoAndamento, IconMarcoBloqueado,
   IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado, IconMarcoValidado,
   IconOrdenar, IconSearch, IconX,
 } from '../components/icons';
@@ -307,9 +307,12 @@ function SeletorAgrupamento({ maior, menor, onMudar }: {
     desabilitada = false) => (
     <button key={d.valor} type="button" role="option" aria-selected={d.valor === atual}
       disabled={desabilitada}
-      className={d.valor === atual && !desabilitada ? 'ativo' : undefined}
+      className={`agrupar-opcao${d.valor === atual && !desabilitada ? ' marcada' : ''}`}
       onClick={() => escolher()}>
-      {d.label}
+      <span>{d.label}</span>
+      {d.valor === atual && !desabilitada && (
+        <span className="agrupar-marca"><IconCheck size={12} /></span>
+      )}
     </button>
   );
 
@@ -321,7 +324,7 @@ function SeletorAgrupamento({ maior, menor, onMudar }: {
         <IconAgrupar size={14} />
       </button>
       {aberto && (
-        <div className="pub-seletor-lista" role="listbox" aria-label="Agrupar entregas">
+        <div className="pub-seletor-lista agrupar-lista" role="listbox" aria-label="Agrupar entregas">
           <p className="agrupar-titulo">Grupo maior</p>
           {DIMENSOES.map(d => linha(d, maior, () => {
             // Trocar o maior derruba o menor quando os dois virariam o mesmo, e
