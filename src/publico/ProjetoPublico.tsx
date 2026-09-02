@@ -10,6 +10,9 @@
 //  por isso o código do portal nem é baixado por quem abre este link.
 // ─────────────────────────────────────────────────────────────────────────────
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  DIMENSOES, chavesDe, comparadorDe, marcaDaLinha as marcaFora, type Dimensao,
+} from '../lib/agrupamento';
 import { logoDoCliente } from '../lib/marcas';
 // Vive em `components/`, e não em `admin/`: dá para reusar aqui sem arrastar o
 // portal junto, e o filtro fica com o mesmo desenho dos dois lados.
@@ -102,15 +105,6 @@ const ORDEM_GRUPOS = [
 const ORDEM_QUADRO = [
   'Planejada', 'Em andamento', 'Bloqueada', 'Entregue', 'Validada', 'Cancelada',
 ];
-
-const AGRUPAMENTOS = [
-  { valor: 'nenhum', label: 'Sem agrupamento' },
-  { valor: 'marcador', label: 'Marcador' },
-  { valor: 'submarcador', label: 'Submarcador' },
-  { valor: 'marcador-sub', label: 'Marcador e submarcador' },
-  { valor: 'status', label: 'Situação' },
-  { valor: 'responsavel', label: 'Responsável' },
-] as const;
 
 /** As mesmas cores de dentro: a entrega bloqueada é vermelha nos dois lados. */
 const COR: Record<string, string> = {
@@ -269,6 +263,76 @@ function Seletor({ valor, opcoes, icone: Icone, rotulo, onChange }: {
               onClick={() => { onChange(o.valor); setAberto(false); }}>
               {o.label}
             </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** O agrupamento: o grupo maior e, dentro dele, o menor. Um seletor só, com
+ *  duas listas - a hierarquia é uma decisão inteira, e partir em dois botões
+ *  faria escolher metade dela de cada vez.
+ *
+ *  Sem grupo maior não há dentro do quê: a segunda lista fica apagada. E a
+ *  dimensão já usada no maior sai da segunda - repartir por marcador dentro de
+ *  marcador não divide nada. */
+function SeletorAgrupamento({ maior, menor, onMudar }: {
+  maior: Dimensao;
+  menor: Dimensao;
+  onMudar: (maior: Dimensao, menor: Dimensao) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const caixa = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!aberto) return;
+    const fora = (e: MouseEvent) => {
+      if (!caixa.current?.contains(e.target as Node)) setAberto(false);
+    };
+    const tecla = (e: KeyboardEvent) => { if (e.key === 'Escape') setAberto(false); };
+    document.addEventListener('mousedown', fora);
+    document.addEventListener('keydown', tecla);
+    return () => {
+      document.removeEventListener('mousedown', fora);
+      document.removeEventListener('keydown', tecla);
+    };
+  }, [aberto]);
+
+  const nome = (d: Dimensao) => DIMENSOES.find(x => x.valor === d)?.label ?? '';
+  const resumo = maior === 'nenhum' ? 'sem agrupamento'
+    : menor === 'nenhum' ? nome(maior) : `${nome(maior)} › ${nome(menor)}`;
+
+  const linha = (d: { valor: Dimensao; label: string }, atual: Dimensao, escolher: () => void,
+    desabilitada = false) => (
+    <button key={d.valor} type="button" role="option" aria-selected={d.valor === atual}
+      disabled={desabilitada}
+      className={d.valor === atual && !desabilitada ? 'ativo' : undefined}
+      onClick={() => escolher()}>
+      {d.label}
+    </button>
+  );
+
+  return (
+    <div className="pub-seletor" ref={caixa}>
+      <button type="button" title={`Agrupar entregas: ${resumo}`} aria-label="Agrupar entregas"
+        aria-expanded={aberto} className={aberto ? 'aberto' : undefined}
+        onClick={() => setAberto(a => !a)}>
+        <IconAgrupar size={14} />
+      </button>
+      {aberto && (
+        <div className="pub-seletor-lista" role="listbox" aria-label="Agrupar entregas">
+          <p className="agrupar-titulo">Grupo maior</p>
+          {DIMENSOES.map(d => linha(d, maior, () => {
+            // Trocar o maior derruba o menor quando os dois virariam o mesmo, e
+            // desligar o maior desliga os dois.
+            onMudar(d.valor, d.valor === 'nenhum' || d.valor === menor ? 'nenhum' : menor);
+          }))}
+          <p className="agrupar-titulo">Dentro dele</p>
+          {DIMENSOES.map(d => linha(
+            d, menor,
+            () => onMudar(maior, d.valor),
+            maior === 'nenhum' || (d.valor !== 'nenhum' && d.valor === maior),
           ))}
         </div>
       )}
@@ -548,11 +612,14 @@ export default function ProjetoPublico({ token }: { token: string }) {
   const [realcada, setRealcada] = useState<number | null>(null);
   // Agrupado por situação desde a primeira olhada: a lista corrida obrigava o
   // cliente a varrer 46 linhas para descobrir o que está travado.
-  const [agrupamento, setAgrupamento] = useState<string>('status');
+  // Dois níveis, escolhidos na tela. Situação por padrão: é a primeira pergunta
+  // de quem abre a página para acompanhar.
+  const [maior, setMaior] = useState<Dimensao>('status');
+  const [menor, setMenor] = useState<Dimensao>('nenhum');
 
   // Trocar o critério de agrupamento reabre tudo: senão a pessoa muda de eixo e
   // encontra uma lista fechada que ela não fechou.
-  useEffect(() => { setRecolhidos(new Set()); }, [agrupamento]);
+  useEffect(() => { setRecolhidos(new Set()); }, [maior, menor]);
 
   useEffect(() => {
     let vivo = true;
@@ -655,80 +722,52 @@ export default function ProjetoPublico({ token }: { token: string }) {
     donos: e.responsaveis.map(p => ({ nome: p.nome, foto: p.foto_url })),
   }));
 
-  /** O nível que o cabeçalho do grupo não está dizendo. Agrupado por marcador,
-   *  a linha mostra a área; agrupado por área, mostra a empresa; nos dois
-   *  níveis, nada - os cabeçalhos já dizem tudo. */
-  const marcaDaLinha = (e: Entrega) => (
-    agrupamento === 'marcador' ? [e.submarcador]
-      : agrupamento === 'submarcador' ? [e.marcador]
-        : agrupamento === 'marcador-sub' ? []
-          : [e.marcador, e.submarcador]
-  ).filter(Boolean).join(' · ');
+  /** O que o cabeçalho do grupo não está dizendo: o que ele já diz não se
+   *  repete na linha. */
+  const marcaDaLinha = (e: Entrega) => marcaFora(e, [maior, menor]);
 
-  const grupos = agrupamento === 'nenhum' || agrupamento === 'marcador-sub'
-    ? [{ nome: '', itens: lista }] : (() => {
-    // Entrega com dois responsáveis aparece nos dois grupos: ela é de ambos, e
-    // esconder uma cópia faria o cliente procurar e não achar.
-    const chavesDe = (e: Entrega): string[] => {
-      if (agrupamento === 'status') return [e.status];
-      if (agrupamento === 'marcador') return [e.marcador || 'Sem marcador'];
-      if (agrupamento === 'submarcador') return [e.submarcador || 'Sem submarcador'];
-      return e.responsaveis.length
-        ? e.responsaveis.map(p => p.nome)
-        : ['Sem responsável'];
-    };
+  /** Reparte uma lista por uma dimensão. Entrega de dois responsáveis aparece
+   *  nos dois grupos: ela é de ambos, e esconder uma cópia faria o cliente
+   *  procurar e não achar. */
+  const repartir = (itens: Entrega[], dim: Dimensao) => {
+    const chaves = (e: Entrega) => chavesDe(e, dim, () => e.responsaveis.map(p => p.nome));
     const mapa = new Map<string, Entrega[]>();
     // Por situação, todas aparecem, mesmo as vazias: o cliente lê "nada
-    // bloqueado" em vez de ter que deduzir isso da ausência de um bloco. Com
-    // um filtro de situação ligado, só as escolhidas: ali ele já disse o que
-    // quer ver. Marcador e responsável não entram nisso - a lista deles vem
-    // dos próprios dados, e nomes de gente sem entrega nenhuma seria ruído.
-    if (agrupamento === 'status') {
+    // bloqueado" em vez de ter que deduzir isso da ausência de um bloco. Com um
+    // filtro de situação ligado, só as escolhidas: ali ele já disse o que quer
+    // ver. As outras dimensões não entram nisso - a lista delas vem dos próprios
+    // dados, e nome de gente sem entrega nenhuma seria ruído.
+    if (dim === 'status') {
       for (const st of ordem_status) {
         if (fSituacao.length === 0 || fSituacao.includes(st)) mapa.set(st, []);
       }
     }
-    for (const e of lista) {
-      for (const k of chavesDe(e)) {
-        const itens = mapa.get(k);
-        if (itens) itens.push(e); else mapa.set(k, [e]);
+    for (const e of itens) {
+      for (const k of chaves(e)) {
+        const dele = mapa.get(k);
+        if (dele) dele.push(e); else mapa.set(k, [e]);
       }
     }
-    // O balde de sobra vai para o fim: o que não foi classificado não abre a
-    // lista.
-    const sobra = agrupamento === 'marcador' ? 'Sem marcador'
-      : agrupamento === 'submarcador' ? 'Sem submarcador' : 'Sem responsável';
-    const ordena = agrupamento === 'status'
+    const ordena = dim === 'status'
       ? (a: string, b: string) => posicaoDoGrupo(a) - posicaoDoGrupo(b)
-      : (a: string, b: string) => (a === sobra ? 1 : b === sobra ? -1
-        : a.localeCompare(b, 'pt-BR'));
+      : comparadorDe(dim, ordem_status);
     return [...mapa.entries()].sort((x, y) => ordena(x[0], y[0]))
-      .map(([nome, itens]) => ({ nome, itens }));
-  })();
+      .map(([nome, dele]) => ({ nome, itens: dele }));
+  };
 
-  /** Os grupos repartidos mais uma vez, por marcador: a empresa por fora e o
-   *  departamento por dentro. Nos outros agrupamentos existe uma seção só, sem
-   *  título, e o desenho não muda. */
-  const secoes = agrupamento !== 'marcador-sub' ? [{ nome: '', grupos }] : (() => {
-    const nome = (v: string | null, vazio: string) => (v ?? '').trim() || vazio;
-    // O balde de sobra vai para o fim, nos dois níveis.
-    const ordena = (sobra: string) => (a: string, b: string) => (
-      a === sobra ? 1 : b === sobra ? -1 : a.localeCompare(b, 'pt-BR'));
-    const marcadoresNaTela = [...new Set(lista.map(e => nome(e.marcador, 'Sem marcador')))]
-      .sort(ordena('Sem marcador'));
-    return marcadoresNaTela.map(m => {
-      const dele = lista.filter(e => nome(e.marcador, 'Sem marcador') === m);
-      const subs = [...new Set(dele.map(e => nome(e.submarcador, 'Sem submarcador')))]
-        .sort(ordena('Sem submarcador'));
-      return {
-        nome: m,
-        grupos: subs.map(sub => ({
-          nome: sub,
-          itens: dele.filter(e => nome(e.submarcador, 'Sem submarcador') === sub),
-        })),
-      };
-    });
-  })();
+  const grupos = maior === 'nenhum' || menor !== 'nenhum'
+    ? [{ nome: '', itens: lista }]
+    : repartir(lista, maior);
+
+  /** Com os dois níveis escolhidos, a lista é repartida duas vezes: o maior vira
+   *  seção e o menor, os grupos dentro dela. Com um nível só existe uma seção
+   *  sem título, e o desenho é o de sempre. */
+  const secoes = maior === 'nenhum' || menor === 'nenhum'
+    ? [{ nome: '', grupos }]
+    : repartir(lista, maior).map(secao => ({
+      nome: secao.nome,
+      grupos: repartir(secao.itens, menor),
+    }));
 
   return (
     <div className="pub-pagina">
@@ -828,8 +867,8 @@ export default function ProjetoPublico({ token }: { token: string }) {
             {/* Agrupar só existe na lista: o quadro já é agrupado por situação
                 e o calendário, por data. Ordenar continua valendo nos três. */}
             {visao === 'lista' && (
-              <Seletor valor={agrupamento} opcoes={AGRUPAMENTOS} icone={IconAgrupar}
-                rotulo="Agrupar entregas" onChange={setAgrupamento} />
+              <SeletorAgrupamento maior={maior} menor={menor}
+                onMudar={(ma, me) => { setMaior(ma); setMenor(me); }} />
             )}
             <Seletor valor={ordem} opcoes={ORDENS} icone={IconOrdenar}
               rotulo="Ordenar entregas" onChange={setOrdem} />

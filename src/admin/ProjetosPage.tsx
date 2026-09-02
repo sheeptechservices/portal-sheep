@@ -22,6 +22,9 @@ import { Abas, AbaPainel } from '../components/Abas';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { SeletorVinculo, ChipVinculo } from '../components/VinculoReuniao';
 import { ancorar } from '../lib/ancorar';
+import {
+  DIMENSOES, chavesDe, comparadorDe, marcaDaLinha as marcaFora, type Dimensao,
+} from '../lib/agrupamento';
 // Reexportadas: moraram aqui e metade do sistema as importa deste arquivo. A
 // definição saiu para a lib porque o formulário de tarefa, compartilhado com a
 // tela de Tarefas, também precisa delas - e importá-las daqui fecharia um ciclo.
@@ -74,17 +77,6 @@ const COR_STATUS: Record<string, string> = {
 
 /** Como a lista de entregas pode ser ordenada. A ordem de criação é o padrão
  *  porque as entregas são cadastradas na sequência em que devem acontecer. */
-/** Como a lista de entregas pode ser agrupada. Desligado por padrão: agrupar
- *  ajuda em lista longa e atrapalha em lista curta. */
-const AGRUPAMENTOS_ENTREGA = [
-  { valor: 'nenhum', label: 'Sem agrupamento' },
-  { valor: 'status', label: 'Agrupar por status' },
-  { valor: 'marcador', label: 'Agrupar por marcador' },
-  { valor: 'submarcador', label: 'Agrupar por submarcador' },
-  { valor: 'marcador-sub', label: 'Agrupar por marcador e submarcador' },
-  { valor: 'responsavel', label: 'Agrupar por responsável' },
-] as const;
-
 const ORDENS_ENTREGA = [
   { valor: 'criacao', label: 'Ordem de criação' },
   { valor: 'titulo', label: 'Título (A a Z)' },
@@ -1745,7 +1737,11 @@ function SecaoEntregas({
 
   const [busca, setBusca] = useState('');
   const [ordem, setOrdem] = useState<string>('criacao');
-  const [agrupar, setAgrupar] = useState<string>('nenhum');
+  // Dois níveis, escolhidos na tela: o grupo maior e o que se reparte dentro
+  // dele. Desligado por padrão - agrupar ajuda em lista longa e atrapalha em
+  // lista curta.
+  const [maior, setMaior] = useState<Dimensao>('nenhum');
+  const [menor, setMenor] = useState<Dimensao>('nenhum');
 
   const visiveis = useMemo(() => {
     const q = busca.trim().toLocaleLowerCase('pt-BR');
@@ -1770,81 +1766,45 @@ function SecaoEntregas({
    *  letra que não altera o resultado não reanima nada. */
   const assinatura = visiveis.map(e => e.id).join(',');
 
-  /** O nível que o cabeçalho do grupo não está dizendo. Agrupado por marcador,
-   *  a linha mostra o submarcador, e vice-versa: repetir "Alldax" em toda linha
-   *  de um bloco chamado "Alldax" é ruído. Sem agrupamento, mostra os dois. */
-  const marcaDaLinha = (e: Entrega) => (
-    agrupar === 'marcador' ? [e.submarcador]
-      : agrupar === 'submarcador' ? [e.marcador]
-        : agrupar === 'marcador-sub' ? []
-          : [e.marcador, e.submarcador]
-  ).filter(Boolean).join(' · ');
+  /** O que o cabeçalho do grupo não está dizendo: repetir "Alldax" em toda
+   *  linha de um bloco chamado "Alldax" é ruído. */
+  const marcaDaLinha = (e: Entrega) => marcaFora(e, [maior, menor]);
 
   /** A lista já filtrada e ordenada, repartida em blocos. Sem agrupamento é um
    *  bloco só, sem título, e o desenho da lista não muda. */
+  /** Quem responde pela entrega, por nome. É o que o agrupamento por
+   *  responsável usa como título de bloco. */
+  const donosDe = useCallback((e: Entrega) => e.responsaveis
+    .map(id => pessoas.find(p => p.id === id)?.nome)
+    .filter((n): n is string => !!n), [pessoas]);
+
+  /** Reparte uma lista por uma dimensão. Entrega de dois responsáveis aparece
+   *  nos dois blocos: ela é de ambos, e esconder uma cópia faria o time procurar
+   *  o que é dele e não achar. */
+  const repartir = useCallback((lista: Entrega[], dim: Dimensao) => {
+    const chaves = (e: Entrega) => chavesDe(e, dim, () => donosDe(e));
+    return [...new Set(lista.flatMap(chaves))]
+      .sort(comparadorDe(dim, STATUS_ENTREGA))
+      .map(titulo => ({ titulo, itens: lista.filter(e => chaves(e).includes(titulo)) }));
+  }, [donosDe]);
+
   const blocos = useMemo(() => {
-    // Em dois níveis quem reparte é `secoes`, logo abaixo: aqui a lista sai
+    // Com dois níveis quem reparte é `secoes`, logo abaixo: aqui a lista sai
     // inteira, como se não houvesse agrupamento.
-    if (agrupar === 'nenhum' || agrupar === 'marcador-sub') {
-      return [{ titulo: '', itens: visiveis }];
-    }
+    if (maior === 'nenhum' || menor !== 'nenhum') return [{ titulo: '', itens: visiveis }];
+    return repartir(visiveis, maior);
+  }, [visiveis, maior, menor, repartir]);
 
-    // Entrega com dois responsáveis aparece nos dois blocos: ela é de ambos, e
-    // esconder uma cópia faria o time procurar o que é dele e não achar.
-    const chavesDe = (e: Entrega): string[] => {
-      if (agrupar === 'status') return [e.status];
-      if (agrupar === 'marcador') return [(e.marcador ?? '').trim() || 'Sem marcador'];
-      if (agrupar === 'submarcador') return [(e.submarcador ?? '').trim() || 'Sem submarcador'];
-      const nomes = e.responsaveis
-        .map(id => pessoas.find(p => p.id === id)?.nome)
-        .filter((n): n is string => !!n);
-      return nomes.length ? nomes : ['Sem responsável'];
-    };
-
-    // Por status a ordem é a da escala, não a alfabética: "Bloqueada" antes de
-    // "Planejada" inverteria a leitura do andamento. Nos outros, o balde de
-    // sobra ("Sem marcador", "Sem responsável") vai para o fim.
-    const sobra = agrupar === 'marcador' ? 'Sem marcador'
-      : agrupar === 'submarcador' ? 'Sem submarcador' : 'Sem responsável';
-    const nomes = [...new Set(visiveis.flatMap(chavesDe))].sort((a, b) => (
-      agrupar === 'status'
-        ? STATUS_ENTREGA.indexOf(a as typeof STATUS_ENTREGA[number])
-          - STATUS_ENTREGA.indexOf(b as typeof STATUS_ENTREGA[number])
-        : a === sobra ? 1 : b === sobra ? -1 : a.localeCompare(b, 'pt-BR')
-    ));
-
-    return nomes.map(titulo => ({
-      titulo,
-      itens: visiveis.filter(e => chavesDe(e).includes(titulo)),
-    }));
-  }, [visiveis, agrupar, pessoas]);
-
-  /** Os blocos repartidos mais uma vez, por marcador. Duas perguntas encaixadas
-   *  - de quem é a entrega e de que área dentro dele -, e é assim que a lista da
-   *  3SA se lê: a empresa por fora, o departamento por dentro. Nos outros
-   *  agrupamentos existe uma seção só, sem título, e o desenho não muda. */
+  /** Com os dois níveis escolhidos, a lista é repartida duas vezes: o maior
+   *  vira seção e o menor, os blocos dentro dela. Com um nível só existe uma
+   *  seção sem título, e o desenho é o de sempre. */
   const secoes = useMemo(() => {
-    if (agrupar !== 'marcador-sub') return [{ titulo: '', blocos }];
-    const nome = (v: string | null, vazio: string) => (v ?? '').trim() || vazio;
-    // O balde de sobra vai para o fim, nos dois níveis: o que ninguém
-    // classificou não abre a lista.
-    const ordena = (sobra: string) => (a: string, b: string) => (
-      a === sobra ? 1 : b === sobra ? -1 : a.localeCompare(b, 'pt-BR'));
-    const marcadoresNaTela = [...new Set(visiveis.map(e => nome(e.marcador, 'Sem marcador')))]
-      .sort(ordena('Sem marcador'));
-    return marcadoresNaTela.map(titulo => {
-      const dele = visiveis.filter(e => nome(e.marcador, 'Sem marcador') === titulo);
-      const subs = [...new Set(dele.map(e => nome(e.submarcador, 'Sem submarcador')))]
-        .sort(ordena('Sem submarcador'));
-      return {
-        titulo,
-        blocos: subs.map(sub => ({
-          titulo: sub,
-          itens: dele.filter(e => nome(e.submarcador, 'Sem submarcador') === sub),
-        })),
-      };
-    });
-  }, [agrupar, blocos, visiveis]);
+    if (maior === 'nenhum' || menor === 'nenhum') return [{ titulo: '', blocos }];
+    return repartir(visiveis, maior).map(secao => ({
+      titulo: secao.titulo,
+      blocos: repartir(secao.itens, menor),
+    }));
+  }, [maior, menor, blocos, visiveis, repartir]);
 
   /** Lista é a padrão: é a leitura que responde "o que está acontecendo". */
   const [visao, setVisao] = useState<Visao>('lista');
@@ -1896,7 +1856,7 @@ function SecaoEntregas({
    *  não interessa é o que faz o agrupamento valer a pena. Trocar o critério
    *  reabre tudo, senão a pessoa mudaria de eixo e veria uma lista vazia. */
   const [recolhidos, setRecolhidos] = useState<Set<string>>(new Set());
-  useEffect(() => { setRecolhidos(new Set()); }, [agrupar]);
+  useEffect(() => { setRecolhidos(new Set()); }, [maior, menor]);
 
   return (
     <section>
@@ -1912,8 +1872,8 @@ function SecaoEntregas({
         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <SeletorLista valor={ordem} onChange={setOrdem} opcoes={ORDENS_ENTREGA}
             icone={IconOrdenar} rotulo="Ordenar entregas" />
-          <SeletorLista valor={agrupar} onChange={setAgrupar} opcoes={AGRUPAMENTOS_ENTREGA}
-            icone={IconAgrupar} rotulo="Agrupar entregas" />
+          <SeletorAgrupamento maior={maior} menor={menor}
+            onMudar={(ma, me) => { setMaior(ma); setMenor(me); }} />
           {/* Ordenar e agrupar continuam: são leitura. Só o acrescentar sai,
               junto com o resto do que grava. */}
           {!somenteLeitura && (
@@ -2365,6 +2325,75 @@ function SecaoEntregas({
 
 /** Ícone-botão do cabeçalho que abre uma lista curta de critérios. Serve à
  *  ordenação e ao agrupamento, que só diferem no ícone e nas opções. */
+/** O agrupamento das entregas: o grupo maior e, dentro dele, o menor. Um
+ *  dropdown só, com duas listas - a hierarquia é uma decisão inteira, e partir
+ *  em dois botões faria escolher metade dela de cada vez.
+ *
+ *  Sem grupo maior não há dentro do quê: a segunda lista fica apagada. E a
+ *  dimensão já usada no maior sai da segunda - repartir por marcador dentro de
+ *  marcador não divide nada. */
+function SeletorAgrupamento({ maior, menor, onMudar }: {
+  maior: Dimensao;
+  menor: Dimensao;
+  onMudar: (maior: Dimensao, menor: Dimensao) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+  const nome = (d: Dimensao) => DIMENSOES.find(x => x.valor === d)?.label ?? '';
+  const resumo = maior === 'nenhum' ? 'sem agrupamento'
+    : menor === 'nenhum' ? nome(maior) : `${nome(maior)} › ${nome(menor)}`;
+
+  function abrir() {
+    // Duas listas mais os dois rótulos: a altura conta as linhas das duas.
+    setPos(ancorar(triggerRef.current!, DIMENSOES.length * 2 + 2, 230));
+    setAberto(a => !a);
+  }
+  useDropdownDismiss(aberto, [triggerRef, dropRef], () => setAberto(false));
+
+  const linha = (d: { valor: Dimensao; label: string }, atual: Dimensao, escolher: () => void,
+    desabilitada = false) => (
+    <div key={d.valor}
+      className={`status-select-option${d.valor === atual ? ' active' : ''}${desabilitada ? ' apagada' : ''}`}
+      onClick={() => { if (!desabilitada) escolher(); }}>
+      <span>{d.label}</span>
+      {d.valor === atual && !desabilitada && (
+        <span style={{ marginLeft: 'auto', color: 'var(--yellow)', display: 'inline-flex' }}>
+          <IconCheck size={12} />
+        </span>
+      )}
+    </div>
+  );
+
+  return (
+    <>
+      <button ref={triggerRef} type="button" className="secao-add" onClick={abrir}
+        title={`Agrupar entregas: ${resumo}`} aria-label={`Agrupar entregas. Atual: ${resumo}`}>
+        <IconAgrupar size={13} />
+      </button>
+      {aberto && createPortal(
+        <div ref={dropRef} className="status-select-dropdown"
+          style={{ top: pos.top, left: pos.left, width: pos.width, zIndex: 10050 }}>
+          <p className="agrupar-titulo">Grupo maior</p>
+          {DIMENSOES.map(d => linha(d, maior, () => {
+            // Trocar o maior derruba o menor quando os dois virariam o mesmo, e
+            // desligar o maior desliga os dois.
+            onMudar(d.valor, d.valor === 'nenhum' || d.valor === menor ? 'nenhum' : menor);
+          }))}
+          <p className="agrupar-titulo">Dentro dele</p>
+          {DIMENSOES.map(d => linha(
+            d, menor,
+            () => onMudar(maior, d.valor),
+            maior === 'nenhum' || (d.valor !== 'nenhum' && d.valor === maior),
+          ))}
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
 function SeletorLista({ valor, opcoes, icone: Icone, rotulo, onChange }: {
   valor: string;
   opcoes: readonly { valor: string; label: string }[];

@@ -4501,6 +4501,34 @@ body.arrastando-painel {
   background: var(--gray3);
 }
 
+/* ── Seletor de agrupamento (dois niveis) ───────────── */
+/* O rotulo de cada lista dentro do dropdown. Sem ele, as duas listas iguais uma
+   embaixo da outra nao dizem qual e o grupo maior e qual e o de dentro. */
+.agrupar-titulo {
+  margin: 6px 0 3px;
+  padding: 0 10px;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.agrupar-titulo:first-child { margin-top: 2px; }
+/* Opcao indisponivel: sem grupo maior nao ha dentro do que, e a dimensao ja
+   usada no maior nao reparte nada de novo. Fica visivel, e nao escondida - some
+   e reaparece a cada escolha e a lista pula na cara de quem esta escolhendo. */
+.status-select-option.apagada {
+  opacity: .38;
+  cursor: default;
+}
+.status-select-option.apagada:hover { background: none; }
+.pub-seletor-lista .agrupar-titulo { padding: 0 12px; }
+.pub-seletor-lista > button:disabled {
+  opacity: .38;
+  cursor: default;
+}
+.pub-seletor-lista > button:disabled:hover { background: none; }
+
 /* Segundo nivel do agrupamento: os blocos de submarcador ficam recuados sob o
    marcador, e e o recuo que faz o par ler como um encaixe em vez de duas
    listas seguidas. */
