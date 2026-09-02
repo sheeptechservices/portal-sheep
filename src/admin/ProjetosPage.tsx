@@ -81,6 +81,7 @@ const AGRUPAMENTOS_ENTREGA = [
   { valor: 'status', label: 'Agrupar por status' },
   { valor: 'marcador', label: 'Agrupar por marcador' },
   { valor: 'submarcador', label: 'Agrupar por submarcador' },
+  { valor: 'marcador-sub', label: 'Agrupar por marcador e submarcador' },
   { valor: 'responsavel', label: 'Agrupar por responsável' },
 ] as const;
 
@@ -1775,13 +1776,18 @@ function SecaoEntregas({
   const marcaDaLinha = (e: Entrega) => (
     agrupar === 'marcador' ? [e.submarcador]
       : agrupar === 'submarcador' ? [e.marcador]
-        : [e.marcador, e.submarcador]
+        : agrupar === 'marcador-sub' ? []
+          : [e.marcador, e.submarcador]
   ).filter(Boolean).join(' · ');
 
   /** A lista já filtrada e ordenada, repartida em blocos. Sem agrupamento é um
    *  bloco só, sem título, e o desenho da lista não muda. */
   const blocos = useMemo(() => {
-    if (agrupar === 'nenhum') return [{ titulo: '', itens: visiveis }];
+    // Em dois níveis quem reparte é `secoes`, logo abaixo: aqui a lista sai
+    // inteira, como se não houvesse agrupamento.
+    if (agrupar === 'nenhum' || agrupar === 'marcador-sub') {
+      return [{ titulo: '', itens: visiveis }];
+    }
 
     // Entrega com dois responsáveis aparece nos dois blocos: ela é de ambos, e
     // esconder uma cópia faria o time procurar o que é dele e não achar.
@@ -1812,6 +1818,33 @@ function SecaoEntregas({
       itens: visiveis.filter(e => chavesDe(e).includes(titulo)),
     }));
   }, [visiveis, agrupar, pessoas]);
+
+  /** Os blocos repartidos mais uma vez, por marcador. Duas perguntas encaixadas
+   *  - de quem é a entrega e de que área dentro dele -, e é assim que a lista da
+   *  3SA se lê: a empresa por fora, o departamento por dentro. Nos outros
+   *  agrupamentos existe uma seção só, sem título, e o desenho não muda. */
+  const secoes = useMemo(() => {
+    if (agrupar !== 'marcador-sub') return [{ titulo: '', blocos }];
+    const nome = (v: string | null, vazio: string) => (v ?? '').trim() || vazio;
+    // O balde de sobra vai para o fim, nos dois níveis: o que ninguém
+    // classificou não abre a lista.
+    const ordena = (sobra: string) => (a: string, b: string) => (
+      a === sobra ? 1 : b === sobra ? -1 : a.localeCompare(b, 'pt-BR'));
+    const marcadoresNaTela = [...new Set(visiveis.map(e => nome(e.marcador, 'Sem marcador')))]
+      .sort(ordena('Sem marcador'));
+    return marcadoresNaTela.map(titulo => {
+      const dele = visiveis.filter(e => nome(e.marcador, 'Sem marcador') === titulo);
+      const subs = [...new Set(dele.map(e => nome(e.submarcador, 'Sem submarcador')))]
+        .sort(ordena('Sem submarcador'));
+      return {
+        titulo,
+        blocos: subs.map(sub => ({
+          titulo: sub,
+          itens: dele.filter(e => nome(e.submarcador, 'Sem submarcador') === sub),
+        })),
+      };
+    });
+  }, [agrupar, blocos, visiveis]);
 
   /** Lista é a padrão: é a leitura que responde "o que está acontecendo". */
   const [visao, setVisao] = useState<Visao>('lista');
@@ -1949,8 +1982,14 @@ function SecaoEntregas({
           fechados={[ENTREGA_VALIDADA, ENTREGA_CANCELADA]} onAbrir={verNaLista} />
       )}
 
-      {visao === 'lista' && blocos.map(bloco => {
-      const fechado = recolhidos.has(bloco.titulo);
+      {visao === 'lista' && secoes.map(secao => {
+      const chaveSecao = `sec:${secao.titulo}`;
+      const secaoFechada = recolhidos.has(chaveSecao);
+      const blocosDaSecao = secao.blocos.map(bloco => {
+      // A chave do recolhido carrega a seção: "Comercial" existe na Alldax e na
+      // Tax All, e sem o prefixo fechar um fecharia o outro.
+      const chaveBloco = `${secao.titulo}/${bloco.titulo}`;
+      const fechado = recolhidos.has(chaveBloco);
       return (
       // A árvore só existe havendo cabeçalho: sem agrupamento não há de onde
       // os ramos sairem.
@@ -1961,7 +2000,7 @@ function SecaoEntregas({
           aria-expanded={!fechado}
           onClick={() => setRecolhidos(r => {
             const n = new Set(r);
-            if (n.has(bloco.titulo)) n.delete(bloco.titulo); else n.add(bloco.titulo);
+            if (n.has(chaveBloco)) n.delete(chaveBloco); else n.add(chaveBloco);
             return n;
           })}>
           <span className="grupo-seta" aria-hidden="true" />
@@ -2211,6 +2250,30 @@ function SecaoEntregas({
       </div>
       </div>
       );
+      });
+
+      // Sem seção, os blocos saem soltos, exatamente como antes. Com seção, eles
+      // entram recuados sob o cabeçalho do marcador, que recolhe o conjunto.
+      return secao.titulo ? (
+        <div key={secao.titulo} className="grupo-arvore" style={{ marginBottom: 14 }}>
+          <button type="button" className={`grupo-cabeca secao-cabeca${secaoFechada ? '' : ' aberto'}`}
+            aria-expanded={!secaoFechada}
+            onClick={() => setRecolhidos(r => {
+              const n = new Set(r);
+              if (n.has(chaveSecao)) n.delete(chaveSecao); else n.add(chaveSecao);
+              return n;
+            })}>
+            <span className="grupo-seta" aria-hidden="true" />
+            {secao.titulo}
+            <span className="grupo-conta">
+              {secao.blocos.reduce((n, b) => n + b.itens.length, 0)}
+            </span>
+          </button>
+          <div className={`revelar${secaoFechada ? '' : ' aberto'}`}>
+            <div className="secao-dentro">{blocosDaSecao}</div>
+          </div>
+        </div>
+      ) : <Fragment key="sem-secao">{blocosDaSecao}</Fragment>;
       })}
 
       <div className="admin-file-list">

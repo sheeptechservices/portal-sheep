@@ -4501,6 +4501,17 @@ body.arrastando-painel {
   background: var(--gray3);
 }
 
+/* Segundo nivel do agrupamento: os blocos de submarcador ficam recuados sob o
+   marcador, e e o recuo que faz o par ler como um encaixe em vez de duas
+   listas seguidas. */
+.secao-dentro { padding-left: 16px; }
+/* O cabecalho do marcador pesa mais que o do submarcador: sao dois niveis na
+   mesma tela, e sem diferenca de peso o olho nao sabe qual contem qual. */
+.grupo-cabeca.secao-cabeca {
+  font-size: 12px;
+  color: var(--black);
+}
+
 /* ── Cabeca de grupo (entregas agrupadas) ───────────── */
 /* A linha inteira e o botao: alvo largo, e o titulo do grupo ja diz o que
    abre. A seta gira em vez de trocar de icone, para o olho acompanhar. */
