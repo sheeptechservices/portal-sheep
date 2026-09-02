@@ -88,6 +88,10 @@ interface Grupo {
   icone?: React.ReactNode;
   /** Só existem no agrupamento por status, e vêm da configuração da etapa. */
   etapaId?: number;
+  /** O que a etapa quer dizer, escrito em Configurações. Vira a dica do
+   *  cabeçalho da coluna: ler o critério onde ele é aplicado poupa a viagem
+   *  até a tela de configuração. */
+  descricao?: string | null;
   recolhida?: boolean;
   desconsiderada?: boolean;
   tarefas: TarefaComProjeto[];
@@ -148,6 +152,7 @@ function montarGrupos(
     rotulo: e.nome,
     cor: e.cor,
     etapaId: e.id,
+    descricao: e.descricao ?? null,
     recolhida: !!e.always_collapsed,
     desconsiderada: !!e.is_excluded,
     tarefas: mapa.get(e.nome) ?? [],
@@ -1055,7 +1060,7 @@ function Coluna({ grupo, et, etq, podeEditar, arrastando, isOver, onAbrir, onDra
       )}
 
       <div className="kanban-column-header">
-        <div className="kanban-column-title">
+        <div className="kanban-column-title" title={grupo.descricao ?? undefined}>
           {grupo.icone
             ? <span style={{ display: 'inline-flex', color: grupo.cor }}>{grupo.icone}</span>
             : <span className="kanban-dot" style={{ background: grupo.cor }} />}

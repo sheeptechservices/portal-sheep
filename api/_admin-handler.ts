@@ -200,6 +200,17 @@ const STATUS_MANUAL = ['Planejada', ENTREGA_ENTREGUE, ENTREGA_VALIDADA, ENTREGA_
  *  formato do `app_config`. */
 const CHAVE_ETIQUETA_POR_PAPEL = 'tarefas.etiquetas_por_papel';
 
+/** A regra de fluxo de uma etiqueta, lida do corpo da requisição. Vazio vira
+ *  nulo: "" e "não mexe" são a mesma coisa, e guardar os dois faria a tela
+ *  oferecer uma etapa em branco. */
+function regraDoCorpo(body: any) {
+  return {
+    exige_comentario: body?.exige_comentario ? 1 : 0,
+    mover_para: String(body?.mover_para ?? '').trim() || null,
+    atribuir_para: String(body?.atribuir_para ?? '').trim() || null,
+  };
+}
+
 /** A etiqueta mora dentro de uma lista JSON em cada tarefa, então renomear ou
  *  excluir exige reescrever essas listas: sem isso a tarefa ficaria carregando
  *  uma etiqueta que não existe mais. `novo` nulo remove. Devolve quantas tarefas
@@ -311,7 +322,11 @@ async function migrarSchema(db: Client) {
       nome  TEXT NOT NULL,
       cor   TEXT NOT NULL DEFAULT '#AAAAAA',
       ordem INTEGER NOT NULL DEFAULT 0,
-      ativo INTEGER NOT NULL DEFAULT 1
+      ativo INTEGER NOT NULL DEFAULT 1,
+      -- O que a etapa quer dizer. Vira a dica que aparece na hora de escolher:
+      -- o nome cabe em duas palavras, e o critério de quando usar cada uma nem
+      -- sempre cabe.
+      descricao TEXT
     )
   `);
 
@@ -791,7 +806,13 @@ async function migrarSchema(db: Client) {
       -- Tarefa aqui sai da conta da entrega inteira, e não só do numerador -
       -- cancelada não deveria puxar o percentual para baixo.
       is_excluded  INTEGER NOT NULL DEFAULT 0,
-      always_collapsed INTEGER NOT NULL DEFAULT 0
+      always_collapsed INTEGER NOT NULL DEFAULT 0,
+      -- O que a etapa quer dizer, para quem escolhe.
+      descricao TEXT,
+      -- Papéis da equipe a quem a etapa é oferecida, em JSON. Lista vazia é
+      -- "todo mundo". Triagem, por exemplo, é decisão de quem organiza a fila,
+      -- e oferecê-la a quem executa só polui a lista.
+      papeis TEXT
     )
   `);
 
@@ -841,9 +862,28 @@ async function migrarSchema(db: Client) {
       bloqueia  INTEGER NOT NULL DEFAULT 0,
       -- Papéis da equipe que enxergam a etiqueta, em JSON. Lista vazia ou nula
       -- é "todo mundo". Só vale quando a regra está ligada.
-      papeis    TEXT
+      papeis    TEXT,
+      -- A regra de fluxo da etiqueta: o que acontece com a tarefa quando ela é
+      -- posta. Etiqueta não é só classificação - "pm: bug" quer dizer que
+      -- alguém precisa olhar, e quem lê disso é a regra, não a memória de quem
+      -- etiquetou. Nulo em mover_para e atribuir_para é "não mexe".
+      exige_comentario INTEGER NOT NULL DEFAULT 0,
+      mover_para       TEXT,
+      atribuir_para    TEXT
     )
   `);
+
+  // Os papéis da etapa chegaram depois da tabela.
+  try { await ddl(`ALTER TABLE tarefa_status_configs ADD COLUMN papeis TEXT`); } catch { /* já existe */ }
+
+  // A descrição chegou depois das duas tabelas de etapa.
+  try { await ddl(`ALTER TABLE status_configs ADD COLUMN descricao TEXT`); } catch { /* já existe */ }
+  try { await ddl(`ALTER TABLE tarefa_status_configs ADD COLUMN descricao TEXT`); } catch { /* já existe */ }
+
+  // A regra de fluxo chegou depois da tabela.
+  try { await ddl(`ALTER TABLE tarefa_etiquetas ADD COLUMN exige_comentario INTEGER NOT NULL DEFAULT 0`); } catch { /* já existe */ }
+  try { await ddl(`ALTER TABLE tarefa_etiquetas ADD COLUMN mover_para TEXT`); } catch { /* já existe */ }
+  try { await ddl(`ALTER TABLE tarefa_etiquetas ADD COLUMN atribuir_para TEXT`); } catch { /* já existe */ }
 
   // A coluna chegou depois da tabela.
   try {
@@ -936,6 +976,24 @@ async function migrarSchema(db: Client) {
     -- Comentário da tarefa. \`pai_id\` nulo abre uma conversa; preenchido é
     -- resposta dentro dela. Um nível só de propósito: resposta de resposta
     -- vira escada e ninguém acha o começo do assunto.
+    -- O passo a passo de uma tarefa. Tabela propria, e nao uma lista JSON na
+    -- tarefa: cada item se marca e se desmarca sozinho, e uma lista guardada
+    -- inteira faria duas pessoas marcando ao mesmo tempo apagarem uma a outra.
+    CREATE TABLE IF NOT EXISTS tarefa_subtarefas (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      tarefa_id INTEGER NOT NULL,
+      titulo    TEXT NOT NULL,
+      feita     INTEGER NOT NULL DEFAULT 0,
+      ordem     INTEGER NOT NULL DEFAULT 0,
+      criado_em TEXT NOT NULL
+    )
+  `);
+  try {
+    await ddl(`CREATE INDEX IF NOT EXISTS idx_subtarefa_tarefa
+               ON tarefa_subtarefas (tarefa_id, ordem, id)`);
+  } catch { /* índice já existe */ }
+
+  await ddl(`
     CREATE TABLE IF NOT EXISTS tarefa_comentarios (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
       tarefa_id    INTEGER NOT NULL,
@@ -2154,6 +2212,9 @@ async function despacharAdminData(
         body: {
           statuses: etapas.rows.map(e => ({
             ...e,
+            // A lista de papéis chega pronta, como na etiqueta: a tela não
+            // deveria precisar saber que isto mora como JSON.
+            papeis: JSON.parse(String(e.papeis ?? '[]')) as string[],
             notificacoes: inscritos.rows.filter(n => Number(n.status_id) === Number(e.id)),
           })),
         },
@@ -2450,6 +2511,21 @@ async function despacharAdminData(
         linhas.push(...r.rows);
       }
       return { status: 200, body: { comentarios: linhas } };
+    }
+
+    // O passo a passo da tarefa. Leitura: mora aqui, com o resto do que a tela
+    // busca ao abrir uma tarefa.
+    if (action === 'tarefa_subtarefas') {
+      const tarefaId = Number(query.get('id') ?? 0);
+      if (!Number.isFinite(tarefaId) || tarefaId <= 0) {
+        return { status: 400, body: { error: 'id ausente.' } };
+      }
+      const r = await db.execute({
+        sql: `SELECT id, titulo, feita, ordem FROM tarefa_subtarefas
+              WHERE tarefa_id = ? ORDER BY ordem, id`,
+        args: [tarefaId],
+      });
+      return { status: 200, body: { subtarefas: r.rows } };
     }
 
     if (action === 'tarefa_atividade') {
@@ -3109,7 +3185,53 @@ function faltaEmProjeto(p: any): string | null {
       { const barrado = await guardaDaEquipe(db, usuario, t.projeto_id); if (barrado) return barrado; }
       if (!titulo) return { status: 400, body: { error: 'A tarefa precisa de um título.' } };
 
-      const etiquetas = JSON.stringify(Array.isArray(t.etiquetas) ? t.etiquetas : []);
+      const listaEtiquetas: string[] = Array.isArray(t.etiquetas) ? t.etiquetas.map(String) : [];
+      const etiquetas = JSON.stringify(listaEtiquetas);
+      // As etiquetas que a tarefa não tinha antes. Só elas disparam regra:
+      // regravar uma tarefa que já carrega "pm: bug" não é o momento de mover
+      // nem de cobrar comentário de novo.
+      const antesEtiquetas: string[] = t.id
+        ? await (async () => {
+          const r = await db.execute({
+            sql: 'SELECT etiquetas FROM projeto_tarefas WHERE id = ?', args: [t.id],
+          });
+          try { return JSON.parse(String(r.rows[0]?.etiquetas ?? '[]')) as string[]; } catch { return []; }
+        })()
+        : [];
+      const postas = listaEtiquetas.filter(e => !antesEtiquetas.includes(e));
+
+      // A regra de fluxo das etiquetas que acabaram de entrar. Uma consulta só,
+      // e nenhuma quando ninguém etiquetou nada agora.
+      const regras = postas.length === 0 ? [] : (await db.execute({
+        sql: `SELECT nome, exige_comentario, mover_para, atribuir_para
+              FROM tarefa_etiquetas
+              WHERE ativo = 1 AND nome IN (${postas.map(() => '?').join(',')})`,
+        args: postas,
+      })).rows;
+
+      // Comentário exigido é uma condição para gravar, e não um aviso depois:
+      // a tarefa não muda de mão sem a explicação que a regra pede.
+      const comentarioRegra = String(t.comentario_etiqueta ?? '').trim();
+      const cobram = regras.filter(r => Number(r.exige_comentario) === 1).map(r => String(r.nome));
+      if (cobram.length > 0 && !comentarioRegra) {
+        return {
+          status: 400,
+          body: {
+            error: cobram.length > 1
+              ? `As etiquetas ${cobram.join(', ')} pedem um comentário explicando o porquê.`
+              : `A etiqueta "${cobram[0]}" pede um comentário explicando o porquê.`,
+            exige_comentario: cobram,
+          },
+        };
+      }
+
+      // Mover e atribuir: a última etiqueta posta vence, porque foi o gesto mais
+      // recente de quem estava editando.
+      for (const r of regras) {
+        if (r.mover_para) t.status = String(r.mover_para);
+        if (r.atribuir_para) t.responsavel_id = String(r.atribuir_para);
+      }
+
       // A data de conclusão é carimbada pelo servidor: é ela que responde
       // "quando isso ficou pronto", e deixar a tela mandar abriria espaço para
       // divergir do momento em que a mudança de fato ocorreu.
@@ -3224,7 +3346,47 @@ function faltaEmProjeto(p: any): string | null {
           }
         }
       }
-      return { status: 200, body: { ok: true, id: novaId ?? t.id, status: statusPedido, ...gravada } };
+      // A lista que a pessoa montou antes de a tarefa existir. Só na criação:
+      // depois disso cada item grava sozinho.
+      const passos: unknown[] = Array.isArray(t.subtarefas) ? t.subtarefas : [];
+      if (novaId != null && passos.length > 0) {
+        const agora = new Date().toISOString();
+        await db.batch(passos
+          .map((p: any) => String(p?.titulo ?? '').trim())
+          .filter(Boolean)
+          .map((titulo, i) => ({
+            sql: `INSERT INTO tarefa_subtarefas (tarefa_id, titulo, feita, ordem, criado_em)
+                  VALUES (?,?,0,?,?)`,
+            args: [novaId, titulo, i, agora] as never[],
+          })), 'write');
+      }
+
+      // O comentário que a regra pediu entra na conversa da tarefa, como
+      // qualquer outro: é lá que se procura o porquê de uma mudança, e um campo
+      // escondido no formulário não seria lido por ninguém depois.
+      // `cobram` só tem nome quando esta gravação é a que pôs a etiqueta. Sem
+     // essa condição, a tela que grava sozinha reenviaria o mesmo texto a cada
+     // alteração seguinte e a conversa encheria de cópias.
+      const alvoComentario = novaId ?? Number(t.id);
+      if (comentarioRegra && cobram.length > 0 && Number.isFinite(alvoComentario)) {
+        await db.execute({
+          sql: `INSERT INTO tarefa_comentarios (tarefa_id, pai_id, usuario_id, usuario_nome, texto, criado_em)
+                VALUES (?,?,?,?,?,?)`,
+          args: [alvoComentario, null, autorId, autorNome,
+            `${cobram.map(e => `[${e}]`).join(' ')} ${comentarioRegra}`.trim(),
+            new Date().toISOString()],
+        });
+      }
+      // O responsável volta junto porque a regra da etiqueta pode tê-lo trocado
+      // sem que a tela soubesse: sem isto o card mostraria o dono antigo até a
+      // reconciliação.
+      return {
+        status: 200,
+        body: {
+          ok: true, id: novaId ?? t.id, status: statusPedido,
+          responsavel_id: t.responsavel_id || null, ...gravada,
+        },
+      };
     }
 
     if (action === 'excluir_tarefa') {
@@ -3233,6 +3395,7 @@ function faltaEmProjeto(p: any): string | null {
       // O que pendia da tarefa vai junto: diário, conversa, marcações e anexos.
       // Sem isto o banco acumula conversa órfã, que ninguém mais alcança.
       await db.execute({ sql: 'DELETE FROM tarefa_eventos WHERE tarefa_id = ?', args: [body.id] });
+      await db.execute({ sql: 'DELETE FROM tarefa_subtarefas WHERE tarefa_id = ?', args: [body.id] });
       const conversas = await db.execute({
         sql: 'SELECT id FROM tarefa_comentarios WHERE tarefa_id = ?', args: [body.id],
       });
@@ -3245,6 +3408,57 @@ function faltaEmProjeto(p: any): string | null {
     }
 
     // ── Diário e conversa da tarefa ─────────────────────────────────────────
+
+    // ── Subtarefas ──────────────────────────────────────────────────────────
+    if (action === 'add_tarefa_subtarefa') {
+      const tarefaId = Number(body?.tarefa_id);
+      const titulo = String(body?.titulo ?? '').trim();
+      if (!Number.isFinite(tarefaId)) return { status: 400, body: { error: 'tarefa_id ausente.' } };
+      { const barrado = await guardaDaEquipe(db, usuario, tarefaId, 'tarefa'); if (barrado) return barrado; }
+      if (!titulo) return { status: 400, body: { error: 'Escreva o que precisa ser feito.' } };
+      const max = await db.execute({
+        sql: 'SELECT COALESCE(MAX(ordem), -1) + 1 AS proxima FROM tarefa_subtarefas WHERE tarefa_id = ?',
+        args: [tarefaId],
+      });
+      const ordem = Number(max.rows[0].proxima);
+      const r = await db.execute({
+        sql: `INSERT INTO tarefa_subtarefas (tarefa_id, titulo, feita, ordem, criado_em)
+              VALUES (?,?,0,?,?)`,
+        args: [tarefaId, titulo, ordem, new Date().toISOString()],
+      });
+      return { status: 200, body: { subtarefa: { id: Number(r.lastInsertRowid), titulo, feita: 0, ordem } } };
+    }
+
+    if (action === 'atualizar_tarefa_subtarefa') {
+      const id = Number(body?.id);
+      const alvo = await db.execute({
+        sql: 'SELECT tarefa_id FROM tarefa_subtarefas WHERE id = ?', args: [id],
+      });
+      if (!alvo.rows[0]) return { status: 404, body: { error: 'Item não encontrado.' } };
+      { const barrado = await guardaDaEquipe(db, usuario, alvo.rows[0].tarefa_id, 'tarefa'); if (barrado) return barrado; }
+      // Marcar e renomear vêm pelo mesmo caminho: é a mesma linha, e separar em
+      // duas ações faria a tela decidir qual chamar a cada tecla.
+      const titulo = body?.titulo !== undefined ? String(body.titulo).trim() : null;
+      if (titulo !== null && !titulo) return { status: 400, body: { error: 'O item precisa de um texto.' } };
+      await db.execute({
+        sql: `UPDATE tarefa_subtarefas
+              SET titulo = COALESCE(?, titulo), feita = COALESCE(?, feita)
+              WHERE id = ?`,
+        args: [titulo, body?.feita === undefined ? null : (body.feita ? 1 : 0), id],
+      });
+      return { status: 200, body: { ok: true } };
+    }
+
+    if (action === 'excluir_tarefa_subtarefa') {
+      const id = Number(body?.id);
+      const alvo = await db.execute({
+        sql: 'SELECT tarefa_id FROM tarefa_subtarefas WHERE id = ?', args: [id],
+      });
+      if (!alvo.rows[0]) return { status: 404, body: { error: 'Item não encontrado.' } };
+      { const barrado = await guardaDaEquipe(db, usuario, alvo.rows[0].tarefa_id, 'tarefa'); if (barrado) return barrado; }
+      await db.execute({ sql: 'DELETE FROM tarefa_subtarefas WHERE id = ?', args: [id] });
+      return { status: 200, body: { ok: true } };
+    }
 
     if (action === 'add_tarefa_comentario') {
       const tarefaId = Number(body?.tarefa_id);
@@ -4012,16 +4226,19 @@ function faltaEmProjeto(p: any): string | null {
       if (repetida.rows[0]) return { status: 400, body: { error: 'Já existe uma etapa com esse nome.' } };
       const max = await db.execute('SELECT MAX(ordem) as m FROM tarefa_status_configs');
       const ordem = Number(max.rows[0]?.m ?? 0) + 1;
+      const descricao = String(body.descricao ?? '').trim() || null;
+      const papeis = JSON.stringify(Array.isArray(body.papeis) ? body.papeis : []);
       const r = await db.execute({
-        sql: 'INSERT INTO tarefa_status_configs (nome, cor, ordem, ativo) VALUES (?,?,?,1)',
-        args: [nome, body.cor ?? '#6E6F69', ordem],
+        sql: `INSERT INTO tarefa_status_configs (nome, cor, ordem, ativo, descricao, papeis)
+              VALUES (?,?,?,1,?,?)`,
+        args: [nome, body.cor ?? '#6E6F69', ordem, descricao, papeis],
       });
       return {
         status: 200,
         body: {
           status: {
             id: Number(r.lastInsertRowid), nome, cor: body.cor ?? '#6E6F69',
-            ordem, ativo: 1, is_entrada: 0, is_conclusao: 0,
+            ordem, ativo: 1, is_entrada: 0, is_conclusao: 0, descricao, papeis: [],
           },
         },
       };
@@ -4041,8 +4258,9 @@ function faltaEmProjeto(p: any): string | null {
       });
       if (repetida.rows[0]) return { status: 400, body: { error: 'Já existe uma etapa com esse nome.' } };
       await db.execute({
-        sql: 'UPDATE tarefa_status_configs SET nome = ?, cor = ? WHERE id = ?',
-        args: [nome, body.cor ?? '#6E6F69', body.id],
+        sql: 'UPDATE tarefa_status_configs SET nome = ?, cor = ?, descricao = ?, papeis = ? WHERE id = ?',
+        args: [nome, body.cor ?? '#6E6F69', String(body.descricao ?? '').trim() || null,
+          JSON.stringify(Array.isArray(body.papeis) ? body.papeis : []), body.id],
       });
       // As tarefas apontam pelo nome: sem isto, renomear as deixaria órfãs de
       // uma coluna que não existe mais.
@@ -4178,6 +4396,7 @@ function faltaEmProjeto(p: any): string | null {
     }
 
     // ── Etiquetas de tarefa ─────────────────────────────────────────────────
+    // A regra de fluxo vem do mesmo formulário que o resto da etiqueta.
     // A tarefa guarda a etiqueta pelo nome, numa lista JSON. Renomear e excluir
     // precisam reescrever essas listas, e é o que `reescreverEtiqueta` faz.
     if (action === 'create_tarefa_etiqueta') {
@@ -4191,10 +4410,15 @@ function faltaEmProjeto(p: any): string | null {
       const ordem = Number(max.rows[0]?.m ?? 0) + 1;
       const cor = String(body.cor ?? '#6E6F69');
       const descricao = String(body.descricao ?? '').trim() || null;
+      const regra = regraDoCorpo(body);
       const r = await db.execute({
-        sql: 'INSERT INTO tarefa_etiquetas (nome, cor, descricao, ordem, ativo, bloqueia, papeis) VALUES (?,?,?,?,1,?,?)',
+        sql: `INSERT INTO tarefa_etiquetas
+                (nome, cor, descricao, ordem, ativo, bloqueia, papeis,
+                 exige_comentario, mover_para, atribuir_para)
+              VALUES (?,?,?,?,1,?,?,?,?,?)`,
         args: [nome, cor, descricao, ordem, body.bloqueia ? 1 : 0,
-          JSON.stringify(Array.isArray(body.papeis) ? body.papeis : [])],
+          JSON.stringify(Array.isArray(body.papeis) ? body.papeis : []),
+          regra.exige_comentario, regra.mover_para, regra.atribuir_para],
       });
       return {
         status: 200,
@@ -4203,6 +4427,7 @@ function faltaEmProjeto(p: any): string | null {
             id: Number(r.lastInsertRowid), nome, cor, descricao, ordem,
             ativo: 1, bloqueia: body.bloqueia ? 1 : 0,
             papeis: Array.isArray(body.papeis) ? body.papeis : [],
+            ...regra,
           },
         },
       };
@@ -4221,10 +4446,15 @@ function faltaEmProjeto(p: any): string | null {
         args: [nome, body.id],
       });
       if (repetida.rows[0]) return { status: 400, body: { error: 'Já existe uma etiqueta com esse nome.' } };
+      const regra = regraDoCorpo(body);
       await db.execute({
-        sql: 'UPDATE tarefa_etiquetas SET nome = ?, cor = ?, descricao = ?, papeis = ? WHERE id = ?',
+        sql: `UPDATE tarefa_etiquetas
+              SET nome = ?, cor = ?, descricao = ?, papeis = ?,
+                  exige_comentario = ?, mover_para = ?, atribuir_para = ?
+              WHERE id = ?`,
         args: [nome, String(body.cor ?? '#6E6F69'), String(body.descricao ?? '').trim() || null,
-          JSON.stringify(Array.isArray(body.papeis) ? body.papeis : []), body.id],
+          JSON.stringify(Array.isArray(body.papeis) ? body.papeis : []),
+          regra.exige_comentario, regra.mover_para, regra.atribuir_para, body.id],
       });
       const tocadas = nome !== antigo ? await reescreverEtiqueta(db, antigo, nome) : 0;
       return { status: 200, body: { ok: true, tocadas } };
@@ -4278,13 +4508,20 @@ function faltaEmProjeto(p: any): string | null {
     if (action === 'create_status') {
       const max = await db.execute('SELECT MAX(ordem) as m FROM status_configs');
       const ordem = Number(max.rows[0]?.m ?? 0) + 1;
-      const r = await db.execute({ sql: 'INSERT INTO status_configs (nome, cor, ordem, ativo) VALUES (?, ?, ?, 1)', args: [body.nome, body.cor, ordem] });
+      const descricao = String(body.descricao ?? '').trim() || null;
+      const r = await db.execute({
+        sql: 'INSERT INTO status_configs (nome, cor, ordem, ativo, descricao) VALUES (?, ?, ?, 1, ?)',
+        args: [body.nome, body.cor, ordem, descricao],
+      });
       const newId = Number(r.lastInsertRowid);
-      return { status: 200, body: { status: { id: newId, nome: body.nome, cor: body.cor, ordem, ativo: 1, notificacoes: [] } } };
+      return { status: 200, body: { status: { id: newId, nome: body.nome, cor: body.cor, ordem, ativo: 1, descricao, notificacoes: [] } } };
     }
 
     if (action === 'update_status') {
-      await db.execute({ sql: 'UPDATE status_configs SET nome = ?, cor = ? WHERE id = ?', args: [body.nome, body.cor, body.id] });
+      await db.execute({
+        sql: 'UPDATE status_configs SET nome = ?, cor = ?, descricao = ? WHERE id = ?',
+        args: [body.nome, body.cor, String(body.descricao ?? '').trim() || null, body.id],
+      });
       return { status: 200, body: { ok: true } };
     }
 

@@ -462,6 +462,18 @@ export function IconDashboard({ size = 14 }: { size?: number }) {
   return <Ico size={size}><rect x="3" y="3" width="7.5" height="7.5" rx="1.6" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6" /></Ico>;
 }
 
+// Regra de fluxo: a linha que desce e vira, com a ponta indicando o destino. É
+// o que uma etiqueta com regra faz - manda a tarefa para outro lugar.
+export function IconFluxo({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 4v8a3 3 0 0 0 3 3h8" />
+      <path d="M14 12l3 3-3 3" />
+    </svg>
+  );
+}
+
 // Conversa: o balão do comentário.
 export function IconComentario({ size = 14 }: { size?: number }) {
   return (

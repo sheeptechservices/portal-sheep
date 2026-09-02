@@ -4556,7 +4556,10 @@ body.arrastando-painel {
 
 /* O rotulo de cada lista dentro do dropdown. Sem ele, as duas listas iguais uma
    embaixo da outra nao dizem qual e o grupo maior e qual e o de dentro. */
-.agrupar-titulo {
+/* O mesmo rotulo de secao serve a qualquer menu com mais de uma lista: o do
+   agrupamento e o da regra da etiqueta. Dois nomes, uma regra. */
+.agrupar-titulo,
+.menu-rotulo {
   margin: 6px 0 3px;
   padding: 0 10px;
   font-size: 9.5px;
@@ -4565,13 +4568,15 @@ body.arrastando-painel {
   text-transform: uppercase;
   color: var(--gray2);
 }
-.agrupar-titulo:first-child { margin-top: 2px; }
+.agrupar-titulo:first-child,
+.menu-rotulo:first-child { margin-top: 2px; }
 /* Um fio entre as duas listas: sao dois grupos de opcoes iguais um debaixo do
    outro, e so o rotulo nao basta para dizer onde um acaba. Vale para a segunda
    em diante, nunca para a primeira - linha no topo do menu seria moldura. O
    `padding-top` vem depois do recuo de cada tela, senao um sobrescreveria o
    outro. */
-.agrupar-titulo:not(:first-child) {
+.agrupar-titulo:not(:first-child),
+.menu-rotulo:not(:first-child) {
   margin-top: 7px;
   padding-top: 8px;
   border-top: 1px solid var(--gray3);

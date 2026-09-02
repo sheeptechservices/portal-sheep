@@ -20,6 +20,7 @@ import { DatePicker } from '../components/DatePicker';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { ancorar } from '../lib/ancorar';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
+import { useAlturaAutomatica } from '../lib/useAlturaAutomatica';
 import { ChipVinculo } from '../components/VinculoReuniao';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import { PAINEL_MAX, PAINEL_MIN, useLarguraPainel } from '../lib/painelLateral';
@@ -35,6 +36,11 @@ export interface EtapaTarefa {
   id: number;
   nome: string;
   cor: string;
+  /** Papéis da equipe a quem a etapa é oferecida. Vazio é "todo mundo". */
+  papeis?: string[];
+  /** O que a etapa quer dizer, escrito em Configurações. Vira a dica na hora
+   *  de escolher. */
+  descricao?: string | null;
   ordem: number;
   is_entrada: number;
   /** A etapa de conversão: o que conta como feito no percentual da entrega. */
@@ -94,6 +100,11 @@ export interface EtiquetaTarefa {
   /** Papéis da equipe que enxergam a etiqueta. Vazio é "todo mundo", e só vale
    *  quando a regra está ligada em Configurações. */
   papeis: string[];
+  /** A regra de fluxo, configurada em Configurações > Etapas > Tarefas. Quem
+   *  aplica a etiqueta não escolhe nada disso: já vem decidido. */
+  exige_comentario?: number;
+  mover_para?: string | null;
+  atribuir_para?: string | null;
 }
 
 /** Quais etiquetas oferecer a quem está editando a tarefa.
@@ -105,6 +116,28 @@ export interface EtiquetaTarefa {
  *
  *  Isto governa o que a tela oferece, não o que o servidor aceita: etiqueta já
  *  aplicada continua na tarefa e continua aparecendo nas visões. */
+/** Quais etapas oferecer a quem move a tarefa.
+ *
+ *  Mesma regra da etiqueta, e pelo mesmo motivo: o papel é o daquele projeto, e
+ *  quem está de fora da equipe continua vendo tudo. A etapa em que a tarefa
+ *  está nunca some da lista - esconder o lugar onde ela se encontra faria o
+ *  seletor mentir sobre o estado atual.
+ *
+ *  Isto governa o que a tela oferece, não o que o servidor aceita, e não mexe
+ *  em nenhuma visão: a coluna continua no quadro, com as tarefas que estão
+ *  nela. */
+export function etapasParaOPapel(
+  todas: EtapaTarefa[], projeto: Projeto | undefined, usuarioId: string | undefined,
+  atual?: string,
+): EtapaTarefa[] {
+  if (!projeto || !usuarioId) return todas;
+  const papel = projeto.equipe.find(m => m.id === usuarioId)?.papel;
+  if (!papel) return todas;
+  return todas.filter(e => (
+    e.nome === atual || !e.papeis?.length || e.papeis.includes(papel)
+  ));
+}
+
 export function etiquetasParaOPapel(
   todas: EtiquetaTarefa[], porPapel: boolean, projeto: Projeto | undefined, usuarioId: string | undefined,
 ): EtiquetaTarefa[] {
@@ -119,8 +152,28 @@ export function etiquetasParaOPapel(
 export interface Pessoa { id: string; nome: string; email: string; foto_url: string | null }
 
 /** Rascunho de tarefa, antes de virar linha. */
+/** Um passo da tarefa. Sem id enquanto a tarefa não existe: aí ele vive no
+ *  rascunho e nasce junto com ela. */
+export interface Subtarefa {
+  id?: number;
+  titulo: string;
+  feita: number;
+}
+
+/** O título com que uma tarefa nasce, antes de alguém escrever o dela. O
+ *  servidor exige um título, e a tarefa existe desde o clique em "Nova tarefa" -
+ *  então ela precisa de um enquanto ninguém digitou. */
+export const TITULO_PADRAO = 'Sem título';
+
 export interface Rascunho {
   id?: number;
+  /** A lista montada antes de a tarefa existir. Depois de criada, cada item
+   *  grava sozinho e esta lista deixa de ser usada. */
+  subtarefas?: Subtarefa[];
+  /** A explicação que uma etiqueta com regra exige. Vive no rascunho para
+   *  viajar junto na gravação; o servidor a transforma em comentário da tarefa
+   *  e não guarda nada aqui. */
+  comentario_etiqueta?: string;
   projeto_id: string;
   entrega_id: string;
   titulo: string;
@@ -163,6 +216,122 @@ export function tarefaGravada(
     comentarios: 0,
     anexos: 0,
   };
+}
+
+// ── Checklist ─────────────────────────────────────────────────────────────────
+
+/** O passo a passo da tarefa, abaixo da descrição.
+ *
+ *  Na tarefa que já existe, cada item grava sozinho: marcar um passo é um gesto
+ *  completo, e guardá-lo esperando o "Salvar" faria o trabalho de meia hora
+ *  depender de alguém lembrar de apertar um botão. Na tarefa que ainda não
+ *  nasceu não há onde gravar, então a lista fica no rascunho e vai junto na
+ *  criação. */
+function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
+  /** Ausente enquanto a tarefa não foi criada. */
+  tarefaId?: number;
+  api?: (path: string, method?: string, body?: unknown) => Promise<any>;
+  /** A lista do rascunho, usada só antes de a tarefa existir. */
+  rascunho: Subtarefa[];
+  desabilitado?: boolean;
+  onMudarRascunho: (itens: Subtarefa[]) => void;
+}) {
+  const [itens, setItens] = useState<Subtarefa[]>(rascunho);
+  const [novo, setNovo] = useState('');
+  const gravado = tarefaId != null && !!api;
+
+  // A lista da tarefa que já existe vem do servidor; a da tarefa nova é o
+  // próprio rascunho, que o painel já carrega.
+  useEffect(() => {
+    if (!gravado) { setItens(rascunho); return; }
+    let vivo = true;
+    void api!(`?action=tarefa_subtarefas&id=${tarefaId}`).then(r => {
+      if (vivo) setItens((r?.subtarefas ?? []) as Subtarefa[]);
+    });
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tarefaId, gravado]);
+
+  /** Aplica na tela e grava. Sem tarefa, o rascunho é o destino. */
+  function aplicar(novos: Subtarefa[], gravar?: () => Promise<any>) {
+    const antes = itens;
+    setItens(novos);
+    if (!gravado) { onMudarRascunho(novos); return; }
+    void gravar?.().then(r => { if (r?.error) setItens(antes); });
+  }
+
+  function adicionar() {
+    const titulo = novo.trim();
+    if (!titulo) return;
+    setNovo('');
+    if (!gravado) { aplicar([...itens, { titulo, feita: 0 }]); return; }
+    // O id vem do servidor, então o item entra na lista quando ele responde.
+    // É o único gesto daqui que não pode ser pintado antes.
+    void api!('', 'POST', { action: 'add_tarefa_subtarefa', tarefa_id: tarefaId, titulo })
+      .then(r => { if (r?.subtarefa) setItens(atual => [...atual, r.subtarefa]); });
+  }
+
+  const feitas = itens.filter(i => Number(i.feita) === 1).length;
+
+  return (
+    <div className="form-group">
+      <label className="form-label">
+        Checklist
+        {itens.length > 0 && (
+          <span className="checklist-conta">{feitas} de {itens.length}</span>
+        )}
+      </label>
+
+      {itens.length > 0 && (
+        <div className="checklist">
+          {itens.map((item, i) => (
+            <div key={item.id ?? `novo-${i}`}
+              className={`checklist-item${Number(item.feita) === 1 ? ' feito' : ''}`}>
+              <label>
+                <input type="checkbox" className="form-checkbox"
+                  checked={Number(item.feita) === 1}
+                  disabled={desabilitado}
+                  onChange={e => {
+                    const feita = e.target.checked ? 1 : 0;
+                    aplicar(
+                      itens.map((x, j) => (j === i ? { ...x, feita } : x)),
+                      () => api!('', 'POST', {
+                        action: 'atualizar_tarefa_subtarefa', id: item.id, feita: !!feita,
+                      }),
+                    );
+                  }} />
+                <span>{item.titulo}</span>
+              </label>
+              {!desabilitado && (
+                <button type="button" className="checklist-tirar"
+                  aria-label={`Tirar "${item.titulo}"`} title="Tirar da lista"
+                  onClick={() => aplicar(
+                    itens.filter((_, j) => j !== i),
+                    () => api!('', 'POST', { action: 'excluir_tarefa_subtarefa', id: item.id }),
+                  )}>
+                  <IconX size={11} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!desabilitado && (
+        // Enter adiciona e o campo continua ali: quem escreve uma lista escreve
+        // vários itens seguidos, e ter de clicar de novo a cada um quebraria o
+        // ritmo.
+        <input className="form-input checklist-novo" value={novo}
+          placeholder={itens.length ? 'Outro passo' : 'Adicionar um passo'}
+          onChange={e => setNovo(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); adicionar(); }
+            if (e.key === 'Escape') setNovo('');
+          }}
+          onBlur={adicionar} />
+      )}
+    </div>
+  );
 }
 
 // ── Avatar ────────────────────────────────────────────────────────────────────
@@ -375,6 +544,7 @@ function PilulaEtapa({ valor, etapas, desabilitado, onChange }: {
         className="status-select-trigger sem-contorno"
         style={{ ['--sc' as string]: cor, cursor: desabilitado ? 'default' : 'pointer' }}
         disabled={desabilitado}
+        title={etapas.find(e => e.nome === valor)?.descricao ?? undefined}
         aria-label={`Etapa: ${valor || 'sem etapa'}`}
         onClick={() => {
           if (desabilitado || !gatilho.current) return;
@@ -393,7 +563,11 @@ function PilulaEtapa({ valor, etapas, desabilitado, onChange }: {
           {etapas.map(e => {
             const ativo = e.nome === valor;
             return (
+              // A descrição da etapa vira a dica: o nome cabe em duas
+              // palavras, e o critério de quando usar cada uma nem sempre cabe.
+              // Quem configura escreve em Configurações; quem escolhe lê aqui.
               <div key={e.id} className={`status-select-option${ativo ? ' active' : ''}`}
+                title={e.descricao ?? undefined}
                 onClick={() => { onChange(e.nome); setAberto(false); }}>
                 <span className="status-select-dot" style={{ background: e.cor }} />
                 <span>{e.nome}</span>
@@ -488,6 +662,59 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
   // Mesma gaveta do painel de projeto, com largura e modo tela cheia próprios.
   const { largura, arrastando, setArrastando, porTecla } = useLarguraPainel('tarefa');
   const trava = rascunho.etiquetas.some(e => etq.trava(e));
+
+  /** As etiquetas que a tarefa já tinha quando o painel abriu. Regra é sobre
+   *  pôr a etiqueta, não sobre carregá-la: reabrir uma tarefa que já é "pm: bug"
+   *  não cobra explicação de novo. */
+  const jaTinha = useRef<string[]>(rascunho.etiquetas);
+  useEffect(() => { jaTinha.current = rascunho.etiquetas; }, [rascunho.id]);
+
+  /** As que acabaram de entrar e pedem comentário. */
+  const pedemComentario = rascunho.etiquetas.filter(nome => (
+    !jaTinha.current.includes(nome)
+    && !!etiquetas.find(e => e.nome === nome)?.exige_comentario
+  ));
+  const campoDescricao = useRef<HTMLTextAreaElement>(null);
+  useAlturaAutomatica(campoDescricao, rascunho.descricao);
+
+  /** O painel grava sozinho, sem botão.
+   *
+   *  O que se digita numa tarefa é trabalho, e trabalho não deveria depender de
+   *  alguém lembrar de apertar um botão antes de fechar a aba. A gravação sai
+   *  depois de uma pausa na digitação, e não a cada tecla: assim uma frase
+   *  inteira vira uma gravação, e não trinta.
+   *
+   *  A comparação ignora o `id` de propósito - ele aparece justamente por causa
+   *  da primeira gravação, e sem isso a chegada dele dispararia outra. */
+  const impresso = JSON.stringify({ ...rascunho, id: undefined });
+  const ultimoGravado = useRef(impresso);
+  const podeGravar = !somenteLeitura
+    && !!rascunho.titulo.trim()
+    // A etiqueta que pede explicação segura a gravação: o servidor recusaria, e
+    // recusar sozinho, sem ninguém ter apertado nada, seria um erro do nada.
+    && !(pedemComentario.length > 0 && !(rascunho.comentario_etiqueta ?? '').trim());
+
+  useEffect(() => {
+    if (!podeGravar || impresso === ultimoGravado.current) return;
+    const t = window.setTimeout(() => {
+      ultimoGravado.current = impresso;
+      onSalvar();
+    }, 700);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [impresso, podeGravar]);
+
+  /** Fechar com alteração ainda na pausa grava na hora: a pausa é uma
+   *  conveniência para não gravar letra a letra, não uma licença para perder o
+   *  que foi escrito. */
+  function fecharGravando() {
+    if (podeGravar && impresso !== ultimoGravado.current) {
+      ultimoGravado.current = impresso;
+      onSalvar();
+    }
+    fechar();
+  }
+
   // A lista muda com o projeto escolhido: é lá que a pessoa tem um papel.
   const etiquetasVisiveis = etiquetasParaOPapel(etiquetas, etiquetaPorPapel, projeto, usuarioId);
   const escondidas = etiquetas.length - etiquetasVisiveis.length;
@@ -562,10 +789,26 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
 
           <div className="form-group">
             <label className="form-label">Descrição</label>
-            <textarea className="form-input" rows={3} value={rascunho.descricao} disabled={somenteLeitura}
+            {/* Cresce com o texto até 260px. Altura fixa escondia o que já
+                estava escrito - quem abria uma tarefa de dez linhas via três, e
+                rolava dentro de uma caixa dentro de um painel que também rola.
+                O teto existe pelo motivo oposto: descrição longa não pode
+                empurrar o resto do formulário para fora da tela. */}
+            <textarea ref={campoDescricao} className="form-input" rows={3}
+              value={rascunho.descricao} disabled={somenteLeitura}
               onChange={e => set('descricao', e.target.value)}
-              placeholder="O que precisa ser feito" style={{ fontSize: 13 }} />
+              placeholder="O que precisa ser feito" style={{ fontSize: 13, resize: 'none' }} />
           </div>
+
+          {/* O passo a passo, logo abaixo do que a tarefa é: um é o enunciado,
+              o outro é o caminho. */}
+          <Checklist
+            tarefaId={rascunho.id}
+            api={api}
+            rascunho={rascunho.subtarefas ?? []}
+            desabilitado={somenteLeitura}
+            onMudarRascunho={v => set('subtarefas', v)}
+          />
 
           {/* `minmax(0, 1fr)` e não `1fr`: item de grade não encolhe abaixo do
               próprio conteúdo por padrão, e o rótulo comprido de uma entrega
@@ -635,6 +878,32 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
             <label className="form-label">Etiquetas</label>
             <SeletorEtiquetas valor={rascunho.etiquetas} opcoes={etiquetasVisiveis} etq={etq}
               desabilitado={somenteLeitura} onChange={v => set('etiquetas', v)} />
+
+            {/* A etiqueta que pede explicação cobra na hora de pôr, e não
+                depois: o campo nasce aqui, colado nela, e o que se escreve vira
+                comentário da tarefa. */}
+            {pedemComentario.length > 0 && !somenteLeitura && (
+              <div className="surge" style={{ marginTop: 8 }}>
+                <label className="form-label" htmlFor="comentario-etiqueta">
+                  {pedemComentario.length > 1
+                    ? `${pedemComentario.join(' e ')} pedem uma explicação *`
+                    : `${pedemComentario[0]} pede uma explicação *`}
+                </label>
+                <textarea id="comentario-etiqueta" className="form-input" rows={2}
+                  value={rascunho.comentario_etiqueta ?? ''}
+                  onChange={e => set('comentario_etiqueta', e.target.value)}
+                  placeholder="O que aconteceu, em uma ou duas linhas" />
+                {pedemComentario.length > 0 && !(rascunho.comentario_etiqueta ?? '').trim() ? (
+                  <p className="form-error" style={{ marginTop: 4 }}>
+                    A tarefa só volta a gravar depois desta explicação.
+                  </p>
+                ) : (
+                  <p className="form-hint" style={{ marginTop: 4 }}>
+                    Entra na conversa da tarefa, com o seu nome.
+                  </p>
+                )}
+              </div>
+            )}
             {escondidas > 0 && (
               <p style={{ fontSize: 11, color: 'var(--gray2)', margin: '6px 0 0' }}>
                 {escondidas} etiqueta(s) fora da lista: elas pertencem a outros papéis da equipe

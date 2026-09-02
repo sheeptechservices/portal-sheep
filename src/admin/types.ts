@@ -2,6 +2,8 @@ export interface StatusConfig {
   id: number;
   nome: string;
   cor: string;
+  /** O que a etapa quer dizer. Vira a dica na hora de escolher. */
+  descricao?: string | null;
   ordem: number;
   ativo: number;
   is_conversion?: number;

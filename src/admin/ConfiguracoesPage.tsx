@@ -5,7 +5,7 @@ import type { StatusConfig, UsuarioNotificavel, Notificacao, NovaNotificacao } f
 import { useToast, useAuth } from './AdminApp';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import {
-  IconAlert, IconAlertOctagon, IconArrastar, IconCheck, IconChevronDown, IconChevronRight,
+  IconAlert, IconAlertOctagon, IconArrastar, IconCheck, IconChevronDown, IconChevronRight, IconFluxo,
   IconClipboard, IconEntrada, IconEstrela, IconEye, IconEyeOff, IconPlus, IconProibido,
   IconTrash, IconUser, IconX,
 } from '../components/icons';
@@ -316,6 +316,8 @@ function StatusRow({
   const entradaBtnRef = useRef<HTMLButtonElement>(null);
 
   const [editingName, setEditingName] = useState(false);
+  const [editandoDesc, setEditandoDesc] = useState(false);
+  const [descricao, setDescricao] = useState(status.descricao ?? '');
   const [showStarTip, setShowStarTip] = useState(false);
   const [starTipPos, setStarTipPos] = useState({ top: 0, left: 0, arrowLeft: '50%' });
   const [showBanTip, setShowBanTip] = useState(false);
@@ -419,9 +421,17 @@ function StatusRow({
   async function handleColorClick(c: string) {
     setCor(c);
     setColorPickerPos(null);
-    await api('', 'POST', { action: 'update_status', id: status.id, nome, cor: c });
-    onUpdate({ ...status, nome, cor: c, notificacoes: notifs });
+    await api('', 'POST', { action: 'update_status', id: status.id, nome, cor: c, descricao });
+    onUpdate({ ...status, nome, cor: c, descricao, notificacoes: notifs });
     toast('success', 'Cor atualizada');
+  }
+
+  /** A descrição é gravada como o nome: ao sair do campo, e só quando mudou. */
+  async function salvarDescricao() {
+    setEditandoDesc(false);
+    if (descricao === (status.descricao ?? '')) return;
+    await api('', 'POST', { action: 'update_status', id: status.id, nome, cor, descricao });
+    onUpdate({ ...status, nome, cor, descricao, notificacoes: notifs });
   }
 
   function handleNameBlur(e: React.FocusEvent) {
@@ -432,8 +442,8 @@ function StatusRow({
   async function saveName() {
     setEditingName(false);
     if (nome === status.nome) return;
-    await api('', 'POST', { action: 'update_status', id: status.id, nome, cor });
-    onUpdate({ ...status, nome, cor, notificacoes: notifs });
+    await api('', 'POST', { action: 'update_status', id: status.id, nome, cor, descricao });
+    onUpdate({ ...status, nome, cor, descricao, notificacoes: notifs });
     toast('success', 'Etapa atualizada');
   }
 
@@ -522,6 +532,32 @@ function StatusRow({
               title="Clique para renomear"
             >
               {nome}
+            </span>
+          )}
+
+          {/* A descrição ao lado do nome, como nas etiquetas: é a continuação da
+              frase que o nome começa. É ela que vira a dica na hora de escolher
+              a etapa, no funil e no card. */}
+          {editandoDesc ? (
+            <input className="status-name-input" value={descricao} autoFocus
+              placeholder="O que esta etapa quer dizer"
+              style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 500 }}
+              onChange={e => setDescricao(e.target.value)}
+              onClick={e => e.stopPropagation()}
+              onBlur={() => void salvarDescricao()}
+              onKeyDown={e => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+                if (e.key === 'Escape') { setDescricao(status.descricao ?? ''); setEditandoDesc(false); }
+              }} />
+          ) : (
+            <span title="Clique para editar a descrição"
+              onClick={e => { e.stopPropagation(); setEditandoDesc(true); }}
+              style={{
+                flex: 1, minWidth: 0, fontSize: 12, cursor: 'text',
+                color: descricao ? 'var(--gray2)' : 'var(--gray3)',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>
+              {descricao || 'Sem descrição'}
             </span>
           )}
         </div>
@@ -1420,6 +1456,10 @@ interface EtapaTarefa {
   id: number;
   nome: string;
   cor: string;
+  /** O que a etapa quer dizer. Vira a dica na hora de escolher. */
+  descricao: string | null;
+  /** Papéis da equipe a quem a etapa é oferecida. Vazio é "todo mundo". */
+  papeis: string[];
   ordem: number;
   is_entrada: number;
   /** A estrela de conversão: a etapa que quer dizer "feito". */
@@ -1456,8 +1496,10 @@ function EtapaTarefaRow({
   const paletaRef = useRef<HTMLDivElement>(null);
 
   const [editandoNome, setEditandoNome] = useState(false);
+  const [editandoDesc, setEditandoDesc] = useState(false);
   const [nome, setNome] = useState(etapa.nome);
   const [cor, setCor] = useState(etapa.cor);
+  const [descricao, setDescricao] = useState(etapa.descricao ?? '');
   const [paletaPos, setPaletaPos] = useState<{ top: number; left: number } | null>(null);
 
   const [inscritos, setInscritos] = useState<Notificacao[]>(etapa.notificacoes ?? []);
@@ -1491,15 +1533,27 @@ function EtapaTarefaRow({
     return () => document.removeEventListener('mousedown', fora);
   }, [paletaPos]);
 
-  async function salvar(novoNome: string, novaCor: string) {
+  async function salvar(novoNome: string, novaCor: string, novaDesc = descricao,
+    papeis = etapa.papeis) {
     const limpo = novoNome.trim();
+    const desc = novaDesc.trim();
     if (!limpo) { setNome(etapa.nome); return; }
-    if (limpo === etapa.nome && novaCor === etapa.cor) return;
+    const mudouPapel = papeis !== etapa.papeis;
+    if (!mudouPapel && limpo === etapa.nome && novaCor === etapa.cor
+      && desc === (etapa.descricao ?? '')) return;
+    // A linha muda na hora e a gravação vai atrás. Esperar a resposta para
+    // marcar o papel deixava o tique aparecer meio segundo depois do clique, e
+    // quem escolhe papel escolhe vários seguidos.
+    onUpdate({ ...etapa, nome: limpo, cor: novaCor, descricao: desc || null, papeis });
     const r = await api('', 'POST', {
       action: 'update_tarefa_status', id: etapa.id, nome: limpo, cor: novaCor,
+      descricao: desc, papeis,
     });
-    if (r?.error) { toast('error', 'Não foi possível salvar', r.error); setNome(etapa.nome); return; }
-    onUpdate({ ...etapa, nome: limpo, cor: novaCor });
+    if (r?.error) {
+      toast('error', 'Não foi possível salvar', r.error);
+      onUpdate(etapa);
+      setNome(etapa.nome); setDescricao(etapa.descricao ?? '');
+    }
   }
 
   async function pedirExclusao() {
@@ -1528,9 +1582,9 @@ function EtapaTarefaRow({
   return (
     <div
       className={`status-row${isDragging ? ' status-row-dragging' : ''}${dropIndicator ? ' status-row-drop-target' : ''}`}
-      draggable={!editandoNome}
+      draggable={!editandoNome && !editandoDesc}
       style={{
-        cursor: editandoNome ? 'default' : 'grab',
+        cursor: editandoNome || editandoDesc ? 'default' : 'grab',
         boxShadow: dropIndicator === 'before'
           ? 'inset 0 3px 0 0 var(--yellow)'
           : dropIndicator === 'after'
@@ -1585,9 +1639,43 @@ function EtapaTarefaRow({
               {nome}
             </span>
           )}
+
+          {/* A descrição ao lado do nome, e não embaixo: ela é a continuação da
+              frase que o nome começa, e numa linha só a lista se lê de cima a
+              baixo sem o olho descer e voltar. É ela que vira a dica na hora de
+              escolher a etapa. */}
+          {editandoDesc ? (
+            <input className="status-name-input" value={descricao} autoFocus
+              placeholder="O que esta etapa quer dizer"
+              style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 500 }}
+              onChange={e => setDescricao(e.target.value)}
+              onClick={e => e.stopPropagation()}
+              onBlur={() => { setEditandoDesc(false); void salvar(nome, cor, descricao); }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+                if (e.key === 'Escape') { setDescricao(etapa.descricao ?? ''); setEditandoDesc(false); }
+              }} />
+          ) : (
+            <span title="Clique para editar a descrição"
+              onClick={e => { e.stopPropagation(); setEditandoDesc(true); }}
+              style={{
+                flex: 1, minWidth: 0, fontSize: 12, cursor: 'text',
+                color: descricao ? 'var(--gray2)' : 'var(--gray3)',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>
+              {descricao || 'Sem descrição'}
+            </span>
+          )}
         </div>
 
         <div className="status-row-right" onClick={e => e.stopPropagation()}>
+          {/* A quem esta etapa é oferecida. Vazio é todo mundo - "Triagem" pode
+              ser só do gestor sem que ninguém deixe de ver onde a tarefa está:
+              o que a regra governa é o que a lista oferece, não o que a tela
+              mostra. */}
+          <SeletorPapeis valor={etapa.papeis}
+            onChange={p => void salvar(nome, cor, descricao, p)} />
+
           {/* Quem acompanha a etapa, igual ao funil: recebe e-mail quando uma
               tarefa chega aqui. */}
           <div className="status-notif-chips-inline">
@@ -1901,6 +1989,12 @@ interface EtiquetaTarefa {
   ordem: number;
   bloqueia: number;
   papeis: string[];
+  /** A regra de fluxo: o que acontece com a tarefa quando esta etiqueta entra.
+   *  Etiqueta não é só classificação - "pm: bug" quer dizer que alguém precisa
+   *  olhar, e é aqui que isso fica escrito em vez de combinado de boca. */
+  exige_comentario: number;
+  mover_para: string | null;
+  atribuir_para: string | null;
 }
 
 /** Escolha múltipla dos papéis que enxergam a etiqueta, no formato dos outros
@@ -2012,13 +2106,118 @@ function SeletorPapeis({ valor, onChange }: {
   );
 }
 
+/** A regra de fluxo da etiqueta, num painel só. Três decisões que andam juntas
+ *  - para onde a tarefa vai, com quem ela fica e o que precisa ser dito - e
+ *  separá-las em três botões na linha faria escolher uma de cada vez sem ver as
+ *  outras.
+ *
+ *  Como o seletor de papéis, ele não fecha ao escolher: quem abre costuma mexer
+ *  em mais de uma. */
+function RegraDaEtiqueta({ etiqueta, etapas, pessoas, onMudar }: {
+  etiqueta: EtiquetaTarefa;
+  etapas: { id: number; nome: string }[];
+  pessoas: { id: string; nome: string }[];
+  onMudar: (regra: Partial<EtiquetaTarefa>) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+  const LARGURA = 250;
+
+  const temRegra = !!etiqueta.exige_comentario || !!etiqueta.mover_para || !!etiqueta.atribuir_para;
+  const partes = [
+    etiqueta.mover_para ? `move para "${etiqueta.mover_para}"` : null,
+    etiqueta.atribuir_para
+      ? `atribui a ${pessoas.find(p => p.id === etiqueta.atribuir_para)?.nome ?? 'alguém'}`
+      : null,
+    etiqueta.exige_comentario ? 'pede comentário' : null,
+  ].filter(Boolean);
+
+  const medir = useCallback(() => {
+    const r = triggerRef.current!.getBoundingClientRect();
+    // Alto o bastante para caber as três seções; passando da janela, abre para
+    // cima, como os outros menus da casa.
+    const altura = Math.min(360, 120 + (etapas.length + pessoas.length) * 30);
+    const paraCima = window.innerHeight - r.bottom - 8 < altura && r.top > altura;
+    return {
+      top: paraCima ? Math.max(8, r.top - altura - 4) : r.bottom + 4,
+      left: Math.max(8, Math.min(r.right - LARGURA, window.innerWidth - LARGURA - 8)),
+    };
+  }, [etapas.length, pessoas.length]);
+
+  useEffect(() => {
+    if (!aberto) return;
+    const dentro = (alvo: Node | null) => !!alvo
+      && (triggerRef.current?.contains(alvo) || dropRef.current?.contains(alvo));
+    const aoClicar = (e: MouseEvent) => { if (!dentro(e.target as Node)) setAberto(false); };
+    const recolocar = (e?: Event) => {
+      if (e && dropRef.current?.contains(e.target as Node)) return;
+      setPos(medir());
+    };
+    document.addEventListener('mousedown', aoClicar);
+    window.addEventListener('scroll', recolocar, true);
+    window.addEventListener('resize', recolocar);
+    return () => {
+      document.removeEventListener('mousedown', aoClicar);
+      window.removeEventListener('scroll', recolocar, true);
+      window.removeEventListener('resize', recolocar);
+    };
+  }, [aberto, medir]);
+
+  const opcao = (rotulo: string, marcada: boolean, escolher: () => void) => (
+    <button key={rotulo} type="button"
+      className={`agrupar-opcao${marcada ? ' marcada' : ''}`}
+      onClick={escolher}>
+      <span>{rotulo}</span>
+      {marcada && <span className="agrupar-marca"><IconCheck size={12} /></span>}
+    </button>
+  );
+
+  return (
+    <>
+      <button ref={triggerRef} type="button" className="status-action-btn"
+        aria-expanded={aberto}
+        title={temRegra ? `Ao aplicar: ${partes.join(', ')}` : 'Sem regra de fluxo'}
+        style={temRegra ? { borderColor: 'var(--yellow)', color: 'var(--black)' } : undefined}
+        onClick={() => { setPos(medir()); setAberto(a => !a); }}>
+        <IconFluxo size={12} />
+      </button>
+
+      {aberto && createPortal(
+        <div ref={dropRef} className="status-select-dropdown agrupar-lista"
+          style={{ top: pos.top, left: pos.left, width: LARGURA, zIndex: 10050,
+            maxHeight: 360, overflowY: 'auto' }}>
+          <p className="menu-rotulo">Ao aplicar a etiqueta</p>
+          {opcao('Pedir um comentário', !!etiqueta.exige_comentario,
+            () => onMudar({ exige_comentario: etiqueta.exige_comentario ? 0 : 1 }))}
+
+          <p className="menu-rotulo">Mover para a etapa</p>
+          {opcao('Não mover', !etiqueta.mover_para, () => onMudar({ mover_para: null }))}
+          {etapas.map(e => opcao(e.nome, etiqueta.mover_para === e.nome,
+            () => onMudar({ mover_para: e.nome })))}
+
+          <p className="menu-rotulo">Atribuir a</p>
+          {opcao('Não atribuir', !etiqueta.atribuir_para, () => onMudar({ atribuir_para: null }))}
+          {pessoas.map(p => opcao(p.nome, etiqueta.atribuir_para === p.id,
+            () => onMudar({ atribuir_para: p.id })))}
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
 function EtiquetaTarefaRow({
-  etiqueta, token, isDragging, dropIndicator,
+  etiqueta, token, isDragging, dropIndicator, etapas, pessoas,
   onDragStart, onDragOver, onClearIndicator, onDrop, onDragEnd,
   onUpdate, onDelete, onToggleBloqueio, porPapel,
 }: {
   etiqueta: EtiquetaTarefa;
   token: string;
+  /** Etapas e pessoas para onde a regra pode mandar a tarefa. */
+  etapas: { id: number; nome: string }[];
+  pessoas: { id: string; nome: string }[];
   /** Só desenha a escolha de papéis quando a regra está ligada. */
   porPapel: boolean;
   isDragging: boolean;
@@ -2062,19 +2261,44 @@ function EtiquetaTarefaRow({
     return () => document.removeEventListener('mousedown', fora);
   }, [paletaPos]);
 
+  /** Muda um pedaço da regra de fluxo e grava a etiqueta inteira: a ação do
+   *  servidor regrava a linha, então mandar só o campo apagaria o resto. */
+  async function salvarRegra(regra: Partial<EtiquetaTarefa>) {
+    const nova = { ...etiqueta, ...regra };
+    onUpdate(nova);
+    const r = await api('', 'POST', {
+      action: 'update_tarefa_etiqueta', id: etiqueta.id,
+      nome: nova.nome, cor: nova.cor, descricao: nova.descricao ?? '', papeis: nova.papeis,
+      exige_comentario: nova.exige_comentario, mover_para: nova.mover_para,
+      atribuir_para: nova.atribuir_para,
+    });
+    if (r?.error) {
+      onUpdate(etiqueta);
+      toast('error', 'Não foi possível salvar a regra', r.error);
+    }
+  }
+
   async function salvar(novoNome: string, novaCor: string, novaDesc: string, papeis = etiqueta.papeis) {
     const limpo = novoNome.trim();
     if (!limpo) { setNome(etiqueta.nome); return; }
+    // Pinta primeiro, como na etapa: o tique do papel aparece no clique, e não
+    // quando o servidor responde.
+    onUpdate({ ...etiqueta, nome: limpo, cor: novaCor, descricao: novaDesc.trim() || null, papeis });
     const r = await api('', 'POST', {
       action: 'update_tarefa_etiqueta', id: etiqueta.id,
       nome: limpo, cor: novaCor, descricao: novaDesc, papeis,
+      // A regra vai junto: a ação regrava a linha inteira, e omiti-la aqui
+      // apagaria o que foi configurado no painel ao lado.
+      exige_comentario: etiqueta.exige_comentario,
+      mover_para: etiqueta.mover_para,
+      atribuir_para: etiqueta.atribuir_para,
     });
     if (r?.error) {
       toast('error', 'Não foi possível salvar', r.error);
+      onUpdate(etiqueta);
       setNome(etiqueta.nome); setDescricao(etiqueta.descricao ?? '');
       return;
     }
-    onUpdate({ ...etiqueta, nome: limpo, cor: novaCor, descricao: novaDesc.trim() || null, papeis });
     if (r?.tocadas) toast('success', 'Etiqueta renomeada', `${r.tocadas} tarefa(s) atualizada(s).`);
   }
 
@@ -2183,6 +2407,9 @@ function EtiquetaTarefaRow({
               onChange={p => void salvar(nome, cor, descricao, p)} />
           )}
 
+          <RegraDaEtiqueta etiqueta={etiqueta} etapas={etapas} pessoas={pessoas}
+            onMudar={regra => void salvarRegra(regra)} />
+
           <button className="status-action-btn"
             title={etiqueta.bloqueia
               ? 'Trava a entrega: enquanto uma tarefa aberta tiver esta etiqueta, a entrega dela aparece como bloqueada'
@@ -2259,15 +2486,25 @@ function EtiquetasTarefaTab({ token, adicionando, onFecharNova }: {
   const [novaCor, setNovaCor] = useState(COLORS[0]);
   const [arrastando, setArrastando] = useState<number | null>(null);
   const [sobre, setSobre] = useState<{ id: number; pos: 'before' | 'after' } | null>(null);
+  /** Para onde a regra de uma etiqueta pode mandar a tarefa. Vêm junto com as
+   *  etiquetas: a regra é configurada aqui, e escolher a etapa noutra tela
+   *  quebraria o "configuro tudo num lugar só". */
+  const [etapas, setEtapas] = useState<{ id: number; nome: string }[]>([]);
+  const [pessoas, setPessoas] = useState<{ id: string; nome: string }[]>([]);
 
   useEffect(() => {
     let vivo = true;
-    api('?action=tarefa_etiquetas').then(r => {
-      if (vivo) {
-        setEtiquetas(r?.etiquetas ?? []);
-        setPorPapel(!!r?.porPapel);
-        setLoading(false);
-      }
+    void Promise.all([
+      api('?action=tarefa_etiquetas'),
+      api('?action=tarefa_status_configs'),
+      api('?action=usuarios_notificaveis'),
+    ]).then(([r, e, u]) => {
+      if (!vivo) return;
+      setEtiquetas(r?.etiquetas ?? []);
+      setPorPapel(!!r?.porPapel);
+      setEtapas((e?.statuses ?? []).map((x: any) => ({ id: Number(x.id), nome: String(x.nome) })));
+      setPessoas((u?.usuarios ?? []).map((x: any) => ({ id: String(x.id), nome: String(x.nome) })));
+      setLoading(false);
     });
     return () => { vivo = false; };
   }, [api]);
@@ -2393,6 +2630,8 @@ function EtiquetasTarefaTab({ token, adicionando, onFecharNova }: {
           key={e.id}
           etiqueta={e}
           token={token}
+          etapas={etapas}
+          pessoas={pessoas}
           isDragging={arrastando === e.id}
           dropIndicator={sobre?.id === e.id ? sobre.pos : null}
           onDragStart={() => setArrastando(e.id)}

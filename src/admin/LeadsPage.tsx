@@ -432,7 +432,7 @@ function PendenciaSection({ pendencias, onToggle, onDelete, onUpdateCat, onAdd }
 function StatusSelect({
   statuses, currentId, disabled, onChange,
 }: {
-  statuses: Pick<StatusConfig, 'id' | 'nome' | 'cor'>[];
+  statuses: Pick<StatusConfig, 'id' | 'nome' | 'cor' | 'descricao'>[];
   currentId: number | null | undefined;
   disabled: boolean;
   onChange: (id: number) => void;
@@ -479,9 +479,12 @@ function StatusSelect({
           {statuses.map(st => {
             const isActive = Number(st.id) === currentId;
             return (
+              // A descrição da etapa vira a dica: o nome cabe em duas palavras,
+              // e o critério de quando usar cada uma nem sempre cabe.
               <div
                 key={st.id}
                 className={`status-select-option${isActive ? ' active' : ''}`}
+                title={st.descricao ?? undefined}
                 onClick={() => { onChange(Number(st.id)); setOpen(false); }}
               >
                 <span className="status-select-dot" style={{ background: st.cor }} />
