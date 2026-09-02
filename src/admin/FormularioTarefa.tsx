@@ -226,6 +226,13 @@ export function tarefaGravada(
 
 // ── Checklist ─────────────────────────────────────────────────────────────────
 
+/** O passo a passo já lido de cada tarefa, guardado enquanto a aba viver.
+ *
+ *  Mesma razão do cache da conversa: reabrir uma tarefa mostrava um vazio de
+ *  meio segundo até a lista chegar, e a lista quase sempre é a mesma. Aqui ela
+ *  aparece na hora e se corrige por baixo quando o servidor responde. */
+const passosLidos = new Map<number, Subtarefa[]>();
+
 /** O passo a passo da tarefa, abaixo da descrição.
  *
  *  Na tarefa que já existe, cada item grava sozinho: marcar um passo é um gesto
@@ -242,28 +249,68 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
   desabilitado?: boolean;
   onMudarRascunho: (itens: Subtarefa[]) => void;
 }) {
-  const [itens, setItens] = useState<Subtarefa[]>(rascunho);
-  const [novo, setNovo] = useState('');
   const gravado = tarefaId != null && !!api;
+  const [itens, setItens] = useState<Subtarefa[]>(
+    () => (gravado ? passosLidos.get(tarefaId!) ?? [] : rascunho));
+  const [novo, setNovo] = useState('');
+
+  /** Chave provisória do passo que ainda está nascendo, apontando para a
+   *  promessa do id verdadeiro. Marcar ou tirar um passo recém-escrito espera
+   *  esse id em vez de recusar o gesto. */
+  const nascendo = useRef(new Map<number, Promise<number | null>>());
+  const proximaChave = useRef(-1);
+  /** De que tarefa era a lista que está na tela. */
+  const tarefaAnterior = useRef<number | undefined>(undefined);
 
   // A lista da tarefa que já existe vem do servidor; a da tarefa nova é o
-  // próprio rascunho, que o painel já carrega.
+  // próprio rascunho, que o painel já carrega. Já lida antes: abre com o que
+  // estava e se atualiza por baixo.
   useEffect(() => {
     if (!gravado) { setItens(rascunho); return; }
+    const guardado = passosLidos.get(tarefaId!);
+    // A tarefa que acabou de nascer traz a lista do rascunho na tela, e ainda
+    // não tem cache: zerar aqui piscaria um vazio no lugar do que a pessoa
+    // acabou de escrever. Trocar de tarefa, sim, começa do zero.
+    const acabouDeNascer = tarefaAnterior.current == null;
+    tarefaAnterior.current = tarefaId;
+    if (guardado) setItens(guardado);
+    else if (!acabouDeNascer) setItens([]);
     let vivo = true;
     void api!(`?action=tarefa_subtarefas&id=${tarefaId}`).then(r => {
-      if (vivo) setItens((r?.subtarefas ?? []) as Subtarefa[]);
+      const lista = (r?.subtarefas ?? []) as Subtarefa[];
+      passosLidos.set(tarefaId!, lista);
+      // Um passo escrito enquanto a leitura vinha não pode sumir por causa
+      // dela: a resposta é velha em relação ao que acabou de ser digitado.
+      if (vivo && nascendo.current.size === 0) setItens(lista);
     });
     return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tarefaId, gravado]);
 
+  /** Guarda a lista que a tela mostra, para a próxima abertura já nascer com
+   *  ela. */
+  function lembrar(novos: Subtarefa[]) {
+    if (gravado) passosLidos.set(tarefaId!, novos);
+  }
+
   /** Aplica na tela e grava. Sem tarefa, o rascunho é o destino. */
   function aplicar(novos: Subtarefa[], gravar?: () => Promise<any>) {
     const antes = itens;
     setItens(novos);
+    lembrar(novos);
     if (!gravado) { onMudarRascunho(novos); return; }
-    void gravar?.().then(r => { if (r?.error) setItens(antes); });
+    void gravar?.().then(r => {
+      if (r?.error) { setItens(antes); lembrar(antes); }
+    });
+  }
+
+  /** O id verdadeiro do passo. Para o que acabou de ser escrito, é a espera da
+   *  resposta que o criou - e não uma recusa. */
+  async function idDoPasso(item: Subtarefa): Promise<number | null> {
+    const chave = item.id;
+    if (chave == null) return null;
+    if (chave > 0) return chave;
+    return (await nascendo.current.get(chave)) ?? null;
   }
 
   function adicionar() {
@@ -271,10 +318,29 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
     if (!titulo) return;
     setNovo('');
     if (!gravado) { aplicar([...itens, { titulo, feita: 0 }]); return; }
-    // O id vem do servidor, então o item entra na lista quando ele responde.
-    // É o único gesto daqui que não pode ser pintado antes.
-    void api!('', 'POST', { action: 'add_tarefa_subtarefa', tarefa_id: tarefaId, titulo })
-      .then(r => { if (r?.subtarefa) setItens(atual => [...atual, r.subtarefa]); });
+    // O passo entra no gesto, com uma chave provisória, e o id do servidor a
+    // substitui quando chega. Esperar a resposta para só então mostrar fazia
+    // quem escreve uma lista de dez passos esperar dez vezes.
+    const chave = proximaChave.current--;
+    const provisorio: Subtarefa = { id: chave, titulo, feita: 0 };
+    setItens(atual => { const n = [...atual, provisorio]; lembrar(n); return n; });
+    const promessa = api!('', 'POST', {
+      action: 'add_tarefa_subtarefa', tarefa_id: tarefaId, titulo,
+    }).then(r => {
+      nascendo.current.delete(chave);
+      if (r?.error || !r?.subtarefa) {
+        // Não vingou: o passo sai da lista de onde tinha acabado de entrar.
+        setItens(atual => { const n = atual.filter(x => x.id !== chave); lembrar(n); return n; });
+        return null;
+      }
+      setItens(atual => {
+        const n = atual.map(x => (x.id === chave ? (r.subtarefa as Subtarefa) : x));
+        lembrar(n);
+        return n;
+      });
+      return Number(r.subtarefa.id);
+    });
+    nascendo.current.set(chave, promessa);
   }
 
   const feitas = itens.filter(i => Number(i.feita) === 1).length;
@@ -301,9 +367,13 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
                     const feita = e.target.checked ? 1 : 0;
                     aplicar(
                       itens.map((x, j) => (j === i ? { ...x, feita } : x)),
-                      () => api!('', 'POST', {
-                        action: 'atualizar_tarefa_subtarefa', id: item.id, feita: !!feita,
-                      }),
+                      async () => {
+                        const id = await idDoPasso(item);
+                        if (!id) return { error: 'O passo não chegou a ser gravado.' };
+                        return api!('', 'POST', {
+                          action: 'atualizar_tarefa_subtarefa', id, feita: !!feita,
+                        });
+                      },
                     );
                   }} />
                 <span>{item.titulo}</span>
@@ -313,7 +383,11 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
                   aria-label={`Tirar "${item.titulo}"`} title="Tirar da lista"
                   onClick={() => aplicar(
                     itens.filter((_, j) => j !== i),
-                    () => api!('', 'POST', { action: 'excluir_tarefa_subtarefa', id: item.id }),
+                    async () => {
+                      const id = await idDoPasso(item);
+                      if (!id) return { error: 'O passo não chegou a ser gravado.' };
+                      return api!('', 'POST', { action: 'excluir_tarefa_subtarefa', id });
+                    },
                   )}>
                   <IconX size={11} />
                 </button>

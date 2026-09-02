@@ -3417,17 +3417,27 @@ function faltaEmProjeto(p: any): string | null {
       if (!Number.isFinite(tarefaId)) return { status: 400, body: { error: 'tarefa_id ausente.' } };
       { const barrado = await guardaDaEquipe(db, usuario, tarefaId, 'tarefa'); if (barrado) return barrado; }
       if (!titulo) return { status: 400, body: { error: 'Escreva o que precisa ser feito.' } };
-      const max = await db.execute({
-        sql: 'SELECT COALESCE(MAX(ordem), -1) + 1 AS proxima FROM tarefa_subtarefas WHERE tarefa_id = ?',
-        args: [tarefaId],
-      });
-      const ordem = Number(max.rows[0].proxima);
+      // A posição sai no próprio INSERT, e não numa consulta antes dele: quem
+      // escreve uma lista escreve vários passos seguidos, e cada ida a mais ao
+      // banco aparecia como espera entre um passo e o seguinte.
       const r = await db.execute({
         sql: `INSERT INTO tarefa_subtarefas (tarefa_id, titulo, feita, ordem, criado_em)
-              VALUES (?,?,0,?,?)`,
-        args: [tarefaId, titulo, ordem, new Date().toISOString()],
+              VALUES (?,?,0,
+                (SELECT COALESCE(MAX(ordem), -1) + 1 FROM tarefa_subtarefas WHERE tarefa_id = ?),
+                ?)
+              RETURNING id, ordem`,
+        args: [tarefaId, titulo, tarefaId, new Date().toISOString()],
       });
-      return { status: 200, body: { subtarefa: { id: Number(r.lastInsertRowid), titulo, feita: 0, ordem } } };
+      const linha = r.rows[0];
+      return {
+        status: 200,
+        body: {
+          subtarefa: {
+            id: Number(linha?.id ?? r.lastInsertRowid),
+            titulo, feita: 0, ordem: Number(linha?.ordem ?? 0),
+          },
+        },
+      };
     }
 
     if (action === 'atualizar_tarefa_subtarefa') {
