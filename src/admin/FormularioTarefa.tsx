@@ -132,6 +132,39 @@ export interface Rascunho {
   etiquetas: string[];
 }
 
+/** A tarefa como ela fica depois de gravada: o rascunho que a pessoa preencheu
+ *  mais o que só o servidor decide - o id da tarefa nova, a posição na coluna e
+ *  o carimbo de conclusão. É com ela que a tarefa aparece na tela no mesmo
+ *  gesto, em vez de esperar a listagem inteira voltar do servidor. */
+export function tarefaGravada(
+  r: Rascunho,
+  resposta: { id?: number; ordem?: number; criado_em?: string; concluida_em?: string | null; status?: string },
+  pessoas: Pessoa[],
+): Tarefa {
+  const dono = pessoas.find(p => p.id === r.responsavel_id);
+  return {
+    id: Number(resposta.id),
+    projeto_id: r.projeto_id,
+    entrega_id: r.entrega_id ? Number(r.entrega_id) : null,
+    titulo: r.titulo,
+    descricao: r.descricao || null,
+    status: resposta.status ?? r.status,
+    prioridade: r.prioridade,
+    responsavel_id: r.responsavel_id || null,
+    // O nome e a foto a tela já tem: o servidor recebe só o id de quem cuida.
+    responsavel_nome: dono?.nome ?? null,
+    responsavel_email: dono?.email ?? null,
+    responsavel_foto: dono?.foto_url ?? null,
+    prazo: r.prazo || null,
+    etiquetas: r.etiquetas,
+    ordem: resposta.ordem ?? 0,
+    concluida_em: resposta.concluida_em ?? null,
+    criado_em: resposta.criado_em ?? new Date().toISOString(),
+    comentarios: 0,
+    anexos: 0,
+  };
+}
+
 // ── Avatar ────────────────────────────────────────────────────────────────────
 
 export function Avatar({ nome, foto, size = 22 }: { nome: string; foto?: string | null; size?: number }) {

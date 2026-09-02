@@ -39,7 +39,7 @@ import {
 // Gestão abre o mesmo modal, e duas cópias divergiriam no primeiro campo novo.
 import {
   Avatar, AvatarVazio, ChipEtiqueta, ConfirmarExclusao, ETAPAS_PADRAO, FormularioTarefa,
-  etiquetasParaOPapel, indexar, indexarEtiquetas, type EtapaTarefa,
+  etiquetasParaOPapel, indexar, indexarEtiquetas, tarefaGravada, type EtapaTarefa,
   type Etapario, type EtiquetaTarefa, type Etiquetario, type Pessoa, type Rascunho,
 } from './FormularioTarefa';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
@@ -274,7 +274,6 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
   const [etiquetaPorPapel, setEtiquetaPorPapel] = useState(false);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [carregando, setCarregando] = useState(true);
-  const [salvando, setSalvando] = useState(false);
   const [form, setForm] = useState<Rascunho | null>(null);
   const [excluindo, setExcluindo] = useState<TarefaComProjeto | null>(null);
   const [view, setView] = useState<'quadro' | 'lista' | 'tabela'>('quadro');
@@ -360,6 +359,13 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
   }, []);
 
   /** Pinta a mudança na tarefa antes de o servidor responder. */
+  /** Põe na tela a tarefa que acabou de nascer, com o id que veio do servidor. */
+  const inserirTarefa = useCallback((nova: Tarefa) => {
+    mudancasRef.current++;
+    setProjetos(ps => ps.map(p => (p.id !== nova.projeto_id
+      ? p : { ...p, tarefas: [...(p.tarefas ?? []), nova] })));
+  }, []);
+
   const pintarTarefa = useCallback((id: number, mudancas: Partial<Tarefa>) => {
     mudancasRef.current++;
     setProjetos(ps => ps.map(p => ({
@@ -472,32 +478,36 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
   async function salvar(r: Rascunho) {
     if (!r.projeto_id) { toast('error', 'Falta o projeto', 'Escolha a que projeto a tarefa pertence.'); return; }
     if (!r.titulo.trim()) { toast('error', 'Falta o título', 'A tarefa precisa de um título.'); return; }
-    setSalvando(true);
-    try {
-      const resposta = await api('', 'POST', {
-        action: 'salvar_tarefa', ...r,
+    // O painel fecha no gesto: o que se grava aqui a tela já sabe desenhar, e
+    // segurá-la até a resposta chegar põe a ida e a volta na frente de quem
+    // apertou Salvar. Se o servidor recusar, a lista volta ao que era.
+    const antes = projetos;
+    if (r.id) {
+      const dono = pessoas.find(x => x.id === r.responsavel_id);
+      pintarTarefa(r.id, {
+        titulo: r.titulo, descricao: r.descricao, status: r.status,
+        prioridade: r.prioridade, prazo: r.prazo || null, etiquetas: r.etiquetas,
         entrega_id: r.entrega_id ? Number(r.entrega_id) : null,
+        responsavel_id: r.responsavel_id || null,
+        responsavel_nome: dono?.nome ?? null,
+        responsavel_foto: dono?.foto_url ?? null,
       });
-      if (resposta?.error) { toast('error', 'Não foi possível salvar', resposta.error); return; }
-      // Edição pinta na hora; tarefa nova só existe depois da resposta, então
-      // ela espera a reconciliação para aparecer na coluna.
-      if (r.id) {
-        const dono = pessoas.find(x => x.id === r.responsavel_id);
-        pintarTarefa(r.id, {
-          titulo: r.titulo, descricao: r.descricao, status: r.status,
-          prioridade: r.prioridade, prazo: r.prazo || null, etiquetas: r.etiquetas,
-          entrega_id: r.entrega_id ? Number(r.entrega_id) : null,
-          responsavel_id: r.responsavel_id || null,
-          responsavel_nome: dono?.nome ?? null,
-          responsavel_foto: dono?.foto_url ?? null,
-        });
-      }
-      setForm(null);
-      toast('success', r.id ? 'Tarefa salva' : 'Tarefa criada');
-      if (r.id) reconciliar(); else await recarregar();
-    } finally {
-      setSalvando(false);
     }
+    setForm(null);
+    const resposta = await api('', 'POST', {
+      action: 'salvar_tarefa', ...r,
+      entrega_id: r.entrega_id ? Number(r.entrega_id) : null,
+    });
+    if (resposta?.error) {
+      setProjetos(antes);
+      toast('error', 'Não foi possível salvar', resposta.error);
+      return;
+    }
+    // Tarefa nova: o id nasce no servidor, então ela entra na coluna agora -
+    // montada do que a pessoa escreveu, sem recarregar a listagem inteira.
+    if (!r.id && resposta?.id) inserirTarefa(tarefaGravada(r, resposta, pessoas));
+    toast('success', r.id ? 'Tarefa salva' : 'Tarefa criada');
+    reconciliar();
   }
 
   /** Move a tarefa de coluna. O campo depende do agrupamento: no quadro por
@@ -666,22 +676,27 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
    *  para a cópia nascer na mesma coluna e no mesmo dia da original. Só o título
    *  ganha " (cópia)", senão ficam duas linhas idênticas no quadro. */
   async function duplicar(t: Tarefa) {
-    setSalvando(true);
-    try {
-      const r = await api('', 'POST', {
-        action: 'salvar_tarefa',
-        projeto_id: t.projeto_id, entrega_id: t.entrega_id,
-        titulo: `${t.titulo} (cópia)`, descricao: t.descricao,
-        status: t.status, prioridade: t.prioridade,
-        responsavel_id: t.responsavel_id, prazo: t.prazo, etiquetas: t.etiquetas,
-        concluida_em: t.concluida_em,
+    const r = await api('', 'POST', {
+      action: 'salvar_tarefa',
+      projeto_id: t.projeto_id, entrega_id: t.entrega_id,
+      titulo: `${t.titulo} (cópia)`, descricao: t.descricao,
+      status: t.status, prioridade: t.prioridade,
+      responsavel_id: t.responsavel_id, prazo: t.prazo, etiquetas: t.etiquetas,
+      concluida_em: t.concluida_em,
+    });
+    if (r?.error) { toast('error', 'Não foi possível duplicar', r.error); return; }
+    // A cópia entra na coluna com o id que acabou de voltar, e não depois de
+    // uma listagem inteira.
+    if (r?.id) {
+      inserirTarefa({
+        ...t, id: Number(r.id), titulo: `${t.titulo} (cópia)`,
+        ordem: Number(r.ordem ?? t.ordem),
+        criado_em: String(r.criado_em ?? new Date().toISOString()),
+        comentarios: 0, anexos: 0,
       });
-      if (r?.error) { toast('error', 'Não foi possível duplicar', r.error); return; }
-      await recarregar();
-      toast('success', 'Tarefa duplicada');
-    } finally {
-      setSalvando(false);
     }
+    toast('success', 'Tarefa duplicada');
+    reconciliar();
   }
 
   const abrirEdicao = (t: Tarefa) => setForm({
@@ -855,7 +870,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
           usuarioId={usuario?.id}
           etq={etq}
           pessoas={pessoas}
-          salvando={salvando}
+          salvando={false}
           somenteLeitura={!podeEditar}
           podeComentar={pode('tarefas:comentar')}
           api={api}

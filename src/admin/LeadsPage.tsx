@@ -2367,15 +2367,38 @@ export function DetailPanel({
   }, [anexoTotal, comentarioTotal, pendAbertaTotal, pendTotal]);
 
   async function sendComment(texto: string, parentId?: number) {
-    if (!texto.trim()) return;
-    await api('', 'POST', { action: 'comment', lead_id: id, texto: texto.trim(), parent_id: parentId ?? null });
-    await load();
+    const limpo = texto.trim();
+    if (!limpo) return;
+    // O balão sobe na hora, como na conversa da tarefa: gravar e depois reler o
+    // lead inteiro eram duas voltas ao servidor antes de aparecer qualquer
+    // coisa. Id negativo até a releitura trazer o de verdade.
+    const provisorio: Evento = {
+      id: -Date.now(), lead_id: id, tipo: 'comentario',
+      status_id: null, status_nome: null, status_cor: null,
+      descricao: limpo, parent_id: parentId ?? null,
+      criado_em: new Date().toISOString(),
+      autor_id: usuario?.id ?? null, autor_nome: usuario?.nome ?? null,
+      autor_foto: usuario?.foto_url ?? null,
+    };
+    setDetail(prev => (prev ? { ...prev, eventos: [...prev.eventos, provisorio] } : prev));
+    const r = await api('', 'POST', { action: 'comment', lead_id: id, texto: limpo, parent_id: parentId ?? null });
+    if (r?.error) {
+      setDetail(prev => (prev ? { ...prev, eventos: prev.eventos.filter(e => e.id !== provisorio.id) } : prev));
+      toast('error', 'Não foi possível comentar', r.error);
+      return;
+    }
+    void load();
   }
 
   async function deleteComment(commentId: number) {
-    await api('', 'POST', { action: 'delete_comment', id: commentId });
     setDeleteCommentId(null);
-    await load();
+    // Some da tela na hora; a releitura só confirma.
+    setDetail(prev => (prev
+      ? { ...prev, eventos: prev.eventos.filter(e => e.id !== commentId && e.parent_id !== commentId) }
+      : prev));
+    const r = await api('', 'POST', { action: 'delete_comment', id: commentId });
+    if (r?.error) toast('error', 'Não foi possível excluir', r.error);
+    void load();
   }
 
   async function patchLiquidez(value: string) {

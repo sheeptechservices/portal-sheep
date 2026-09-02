@@ -44,7 +44,7 @@ import { Donut, type FatiaDonut } from '../components/Donut';
 // O mesmo formulário da tela de Tarefas: o quadro da semana abre a tarefa aqui,
 // e uma cópia local divergiria dela no primeiro campo novo.
 import {
-  ConfirmarExclusao, FormularioTarefa, indexarEtiquetas,
+  ConfirmarExclusao, FormularioTarefa, indexarEtiquetas, tarefaGravada,
   type EtapaTarefa, type EtiquetaTarefa, type Rascunho as RascunhoTarefa,
 } from './FormularioTarefa';
 import { SelectSistema } from '../components/SelectSistema';
@@ -4938,6 +4938,22 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     return res.json();
   }, [token, onSessionExpired]);
 
+  /** O resumo do Fireflies de cada reunião já lido, por id de reunião.
+   *
+   *  Ele não vem mais na listagem: é o item mais pesado que existe por lá - um
+   *  terço de tudo - e só quem abre o projeto o lê. Como a listagem volta a
+   *  cada reconciliação sem ele, o que já foi lido é reaplicado aqui, senão o
+   *  resumo sumiria da tela na primeira ação seguinte. */
+  const dadosRef = useRef(new Map<number, string>());
+  const comOsResumos = useCallback((lista: Projeto[]) => (dadosRef.current.size === 0 ? lista
+    : lista.map(p => ({
+      ...p,
+      reunioes: (p.reunioes ?? []).map(r => {
+        const d = dadosRef.current.get(r.id);
+        return d ? { ...r, dados: d } : r;
+      }),
+    }))), []);
+
   /** A carga inteira, com esqueleto. Só na entrada da tela: depois de uma ação
    *  quem recarrega é `recarregar`, sem trocar a tela pelo esqueleto. */
   const carregar = useCallback(async () => {
@@ -4949,7 +4965,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
         api('?action=tarefa_status_configs'),
         api('?action=tarefa_etiquetas'),
       ]);
-      setProjetos(p?.projetos ?? []);
+      setProjetos(comOsResumos(p?.projetos ?? []));
       setClientes(p?.clientes ?? []);
       setPessoas(u?.usuarios ?? []);
       setEtapasTarefa(e?.statuses ?? []);
@@ -4963,6 +4979,22 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
   }, [api, toast]);
 
   useEffect(() => { void carregar(); }, [carregar]);
+
+  // Abriu um projeto, chegam os resumos das reuniões dele - uma vez por
+  // projeto, e não a cada recarregamento da listagem.
+  const projetoAberto = form?.editando?.id ?? null;
+  const pedidosRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (!projetoAberto || pedidosRef.current.has(projetoAberto)) return;
+    pedidosRef.current.add(projetoAberto);
+    void (async () => {
+      const r = await api(`?action=reunioes_dados&projeto_id=${encodeURIComponent(projetoAberto)}`);
+      const vindos: { id: number; dados: string }[] = r?.dados ?? [];
+      if (vindos.length === 0) return;
+      for (const d of vindos) dadosRef.current.set(Number(d.id), String(d.dados));
+      setProjetos(ps => comOsResumos(ps));
+    })();
+  }, [api, comOsResumos, projetoAberto]);
 
   /** Reconcilia a tela com o servidor depois de uma ação, sem esqueleto e sem
    *  prender ninguém: a mudança já foi pintada, isto só traz o que o servidor
@@ -4980,8 +5012,8 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     const marca = mudancasRef.current;
     const p = await api('?action=projetos');
     if (marca !== mudancasRef.current) return;
-    if (p?.projetos) { setProjetos(p.projetos); setClientes(p.clientes ?? []); }
-  }, [api]);
+    if (p?.projetos) { setProjetos(comOsResumos(p.projetos)); setClientes(p.clientes ?? []); }
+  }, [api, comOsResumos]);
 
   /** Junta rajadas: arrastar três cards seguidos reconcilia uma vez, e não três
    *  vezes com a listagem inteira no meio do caminho. */
@@ -4995,6 +5027,14 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
   }, [recarregar]);
   useEffect(() => () => {
     if (reconciliarRef.current) clearTimeout(reconciliarRef.current);
+  }, []);
+
+  /** Põe na tela a tarefa que acabou de nascer. O servidor devolve o id e a
+   *  posição; o resto é o que a pessoa acabou de escrever. */
+  const inserirTarefa = useCallback((nova: Tarefa) => {
+    mudancasRef.current++;
+    setProjetos(ps => ps.map(p => (p.id !== nova.projeto_id
+      ? p : { ...p, tarefas: [...(p.tarefas ?? []), nova] })));
   }, []);
 
   /** Pinta a mudança na tarefa antes de o servidor responder. */
@@ -5037,9 +5077,18 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
       concluida_em: t.concluida_em,
     });
     if (r?.error) { toast('error', 'Não foi possível duplicar', r.error); return; }
+    // A cópia entra na lista com o id que o servidor acabou de devolver.
+    if (r?.id) {
+      inserirTarefa({
+        ...t, id: Number(r.id), titulo: `${t.titulo} (cópia)`,
+        ordem: Number(r.ordem ?? t.ordem),
+        criado_em: String(r.criado_em ?? new Date().toISOString()),
+        comentarios: 0, anexos: 0,
+      });
+    }
     toast('success', 'Tarefa duplicada');
-    await recarregar();
-  }, [api, recarregar, toast]);
+    reconciliar();
+  }, [api, inserirTarefa, reconciliar, toast]);
 
   const abrirTarefa = useCallback((t: Tarefa) => setRascunhoTarefa({
     id: t.id, projeto_id: t.projeto_id, entrega_id: t.entrega_id ? String(t.entrega_id) : '',
@@ -5052,31 +5101,37 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
    *  no quadro, aqui a pessoa apertou "Salvar": vale o formulário todo. */
   const salvarRascunho = useCallback(async (r: RascunhoTarefa) => {
     if (!r.titulo.trim()) { toast('error', 'Falta o título', 'A tarefa precisa de um título.'); return; }
-    setSalvando(true);
-    try {
-      const resposta = await api('', 'POST', {
-        action: 'salvar_tarefa', ...r,
+    // O painel fecha no gesto e a mudança já aparece na lista. Segurar a tela
+    // até o servidor responder põe a ida e a volta inteiras na frente de quem
+    // apertou Salvar, e nada do que se grava aqui depende da resposta.
+    const antes = projetos;
+    if (r.id) {
+      const dono = pessoas.find(x => x.id === r.responsavel_id);
+      pintarTarefa(r.id, {
+        titulo: r.titulo, descricao: r.descricao, status: r.status,
+        prioridade: r.prioridade, prazo: r.prazo || null, etiquetas: r.etiquetas,
         entrega_id: r.entrega_id ? Number(r.entrega_id) : null,
+        responsavel_id: r.responsavel_id || null,
+        responsavel_nome: dono?.nome ?? null,
+        responsavel_foto: dono?.foto_url ?? null,
       });
-      if (resposta?.error) { toast('error', 'Não foi possível salvar', resposta.error); return; }
-      if (r.id) {
-        const dono = pessoas.find(x => x.id === r.responsavel_id);
-        pintarTarefa(r.id, {
-          titulo: r.titulo, descricao: r.descricao, status: r.status,
-          prioridade: r.prioridade, prazo: r.prazo || null, etiquetas: r.etiquetas,
-          entrega_id: r.entrega_id ? Number(r.entrega_id) : null,
-          responsavel_id: r.responsavel_id || null,
-          responsavel_nome: dono?.nome ?? null,
-          responsavel_foto: dono?.foto_url ?? null,
-        });
-      }
-      setRascunhoTarefa(null);
-      toast('success', 'Tarefa salva');
-      reconciliar();
-    } finally {
-      setSalvando(false);
     }
-  }, [api, pessoas, pintarTarefa, reconciliar, toast]);
+    setRascunhoTarefa(null);
+    const resposta = await api('', 'POST', {
+      action: 'salvar_tarefa', ...r,
+      entrega_id: r.entrega_id ? Number(r.entrega_id) : null,
+    });
+    if (resposta?.error) {
+      setProjetos(antes);
+      toast('error', 'Não foi possível salvar', resposta.error);
+      return;
+    }
+    // Tarefa nova: o id nasce lá, então ela só entra na lista agora - mas com o
+    // que a tela já tem em mãos, e não com a listagem inteira de volta.
+    if (!r.id && resposta?.id) inserirTarefa(tarefaGravada(r, resposta, pessoas));
+    toast('success', r.id ? 'Tarefa salva' : 'Tarefa criada');
+    reconciliar();
+  }, [api, inserirTarefa, pessoas, pintarTarefa, projetos, reconciliar, toast]);
   /** Grava uma mudança pontual numa tarefa, a partir do relatório. Manda a
    *  tarefa inteira e sobrescreve o que mudou: a ação do servidor grava todos
    *  os campos, e um corpo parcial apagaria o resto. */
@@ -5134,29 +5189,44 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
       if (resposta?.error) { toast('error', 'Não foi possível salvar', resposta.error); return; }
 
       const projetoId = editando?.id ?? String(resposta?.id ?? '');
-      for (const id of removidos) {
-        await api('', 'POST', { action: 'delete_projeto_arquivo', id });
-      }
-      for (const a of anexos) {
-        await api('', 'POST', { action: 'add_projeto_arquivo', projeto_id: projetoId, ...a });
-      }
+      // Os anexos vão juntos. Um de cada vez, três arquivos custavam três idas
+      // e voltas em fila, com o formulário parado na tela o tempo todo.
+      await Promise.all([
+        ...removidos.map(id => api('', 'POST', { action: 'delete_projeto_arquivo', id })),
+        ...anexos.map(a => api('', 'POST', { action: 'add_projeto_arquivo', projeto_id: projetoId, ...a })),
+      ]);
 
       setForm(null);
       toast('success', editando ? 'Projeto atualizado' : 'Projeto criado');
-      await recarregar();
+      // Sem esperar: o formulário já fechou, e a listagem se atualiza atrás.
+      void recarregar();
     } finally {
       setSalvando(false);
     }
   }
 
 
-  /** Grava a leitura e recarrega: o registro nasce no servidor, com id, data e
-   *  autor, e inventar isso aqui só para adiantar a tela abriria espaço para
-   *  divergência. */
+  /** Grava a leitura e a mostra na hora. O id, a data e o autor continuam
+   *  nascendo no servidor - por isso ele os devolve na resposta: a linha entra
+   *  na tela com exatamente o que ficou gravado, sem inventar nada aqui e sem
+   *  esperar a listagem inteira. */
   async function registrarSaude(p: Projeto, estado: string, descricao: string) {
-    await api('', 'POST', { action: 'registrar_saude_projeto', projeto_id: p.id, estado, descricao });
+    const r = await api('', 'POST', {
+      action: 'registrar_saude_projeto', projeto_id: p.id, estado, descricao,
+    });
+    if (r?.error) { toast('error', 'Não foi possível registrar', r.error); return; }
+    if (r?.id) {
+      mudancasRef.current++;
+      const nova: RegistroSaude = {
+        id: Number(r.id), projeto_id: p.id, estado, descricao,
+        criado_em: String(r.criado_em), criado_por_id: r.criado_por_id ?? null,
+        criado_por_nome: r.criado_por_nome ?? null,
+      };
+      // A mais recente na frente, como a listagem devolve: a saúde atual do
+      // projeto é a primeira da série.
+      setProjetos(ps => ps.map(x => (x.id === p.id ? { ...x, saude: [nova, ...x.saude] } : x)));
+    }
     toast('success', 'Leitura registrada');
-    await recarregar();
   }
 
   /** Publica ou tira do ar a página de acompanhamento do cliente. Devolve o
@@ -5201,6 +5271,22 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
       toast('error', 'Não deu', r.error);
       return;
     }
+    // Entrega nova entra na lista com o id que acabou de voltar. O que ela
+    // ainda não tem - contagem de tarefas e progresso - nasce zerado, que é o
+    // que uma entrega recém-criada de fato tem.
+    if (!id && r?.id) {
+      mudancasRef.current++;
+      const nova: Entrega = {
+        ...dados, id: Number(r.id), projeto_id: p.id,
+        descricao: dados.descricao || null,
+        categoria: dados.categoria || null,
+        prazo: dados.prazo || null,
+        status: String(r.status ?? 'Planejada'),
+        ordem: Number(r.ordem ?? 0),
+        evidencias: [], tarefas_total: 0, tarefas_feitas: 0, progresso: 0,
+      };
+      setProjetos(ps => ps.map(x => (x.id === p.id ? { ...x, entregas: [...x.entregas, nova] } : x)));
+    }
     reconciliar();
   }
 
@@ -5219,20 +5305,29 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     // Só o primeiro arquivo do lote substitui a prova antiga; os demais entram
     // ao lado dele, senão cada um apagaria o anterior.
     let primeiro = true;
+    const envios: Promise<unknown>[] = [];
     for (const f of Array.from(arquivos ?? [])) {
       if (f.size > LIMITE_ANEXO) {
         toast('error', 'Arquivo grande demais',
           `"${f.name}" tem ${fmtTamanho(f.size)} e o limite é ${fmtTamanho(LIMITE_ANEXO)}.`);
         continue;
       }
-      await api('', 'POST', {
+      // A leitura do arquivo é sequencial de propósito - `substituir` só vale
+      // para o primeiro, e o primeiro tem de chegar antes dos outros. O envio,
+      // esse vai em paralelo: três provas custavam três voltas em fila.
+      const corpo = {
         action: 'add_entrega_evidencia', entrega_id: e.id, nome: f.name,
         tipo: f.type || 'application/octet-stream', tamanho: f.size,
         base64: await lerBase64(f), comentario, etapa, substituir: primeiro,
-      });
+      };
+      if (primeiro) await api('', 'POST', corpo);
+      else envios.push(api('', 'POST', corpo));
       primeiro = false;
     }
-    await recarregar();
+    await Promise.all(envios);
+    // A prova vira id e carimbo no servidor, então quem a traz é a listagem -
+    // mas sem prender a tela: ela chega em seguida, com o painel já aberto.
+    void recarregar();
   }
 
   async function baixarEvidencia(ev: Evidencia) {
@@ -5250,9 +5345,20 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     p: Projeto,
     reg: { data: string; assunto: string; notas: string; participantes: string[] },
   ) {
-    await api('', 'POST', { action: 'registrar_reuniao_projeto', projeto_id: p.id, ...reg });
+    const r = await api('', 'POST', { action: 'registrar_reuniao_projeto', projeto_id: p.id, ...reg });
+    if (r?.error) { toast('error', 'Não foi possível registrar', r.error); return; }
+    if (r?.id) {
+      mudancasRef.current++;
+      // A mais recente na frente: a lista vem por data, da última para a
+      // primeira, e a que acabou de ser registrada é a última que houve.
+      const nova: Reuniao = {
+        ...reg, id: Number(r.id), projeto_id: p.id,
+        criado_por_nome: r.criado_por_nome ?? null, entregas: [],
+      };
+      setProjetos(ps => ps.map(x => (
+        x.id === p.id ? { ...x, reunioes: [nova, ...(x.reunioes ?? [])] } : x)));
+    }
     toast('success', 'Reunião registrada');
-    await recarregar();
   }
 
   /** A lista de reuniões da conta do Fireflies, filtrada por texto. A chave da
@@ -5311,7 +5417,9 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     toast('success', n > 1 ? `${n} reuniões anexadas` : 'Reunião anexada',
       r?.falhas ? `${r.falhas} não vieram: o Fireflies recusou.`
         : 'Puxadas do Fireflies, com o resumo e o link.');
-    await recarregar();
+    // O conteúdo da reunião é montado no servidor a partir do Fireflies, então
+    // quem o traz é a listagem. Sem `await`: a caixa de busca já pode fechar.
+    void recarregar();
   }
 
   async function excluirReuniao(r: Reuniao) {
@@ -5358,10 +5466,12 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
 
   async function excluir(p: Projeto) {
     setExcluindo(null);
+    const antes = projetos;
+    mudancasRef.current++;
     setProjetos(ps => ps.filter(x => x.id !== p.id));
-    await api('', 'POST', { action: 'delete_projeto', id: p.id });
+    const r = await api('', 'POST', { action: 'delete_projeto', id: p.id });
+    if (r?.error) { setProjetos(antes); toast('error', 'Não foi possível excluir', r.error); return; }
     toast('success', 'Projeto excluído');
-    await recarregar();
   }
 
   /** Muda só um campo, sem abrir o formulário. Usado na aba de gestão. */

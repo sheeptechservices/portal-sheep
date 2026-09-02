@@ -2415,11 +2415,16 @@ async function despacharAdminData(
           SELECT id, projeto_id, estado, descricao, criado_em, criado_por_id, criado_por_nome
           FROM projeto_saude ORDER BY criado_em DESC
         `),
+        // Sem a coluna `dados`: ela guarda o resumo inteiro do Fireflies, e
+        // trazê-la aqui era um terço de tudo o que a listagem carregava - de
+        // toda reunião de todo projeto, a cada recarregamento, para mostrar o
+        // resumo de uma. Ele vem por ação própria quando o projeto abre.
         db.execute(`
           SELECT id, projeto_id, data, assunto, notas, participantes, criado_por_nome,
-                 fireflies_id, link, dados
+                 fireflies_id, link
           FROM projeto_reunioes ORDER BY data DESC, id DESC
         `),
+        db.execute(`SELECT reuniao_id, tipo, alvo_id FROM reuniao_vinculos`),
         db.execute(`
           SELECT id, projeto_id, titulo, descricao, categoria, status, prazo,
                  responsaveis, links, ordem
@@ -2695,6 +2700,20 @@ async function despacharAdminData(
 
     // As reuniões da conta do Fireflies, para escolher qual anexar. Não grava
     // nada: é a vitrine de onde se puxa.
+    // O resumo das reuniões de um projeto: tópicos, itens de ação e palavras
+    // -chave, do jeito que o Fireflies devolveu. Vem por fora da listagem
+    // porque só quem abre o projeto lê isto, e é o item mais pesado que existe
+    // por lá.
+    if (action === 'reunioes_dados') {
+      const projetoId = String(query.get('projeto_id') ?? '').trim();
+      if (!projetoId) return { status: 400, body: { error: 'projeto_id ausente.' } };
+      const r = await db.execute({
+        sql: 'SELECT id, dados FROM projeto_reunioes WHERE projeto_id = ? AND dados IS NOT NULL',
+        args: [projetoId],
+      });
+      return { status: 200, body: { dados: r.rows } };
+    }
+
     // O endereço da gravação, na hora de assistir. Não fica guardado: a URL da
     // CDN deles é assinada e expira em dias.
     if (action === 'fireflies_gravacao') {
@@ -3209,6 +3228,12 @@ function faltaEmProjeto(p: any): string | null {
         responsavel_id: t.responsavel_id, prazo: t.prazo, entrega_id: t.entrega_id, etiquetas,
       })!;
 
+      // O que a tela precisa saber do que foi gravado: o id da nova e os campos
+      // que quem decide é o servidor. Com eles a tela monta a linha sozinha, em
+      // vez de recarregar a listagem inteira para ver a tarefa aparecer.
+      let novaId: number | null = null;
+      let gravada: { ordem?: number; criado_em?: string; concluida_em: string | null } = { concluida_em: null };
+
       if (t.id) {
         const antes = await db.execute({
           sql: `SELECT titulo, descricao, status, prioridade, responsavel_id, prazo,
@@ -3236,6 +3261,7 @@ function faltaEmProjeto(p: any): string | null {
             t.prioridade ?? 'Média', t.responsavel_id || null, t.prazo || null, etiquetas,
             carimbo as never, t.id],
         });
+        gravada = { concluida_em: (carimbo as string | null) ?? null };
         await registrarEventosDaTarefa(db, t.id, autorId, autorNome,
           fotoDaTarefa(antes.rows[0]), depois,
           { antes: etapas.conclusivas.has(String(antes.rows[0].status)), depois: fecha });
@@ -3244,7 +3270,8 @@ function faltaEmProjeto(p: any): string | null {
           sql: 'SELECT COALESCE(MAX(ordem), -1) + 1 AS proxima FROM projeto_tarefas WHERE projeto_id = ?',
           args: [t.projeto_id],
         });
-        await db.execute({
+        const criadaEm = new Date().toISOString();
+        const inserida = await db.execute({
           sql: `INSERT INTO projeto_tarefas
                   (projeto_id, entrega_id, titulo, descricao, status, prioridade, responsavel_id,
                    prazo, etiquetas, ordem, concluida_em, criado_em, criado_por_id, criado_por_nome)
@@ -3252,17 +3279,14 @@ function faltaEmProjeto(p: any): string | null {
           args: [t.projeto_id, t.entrega_id || null, titulo, t.descricao ?? null,
             statusPedido, t.prioridade ?? 'Média', t.responsavel_id || null,
             t.prazo || null, etiquetas, Number(ordem.rows[0].proxima), concluida,
-            new Date().toISOString(), autorId, autorNome],
+            criadaEm, autorId, autorNome],
         });
-        const nova = await db.execute({
-          sql: 'SELECT id FROM projeto_tarefas WHERE projeto_id = ? ORDER BY id DESC LIMIT 1',
-          args: [t.projeto_id],
-        });
-        const novaId = nova.rows[0]?.id;
-        if (novaId != null) {
-          await registrarEventosDaTarefa(db, novaId as number, autorId, autorNome,
-            null, depois, { antes: false, depois: fecha });
-        }
+        // O id sai do próprio insert. Reler a última linha da tabela custava
+        // outra ida ao banco para saber o que já estava ali.
+        novaId = Number(inserida.lastInsertRowid);
+        gravada = { ordem: Number(ordem.rows[0].proxima), criado_em: criadaEm, concluida_em: concluida };
+        await registrarEventosDaTarefa(db, novaId, autorId, autorNome,
+          null, depois, { antes: false, depois: fecha });
       }
       // Avisa por e-mail quem acompanha a etapa de destino, como no funil.
       if (mudouDeEtapa) {
@@ -3292,7 +3316,7 @@ function faltaEmProjeto(p: any): string | null {
           }
         }
       }
-      return { status: 200, body: { ok: true } };
+      return { status: 200, body: { ok: true, id: novaId ?? t.id, status: statusPedido, ...gravada } };
     }
 
     if (action === 'excluir_tarefa') {
@@ -3341,16 +3365,14 @@ function faltaEmProjeto(p: any): string | null {
       }
 
       const agora = new Date().toISOString();
-      await db.execute({
+      const criado = await db.execute({
         sql: `INSERT INTO tarefa_comentarios (tarefa_id, pai_id, usuario_id, usuario_nome, texto, criado_em)
               VALUES (?,?,?,?,?,?)`,
         args: [tarefaId, pai, autorId, autorNome, texto, agora],
       });
-      const criado = await db.execute({
-        sql: 'SELECT id FROM tarefa_comentarios WHERE tarefa_id = ? ORDER BY id DESC LIMIT 1',
-        args: [tarefaId],
-      });
-      const comentarioId = Number(criado.rows[0]?.id);
+      // O id sai do próprio insert: reler a última linha da tabela era outra
+      // ida ao banco no meio do envio de um comentário.
+      const comentarioId = Number(criado.lastInsertRowid);
 
       // As marcações são conferidas contra os usuários que existem: o texto vem
       // da tela, e id inventado viraria menção a ninguém.
@@ -3361,28 +3383,36 @@ function faltaEmProjeto(p: any): string | null {
           sql: `SELECT id FROM usuarios WHERE ativo = 1 AND id IN (${pedidas.map(() => '?').join(',')})`,
           args: pedidas,
         });
-        for (const r of validos.rows) {
-          await db.execute({
+        // Numa leva só: uma ida ao banco por pessoa marcada fazia um comentário
+        // com quatro menções custar quatro voltas.
+        if (validos.rows.length > 0) {
+          await db.batch(validos.rows.map(r => ({
             sql: 'INSERT OR IGNORE INTO tarefa_comentario_mencoes (comentario_id, usuario_id) VALUES (?,?)',
             args: [comentarioId, String(r.id)],
-          });
+          })), 'write');
         }
       }
 
+      // Confere todos antes de gravar qualquer um: recusar o terceiro no meio
+      // do laço deixaria os dois primeiros gravados num comentário que a tela
+      // considera recusado.
+      const paraGravar: { sql: string; args: never[] }[] = [];
       for (const a of anexos) {
         const tamanho = Number(a?.tamanho ?? 0);
         if (!a?.nome || !a?.base64) continue;
         if (tamanho > LIMITE_ANEXO) {
           return { status: 400, body: { error: `"${String(a.nome)}" passa do limite de anexo.` } };
         }
-        await db.execute({
+        paraGravar.push({
           sql: `INSERT INTO tarefa_comentario_anexos (comentario_id, nome, tipo, tamanho, base64, criado_em)
                 VALUES (?,?,?,?,?,?)`,
           args: [comentarioId, String(a.nome), String(a.tipo ?? 'application/octet-stream'),
-            tamanho, String(a.base64), agora],
+            tamanho, String(a.base64), agora] as never[],
         });
       }
-      return { status: 200, body: { ok: true, id: comentarioId } };
+      // Numa leva só, como as menções.
+      if (paraGravar.length > 0) await db.batch(paraGravar, 'write');
+      return { status: 200, body: { ok: true, id: comentarioId, criado_em: agora } };
     }
 
     if (action === 'excluir_tarefa_comentario') {
@@ -3429,6 +3459,8 @@ function faltaEmProjeto(p: any): string | null {
         };
       }
 
+      let criada: { id?: number; ordem?: number; status?: string } = {};
+
       if (e.id) {
         const etapaExigida = PROVA_DA_ETAPA[e.status];
         if (etapaExigida && !(await temProva(db, Number(e.id), etapaExigida))) {
@@ -3454,7 +3486,7 @@ function faltaEmProjeto(p: any): string | null {
           sql: 'SELECT COALESCE(MAX(ordem), -1) + 1 AS proxima FROM projeto_entregas WHERE projeto_id = ?',
           args: [e.projeto_id],
         });
-        await db.execute({
+        const inserida = await db.execute({
           sql: `INSERT INTO projeto_entregas
                   (projeto_id, titulo, descricao, categoria, status, prazo, responsaveis, links, ordem,
                    criado_em, criado_por_id, criado_por_nome)
@@ -3468,9 +3500,16 @@ function faltaEmProjeto(p: any): string | null {
             Number(ordem.rows[0].proxima), new Date().toISOString(), autorId, autorNome,
           ],
         });
+        // O que a tela não teria como saber: o id e a posição na lista. Com
+        // eles ela desenha a entrega nova na hora, sem esperar a listagem.
+        criada = {
+          id: Number(inserida.lastInsertRowid),
+          ordem: Number(ordem.rows[0].proxima),
+          status: e.status === ENTREGA_CANCELADA ? ENTREGA_CANCELADA : 'Planejada',
+        };
       }
       await recalcularProgresso(db, String(e.projeto_id));
-      return { status: 200, body: { ok: true } };
+      return { status: 200, body: { ok: true, ...criada } };
     }
 
     if (action === 'excluir_entrega') {
@@ -3559,7 +3598,7 @@ function faltaEmProjeto(p: any): string | null {
       if (!body.data) return { status: 400, body: { error: 'Informe a data da reunião.' } };
       if (!assunto) return { status: 400, body: { error: 'Informe o assunto da reunião.' } };
       if (!notas) return { status: 400, body: { error: 'Registre o que foi tratado.' } };
-      await db.execute({
+      const r = await db.execute({
         sql: `INSERT INTO projeto_reunioes
                 (projeto_id, data, assunto, notas, participantes, criado_em, criado_por_id, criado_por_nome)
               VALUES (?,?,?,?,?,?,?,?)`,
@@ -3569,7 +3608,8 @@ function faltaEmProjeto(p: any): string | null {
           new Date().toISOString(), autorId, autorNome,
         ],
       });
-      return { status: 200, body: { ok: true } };
+      // Id e autor voltam para a tela desenhar a reunião sem recarregar tudo.
+      return { status: 200, body: { ok: true, id: Number(r.lastInsertRowid), criado_por_nome: autorNome } };
     }
 
     // Anexa uma reunião do Fireflies ao projeto. O resumo vira a nota, e o
@@ -3748,12 +3788,21 @@ function faltaEmProjeto(p: any): string | null {
       if (!body.projeto_id) return { status: 400, body: { error: 'projeto_id ausente.' } };
       if (!estado) return { status: 400, body: { error: 'Escolha o estado de saúde.' } };
       if (!descricao) return { status: 400, body: { error: 'Descreva a situação do projeto.' } };
-      await db.execute({
+      const agora = new Date().toISOString();
+      const r = await db.execute({
         sql: `INSERT INTO projeto_saude (projeto_id, estado, descricao, criado_em, criado_por_id, criado_por_nome)
               VALUES (?,?,?,?,?,?)`,
-        args: [body.projeto_id, estado, descricao, new Date().toISOString(), autorId, autorNome],
+        args: [body.projeto_id, estado, descricao, agora, autorId, autorNome],
       });
-      return { status: 200, body: { ok: true } };
+      // A leitura volta pronta: id, data e autor são do servidor, e é só isso
+      // que faltava para a tela mostrá-la na hora.
+      return {
+        status: 200,
+        body: {
+          ok: true, id: Number(r.lastInsertRowid), criado_em: agora,
+          criado_por_id: autorId, criado_por_nome: autorNome,
+        },
+      };
     }
 
     if (action === 'excluir_saude_projeto') {

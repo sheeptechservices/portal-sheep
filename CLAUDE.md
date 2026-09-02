@@ -148,7 +148,26 @@ encolhe de leve, porque ele não veio da borda.
 bloco `@media (prefers-reduced-motion: reduce)` que a desligue, como já é feito na
 troca de tema.
 
-## 4. Checklist antes de fechar uma alteração de UI
+## 4. Ações de gravar: a tela responde no gesto
+
+Inserir, editar e excluir mudam a tela **antes** de o servidor responder, e voltam
+atrás se ele recusar. Ninguém espera a ida e a volta para ver o próprio gesto.
+
+- **Pinta primeiro.** Guarde o estado anterior, aplique a mudança, mande o pedido.
+  Deu erro: restaure o que guardou e explique no toast.
+- **O painel fecha no gesto.** Nada de `setSalvando(true)` segurando o formulário
+  aberto enquanto a gravação vai e volta.
+- **Peça nova precisa do id, e só dele.** A ação do servidor devolve o que só ele
+  sabe - id, posição na lista, carimbo de data - e a tela monta a linha com o que
+  a pessoa acabou de escrever. Nunca recarregue a listagem inteira para ver
+  aparecer o que você acabou de criar.
+- **A reconciliação vem depois e por baixo.** `reconciliar()` junta rajadas e traz
+  o que o servidor deduz sozinho (status e progresso da entrega, por exemplo).
+  Ela nunca é esperada com `await` na frente de quem clicou.
+- **Nada de laço de requisições.** Três anexos são três pedidos em paralelo, não
+  três idas em fila.
+
+## 5. Checklist antes de fechar uma alteração de UI
 
 1. Nenhum emoji novo fora de `api/slack*.ts`.
 2. Nenhum travessão longo ou médio no diff.
@@ -162,4 +181,6 @@ troca de tema.
 9. Modal fechando por `useSaidaSuave`, com todos os caminhos de fechar passando
    pelo `fechar` do gancho.
 10. Dropdown alternando no segundo clique, em portal e acima de qualquer painel.
-11. Conferido nos dois temas (claro e escuro).
+11. Ação de gravar pintando na hora, com desfazer no erro; nenhuma espera de
+    listagem na frente de quem clicou.
+12. Conferido nos dois temas (claro e escuro).
