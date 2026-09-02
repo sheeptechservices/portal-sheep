@@ -51,6 +51,11 @@ export const MARCAS: Marca[] = [
   // se perde no fundo.
   { nome: 'FM Rocket', src: '/marcas/fm-rocket.webp', altura: 28,
     cor: '#5B2C87', corEscura: '#A57BE0', proporcao: 314 / 82 },
+  // Brasão com o nome vazado em branco por dentro: chapada, a silhueta comeria
+  // justamente o texto, então entra como detalhe. Veio em SVG e fica em SVG -
+  // é desenho vetorial, e rasterizar para .webp só perderia definição.
+  { nome: 'Laticínios Porto Alegre', src: '/marcas/laticinios-porto-alegre.svg',
+    altura: 46, detalhe: true },
 ];
 
 /** Casa o cliente com a marca pelo nome. Cliente cadastrado à mão não tem logo,
