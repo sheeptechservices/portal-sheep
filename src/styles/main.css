@@ -11379,6 +11379,19 @@ body.arrastando-painel {
   height: 1px;
   background: var(--pub-arvore);
 }
+/* Segundo nivel do agrupamento na pagina do cliente: os grupos de submarcador
+   ficam recuados sob o marcador, e e o recuo que faz o par ler como um encaixe
+   em vez de duas listas seguidas. */
+.pub-secao-marcador + .pub-secao-marcador { margin-top: 20px; }
+.pub-secao-dentro { padding-left: 16px; }
+/* O cabecalho do marcador pesa mais que o do submarcador: sao dois niveis na
+   mesma tela, e sem diferenca de peso o olho nao sabe qual contem qual. */
+.pub-grupo-titulo.pub-marcador-titulo {
+  font-size: 11.5px;
+  letter-spacing: .06em;
+  color: var(--black);
+}
+
 .pub-grupo-titulo {
   display: flex;
   align-items: center;

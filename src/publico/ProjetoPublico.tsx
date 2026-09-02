@@ -9,7 +9,7 @@
 //  Mora fora de `src/admin` de propósito: nada deste arquivo importa de lá, e
 //  por isso o código do portal nem é baixado por quem abre este link.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { logoDoCliente } from '../lib/marcas';
 // Vive em `components/`, e não em `admin/`: dá para reusar aqui sem arrastar o
 // portal junto, e o filtro fica com o mesmo desenho dos dois lados.
@@ -107,6 +107,7 @@ const AGRUPAMENTOS = [
   { valor: 'nenhum', label: 'Sem agrupamento' },
   { valor: 'marcador', label: 'Marcador' },
   { valor: 'submarcador', label: 'Submarcador' },
+  { valor: 'marcador-sub', label: 'Marcador e submarcador' },
   { valor: 'status', label: 'Situação' },
   { valor: 'responsavel', label: 'Responsável' },
 ] as const;
@@ -278,8 +279,12 @@ function Seletor({ valor, opcoes, icone: Icone, rotulo, onChange }: {
 /** A linha da entrega, no mesmo desenho do painel de dentro: o marco da
  *  situação abre a linha, o título ocupa o meio, e prazo, contagem de tarefas
  *  e percentual fecham à direita. */
-function LinhaEntrega({ e, aberta, realcada, onAlternar, onAbrirPrevia }: {
+function LinhaEntrega({ e, marca, aberta, realcada, onAlternar, onAbrirPrevia }: {
   e: Entrega;
+  /** O que dizer sobre onde a entrega vive. Vem pronto de fora porque depende
+   *  do agrupamento em vigor: o que o cabeçalho do grupo já diz não se repete
+   *  na linha. */
+  marca: string;
   aberta: boolean;
   /** Piscada curta depois de vir do quadro ou do calendário, para o olho achar
    *  a linha. */
@@ -315,11 +320,7 @@ function LinhaEntrega({ e, aberta, realcada, onAlternar, onAbrirPrevia }: {
         {temDetalhe && (
           <span className="pub-seta" aria-hidden="true"><IconChevronRight size={12} /></span>
         )}
-        {(e.marcador || e.submarcador) && (
-          <span className="pub-marcador">
-            {[e.marcador, e.submarcador].filter(Boolean).join(' · ')}
-          </span>
-        )}
+        {marca && <span className="pub-marcador">{marca}</span>}
         {e.descricao && <span className="pub-entrega-desc">{e.descricao}</span>}
       </span>
       <span className="pub-entrega-fim">
@@ -635,7 +636,18 @@ export default function ProjetoPublico({ token }: { token: string }) {
     donos: e.responsaveis.map(p => ({ nome: p.nome, foto: p.foto_url })),
   }));
 
-  const grupos = agrupamento === 'nenhum' ? [{ nome: '', itens: lista }] : (() => {
+  /** O nível que o cabeçalho do grupo não está dizendo. Agrupado por marcador,
+   *  a linha mostra a área; agrupado por área, mostra a empresa; nos dois
+   *  níveis, nada - os cabeçalhos já dizem tudo. */
+  const marcaDaLinha = (e: Entrega) => (
+    agrupamento === 'marcador' ? [e.submarcador]
+      : agrupamento === 'submarcador' ? [e.marcador]
+        : agrupamento === 'marcador-sub' ? []
+          : [e.marcador, e.submarcador]
+  ).filter(Boolean).join(' · ');
+
+  const grupos = agrupamento === 'nenhum' || agrupamento === 'marcador-sub'
+    ? [{ nome: '', itens: lista }] : (() => {
     // Entrega com dois responsáveis aparece nos dois grupos: ela é de ambos, e
     // esconder uma cópia faria o cliente procurar e não achar.
     const chavesDe = (e: Entrega): string[] => {
@@ -673,6 +685,30 @@ export default function ProjetoPublico({ token }: { token: string }) {
         : a.localeCompare(b, 'pt-BR'));
     return [...mapa.entries()].sort((x, y) => ordena(x[0], y[0]))
       .map(([nome, itens]) => ({ nome, itens }));
+  })();
+
+  /** Os grupos repartidos mais uma vez, por marcador: a empresa por fora e o
+   *  departamento por dentro. Nos outros agrupamentos existe uma seção só, sem
+   *  título, e o desenho não muda. */
+  const secoes = agrupamento !== 'marcador-sub' ? [{ nome: '', grupos }] : (() => {
+    const nome = (v: string | null, vazio: string) => (v ?? '').trim() || vazio;
+    // O balde de sobra vai para o fim, nos dois níveis.
+    const ordena = (sobra: string) => (a: string, b: string) => (
+      a === sobra ? 1 : b === sobra ? -1 : a.localeCompare(b, 'pt-BR'));
+    const marcadoresNaTela = [...new Set(lista.map(e => nome(e.marcador, 'Sem marcador')))]
+      .sort(ordena('Sem marcador'));
+    return marcadoresNaTela.map(m => {
+      const dele = lista.filter(e => nome(e.marcador, 'Sem marcador') === m);
+      const subs = [...new Set(dele.map(e => nome(e.submarcador, 'Sem submarcador')))]
+        .sort(ordena('Sem submarcador'));
+      return {
+        nome: m,
+        grupos: subs.map(sub => ({
+          nome: sub,
+          itens: dele.filter(e => nome(e.submarcador, 'Sem submarcador') === sub),
+        })),
+      };
+    });
   })();
 
   return (
@@ -815,8 +851,14 @@ export default function ProjetoPublico({ token }: { token: string }) {
         ) : visao === 'calendario' ? (
           <CalendarioEntregas itens={paraVisao} cores={COR}
             fechados={['Validada', 'Cancelada']} onAbrir={verNaLista} />
-        ) : grupos.map(g => {
-          const fechado = recolhidos.has(g.nome);
+        ) : secoes.map(secao => {
+          const chaveSecao = `sec:${secao.nome}`;
+          const secaoFechada = recolhidos.has(chaveSecao);
+          const gruposDaSecao = secao.grupos.map(g => {
+          // A chave carrega a seção: "Comercial" existe em mais de uma empresa,
+          // e sem o prefixo fechar um fecharia o outro.
+          const chaveGrupo = `${secao.nome}/${g.nome}`;
+          const fechado = recolhidos.has(chaveGrupo);
           return (
           // A árvore só existe havendo cabeçalho: sem agrupamento não há de
           // onde os ramos sairem.
@@ -826,7 +868,7 @@ export default function ProjetoPublico({ token }: { token: string }) {
                 aria-expanded={!fechado}
                 onClick={() => setRecolhidos(r => {
                   const n = new Set(r);
-                  if (n.has(g.nome)) n.delete(g.nome); else n.add(g.nome);
+                  if (n.has(chaveGrupo)) n.delete(chaveGrupo); else n.add(chaveGrupo);
                   return n;
                 })}>
                 <span className="pub-grupo-seta" aria-hidden="true" />
@@ -844,6 +886,7 @@ export default function ProjetoPublico({ token }: { token: string }) {
                 <LinhaEntrega
                   key={e.id}
                   e={e}
+                  marca={marcaDaLinha(e)}
                   realcada={realcada === e.id}
                   aberta={abertas.has(e.id)}
                   onAlternar={() => setAbertas(a => {
@@ -860,6 +903,29 @@ export default function ProjetoPublico({ token }: { token: string }) {
             </div>
           </div>
           );
+          });
+
+          // Sem seção, os grupos saem soltos, como antes. Com seção, entram
+          // recuados sob o marcador, que recolhe o conjunto.
+          return secao.nome ? (
+            <div key={secao.nome} className="pub-secao-marcador">
+              <button type="button"
+                className={`pub-grupo-titulo pub-marcador-titulo${secaoFechada ? '' : ' aberto'}`}
+                aria-expanded={!secaoFechada}
+                onClick={() => setRecolhidos(r => {
+                  const n = new Set(r);
+                  if (n.has(chaveSecao)) n.delete(chaveSecao); else n.add(chaveSecao);
+                  return n;
+                })}>
+                <span className="pub-grupo-seta" aria-hidden="true" />
+                {secao.nome}
+                <span>{secao.grupos.reduce((n, g) => n + g.itens.length, 0)}</span>
+              </button>
+              <div className={`revelar${secaoFechada ? '' : ' aberto'}`}>
+                <div className="pub-secao-dentro">{gruposDaSecao}</div>
+              </div>
+            </div>
+          ) : <Fragment key="sem-secao">{gruposDaSecao}</Fragment>;
         })}
       </section>
 
