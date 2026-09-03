@@ -11204,11 +11204,19 @@ body.arrastando-painel {
   min-width: 0;
   margin: 0;
 }
-.usuarios-convite-nota {
-  margin: 10px 0 0;
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--gray2);
+/* Os tres controles com a mesma caixa: o seletor da casa nasce com 34px, que e
+   a medida da lista de contas, e ao lado de um campo de formulario ele ficava
+   uma cabeca mais baixo. */
+.usuarios-convite-campos .form-input,
+.usuarios-convite-campos .usuarios-select {
+  height: 42px;
+  width: 100%;
+}
+.usuarios-convite-campos .usuarios-select {
+  padding: 0 14px;
+  border-width: 1.5px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
 }
 .usuarios-convite-acoes {
   display: flex;

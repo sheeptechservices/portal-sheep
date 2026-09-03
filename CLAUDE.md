@@ -95,6 +95,15 @@ tela.
 Não existe anel colorido de foco no sistema - ele saiu em 09/2026 porque ficava na
 tela depois do clique e lia como "selecionado". Não reintroduza.
 
+**Campo e dropdown são sempre os da casa.** Nunca `<select>` nativo, nunca
+`window.confirm`, nunca `<input type="date">` cru: o menu do sistema operacional
+abre com a cor e a fonte dele, ignora o tema escuro e não tem nada do desenho do
+portal. Use o que já existe - `SelectSistema`, `SelectLista`, `DatePicker`,
+`SeletorPessoas`, os seletores de papel e de etapa - ou monte o novo com a mesma
+moldura (`.form-input`), a mesma lista em portal e o mesmo comportamento de
+abrir e fechar descritos abaixo. Campo novo com desenho próprio é o começo de um
+segundo sistema dentro do primeiro.
+
 **Dropdown:** clicar no gatilho abre, clicar de novo fecha. Não existe dropdown que
 abre e no segundo clique não faz nada - o gatilho alterna (`setAberto(a => !a)`),
 mesmo quando ele também mede a posição antes. Fechar por clique fora, por rolagem e

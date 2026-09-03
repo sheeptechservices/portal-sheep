@@ -221,7 +221,10 @@ function ConfirmarDesativar({ nome, onCancelar, onConfirmar }: {
  *  cliente, um parceiro, alguém com conta pessoal - a entrada só existe depois
  *  de cadastrada aqui: o login com o Google confere este cadastro antes de
  *  deixar passar. */
-function ConvidarPessoa({ onConvidar, onFechar, enviando }: {
+function ConvidarPessoa({ aberto, onConvidar, onFechar, enviando }: {
+  /** O bloco fica montado o tempo todo: é o que permite abrir e fechar com
+   *  animação em vez de aparecer de estalo. */
+  aberto: boolean;
   onConvidar: (nome: string, email: string, papel: Papel) => void;
   onFechar: () => void;
   enviando: boolean;
@@ -229,6 +232,13 @@ function ConvidarPessoa({ onConvidar, onFechar, enviando }: {
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [papel, setPapel] = useState<Papel>('membro');
+  const primeiro = useRef<HTMLInputElement>(null);
+
+  // O foco vai para o primeiro campo quando o bloco abre - e não na montagem,
+  // que agora acontece com a página, muito antes de alguém pedir o convite.
+  useEffect(() => {
+    if (aberto) primeiro.current?.focus();
+  }, [aberto]);
 
   function enviar() {
     if (!nome.trim() || !email.trim()) return;
@@ -238,11 +248,11 @@ function ConvidarPessoa({ onConvidar, onFechar, enviando }: {
   }
 
   return (
-    <div className="usuarios-convite surge">
+    <div className="usuarios-convite">
       <div className="usuarios-convite-campos">
         <label className="form-group">
           <span className="form-label">Nome</span>
-          <input className="form-input" value={nome} autoFocus
+          <input className="form-input" value={nome} ref={primeiro}
             placeholder="Como a pessoa aparece no painel"
             onChange={e => setNome(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') enviar(); if (e.key === 'Escape') onFechar(); }} />
@@ -254,20 +264,16 @@ function ConvidarPessoa({ onConvidar, onFechar, enviando }: {
             onChange={e => setEmail(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') enviar(); if (e.key === 'Escape') onFechar(); }} />
         </label>
-        <label className="form-group" style={{ maxWidth: 160 }}>
+        {/* O mesmo seletor da lista de contas, e não o `select` do sistema
+            operacional: aquele abre um menu azul que não é de lugar nenhum e
+            ignora o tema. Campo e dropdown do portal são sempre os da casa. */}
+        <div className="form-group" style={{ flex: '0 0 170px' }}>
           <span className="form-label">Papel</span>
-          <select className="form-select" value={papel}
-            onChange={e => setPapel(e.target.value as Papel)}>
-            {PAPEIS_ATRIBUIVEIS.map(p => (
-              <option key={p} value={p}>{PAPEL_LABEL[p]}</option>
-            ))}
-          </select>
-        </label>
+          <SelectPapel valor={papel} travado={enviando}
+            rotulo="Papel de quem está sendo convidado"
+            onEscolher={setPapel} />
+        </div>
       </div>
-      <p className="usuarios-convite-nota">
-        Tem de ser o mesmo endereço da conta Google que a pessoa usa para entrar. Enquanto o acesso
-        estiver ativo aqui, ela passa; tirando o acesso, a entrada seguinte é recusada.
-      </p>
       <div className="usuarios-convite-acoes">
         <button type="button" className="btn btn-secondary btn-sm" onClick={onFechar}>
           Cancelar
@@ -432,22 +438,29 @@ export default function UsuariosPage({ token }: { token: string }) {
           <h1 className="admin-page-title">Usuários</h1>
           <p className="admin-page-desc">Quem tem acesso ao painel, o papel de cada um e o que cada papel alcança</p>
         </div>
-        {!convitePronto && (
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => setConvitePronto(true)}>
-            + Convidar alguém de fora
-          </button>
-        )}
+        {/* O botão fica: ele é o gatilho, e sumir no clique seria mais uma
+            troca de estalo na mesma tela. */}
+        <button type="button" className="btn btn-primary btn-sm"
+          aria-expanded={convitePronto}
+          onClick={() => setConvitePronto(v => !v)}>
+          + Convidar alguém de fora
+        </button>
       </div>
 
       {/* Fora do cabeçalho: o formulário ocupa a linha inteira, e espremido ao
-          lado do título ele viraria três campos de dois dedos. */}
-      {convitePronto && (
-        <ConvidarPessoa
-          onConvidar={(n, e, p) => void convidar(n, e, p)}
-          onFechar={() => setConvitePronto(false)}
-          enviando={convidando}
-        />
-      )}
+          lado do título ele viraria três campos de dois dedos. Montado sempre,
+          revelado por altura: é o que faz abrir e fechar ser um movimento, e
+          não um salto do resto da página. */}
+      <div className={`revelar${convitePronto ? ' aberto' : ''}`}>
+        <div>
+          <ConvidarPessoa
+            aberto={convitePronto}
+            onConvidar={(n, e, p) => void convidar(n, e, p)}
+            onFechar={() => setConvitePronto(false)}
+            enviando={convidando}
+          />
+        </div>
+      </div>
 
       <div className="admin-stats">
         <Estatistica label="Com acesso" valor={ativos.length} desc={`de ${lista.length} ${lista.length === 1 ? 'conta' : 'contas'}`} />
