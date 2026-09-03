@@ -304,6 +304,35 @@ async function migrarSchema(db: Client) {
   `);
   try { await ddl(`ALTER TABLE leads ADD COLUMN parcelas TEXT`); } catch {}
 
+  // O funil comercial. A tabela nasceu para operação de crédito - cedente,
+  // sacado, parcelas, trava - e o que o comercial precisa é outra coisa: com
+  // quem se está falando, de onde veio, o que quer, quanto vale e qual é o
+  // próximo passo. As colunas antigas ficam onde estão, sem uso: a tabela está
+  // vazia, e apagar coluna em produção é risco sem prêmio nenhum.
+  for (const col of [
+    `ALTER TABLE leads ADD COLUMN empresa TEXT`,
+    `ALTER TABLE leads ADD COLUMN cnpj TEXT`,
+    `ALTER TABLE leads ADD COLUMN contato_nome TEXT`,
+    `ALTER TABLE leads ADD COLUMN contato_cargo TEXT`,
+    `ALTER TABLE leads ADD COLUMN contato_email TEXT`,
+    `ALTER TABLE leads ADD COLUMN contato_telefone TEXT`,
+    // De onde o lead veio: indicação, prospecção, site, evento, LinkedIn.
+    `ALTER TABLE leads ADD COLUMN origem TEXT`,
+    // O que ele quer, no vocabulário dos projetos da casa (BI, SaaS...).
+    `ALTER TABLE leads ADD COLUMN interesse TEXT`,
+    `ALTER TABLE leads ADD COLUMN valor_estimado REAL`,
+    `ALTER TABLE leads ADD COLUMN responsavel_id TEXT`,
+    // O próximo passo e quando ele é: é o que faz o funil andar.
+    `ALTER TABLE leads ADD COLUMN proxima_acao TEXT`,
+    `ALTER TABLE leads ADD COLUMN proxima_acao_em TEXT`,
+    `ALTER TABLE leads ADD COLUMN observacoes TEXT`,
+    // Cobrado quando o lead cai na etapa de perda: sem o motivo, o funil
+    // registra que se perdeu e não ensina nada.
+    `ALTER TABLE leads ADD COLUMN motivo_perda TEXT`,
+  ]) {
+    try { await ddl(col); } catch { /* já existe */ }
+  }
+
   await ddl(`
     CREATE TABLE IF NOT EXISTS lead_arquivos (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1713,10 +1742,10 @@ async function notifyMentions(texto: string, leadId: string, db: Client) {
   if (apelidos.length === 0) return;
 
   const sol = await db.execute({
-    sql: 'SELECT nome_contratado FROM leads WHERE id = ?',
+    sql: 'SELECT empresa FROM leads WHERE id = ?',
     args: [leadId],
   });
-  const nomeSol = String(sol.rows[0]?.nome_contratado ?? leadId);
+  const nomeSol = String(sol.rows[0]?.empresa ?? leadId);
 
   for (const apelido of apelidos) {
     // O apelido casa com a parte local do e-mail: @guilherme.zaidan encontra
@@ -1740,10 +1769,10 @@ async function notifyStageMentions(texto: string, leadId: string, db: Client) {
   console.log('[stage-notify] stage mentions detected:', stageNames);
 
   const sol = await db.execute({
-    sql: 'SELECT nome_contratado FROM leads WHERE id = ?',
+    sql: 'SELECT empresa FROM leads WHERE id = ?',
     args: [leadId],
   });
-  const nomeSol = String(sol.rows[0]?.nome_contratado ?? leadId);
+  const nomeSol = String(sol.rows[0]?.empresa ?? leadId);
 
   for (const stageName of stageNames) {
     const statusResult = await db.execute({
@@ -2109,13 +2138,11 @@ async function despacharAdminData(
       db.execute(`
         SELECT
           s.id, s.created_at,
-          COALESCE(ced.razao_social, ced.nome, NULLIF(TRIM(s.nome_contratado), '')) AS nome_contratado,
-          COALESCE(ced.cnpj_cpf, NULLIF(TRIM(s.cnpj_contratado), '')) AS cnpj_contratado,
-          COALESCE(sac.razao_social, NULLIF(TRIM(s.nome_sacado), '')) AS nome_sacado,
-          COALESCE(sac.cnpj_cpf, NULLIF(TRIM(s.cnpj_sacado), '')) AS cnpj_sacado,
-          s.cedente_id, s.sacado_id,
-          s.valor, s.valor_numerico, s.prazo_limite, s.fim_type,
-          s.previsao_execucao, s.data_execucao,
+          s.empresa, s.cnpj,
+          s.contato_nome, s.contato_cargo, s.contato_email, s.contato_telefone,
+          s.origem, s.interesse, s.valor_estimado,
+          s.responsavel_id, u.nome AS responsavel_nome, u.foto_url AS responsavel_foto,
+          s.proxima_acao, s.proxima_acao_em, s.motivo_perda,
           COUNT(DISTINCT a.id) + (SELECT COUNT(*) FROM lead_etapa_arquivos ea WHERE ea.lead_id = s.id) AS arquivo_count,
           (SELECT COUNT(*) FROM lead_eventos c WHERE c.lead_id = s.id AND c.tipo = 'comentario') AS comentario_count,
           (SELECT COUNT(*) FROM lead_pendencias p WHERE p.lead_id = s.id AND p.resolvida = 0) AS pendencia_aberta_count,
@@ -2123,8 +2150,7 @@ async function despacharAdminData(
           curr.status_id AS current_status_id,
           curr.criado_em  AS status_since
         FROM leads s
-        LEFT JOIN cedentes ced ON ced.id = s.cedente_id
-        LEFT JOIN sacados sac ON sac.id = s.sacado_id
+        LEFT JOIN usuarios u ON u.id = s.responsavel_id
         LEFT JOIN lead_arquivos a ON a.lead_id = s.id
         LEFT JOIN (
           SELECT e.lead_id, e.status_id, e.criado_em
@@ -2143,8 +2169,8 @@ async function despacharAdminData(
       return { status: 200, body: { statuses: statuses.rows, submissions: subs.rows } };
     }
 
-    // Busca rápida global (⌘K): cards de leads + cadastros de onboarding.
-    // Casa por nome/razão social, CNPJ/CPF (com ou sem máscara), e-mail e id do card.
+    // Busca rápida global (⌘K): os leads do funil.
+    // Casa por empresa, nome do contato, CNPJ (com ou sem máscara) e id do card.
     if (action === 'quick_search') {
       const raw = (query.get('q') ?? '').trim();
       if (raw.length < 2) return { status: 200, body: { leads: [] } };
@@ -2155,63 +2181,41 @@ async function despacharAdminData(
       const veLeads = pode(permissoes, 'leads:ver');
       if (!veLeads) return { status: 200, body: { leads: [] } };
 
-      const term = `%${foldTerm(raw)}%`;
       const digits = raw.replace(/\D/g, '');
-      const digitTerm = digits.length >= 3 ? `%${digits}%` : null;
       const LIMIT = 8;
 
-      const solCond = [
-        `${sqlFold('x.nome_contratado')} LIKE ?`,
-        `${sqlFold('x.nome_sacado')} LIKE ?`,
-        // O id também passa pela dobra: o uuid colado com ou sem os hífens casa igual.
-        `${sqlFold('x.id')} LIKE ?`,
-      ];
-      const solArgs: any[] = [term, term, term];
-      if (digitTerm) {
-        solCond.push(`${sqlDigits('x.cnpj_contratado')} LIKE ?`, `${sqlDigits('x.cnpj_sacado')} LIKE ?`);
-        solArgs.push(digitTerm, digitTerm);
-      }
+      // A dobra (minúscula, sem acento, sem pontuação) acontece aqui, e não em
+      // SQL: uma pilha de 37 REPLACE aninhados por coluna estoura o parser do
+      // Turso antes de a consulta rodar. O funil é pequeno o bastante para o
+      // filtro caber na memória - e a comparação fica igual à do resto da casa.
+      const linhas = await db.execute(`
+        SELECT
+          s.id, s.created_at, s.empresa, s.cnpj, s.contato_nome, s.valor_estimado,
+          st.nome AS status_nome, st.cor AS status_cor
+        FROM leads s
+        LEFT JOIN status_configs st ON st.id = (
+          SELECT e.status_id FROM lead_eventos e
+          WHERE e.lead_id = s.id AND e.tipo = 'status_change'
+          ORDER BY e.id DESC LIMIT 1
+        )
+        WHERE s.deleted_at IS NULL
+        ORDER BY s.created_at DESC
+        LIMIT 1000
+      `);
 
-
-      const [sols] = await Promise.all([
-        db.execute({
-          sql: `
-            SELECT x.id, x.created_at, x.valor, x.nome_contratado, x.cnpj_contratado,
-                   x.nome_sacado, x.cnpj_sacado, x.status_nome, x.status_cor
-            FROM (
-              SELECT
-                s.id, s.created_at, s.valor, s.deleted_at,
-                COALESCE(ced.razao_social, ced.nome, NULLIF(TRIM(s.nome_contratado), '')) AS nome_contratado,
-                COALESCE(ced.cnpj_cpf, NULLIF(TRIM(s.cnpj_contratado), '')) AS cnpj_contratado,
-                COALESCE(sac.razao_social, NULLIF(TRIM(s.nome_sacado), '')) AS nome_sacado,
-                COALESCE(sac.cnpj_cpf, NULLIF(TRIM(s.cnpj_sacado), '')) AS cnpj_sacado,
-                st.nome AS status_nome, st.cor AS status_cor
-              FROM leads s
-              LEFT JOIN cedentes ced ON ced.id = s.cedente_id
-              LEFT JOIN sacados sac ON sac.id = s.sacado_id
-              LEFT JOIN (
-                SELECT e.lead_id, e.status_id
-                FROM lead_eventos e
-                WHERE e.tipo = 'status_change'
-                  AND e.id = (
-                    SELECT MAX(e2.id) FROM lead_eventos e2
-                    WHERE e2.lead_id = e.lead_id AND e2.tipo = 'status_change'
-                  )
-              ) curr ON curr.lead_id = s.id
-              LEFT JOIN status_configs st ON st.id = curr.status_id
-            ) x
-            WHERE x.deleted_at IS NULL AND (${solCond.join(' OR ')})
-            ORDER BY x.created_at DESC
-            LIMIT ${LIMIT}
-          `,
-          args: solArgs,
-        }),
-      ]);
+      const alvo = foldTerm(raw);
+      const soDigitos = (v: unknown) => String(v ?? '').replace(/\D/g, '');
+      const achados = linhas.rows.filter(r => {
+        if (foldTerm(String(r.empresa ?? '')).includes(alvo)) return true;
+        if (foldTerm(String(r.contato_nome ?? '')).includes(alvo)) return true;
+        if (foldTerm(String(r.id ?? '')).includes(alvo)) return true;
+        return !!digits && digits.length >= 3 && soDigitos(r.cnpj).includes(digits);
+      }).slice(0, LIMIT);
 
       return {
         status: 200,
         body: {
-          leads: sols.rows,
+          leads: achados,
         },
       };
     }
@@ -2900,6 +2904,12 @@ async function despacharAdminData(
       const sub = await db.execute({ sql: 'SELECT * FROM leads WHERE id = ?', args: [id] });
       if (!sub.rows[0]) return { status: 404, body: { error: 'Not found' } };
       const submission = sub.rows[0] as Record<string, any>;
+      // Quem responde pelo lead: a ficha mostra a pessoa, e a linha guarda o id.
+      if (submission.responsavel_id) {
+        const r = await db.execute({ sql: 'SELECT nome, foto_url FROM usuarios WHERE id = ?', args: [submission.responsavel_id] });
+        submission.responsavel_nome = (r.rows[0] as any)?.nome ?? null;
+        submission.responsavel_foto = (r.rows[0] as any)?.foto_url ?? null;
+      }
       if (submission.cedente_id) {
         const ced = await db.execute({ sql: 'SELECT link_drive, razao_social, nome, cnpj_cpf FROM cedentes WHERE id = ?', args: [submission.cedente_id] });
         const c = ced.rows[0] as Record<string, any> | undefined;
@@ -3019,6 +3029,21 @@ function faltaEntregaNoCorpo(p: any): string | null {
     return 'Toda entrega precisa de um título.';
   }
   return null;
+}
+
+/** Texto do corpo, aparado; vazio vira nulo. A coluna guarda "não informado"
+ *  como ausência, e não como string em branco - senão a tela precisa saber que
+ *  as duas coisas são a mesma. */
+function texto(v: unknown): string | null {
+  const t = String(v ?? '').trim();
+  return t || null;
+}
+
+/** Número do corpo, ou nulo. */
+function numero(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 /** O que impede o projeto de ser gravado.
@@ -5058,29 +5083,26 @@ function faltaEmProjeto(p: any): string | null {
     }
 
     if (action === 'create_submission') {
-      const {
-        nome_contratado, cnpj_contratado, situacao_contratado,
-        nome_sacado, cnpj_sacado, situacao_sacado,
-        valor, valor_numerico, prazo_limite, parcelas, fim_type,
-        status_id, cedente_id, sacado_id,
-      } = body;
+      const { status_id } = body;
+      const empresa = String(body?.empresa ?? '').trim();
+      if (!empresa) return { status: 400, body: { error: 'O nome da empresa é obrigatório.' } };
       const id = randomUUID();
       const now = new Date().toISOString();
 
       await db.execute({
         sql: `INSERT INTO leads
-              (id, created_at, nome_contratado, cnpj_contratado, situacao_contratado,
-               nome_sacado, cnpj_sacado, situacao_sacado,
-               valor, valor_numerico, prazo_limite, parcelas, fim_type, cedente_id, sacado_id,
+              (id, created_at, empresa, cnpj, contato_nome, contato_cargo, contato_email,
+               contato_telefone, origem, interesse, valor_estimado, responsavel_id,
+               proxima_acao, proxima_acao_em, observacoes,
                criado_por_id, criado_por_nome)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         args: [
-          id, now,
-          nome_contratado ?? null, cnpj_contratado ?? null, situacao_contratado ?? null,
-          nome_sacado ?? null, cnpj_sacado ?? null, situacao_sacado ?? null,
-          valor ?? null, valor_numerico ?? null, prazo_limite ?? null,
-          parcelas != null ? JSON.stringify(parcelas) : null,
-          fim_type ?? null, cedente_id ?? null, sacado_id ?? null,
+          id, now, empresa,
+          texto(body?.cnpj), texto(body?.contato_nome), texto(body?.contato_cargo),
+          texto(body?.contato_email), texto(body?.contato_telefone),
+          texto(body?.origem), texto(body?.interesse),
+          numero(body?.valor_estimado), texto(body?.responsavel_id),
+          texto(body?.proxima_acao), texto(body?.proxima_acao_em), texto(body?.observacoes),
           autorId, autorNome,
         ],
       });
@@ -5097,51 +5119,72 @@ function faltaEmProjeto(p: any): string | null {
         currentStatusId = Number(status_id);
       }
 
+      // Devolve o card montado: a tela põe o lead no funil sem recarregar a
+      // listagem inteira só para ver aparecer o que ela acabou de criar.
       return {
         status: 200,
         body: {
           submission: {
             id, created_at: now,
-            nome_contratado: nome_contratado ?? null,
-            cnpj_contratado: cnpj_contratado ?? null,
-            nome_sacado: nome_sacado ?? null,
-            cnpj_sacado: cnpj_sacado ?? null,
-            valor: valor ?? null,
-            prazo_limite: prazo_limite ?? null,
-            fim_type: fim_type ?? null,
-            decisions: null,
+            empresa,
+            cnpj: texto(body?.cnpj),
+            contato_nome: texto(body?.contato_nome),
+            contato_cargo: texto(body?.contato_cargo),
+            contato_email: texto(body?.contato_email),
+            contato_telefone: texto(body?.contato_telefone),
+            origem: texto(body?.origem),
+            interesse: texto(body?.interesse),
+            valor_estimado: numero(body?.valor_estimado),
+            responsavel_id: texto(body?.responsavel_id),
+            responsavel_nome: texto(body?.responsavel_nome),
+            proxima_acao: texto(body?.proxima_acao),
+            proxima_acao_em: texto(body?.proxima_acao_em),
             arquivo_count: 0,
+            comentario_count: 0,
+            pendencia_aberta_count: 0,
+            pendencia_total_count: 0,
             current_status_id: currentStatusId,
             status_since: status_id ? now : null,
-            parcelas: parcelas != null ? JSON.stringify(parcelas) : null,
           },
         },
       };
     }
 
     if (action === 'update_submission') {
-      const {
-        id: subId, nome_contratado, cnpj_contratado, situacao_contratado,
-        nome_sacado, cnpj_sacado, situacao_sacado, cedente_id, sacado_id,
-        valor, valor_numerico, prazo_limite, parcelas, decisions, fim_type,
-      } = body;
+      const subId = String(body?.id ?? '');
+      if (!subId) return { status: 400, body: { error: 'id ausente.' } };
       const now = new Date().toISOString();
+
+      // Só entra no SET o campo que veio no corpo: a ficha do painel manda o
+      // que foi editado, e reescrever a linha inteira apagaria o que ela não
+      // carrega - o motivo da perda, por exemplo, que é gravado noutro gesto.
+      const CAMPOS: Record<string, (v: unknown) => unknown> = {
+        empresa: v => String(v ?? '').trim() || null,
+        cnpj: texto,
+        contato_nome: texto,
+        contato_cargo: texto,
+        contato_email: texto,
+        contato_telefone: texto,
+        origem: texto,
+        interesse: texto,
+        valor_estimado: numero,
+        responsavel_id: texto,
+        proxima_acao: texto,
+        proxima_acao_em: texto,
+        observacoes: texto,
+        motivo_perda: texto,
+      };
+      const sets: string[] = [];
+      const args: unknown[] = [];
+      for (const [campo, normalizar] of Object.entries(CAMPOS)) {
+        if (body[campo] === undefined) continue;
+        sets.push(`${campo}=?`);
+        args.push(normalizar(body[campo]));
+      }
+      if (sets.length === 0) return { status: 400, body: { error: 'Nada para gravar.' } };
       await db.execute({
-        sql: `UPDATE leads SET
-          nome_contratado=?, cnpj_contratado=?, situacao_contratado=?,
-          nome_sacado=?, cnpj_sacado=?, situacao_sacado=?, cedente_id=?, sacado_id=?,
-          valor=?, valor_numerico=?, prazo_limite=?, parcelas=?, decisions=?, fim_type=?
-          WHERE id=?`,
-        args: [
-          nome_contratado ?? null, cnpj_contratado ?? null, situacao_contratado ?? null,
-          nome_sacado ?? null, cnpj_sacado ?? null, situacao_sacado ?? null,
-          cedente_id ?? null, sacado_id ?? null,
-          valor ?? null, valor_numerico ?? null, prazo_limite ?? null,
-          parcelas != null ? JSON.stringify(parcelas) : null,
-          decisions != null ? JSON.stringify(decisions) : null,
-          fim_type ?? null,
-          subId,
-        ],
+        sql: `UPDATE leads SET ${sets.join(', ')} WHERE id=?`,
+        args: [...args, subId] as never,
       });
       await db.execute({
         sql: `INSERT INTO lead_eventos (lead_id, tipo, descricao, criado_em, autor_id, autor_nome)
