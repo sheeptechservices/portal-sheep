@@ -337,11 +337,8 @@ function Topbar({ onToggle, onLogout, onQuickSearch, usuario, onAbrirPerfil }: {
   }, [menuOpen]);
 
   return (
-    <header style={{
+    <header className="app-topo" style={{
       gridColumn: '1 / -1',
-      background: 'var(--white)',
-      borderBottom: '1px solid var(--gray3)',
-      padding: '0 28px',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
@@ -354,16 +351,11 @@ function Topbar({ onToggle, onLogout, onQuickSearch, usuario, onAbrirPerfil }: {
       {/* Left: toggle + brand */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <button
+          type="button"
+          className="topo-icone"
           onClick={onToggle}
-          title="Alternar sidebar"
-          style={{
-            width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer',
-            background: 'transparent', color: 'var(--gray2)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0, transition: 'background .15s, color .15s',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg)'; e.currentTarget.style.color = 'var(--black)'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--gray2)'; }}
+          title="Alternar menu"
+          aria-label="Alternar menu"
         >
           <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
             <line x1="2" y1="4" x2="14" y2="4"/>
@@ -574,10 +566,11 @@ function Sidebar({
 }: {
   page: Page; setPage: (p: Page) => void; open: boolean; pinned: boolean; onClose: () => void;
 }) {
+  // Só o que depende de estar preso ou solto, e de estar aberto ou fechado: a
+  // aparência - folha, fio da borda e sombra - mora na folha de estilo, com o
+  // resto do material da casa.
   const sidebarStyle: React.CSSProperties = pinned
     ? {
-        background: 'var(--white)',
-        borderRight: open ? '1px solid var(--gray3)' : '1px solid transparent',
         overflow: 'hidden',
         // Ocupa a largura da coluna do grid (220px -> 0px), sem largura fixa
         // própria: assim o fundo e o recorte encolhem junto com a coluna, em vez
@@ -595,8 +588,6 @@ function Sidebar({
         pointerEvents: open ? 'auto' : 'none',
       }
     : {
-        background: 'var(--white)',
-        borderRight: '1px solid var(--gray3)',
         overflow: 'hidden',
         width: 220,
         flexShrink: 0,
@@ -605,7 +596,6 @@ function Sidebar({
         top: 60,
         height: 'calc(100vh - 60px)',
         zIndex: 300,
-        boxShadow: '4px 0 20px rgba(0,0,0,0.12)',
         transform: open ? 'translateX(0)' : 'translateX(-100%)',
         transition: 'transform 0.28s cubic-bezier(0.4,0,0.2,1)',
       };
@@ -641,65 +631,36 @@ function Sidebar({
       <button
         key={item.label}
         type="button"
-        className="nav-leaf"
+        className={`nav-leaf${active ? ' ativo' : ''}`}
         disabled={disabled}
         title={disabled ? 'Em breve' : undefined}
+        aria-current={active ? 'page' : undefined}
         onClick={() => { if (disabled || !item.page) return; setPage(item.page); if (!pinned) onClose(); }}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          width: '100%', padding: '9px 20px',
-          fontSize: 13, fontWeight: 600,
-          color: disabled ? 'var(--gray2)' : active ? 'var(--black)' : 'var(--gray)',
-          border: 'none', borderLeft: `2px solid ${active ? 'var(--yellow)' : 'transparent'}`,
-          background: active ? 'var(--yd)' : 'transparent',
-          cursor: disabled ? 'default' : 'pointer', textAlign: 'left',
-          opacity: disabled ? 0.55 : 1,
-          transition: 'all .2s', fontFamily: 'inherit',
-        }}
-        onMouseEnter={e => { if (!active && !disabled) { e.currentTarget.style.color = 'var(--black)'; e.currentTarget.style.background = 'var(--bg)'; } }}
-        onMouseLeave={e => { if (!active && !disabled) { e.currentTarget.style.color = 'var(--gray)'; e.currentTarget.style.background = 'transparent'; } }}
       >
-        <span className="nav-leaf-ico" style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>{item.icon}</span>
-        <span style={{ flex: 1 }}>{item.label}</span>
-        {disabled && (
-          <span style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--gray2)', background: 'var(--gray3)', padding: '2px 6px', borderRadius: 999 }}>
-            em breve
-          </span>
-        )}
+        <span className="nav-leaf-ico">{item.icon}</span>
+        <span className="nav-leaf-texto">{item.label}</span>
+        {disabled && <span className="nav-leaf-breve">em breve</span>}
       </button>
     );
   };
 
   return (
-    <aside style={sidebarStyle}>
+    <aside className={`app-menu${pinned ? '' : ' solto'}${open ? ' aberto' : ''}`}
+      style={sidebarStyle}>
       <div style={innerStyle}>
       {/* A navegação rola; o rodapé de Aparência fica preso embaixo. */}
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
       {secoes.map(group => (
         <div key={group.section || 'topo'}>
-          {group.section && (
-            <div style={{
-              fontSize: 10, fontWeight: 800, textTransform: 'uppercase',
-              letterSpacing: '0.12em', color: 'var(--gray2)',
-              padding: '0 20px', margin: '16px 0 6px',
-            }}>
-              {group.section}
-            </div>
-          )}
+          {group.section && <p className="app-menu-secao">{group.section}</p>}
 
           {group.items.map(item => renderLeaf(item))}
         </div>
       ))}
       </div>
 
-      <div style={{
-        flexShrink: 0,
-        borderTop: '1px solid var(--gray3)',
-        margin: '12px 0 0',
-        padding: '14px 20px 0',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-      }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--gray)' }}>Tema</span>
+      <div className="app-menu-rodape">
+        <span>Tema</span>
         <ThemeToggle />
       </div>
       </div>

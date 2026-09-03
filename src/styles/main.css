@@ -711,18 +711,12 @@ body {
 
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
-/* O botao de acao tem o mesmo acabamento das demais pecas da casa: fio de luz
-   na aresta de cima, sombra fina na de baixo e sombra larga por fora. Sobre a
-   cor cheia os valores sao proprios - os tokens de cristal foram medidos para
-   superficie clara, e ali dentro o branco a 100% viraria um risco. */
+/* Sem acabamento de cristal: ele e cor cheia, e as linhas internas sujavam a
+   chapa em vez de levantar a peca. O que diz que ele e clicavel e a cor. */
 .btn-primary {
   background: var(--yellow);
   color: var(--on-yellow);
   border-color: var(--yellow);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .34),
-    inset 0 -1px 0 rgba(0, 0, 0, .12),
-    0 1px 2px rgba(20, 22, 30, .10),
-    0 6px 14px -8px rgba(20, 22, 30, .38);
 }
 
 .btn-primary::after {
@@ -736,24 +730,18 @@ body {
   transition: left .5s ease;
 }
 
-/* Subindo, o acabamento vai junto: sem repor as duas linhas internas o botao
-   perderia a aresta justo quando se levanta. */
 .btn-primary:hover:not(:disabled) {
   background: #00A88C;
   border-color: #00A88C;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .34),
-    inset 0 -1px 0 rgba(0, 0, 0, .12),
-    var(--shadow-yellow);
+  box-shadow: var(--shadow-yellow);
   transform: translateY(-2px);
 }
 
 .btn-primary:hover:not(:disabled)::after { left: 150%; }
 
-/* Apertado, ele afunda: some a sombra de fora e fica so a linha de baixo, que
-   e o que da a impressao de peca pressionada contra a folha. */
 .btn-primary:active:not(:disabled) {
   transform: scale(0.97) translateY(0);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .18);
+  box-shadow: none;
 }
 
 .btn-secondary {
@@ -4743,8 +4731,8 @@ body.arrastando-painel {
    viraria mancha numa area larga. */
 .pagina-tarefas,
 .pagina-projetos,
-.admin-sidebar,
-.admin-topbar {
+.app-topo,
+.app-menu {
   --cristal: linear-gradient(180deg,
     color-mix(in srgb, var(--gray4) 12%, var(--white)) 0%,
     color-mix(in srgb, var(--gray4) 46%, var(--white)) 100%);
@@ -4757,8 +4745,8 @@ body.arrastando-painel {
 }
 :root[data-theme="dark"] .pagina-tarefas,
 :root[data-theme="dark"] .pagina-projetos,
-:root[data-theme="dark"] .admin-sidebar,
-:root[data-theme="dark"] .admin-topbar {
+:root[data-theme="dark"] .app-topo,
+:root[data-theme="dark"] .app-menu {
   --cristal: linear-gradient(180deg, rgba(30, 31, 36, .96) 0%,
     rgba(20, 21, 24, .86) 100%);
   --cristal-borda: rgba(255, 255, 255, .10);
@@ -4845,61 +4833,163 @@ body.arrastando-painel {
 .pagina-tarefas .admin-toolbar-btn:hover:not(:disabled),
 .pagina-projetos .admin-toolbar-btn:hover:not(:disabled) { color: var(--black); }
 
-/* ── A casca: sidebar e topo ───────────────────────────
-   O mesmo material das telas, no que a casca tem de peca: o item de menu
-   escolhido, o botao de sair e o de recolher o menu. O fundo da sidebar e do
-   topo continua sendo folha, e nao objeto - cristal ali viraria mancha atras
-   de tudo. */
+/* ── A casca: o topo e o menu ──────────────────────────
+   O mesmo material das telas, aplicado nas pecas que a casca tem. O fundo do
+   topo e do menu e folha - superficie que sustenta, e nao objeto sobre ela -,
+   entao ele recebe so o degrade de leve, o fio da borda e a sombra que diz o
+   que esta na frente do que. Cristal cheio ali viraria mancha atras de tudo.
 
-/* O escolhido e um chip levantado da folha: a chapa amarela ja o marcava, e o
-   acabamento e o que faz ele parecer pousado em cima e nao pintado por baixo.
-   Sem borda de verdade - ela mudaria a altura do item e desalinharia a lista. */
-.sidebar-item.active {
+   As classes daqui sao as que a casca usa de verdade. As `.admin-sidebar`,
+   `.sidebar-item` e `.topbar-logout` que ainda moram mais abaixo nesta folha
+   sao restos de um desenho anterior, e nao pintam nada. */
+
+/* O topo: chapa quase branca com um fio de luz na aresta de baixo e uma sombra
+   rasa. E o que diz que ele paira sobre o conteudo que rola por baixo - a linha
+   sozinha nao dizia, e o conteudo passava colado. */
+.app-topo {
+  padding: 0 28px;
+  background: var(--cristal);
+  border-bottom: 1px solid var(--cristal-borda);
   box-shadow: inset 0 1px 0 var(--cristal-luz),
-    inset 0 -1px 0 var(--cristal-base),
-    var(--cristal-sombra);
+    0 1px 2px rgba(20, 22, 30, .04),
+    0 10px 24px -20px rgba(20, 22, 30, .45);
 }
 
-/* O icone e apoio do texto, nao par dele: `--gray2` em repouso e `--black`
-   quando o item esta sob o ponteiro ou escolhido. E a mesma regra do painel e
-   da pagina do cliente - antes era opacidade, que clareia o icone junto com o
-   fundo e some no tema escuro. */
-.sidebar-item-icon {
-  opacity: 1;
+/* Icone-botao do topo: chapa no hover, como em toda a casa. */
+.topo-icone {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
   color: var(--gray2);
-  transition: color var(--transition);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
 }
-.sidebar-item:hover .sidebar-item-icon,
-.sidebar-item.active .sidebar-item-icon { color: var(--black); }
+.topo-icone:hover { background: var(--gray4); color: var(--black); }
+.topo-icone:focus-visible { outline: none; background: var(--gray4); color: var(--black); }
 
-/* Botao de icone ganha chapa no hover, como em todo icone-botao da casa. */
-.topbar-toggle:hover { background: var(--gray4); }
+/* O menu: a mesma folha, com o fio na borda da direita e uma sombra curta que
+   o separa do conteudo. Preso, ele e coluna; solto, e painel que paira - e ai
+   a sombra e mais funda, porque ha conteudo por baixo dele. */
+.app-menu {
+  background: var(--cristal);
+  border-right: 1px solid transparent;
+  transition: border-color var(--transition);
+}
+.app-menu.aberto {
+  border-right-color: var(--cristal-borda);
+  box-shadow: inset -1px 0 0 var(--cristal-luz),
+    2px 0 3px -2px rgba(20, 22, 30, .06);
+}
+.app-menu.solto.aberto {
+  box-shadow: inset -1px 0 0 var(--cristal-luz),
+    16px 0 40px -18px rgba(20, 22, 30, .5);
+}
 
-/* Sair tinha a borda dura de 1.5px que sobrou do desenho antigo; agora tem a
-   moldura fina e o acabamento das demais pecas. */
-.topbar-logout {
-  border-width: 1px;
-  border-color: var(--cristal-borda);
-  box-shadow: inset 0 1px 0 var(--cristal-luz),
-    inset 0 -1px 0 var(--cristal-base),
-    var(--cristal-sombra);
+/* Titulo de secao: o mesmo rotulo em caixa alta do resto do sistema. */
+.app-menu-secao {
+  margin: 16px 0 6px;
+  padding: 0 20px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
   color: var(--gray2);
-  transition: border-color var(--transition), color var(--transition),
-    box-shadow var(--transition-spring), background var(--transition);
 }
-.topbar-logout:hover {
-  border-color: var(--cristal-borda-forte);
+
+/* O item do menu. O escolhido e um chip levantado da folha: a chapa amarela ja
+   o marcava, e o acabamento e o que faz ele parecer pousado em cima, e nao
+   pintado por baixo. O trilho da esquerda continua sendo a marca de "voce esta
+   aqui" - ele existe em todos os itens, transparente, para o texto nao andar
+   1px quando a escolha muda. */
+.nav-leaf {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 20px;
+  border: none;
+  border-left: 2px solid transparent;
+  background: none;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition),
+    box-shadow var(--transition-spring);
+}
+.nav-leaf-texto { flex: 1; min-width: 0; }
+.nav-leaf:not(:disabled):hover {
+  background: var(--gray4);
   color: var(--black);
-  background: var(--white);
+}
+.nav-leaf:focus-visible { outline: none; background: var(--gray4); color: var(--black); }
+.nav-leaf.ativo {
+  border-left-color: var(--yellow);
+  background: var(--yd);
+  color: var(--black);
+  box-shadow: inset 0 1px 0 var(--cristal-luz),
+    inset 0 -1px 0 var(--cristal-base),
+    var(--cristal-sombra);
+}
+.nav-leaf:disabled {
+  color: var(--gray2);
+  opacity: .55;
+  cursor: default;
 }
 
-/* A barra do topo paira sobre o conteudo que rola por baixo dela: a linha
-   sozinha nao dizia isso, e o conteudo passava colado. */
-.admin-topbar { box-shadow: var(--cristal-sombra); }
+/* O icone e apoio do texto, nao par dele: `--gray2` em repouso, `--black` sob o
+   ponteiro e no escolhido. O pulinho de escala ja existia e continua. */
+.nav-leaf-ico {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: var(--gray2);
+}
+.nav-leaf:not(:disabled):hover .nav-leaf-ico,
+.nav-leaf.ativo .nav-leaf-ico { color: var(--black); }
+
+/* "Em breve": a etiqueta do que ainda nao abriu. */
+.nav-leaf-breve {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--gray3);
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+
+/* O rodape do menu, onde mora a troca de tema. */
+.app-menu-rodape {
+  flex-shrink: 0;
+  margin-top: 12px;
+  padding: 14px 20px 0;
+  border-top: 1px solid var(--cristal-borda);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.app-menu-rodape > span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray);
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .sidebar-item-icon,
-  .topbar-logout { transition: none; }
+  .app-menu,
+  .topo-icone,
+  .nav-leaf { transition: none; }
 }
 
 /* Na pagina, a faixa de busca nao precisa do vao proprio: o `gap` da tela ja
