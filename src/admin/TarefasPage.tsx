@@ -496,9 +496,12 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
     setBusca('');
   }
 
-  async function salvar(r: Rascunho) {
-    if (!r.projeto_id) { toast('error', 'Falta o projeto', 'Escolha a que projeto a tarefa pertence.'); return; }
-    if (!r.titulo.trim()) { toast('error', 'Falta o título', 'A tarefa precisa de um título.'); return; }
+  /** Devolve `false` quando não gravou. O painel usa isso para continuar
+   *  tratando o rascunho como não gravado e tentar de novo - senão uma recusa
+   *  do servidor deixaria a tela achando que salvou. */
+  async function salvar(r: Rascunho): Promise<boolean> {
+    if (!r.projeto_id) { toast('error', 'Falta o projeto', 'Escolha a que projeto a tarefa pertence.'); return false; }
+    if (!r.titulo.trim()) { toast('error', 'Falta o título', 'A tarefa precisa de um título.'); return false; }
     // O painel não fecha ao gravar: quem está escrevendo continua escrevendo, e
     // a gravação acontece por baixo. O que aparece na lista é pintado na hora;
     // se o servidor recusar, ela volta ao que era.
@@ -526,7 +529,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
     if (resposta?.error) {
       setProjetos(antes);
       toast('error', 'Não foi possível salvar', resposta.error);
-      return;
+      return false;
     }
     // A regra de uma etiqueta pode ter mudado a etapa e o responsável na
     // gravação. O servidor devolve os dois, e a tela repinta com o que de fato
@@ -556,6 +559,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
     // reenviaria na gravação seguinte.
     if (r.comentario_etiqueta) setForm(f => (f ? { ...f, comentario_etiqueta: '' } : f));
     reconciliar();
+    return true;
   }
 
   /** Move a tarefa de coluna. O campo depende do agrupamento: no quadro por
@@ -984,7 +988,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
           api={api}
           onMudar={setForm}
           onFechar={() => void fecharTarefa()}
-          onSalvar={() => void salvar(form)}
+          onSalvar={() => salvar(form)}
           onExcluir={podeExcluir && form.id ? () => {
             const alvo = tarefas.find(x => x.id === form.id);
             if (alvo) setExcluindo(alvo);

@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AtividadeDaTarefa } from './AtividadeDaTarefa';
 import { createPortal } from 'react-dom';
-import { iniciais } from './AdminApp';
+import { iniciais, useToast } from './AdminApp';
 import {
   IconAlert, IconCheck, IconChevronDown, IconDuplicar, IconPlus, IconTrash, IconUser, IconX,
 } from '../components/icons';
@@ -731,7 +731,9 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
   api?: (path: string, method?: string, body?: unknown) => Promise<any>;
   onMudar: (r: Rascunho) => void;
   onFechar: () => void;
-  onSalvar: () => void;
+  /** Grava o rascunho. Devolve `false` quando o servidor recusou, para o painel
+   *  continuar tratando a alteração como pendente. */
+  onSalvar: () => void | Promise<boolean | void>;
   /** Ausente para quem não pode excluir, e em tarefa que ainda não existe. */
   onExcluir?: () => void;
   /** Cria uma cópia da tarefa. Ausente para quem não pode criar. */
@@ -745,8 +747,11 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
     ? (projeto?.reunioes ?? []).filter(r =>
         (r.entregas ?? []).includes(Number(rascunho.entrega_id)))
     : [];
+  const { toast } = useToast();
   const { saindo, fechar } = useSaidaSuave(onFechar);
-  const fundo = useFecharNoFundo(fechar);
+  // Fechar clicando no fundo passa pela mesma porta do botão Fechar: era o
+  // caminho que perdia o que estava na pausa da digitação.
+  const fundo = useFecharNoFundo(() => fecharGravando());
   // Mesma gaveta do painel de projeto, com largura e modo tela cheia próprios.
   const { largura, arrastando, setArrastando, porTecla } = useLarguraPainel('tarefa');
   const trava = rascunho.etiquetas.some(e => etq.trava(e));
@@ -782,23 +787,72 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
     // recusar sozinho, sem ninguém ter apertado nada, seria um erro do nada.
     && !(pedemComentario.length > 0 && !(rascunho.comentario_etiqueta ?? '').trim());
 
+  /** Grava, e só considera gravado o que o servidor aceitou.
+   *
+   *  A marca é posta antes da ida - senão duas pausas seguidas mandariam a mesma
+   *  coisa duas vezes - e desfeita se a resposta recusar: assim a alteração
+   *  volta a contar como pendente, e a pausa seguinte (ou o fechar) tenta de
+   *  novo em vez de dar por gravado o que não foi. */
+  async function gravar() {
+    const marca = impresso;
+    ultimoGravado.current = marca;
+    const ok = await onSalvar();
+    if (ok === false && ultimoGravado.current === marca) ultimoGravado.current = '';
+  }
+
   useEffect(() => {
     if (!podeGravar || impresso === ultimoGravado.current) return;
-    const t = window.setTimeout(() => {
-      ultimoGravado.current = impresso;
-      onSalvar();
-    }, 700);
+    const t = window.setTimeout(() => { void gravar(); }, 700);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [impresso, podeGravar]);
+
+  /** O estado vivo do rascunho, para a saída de emergência abaixo poder gravar
+   *  de fora do render. Guarda os valores, e não a conclusão: se guardasse um
+   *  "está sujo" calculado no render, ele continuaria verdadeiro depois de o
+   *  fechar já ter gravado, e a mesma alteração iria duas vezes. */
+  const agora = useRef({ impresso, podeGravar, gravar });
+  agora.current = { impresso, podeGravar, gravar };
+
+  /** As saídas que não passam por botão nenhum.
+   *
+   *  O painel pode sumir sem que ninguém tenha clicado em Fechar: a página é
+   *  recarregada, a aba é fechada, o computador dorme, ou o próprio pai
+   *  desmonta o painel. Em qualquer um desses casos, o que estava na pausa da
+   *  digitação ia junto. Aqui ele é despachado antes.
+   *
+   *  `visibilitychange` é o gancho que o navegador garante ao fechar a aba; o
+   *  desmonte cobre o resto. */
+  useEffect(() => {
+    const despachar = () => {
+      const e = agora.current;
+      if (e.podeGravar && e.impresso !== ultimoGravado.current) void e.gravar();
+    };
+    const aoEsconder = () => { if (document.visibilityState === 'hidden') despachar(); };
+    document.addEventListener('visibilitychange', aoEsconder);
+    window.addEventListener('pagehide', despachar);
+    return () => {
+      document.removeEventListener('visibilitychange', aoEsconder);
+      window.removeEventListener('pagehide', despachar);
+      despachar();
+    };
+  }, []);
 
   /** Fechar com alteração ainda na pausa grava na hora: a pausa é uma
    *  conveniência para não gravar letra a letra, não uma licença para perder o
    *  que foi escrito. */
   function fecharGravando() {
-    if (podeGravar && impresso !== ultimoGravado.current) {
-      ultimoGravado.current = impresso;
-      onSalvar();
+    if (impresso !== ultimoGravado.current) {
+      if (podeGravar) void gravar();
+      // Fechar com alteração que não pode ser gravada perdia tudo em silêncio.
+      // Não dá para gravar - o servidor recusaria -, mas dá para dizer, e dizer
+      // o motivo, que é o que a pessoa precisa para decidir se volta.
+      else {
+        toast('error', 'Alterações não gravadas',
+          !rascunho.titulo.trim()
+            ? 'A tarefa precisa de um título, e o que você escreveu agora não foi gravado.'
+            : `A etiqueta "${pedemComentario[0]}" pede um comentário explicando o porquê.`);
+      }
     }
     fechar();
   }

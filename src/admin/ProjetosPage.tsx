@@ -5556,8 +5556,10 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
 
   /** Grava o rascunho inteiro, como faz a tela de Tarefas. Diferente do arraste
    *  no quadro, aqui a pessoa apertou "Salvar": vale o formulário todo. */
-  const salvarRascunho = useCallback(async (rascunho: RascunhoTarefa) => {
-    if (!rascunho.titulo.trim()) { toast('error', 'Falta o título', 'A tarefa precisa de um título.'); return; }
+  /** Devolve `false` quando não gravou - o painel precisa saber para não dar a
+   *  alteração por gravada. */
+  const salvarRascunho = useCallback(async (rascunho: RascunhoTarefa): Promise<boolean> => {
+    if (!rascunho.titulo.trim()) { toast('error', 'Falta o título', 'A tarefa precisa de um título.'); return false; }
     // Rascunho sem id com uma criação em curso: espera o id e grava por cima,
     // em vez de criar uma segunda tarefa com o mesmo conteúdo.
     const jaCriada = !rascunho.id && criandoTarefa.current ? await criandoTarefa.current : null;
@@ -5585,7 +5587,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     if (resposta?.error) {
       setProjetos(antes);
       toast('error', 'Não foi possível salvar', resposta.error);
-      return;
+      return false;
     }
     // A regra de uma etiqueta pode ter mudado a etapa e o responsável na
     // gravação. O servidor devolve os dois, e a tela repinta com o que de fato
@@ -5610,6 +5612,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     }
     if (r.comentario_etiqueta) setRascunhoTarefa(f => (f ? { ...f, comentario_etiqueta: '' } : f));
     reconciliar();
+    return true;
   }, [api, inserirTarefa, pessoas, pintarTarefa, projetos, reconciliar, toast]);
   /** Grava uma mudança pontual numa tarefa, a partir do relatório. Manda a
    *  tarefa inteira e sobrescreve o que mudou: a ação do servidor grava todos
@@ -6641,7 +6644,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
           api={api}
           onMudar={setRascunhoTarefa}
           onFechar={() => setRascunhoTarefa(null)}
-          onSalvar={() => void salvarRascunho(rascunhoTarefa)}
+          onSalvar={() => salvarRascunho(rascunhoTarefa)}
           onExcluir={pode('tarefas:excluir') && rascunhoTarefa.id ? () => {
             const alvo = projetos.flatMap(p => p.tarefas ?? []).find(x => x.id === rascunhoTarefa.id);
             if (alvo) setExcluindoTarefa(alvo);
