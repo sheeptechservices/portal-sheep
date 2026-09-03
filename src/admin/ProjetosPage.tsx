@@ -43,7 +43,8 @@ import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import {
   CalendarioEntregas, QuadroEntregas, SwitcherVisao, type ItemVisao, type Visao,
 } from '../components/VisoesEntregas';
-import { PAINEL_MAX, PAINEL_MIN, useLarguraPainel } from '../lib/painelLateral';
+import { useLarguraPainel } from '../lib/painelLateral';
+import { PuxadorDoPainel } from '../components/PuxadorDoPainel';
 import { useRevelar } from '../lib/useRevelar';
 import { Donut, type FatiaDonut } from '../components/Donut';
 // O mesmo formulário da tela de Tarefas: o quadro da semana abre a tarefa aqui,
@@ -4827,28 +4828,8 @@ function FormularioProjeto({
 
   return createPortal(
     <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`} {...fundo}>
-      {/* Fora do painel de propósito: dentro dele, que rola, o puxador sumiria
-          ao descer o conteúdo. Ancorado pela direita, acompanha a largura.
-          Em tela cheia não existe: não há borda para arrastar. */}
-      <button
-        type="button"
-        className={`painel-puxador${arrastando ? ' arrastando' : ''}`}
-        style={{ right: `min(${largura}px, 96vw)` }}
-        onClick={e => e.stopPropagation()}
-        // Sem `stopPropagation` no mousedown de propósito: é preciso que o
-        // fundo veja o evento para registrar que o gesto NÃO começou nele.
-        // Barrando aqui, ele ficava com a marca da interação anterior e o
-        // painel fechava ao soltar o arrasto fora.
-        onMouseDown={e => { e.preventDefault(); setArrastando(true); }}
-        onKeyDown={porTecla}
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Ajustar a largura do painel"
-        aria-valuenow={largura}
-        aria-valuemin={PAINEL_MIN}
-        aria-valuemax={PAINEL_MAX}
-        title="Arraste para ajustar a largura"
-      />
+      <PuxadorDoPainel largura={largura} arrastando={arrastando}
+        setArrastando={setArrastando} porTecla={porTecla} />
       <div className="admin-modal"
         style={{ width: `min(${largura}px, 96vw)` }}
         onClick={e => e.stopPropagation()}>

@@ -24,7 +24,8 @@ import { useAlturaAutomatica } from '../lib/useAlturaAutomatica';
 import { TextoRico, atalhoDeTexto } from '../components/TextoRico';
 import { ChipVinculo } from '../components/VinculoReuniao';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
-import { PAINEL_MAX, PAINEL_MIN, useLarguraPainel } from '../lib/painelLateral';
+import { useLarguraPainel } from '../lib/painelLateral';
+import { PuxadorDoPainel } from '../components/PuxadorDoPainel';
 import { ICONE_PRIORIDADE, PRIORIDADES } from '../lib/prioridades';
 import type { Projeto, Tarefa } from './ProjetosPage';
 
@@ -868,23 +869,8 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
   return createPortal(
     <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`}
       style={{ zIndex: 10000 }} {...fundo}>
-      {/* Fora do painel: dentro dele, que rola, o puxador sumiria ao descer o
-          conteúdo. Em tela cheia não existe - não há borda para arrastar. */}
-      <button
-        type="button"
-        className={`painel-puxador${arrastando ? ' arrastando' : ''}`}
-        style={{ right: `min(${largura}px, 96vw)` }}
-        onClick={e => e.stopPropagation()}
-        onMouseDown={e => { e.preventDefault(); setArrastando(true); }}
-        onKeyDown={porTecla}
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Ajustar a largura do painel"
-        aria-valuenow={largura}
-        aria-valuemin={PAINEL_MIN}
-        aria-valuemax={PAINEL_MAX}
-        title="Arraste para ajustar a largura"
-      />
+      <PuxadorDoPainel largura={largura} arrastando={arrastando}
+        setArrastando={setArrastando} porTecla={porTecla} />
       <div className="admin-modal painel-tarefa"
         style={{ width: `min(${largura}px, 96vw)` }}
         onClick={e => e.stopPropagation()}>
