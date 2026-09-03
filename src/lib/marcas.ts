@@ -56,6 +56,10 @@ export const MARCAS: Marca[] = [
   // é desenho vetorial, e rasterizar para .webp só perderia definição.
   { nome: 'Laticínios Porto Alegre', src: '/marcas/laticinios-porto-alegre.svg',
     altura: 46, detalhe: true },
+  // Simbolo de duas cores com os bichos vazados em branco por dentro, e o nome
+  // em duas linhas: chapada, a silhueta comeria o cachorro e o gato, que sao o
+  // que identifica a marca.
+  { nome: 'HOVEP', src: '/marcas/hovep.webp', altura: 34, detalhe: true },
 ];
 
 /** Casa o cliente com a marca pelo nome. Cliente cadastrado à mão não tem logo,
