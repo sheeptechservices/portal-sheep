@@ -69,7 +69,9 @@ export interface Pacote {
 
 const COLUNAS = [
   'Projeto', 'Código', 'Cliente', 'Entrega', 'Tarefa', 'Descrição',
-  'Status', 'Prioridade', 'Responsável', 'Prazo', 'Etiquetas', 'Concluída em',
+  // "Etapa" como na tela: o campo da tarefa se chama assim no painel, e a
+  // planilha que sai daqui é lida ao lado dele.
+  'Etapa', 'Prioridade', 'Responsável', 'Prazo', 'Etiquetas', 'Concluída em',
   'Comentários',
 ] as const;
 
@@ -258,7 +260,7 @@ function markdown(pacote: Pacote): string {
 
     if (p.entregas.length) {
       L.push('### Entregas', '');
-      L.push('| Entrega | Situação | Prazo | Marcador | Submarcador |');
+      L.push('| Entrega | Etapa | Prazo | Marcador | Submarcador |');
       L.push('| --- | --- | --- | --- | --- |');
       for (const e of p.entregas) {
         L.push(`| ${e.titulo} | ${e.status} | ${dia(e.prazo) || '-'} | ${e.marcador ?? '-'} | ${e.submarcador ?? '-'} |`);
@@ -345,7 +347,7 @@ function exportarPdf(pacote: Pacote) {
     if (p.descricao) partes.push(`<p class="desc">${escHtml(p.descricao)}</p>`);
 
     partes.push('<table><thead><tr>'
-      + ['Tarefa', 'Entrega', 'Status', 'Prioridade', 'Responsável', 'Prazo', 'Etiquetas']
+      + ['Tarefa', 'Entrega', 'Etapa', 'Prioridade', 'Responsável', 'Prazo', 'Etiquetas']
         .map(h => `<th>${h}</th>`).join('')
       + '</tr></thead><tbody>');
     for (const t of p.tarefas) {

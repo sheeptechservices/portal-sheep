@@ -4,7 +4,7 @@
 //  Dois níveis, escolhidos na tela: um grupo maior e, dentro dele, um menor.
 //  Antes havia uma opção fixa de "marcador e submarcador", que era a única
 //  combinação possível - e a hierarquia é decisão de quem está lendo, não do
-//  sistema. Marcador dentro de responsável e situação dentro de marcador são
+//  sistema. Marcador dentro de responsável e etapa dentro de marcador são
 //  perguntas igualmente legítimas.
 //
 //  As regras moram aqui porque o painel e a página do cliente repartem a mesma

@@ -84,7 +84,7 @@ const ORDENS_ENTREGA = [
   { valor: 'criacao', label: 'Ordem de criação' },
   { valor: 'titulo', label: 'Título (A a Z)' },
   { valor: 'prazo', label: 'Prazo mais próximo' },
-  { valor: 'status', label: 'Status' },
+  { valor: 'status', label: 'Etapa' },
 ] as const;
 
 /** Estados possíveis de uma entrega, para exibição. Só dois são escolhidos por
@@ -2048,7 +2048,7 @@ function SecaoEntregas({
                 {/* Linha fechada: marco, título e o essencial à direita. */}
                 <div className="entrega-linha" style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
                   {somenteLeitura ? (
-                    <span className="marco-bolha" title={`Status: ${e.status}`}
+                    <span className="marco-bolha" title={`Etapa: ${e.status}`}
                       style={{ '--mc': COR_ENTREGA[e.status] } as React.CSSProperties}>
                       {(ICONE_ENTREGA[e.status] ?? IconMarcoPlanejado)({ size: 14 })}
                     </span>
@@ -2581,7 +2581,7 @@ function MarcoEntrega({ status, onEscolher }: {
   return (
     <>
       <button ref={triggerRef} type="button" className="marco-entrega" onClick={abrir}
-        title={`Status: ${status}`} aria-label={`Status da entrega: ${status}`}
+        title={`Etapa: ${status}`} aria-label={`Etapa da entrega: ${status}`}
         style={{ '--mc': COR_ENTREGA[status] ?? 'var(--gray2)' } as React.CSSProperties}>
         <Icone size={14} />
       </button>
@@ -3978,7 +3978,7 @@ function EntregasDoProjeto({ entregas, equipe }: { entregas: Entrega[]; equipe: 
 
       <table className="nt-tabela">
         <thead>
-          <tr><th>Entrega</th><th>Situação</th><th>Prazo</th><th>Tarefas</th></tr>
+          <tr><th>Entrega</th><th>Etapa</th><th>Prazo</th><th>Tarefas</th></tr>
         </thead>
         <tbody>
           {lista.map(e => {

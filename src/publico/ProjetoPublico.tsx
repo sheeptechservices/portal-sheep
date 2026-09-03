@@ -380,7 +380,7 @@ function LinhaEntrega({ e, marca, aberta, realcada, onAlternar, onAbrirPrevia }:
       <button type="button" className="pub-entrega-topo"
         disabled={!temDetalhe} aria-expanded={temDetalhe ? aberta : undefined}
         onClick={onAlternar}>
-      <span className="pub-marco" title={`Situação: ${e.status}`}
+      <span className="pub-marco" title={`Etapa: ${e.status}`}
         style={{ ['--mc' as string]: cor }}>
         <Marco size={14} />
       </span>
@@ -852,7 +852,7 @@ export default function ProjetoPublico({ token }: { token: string }) {
         <div className="pub-barra-ferramentas">
           <span className="pub-filtros-rotulo">Filtrar</span>
           <FilterDropdown
-            label="Situação"
+            label="Etapa"
             values={fSituacao}
             options={situacoes.map(st => ({
               value: st,
@@ -958,7 +958,7 @@ export default function ProjetoPublico({ token }: { token: string }) {
             <div className={`revelar${fechado ? '' : ' aberto'}`}>
              <div>
             {g.itens.length === 0 ? (
-              <p className="pub-grupo-vazio">Nenhuma entrega nesta situação.</p>
+              <p className="pub-grupo-vazio">Nenhuma entrega nesta etapa.</p>
             ) : (
             <ul className="pub-entregas lista-anima" key={assinatura}>
               {g.itens.map(e => (
