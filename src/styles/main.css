@@ -4608,6 +4608,60 @@ body.arrastando-painel {
   white-space: nowrap;
 }
 
+/* ── Texto com marcacao leve ───────────────────────────
+   A descricao da tarefa em repouso: o que foi escrito com **negrito**,
+   *italico*, __sublinhado__ e lista aparece formatado, e clicar devolve o
+   campo. O texto no banco continua puro - e ele que sai em exportacao,
+   relatorio e prompt de IA. */
+.texto-rico {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--gray);
+  /* Sem `pre-wrap`: quem separa as linhas aqui sao os blocos que o desenho
+     monta, e preservar o espaco em branco do proprio markup abriria vaos que
+     ninguem escreveu. */
+  word-break: break-word;
+}
+.texto-rico p { margin: 0; }
+.texto-rico strong { font-weight: 700; color: var(--black); }
+.texto-rico u { text-decoration-color: var(--gray2); }
+.texto-rico-lista {
+  margin: 2px 0;
+  padding-left: 18px;
+  list-style: disc;
+}
+.texto-rico-lista li { margin: 1px 0; }
+/* Linha em branco e respiro entre blocos, e nao um paragrafo vazio. */
+.texto-rico-vao { display: block; height: 7px; }
+
+/* A caixa que veste o texto com a mesma moldura do campo, para a troca entre
+   ler e escrever nao mexer no desenho da coluna. */
+.texto-rico-caixa {
+  cursor: text;
+  min-height: 40px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.texto-rico-caixa:focus-visible {
+  outline: none;
+  border-color: var(--gray2);
+  box-shadow: 0 0 0 3px var(--gray4);
+}
+.texto-rico-vazio { font-size: 13px; color: var(--gray2); }
+
+/* A regua dos atalhos, ao lado do rotulo, so enquanto se escreve. O pai pinta
+   `span` de vermelho - e o asterisco de campo obrigatorio -, entao esta precisa
+   vencer aquela regra pelo nome. */
+.form-label > span.form-dica,
+.form-dica {
+  margin-left: 8px;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--gray2);
+}
+
 /* ── Checklist da tarefa ──────────────────────────────
    O passo a passo, abaixo da descricao. Linha simples, sem moldura por item: o
    bloco ja e uma lista, e uma caixa em volta de cada passo faria cinco caixas

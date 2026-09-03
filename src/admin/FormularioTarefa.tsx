@@ -21,6 +21,7 @@ import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { ancorar } from '../lib/ancorar';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { useAlturaAutomatica } from '../lib/useAlturaAutomatica';
+import { TextoRico, atalhoDeTexto } from '../components/TextoRico';
 import { ChipVinculo } from '../components/VinculoReuniao';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import { PAINEL_MAX, PAINEL_MIN, useLarguraPainel } from '../lib/painelLateral';
@@ -768,6 +769,9 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
     && !!etiquetas.find(e => e.nome === nome)?.exige_comentario
   ));
   const campoDescricao = useRef<HTMLTextAreaElement>(null);
+  /** A descrição em modo de escrita. Fora dele, o texto aparece formatado - é o
+   *  que faz a marcação valer a pena para quem lê. */
+  const [editandoDesc, setEditandoDesc] = useState(false);
   useAlturaAutomatica(campoDescricao, rascunho.descricao);
 
   /** O painel grava sozinho, sem botão.
@@ -936,16 +940,53 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
         <div className="admin-modal-body">
 
           <div className="form-group">
-            <label className="form-label">Descrição</label>
-            {/* Cresce com o texto até 260px. Altura fixa escondia o que já
-                estava escrito - quem abria uma tarefa de dez linhas via três, e
-                rolava dentro de uma caixa dentro de um painel que também rola.
-                O teto existe pelo motivo oposto: descrição longa não pode
-                empurrar o resto do formulário para fora da tela. */}
-            <textarea ref={campoDescricao} className="form-input" rows={3}
-              value={rascunho.descricao} disabled={somenteLeitura}
-              onChange={e => set('descricao', e.target.value)}
-              placeholder="O que precisa ser feito" style={{ fontSize: 13, resize: 'none' }} />
+            <label className="form-label">
+              Descrição
+              {!somenteLeitura && editandoDesc && (
+                <span className="form-dica">**negrito** · *itálico* · __sublinhado__ · - lista</span>
+              )}
+            </label>
+            {/* Em repouso o texto aparece formatado; clicar devolve o campo. A
+                marcação continua sendo texto puro no banco - é ela que sai em
+                exportação, relatório e prompt de IA sem ninguém ter de desmontar
+                HTML. */}
+            {!somenteLeitura && (editandoDesc || !rascunho.descricao.trim()) ? (
+              /* Cresce com o texto até 260px. Altura fixa escondia o que já
+                 estava escrito - quem abria uma tarefa de dez linhas via três, e
+                 rolava dentro de uma caixa dentro de um painel que também rola.
+                 O teto existe pelo motivo oposto: descrição longa não pode
+                 empurrar o resto do formulário para fora da tela. */
+              <textarea ref={campoDescricao} className="form-input" rows={3}
+                value={rascunho.descricao}
+                autoFocus={editandoDesc}
+                onChange={e => set('descricao', e.target.value)}
+                onBlur={() => setEditandoDesc(false)}
+                onKeyDown={e => {
+                  const r = atalhoDeTexto(e);
+                  if (!r) return;
+                  e.preventDefault();
+                  set('descricao', r.texto);
+                  // Devolve a seleção onde ela estava: sem isto o cursor pula
+                  // para o fim a cada Ctrl+B.
+                  const el = e.currentTarget;
+                  requestAnimationFrame(() => el.setSelectionRange(r.ini, r.fim));
+                }}
+                placeholder="O que precisa ser feito" style={{ fontSize: 13, resize: 'none' }} />
+            ) : (
+              <div className="form-input texto-rico-caixa"
+                role={somenteLeitura ? undefined : 'button'}
+                tabIndex={somenteLeitura ? undefined : 0}
+                title={somenteLeitura ? undefined : 'Clique para editar'}
+                onClick={() => { if (!somenteLeitura) setEditandoDesc(true); }}
+                onKeyDown={e => {
+                  if (somenteLeitura) return;
+                  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditandoDesc(true); }
+                }}>
+                {rascunho.descricao.trim()
+                  ? <TextoRico texto={rascunho.descricao} />
+                  : <span className="texto-rico-vazio">Sem descrição</span>}
+              </div>
+            )}
           </div>
 
           {/* O passo a passo, logo abaixo do que a tarefa é: um é o enunciado,
