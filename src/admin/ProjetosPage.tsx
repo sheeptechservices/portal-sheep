@@ -44,6 +44,7 @@ import {
   CalendarioEntregas, QuadroEntregas, SwitcherVisao, type ItemVisao, type Visao,
 } from '../components/VisoesEntregas';
 import { PAINEL_MAX, PAINEL_MIN, useLarguraPainel } from '../lib/painelLateral';
+import { useRevelar } from '../lib/useRevelar';
 import { Donut, type FatiaDonut } from '../components/Donut';
 // O mesmo formulário da tela de Tarefas: o quadro da semana abre a tarefa aqui,
 // e uma cópia local divergiria dela no primeiro campo novo.
@@ -713,6 +714,7 @@ function SecaoSaude({ registros, salvando, somenteLeitura, onRegistrar, onExclui
   onExcluir: (r: RegistroSaude) => void;
 }) {
   const [abrindo, setAbrindo] = useState(false);
+  const leitura = useRevelar(abrindo);
   const [estado, setEstado] = useState<string>('Saudável');
   const [descricao, setDescricao] = useState('');
   const [erro, setErro] = useState('');
@@ -747,7 +749,11 @@ function SecaoSaude({ registros, salvando, somenteLeitura, onRegistrar, onExclui
         )}
       </div>
 
-      {abrindo && (
+      {/* Mesma regra do editor de entrega: o bloco empurra o resto da coluna,
+          então ele cresce e encolhe em vez de piscar. */}
+      {leitura.montado && (
+        <div className={`revelar${leitura.aberto ? ' aberto' : ''}`}>
+        <div>
         <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', gap: 6 }}>
             {SAUDES.map(e => {
@@ -784,6 +790,8 @@ function SecaoSaude({ registros, salvando, somenteLeitura, onRegistrar, onExclui
               {salvando ? 'Registrando…' : 'Registrar'}
             </button>
           </div>
+        </div>
+        </div>
         </div>
       )}
 
@@ -1725,6 +1733,7 @@ function SecaoEntregas({
 
   const [editando, setEditando] = useState<number | 'novo' | null>(null);
   const [editandoPendente, setEditandoPendente] = useState<number | null>(null);
+  const editorNovo = useRevelar(editando === 'novo' || editandoPendente === -1);
   // Fechadas por padrão: a lista serve para varrer o projeto de relance, e o
   // detalhe de cada uma só interessa quando se olha para ela.
   const [abertas, setAbertas] = useState<number[]>([]);
@@ -1940,19 +1949,25 @@ function SecaoEntregas({
         )}
       </div>
 
-      {(editando === 'novo' || editandoPendente === -1) && (
-        <EditorEntrega
-          pessoas={pessoas}
-          marcadores={marcadores}
-          submarcadores={submarcadores}
-          salvando={salvando}
-          onSalvar={dados => {
-            if (gravado || entregas.length) void onSalvarEntrega(dados);
-            else onAlterarPendentes([...pendentes, dados]);
-            setEditando(null); setEditandoPendente(null);
-          }}
-          onCancelar={() => { setEditando(null); setEditandoPendente(null); }}
-        />
+      {/* Abre e fecha com altura: o formulário empurra a lista inteira para
+          baixo, e aparecer de estalo faz a página saltar debaixo do olho. */}
+      {editorNovo.montado && (
+        <div className={`revelar${editorNovo.aberto ? ' aberto' : ''}`}>
+          <div>
+            <EditorEntrega
+              pessoas={pessoas}
+              marcadores={marcadores}
+              submarcadores={submarcadores}
+              salvando={salvando}
+              onSalvar={dados => {
+                if (gravado || entregas.length) void onSalvarEntrega(dados);
+                else onAlterarPendentes([...pendentes, dados]);
+                setEditando(null); setEditandoPendente(null);
+              }}
+              onCancelar={() => { setEditando(null); setEditandoPendente(null); }}
+            />
+          </div>
+        </div>
       )}
 
       {total === 0 && editando === null && editandoPendente === null && (

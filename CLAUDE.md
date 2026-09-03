@@ -138,6 +138,42 @@ rascunho de quem está digitando se uma atualização de fundo mudasse o resulta
 uma escolha - leva `.surge`. É a mesma entrada, aplicada ao bloco inteiro em vez de
 aos filhos.
 
+**A mesma área trocando de conteúdo** - texto que vira campo, botão que vira campo,
+leitura que vira edição - leva `.troca`, que é só opacidade. A peça não nasce nem
+some, ela muda de cara: um deslocamento ali leria como se ela tivesse pulado de
+lugar.
+
+**Nada aparece, some ou muda de tamanho de estalo.** É regra do sistema, e não
+detalhe de uma tela: o olho perde o que salta, e o corte lê como falha da página.
+Antes de escrever `{condicao && <bloco/>}`, escolha o padrão:
+
+| O que acontece | Padrão | Por quê |
+|---|---|---|
+| O bloco empurra o resto da página (formulário que abre, detalhe que expande) | `.revelar` | anima a altura, então o que está embaixo desce junto em vez de saltar |
+| A peça nasce sem mexer no resto (aviso, barra de ação, chip) | `.surge` | entra subindo de leve, no lugar onde já cabia |
+| A mesma área troca de conteúdo, no mesmo tamanho | `.troca` | só a opacidade muda: a peça continua onde está |
+| Lista que responde a busca ou filtro | `.lista-anima` + `key` do resultado | a troca da chave remonta os itens e faz a entrada tocar |
+| Modal, gaveta, popup | classes de entrada + `useSaidaSuave` | sem o gancho, a saída nunca roda |
+
+E o que `.revelar` cobre precisa estar **montado antes** de abrir: montado só
+enquanto aberto, o bloco anima de nada para nada. Quando o conteúdo tem foco
+automático, tire o `autoFocus` (ele dispara na montagem, não na abertura) e mande o
+foco por efeito quando o bloco abrir.
+
+Para o que não pode ficar montado - um formulário inteiro que guarda rascunho
+próprio -, use `useRevelar`: ele monta o conteúdo um quadro antes de pôr a classe
+`aberto`, e na saída tira a classe primeiro e desmonta depois, que é o que dá à
+animação de onde sair e para onde ir.
+
+```tsx
+const editor = useRevelar(abrindo);
+{editor.montado && (
+  <div className={`revelar${editor.aberto ? ' aberto' : ''}`}>
+    <div><Formulario /></div>
+  </div>
+)}
+```
+
 **Modal, popup e diálogo:** abrem e fecham com animação, nunca com um corte. A
 entrada já vem das classes (`.admin-modal-overlay`, `.delete-confirm-modal`); a
 saída precisa do gancho `useSaidaSuave`, porque o React desmonta no instante em que

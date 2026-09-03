@@ -5349,8 +5349,18 @@ body.arrastando-painel {
 /* O que aparece por condicao entra do mesmo jeito, so que como bloco. */
 .surge { animation: entraLista .18s var(--curva-anti) backwards; }
 
+/* A mesma area trocando de conteudo - ler viram editar, botao vira campo -
+   entra so em opacidade: ela nao nasce nem some, ela muda de cara, e um
+   deslocamento ali leria como se a peca tivesse pulado de lugar. */
+@keyframes apareceSuave {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.troca { animation: apareceSuave .16s var(--curva-anti) backwards; }
+
 @media (prefers-reduced-motion: reduce) {
   .lista-anima > *,
+  .troca,
   .surge { animation: none; }
 }
 

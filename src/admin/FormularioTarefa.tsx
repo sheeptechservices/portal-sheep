@@ -405,7 +405,7 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
         // Enter adiciona e o campo continua ali: quem escreve uma lista escreve
         // vários itens seguidos, e ter de clicar de novo a cada um quebraria o
         // ritmo. Sair com o campo vazio recolhe de volta no "+".
-        <input className="checklist-novo" value={novo} autoFocus
+        <input className="checklist-novo troca" value={novo} autoFocus
           placeholder="O que precisa ser feito"
           onChange={e => setNovo(e.target.value)}
           onKeyDown={e => {
@@ -414,7 +414,7 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
           }}
           onBlur={() => { adicionar(); setEscrevendo(false); }} />
       ) : (
-        <button type="button" className="checklist-add" onClick={() => setEscrevendo(true)}>
+        <button type="button" className="checklist-add troca" onClick={() => setEscrevendo(true)}>
           <IconPlus size={12} />
           {itens.length ? 'Outro passo' : 'Adicionar um passo'}
         </button>
@@ -956,7 +956,7 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
                  rolava dentro de uma caixa dentro de um painel que também rola.
                  O teto existe pelo motivo oposto: descrição longa não pode
                  empurrar o resto do formulário para fora da tela. */
-              <textarea ref={campoDescricao} className="form-input" rows={3}
+              <textarea ref={campoDescricao} className="form-input troca" rows={3}
                 value={rascunho.descricao}
                 autoFocus={editandoDesc}
                 onChange={e => set('descricao', e.target.value)}
@@ -973,7 +973,7 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
                 }}
                 placeholder="O que precisa ser feito" style={{ fontSize: 13, resize: 'none' }} />
             ) : (
-              <div className="form-input texto-rico-caixa"
+              <div className="form-input texto-rico-caixa troca"
                 role={somenteLeitura ? undefined : 'button'}
                 tabIndex={somenteLeitura ? undefined : 0}
                 title={somenteLeitura ? undefined : 'Clique para editar'}
