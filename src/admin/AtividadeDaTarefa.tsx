@@ -11,8 +11,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  IconAlert, IconChevronRight, IconClip, IconDownload, IconTrash, IconX,
+  IconAlert, IconChevronRight, IconClip, IconDownload, IconEye, IconTrash, IconX,
 } from '../components/icons';
+import { PreviaArquivo } from '../components/PreviaArquivo';
 import { Avatar, type Pessoa } from './FormularioTarefa';
 
 /** Uma linha do diário, como o servidor a devolve. */
@@ -151,7 +152,12 @@ function Escrever({ pessoas, autoFoco, rotuloEnvio, enviando, onEnviar, onCancel
   const [anexos, setAnexos] = useState<AnexoPendente[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   /** Busca aberta pelo `@`: o trecho digitado depois dele e onde ele começa. */
-  const [busca, setBusca] = useState<{ termo: string; inicio: number } | null>(null);
+  /** A marcação sendo escrita. `paraCima` e `altura` são medidos na hora de
+   *  abrir: a caixa de comentário fica no pé do painel, e a lista para baixo
+   *  nascia atrás da borda dele. */
+  const [busca, setBusca] = useState<
+    { termo: string; inicio: number; paraCima: boolean; altura: number } | null
+  >(null);
   const campo = useRef<HTMLTextAreaElement>(null);
   const arquivo = useRef<HTMLInputElement>(null);
 
@@ -161,7 +167,18 @@ function Escrever({ pessoas, autoFoco, rotuloEnvio, enviando, onEnviar, onCancel
     const antes = valor.slice(0, cursor);
     const m = /(^|\s)@([^\s@]*)$/.exec(antes);
     if (!m) { setBusca(null); return; }
-    setBusca({ termo: m[2], inicio: cursor - m[2].length - 1 });
+    // Abre para o lado que tem espaço, e nunca maior que ele: melhor curta e
+    // inteira do que longa e cortada.
+    const r = campo.current?.getBoundingClientRect();
+    const abaixo = r ? window.innerHeight - r.bottom - 12 : 999;
+    const acima = r ? r.top - 12 : 0;
+    const paraCima = abaixo < 200 && acima > abaixo;
+    setBusca({
+      termo: m[2],
+      inicio: cursor - m[2].length - 1,
+      paraCima,
+      altura: Math.max(120, Math.min(220, (paraCima ? acima : abaixo) - 8)),
+    });
   }
 
   const candidatos = busca
@@ -169,16 +186,35 @@ function Escrever({ pessoas, autoFoco, rotuloEnvio, enviando, onEnviar, onCancel
         .includes(busca.termo.toLocaleLowerCase('pt-BR'))).slice(0, 6)
     : [];
 
+  /** Quem foi marcado nesta escrita: nome que foi para o texto -> id.
+   *
+   *  O texto gravado continua sendo `@[Nome](id)`, que é o que segura a ligação
+   *  quando alguém muda de nome. Mas o que se escreve é `@Nome`: a caixa é um
+   *  `textarea`, e o formato cru punha um código de 36 caracteres no meio da
+   *  frase de quem está escrevendo. A conversão acontece no envio. */
+  const marcados = useRef(new Map<string, string>());
+
+  /** Devolve o texto com as marcações no formato de gravação. Os nomes mais
+   *  longos primeiro: "Ana" não pode comer o "@Ana Paula" de alguém. */
+  function comMarcacoes(t: string) {
+    let saida = t;
+    for (const [nome, id] of [...marcados.current].sort((a, b) => b[0].length - a[0].length)) {
+      saida = saida.split(`@${nome}`).join(`@[${nome}](${id})`);
+    }
+    return saida;
+  }
+
   function marcar(p: Pessoa) {
     if (!busca) return;
     const el = campo.current;
     const cursor = el?.selectionStart ?? texto.length;
-    const novo = `${texto.slice(0, busca.inicio)}@[${p.nome}](${p.id}) ${texto.slice(cursor)}`;
+    marcados.current.set(p.nome, p.id);
+    const novo = `${texto.slice(0, busca.inicio)}@${p.nome} ${texto.slice(cursor)}`;
     setTexto(novo);
     setBusca(null);
     // Devolve o foco e põe o cursor depois da marcação recém-inserida.
     requestAnimationFrame(() => {
-      const pos = busca.inicio + `@[${p.nome}](${p.id}) `.length;
+      const pos = busca.inicio + `@${p.nome} `.length;
       el?.focus();
       el?.setSelectionRange(pos, pos);
     });
@@ -206,7 +242,7 @@ function Escrever({ pessoas, autoFoco, rotuloEnvio, enviando, onEnviar, onCancel
   function enviar() {
     const limpo = texto.trim();
     if (!limpo && anexos.length === 0) return;
-    onEnviar(limpo, anexos);
+    onEnviar(comMarcacoes(limpo), anexos);
     setTexto('');
     setAnexos([]);
     setErro(null);
@@ -232,7 +268,8 @@ function Escrever({ pessoas, autoFoco, rotuloEnvio, enviando, onEnviar, onCancel
           onBlur={() => setTimeout(() => setBusca(null), 120)}
         />
         {busca && candidatos.length > 0 && (
-          <ul className="ativ-mencoes" role="listbox">
+          <ul className={`ativ-mencoes${busca.paraCima ? ' para-cima' : ''}`}
+            style={{ maxHeight: busca.altura }} role="listbox">
             {candidatos.map(p => (
               <li key={p.id}>
                 <button type="button" onMouseDown={e => { e.preventDefault(); marcar(p); }}>
@@ -284,7 +321,7 @@ function Escrever({ pessoas, autoFoco, rotuloEnvio, enviando, onEnviar, onCancel
 }
 
 function Comentario({ c, respostas, pessoas, usuarioId, podeComentar, enviando,
-  respondendo, onResponder, onEnviarResposta, onExcluir, onBaixar }: {
+  respondendo, onResponder, onEnviarResposta, onExcluir, onBaixar, onVer }: {
   c: Comentario;
   respostas: Comentario[];
   pessoas: Pessoa[];
@@ -296,6 +333,7 @@ function Comentario({ c, respostas, pessoas, usuarioId, podeComentar, enviando,
   onEnviarResposta: (texto: string, anexos: AnexoPendente[]) => void;
   onExcluir: (c: Comentario) => void;
   onBaixar: (a: AnexoDoComentario) => void;
+  onVer: (a: AnexoDoComentario) => void;
 }) {
   const meu = !!usuarioId && c.usuario_id === usuarioId;
   /** Respostas à vista. Nascem fechadas. */
@@ -323,7 +361,15 @@ function Comentario({ c, respostas, pessoas, usuarioId, podeComentar, enviando,
                 <IconClip size={12} />
                 <span className="ativ-anexo-nome">{a.nome}</span>
                 <span className="ativ-anexo-peso">{fmtTamanho(a.tamanho)}</span>
-                <button type="button" aria-label={`Baixar ${a.nome}`} onClick={() => onBaixar(a)}>
+                {/* Ver antes de baixar: quase todo anexo de conversa é um print,
+                    e abrir a janela custa menos que salvar o arquivo, olhar e
+                    apagar depois. */}
+                <button type="button" aria-label={`Visualizar ${a.nome}`}
+                  title="Visualizar" onClick={() => onVer(a)}>
+                  <IconEye size={12} />
+                </button>
+                <button type="button" aria-label={`Baixar ${a.nome}`}
+                  title="Baixar" onClick={() => onBaixar(a)}>
                   <IconDownload size={12} />
                 </button>
               </li>
@@ -479,6 +525,9 @@ export function AtividadeDaTarefa({ tarefaId, pessoas, usuarioId, podeComentar, 
     if (r?.error) await carregar();
   }
 
+  /** Anexo aberto na janela de prévia. */
+  const [vendo, setVendo] = useState<AnexoDoComentario | null>(null);
+
   async function baixar(a: AnexoDoComentario) {
     const r = await api(`?action=tarefa_comentario_anexo_base64&id=${a.id}`);
     if (!r?.base64) return;
@@ -541,6 +590,7 @@ export function AtividadeDaTarefa({ tarefaId, pessoas, usuarioId, podeComentar, 
                 onEnviarResposta={(t, a) => void enviar(t, a, c.id)}
                 onExcluir={c2 => void excluir(c2)}
                 onBaixar={a => void baixar(a)}
+                onVer={setVendo}
               />
             ))}
           {podeComentar && (
@@ -587,6 +637,18 @@ export function AtividadeDaTarefa({ tarefaId, pessoas, usuarioId, podeComentar, 
         </ul>
       )}
       </div>
+
+      {/* A mesma janela que abre anexo de projeto e evidência de entrega: um
+          arquivo é um arquivo, e duas prévias diferentes seriam duas telas
+          para aprender. */}
+      {vendo && (
+        <PreviaArquivo
+          arquivo={{ nome: vendo.nome }}
+          onCarregar={() => api(`?action=tarefa_comentario_anexo_base64&id=${vendo.id}`)}
+          onBaixar={() => void baixar(vendo)}
+          onFechar={() => setVendo(null)}
+        />
+      )}
     </div>
   );
 }

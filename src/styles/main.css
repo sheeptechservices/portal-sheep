@@ -5946,6 +5946,7 @@ body.arrastando-painel {
   left: 0;
   right: 0;
   top: calc(100% + 4px);
+  /* A altura vem medida de quem abre; esta e o teto. */
   list-style: none;
   margin: 0;
   padding: 4px;
@@ -5955,6 +5956,13 @@ body.arrastando-painel {
   border: 1px solid var(--gray3);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card-hover);
+}
+/* Sem espaco embaixo - e a caixa de comentario vive no pe do painel -, a lista
+   sobe. Ancorada pelo `bottom`, ela cresce para cima sem precisar saber a
+   propria altura. */
+.ativ-mencoes.para-cima {
+  top: auto;
+  bottom: calc(100% + 4px);
 }
 .ativ-mencoes button {
   display: flex;
