@@ -112,6 +112,21 @@ function useApi(token: string) {
   }, [token, onSessionExpired]);
 }
 
+/** O rosto do inscrito, no chip. Foto quando existe, inicial quando não - e
+ *  inicial também quando a foto não carrega, que acontece com conta do Google
+ *  cujo link expirou. Antes era sempre a inicial, e a mesma pessoa aparecia com
+ *  rosto na lista de escolha e com uma letra no chip logo ao lado. */
+function RostoInscrito({ nome, foto }: { nome: string; foto?: string | null }) {
+  const [falhou, setFalhou] = useState(false);
+  if (foto && !falhou) {
+    return (
+      <img src={foto} alt="" className="notif-avatar-sm" referrerPolicy="no-referrer"
+        onError={() => setFalhou(true)} />
+    );
+  }
+  return <div className="notif-avatar-sm notif-avatar-placeholder">{nome[0]}</div>;
+}
+
 // ── Seletor de usuários do portal ─────────────────────────────
 function UsuarioDropdown({
   token, onSelect, exclude, compact,
@@ -125,7 +140,11 @@ function UsuarioDropdown({
   const [users, setUsers] = useState<UsuarioNotificavel[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
-  const [pos, setPos] = useState<{ top: number; left?: number; right?: number }>({ top: 0 });
+  /** Onde a lista nasce. `bottom` em vez de `top` quando ela abre para cima, e
+   *  `maxAltura` para ela rolar dentro de si mesma em vez de sair da tela. */
+  const [pos, setPos] = useState<{
+    top?: number; bottom?: number; left?: number; right?: number; maxAltura?: number;
+  }>({});
   const btnRef = useRef<HTMLButtonElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
 
@@ -144,29 +163,34 @@ function UsuarioDropdown({
   function toggle() {
     if (!open && btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect();
-      const DROPDOWN_W = 260;
-      const spaceRight = window.innerWidth - rect.left;
-      if (spaceRight < DROPDOWN_W) {
-        setPos({ top: rect.bottom + 6, right: window.innerWidth - rect.right });
-      } else {
-        setPos({ top: rect.bottom + 6, left: rect.left });
-      }
+      const LARGURA = 260;
+      /** O que a lista mede aberta: campo de busca mais a lista de nomes. */
+      const ALTURA = 262;
+      const MARGEM = 8;
+      const abaixo = window.innerHeight - rect.bottom - MARGEM;
+      const acima = rect.top - MARGEM;
+      // Abre para cima quando não cabe embaixo e cabe melhor em cima. No pé da
+      // tela - a última etapa da lista, por exemplo - ela nascia cortada pela
+      // borda da janela, e parecia ter sumido.
+      const paraCima = abaixo < ALTURA && acima > abaixo;
+      const horizontal = window.innerWidth - rect.left < LARGURA
+        ? { right: Math.max(MARGEM, window.innerWidth - rect.right) }
+        : { left: Math.max(MARGEM, Math.min(rect.left, window.innerWidth - LARGURA - MARGEM)) };
+      setPos({
+        ...horizontal,
+        ...(paraCima
+          ? { bottom: window.innerHeight - rect.top + 6 }
+          : { top: rect.bottom + 6 }),
+        // Sobrando pouco espaço dos dois lados, a lista encolhe e rola dentro
+        // de si mesma: melhor curta e inteira do que longa e cortada.
+        maxAltura: Math.max(150, Math.min(ALTURA, (paraCima ? acima : abaixo) - 6)),
+      });
     }
     setOpen(v => !v);
     if (!open) fetchUsers();
   }
 
-  useEffect(() => {
-    if (!open) return;
-    function outside(e: MouseEvent) {
-      if (
-        btnRef.current && !btnRef.current.contains(e.target as Node) &&
-        dropRef.current && !dropRef.current.contains(e.target as Node)
-      ) setOpen(false);
-    }
-    document.addEventListener('mousedown', outside);
-    return () => document.removeEventListener('mousedown', outside);
-  }, [open]);
+  useDropdownDismiss(open, [btnRef, dropRef], () => setOpen(false));
 
   const busca = search.trim().toLowerCase();
   const filtered = users
@@ -184,7 +208,10 @@ function UsuarioDropdown({
         <div
           ref={dropRef}
           className="notif-dropdown"
-          style={{ position: 'fixed', top: pos.top, left: pos.left, right: pos.right }}
+          style={{
+            position: 'fixed',
+            top: pos.top, bottom: pos.bottom, left: pos.left, right: pos.right,
+          }}
         >
           <input
             className="notif-search"
@@ -193,7 +220,8 @@ function UsuarioDropdown({
             onChange={e => setSearch(e.target.value)}
             autoFocus
           />
-          <div className="notif-list">
+          <div className="notif-list"
+            style={{ maxHeight: pos.maxAltura ? pos.maxAltura - 42 : undefined }}>
             {loading && <div className="dux-spinner-row" style={{ padding: '12px 0' }}><span className="dux-spinner sm" /></div>}
             {!loading && filtered.length === 0 && <p className="notif-list-empty">Nenhum usuário</p>}
             {filtered.map(u => (
@@ -265,7 +293,7 @@ function NovaNotificacaoSection({ token }: { token: string }) {
           <div className="notif-chips">
             {notifs.map(n => (
               <div key={n.id} className="notif-chip">
-                <div className="notif-avatar-sm notif-avatar-placeholder">{n.usuario_nome[0]}</div>
+                <RostoInscrito nome={n.usuario_nome} foto={n.usuario_foto} />
                 <span title={n.usuario_email}>{n.usuario_nome}</span>
                 <button onClick={() => removeNotif(n.id)}>×</button>
               </div>
@@ -513,9 +541,12 @@ function StatusRow({
           </button>
 
           {editingName ? (
+            // Enquanto edita, o campo para de crescer: com `flex: 1` ele
+            // engoliria o espaço da descrição, que fica na mesma linha.
             <input
               className="status-name-input"
               value={nome}
+              style={{ flex: '0 1 320px' }}
               onChange={e => setNome(e.target.value)}
               autoFocus
               onClick={e => e.stopPropagation()}
@@ -526,8 +557,13 @@ function StatusRow({
               }}
             />
           ) : (
+            // O nome fica do tamanho que precisa; quem estica é a descrição.
+            // Com os dois em `flex: 1` eles dividiam o espaço ao meio, e a
+            // descrição começava no meio do vazio - num ponto diferente em cada
+            // linha, porque a metade depende de quantos chips há à direita.
             <span
               className="status-name"
+              style={{ flex: '0 1 auto' }}
               onClick={e => { e.stopPropagation(); setNome(status.nome); setEditingName(true); }}
               title="Clique para renomear"
             >
@@ -566,7 +602,7 @@ function StatusRow({
           <div className="status-notif-chips-inline">
             {notifs.map(n => (
               <div key={n.id} className="notif-chip">
-                <div className="notif-avatar-sm notif-avatar-placeholder">{n.usuario_nome[0]}</div>
+                <RostoInscrito nome={n.usuario_nome} foto={n.usuario_foto} />
                 <span title={n.usuario_email}>{n.usuario_nome}</span>
                 <button onClick={() => removeNotif(n.id)}>×</button>
               </div>
@@ -1621,10 +1657,13 @@ function EtapaTarefaRow({
           </button>
 
           {editandoNome ? (
+            // Enquanto edita, o campo para de crescer: com `flex: 1` ele
+            // engoliria o espaço da descrição, que fica na mesma linha.
             <input
               className="status-name-input"
               value={nome}
               autoFocus
+              style={{ flex: '0 1 320px' }}
               onChange={e => setNome(e.target.value)}
               onClick={e => e.stopPropagation()}
               onBlur={() => { setEditandoNome(false); void salvar(nome, cor); }}
@@ -1634,7 +1673,9 @@ function EtapaTarefaRow({
               }}
             />
           ) : (
+            // O nome fica do tamanho que precisa; quem estica é a descrição.
             <span className="status-name" title="Clique para renomear"
+              style={{ flex: '0 1 auto' }}
               onClick={e => { e.stopPropagation(); setEditandoNome(true); }}>
               {nome}
             </span>
@@ -1681,7 +1722,7 @@ function EtapaTarefaRow({
           <div className="status-notif-chips-inline">
             {inscritos.map(n => (
               <div key={n.id} className="notif-chip">
-                <div className="notif-avatar-sm notif-avatar-placeholder">{n.usuario_nome[0]}</div>
+                <RostoInscrito nome={n.usuario_nome} foto={n.usuario_foto} />
                 <span title={n.usuario_email}>{n.usuario_nome}</span>
                 <button aria-label={`Remover ${n.usuario_nome}`}
                   onClick={() => void desinscrever(n.id)}>

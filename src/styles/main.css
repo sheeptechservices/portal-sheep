@@ -7539,6 +7539,13 @@ body.arrastando-painel {
   object-fit: cover;
   flex-shrink: 0;
 }
+/* No chip o rosto e miudo. A placa da inicial nasceu com 28px para a lista de
+   escolha, e ali dentro ela ficava maior que a foto do vizinho. */
+.notif-avatar-sm.notif-avatar-placeholder {
+  width: 20px;
+  height: 20px;
+  font-size: 10px;
+}
 
 /* ── Seletor de usuários para notificação ────────────────────────────── */
 .notif-dropdown-wrap {

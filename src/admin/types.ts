@@ -23,6 +23,8 @@ interface Inscrito {
   usuario_id: string;
   usuario_nome: string;
   usuario_email: string;
+  /** Nulo para quem nunca entrou pelo Google ou não tem foto na conta. */
+  usuario_foto?: string | null;
 }
 
 export interface Notificacao extends Inscrito {

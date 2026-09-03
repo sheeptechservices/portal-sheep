@@ -1661,13 +1661,18 @@ export async function healOrphanedCards(db: Client) {
  * sem uma segunda ida ao servidor.
  */
 async function inscritoCriado(db: Client, id: number, usuarioId: string) {
-  const u = await db.execute({ sql: 'SELECT nome, email FROM usuarios WHERE id = ?', args: [usuarioId] });
+  const u = await db.execute({
+    sql: 'SELECT nome, email, foto_url FROM usuarios WHERE id = ?', args: [usuarioId],
+  });
   const row = u.rows[0];
   return {
     id,
     usuario_id: usuarioId,
     usuario_nome: String(row?.nome ?? ''),
     usuario_email: String(row?.email ?? ''),
+    // A foto vai junto: sem ela o chip recém-criado nasceria com a inicial e só
+    // ganharia o rosto no recarregamento seguinte.
+    usuario_foto: (row?.foto_url as string | null) ?? null,
   };
 }
 
@@ -2187,7 +2192,8 @@ async function despacharAdminData(
     if (action === 'status_configs') {
       const [statuses, notifs] = await Promise.all([
         db.execute('SELECT * FROM status_configs WHERE ativo = 1 ORDER BY ordem'),
-        db.execute(`SELECT n.*, u.nome AS usuario_nome, u.email AS usuario_email
+        db.execute(`SELECT n.*, u.nome AS usuario_nome, u.email AS usuario_email,
+                            u.foto_url AS usuario_foto
                      FROM status_notificacoes n JOIN usuarios u ON u.id = n.usuario_id
                      ORDER BY u.nome`),
       ]);
@@ -2203,7 +2209,8 @@ async function despacharAdminData(
     if (action === 'tarefa_status_configs') {
       const [etapas, inscritos] = await Promise.all([
         db.execute('SELECT * FROM tarefa_status_configs WHERE ativo = 1 ORDER BY ordem, id'),
-        db.execute(`SELECT n.*, u.nome AS usuario_nome, u.email AS usuario_email
+        db.execute(`SELECT n.*, u.nome AS usuario_nome, u.email AS usuario_email,
+                           u.foto_url AS usuario_foto
                     FROM tarefa_status_notificacoes n JOIN usuarios u ON u.id = n.usuario_id
                     ORDER BY u.nome`),
       ]);
@@ -2852,7 +2859,8 @@ async function despacharAdminData(
     }
 
     if (action === 'novo_lead_notifs') {
-      const notifs = await db.execute(`SELECT n.*, u.nome AS usuario_nome, u.email AS usuario_email
+      const notifs = await db.execute(`SELECT n.*, u.nome AS usuario_nome, u.email AS usuario_email,
+                            u.foto_url AS usuario_foto
                      FROM novo_lead_notificacoes n JOIN usuarios u ON u.id = n.usuario_id
                      ORDER BY u.nome`);
       return { status: 200, body: { notificacoes: notifs.rows } };
