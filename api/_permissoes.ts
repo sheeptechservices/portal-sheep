@@ -251,6 +251,7 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
 
   // ── Gestão de usuários e acessos ──────────────────────────────────────────
   usuarios: SO_ADMIN,
+  convidar_usuario: SO_ADMIN,
   set_papel: SO_ADMIN,
   set_usuario_ativo: SO_ADMIN,
   permissoes: SO_ADMIN,

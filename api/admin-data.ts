@@ -3,6 +3,7 @@ import { createClient } from '@libsql/client';
 import {
   handleAdminData, createAdminSession, getAdminSession, deleteAdminSession,
   checkLoginRateLimit, recordFailedLogin, clearLoginAttempts, upsertUsuarioGoogle, registrarAuditoria,
+  usuarioConvidadoAtivo,
   type SessaoAdmin,
 } from './_admin-handler.js';
 import { getQuery } from './_query.js';
@@ -65,7 +66,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           idToken = tokens.idToken;
           accessToken = tokens.accessToken;
         }
-        const conta = await verificarIdTokenGoogle(idToken, cfg);
+        // A segunda porta: quem não é do domínio da casa entra se tiver sido
+        // cadastrado antes no painel de Usuários, e enquanto estiver ativo.
+        const conta = await verificarIdTokenGoogle(idToken, cfg,
+          email => usuarioConvidadoAtivo(db, email));
         // A sessão só nasce depois que o usuário existe no banco: é ele que
         // assina cada ação daqui pra frente.
         usuario = await upsertUsuarioGoogle(db, conta, accessToken);

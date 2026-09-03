@@ -36,6 +36,8 @@ interface UsuarioLinha {
   foto_url: string | null;
   papel: Papel;
   ativo: boolean;
+  /** Entrou por convite, e não pelo domínio da casa. */
+  convidado: boolean;
   criado_em: string;
   ultimo_acesso: string | null;
   sessoes_abertas: number;
@@ -43,6 +45,7 @@ interface UsuarioLinha {
 
 interface Resposta {
   usuarios?: UsuarioLinha[];
+  usuario?: UsuarioLinha;
   admin_email?: string;
   error?: string;
 }
@@ -212,6 +215,72 @@ function ConfirmarDesativar({ nome, onCancelar, onConfirmar }: {
   );
 }
 
+/** Convidar alguém de fora da casa.
+ *
+ *  Quem tem e-mail da Sheep entra sozinho, pelo Workspace. Para o resto - um
+ *  cliente, um parceiro, alguém com conta pessoal - a entrada só existe depois
+ *  de cadastrada aqui: o login com o Google confere este cadastro antes de
+ *  deixar passar. */
+function ConvidarPessoa({ onConvidar, onFechar, enviando }: {
+  onConvidar: (nome: string, email: string, papel: Papel) => void;
+  onFechar: () => void;
+  enviando: boolean;
+}) {
+  const [nome, setNome] = useState('');
+  const [email, setEmail] = useState('');
+  const [papel, setPapel] = useState<Papel>('membro');
+
+  function enviar() {
+    if (!nome.trim() || !email.trim()) return;
+    onConvidar(nome.trim(), email.trim(), papel);
+    setNome(''); setEmail(''); setPapel('membro');
+    onFechar();
+  }
+
+  return (
+    <div className="usuarios-convite surge">
+      <div className="usuarios-convite-campos">
+        <label className="form-group">
+          <span className="form-label">Nome</span>
+          <input className="form-input" value={nome} autoFocus
+            placeholder="Como a pessoa aparece no painel"
+            onChange={e => setNome(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') enviar(); if (e.key === 'Escape') onFechar(); }} />
+        </label>
+        <label className="form-group">
+          <span className="form-label">E-mail do Google</span>
+          <input className="form-input" value={email} type="email"
+            placeholder="a conta com que ela vai entrar"
+            onChange={e => setEmail(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') enviar(); if (e.key === 'Escape') onFechar(); }} />
+        </label>
+        <label className="form-group" style={{ maxWidth: 160 }}>
+          <span className="form-label">Papel</span>
+          <select className="form-select" value={papel}
+            onChange={e => setPapel(e.target.value as Papel)}>
+            {PAPEIS_ATRIBUIVEIS.map(p => (
+              <option key={p} value={p}>{PAPEL_LABEL[p]}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <p className="usuarios-convite-nota">
+        Tem de ser o mesmo endereço da conta Google que a pessoa usa para entrar. Enquanto o acesso
+        estiver ativo aqui, ela passa; tirando o acesso, a entrada seguinte é recusada.
+      </p>
+      <div className="usuarios-convite-acoes">
+        <button type="button" className="btn btn-secondary btn-sm" onClick={onFechar}>
+          Cancelar
+        </button>
+        <button type="button" className="btn btn-primary btn-sm" disabled={enviando || !nome.trim() || !email.trim()}
+          onClick={enviar}>
+          {enviando ? 'Convidando…' : 'Convidar'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function UsuariosPage({ token }: { token: string }) {
   const { onSessionExpired, usuario: eu } = useAuth();
   const { toast } = useToast();
@@ -253,6 +322,22 @@ export default function UsuariosPage({ token }: { token: string }) {
     }
     return d;
   }, [token, onSessionExpired, toast]);
+
+  const [convidando, setConvidando] = useState(false);
+  const [convitePronto, setConvitePronto] = useState(false);
+
+  async function convidar(nome: string, email: string, papel: Papel) {
+    setConvidando(true);
+    const r = await chamar({ action: 'convidar_usuario', nome, email, papel });
+    setConvidando(false);
+    if (!r?.usuario) return;
+    // Entra na lista na hora, com o id que o servidor acabou de dar.
+    const nova = r.usuario;
+    setUsuarios(lista => [nova, ...(lista ?? []).filter(x => x.id !== nova.id)]);
+    setConvitePronto(false);
+    toast('success', 'Convite feito',
+      `${nova.nome} já pode entrar com ${nova.email}.`);
+  }
 
   async function trocarPapel(u: UsuarioLinha, papel: Papel) {
     if (papel === u.papel) return;
@@ -347,7 +432,22 @@ export default function UsuariosPage({ token }: { token: string }) {
           <h1 className="admin-page-title">Usuários</h1>
           <p className="admin-page-desc">Quem tem acesso ao painel, o papel de cada um e o que cada papel alcança</p>
         </div>
+        {!convitePronto && (
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => setConvitePronto(true)}>
+            + Convidar alguém de fora
+          </button>
+        )}
       </div>
+
+      {/* Fora do cabeçalho: o formulário ocupa a linha inteira, e espremido ao
+          lado do título ele viraria três campos de dois dedos. */}
+      {convitePronto && (
+        <ConvidarPessoa
+          onConvidar={(n, e, p) => void convidar(n, e, p)}
+          onFechar={() => setConvitePronto(false)}
+          enviando={convidando}
+        />
+      )}
 
       <div className="admin-stats">
         <Estatistica label="Com acesso" valor={ativos.length} desc={`de ${lista.length} ${lista.length === 1 ? 'conta' : 'contas'}`} />
@@ -383,6 +483,11 @@ export default function UsuariosPage({ token }: { token: string }) {
                         <span className="usuarios-pessoa-nome">
                           {u.nome}
                           {souEu && <span className="usuarios-tag">você</span>}
+                          {u.convidado && (
+                            <span className="usuarios-tag" title="Entra por convite, e não pelo domínio da casa">
+                              convidado
+                            </span>
+                          )}
                           {u.sessoes_abertas > 0 && (
                             <span className="usuarios-tag online" title={`${u.sessoes_abertas} ${u.sessoes_abertas === 1 ? 'sessão aberta' : 'sessões abertas'}`}>
                               no painel

@@ -48,13 +48,16 @@ export interface ContaGoogle {
 }
 
 /**
- * Quem pode entrar: por padrão só o domínio da casa. `GOOGLE_ALLOWED_DOMAIN`
- * troca o domínio e `ADMIN_GOOGLE_EMAILS` (lista separada por vírgula) libera
- * endereços avulsos, para convidado de fora do domínio.
+ * Quem passa direto: o domínio da casa. `GOOGLE_ALLOWED_DOMAIN` troca o domínio
+ * e `ADMIN_GOOGLE_EMAILS` (lista separada por vírgula) libera endereços avulsos
+ * que precisam entrar mesmo com o banco fora do ar.
  *
  * O domínio é conferido pela claim `hd`, que o Google emite para dizer a que
  * Workspace a conta pertence, e não só pelo sufixo do e-mail: uma conta pessoal
  * pode ter um e-mail com o sufixo da empresa sem estar no Workspace dela.
+ *
+ * Quem está fora daqui ainda pode entrar por convite - ver `convidado` em
+ * `verificarIdTokenGoogle`.
  */
 function permitido(email: string, hd: string, dominio: string, avulsos: string): boolean {
   const e = email.toLowerCase();
@@ -76,10 +79,24 @@ export interface ConfigGoogle {
 }
 
 /**
+ * Pergunta se um e-mail de fora do domínio foi convidado: cadastrado antes no
+ * painel de Usuários e ainda ativo. Quem chama liga isto no banco.
+ */
+export type ChecarConvite = (email: string) => Promise<boolean>;
+
+/**
  * Devolve a conta quando o token é legítimo e o e-mail tem acesso; lança em
  * qualquer outro caso. Quem chama responde 401 sem detalhar o motivo.
+ *
+ * `convidado` é a segunda porta, e só ela deixa entrar quem não é do domínio.
+ * Sem ela a regra é a de sempre - domínio ou lista do ambiente -, então esquecer
+ * de passá-la fecha a porta em vez de abri-la.
  */
-export async function verificarIdTokenGoogle(idToken: string, cfg: ConfigGoogle): Promise<ContaGoogle> {
+export async function verificarIdTokenGoogle(
+  idToken: string,
+  cfg: ConfigGoogle,
+  convidado?: ChecarConvite,
+): Promise<ContaGoogle> {
   if (!cfg.clientId) throw new Error('GOOGLE_CLIENT_ID não configurado');
 
   const partes = String(idToken ?? '').split('.');
@@ -110,7 +127,12 @@ export async function verificarIdTokenGoogle(idToken: string, cfg: ConfigGoogle)
   const email = String(corpo.email ?? '');
   if (!email) throw new Error('token sem e-mail');
   const hd = String(corpo.hd ?? '');
-  if (!permitido(email, hd, cfg.dominio, cfg.avulsos)) throw new Error(`e-mail sem acesso: ${email}`);
+  if (!permitido(email, hd, cfg.dominio, cfg.avulsos)) {
+    // Fora do domínio: entra quem foi cadastrado antes, e só enquanto o cadastro
+    // estiver ativo. Tirar o acesso no painel fecha a porta na entrada seguinte.
+    const temConvite = convidado ? await convidado(email.toLowerCase()) : false;
+    if (!temConvite) throw new Error(`e-mail sem acesso: ${email}`);
+  }
 
   // A claim `picture` só vem quando o Workspace expõe a foto no token. Quando não
   // vem, quem busca a foto é a People API, com o access token que a troca do

@@ -607,6 +607,13 @@ async function migrarSchema(db: Client) {
     )
   `);
 
+  // Convidado: quem entra sem ser do domínio da casa. A linha nasce no painel de
+  // Usuários, antes da primeira entrada, e é ela que autoriza o login com Google
+  // de um e-mail de fora. Sem a marca, e-mail de fora continua sem acesso.
+  try {
+    await ddl(`ALTER TABLE usuarios ADD COLUMN convidado INTEGER NOT NULL DEFAULT 0`);
+  } catch (_) { /* already exists */ }
+
   // Migration: add always_collapsed flag (etapa pontual - fica recolhida no kanban
   // mesmo tendo cards; a etapa vazia já recolhe por padrão)
   try {
@@ -1365,6 +1372,24 @@ function rowToUsuario(r: Record<string, any>): UsuarioAdmin {
  * buscar a foto quando o ID token não trouxe `picture`, que é o caso do
  * Workspace daqui.
  */
+/**
+ * O e-mail foi convidado e continua valendo?
+ *
+ * É a pergunta que a entrada faz quando a conta não é do domínio da casa. Só
+ * responde sim para linha marcada como convidada e ativa - desligar o acesso no
+ * painel basta para barrar a próxima entrada.
+ */
+export async function usuarioConvidadoAtivo(db: Client, email: string): Promise<boolean> {
+  await ensureAdminSchema(db);
+  const r = await db.execute({
+    sql: `SELECT 1 FROM usuarios
+          WHERE email = ? AND ativo = 1 AND convidado = 1
+          LIMIT 1`,
+    args: [email.trim().toLowerCase()],
+  });
+  return r.rows.length > 0;
+}
+
 export async function upsertUsuarioGoogle(
   db: Client,
   conta: { email: string; nome: string; foto: string | null },
@@ -2029,7 +2054,7 @@ async function despacharAdminData(
         // A ordem final é dada em JS, pelo papel *efetivo* - ver o sort abaixo.
         // Aqui fica só o critério de desempate, que o banco resolve de graça.
         db.execute(`
-          SELECT id, email, nome, foto_url, papel, ativo, criado_em, ultimo_acesso
+          SELECT id, email, nome, foto_url, papel, ativo, convidado, criado_em, ultimo_acesso
           FROM usuarios
           ORDER BY ativo DESC, ultimo_acesso DESC, nome
         `),
@@ -2055,6 +2080,8 @@ async function despacharAdminData(
           foto_url: r.foto_url != null ? String(r.foto_url) : null,
           papel: papelEfetivo(email, r.papel),
           ativo: Number(r.ativo) === 1,
+          // Quem entra por convite, e não pelo domínio da casa.
+          convidado: Number(r.convidado) === 1,
           criado_em: String(r.criado_em ?? ''),
           ultimo_acesso: r.ultimo_acesso != null ? String(r.ultimo_acesso) : null,
           sessoes_abertas: abertas.get(String(r.id)) ?? 0,
@@ -4008,6 +4035,80 @@ function faltaEmProjeto(p: any): string | null {
     }
 
     // ── Gestão de usuários ───────────────────────────────────────────────────
+    // Convite: o acesso de quem não é do domínio da casa começa aqui.
+    //
+    // Quem tem e-mail da casa entra sozinho, pelo Workspace. Para o resto - um
+    // cliente, um parceiro, alguém com conta pessoal - a entrada só existe se a
+    // linha estiver cadastrada antes, e é esta ação que a cria. A conferência
+    // acontece no login (`usuarioConvidadoAtivo`), então tirar o acesso na lista
+    // fecha a porta na entrada seguinte.
+    if (action === 'convidar_usuario') {
+      if (!podeGerenciarUsuarios(usuario)) return NEGADO_USUARIOS;
+
+      const email = String(body?.email ?? '').trim().toLowerCase();
+      const nome = String(body?.nome ?? '').trim();
+      const papel = String(body?.papel ?? 'membro').trim().toLowerCase() as Papel;
+
+      // Endereço exato, e nunca um domínio inteiro: convite é para uma pessoa.
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return { status: 400, body: { error: 'Escreva um e-mail válido.' } };
+      }
+      if (!nome) return { status: 400, body: { error: 'Escreva o nome de quem vai entrar.' } };
+      if (!PAPEIS_ATRIBUIVEIS.includes(papel)) {
+        return { status: 400, body: { error: `Papel inválido. Use ${PAPEIS_ATRIBUIVEIS.join(' ou ')}.` } };
+      }
+
+      const ja = await db.execute({
+        sql: 'SELECT id, ativo FROM usuarios WHERE email = ?', args: [email],
+      });
+      const linha = ja.rows[0] as Record<string, any> | undefined;
+      const agora = new Date().toISOString();
+
+      if (linha) {
+        // Já existe. Ativa é conflito - a pessoa já entra, e criar de novo só
+        // duplicaria a linha. Sem acesso, o convite devolve o acesso, que é o
+        // que quem clicou está pedindo.
+        if (Number(linha.ativo) === 1) {
+          return { status: 409, body: { error: 'Esse e-mail já tem acesso ao portal.' } };
+        }
+        await db.execute({
+          sql: 'UPDATE usuarios SET nome = ?, papel = ?, ativo = 1, convidado = 1 WHERE id = ?',
+          args: [nome, papel, String(linha.id)],
+        });
+      } else {
+        await db.execute({
+          sql: `INSERT INTO usuarios (id, email, nome, foto_url, papel, ativo, convidado, criado_em, ultimo_acesso)
+                VALUES (?, ?, ?, NULL, ?, 1, 1, ?, NULL)`,
+          args: [randomUUID(), email, nome, papel, agora],
+        });
+      }
+
+      // Devolve a linha inteira: a tela põe a pessoa na lista sem recarregar.
+      const criado = await db.execute({
+        sql: `SELECT id, email, nome, foto_url, papel, ativo, convidado, criado_em, ultimo_acesso
+              FROM usuarios WHERE email = ?`,
+        args: [email],
+      });
+      const u = criado.rows[0] as Record<string, any>;
+      return {
+        status: 200,
+        body: {
+          usuario: {
+            id: String(u.id),
+            email: String(u.email),
+            nome: String(u.nome),
+            foto_url: u.foto_url != null ? String(u.foto_url) : null,
+            papel: papelEfetivo(String(u.email), u.papel),
+            ativo: Number(u.ativo) === 1,
+            convidado: Number(u.convidado) === 1,
+            criado_em: String(u.criado_em ?? ''),
+            ultimo_acesso: u.ultimo_acesso != null ? String(u.ultimo_acesso) : null,
+            sessoes_abertas: 0,
+          },
+        },
+      };
+    }
+
     // Papel e acesso de outra pessoa. Só o dono do painel, e nunca sobre a
     // própria conta dele: rebaixar ou desligar o administrador deixaria o
     // sistema sem ninguém capaz de devolver acesso a alguém.

@@ -11128,6 +11128,41 @@ body.arrastando-painel {
 .usuarios-papel-desc { font-size: 12.5px; color: var(--gray); line-height: 1.5; }
 
 /* ─── Confirmação de remover acesso ─────────────────────────────────────── */
+/* ── Convite de quem nao e da casa ─────────────────────
+   Tres campos numa linha so, num cartao que surge abaixo do cabecalho. Fora do
+   cabecalho de proposito: espremido ao lado do titulo ele viraria tres campos
+   de dois dedos. */
+.usuarios-convite {
+  padding: 14px 16px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  box-shadow: var(--shadow-card);
+}
+.usuarios-convite-campos {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.usuarios-convite-campos .form-group {
+  flex: 1 1 190px;
+  min-width: 0;
+  margin: 0;
+}
+.usuarios-convite-nota {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--gray2);
+}
+.usuarios-convite-acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 .usuarios-modal-fundo {
   position: fixed;
   inset: 0;
