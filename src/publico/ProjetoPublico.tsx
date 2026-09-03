@@ -49,8 +49,6 @@ interface Entrega {
   progresso: number;
   responsaveis: { nome: string; foto_url: string | null }[];
   evidencias: Evidencia[];
-  tarefas_total: number;
-  tarefas_feitas: number;
 }
 
 interface Dados {
@@ -344,8 +342,12 @@ function SeletorAgrupamento({ maior, menor, onMudar }: {
 }
 
 /** A linha da entrega, no mesmo desenho do painel de dentro: o marco da
- *  situação abre a linha, o título ocupa o meio, e prazo, contagem de tarefas
- *  e percentual fecham à direita. */
+ *  situação abre a linha, o título ocupa o meio, e prazo, responsáveis e
+ *  percentual fecham à direita.
+ *
+ *  A contagem de tarefas não aparece: o cliente acompanha entrega, e o número
+ *  de cards por trás dela é conversa de dentro de casa. O percentual continua
+ *  dizendo o quanto andou. */
 function LinhaEntrega({ e, marca, aberta, realcada, onAlternar, onAbrirPrevia }: {
   e: Entrega;
   /** O que dizer sobre onde a entrega vive. Vem pronto de fora porque depende
@@ -392,9 +394,8 @@ function LinhaEntrega({ e, marca, aberta, realcada, onAlternar, onAbrirPrevia }:
       </span>
       <span className="pub-entrega-fim">
         {fmtData(e.prazo) && <span className="pub-prazo">{fmtData(e.prazo)}</span>}
-        {/* Quem responde pela entrega, colado na contagem de tarefas: as duas
-            respondem a mesma pergunta - quanto falta e com quem falo sobre
-            isso. */}
+        {/* Quem responde pela entrega, ao lado do prazo: com quem falo sobre
+            isso, junto de para quando é. */}
         {e.responsaveis.length > 0 && (
           <span className="pub-donos">
             {e.responsaveis.map(p => (
@@ -402,11 +403,6 @@ function LinhaEntrega({ e, marca, aberta, realcada, onAlternar, onAbrirPrevia }:
                 <Avatar nome={p.nome} foto={p.foto_url} />
               </span>
             ))}
-          </span>
-        )}
-        {e.tarefas_total > 0 && (
-          <span className="pub-tarefas" title={`${e.tarefas_feitas} de ${e.tarefas_total} tarefas concluídas`}>
-            {e.tarefas_feitas}/{e.tarefas_total} tarefas
           </span>
         )}
         <span className="pub-pct" style={{ color: feita ? cor : undefined }}>

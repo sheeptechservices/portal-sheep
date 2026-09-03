@@ -276,10 +276,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           responsaveis: idsDe(e.responsaveis)
             .map(id => pessoas.get(id))
             .filter((x): x is { nome: string; foto_url: string | null } => !!x),
-          // A contagem que o cliente vê é a mesma da conta do progresso: tarefa
-          // em etapa desconsiderada fica de fora das duas.
-          tarefas_total: suas.filter(t => !etapas.desconsideradas.has(String(t.status))).length,
-          tarefas_feitas: suas.filter(t => etapas.conclusivas.has(String(t.status))).length,
         };
       }),
       ordem_status: ORDEM_STATUS,
