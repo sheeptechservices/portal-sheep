@@ -13,7 +13,7 @@ import { AtividadeDaTarefa } from './AtividadeDaTarefa';
 import { createPortal } from 'react-dom';
 import { iniciais } from './AdminApp';
 import {
-  IconAlert, IconCheck, IconChevronDown, IconDuplicar, IconTrash, IconUser, IconX,
+  IconAlert, IconCheck, IconChevronDown, IconDuplicar, IconPlus, IconTrash, IconUser, IconX,
 } from '../components/icons';
 import { SelectSistema } from '../components/SelectSistema';
 import { DatePicker } from '../components/DatePicker';
@@ -253,6 +253,9 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
   const [itens, setItens] = useState<Subtarefa[]>(
     () => (gravado ? passosLidos.get(tarefaId!) ?? [] : rascunho));
   const [novo, setNovo] = useState('');
+  /** O campo de acrescentar só existe depois do "+". Em repouso a lista termina
+   *  no último passo, e não numa caixa vazia esperando alguém. */
+  const [escrevendo, setEscrevendo] = useState(false);
 
   /** Chave provisória do passo que ainda está nascendo, apontando para a
    *  promessa do id verdadeiro. Marcar ou tirar um passo recém-escrito espera
@@ -397,19 +400,24 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
         </div>
       )}
 
-      {!desabilitado && (
+      {!desabilitado && (escrevendo ? (
         // Enter adiciona e o campo continua ali: quem escreve uma lista escreve
         // vários itens seguidos, e ter de clicar de novo a cada um quebraria o
-        // ritmo.
-        <input className="form-input checklist-novo" value={novo}
-          placeholder={itens.length ? 'Outro passo' : 'Adicionar um passo'}
+        // ritmo. Sair com o campo vazio recolhe de volta no "+".
+        <input className="checklist-novo" value={novo} autoFocus
+          placeholder="O que precisa ser feito"
           onChange={e => setNovo(e.target.value)}
           onKeyDown={e => {
             if (e.key === 'Enter') { e.preventDefault(); adicionar(); }
-            if (e.key === 'Escape') setNovo('');
+            if (e.key === 'Escape') { setNovo(''); setEscrevendo(false); }
           }}
-          onBlur={adicionar} />
-      )}
+          onBlur={() => { adicionar(); setEscrevendo(false); }} />
+      ) : (
+        <button type="button" className="checklist-add" onClick={() => setEscrevendo(true)}>
+          <IconPlus size={12} />
+          {itens.length ? 'Outro passo' : 'Adicionar um passo'}
+        </button>
+      ))}
     </div>
   );
 }
