@@ -2823,7 +2823,10 @@ export default function ConfiguracoesPage({ token }: { token: string }) {
         )}
       </div>
 
-      <AbaPainel key={`${activeTab}-${escopo}`} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <AbaPainel key={`${activeTab}-${escopo}`} // O mesmo vao da pagina: aqui dentro os blocos sao os mesmos - cartoes,
+        // filtros, busca e lista -, e um vao proprio deixava esta tela mais
+        // solta que as outras.
+        style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {activeTab === 'integracoes' ? (
         <IntegracoesTab token={token} />
       ) : escopo === 'tarefas' ? (

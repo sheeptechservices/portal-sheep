@@ -711,10 +711,18 @@ body {
 
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
+/* O botao de acao tem o mesmo acabamento das demais pecas da casa: fio de luz
+   na aresta de cima, sombra fina na de baixo e sombra larga por fora. Sobre a
+   cor cheia os valores sao proprios - os tokens de cristal foram medidos para
+   superficie clara, e ali dentro o branco a 100% viraria um risco. */
 .btn-primary {
   background: var(--yellow);
   color: var(--on-yellow);
   border-color: var(--yellow);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .34),
+    inset 0 -1px 0 rgba(0, 0, 0, .12),
+    0 1px 2px rgba(20, 22, 30, .10),
+    0 6px 14px -8px rgba(20, 22, 30, .38);
 }
 
 .btn-primary::after {
@@ -728,18 +736,24 @@ body {
   transition: left .5s ease;
 }
 
+/* Subindo, o acabamento vai junto: sem repor as duas linhas internas o botao
+   perderia a aresta justo quando se levanta. */
 .btn-primary:hover:not(:disabled) {
   background: #00A88C;
   border-color: #00A88C;
-  box-shadow: var(--shadow-yellow);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .34),
+    inset 0 -1px 0 rgba(0, 0, 0, .12),
+    var(--shadow-yellow);
   transform: translateY(-2px);
 }
 
 .btn-primary:hover:not(:disabled)::after { left: 150%; }
 
+/* Apertado, ele afunda: some a sombra de fora e fica so a linha de baixo, que
+   e o que da a impressao de peca pressionada contra a folha. */
 .btn-primary:active:not(:disabled) {
   transform: scale(0.97) translateY(0);
-  box-shadow: none;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .18);
 }
 
 .btn-secondary {
@@ -3152,17 +3166,23 @@ body.arrastando-painel {
 /* O respiro do rodapé era de 80px e sobrava vazio embaixo de toda página - no
    quadro de tarefas ele comia a altura das colunas, cortando os cards. 28px
    iguala os outros lados e devolve essa faixa ao conteúdo. */
+/* O respiro entre os blocos da tela - cabecalho, cartoes, filtros, busca e a
+   lista - saiu de 20px para 14px, e a folga em volta de 28px para 22px. Com
+   cinco blocos empilhados, o que sobrava de ar empurrava o conteudo para fora
+   da primeira tela: quem abre a pagina quer ver os itens, e nao a moldura. */
 .admin-content-wrap {
   flex: 1;
   overflow: auto;
-  padding: 28px 28px 28px;
+  padding: 20px 24px 22px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 14px;
 }
 
 .admin-page-header {
-  margin-bottom: 24px;
+  /* Quase nada: o vao ate o bloco seguinte ja vem do `gap` da pagina, e os
+     24px daqui somavam 44px entre o titulo e a primeira peca. */
+  margin-bottom: 4px;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -3206,7 +3226,7 @@ body.arrastando-painel {
 .admin-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
+  gap: 10px;
   margin-bottom: 0;
 }
 .admin-stats .admin-stat-card-v2 { flex: 1 1 150px; min-width: 0; }
@@ -4721,7 +4741,10 @@ body.arrastando-painel {
    cristal, sem repetir os valores. O tom e mais leve que o do painel - a folha
    aqui e a `--bg` da tela inteira, e o degrade forte de um painel estreito
    viraria mancha numa area larga. */
-.pagina-tarefas {
+.pagina-tarefas,
+.pagina-projetos,
+.admin-sidebar,
+.admin-topbar {
   --cristal: linear-gradient(180deg,
     color-mix(in srgb, var(--gray4) 12%, var(--white)) 0%,
     color-mix(in srgb, var(--gray4) 46%, var(--white)) 100%);
@@ -4732,7 +4755,10 @@ body.arrastando-painel {
   --cristal-sombra: 0 1px 2px rgba(20, 22, 30, .05),
     0 4px 10px -6px rgba(20, 22, 30, .14);
 }
-:root[data-theme="dark"] .pagina-tarefas {
+:root[data-theme="dark"] .pagina-tarefas,
+:root[data-theme="dark"] .pagina-projetos,
+:root[data-theme="dark"] .admin-sidebar,
+:root[data-theme="dark"] .admin-topbar {
   --cristal: linear-gradient(180deg, rgba(30, 31, 36, .96) 0%,
     rgba(20, 21, 24, .86) 100%);
   --cristal-borda: rgba(255, 255, 255, .10);
@@ -4751,7 +4777,16 @@ body.arrastando-painel {
 .pagina-tarefas .view-toggle,
 .pagina-tarefas .kanban-card,
 .pagina-tarefas .linha-grupo,
-.pagina-tarefas .admin-stat-card-v2 {
+.pagina-tarefas .admin-table-wrap,
+.pagina-tarefas .admin-stat-card-v2,
+.pagina-projetos .admin-toolbar-btn,
+.pagina-projetos .filter-dropdown-btn,
+.pagina-projetos .secao-busca-campo,
+.pagina-projetos .view-toggle,
+.pagina-projetos .kanban-card,
+.pagina-projetos .linha-grupo,
+.pagina-projetos .admin-table-wrap,
+.pagina-projetos .admin-stat-card-v2 {
   border-color: var(--cristal-borda);
   box-shadow: inset 0 1px 0 var(--cristal-luz),
     inset 0 -1px 0 var(--cristal-base),
@@ -4762,14 +4797,21 @@ body.arrastando-painel {
     background var(--transition);
 }
 /* A borda esquerda do card e do cartao e a cor da situacao, e continua sendo. */
-.pagina-tarefas .kanban-card { border-left-color: var(--col-color, var(--gray3)); }
-.pagina-tarefas .admin-stat-card-v2 { border-left-color: var(--accent-color, var(--yellow)); }
+.pagina-tarefas .kanban-card,
+.pagina-projetos .kanban-card { border-left-color: var(--col-color, var(--gray3)); }
+.pagina-tarefas .admin-stat-card-v2,
+.pagina-projetos .admin-stat-card-v2 { border-left-color: var(--accent-color, var(--yellow)); }
 
 .pagina-tarefas .admin-toolbar-btn:hover:not(:disabled),
 .pagina-tarefas .filter-dropdown-btn:hover,
 .pagina-tarefas .secao-busca-campo:hover,
 .pagina-tarefas .secao-busca-campo:focus-within,
-.pagina-tarefas .linha-grupo:hover {
+.pagina-tarefas .linha-grupo:hover,
+.pagina-projetos .admin-toolbar-btn:hover:not(:disabled),
+.pagina-projetos .filter-dropdown-btn:hover,
+.pagina-projetos .secao-busca-campo:hover,
+.pagina-projetos .secao-busca-campo:focus-within,
+.pagina-projetos .linha-grupo:hover {
   border-color: var(--cristal-borda-forte);
 }
 
@@ -4777,25 +4819,94 @@ body.arrastando-painel {
    peca inteira e clicavel. Os estados repoem o fio de luz junto com a sombra -
    sem isso o card perderia a aresta justo quando sobe. */
 .pagina-tarefas .kanban-card:hover,
-.pagina-tarefas .admin-stat-card-v2:hover {
+.pagina-tarefas .admin-stat-card-v2:hover,
+.pagina-projetos .kanban-card:hover,
+.pagina-projetos .admin-stat-card-v2:hover {
   transform: translateY(-2px);
   border-color: var(--cristal-borda-forte);
   box-shadow: inset 0 1px 0 var(--cristal-luz),
     inset 0 -1px 0 var(--cristal-base),
     var(--shadow-card-hover);
 }
-.pagina-tarefas .kanban-card:hover { background: var(--card-hover-bg, #FCFCFB); }
+.pagina-tarefas .kanban-card:hover,
+.pagina-projetos .kanban-card:hover { background: var(--card-hover-bg, #FCFCFB); }
 /* Arrastando, o card afunda em vez de subir: a peca saiu do lugar, e continuar
    elevada diria que ela ainda esta em repouso. */
-.pagina-tarefas .kanban-card:active {
+.pagina-tarefas .kanban-card:active,
+.pagina-projetos .kanban-card:active {
   transform: scale(0.97) rotate(0.5deg);
   box-shadow: var(--cristal-sombra);
 }
 
 /* Icone de barra em `--gray2`, como no painel e na pagina do cliente: o icone e
    apoio, nao par do texto. */
-.pagina-tarefas .admin-toolbar-btn { color: var(--gray2); }
-.pagina-tarefas .admin-toolbar-btn:hover:not(:disabled) { color: var(--black); }
+.pagina-tarefas .admin-toolbar-btn,
+.pagina-projetos .admin-toolbar-btn { color: var(--gray2); }
+.pagina-tarefas .admin-toolbar-btn:hover:not(:disabled),
+.pagina-projetos .admin-toolbar-btn:hover:not(:disabled) { color: var(--black); }
+
+/* ── A casca: sidebar e topo ───────────────────────────
+   O mesmo material das telas, no que a casca tem de peca: o item de menu
+   escolhido, o botao de sair e o de recolher o menu. O fundo da sidebar e do
+   topo continua sendo folha, e nao objeto - cristal ali viraria mancha atras
+   de tudo. */
+
+/* O escolhido e um chip levantado da folha: a chapa amarela ja o marcava, e o
+   acabamento e o que faz ele parecer pousado em cima e nao pintado por baixo.
+   Sem borda de verdade - ela mudaria a altura do item e desalinharia a lista. */
+.sidebar-item.active {
+  box-shadow: inset 0 1px 0 var(--cristal-luz),
+    inset 0 -1px 0 var(--cristal-base),
+    var(--cristal-sombra);
+}
+
+/* O icone e apoio do texto, nao par dele: `--gray2` em repouso e `--black`
+   quando o item esta sob o ponteiro ou escolhido. E a mesma regra do painel e
+   da pagina do cliente - antes era opacidade, que clareia o icone junto com o
+   fundo e some no tema escuro. */
+.sidebar-item-icon {
+  opacity: 1;
+  color: var(--gray2);
+  transition: color var(--transition);
+}
+.sidebar-item:hover .sidebar-item-icon,
+.sidebar-item.active .sidebar-item-icon { color: var(--black); }
+
+/* Botao de icone ganha chapa no hover, como em todo icone-botao da casa. */
+.topbar-toggle:hover { background: var(--gray4); }
+
+/* Sair tinha a borda dura de 1.5px que sobrou do desenho antigo; agora tem a
+   moldura fina e o acabamento das demais pecas. */
+.topbar-logout {
+  border-width: 1px;
+  border-color: var(--cristal-borda);
+  box-shadow: inset 0 1px 0 var(--cristal-luz),
+    inset 0 -1px 0 var(--cristal-base),
+    var(--cristal-sombra);
+  color: var(--gray2);
+  transition: border-color var(--transition), color var(--transition),
+    box-shadow var(--transition-spring), background var(--transition);
+}
+.topbar-logout:hover {
+  border-color: var(--cristal-borda-forte);
+  color: var(--black);
+  background: var(--white);
+}
+
+/* A barra do topo paira sobre o conteudo que rola por baixo dela: a linha
+   sozinha nao dizia isso, e o conteudo passava colado. */
+.admin-topbar { box-shadow: var(--cristal-sombra); }
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-item-icon,
+  .topbar-logout { transition: none; }
+}
+
+/* Na pagina, a faixa de busca nao precisa do vao proprio: o `gap` da tela ja
+   separa ela da lista, e os dois somados abriam um buraco no meio. Dentro do
+   painel de projeto o vao continua, porque la nao ha `gap` nenhum. */
+.pagina-tarefas > .secao-busca,
+.pagina-projetos > .secao-busca { margin-bottom: 0; }
 
 /* ── Busca da secao de entregas ───────────────────────
    Sempre a vista, com ordenar e agrupar dividindo a faixa. O campo tem a
@@ -6793,7 +6904,9 @@ body.arrastando-painel {
   align-items: flex-end;
   gap: 0;
   border-bottom: 1.5px solid var(--gray3);
-  margin-bottom: 20px;
+  /* Quase nada, como no cabecalho da pagina: o vao ate o bloco seguinte ja vem
+     do `gap` da tela, e os 20px daqui somavam 34px abaixo das abas. */
+  margin-bottom: 4px;
 }
 
 .config-tab {
@@ -9789,10 +9902,10 @@ body.arrastando-painel {
   border-radius: 16px;
   border: 1px solid var(--gray3);
   border-left: 4px solid var(--accent-color, var(--yellow));
-  padding: 12px 16px;
+  padding: 10px 14px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   cursor: pointer;
   box-shadow: var(--shadow);
   transition: transform 0.25s ease, box-shadow 0.25s ease;

@@ -910,7 +910,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
               tarefas, procurar uma é o primeiro gesto de quem abre a tela. É a
               mesma faixa do painel de projeto e da página do cliente - campo de
               um lado, controles da tela do outro. */}
-          <div className="secao-busca" style={{ marginTop: 10 }}>
+          <div className="secao-busca">
             <span className="secao-busca-campo">
               <IconSearch size={13} />
               <input value={busca} aria-label="Buscar tarefa"

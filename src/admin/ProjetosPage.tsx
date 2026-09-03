@@ -6299,7 +6299,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
   }
 
   return (
-    <div className="admin-content-wrap">
+    <div className="admin-content-wrap pagina-projetos">
       <Abas
         valor={aba}
         onChange={setAba}
@@ -6326,7 +6326,10 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
       {/* O cabeçalho fica de fora: o título é o mesmo nas duas abas, e vê-lo
           reanimar a cada troca daria a impressão de que a página inteira
           recarregou. */}
-      <AbaPainel key={aba} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <AbaPainel key={aba} // O mesmo vao da pagina: aqui dentro os blocos sao os mesmos - cartoes,
+        // filtros, busca e lista -, e um vao proprio deixava esta tela mais
+        // solta que as outras.
+        style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {/* Os cartões são da aba Geral. Na Gestão nem o esqueleto deles aparece,
           senão a tela prometeria uma faixa que não vem. */}
       {aba === 'gestao' ? null : carregando ? (
