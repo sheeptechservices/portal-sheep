@@ -6208,7 +6208,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
   }
 
   return (
-    <div className="admin-content-wrap pagina-projetos">
+    <div className="admin-content-wrap pagina-cristal pagina-projetos">
       <Abas
         valor={aba}
         onChange={setAba}

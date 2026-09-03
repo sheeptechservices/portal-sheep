@@ -4783,8 +4783,7 @@ body.arrastando-painel {
    cristal, sem repetir os valores. O tom e mais leve que o do painel - a folha
    aqui e a `--bg` da tela inteira, e o degrade forte de um painel estreito
    viraria mancha numa area larga. */
-.pagina-tarefas,
-.pagina-projetos,
+.pagina-cristal,
 .app-topo,
 .app-menu {
   --cristal: linear-gradient(180deg,
@@ -4797,8 +4796,7 @@ body.arrastando-painel {
   --cristal-sombra: 0 1px 2px rgba(20, 22, 30, .05),
     0 4px 10px -6px rgba(20, 22, 30, .14);
 }
-:root[data-theme="dark"] .pagina-tarefas,
-:root[data-theme="dark"] .pagina-projetos,
+:root[data-theme="dark"] .pagina-cristal,
 :root[data-theme="dark"] .app-topo,
 :root[data-theme="dark"] .app-menu {
   --cristal: linear-gradient(180deg, rgba(30, 31, 36, .96) 0%,
@@ -4813,22 +4811,14 @@ body.arrastando-painel {
 
 /* As superficies da tela: o que repousa sobre a folha e tem moldura propria.
    Mesma lista do painel, com os nomes que existem aqui. */
-.pagina-tarefas .admin-toolbar-btn,
-.pagina-tarefas .filter-dropdown-btn,
-.pagina-tarefas .secao-busca-campo,
-.pagina-tarefas .view-toggle,
-.pagina-tarefas .kanban-card,
-.pagina-tarefas .linha-grupo,
-.pagina-tarefas .admin-table-wrap,
-.pagina-tarefas .admin-stat-card-v2,
-.pagina-projetos .admin-toolbar-btn,
-.pagina-projetos .filter-dropdown-btn,
-.pagina-projetos .secao-busca-campo,
-.pagina-projetos .view-toggle,
-.pagina-projetos .kanban-card,
-.pagina-projetos .linha-grupo,
-.pagina-projetos .admin-table-wrap,
-.pagina-projetos .admin-stat-card-v2 {
+.pagina-cristal .admin-toolbar-btn,
+.pagina-cristal .filter-dropdown-btn,
+.pagina-cristal .secao-busca-campo,
+.pagina-cristal .view-toggle,
+.pagina-cristal .kanban-card,
+.pagina-cristal .linha-grupo,
+.pagina-cristal .admin-table-wrap,
+.pagina-cristal .admin-stat-card-v2 {
   border-color: var(--cristal-borda);
   box-shadow: inset 0 1px 0 var(--cristal-luz),
     inset 0 -1px 0 var(--cristal-base),
@@ -4839,53 +4829,40 @@ body.arrastando-painel {
     background var(--transition);
 }
 /* A borda esquerda do card e do cartao e a cor da situacao, e continua sendo. */
-.pagina-tarefas .kanban-card,
-.pagina-projetos .kanban-card { border-left-color: var(--col-color, var(--gray3)); }
-.pagina-tarefas .admin-stat-card-v2,
-.pagina-projetos .admin-stat-card-v2 { border-left-color: var(--accent-color, var(--yellow)); }
+.pagina-cristal .kanban-card { border-left-color: var(--col-color, var(--gray3)); }
+.pagina-cristal .admin-stat-card-v2 { border-left-color: var(--accent-color, var(--yellow)); }
 
-.pagina-tarefas .admin-toolbar-btn:hover:not(:disabled),
-.pagina-tarefas .filter-dropdown-btn:hover,
-.pagina-tarefas .secao-busca-campo:hover,
-.pagina-tarefas .secao-busca-campo:focus-within,
-.pagina-tarefas .linha-grupo:hover,
-.pagina-projetos .admin-toolbar-btn:hover:not(:disabled),
-.pagina-projetos .filter-dropdown-btn:hover,
-.pagina-projetos .secao-busca-campo:hover,
-.pagina-projetos .secao-busca-campo:focus-within,
-.pagina-projetos .linha-grupo:hover {
+.pagina-cristal .admin-toolbar-btn:hover:not(:disabled),
+.pagina-cristal .filter-dropdown-btn:hover,
+.pagina-cristal .secao-busca-campo:hover,
+.pagina-cristal .secao-busca-campo:focus-within,
+.pagina-cristal .linha-grupo:hover {
   border-color: var(--cristal-borda-forte);
 }
 
 /* Card e cartao sobem, como em todo card da casa: elevacao e o que diz que a
    peca inteira e clicavel. Os estados repoem o fio de luz junto com a sombra -
    sem isso o card perderia a aresta justo quando sobe. */
-.pagina-tarefas .kanban-card:hover,
-.pagina-tarefas .admin-stat-card-v2:hover,
-.pagina-projetos .kanban-card:hover,
-.pagina-projetos .admin-stat-card-v2:hover {
+.pagina-cristal .kanban-card:hover,
+.pagina-cristal .admin-stat-card-v2:hover {
   transform: translateY(-2px);
   border-color: var(--cristal-borda-forte);
   box-shadow: inset 0 1px 0 var(--cristal-luz),
     inset 0 -1px 0 var(--cristal-base),
     var(--shadow-card-hover);
 }
-.pagina-tarefas .kanban-card:hover,
-.pagina-projetos .kanban-card:hover { background: var(--card-hover-bg, #FCFCFB); }
+.pagina-cristal .kanban-card:hover { background: var(--card-hover-bg, #FCFCFB); }
 /* Arrastando, o card afunda em vez de subir: a peca saiu do lugar, e continuar
    elevada diria que ela ainda esta em repouso. */
-.pagina-tarefas .kanban-card:active,
-.pagina-projetos .kanban-card:active {
+.pagina-cristal .kanban-card:active {
   transform: scale(0.97) rotate(0.5deg);
   box-shadow: var(--cristal-sombra);
 }
 
 /* Icone de barra em `--gray2`, como no painel e na pagina do cliente: o icone e
    apoio, nao par do texto. */
-.pagina-tarefas .admin-toolbar-btn,
-.pagina-projetos .admin-toolbar-btn { color: var(--gray2); }
-.pagina-tarefas .admin-toolbar-btn:hover:not(:disabled),
-.pagina-projetos .admin-toolbar-btn:hover:not(:disabled) { color: var(--black); }
+.pagina-cristal .admin-toolbar-btn { color: var(--gray2); }
+.pagina-cristal .admin-toolbar-btn:hover:not(:disabled) { color: var(--black); }
 
 /* ── A casca: o topo e o menu ──────────────────────────
    O mesmo material das telas, aplicado nas pecas que a casca tem. O fundo do
@@ -5049,8 +5026,7 @@ body.arrastando-painel {
 /* Na pagina, a faixa de busca nao precisa do vao proprio: o `gap` da tela ja
    separa ela da lista, e os dois somados abriam um buraco no meio. Dentro do
    painel de projeto o vao continua, porque la nao ha `gap` nenhum. */
-.pagina-tarefas > .secao-busca,
-.pagina-projetos > .secao-busca { margin-bottom: 0; }
+.pagina-cristal > .secao-busca { margin-bottom: 0; }
 
 /* ── Busca da secao de entregas ───────────────────────
    Sempre a vista, com ordenar e agrupar dividindo a faixa. O campo tem a

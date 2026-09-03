@@ -829,7 +829,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
   }
 
   return (
-    <div className="admin-content-wrap pagina-tarefas">
+    <div className="admin-content-wrap pagina-cristal pagina-tarefas">
       <div className="admin-page-header">
         <div>
           <h1 className="admin-page-title">Tarefas</h1>
