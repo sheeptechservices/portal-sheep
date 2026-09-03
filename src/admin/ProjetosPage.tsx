@@ -5414,6 +5414,10 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
   const [fCliente, setFCliente] = useState<string[]>([]);
   const [fGestor, setFGestor] = useState<string[]>([]);
   const [fTipo, setFTipo] = useState<string[]>([]);
+  /** A busca da lista. Sempre à vista, como na tela de Tarefas e na página do
+   *  cliente: com a casa inteira cadastrada, procurar um projeto é o primeiro
+   *  gesto de quem abre a tela. */
+  const [busca, setBusca] = useState('');
 
   const podeCriar = pode('projetos:criar');
   const podeEditar = pode('projetos:editar');
@@ -6227,12 +6231,19 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     setOrdemCol(null);
   }
 
-  const filtrados = useMemo(() => projetos.filter(p =>
-    (fStatus.length === 0 || fStatus.includes(p.status)) &&
-    (fCliente.length === 0 || (p.cliente_nome && fCliente.includes(p.cliente_nome))) &&
-    (fGestor.length === 0 || fGestor.includes(gestorDe(p)?.nome ?? '')) &&
-    (fTipo.length === 0 || (p.tipo && fTipo.includes(p.tipo)))
-  ), [projetos, fStatus, fCliente, fGestor, fTipo]);
+  const filtrados = useMemo(() => {
+    // O que se digita procura em nome, código, cliente e descrição: é por um
+    // desses quatro que alguém se lembra de um projeto.
+    const q = busca.trim().toLocaleLowerCase('pt-BR');
+    return projetos.filter(p =>
+      (fStatus.length === 0 || fStatus.includes(p.status)) &&
+      (fCliente.length === 0 || (p.cliente_nome && fCliente.includes(p.cliente_nome))) &&
+      (fGestor.length === 0 || fGestor.includes(gestorDe(p)?.nome ?? '')) &&
+      (fTipo.length === 0 || (p.tipo && fTipo.includes(p.tipo))) &&
+      (!q || [p.nome, p.codigo, p.cliente_nome, p.descricao].some(v =>
+        (v ?? '').toLocaleLowerCase('pt-BR').includes(q)))
+    );
+  }, [projetos, fStatus, fCliente, fGestor, fTipo, busca]);
 
   const ordenados = useMemo(() => {
     if (!ordemCol) return filtrados;
@@ -6247,8 +6258,11 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     });
   }, [filtrados, ordemCol, ordemDir]);
 
-  const temFiltro = fStatus.length + fCliente.length + fGestor.length + fTipo.length > 0;
-  const limparFiltros = () => { setFStatus([]); setFCliente([]); setFGestor([]); setFTipo([]); };
+  const temFiltro = fStatus.length + fCliente.length + fGestor.length + fTipo.length > 0
+    || busca.trim().length > 0;
+  const limparFiltros = () => {
+    setFStatus([]); setFCliente([]); setFGestor([]); setFTipo([]); setBusca('');
+  };
 
   // O resumo conta o que está em tela: com filtro aplicado, número que ignora
   // o filtro vira contradição visível.
@@ -6372,6 +6386,26 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
         </div>
       )}
 
+      {/* A busca fica à vista, e não atrás de um botão: é a mesma faixa da tela
+          de Tarefas e da página do cliente. Os filtros ficam acima porque
+          estreitam o conjunto; a busca varre o que sobrou. */}
+      {aba === 'geral' && !carregando && projetos.length > 0 && (
+        <div className="secao-busca">
+          <span className="secao-busca-campo">
+            <IconSearch size={13} />
+            <input value={busca} aria-label="Buscar projeto"
+              onChange={e => setBusca(e.target.value)}
+              placeholder="Buscar por nome, código, cliente ou descrição"
+              onKeyDown={e => { if (e.key === 'Escape') setBusca(''); }} />
+            {busca && (
+              <button type="button" aria-label="Limpar a busca" onClick={() => setBusca('')}>
+                <IconX size={12} />
+              </button>
+            )}
+          </span>
+        </div>
+      )}
+
       {carregando ? (
         // O esqueleto imita a visão que está aberta: quadro vira cartões,
         // lista vira linhas. Um giro no meio da tela não diria nada disso.
@@ -6381,7 +6415,15 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
       ) : filtrados.length === 0 ? (
         <div className="admin-empty">
           <p style={{ color: 'var(--gray2)', marginBottom: 6 }}><IconInbox size={34} /></p>
-          <p>{temFiltro ? 'Nenhum projeto para esse filtro' : 'Nenhum projeto encontrado'}</p>
+          <p>{temFiltro ? 'Nenhum projeto para essa busca' : 'Nenhum projeto encontrado'}</p>
+          {temFiltro && (
+            <button
+              style={{ marginTop: 10, fontSize: 12, fontWeight: 600, color: 'var(--gray2)',
+                background: 'none', border: 'none', cursor: 'pointer' }}
+              onClick={limparFiltros}>
+              Limpar busca e filtros
+            </button>
+          )}
           {!temFiltro && podeCriar && (
             <p style={{ fontSize: 12.5, color: 'var(--gray2)', marginTop: 4 }}>
               Cadastre o primeiro em "Novo projeto".
