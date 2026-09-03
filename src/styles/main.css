@@ -13336,3 +13336,138 @@ body.arrastando-painel {
 }
 
 
+/* ── Avisos ────────────────────────────────────────────────────────────────
+   O cais mora na folha, e não em estilo em linha, porque no celular ele muda
+   de lugar: em linha, a media query não teria como alcançá-lo. */
+.toast-cais {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-end;
+  pointer-events: none;
+}
+.toast-balao { width: 320px; max-width: 100%; }
+
+/* ── O sistema no celular ──────────────────────────────────────────────────
+   A casca já se virava sozinha: a barra de baixo no lugar do menu, o cabeçalho
+   que empilha, o quadro que rola com encaixe, o painel que vira folha inteira.
+   O que faltava eram as peças que ainda supunham um ponteiro e uma tela larga
+   - a alça de esticar, a lista que nasce medida pelo gatilho, a tabela de nove
+   colunas, o aviso que caía atrás da barra de navegação e o alvo pequeno
+   demais para um dedo.
+
+   O limite é o mesmo do resto da folha (768px), para não existirem duas ideias
+   de "celular" no mesmo arquivo. */
+
+@media (max-width: 768px) {
+  /* A alça de esticar não faz sentido aqui: o painel já ocupa a tela inteira,
+     e a faixa ficaria pousada sobre o conteúdo, roubando o toque de quem só
+     queria rolar. */
+  .painel-puxador { display: none; }
+
+  /* A gaveta usa a altura viva da janela. Com `100vh`, a barra do navegador do
+     celular empurra o rodapé - e o botão de salvar junto - para fora da tela. */
+  .admin-modal,
+  .painel-lateral { height: 100dvh; }
+
+  /* Toda lista de dropdown mora num portal e é posicionada pela medida do
+     gatilho. Gatilho encostado na direita jogava a lista para fora da tela.
+     Aqui ela passa a ocupar a largura, com margem, e rola por dentro quando é
+     longa - o `!important` é porque a posição vem em estilo em linha. */
+  .status-select-dropdown,
+  .filter-dropdown-list,
+  .mention-dropdown,
+  .vinculo-lista,
+  .model-select-pop,
+  .status-color-picker-popover,
+  .agrupar-lista {
+    left: 10px !important;
+    right: 10px !important;
+    width: auto !important;
+    max-height: min(58vh, 360px);
+    overflow-y: auto;
+  }
+
+  /* Campo com fonte menor que 16px faz o navegador do iPhone dar um zoom ao
+     receber o foco, e a página fica torta depois de digitar. */
+  .form-input,
+  .secao-busca-campo input,
+  .pub-busca input,
+  .qs-input,
+  input[type="text"],
+  input[type="email"],
+  input[type="search"],
+  textarea { font-size: 16px; }
+
+  /* Tabela larga mantém a largura de leitura e rola de lado; a estreita
+     continua cabendo na tela. O `:has` conta as colunas: com seis ou mais,
+     espremer em 360px deixaria cada célula com duas letras. */
+  .admin-table-wrap:has(th:nth-child(6)) .admin-table { min-width: 720px; }
+  .admin-table-wrap:has(th:nth-child(8)) .admin-table { min-width: 900px; }
+
+  /* Rodapé de modal e de confirmação: os botões dividem a linha e ficam
+     grandes o bastante para o polegar. */
+  .admin-modal-footer > button,
+  .delete-confirm-actions > button {
+    flex: 1;
+    min-height: 42px;
+  }
+  .admin-modal-footer,
+  .delete-confirm-actions { gap: 8px; }
+
+  /* Cabeçalho do painel: com muitos ícones ele quebra de linha em vez de
+     espremer o título até sumir. */
+  .admin-modal-header { flex-wrap: wrap; }
+
+  /* A ficha do lead cabe em duas colunas curtas; o formulário fica com um
+     campo por linha, que é o que dá largura para o texto. */
+  .lead-ficha { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+  .lead-campos > .form-group { flex: 1 1 100% !important; }
+
+  /* O aviso não pode nascer atrás da barra de navegação, nem mais largo que a
+     tela. */
+  .toast-cais {
+    left: 12px;
+    right: 12px;
+    bottom: calc(74px + env(safe-area-inset-bottom, 0px));
+    align-items: stretch;
+  }
+  .toast-balao { width: auto; }
+}
+
+/* Sem hover não há como revelar nada passando o dedo: o que só aparecia no
+   hover fica à vista, e o alvo cresce para o toque. */
+@media (hover: none) {
+  .admin-toolbar-btn { min-width: 36px; min-height: 36px; }
+  .filter-dropdown-btn { min-height: 36px; }
+  .kanban-card-acao { width: 30px; height: 30px; }
+  .comment-delete-btn { opacity: 1; }
+}
+
+/* ── A página do cliente no celular ──────────────────────────────────────── */
+@media (max-width: 560px) {
+  /* O nome da entrega ganha duas linhas em vez de terminar em reticências no
+     meio da palavra: numa tela estreita, "PRC-024 · Emissão de N…" não diz
+     qual entrega é. */
+  .pub-entrega-titulo {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.35;
+    /* Deixa o lugar da seta na mesma linha: ocupando 100%, ela era empurrada
+       para a linha de baixo e virava um sinal solto no meio do cartão. */
+    max-width: calc(100% - 22px);
+  }
+  /* O recuo da árvore encolhe: em 375px ele comia um quinto da linha. */
+  .pub-grupo.arvore .pub-entregas,
+  .pub-grupo.arvore .pub-grupo-vazio { padding-left: 10px; }
+  .pub-grupo.arvore .pub-entrega::before { left: -8px; }
+  /* Prazo e percentual ficam juntos, e mais perto do conteúdo. */
+  .pub-entrega-fim { gap: 8px; }
+  .pub-entrega-topo { padding: 10px 12px; }
+}

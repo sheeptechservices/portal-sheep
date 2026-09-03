@@ -116,9 +116,10 @@ function Toast({ item, onDismiss }: { item: ToastItem; onDismiss: (id: string) =
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      className="toast-balao"
       style={{
         display: 'flex', alignItems: 'flex-start', gap: 10,
-        width: 320, padding: '12px 12px 12px 13px',
+        padding: '12px 12px 12px 13px',
         background: accent + '18',
         borderRadius: 14,
         border: `1px solid ${border}`,
@@ -157,7 +158,7 @@ function Toast({ item, onDismiss }: { item: ToastItem; onDismiss: (id: string) =
 function ToastContainer({ items, onDismiss }: { items: ToastItem[]; onDismiss: (id: string) => void }) {
   if (!items.length) return null;
   return createPortal(
-    <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 99999, display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-end', pointerEvents: 'none' }}>
+    <div className="toast-cais">
       {items.map(t => (
         <div key={t.id} style={{ pointerEvents: 'auto' }}>
           <Toast item={t} onDismiss={onDismiss} />
