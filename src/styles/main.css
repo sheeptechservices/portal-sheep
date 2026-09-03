@@ -3990,6 +3990,14 @@ body.arrastando-painel {
 /* Ações do card, no canto do título. Só com o ponteiro no card: sempre
    visíveis, viram uma fileira de ícones por cartão numa coluna cheia, e ainda
    disputam o clique com o de abrir a tarefa. */
+/* O topo do card: o nome ocupa o que sobra, e as ações ficam à direita. */
+.kanban-card-topo {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.kanban-card-topo .kanban-card-title { flex: 1; min-width: 0; }
+
 .kanban-card-acoes {
   display: inline-flex;
   align-items: center;
@@ -13182,4 +13190,149 @@ body.arrastando-painel {
   .visao-cartao:hover { transform: none; }
   .pub-entrega.realcada { animation: none; }
 }
+
+/* ── Funil comercial ────────────────────────────────────────────────────────
+   O lead é uma conversa com uma empresa: quem fala, o que quer, quanto vale e
+   qual é o próximo passo. Tudo aqui serve a essas quatro perguntas. */
+
+/* Uma linha de campos do cadastro. Cada campo diz a largura que quer pelo
+   flex-basis; abaixo de 520px todos ocupam a linha inteira. */
+.lead-campos {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.lead-campos > .form-group { margin-bottom: 0; }
+
+/* O corpo do modal de lead. O `.admin-modal-body` da casa nasce sem folga em
+   cima porque quem o usa começa com uma `<section>`, que traz a sua; o
+   formulário não tem seção nenhuma, então o primeiro rótulo encostava no
+   título. O ar entre os blocos vem de um `gap` só - margem somada a gap dá
+   distâncias diferentes conforme o vizinho. */
+.form-lead {
+  padding-top: 18px;
+  gap: 14px;
+}
+.form-lead .lead-secao { margin: 6px 0 -2px; }
+
+/* Título de um trecho do formulário (Contato, Negócio, Próximo passo). */
+.lead-secao {
+  margin: 18px 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+
+/* O próximo passo no card do kanban: uma linha só, com a data à direita. */
+.lead-proxima {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--gray4);
+  font-size: 10.5px;
+  color: var(--gray2);
+  min-width: 0;
+}
+.lead-proxima > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lead-proxima > em {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-style: normal;
+  font-weight: 700;
+}
+.lead-proxima svg { flex-shrink: 0; }
+/* Passo vencido: o card cobra, sem gritar. */
+.lead-proxima.atrasada { color: var(--red); }
+
+/* A ficha, no painel do lead. */
+.lead-ficha {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px 18px;
+}
+.lead-ficha-valor {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--black);
+  margin-top: 2px;
+  word-break: break-word;
+}
+.lead-ficha-valor-forte { font-size: 15px; font-weight: 800; }
+.lead-ficha-sub {
+  font-size: 11.5px;
+  color: var(--gray2);
+  margin-top: 1px;
+}
+.lead-ficha-link {
+  display: inline-block;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: var(--transition);
+}
+.lead-ficha-link:hover {
+  color: var(--black);
+  border-bottom-color: var(--gray2);
+}
+
+/* O próximo passo no painel: a única linha que pede ação. */
+.lead-passo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--gray4);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  transition: var(--transition);
+}
+.lead-passo.atrasado {
+  border-color: color-mix(in srgb, var(--red) 40%, transparent);
+  background: color-mix(in srgb, var(--red) 7%, transparent);
+}
+.lead-passo > svg { flex-shrink: 0; color: var(--gray2); }
+/* O botão não encolhe: o texto do passo é que cede espaço. */
+.lead-passo > button { flex-shrink: 0; width: auto; }
+.lead-passo.atrasado > svg { color: var(--red); }
+.lead-passo-acao {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--black);
+}
+.lead-passo-data {
+  font-size: 11.5px;
+  color: var(--gray2);
+  margin-top: 1px;
+}
+.lead-passo.atrasado .lead-passo-data { color: var(--red); }
+
+/* Observações e motivo da perda: texto corrido, com as quebras que a pessoa
+   escreveu. */
+.lead-observacoes {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--gray4);
+  border-radius: var(--radius-md);
+}
+.lead-observacoes > p:last-child {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--black);
+  white-space: pre-wrap;
+}
+.lead-perda { border-color: color-mix(in srgb, var(--red) 35%, transparent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .lead-passo, .lead-ficha-link { transition: none; }
+}
+
 

@@ -164,6 +164,10 @@ export function IconRefresh({ size = 14 }: { size?: number }) {
 export function IconReply({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M8 5v6.5a3 3 0 003 3h8" /><path d="M15.5 11l4 3.5-4 3.5" /></Ico>;
 }
+// Enviar o que se acabou de escrever - o botao do campo de comentario.
+export function IconEnviar({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><path d="M21.5 2.5L10.8 13.2" /><path d="M21.5 2.5l-6.8 19-3.9-8.3-8.3-3.9 19-6.8z" /></Ico>;
+}
 // Buscar / conferir.
 export function IconSearch({ size = 14 }: { size?: number }) {
   return <Ico size={size}><circle cx="11" cy="11" r="7" /><path d="M20 20l-4.1-4.1" /></Ico>;

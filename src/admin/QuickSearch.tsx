@@ -13,11 +13,10 @@ export type QuickTarget =
 interface SolHit {
   id: string;
   created_at: string;
-  valor: string | null;
-  nome_contratado: string | null;
-  cnpj_contratado: string | null;
-  nome_sacado: string | null;
-  cnpj_sacado: string | null;
+  empresa: string | null;
+  cnpj: string | null;
+  contato_nome: string | null;
+  valor_estimado: number | null;
   status_nome: string | null;
   status_cor: string | null;
 }
@@ -140,12 +139,15 @@ export default function QuickSearch({ token, onClose, onSelect }: {
               kind: 'card' as const,
               page: 'leads' as const,
               id: s.id,
-              titulo: s.nome_contratado || 'Sem cedente',
-              sub: s.nome_sacado ? `Sacado: ${s.nome_sacado}` : maskDoc(s.cnpj_contratado) || null,
+              titulo: s.empresa || 'Sem empresa',
+              // Quem atendeu diz mais que o CNPJ; o documento fica de reserva.
+              sub: s.contato_nome || maskDoc(s.cnpj) || null,
             },
             badge: s.status_nome,
             badgeCor: s.status_cor,
-            meta: s.valor,
+            meta: s.valor_estimado != null
+              ? s.valor_estimado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+              : null,
           })),
         },
       ].filter(g => g.rows.length > 0)

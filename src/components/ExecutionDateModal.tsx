@@ -3,8 +3,8 @@ import { createPortal } from 'react-dom'
 import { DatePicker } from './DatePicker'
 
 /**
- * Modal obrigatório exibido ao mover um lead para a etapa de conversão.
- * Força o usuário a registrar a data em que a operação foi de fato executada
+ * Modal obrigatório exibido ao mover um lead para a etapa de fechamento.
+ * Força quem move a registrar a data em que o negócio foi de fato fechado
  * antes de concluir a mudança de etapa. A data pode ser no passado.
  */
 export function ExecutionDateModal({
@@ -42,19 +42,19 @@ export function ExecutionDateModal({
         onClick={e => e.stopPropagation()}
         style={{ overflow: 'visible' }}
       >
-        <p className="delete-confirm-title">Registrar execução</p>
+        <p className="delete-confirm-title">Registrar fechamento</p>
         <p className="delete-confirm-desc">
           {statusName ? (
             <>
-              Para mover para <strong>{statusName}</strong>, informe a data em que a
-              operação foi executada.
+              Para mover para <strong>{statusName}</strong>, informe a data em que o
+              negócio foi fechado.
             </>
           ) : (
-            'Informe a data em que a operação foi executada.'
+            'Informe a data em que o negócio foi fechado.'
           )}
         </p>
         <div className="form-group" style={{ margin: '16px 0 20px' }}>
-          <label className="form-label">Data da execução</label>
+          <label className="form-label">Data do fechamento</label>
           <DatePicker value={date} onChange={setDate} compact allowPast />
         </div>
         <div className="delete-confirm-actions">

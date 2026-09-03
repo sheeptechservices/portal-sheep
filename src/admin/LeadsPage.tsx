@@ -4,80 +4,23 @@ import type { Submission, StatusConfig, SubmissionDetail, Evento, EtapaArquivo, 
 import { useToast, useAuth, iniciais, nomeCurto } from './AdminApp';
 import { DatePicker } from '../components/DatePicker';
 import { ExecutionDateModal } from '../components/ExecutionDateModal';
-import { maskCNPJ } from '../lib/masks';
-import { IconEye, IconDownload, IconClip, IconDoc, IconImage, IconLink, IconZip, IconX, IconPlus, IconSpinner, IconInbox } from '../components/icons';
+import {
+  IconAlert, IconCalendario, IconCheck, IconChevronDown, IconClip, IconComentario, IconDoc,
+  IconDownload, IconEdit, IconEnviar, IconExternal, IconEye, IconImage, IconInbox, IconLink,
+  IconPlus, IconRecolher, IconRefresh, IconSearch, IconSpinner, IconTrash, IconVisaoLista,
+  IconVisaoQuadro, IconX, IconZip, IconChevronUp, IconChevronUpDown,
+} from '../components/icons';
 import { SegSwitch } from '../components/SegSwitch';
+import { CartaoKpi, CartoesKpiEsqueleto } from '../components/CartaoKpi';
 import { CategoriaTag, ANEXO_CATEGORIAS, normalizaCategoria } from '../components/CategoriaTag';
-import { distribuirParcelas } from '../lib/parcelas';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
+import { useSaidaSuave } from '../lib/useSaidaSuave';
+import { useLarguraPainel } from '../lib/painelLateral';
+import { PuxadorDoPainel } from '../components/PuxadorDoPainel';
+import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import FilterDropdown from '../components/FilterDropdown';
 
-// Fluxo de pagamento (fim_type) - fonte única de opções + labels/cores
-export const FIM_OPTIONS: { value: string; label: string; bg: string; color: string }[] = [
-  { value: '1', label: 'Trava Perfeita (Escrow no Contrato)', bg: 'rgba(30,138,62,.12)', color: '#1E8A3E' },
-  { value: '2', label: 'Anuência (Pgto direto)',              bg: 'rgba(0,102,204,.12)', color: '#0066CC' },
-  { value: '3', label: 'Escrow na Nota',                      bg: 'rgba(122,86,0,.12)',  color: '#7A5600' },
-  { value: '4', label: 'Repasse',                             bg: 'rgba(124,58,237,.12)', color: '#7C3AED' },
-];
-const FIM_LABELS: Record<number, { label: string; bg: string; color: string }> = Object.fromEntries(
-  FIM_OPTIONS.map(o => [Number(o.value), { label: o.label, bg: o.bg, color: o.color }])
-);
-const FIM_SELECT_OPTIONS = FIM_OPTIONS.map(o => ({ value: o.value, label: o.label }));
 import { definirImagemArrasto } from '../lib/dragImage';
-import { buildDepsReportHTML, depsPortalLink as depsLinkDoRaw, depsDataConsulta } from '../lib/depsReport';
-import { DepsPanel, DepsPreviewModal } from '../components/DepsPanel';
-import { PRODUTOS_DEPS } from '../lib/depsProdutos';
-
-const LIQUIDEZ_OPTIONS = ['Interno', 'Atlas', 'FIDC'] as const;
-
-// Seletor de produto/módulo DEPS - dropdown customizado (padrão do sistema, via portal).
-function DepsProdutoSelect({ value, onChange, disabled }: {
-  value: string;
-  onChange: (v: string) => void;
-  disabled?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const dropRef = useRef<HTMLDivElement>(null);
-  const current = PRODUTOS_DEPS.find(p => p.id === value);
-
-  function openDropdown() {
-    const rect = triggerRef.current!.getBoundingClientRect();
-    const dropH = Math.min(8 + PRODUTOS_DEPS.length * 36, 300);
-    const spaceBelow = window.innerHeight - rect.bottom - 8;
-    const flipUp = spaceBelow < dropH && rect.top > dropH;
-    setPos({ top: flipUp ? rect.top - dropH - 4 : rect.bottom + 4, left: rect.left, width: rect.width });
-    setOpen(o => !o);
-  }
-
-  useDropdownDismiss(open, [triggerRef, dropRef], () => setOpen(false));
-
-  return (
-    <>
-      <button ref={triggerRef} type="button" className="deps-select-trigger" disabled={disabled}
-        title="Produto DEPS" onClick={openDropdown}>
-        <span>{current?.nome ?? 'Selecionar módulo'}</span>
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" style={{ transition: 'transform .15s', transform: open ? 'rotate(180deg)' : 'none', flexShrink: 0 }}>
-          <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </button>
-      {open && createPortal(
-        <div ref={dropRef} className="status-select-dropdown" style={{ top: pos.top, left: pos.left, minWidth: pos.width, zIndex: 10001 }}>
-          {PRODUTOS_DEPS.map(p => (
-            <div key={p.id} className={`status-select-option${value === p.id ? ' active' : ''}`}
-              onClick={() => { onChange(p.id); setOpen(false); }}>
-              <span>{p.nome}</span>
-              {value === p.id && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 'auto' }}><path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-            </div>
-          ))}
-        </div>,
-        document.body
-      )}
-    </>
-  );
-}
-
 // ── FormSelect ───────────────────────────────────────
 function FormSelect({ value, onChange, options, placeholder = '- Não definido -' }: {
   value: string;
@@ -112,62 +55,18 @@ function FormSelect({ value, onChange, options, placeholder = '- Não definido -
         style={{ width: '100%', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 500, borderColor: open ? 'var(--yellow)' : undefined, boxShadow: open ? '0 0 0 4px var(--yd)' : undefined }}
       >
         <span style={{ color: current ? 'var(--gray)' : 'var(--gray2)' }}>{current?.label ?? placeholder}</span>
-        <svg width="10" height="6" viewBox="0 0 10 6" fill="none" style={{ transition: 'transform 0.15s', transform: open ? 'rotate(180deg)' : 'none', flexShrink: 0 }}>
-          <path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
+        <span style={{ display: 'inline-flex', transition: 'transform var(--transition)', transform: open ? 'rotate(180deg)' : 'none', flexShrink: 0 }}><IconChevronDown size={10} /></span>
       </button>
       {open && createPortal(
         <div ref={dropRef} className="status-select-dropdown" style={{ top: pos.top, left: pos.left, minWidth: pos.width, zIndex: 10000 }}>
           <div className={`status-select-option${!value ? ' active' : ''}`} onClick={() => { onChange(''); setOpen(false); }}>
             <span style={{ color: 'var(--gray2)' }}>{placeholder}</span>
-            {!value && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 'auto' }}><path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+            {!value && <span style={{ display: 'inline-flex', marginLeft: 'auto' }}><IconCheck size={12} /></span>}
           </div>
           {options.map(opt => (
             <div key={opt.value} className={`status-select-option${value === opt.value ? ' active' : ''}`} onClick={() => { onChange(opt.value); setOpen(false); }}>
               <span>{opt.label}</span>
-              {value === opt.value && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 'auto' }}><path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-            </div>
-          ))}
-        </div>,
-        document.body
-      )}
-    </>
-  );
-}
-
-// ── Liquidez Select ──────────────────────────────────
-function LiquidezSelect({ value, onChange }: { value: string | null; onChange: (v: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const dropRef = useRef<HTMLDivElement>(null);
-
-  function openDropdown() {
-    const rect = triggerRef.current!.getBoundingClientRect();
-    setPos({ top: rect.bottom + 6, left: rect.left, width: Math.max(rect.width, 140) });
-    setOpen(o => !o);
-  }
-
-  useDropdownDismiss(open, [triggerRef, dropRef], () => setOpen(false));
-
-  return (
-    <>
-      <button ref={triggerRef} className="liquidez-trigger" onClick={openDropdown} type="button">
-        <span>{value ?? '-'}</span>
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
-          <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </button>
-      {open && createPortal(
-        <div ref={dropRef} className="status-select-dropdown" style={{ top: pos.top, left: pos.left, minWidth: pos.width }}>
-          <div className={`status-select-option${!value ? ' active' : ''}`} onClick={() => { onChange(''); setOpen(false); }}>
-            <span style={{ color: 'var(--gray2)' }}>-</span>
-            {!value && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 'auto' }}><path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-          </div>
-          {LIQUIDEZ_OPTIONS.map(opt => (
-            <div key={opt} className={`status-select-option${value === opt ? ' active' : ''}`} onClick={() => { onChange(opt); setOpen(false); }}>
-              <span>{opt}</span>
-              {value === opt && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 'auto' }}><path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+              {value === opt.value && <span style={{ display: 'inline-flex', marginLeft: 'auto' }}><IconCheck size={12} /></span>}
             </div>
           ))}
         </div>,
@@ -223,16 +122,14 @@ function CategoriaSelect({ value, onChange }: { value: string; onChange: (v: str
         onClick={e => { e.stopPropagation(); openDropdown(); }}
       >
         <span>{value}</span>
-        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" style={{ transition: 'transform .15s', transform: open ? 'rotate(180deg)' : 'none', flexShrink: 0 }}>
-          <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
+        <span style={{ display: 'inline-flex', transition: 'transform var(--transition)', transform: open ? 'rotate(180deg)' : 'none', flexShrink: 0 }}><IconChevronDown size={9} /></span>
       </button>
       {open && createPortal(
         <div ref={dropRef} className="status-select-dropdown" style={{ top: pos.top, left: pos.left, minWidth: pos.width, zIndex: 10001 }}>
           {ANEXO_CATEGORIAS.map(c => (
             <div key={c} className={`status-select-option${value === c ? ' active' : ''}`} onClick={e => { e.stopPropagation(); onChange(c); setOpen(false); }}>
               <span>{c}</span>
-              {value === c && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 'auto' }}><path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+              {value === c && <span style={{ display: 'inline-flex', marginLeft: 'auto' }}><IconCheck size={12} /></span>}
             </div>
           ))}
         </div>,
@@ -286,22 +183,77 @@ function PendCatSelect({ value, onChange }: { value: string; onChange: (v: strin
     <>
       <button ref={triggerRef} type="button" className="anexo-cat-trigger" title="Categoria" onClick={e => { e.stopPropagation(); openDropdown(); }}>
         <span>{value || 'Outros'}</span>
-        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" style={{ transition: 'transform .15s', transform: open ? 'rotate(180deg)' : 'none', flexShrink: 0 }}>
-          <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
+        <span style={{ display: 'inline-flex', transition: 'transform var(--transition)', transform: open ? 'rotate(180deg)' : 'none', flexShrink: 0 }}><IconChevronDown size={9} /></span>
       </button>
       {open && createPortal(
         <div ref={dropRef} className="status-select-dropdown" style={{ top: pos.top, left: pos.left, minWidth: pos.width, zIndex: 10002 }}>
           {PENDENCIA_CATEGORIAS.map(c => (
             <div key={c} className={`status-select-option${value === c ? ' active' : ''}`} onClick={e => { e.stopPropagation(); onChange(c); setOpen(false); }}>
               <span>{c}</span>
-              {value === c && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 'auto' }}><path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+              {value === c && <span style={{ display: 'inline-flex', marginLeft: 'auto' }}><IconCheck size={12} /></span>}
             </div>
           ))}
         </div>,
         document.body
       )}
     </>
+  );
+}
+
+/** Ao mover um lead para uma etapa de descarte, pergunta por quê. Funil
+ *  perdido sem motivo não ensina nada a quem for prospectar depois - e o
+ *  motivo fica na ficha, à vista de quem reabrir a conversa. */
+function MotivoPerdaModal({ statusName, inicial = '', onConfirm, onCancel }: {
+  statusName: string;
+  inicial?: string;
+  onConfirm: (motivo: string) => void | Promise<void>;
+  onCancel: () => void;
+}) {
+  const [motivo, setMotivo] = useState(inicial);
+  // Confirmar e cancelar saem pela mesma animação: o gancho avisa quem monta
+  // só depois que ela termina, e este alvo diz qual dos dois foi.
+  const alvo = useRef<'cancelar' | 'confirmar'>('cancelar');
+  const texto = useRef(inicial);
+  const { saindo, fechar } = useSaidaSuave(() => {
+    if (alvo.current === 'confirmar') void onConfirm(texto.current.trim());
+    else onCancel();
+  });
+  const fundo = useFecharNoFundo(fechar);
+
+  function confirmar() {
+    if (!motivo.trim()) return;
+    alvo.current = 'confirmar';
+    texto.current = motivo;
+    fechar();
+  }
+
+  return createPortal(
+    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`}
+      style={{ zIndex: 1200, alignItems: 'center', justifyContent: 'center' }} {...fundo}>
+      <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
+        <p className="delete-confirm-title">Por que este lead se perdeu?</p>
+        <p className="delete-confirm-desc">
+          Para mover para <strong>{statusName}</strong>, conte em uma linha o que
+          aconteceu: preço, prazo, concorrente, sumiu.
+        </p>
+        <div className="form-group" style={{ margin: '16px 0 20px' }}>
+          <textarea className="form-input" rows={3} value={motivo} autoFocus
+            style={{ fontSize: 13, resize: 'none' }}
+            placeholder="Achou caro e ficou com o fornecedor atual"
+            onChange={e => setMotivo(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) confirmar(); }} />
+        </div>
+        <div className="delete-confirm-actions">
+          <button className="delete-confirm-cancel" onClick={fechar}>Cancelar</button>
+          <button className="delete-confirm-ok" disabled={!motivo.trim()}
+            style={{ background: 'var(--yellow)', color: 'var(--on-yellow)' }}
+            onClick={confirmar}>
+            Registrar perda
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -390,7 +342,7 @@ function PendenciaSection({ pendencias, onToggle, onDelete, onUpdateCat, onAdd }
           Pendências
           {pendencias.length > 0 && (
             <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, padding: '1px 8px', borderRadius: 99,
-              background: abertas > 0 ? 'rgba(180,83,9,.14)' : 'rgba(30,138,62,.15)', color: abertas > 0 ? '#B45309' : '#1E8A3E' }}>
+              background: abertas > 0 ? 'rgba(180,83,9,.14)' : 'var(--green-soft)', color: abertas > 0 ? '#B45309' : 'var(--green)' }}>
               {abertas > 0 ? `${abertas} aberta(s)` : 'resolvidas'}
             </span>
           )}
@@ -407,10 +359,7 @@ function PendenciaSection({ pendencias, onToggle, onDelete, onUpdateCat, onAdd }
                 textDecoration: p.resolvida ? 'line-through' : 'none', color: p.resolvida ? 'var(--gray2)' : 'var(--black)' }}>{p.descricao}</span>
               <PendCatSelect value={normPendCat(p.categoria)} onChange={c => onUpdateCat(p.id, c)} />
               <button className="file-delete-btn" title="Excluir pendência" onClick={() => onDelete(p.id)}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                  <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+                <IconTrash size={13} />
               </button>
             </div>
           ))}
@@ -465,9 +414,7 @@ function StatusSelect({
       >
         <span className="status-select-dot" style={{ background: current?.cor ?? '#aaa' }} />
         <span>{current?.nome ?? 'Sem etapa'}</span>
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
-          <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
+        <IconChevronDown size={10} />
       </button>
 
       {open && createPortal(
@@ -490,9 +437,7 @@ function StatusSelect({
                 <span className="status-select-dot" style={{ background: st.cor }} />
                 <span>{st.nome}</span>
                 {isActive && (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 'auto', color: st.cor }}>
-                    <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+                  <span style={{ display: 'inline-flex', marginLeft: 'auto', color: st.cor }}><IconCheck size={12} /></span>
                 )}
               </div>
             );
@@ -508,6 +453,40 @@ function daysSince(iso: string | null): number {
   if (!iso) return 0;
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
 }
+
+/** Hoje em `YYYY-MM-DD`, para comparar com data guardada sem fuso. */
+function hojeISO(): string {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+}
+
+/** O valor estimado do lead. Sem valor, um traço: zero diria que a negociação
+ *  não vale nada, e o que existe é a falta da informação. */
+function fmtValor(v: number | null | undefined): string {
+  if (v == null) return '-';
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+}
+
+/** `YYYY-MM-DD` em `dd/mm/aaaa`. */
+function fmtDataBR(iso: string | null | undefined): string {
+  if (!iso) return '-';
+  const [a, m, d] = String(iso).slice(0, 10).split('-');
+  return d && m && a ? `${d}/${m}/${a}` : '-';
+}
+
+/** A mesma data em `dd/mm`, para caber no rodapé do card. */
+function fmtDataCurta(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const [, m, d] = String(iso).slice(0, 10).split('-');
+  return d && m ? `${d}/${m}` : '';
+}
+
+/** De onde o lead veio. Lista curta e fechada: origem digitada à mão vira dez
+ *  grafias da mesma coisa e o filtro deixa de somar. */
+export const ORIGENS_LEAD = [
+  'Indicação', 'Prospecção ativa', 'Site', 'Evento', 'LinkedIn', 'Outro',
+] as const;
 
 // Formata uma duração em ms de forma amigável (min / h / dias)
 function fmtDuracao(ms: number): string {
@@ -525,12 +504,6 @@ function formatDate(iso: string) {
   return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
-
-function formatPrazo(iso: string | null | undefined) {
-  if (!iso) return '-';
-  const [y, m, d] = iso.split('-');
-  return `${d}/${m}/${y}`;
-}
 
 function formatSize(b: number) {
   return b < 1024 * 1024 ? `${(b / 1024).toFixed(0)} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`;
@@ -577,16 +550,12 @@ function FilePreviewModal({ state, onClose, onDownload }: {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {!loading && (
               <button className="file-preview-action" onClick={onDownload}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                  <path d="M12 15V3M7 10l5 5 5-5M3 17v2a2 2 0 002 2h14a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+                <IconDownload size={14} />
                 Baixar
               </button>
             )}
             <button className="file-preview-close" onClick={onClose}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
+              <IconX size={16} />
             </button>
           </div>
         </div>
@@ -605,149 +574,6 @@ function FilePreviewModal({ state, onClose, onDownload }: {
       </div>
     </div>,
     document.body
-  );
-}
-
-function DecisionCard({ question, answer, files, onDownload, onFetchBase64, onRename }: {
-  question: string;
-  answer?: boolean;
-  files: Array<{ id: number; nome: string; tipo: string; tamanho: number }>;
-  onDownload: (id: number, nome: string) => void;
-  onFetchBase64: (id: number) => Promise<{ base64: string; nome: string }>;
-  onRename: (id: number, nome: string) => Promise<void>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [previewState, setPreviewState] = useState<PreviewState | null>(null);
-  const [localNames, setLocalNames] = useState<Record<number, string>>({});
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editValue, setEditValue] = useState('');
-  const editRef = useRef<HTMLInputElement>(null);
-  const hasFiles = files.length > 0;
-
-  async function openPreview(f: { id: number; nome: string; tipo: string }) {
-    const displayName = localNames[f.id] ?? f.nome;
-    setPreviewState({ nome: displayName, tipo: f.tipo, base64: null });
-    const data = await onFetchBase64(f.id);
-    setPreviewState({ nome: displayName, tipo: f.tipo, base64: data.base64 });
-  }
-
-  function startEdit(f: { id: number; nome: string }) {
-    setEditingId(f.id);
-    setEditValue(localNames[f.id] ?? f.nome);
-    setTimeout(() => editRef.current?.select(), 0);
-  }
-
-  async function commitEdit(id: number) {
-    const trimmed = editValue.trim();
-    if (trimmed && trimmed !== (localNames[id] ?? files.find(f => f.id === id)?.nome)) {
-      setLocalNames(prev => ({ ...prev, [id]: trimmed }));
-      await onRename(id, trimmed);
-    }
-    setEditingId(null);
-  }
-
-  const canPreview = (tipo: string) => tipo.startsWith('image/') || tipo === 'application/pdf';
-
-  return (
-    <>
-      <div className={`detail-decision-card${open ? ' open' : ''}`}>
-        <div
-          className="detail-decision-row"
-          style={hasFiles ? { cursor: 'pointer' } : undefined}
-          onClick={hasFiles ? () => setOpen(v => !v) : undefined}
-        >
-          <p className="detail-decision-question">{question}</p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            {hasFiles && (
-              <span className="decision-file-badge">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
-                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66L9.41 17.41a2 2 0 01-2.83-2.83l8.49-8.48" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                {files.length}
-                <svg
-                  width="10" height="10" viewBox="0 0 24 24" fill="none"
-                  style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform .15s' }}
-                >
-                  <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </span>
-            )}
-            {answer !== undefined ? (
-              <span className={`detail-decision-answer${answer ? ' sim' : ' nao'}`}>
-                {answer ? 'SIM' : 'NÃO'}
-              </span>
-            ) : !hasFiles ? (
-              <span style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 600, padding: '2px 8px', background: 'var(--gray3)', borderRadius: 99 }}>Nenhum</span>
-            ) : null}
-          </div>
-        </div>
-
-        {open && hasFiles && (
-          <div className="decision-files-inner">
-            {files.map(f => {
-              const displayName = localNames[f.id] ?? f.nome;
-              const isEditing = editingId === f.id;
-              return (
-                <div key={f.id} className="decision-file-item">
-                  <span style={{ fontSize: 14 }}>{f.tipo === 'application/pdf' ? <IconDoc size={15} /> : <IconImage size={15} />}</span>
-                  {isEditing ? (
-                    <input
-                      ref={editRef}
-                      className="file-name-input"
-                      value={editValue}
-                      onChange={e => setEditValue(e.target.value)}
-                      onBlur={() => commitEdit(f.id)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') { e.preventDefault(); commitEdit(f.id); }
-                        if (e.key === 'Escape') setEditingId(null);
-                      }}
-                      onClick={e => e.stopPropagation()}
-                    />
-                  ) : (
-                    <span
-                      className="decision-file-name editable"
-                      title="Clique para renomear"
-                      onClick={e => { e.stopPropagation(); startEdit(f); }}
-                    >
-                      {displayName}
-                    </span>
-                  )}
-                  <span className="decision-file-size">{formatSize(f.tamanho)}</span>
-                  {canPreview(f.tipo) && (
-                    <button className="file-eye-btn" title="Visualizar" onClick={e => { e.stopPropagation(); openPreview(f); }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" strokeWidth="1.8"/>
-                        <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8"/>
-                      </svg>
-                    </button>
-                  )}
-                  <button className="admin-file-download" title="Baixar" onClick={e => { e.stopPropagation(); onDownload(f.id, displayName); }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                      <path d="M12 3v13M7 11l5 5 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M5 20h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                    </svg>
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {previewState && (
-        <FilePreviewModal
-          state={previewState}
-          onClose={() => setPreviewState(null)}
-          onDownload={() => {
-            if (!previewState.base64) return;
-            const link = document.createElement('a');
-            link.href = previewState.base64.startsWith('data:') ? previewState.base64 : `data:${previewState.tipo};base64,${previewState.base64}`;
-            link.download = previewState.nome;
-            link.click();
-          }}
-        />
-      )}
-    </>
   );
 }
 
@@ -904,9 +730,7 @@ function CommentInput({ placeholder, onSend, autoFocus, fetchMentions, statuses 
       />
       <button className="comment-send-btn" onClick={submit} disabled={!text.trim() || sending}>
         {sending ? '…' : (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-            <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          <IconEnviar size={14} />
         )}
       </button>
 
@@ -966,7 +790,9 @@ function renderCommentText(text: string, statuses?: Pick<StatusConfig, 'id' | 'n
       parts.push(<span key={key++} className="comment-at-mention">@{match[1]}</span>);
     } else if (match[2]) {
       const stage = statuses?.find(s => s.nome === match![2]);
-      const color = stage?.cor ?? '#888888';
+      // Hex, e não token: a cor é concatenada com a opacidade logo abaixo
+      // (`${color}18`), e um `var(...)` ali não formaria cor nenhuma.
+      const color = stage?.cor ?? '#AAAAAA';
       parts.push(<span key={key++} className="comment-stage-mention" style={{ background: `${color}18`, color, borderColor: `${color}50` }}>#{match[2]}</span>);
     } else if (match[3]) {
       // Remove pontuação final acidental (ex.: "link." ou "link)")
@@ -1033,16 +859,12 @@ function CommentItem({ ev, replies, onReply, onDelete, fetchMentions, statuses }
             {showReply ? 'Cancelar' : 'Responder'}
           </button>
           <button className="comment-delete-btn" title="Excluir comentário" onClick={() => onDelete(ev.id)}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
-              <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+            <IconTrash size={11} />
           </button>
           {replies.length > 0 && (
             <button className="comment-replies-toggle" onClick={() => setShowReplies(v => !v)}>
               {replies.length} {replies.length === 1 ? 'resposta' : 'respostas'}
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" style={{ transform: showReplies ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}>
-                <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+              <span style={{ display: 'inline-flex', transform: showReplies ? 'rotate(180deg)' : 'none', transition: 'transform var(--transition)' }}><IconChevronDown size={10} /></span>
             </button>
           )}
         </div>
@@ -1056,9 +878,7 @@ function CommentItem({ ev, replies, onReply, onDelete, fetchMentions, statuses }
                   <Autoria nome={r.autor_nome} foto={r.autor_foto} />
                   <span className="comment-time">{formatDate(r.criado_em)}</span>
                   <button className="comment-delete-btn" title="Excluir resposta" onClick={() => onDelete(r.id)}>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
-                      <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
+                    <IconTrash size={11} />
                   </button>
                 </div>
               </div>
@@ -1142,296 +962,232 @@ function parseCurrencyBRL(masked: string): number {
   return parseFloat((masked || '0').replace(/[^\d,]/g, '').replace(',', '.')) || 0;
 }
 
-// ── EditField ─────────────────────────────────────────
-function EditField({ label, value, onChange, type = 'text', readOnly = false, loading = false, hint }: { label: string; value: string; onChange?: (v: string) => void; type?: string; readOnly?: boolean; loading?: boolean; hint?: string }) {
-  return (
-    <div className="form-group">
-      <label className="form-label">
-        {label}
-        {readOnly && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: 'var(--gray2)', textTransform: 'uppercase', letterSpacing: '.04em' }}>· automático</span>}
-        {/* O campo espera a Receita: o giro diz isso sem palavra, e no mesmo
-            desenho de toda espera do sistema. */}
-        {loading && <span className="dux-spinner sm" style={{ marginLeft: 6, verticalAlign: 'middle' }} />}
-      </label>
-      <input
-        type={type}
-        value={value}
-        onChange={e => onChange?.(e.target.value)}
-        readOnly={readOnly}
-        placeholder={readOnly && !value ? (loading ? 'Consultando Receita…' : 'Preenchido pelo CNPJ') : undefined}
-        className="form-input"
-        style={readOnly ? { background: 'var(--bg)', color: 'var(--gray)', cursor: 'default' } : undefined}
-      />
-      {hint && <p style={{ fontSize: 11, color: 'var(--gray2)', marginTop: 4 }}>{hint}</p>}
-    </div>
-  );
+// ── O lead comercial ──────────────────────────────────────────────────────
+//
+//  Com quem se está falando, de onde veio, o que quer, quanto vale e qual é o
+//  próximo passo. Os mesmos campos no cadastro e na edição - um formulário só,
+//  usado pelos dois, para não existirem duas versões da mesma ficha.
+
+/** O que uma empresa pode querer da casa. É o vocabulário dos projetos: o lead
+ *  que fecha vira projeto desse tipo, e duas listas diferentes obrigariam a
+ *  traduzir na passagem. */
+export const INTERESSES_LEAD = [
+  'BI', 'SaaS', 'Automação', 'Integração', 'App', 'Site', 'Consultoria', 'Outro',
+] as const;
+
+export interface RascunhoLead {
+  empresa: string;
+  cnpj: string;
+  contato_nome: string;
+  contato_cargo: string;
+  contato_email: string;
+  contato_telefone: string;
+  origem: string;
+  interesse: string;
+  /** Guardado com máscara enquanto se digita; vira número no envio. */
+  valor_estimado: string;
+  responsavel_id: string;
+  proxima_acao: string;
+  proxima_acao_em: string;
+  observacoes: string;
 }
 
-// ── CedenteSearch ─────────────────────────────────────
-interface CedenteOpt { id: string | number; nome: string; cnpj_cpf: string | null }
+export const LEAD_VAZIO: RascunhoLead = {
+  empresa: '', cnpj: '', contato_nome: '', contato_cargo: '', contato_email: '',
+  contato_telefone: '', origem: '', interesse: '', valor_estimado: '',
+  responsavel_id: '', proxima_acao: '', proxima_acao_em: '', observacoes: '',
+};
 
-function CedenteSearch({ token, value, onChange }: {
-  token: string;
-  value: CedenteOpt | null;
-  onChange: (c: CedenteOpt | null) => void;
-}) {
-  const [query, setQuery] = useState('');
-  const [options, setOptions] = useState<CedenteOpt[]>([]);
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const { onSessionExpired } = useAuth();
-
-  useEffect(() => {
-    if (!open) return;
-    function handler(e: MouseEvent) {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
-
-  useEffect(() => {
-    if (!open || options.length > 0) return;
-    setLoading(true);
-    fetch('/api/admin-data?action=list_cedentes', { headers: { 'x-admin-session': token } })
-      .then(r => { if (r.status === 401) { onSessionExpired(); throw new Error('401'); } return r.json(); })
-      .then(d => setOptions((d.cedentes ?? []).map((c: any) => ({ id: c.id, nome: c.nome, cnpj_cpf: c.cnpj_cpf ?? null }))))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [open, options.length, token, onSessionExpired]);
-
-  const qDigits = query.replace(/\D/g, '');
-  const filtered = query.trim()
-    ? options.filter(o =>
-        o.nome.toLowerCase().includes(query.toLowerCase()) ||
-        (qDigits.length > 0 && (o.cnpj_cpf ?? '').replace(/\D/g, '').includes(qDigits))
-      )
-    : options;
-
-  function handleOpen() {
-    // Clicar de novo fecha, e não reabre: é o padrão da casa.
-    if (open) { setOpen(false); return; }
-    setOpen(true);
-    setTimeout(() => inputRef.current?.focus(), 0);
-  }
-  function select(c: CedenteOpt) { onChange(c); setOpen(false); setQuery(''); }
-  function clear() { onChange(null); setQuery(''); }
-
-  const cnpjFmt = (v: string | null) => {
-    if (!v) return '';
-    const d = v.replace(/\D/g, '');
-    if (d.length === 14) return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
-    if (d.length === 11) return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-    return v;
+/** O corpo que o servidor espera, a partir do rascunho da tela. */
+export function corpoDoLead(r: RascunhoLead) {
+  return {
+    empresa: r.empresa.trim(),
+    cnpj: r.cnpj.trim() || null,
+    contato_nome: r.contato_nome.trim() || null,
+    contato_cargo: r.contato_cargo.trim() || null,
+    contato_email: r.contato_email.trim() || null,
+    contato_telefone: r.contato_telefone.trim() || null,
+    origem: r.origem || null,
+    interesse: r.interesse || null,
+    valor_estimado: parseCurrencyBRL(r.valor_estimado) || null,
+    responsavel_id: r.responsavel_id || null,
+    proxima_acao: r.proxima_acao.trim() || null,
+    proxima_acao_em: r.proxima_acao_em || null,
+    observacoes: r.observacoes.trim() || null,
   };
-
-  return (
-    <div className="form-group">
-      <label className="form-label">Cedente *</label>
-      <div ref={wrapRef} style={{ position: 'relative' }}>
-        {value ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, height: 38, padding: '0 11px',
-            borderRadius: 8, border: '1.5px solid var(--yellow)', background: 'var(--white)',
-            boxShadow: '0 0 0 3px rgba(0, 201, 167,0.12)' }}>
-            <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 6, overflow: 'hidden' }}>
-              <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--black)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1 }}>{value.nome}</span>
-              {value.cnpj_cpf && <span style={{ fontSize: 11.5, color: 'var(--gray2)', whiteSpace: 'nowrap', flexShrink: 0 }}>{cnpjFmt(value.cnpj_cpf)}</span>}
-            </div>
-            <button type="button" onClick={clear} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--gray2)', padding: 0, display: 'flex', flexShrink: 0 }}>
-              <svg width="12" height="12" viewBox="0 0 10 10" fill="none"><path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-            </button>
-          </div>
-        ) : (
-          <div style={{ position: 'relative' }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray2)', pointerEvents: 'none' }}>
-              <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="1.8"/>
-              <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-            </svg>
-            <input
-              ref={inputRef}
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              onFocus={handleOpen}
-              onClick={handleOpen}
-              placeholder="Buscar por nome ou CNPJ…"
-              className="form-input"
-              style={{ paddingLeft: 30 }}
-            />
-          </div>
-        )}
-
-        {open && !value && (
-          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, background: 'var(--white)',
-            border: '1.5px solid var(--gray3)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-            zIndex: 200, maxHeight: 220, overflowY: 'auto' }}>
-            {loading && <div className="dux-spinner-row" style={{ padding: '14px' }}><span className="dux-spinner sm" /></div>}
-            {!loading && filtered.length === 0 && <p style={{ fontSize: 12.5, color: 'var(--gray2)', padding: '12px 14px', margin: 0 }}>Nenhum cedente encontrado</p>}
-            {!loading && filtered.map(c => (
-              <button key={c.id} type="button" onMouseDown={e => { e.preventDefault(); select(c); }}
-                style={{ width: '100%', textAlign: 'left', padding: '9px 14px', border: 'none', background: 'none',
-                  cursor: 'pointer', display: 'flex', alignItems: 'baseline', gap: 6 }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--black)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1 }}>{c.nome}</span>
-                {c.cnpj_cpf && <span style={{ fontSize: 11.5, color: 'var(--gray2)', whiteSpace: 'nowrap', flexShrink: 0 }}>{cnpjFmt(c.cnpj_cpf)}</span>}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }
 
-// ── SacadoSearch ──────────────────────────────────────
-interface SacadoOpt { id: string; razao_social: string | null; cnpj_cpf: string | null }
+/** Telefone brasileiro enquanto se digita: (31) 99999-0000. */
+function mascaraTelefone(v: string): string {
+  const d = v.replace(/\D/g, '').slice(0, 11);
+  if (d.length <= 2) return d;
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
 
-function SacadoSearch({ token, value, onChange }: {
+/** CNPJ enquanto se digita. */
+function mascaraCnpj(v: string): string {
+  const d = v.replace(/\D/g, '').slice(0, 14);
+  return d
+    .replace(/^(\d{2})(\d)/, '$1.$2')
+    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d)/, '.$1/$2')
+    .replace(/(\d{4})(\d)/, '$1-$2');
+}
+
+/** A ficha do lead. Serve ao cadastro e à edição: mesmos campos, mesma ordem,
+ *  mesma validação - quem cadastra e quem edita olham para a mesma coisa. */
+function CamposDoLead({ r, set, token, pessoas }: {
+  r: RascunhoLead;
+  set: <K extends keyof RascunhoLead>(k: K, v: RascunhoLead[K]) => void;
   token: string;
-  value: SacadoOpt | null;
-  onChange: (s: SacadoOpt | null) => void;
+  pessoas: { id: string; nome: string }[];
 }) {
-  const { toast } = useToast();
-  const [query, setQuery] = useState('');
-  const [options, setOptions] = useState<SacadoOpt[]>([]);
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [adding, setAdding] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const { onSessionExpired } = useAuth();
+  const [buscandoCnpj, setBuscandoCnpj] = useState(false);
+  // O último CNPJ consultado. Começa com o que já estava gravado: na edição,
+  // passar pelo campo sem mexer nele não pode trocar o nome que a pessoa
+  // ajustou à mão - só um CNPJ novo manda buscar.
+  const cnpjBuscado = useRef(r.cnpj.replace(/\D/g, ''));
 
-  useEffect(() => {
-    if (!open) return;
-    function handler(e: MouseEvent) { if (!wrapRef.current?.contains(e.target as Node)) setOpen(false); }
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
-
-  useEffect(() => {
-    if (!open || options.length > 0) return;
-    setLoading(true);
-    fetch('/api/admin-data?action=list_sacados', { headers: { 'x-admin-session': token } })
-      .then(r => { if (r.status === 401) { onSessionExpired(); throw new Error('401'); } return r.json(); })
-      .then(d => setOptions((d.sacados ?? []).map((c: any) => ({ id: String(c.id), razao_social: c.razao_social ?? null, cnpj_cpf: c.cnpj_cpf ?? null }))))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [open, options.length, token, onSessionExpired]);
-
-  const cnpjFmt = (v: string | null) => {
-    if (!v) return '';
-    const d = v.replace(/\D/g, '');
-    if (d.length === 14) return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
-    if (d.length === 11) return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-    return v;
-  };
-
-  const qDigits = query.replace(/\D/g, '');
-  const filtered = query.trim()
-    ? options.filter(o =>
-        (o.razao_social ?? '').toLowerCase().includes(query.toLowerCase()) ||
-        (qDigits.length > 0 && (o.cnpj_cpf ?? '').replace(/\D/g, '').includes(qDigits))
-      )
-    : options;
-  const exactCnpj = options.find(o => (o.cnpj_cpf ?? '').replace(/\D/g, '') === qDigits);
-  const canAddNew = qDigits.length === 14 && !exactCnpj;
-
-  function handleOpen() {
-    // Clicar de novo fecha, e não reabre: é o padrão da casa.
-    if (open) { setOpen(false); return; }
-    setOpen(true);
-    setTimeout(() => inputRef.current?.focus(), 0);
-  }
-  function select(s: SacadoOpt) { onChange(s); setOpen(false); setQuery(''); }
-  function clear() { onChange(null); setQuery(''); }
-
-  async function addNew() {
-    setAdding(true);
+  /** O CNPJ preenche a empresa: quem cadastra um lead tem o cartão na mão, e
+   *  digitar de novo o que a Receita já sabe é trabalho à toa. A razão social
+   *  manda - se havia um apelido escrito ali, ele dá lugar ao nome de registro,
+   *  que é o que vai no contrato e o que a busca vai procurar depois. */
+  async function buscarCnpj(valor: string) {
+    const digitos = valor.replace(/\D/g, '');
+    if (digitos.length !== 14 || cnpjBuscado.current === digitos) return;
+    cnpjBuscado.current = digitos;
+    setBuscandoCnpj(true);
     try {
-      // Busca a razão social na Receita (1x) e cria/vincula o sacado no cadastro
-      let razao = '';
-      try {
-        const rc = await fetch(`/api/cnpj-lookup?cnpj=${qDigits}`, { headers: { 'x-admin-session': token } });
-        if (rc.ok) { const d = await rc.json(); razao = d.razao_social ?? d.nome_fantasia ?? d.nome ?? ''; }
-      } catch { /* segue sem razão - backend salva o que der */ }
-      const res = await fetch('/api/admin-data', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-session': token },
-        body: JSON.stringify({ action: 'create_sacado', cnpj: qDigits, razao_social: razao }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data?.sacado) { toast('error', 'Erro ao adicionar sacado', data?.error); return; }
-      const novo: SacadoOpt = { id: String(data.sacado.id), razao_social: data.sacado.razao_social ?? razao, cnpj_cpf: data.sacado.cnpj_cpf ?? qDigits };
-      setOptions(prev => [novo, ...prev.filter(o => o.id !== novo.id)]);
-      select(novo);
-    } catch (e: any) {
-      toast('error', 'Erro ao adicionar sacado', e?.message);
-    } finally {
-      setAdding(false);
-    }
+      const res = await fetch(`/api/cnpj-lookup?cnpj=${digitos}`, { headers: { 'x-admin-session': token } });
+      if (!res.ok) return;
+      const d = await res.json();
+      const nome = d.razao_social ?? d.nome_fantasia ?? d.nome ?? '';
+      if (nome) set('empresa', String(nome));
+    } catch { /* sem internet ou Receita fora: a pessoa escreve o nome */ }
+    finally { setBuscandoCnpj(false); }
   }
 
   return (
-    <div className="form-group">
-      <label className="form-label">Sacado *</label>
-      <div ref={wrapRef} style={{ position: 'relative' }}>
-        {value ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, height: 38, padding: '0 11px',
-            borderRadius: 8, border: '1.5px solid var(--yellow)', background: 'var(--white)', boxShadow: '0 0 0 3px rgba(0, 201, 167,0.12)' }}>
-            <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 6, overflow: 'hidden' }}>
-              <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--black)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1 }}>{value.razao_social ?? cnpjFmt(value.cnpj_cpf)}</span>
-              {value.cnpj_cpf && value.razao_social && <span style={{ fontSize: 11.5, color: 'var(--gray2)', whiteSpace: 'nowrap', flexShrink: 0 }}>{cnpjFmt(value.cnpj_cpf)}</span>}
-            </div>
-            <button type="button" onClick={clear} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--gray2)', padding: 0, display: 'flex', flexShrink: 0 }}>
-              <svg width="12" height="12" viewBox="0 0 10 10" fill="none"><path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-            </button>
+    <>
+      <div className="lead-campos">
+        {/* O CNPJ abre o cadastro: com ele, o nome da empresa vem sozinho. A
+            consulta dispara no 14º dígito, e não só ao sair do campo - quem
+            colou o número não precisa de mais um gesto para ver o resultado. */}
+        <div className="form-group" style={{ flex: '0 1 190px' }}>
+          <label className="form-label">CNPJ</label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input className="form-input" value={r.cnpj} autoFocus placeholder="00.000.000/0000-00"
+              onChange={e => {
+                const v = mascaraCnpj(e.target.value);
+                set('cnpj', v);
+                void buscarCnpj(v);
+              }}
+              onBlur={e => void buscarCnpj(e.target.value)} />
+            {buscandoCnpj && <span className="dux-spinner sm" style={{ alignSelf: 'center' }} />}
           </div>
-        ) : (
-          <div style={{ position: 'relative' }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray2)', pointerEvents: 'none' }}>
-              <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="1.8"/><path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-            </svg>
-            <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)} onFocus={handleOpen} onClick={handleOpen}
-              placeholder="Buscar por razão social ou CNPJ…" className="form-input" style={{ paddingLeft: 30 }} />
-          </div>
-        )}
-
-        {open && !value && (
-          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, background: 'var(--white)',
-            border: '1.5px solid var(--gray3)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 200, maxHeight: 240, overflowY: 'auto' }}>
-            {loading && <div className="dux-spinner-row" style={{ padding: '14px' }}><span className="dux-spinner sm" /></div>}
-            {!loading && filtered.map(c => (
-              <button key={c.id} type="button" onMouseDown={e => { e.preventDefault(); select(c); }}
-                style={{ width: '100%', textAlign: 'left', padding: '9px 14px', border: 'none', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'baseline', gap: 6 }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg)')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--black)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1 }}>{c.razao_social ?? cnpjFmt(c.cnpj_cpf)}</span>
-                {c.cnpj_cpf && <span style={{ fontSize: 11.5, color: 'var(--gray2)', whiteSpace: 'nowrap', flexShrink: 0 }}>{cnpjFmt(c.cnpj_cpf)}</span>}
-              </button>
-            ))}
-            {!loading && canAddNew && (
-              <button type="button" onMouseDown={e => { e.preventDefault(); addNew(); }} disabled={adding}
-                style={{ width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderTop: '1px solid var(--gray3)', background: 'var(--yd)', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: 'var(--black)' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-                  {adding ? <IconSpinner size={13} /> : <IconPlus size={13} />}
-                  {adding ? 'Adicionando…' : `Adicionar sacado ${cnpjFmt(qDigits)} (busca na Receita)`}
-                </span>
-              </button>
-            )}
-            {!loading && filtered.length === 0 && !canAddNew && (
-              <p style={{ fontSize: 12.5, color: 'var(--gray2)', padding: '12px 14px', margin: 0 }}>
-                {qDigits.length > 0 && qDigits.length < 14 ? 'Digite o CNPJ completo para adicionar um novo sacado.' : 'Nenhum sacado encontrado.'}
-              </p>
-            )}
-          </div>
-        )}
+        </div>
+        <div className="form-group" style={{ flex: '1 1 220px' }}>
+          <label className="form-label">Empresa *</label>
+          <input className="form-input" value={r.empresa}
+            placeholder="Com quem estamos falando"
+            onChange={e => set('empresa', e.target.value)} />
+        </div>
       </div>
-    </div>
+
+      <p className="lead-secao">Contato</p>
+      <div className="lead-campos">
+        <div className="form-group" style={{ flex: '1 1 200px' }}>
+          <label className="form-label">Nome</label>
+          <input className="form-input" value={r.contato_nome}
+            placeholder="Com quem se fala na empresa"
+            onChange={e => set('contato_nome', e.target.value)} />
+        </div>
+        <div className="form-group" style={{ flex: '0 1 160px' }}>
+          <label className="form-label">Cargo</label>
+          <input className="form-input" value={r.contato_cargo} placeholder="Sócio, gerente…"
+            onChange={e => set('contato_cargo', e.target.value)} />
+        </div>
+      </div>
+      <div className="lead-campos">
+        <div className="form-group" style={{ flex: '1 1 200px' }}>
+          <label className="form-label">E-mail</label>
+          <input className="form-input" type="email" value={r.contato_email}
+            placeholder="para onde vai a proposta"
+            onChange={e => set('contato_email', e.target.value)} />
+        </div>
+        <div className="form-group" style={{ flex: '0 1 170px' }}>
+          <label className="form-label">Telefone</label>
+          <input className="form-input" value={r.contato_telefone} placeholder="(00) 00000-0000"
+            onChange={e => set('contato_telefone', mascaraTelefone(e.target.value))} />
+        </div>
+      </div>
+
+      <p className="lead-secao">Negócio</p>
+      <div className="lead-campos">
+        <div className="form-group" style={{ flex: '1 1 160px' }}>
+          <label className="form-label">Origem</label>
+          <FormSelect value={r.origem} onChange={v => set('origem', v)}
+            options={ORIGENS_LEAD.map(o => ({ value: o, label: o }))} />
+        </div>
+        <div className="form-group" style={{ flex: '1 1 160px' }}>
+          <label className="form-label">Interesse</label>
+          <FormSelect value={r.interesse} onChange={v => set('interesse', v)}
+            options={INTERESSES_LEAD.map(o => ({ value: o, label: o }))} />
+        </div>
+      </div>
+      <div className="lead-campos">
+        <div className="form-group" style={{ flex: '0 1 150px' }}>
+          <label className="form-label">Valor estimado</label>
+          <input className="form-input" value={r.valor_estimado} placeholder="R$ 0,00"
+            onChange={e => set('valor_estimado', maskCurrencyBRL(e.target.value))} />
+        </div>
+        <div className="form-group" style={{ flex: '1 1 200px' }}>
+          <label className="form-label">Responsável</label>
+          <FormSelect value={r.responsavel_id} onChange={v => set('responsavel_id', v)}
+            options={pessoas.map(p => ({ value: p.id, label: p.nome }))} />
+        </div>
+      </div>
+
+      <p className="lead-secao">Próximo passo</p>
+      <div className="lead-campos">
+        <div className="form-group" style={{ flex: '1 1 220px' }}>
+          <label className="form-label">O que fazer</label>
+          <input className="form-input" value={r.proxima_acao}
+            placeholder="Ligar, enviar proposta, agendar reunião…"
+            onChange={e => set('proxima_acao', e.target.value)} />
+        </div>
+        <div className="form-group" style={{ flex: '0 1 160px' }}>
+          <label className="form-label">Quando</label>
+          <DatePicker value={r.proxima_acao_em} onChange={v => set('proxima_acao_em', v)} compact />
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Observações</label>
+        <textarea className="form-input" rows={3} value={r.observacoes}
+          style={{ fontSize: 13, resize: 'none' }}
+          placeholder="O que foi conversado, o que a empresa faz, o que importa lembrar"
+          onChange={e => set('observacoes', e.target.value)} />
+      </div>
+    </>
   );
 }
 
-// ── Create Modal ─────────────────────────────────────
-const MAX_FILE_MB = 3;
+/** Quem pode ficar responsável por um lead: o time do portal. */
+function usePessoasDoPortal(token: string) {
+  const [pessoas, setPessoas] = useState<{ id: string; nome: string }[]>([]);
+  useEffect(() => {
+    let vivo = true;
+    fetch('/api/admin-data?action=usuarios_notificaveis', { headers: { 'x-admin-session': token } })
+      .then(r => r.json())
+      .then(d => { if (vivo) setPessoas((d?.usuarios ?? []).map((u: any) => ({ id: String(u.id), nome: String(u.nome) }))); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [token]);
+  return pessoas;
+}
 
 function CreateModal({ statuses, token, onClose, onCreated }: {
   statuses: StatusConfig[];
@@ -1441,391 +1197,78 @@ function CreateModal({ statuses, token, onClose, onCreated }: {
 }) {
   const api = useApi(token);
   const { toast } = useToast();
-
-  const [selectedCedente, setSelectedCedente] = useState<CedenteOpt | null>(null);
-  const [selectedSacado, setSelectedSacado] = useState<SacadoOpt | null>(null);
-  const [isParcelas, setIsParcelas] = useState(false);
-  const [valor, setValor] = useState('');
-  const [prazoLimite, setPrazoLimite] = useState('');
-  const [numParcelas, setNumParcelas] = useState(1);
-  const [parcelas, setParcelas] = useState<Array<{ valor: string; valorNumerico: number; vencimento: string }>>(
-    [{ valor: '', valorNumerico: 0, vencimento: '' }]
-  );
-  // Parcelas iguais (distribuídas pelo sistema) × variáveis (manual)
-  const [parcelaMode, setParcelaMode] = useState<'iguais' | 'variaveis'>('iguais');
-  const [totalParcelado, setTotalParcelado] = useState('');
-  const [periodicidade, setPeriodicidade] = useState<'mensal' | 'quinzenal' | 'bimestral' | 'personalizada'>('mensal');
-  const [intervaloDias, setIntervaloDias] = useState(30);
-  const [primeiroVenc, setPrimeiroVenc] = useState('');
-  const [fimType, setFimType] = useState<number | ''>('');
-  // Padrão = etapa de entrada configurada (Configurações → Etapas); sem marcação, a primeira
+  const pessoas = usePessoasDoPortal(token);
+  const [r, setR] = useState<RascunhoLead>(LEAD_VAZIO);
+  const set = <K extends keyof RascunhoLead>(k: K, v: RascunhoLead[K]) =>
+    setR(p => ({ ...p, [k]: v }));
+  // Etapa de entrada configurada em Configurações; sem marcação, a primeira.
   const [statusId, setStatusId] = useState<number | ''>(
     statuses.find(s => s.is_entrada)?.id ?? statuses[0]?.id ?? ''
   );
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [fileError, setFileError] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
-  const [savingLabel, setSavingLabel] = useState('Criando…');
+  const { saindo, fechar } = useSaidaSuave(onClose);
+  const fundo = useFecharNoFundo(fechar);
+  // Cadastro e edição dividem a mesma memória de largura: é a mesma ficha.
+  const painel = useLarguraPainel('lead-form');
 
-  // Em "parcelas iguais", o sistema distribui o total automaticamente
-  useEffect(() => {
-    if (!isParcelas || parcelaMode !== 'iguais') return;
-    setParcelas(distribuirParcelas(parseCurrencyBRL(totalParcelado), numParcelas, primeiroVenc, periodicidade, intervaloDias));
-  }, [isParcelas, parcelaMode, totalParcelado, numParcelas, primeiroVenc, periodicidade, intervaloDias]);
-
-  function changeNumParcelas(delta: number) {
-    const next = Math.max(1, Math.min(12, numParcelas + delta));
-    setNumParcelas(next);
-    setParcelas(prev => {
-      if (next > prev.length)
-        return [...prev, ...Array.from({ length: next - prev.length }, () => ({ valor: '', valorNumerico: 0, vencimento: '' }))];
-      return prev.slice(0, next);
-    });
-  }
-
-  function updateParcelaValor(i: number, raw: string) {
-    const masked = maskCurrencyBRL(raw);
-    setParcelas(prev => { const n = [...prev]; n[i] = { ...n[i], valor: masked, valorNumerico: parseCurrencyBRL(masked) }; return n; });
-  }
-
-  function updateParcelaVencimento(i: number, v: string) {
-    setParcelas(prev => { const n = [...prev]; n[i] = { ...n[i], vencimento: v }; return n; });
-  }
-
-  function addFiles(incoming: File[]) {
-    setFileError('');
-    const oversized = incoming.filter(f => f.size > MAX_FILE_MB * 1024 * 1024);
-    if (oversized.length > 0) setFileError(`Arquivo(s) maiores que ${MAX_FILE_MB}MB foram ignorados.`);
-    const valid = incoming.filter(f => f.size <= MAX_FILE_MB * 1024 * 1024);
-    setPendingFiles(prev => [...prev, ...valid]);
-  }
-
-
-  async function handleCreate() {
-    if (!selectedCedente) { toast('error', 'Selecione o cedente'); return; }
-    const nomeContratado = selectedCedente.nome;
-    const cnpjContratado = selectedCedente.cnpj_cpf ?? '';
+  async function criar() {
+    if (!r.empresa.trim()) { toast('error', 'Falta a empresa', 'Um lead é uma empresa com quem se fala.'); return; }
     setSaving(true);
     try {
-      let finalValor = valor || null;
-      let finalValorNumerico: number | null = null;
-      let finalPrazo: string | null = prazoLimite || null;
-      let finalParcelas: Array<{ valor: string; valorNumerico: number; vencimento: string }> | null = null;
-
-      if (isParcelas) {
-        const total = parcelas.reduce((acc, p) => acc + p.valorNumerico, 0);
-        finalValor = total > 0 ? total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : null;
-        finalValorNumerico = total || null;
-        finalParcelas = parcelas;
-        finalPrazo = null;
-      } else {
-        finalValorNumerico = parseCurrencyBRL(valor) || null;
-      }
-
-      setSavingLabel('Criando…');
       const res = await api('', 'POST', {
         action: 'create_submission',
-        cedente_id: selectedCedente.id,
-        nome_contratado: nomeContratado || null,
-        cnpj_contratado: cnpjContratado || null,
-        sacado_id: selectedSacado?.id ?? null,
-        nome_sacado: selectedSacado?.razao_social ?? null,
-        cnpj_sacado: selectedSacado?.cnpj_cpf ?? null,
-        valor: finalValor,
-        valor_numerico: finalValorNumerico,
-        prazo_limite: finalPrazo,
-        parcelas: finalParcelas,
-        fim_type: fimType !== '' ? Number(fimType) : null,
+        ...corpoDoLead(r),
+        responsavel_nome: pessoas.find(p => p.id === r.responsavel_id)?.nome ?? null,
         status_id: statusId !== '' ? Number(statusId) : null,
       });
       if (res?.error) throw new Error(res.error);
-      if (!res?.submission?.id) throw new Error('Resposta inválida do servidor (sessão pode ter expirado). Faça login novamente.');
-
-      const newId: string = res.submission.id;
-      let enviados = 0;
-      const falhas: string[] = [];
-      if (pendingFiles.length > 0) {
-        setSavingLabel(`Enviando anexos…`);
-        for (const file of pendingFiles) {
-          try {
-            const base64 = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => resolve(reader.result as string);
-              reader.onerror = reject;
-              reader.readAsDataURL(file);
-            });
-            const fileRes = await fetch('/api/submit-file', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                leadId: newId,
-                arquivo: { categoria: 'Documento', nome: file.name, tipo: file.type, tamanho: file.size, base64 },
-              }),
-            });
-            if (fileRes.ok) enviados++;
-            else falhas.push(file.name);
-          } catch {
-            falhas.push(file.name);
-          }
-        }
-      }
-
-      if (falhas.length > 0) {
-        toast('error', `${falhas.length} anexo(s) não enviado(s)`, `Verifique o tamanho (máx. 5 MB): ${falhas.join(', ')}`);
-      } else {
-        toast('success', 'Lead criada');
-      }
-      const sub = res.submission as Submission;
-      onCreated({ ...sub, arquivo_count: enviados });
-    } catch (e: any) {
-      console.error('[create_submission]', e);
-      toast('error', 'Erro ao criar lead', e?.message ?? 'Tente novamente.');
+      if (!res?.submission?.id) throw new Error('Resposta inválida do servidor.');
+      onCreated(res.submission as Submission);
+      toast('success', 'Lead cadastrado', `${r.empresa.trim()} entrou no funil.`);
+      fechar();
+    } catch (e) {
+      toast('error', 'Não foi possível cadastrar', (e as Error).message);
     } finally {
       setSaving(false);
     }
   }
 
-  const totalParcelas = parcelas.reduce((acc, p) => acc + p.valorNumerico, 0);
-
   return createPortal(
-    <div className="admin-modal-overlay" style={{ zIndex: 1050 }} onClick={onClose}>
-      <div className="admin-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`} style={{ zIndex: 1050 }} {...fundo}>
+      <PuxadorDoPainel {...painel} />
+      <div className="admin-modal" onClick={e => e.stopPropagation()}
+        style={{ width: `min(${painel.largura}px, 96vw)` }}>
+        <div className="admin-modal-header">
+          <h3 className="admin-modal-title">Novo lead</h3>
+          <button className="admin-modal-close" aria-label="Fechar" onClick={fechar}><IconX size={16} /></button>
+        </div>
 
-        <div className="admin-modal-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-            <div style={{ minWidth: 0 }}>
-              <p style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Novo lead</p>
-              <h3 style={{ fontSize: 16, fontWeight: 800 }}>Criar manualmente</h3>
-            </div>
-            <button className="admin-modal-close" aria-label="Fechar" onClick={onClose}><IconX size={16} /></button>
+        <div className="admin-modal-body form-lead">
+          <CamposDoLead r={r} set={set} token={token} pessoas={pessoas} />
+          <div className="form-group">
+            <label className="form-label">Etapa</label>
+            <FormSelect
+              value={statusId === '' ? '' : String(statusId)}
+              onChange={v => setStatusId(v === '' ? '' : Number(v))}
+              options={statuses.map(st => ({ value: String(st.id), label: st.nome }))}
+            />
           </div>
         </div>
 
-        <div className="admin-modal-body">
-
-          {/* Cedente */}
-          <section>
-            <p className="admin-section-title">Cedente (Contratado)</p>
-            <CedenteSearch token={token} value={selectedCedente} onChange={setSelectedCedente} />
-          </section>
-
-          {/* Sacado */}
-          <section>
-            <p className="admin-section-title">Sacado (Contratante)</p>
-            <SacadoSearch token={token} value={selectedSacado} onChange={setSelectedSacado} />
-          </section>
-
-          {/* Dados da operação */}
-          <section>
-            <p className="admin-section-title">Dados da operação</p>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 14, background: 'var(--gray3)', borderRadius: 10, padding: 4 }}>
-              {(['único', 'parcelado'] as const).map(mode => {
-                const active = mode === 'parcelado' ? isParcelas : !isParcelas;
-                return (
-                  <button key={mode} type="button" onClick={() => setIsParcelas(mode === 'parcelado')}
-                    style={{ flex: 1, padding: '7px 10px', fontSize: 12, fontWeight: 700, borderRadius: 7, cursor: 'pointer', border: 'none', background: active ? 'var(--white)' : 'transparent', color: active ? 'var(--black)' : 'var(--gray2)', boxShadow: active ? '0 1px 4px rgba(0,0,0,0.10)' : 'none', transition: 'all 0.15s' }}>
-                    {mode === 'único' ? 'Pagamento único' : 'Parcelado'}
-                  </button>
-                );
-              })}
-            </div>
-
-            {!isParcelas ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <EditField label="Valor" value={valor} onChange={v => setValor(maskCurrencyBRL(v))} />
-                <div className="form-group">
-                  <label className="form-label">Vencimento</label>
-                  <DatePicker value={prazoLimite} onChange={setPrazoLimite} compact />
-                </div>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {/* Modo: iguais (distribui) × variáveis (manual) */}
-                <SegSwitch
-                  valor={parcelaMode}
-                  onChange={setParcelaMode}
-                  full
-                  opcoes={[
-                    { valor: 'iguais', label: 'Parcelas iguais' },
-                    { valor: 'variaveis', label: 'Parcelas variáveis' },
-                  ]}
-                />
-
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <p className="admin-info-label">Número de parcelas</p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
-                    <button type="button" onClick={() => changeNumParcelas(-1)} disabled={numParcelas <= 1}
-                      style={{ width: 28, height: 28, borderRadius: 6, border: '1.5px solid var(--gray3)', background: 'none', cursor: 'pointer', fontSize: 16, fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                    <span style={{ fontSize: 14, fontWeight: 700, minWidth: 24, textAlign: 'center' }}>{numParcelas}</span>
-                    <button type="button" onClick={() => changeNumParcelas(1)} disabled={numParcelas >= 12}
-                      style={{ width: 28, height: 28, borderRadius: 6, border: '1.5px solid var(--gray3)', background: 'none', cursor: 'pointer', fontSize: 16, fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
-                  </div>
-                </div>
-
-                {parcelaMode === 'iguais' ? (
-                  <>
-                    <EditField label="Valor total" value={totalParcelado} onChange={v => setTotalParcelado(maskCurrencyBRL(v))} />
-                    <div className="form-group">
-                      <label className="form-label">Periodicidade</label>
-                      <FormSelect
-                        value={periodicidade}
-                        onChange={v => setPeriodicidade(v as any)}
-                        options={[
-                          { value: 'mensal', label: 'Mensal' },
-                          { value: 'quinzenal', label: 'Quinzenal' },
-                          { value: 'bimestral', label: 'Bimestral' },
-                          { value: 'personalizada', label: 'Personalizada (dias)' },
-                        ]}
-                      />
-                    </div>
-                    {periodicidade === 'personalizada' && (
-                      <div className="form-group">
-                        <label className="form-label">Intervalo entre parcelas (dias)</label>
-                        <input type="number" min={1} value={intervaloDias} onChange={e => setIntervaloDias(Math.max(1, Number(e.target.value) || 1))} className="form-input" />
-                      </div>
-                    )}
-                    <div className="form-group">
-                      <label className="form-label">Primeiro vencimento</label>
-                      <DatePicker value={primeiroVenc} onChange={setPrimeiroVenc} compact />
-                    </div>
-                    {parcelas.length > 0 && parcelas[0].valorNumerico > 0 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        <p style={{ fontSize: 11, color: 'var(--gray2)', margin: 0, lineHeight: 1.35 }}>
-                          As datas seguem a periodicidade escolhida - você pode ajustar qualquer vencimento manualmente.
-                        </p>
-                        {parcelas.map((p, i) => (
-                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray2)', minWidth: 22 }}>{i + 1}ª</span>
-                            <span style={{ fontSize: 13, fontWeight: 700, minWidth: 96 }}>{p.valor || '-'}</span>
-                            <div style={{ flex: 1 }}>
-                              <DatePicker value={p.vencimento} onChange={v => updateParcelaVencimento(i, v)} compact />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  parcelas.map((p, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray2)', paddingBottom: 8, minWidth: 22 }}>{i + 1}ª</span>
-                      <div className="form-group" style={{ flex: 1 }}>
-                        <label className="form-label">Valor</label>
-                        <input type="text" inputMode="numeric" value={p.valor} onChange={e => updateParcelaValor(i, e.target.value)} className="form-input" />
-                      </div>
-                      <div className="form-group" style={{ flex: 1 }}>
-                        <label className="form-label">Vencimento</label>
-                        <DatePicker value={p.vencimento} onChange={v => updateParcelaVencimento(i, v)} compact />
-                      </div>
-                    </div>
-                  ))
-                )}
-                {totalParcelas > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 10px', background: 'var(--gray3)', borderRadius: 8 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--gray)' }}>Total</span>
-                    <strong style={{ fontSize: 12 }}>{totalParcelas.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="form-group" style={{ marginTop: 10 }}>
-              <label className="form-label">Fluxo de pagamento</label>
-              <FormSelect
-                value={String(fimType)}
-                onChange={v => setFimType(v === '' ? '' : Number(v))}
-                options={FIM_SELECT_OPTIONS}
-              />
-            </div>
-          </section>
-
-          {/* Status inicial */}
-          <section>
-            <p className="admin-section-title">Status inicial</p>
-            <FormSelect
-              value={String(statusId)}
-              onChange={v => setStatusId(v === '' ? '' : Number(v))}
-              options={statuses.map(s => ({ value: String(s.id), label: s.nome }))}
-              placeholder="- Sem status -"
-            />
-          </section>
-
-          {/* Anexos */}
-          <section>
-            <p className="admin-section-title">Anexos</p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept=".pdf,.jpg,.jpeg,.png,.zip"
-              style={{ display: 'none' }}
-              onChange={e => { if (e.target.files) addFiles(Array.from(e.target.files)); e.target.value = ''; }}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', fontSize: 12, fontWeight: 600, borderRadius: 8, border: '1.5px dashed var(--gray3)', background: 'none', cursor: 'pointer', color: 'var(--gray2)', width: '100%', justifyContent: 'center', transition: 'background 0.15s, border-color 0.15s, color 0.15s' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0, 201, 167,0.08)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--yellow)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--black)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--gray3)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--gray2)'; }}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              Adicionar arquivo · PDF, JPG, PNG ou ZIP · máx. {MAX_FILE_MB}MB
-            </button>
-            {fileError && <p style={{ fontSize: 11, color: 'var(--red)', marginTop: 6 }}>{fileError}</p>}
-            {pendingFiles.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
-                {pendingFiles.map((f, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--gray3)', borderRadius: 8 }}>
-                    <span style={{ fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--black)' }}>{f.name}</span>
-                    <span style={{ fontSize: 11, color: 'var(--gray2)', flexShrink: 0 }}>
-                      {f.size < 1024 * 1024 ? `${(f.size / 1024).toFixed(0)} KB` : `${(f.size / (1024 * 1024)).toFixed(1)} MB`}
-                    </span>
-                    <button type="button" onClick={() => setPendingFiles(prev => prev.filter((_, j) => j !== i))}
-                      style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--gray2)', padding: 0, display: 'flex', flexShrink: 0 }}>
-                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-        </div>
-
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--gray3)', display: 'flex', justifyContent: 'flex-end', gap: 8, flexShrink: 0 }}>
-          <button type="button" onClick={onClose} disabled={saving}
-            style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, border: '1.5px solid var(--gray3)', background: 'none', cursor: 'pointer', color: 'var(--gray)' }}>
-            Cancelar
-          </button>
-          <button type="button" onClick={handleCreate} disabled={saving}
-            style={{ padding: '8px 16px', fontSize: 13, fontWeight: 700, borderRadius: 8, border: 'none', background: 'var(--yellow)', color: '#000', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
-            {saving ? savingLabel : 'Criar lead'}
+        <div className="admin-modal-footer">
+          <button type="button" className="modal-acao" onClick={fechar}>Cancelar</button>
+          <button type="button" className="modal-acao-primaria" disabled={saving || !r.empresa.trim()}
+            onClick={() => void criar()}>
+            {saving ? 'Cadastrando…' : 'Cadastrar lead'}
           </button>
         </div>
-
       </div>
     </div>,
     document.body
   );
 }
 
-// ── Edit Modal ────────────────────────────────────────
-const DECISION_LABELS_EDIT: Record<string, string> = {
-  node5: 'Contrato assinado?',
-  nodeB: 'Conta escrow?',
-  nodeA: 'Nota emitida?',
-  nodeA1: 'Anuência do sacado?',
-  nodeA2: 'Escrow na nota + aceite do sacado?',
-  nodeConvergente: 'Mudança de domicílio bancário?',
-};
-
-function EditModal({
-  detail,
-  token,
-  onClose,
-  onSaved,
-}: {
+function EditModal({ detail, token, onClose, onSaved }: {
   detail: SubmissionDetail;
   token: string;
   onClose: () => void;
@@ -1833,303 +1276,72 @@ function EditModal({
 }) {
   const api = useApi(token);
   const { toast } = useToast();
+  const pessoas = usePessoasDoPortal(token);
   const s = detail.submission;
 
-  const initialParcelas: Array<{ valor: string; valorNumerico: number; vencimento: string }> | null = (() => {
-    try { return s.parcelas ? JSON.parse(String(s.parcelas)) : null; } catch { return null; }
-  })();
-  const initialDecisions: Record<string, boolean> = (() => {
-    try { return s.decisions ? JSON.parse(String(s.decisions)) : {}; } catch { return {}; }
-  })();
-  const hasParcelas = initialParcelas && initialParcelas.length > 1;
-
-  // Cedente e sacado são selecionados do cadastro (fonte da verdade) - razão social/CNPJ vêm da FK
-  const [selectedCedente, setSelectedCedente] = useState<CedenteOpt | null>(
-    s.cedente_id ? { id: s.cedente_id, nome: s.nome_contratado ?? '', cnpj_cpf: s.cnpj_contratado ?? null } : null
-  );
-  const [selectedSacado, setSelectedSacado] = useState<SacadoOpt | null>(
-    s.sacado_id ? { id: String(s.sacado_id), razao_social: s.nome_sacado ?? null, cnpj_cpf: s.cnpj_sacado ?? null } : null
-  );
-
-  const [isParcelas, setIsParcelas] = useState(!!hasParcelas);
-  const [valor, setValor] = useState(s.valor ?? '');
-  const [prazoLimite, setPrazoLimite] = useState(s.prazo_limite ?? '');
-  const [numParcelas, setNumParcelas] = useState(hasParcelas ? initialParcelas!.length : 1);
-  const [parcelas, setParcelas] = useState<Array<{ valor: string; valorNumerico: number; vencimento: string }>>(
-    hasParcelas ? initialParcelas! : [{ valor: '', valorNumerico: 0, vencimento: '' }]
-  );
-
-  const [decisions, setDecisions] = useState<Record<string, boolean>>(initialDecisions);
-  const [fimType, setFimType] = useState<number | string>(s.fim_type ?? '');
+  const [r, setR] = useState<RascunhoLead>({
+    empresa: s.empresa ?? '',
+    cnpj: s.cnpj ?? '',
+    contato_nome: s.contato_nome ?? '',
+    contato_cargo: s.contato_cargo ?? '',
+    contato_email: s.contato_email ?? '',
+    contato_telefone: s.contato_telefone ?? '',
+    origem: s.origem ?? '',
+    interesse: s.interesse ?? '',
+    valor_estimado: s.valor_estimado != null
+      ? maskCurrencyBRL(String(s.valor_estimado).replace('.', ',')) : '',
+    responsavel_id: s.responsavel_id ?? '',
+    proxima_acao: s.proxima_acao ?? '',
+    proxima_acao_em: s.proxima_acao_em ?? '',
+    observacoes: s.observacoes ?? '',
+  });
+  const set = <K extends keyof RascunhoLead>(k: K, v: RascunhoLead[K]) =>
+    setR(p => ({ ...p, [k]: v }));
   const [saving, setSaving] = useState(false);
+  const { saindo, fechar } = useSaidaSuave(onClose);
+  const fundo = useFecharNoFundo(fechar);
+  const painel = useLarguraPainel('lead-form');
 
-  function changeNumParcelas(delta: number) {
-    const next = Math.max(1, Math.min(12, numParcelas + delta));
-    setNumParcelas(next);
-    setParcelas(prev => {
-      if (next > prev.length)
-        return [...prev, ...Array.from({ length: next - prev.length }, () => ({ valor: '', valorNumerico: 0, vencimento: '' }))];
-      return prev.slice(0, next);
-    });
-  }
-
-  function updateParcelaValor(i: number, raw: string) {
-    const masked = maskCurrencyBRL(raw);
-    setParcelas(prev => { const n = [...prev]; n[i] = { ...n[i], valor: masked, valorNumerico: parseCurrencyBRL(masked) }; return n; });
-  }
-
-  function updateParcelaVencimento(i: number, v: string) {
-    setParcelas(prev => { const n = [...prev]; n[i] = { ...n[i], vencimento: v }; return n; });
-  }
-
-  function setDecisionVal(key: string, val: boolean | undefined) {
-    setDecisions(prev => {
-      const n = { ...prev };
-      if (val === undefined) delete n[key];
-      else n[key] = val;
-      return n;
-    });
-  }
-
-  async function handleSave() {
+  async function salvar() {
+    if (!r.empresa.trim()) { toast('error', 'Falta a empresa', 'Um lead é uma empresa com quem se fala.'); return; }
     setSaving(true);
     try {
-      let finalValor = valor || null;
-      let finalValorNumerico: number | null = null;
-      let finalPrazo: string | null = prazoLimite || null;
-      let finalParcelas: Array<{ valor: string; valorNumerico: number; vencimento: string }> | null = null;
-
-      if (isParcelas) {
-        const total = parcelas.reduce((acc, p) => acc + p.valorNumerico, 0);
-        finalValor = total > 0 ? total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : (valor || null);
-        finalValorNumerico = total || null;
-        finalParcelas = parcelas;
-        finalPrazo = null;
-      } else {
-        finalValorNumerico = parseCurrencyBRL(valor) || null;
-      }
-
-      const fields = {
-        cedente_id: selectedCedente ? String(selectedCedente.id) : null,
-        nome_contratado: selectedCedente?.nome || null,
-        cnpj_contratado: (selectedCedente?.cnpj_cpf ?? '').replace(/\D/g, '') || null,
-        situacao_contratado: null,
-        sacado_id: selectedSacado ? String(selectedSacado.id) : null,
-        nome_sacado: selectedSacado?.razao_social || null,
-        cnpj_sacado: (selectedSacado?.cnpj_cpf ?? '').replace(/\D/g, '') || null,
-        situacao_sacado: null,
-        valor: finalValor,
-        valor_numerico: finalValorNumerico,
-        prazo_limite: finalPrazo,
-        parcelas: finalParcelas,
-        decisions: Object.keys(decisions).length > 0 ? decisions : null,
-        fim_type: fimType !== '' ? Number(fimType) : null,
-      };
-
-      const res = await api('', 'POST', { action: 'update_submission', id: s.id, ...fields });
+      const corpo = corpoDoLead(r);
+      const res = await api('', 'POST', { action: 'update_submission', id: s.id, ...corpo });
       if (res?.error) throw new Error(res.error);
-      toast('success', 'Lead atualizada');
+      // A tela repinta com o que foi gravado, sem recarregar a listagem.
       onSaved({
-        nome_contratado: fields.nome_contratado,
-        cnpj_contratado: fields.cnpj_contratado,
-        nome_sacado: fields.nome_sacado,
-        cnpj_sacado: fields.cnpj_sacado,
-        cedente_id: fields.cedente_id,
-        sacado_id: fields.sacado_id,
-        valor: fields.valor,
-        prazo_limite: fields.prazo_limite ?? undefined,
-        fim_type: fields.fim_type,
-      });
-    } catch {
-      toast('error', 'Erro ao salvar alterações');
+        ...corpo,
+        responsavel_nome: pessoas.find(p => p.id === r.responsavel_id)?.nome ?? null,
+      } as Partial<Submission>);
+      toast('success', 'Lead atualizado');
+      fechar();
+    } catch (e) {
+      toast('error', 'Não foi possível salvar', (e as Error).message);
     } finally {
       setSaving(false);
     }
   }
 
-  const totalParcelas = parcelas.reduce((acc, p) => acc + p.valorNumerico, 0);
-
   return createPortal(
-    <div className="admin-modal-overlay" style={{ zIndex: 1050 }} onClick={onClose}>
-      <div className="admin-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
-
-        <div className="admin-modal-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-            <div style={{ minWidth: 0 }}>
-              <p style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Editando</p>
-              <h3 style={{ fontSize: 16, fontWeight: 800 }}>{s.nome_contratado ?? '-'}</h3>
-            </div>
-            <button className="admin-modal-close" aria-label="Fechar" onClick={onClose}><IconX size={16} /></button>
-          </div>
+    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`} style={{ zIndex: 1050 }} {...fundo}>
+      <PuxadorDoPainel {...painel} />
+      <div className="admin-modal" onClick={e => e.stopPropagation()}
+        style={{ width: `min(${painel.largura}px, 96vw)` }}>
+        <div className="admin-modal-header">
+          <h3 className="admin-modal-title">Editar lead</h3>
+          <button className="admin-modal-close" aria-label="Fechar" onClick={fechar}><IconX size={16} /></button>
         </div>
-
-        <div className="admin-modal-body">
-
-          {/* Cedente */}
-          <section>
-            <p className="admin-section-title">Cedente (Contratado)</p>
-            <CedenteSearch token={token} value={selectedCedente} onChange={setSelectedCedente} />
-            <p style={{ fontSize: 11, color: 'var(--gray2)', marginTop: 6 }}>Razão social e CNPJ vêm do cadastro do cedente.</p>
-          </section>
-
-          {/* Sacado */}
-          <section>
-            <p className="admin-section-title">Sacado (Contratante)</p>
-            <SacadoSearch token={token} value={selectedSacado} onChange={setSelectedSacado} />
-            <p style={{ fontSize: 11, color: 'var(--gray2)', marginTop: 6 }}>Selecione um sacado do cadastro ou adicione pelo CNPJ.</p>
-          </section>
-
-          {/* Dados da operação */}
-          <section>
-            <p className="admin-section-title">Dados da operação</p>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 14, background: 'var(--gray3)', borderRadius: 10, padding: 4 }}>
-              {(['único', 'parcelado'] as const).map(mode => {
-                const active = mode === 'parcelado' ? isParcelas : !isParcelas;
-                return (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => setIsParcelas(mode === 'parcelado')}
-                    style={{
-                      flex: 1, padding: '7px 10px', fontSize: 12, fontWeight: 700,
-                      borderRadius: 7, cursor: 'pointer', border: 'none',
-                      background: active ? 'var(--white)' : 'transparent',
-                      color: active ? 'var(--black)' : 'var(--gray2)',
-                      boxShadow: active ? '0 1px 4px rgba(0,0,0,0.10)' : 'none',
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    {mode === 'único' ? 'Pagamento único' : 'Parcelado'}
-                  </button>
-                );
-              })}
-            </div>
-
-            {!isParcelas ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <EditField label="Valor" value={valor} onChange={v => setValor(maskCurrencyBRL(v))} />
-                <div className="form-group">
-                  <label className="form-label">Vencimento</label>
-                  <DatePicker value={prazoLimite} onChange={setPrazoLimite} compact />
-                </div>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <p className="admin-info-label">Número de parcelas</p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
-                    <button type="button" onClick={() => changeNumParcelas(-1)} disabled={numParcelas <= 1}
-                      style={{ width: 28, height: 28, borderRadius: 6, border: '1.5px solid var(--gray3)', background: 'none', cursor: 'pointer', fontSize: 16, fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                    <span style={{ fontSize: 14, fontWeight: 700, minWidth: 24, textAlign: 'center' }}>{numParcelas}</span>
-                    <button type="button" onClick={() => changeNumParcelas(1)} disabled={numParcelas >= 12}
-                      style={{ width: 28, height: 28, borderRadius: 6, border: '1.5px solid var(--gray3)', background: 'none', cursor: 'pointer', fontSize: 16, fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
-                  </div>
-                </div>
-                {parcelas.map((p, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray2)', paddingBottom: 8, minWidth: 22 }}>{i + 1}ª</span>
-                    <div className="form-group" style={{ flex: 1 }}>
-                      <label className="form-label">Valor</label>
-                      <input type="text" inputMode="numeric" value={p.valor} onChange={e => updateParcelaValor(i, e.target.value)} className="form-input" />
-                    </div>
-                    <div className="form-group" style={{ flex: 1 }}>
-                      <label className="form-label">Vencimento</label>
-                      <DatePicker value={p.vencimento} onChange={v => updateParcelaVencimento(i, v)} compact />
-                    </div>
-                  </div>
-                ))}
-                {totalParcelas > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 10px', background: 'var(--gray3)', borderRadius: 8 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--gray)' }}>Total</span>
-                    <strong style={{ fontSize: 12 }}>{totalParcelas.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
-                  </div>
-                )}
-              </div>
-            )}
-          </section>
-
-          {/* Avaliação */}
-          <section>
-            <p className="admin-section-title">Avaliação da operação</p>
-            <div className="form-group" style={{ marginBottom: 12 }}>
-              <label className="form-label">Fluxo de pagamento</label>
-              <FormSelect
-                value={String(fimType)}
-                onChange={v => setFimType(v === '' ? '' : Number(v))}
-                options={FIM_SELECT_OPTIONS}
-              />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {Object.entries(DECISION_LABELS_EDIT).map(([key, label]) => {
-                const current = key in decisions ? decisions[key] : undefined;
-                const isSim = current === true;
-                const isNao = current === false;
-                return (
-                  <div key={key} style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '9px 12px', borderRadius: 10,
-                    border: `1.5px solid ${isSim ? '#BBF7D0' : isNao ? '#FECACA' : 'var(--gray3)'}`,
-                    background: isSim ? '#F0FDF4' : isNao ? '#FEF2F2' : 'var(--white)',
-                    transition: 'all 0.15s',
-                  }}>
-                    {/* indicator dot */}
-                    <span style={{
-                      width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-                      background: isSim ? '#22C55E' : isNao ? '#EF4444' : 'var(--gray3)',
-                      transition: 'background 0.15s',
-                    }} />
-                    <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: isSim ? '#166534' : isNao ? '#991B1B' : 'var(--gray)' }}>
-                      {label}
-                    </span>
-                    {/* segmented control */}
-                    <div style={{ display: 'flex', background: 'var(--gray3)', borderRadius: 8, padding: 3, gap: 2, flexShrink: 0 }}>
-                      {([{ val: true, label: 'Sim' }, { val: false, label: 'Não' }] as const).map(opt => {
-                        const active = current === opt.val;
-                        return (
-                          <button
-                            key={String(opt.val)}
-                            type="button"
-                            onClick={() => setDecisionVal(key, active ? undefined : opt.val)}
-                            style={{
-                              padding: '3px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                              fontSize: 11, fontWeight: 700, transition: 'all 0.15s',
-                              background: active ? (opt.val ? '#22C55E' : '#EF4444') : 'transparent',
-                              color: active ? '#fff' : 'var(--gray2)',
-                              boxShadow: active ? '0 1px 4px rgba(0,0,0,0.15)' : 'none',
-                            }}
-                          >
-                            {opt.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
+        <div className="admin-modal-body form-lead">
+          <CamposDoLead r={r} set={set} token={token} pessoas={pessoas} />
         </div>
-
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--gray3)', display: 'flex', justifyContent: 'flex-end', gap: 8, flexShrink: 0 }}>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, border: '1.5px solid var(--gray3)', background: 'none', cursor: 'pointer', color: 'var(--gray)' }}
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            style={{ padding: '8px 16px', fontSize: 13, fontWeight: 700, borderRadius: 8, border: 'none', background: 'var(--yellow)', color: '#000', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}
-          >
-            {saving ? 'Salvando…' : 'Salvar alterações'}
+        <div className="admin-modal-footer">
+          <button type="button" className="modal-acao" onClick={fechar}>Cancelar</button>
+          <button type="button" className="modal-acao-primaria" disabled={saving || !r.empresa.trim()}
+            onClick={() => void salvar()}>
+            {saving ? 'Salvando…' : 'Salvar'}
           </button>
         </div>
-
       </div>
     </div>,
     document.body
@@ -2150,19 +1362,12 @@ export function DetailPanel({
   const { toast } = useToast();
   // Quem está logado: usado para assinar o evento otimista antes de o servidor responder.
   const { usuario } = useAuth();
+  const painel = useLarguraPainel('lead');
+  // A saída animada é o que permite arrastar o puxador: sem o gancho do fundo,
+  // soltar o arrasto sobre o overlay contava como clique fora e fechava tudo.
+  const { saindo, fechar } = useSaidaSuave(onClose);
+  const fundo = useFecharNoFundo(fechar);
   const [detail, setDetail] = useState<SubmissionDetail | null>(null);
-  // Relatórios DEPS salvos (por alvo) deste lead - para o link no balão da parte.
-  const [depsSaved, setDepsSaved] = useState<Record<string, { nome: string | null; documento: string | null; norm: any; raw?: any; criado_em?: string } >>({});
-  const [depsProduto, setDepsProduto] = useState<string>(PRODUTOS_DEPS[0].id);
-  const [depsBusy, setDepsBusy] = useState<'ced' | 'sac' | null>(null);
-  // Marca, por alvo, se o último relatório veio reaproveitado do histórico da DEPS (sem custo).
-  const [depsReused, setDepsReused] = useState<Record<string, boolean>>({});
-  // Preview embutido do relatório DEPS (modal).
-  const [depsPreview, setDepsPreview] = useState<{ nome: string; url: string } | null>(null);
-  const [depsConfirm, setDepsConfirm] = useState<'ced' | 'sac' | null>(null);
-  // Consulta reaproveitável encontrada: pergunta ao usuário se reaproveita (grátis) ou
-  // gera nova (com custo), mostrando a data da última consulta daquele CNPJ.
-  const [depsReuse, setDepsReuse] = useState<{ alvo: 'ced' | 'sac'; dataConsulta: string; payload: any } | null>(null);
   const [movingTo, setMovingTo] = useState<number | null>(null);
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [pipelineLocalNames, setPipelineLocalNames] = useState<Record<number, string>>({});
@@ -2187,6 +1392,8 @@ export function DetailPanel({
   const [showAvaliacao, setShowAvaliacao] = useState(false);
   // Etapa de conversão pendente: exige registrar a data de execução no modal antes de mover
   const [pendingConversion, setPendingConversion] = useState<number | null>(null);
+  // Etapa de descarte: pede o motivo da perda antes de mover.
+  const [pendingPerda, setPendingPerda] = useState<number | null>(null);
   // Etapa que exige pendências: statusId aguardando registro das pendências antes de mover
   const [pendingPendencia, setPendingPendencia] = useState<number | null>(null);
   const [savingPendMove, setSavingPendMove] = useState(false);
@@ -2199,132 +1406,6 @@ export function DetailPanel({
   async function load() {
     const data = await api(`?action=detail&id=${id}`);
     setDetail(data);
-    // Relatórios DEPS salvos deste lead (best-effort).
-    api(`?action=deps_by_lead&lead_id=${id}`).then(r => setDepsSaved(r?.deps ?? {})).catch(() => {});
-  }
-
-  // Link do relatório no portal da DEPS (consulta compartilhada: público, sem
-  // login). Vem no payload bruto da consulta como `linkCompartilhamento`.
-  // Consultas anteriores à coluna raw_json não têm o link - nesse caso cai no
-  // relatório resumido montado a partir do normalizado.
-  function depsPortalLink(alvo: 'ced' | 'sac'): string | null {
-    return depsLinkDoRaw(depsSaved[alvo]?.raw);
-  }
-
-  function depsNome(alvo: 'ced' | 'sac'): string {
-    return depsSaved[alvo]?.nome ?? (alvo === 'ced' ? 'Cedente' : 'Sacado');
-  }
-
-  // Abre o relatório do portal no preview embutido. Sem link (consulta antiga),
-  // cai no relatório resumido em nova aba.
-  function openDepsReport(alvo: 'ced' | 'sac') {
-    const url = depsPortalLink(alvo);
-    if (url) { setDepsPreview({ nome: depsNome(alvo), url }); return; }
-    openDepsResumoNovaAba(alvo);
-  }
-
-  // Atalho do balão da parte: vai direto para a nova aba, sem passar pelo preview.
-  function openDepsReportTab(alvo: 'ced' | 'sac') {
-    const url = depsPortalLink(alvo);
-    if (url) { window.open(url, '_blank', 'noopener'); return; }
-    openDepsResumoNovaAba(alvo);
-  }
-
-  // Fallback para consultas sem link do portal: relatório resumido a partir do
-  // normalizado, servido por blob URL (sobrevive a reload e imprime direito).
-  function openDepsResumoNovaAba(alvo: 'ced' | 'sac') {
-    const d = depsSaved[alvo];
-    if (!d?.norm) { toast('error', 'Relatório DEPS não disponível'); return; }
-    const html = buildDepsReportHTML(alvo, {
-      norm: d.norm, nome: d.nome ?? '', documento: d.documento ?? '',
-      linkPortal: depsLinkDoRaw(d.raw), dataConsulta: depsDataConsulta(d.raw),
-    });
-    const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
-    const w = window.open(url, '_blank');
-    if (!w) { URL.revokeObjectURL(url); toast('error', 'Bloqueado pelo navegador', 'Libere pop-ups para abrir o relatório.'); return; }
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    toast('info', 'Relatório resumido', 'Esta consulta é anterior ao link do portal. Atualize a DEPS para ver o relatório completo.');
-  }
-
-  // Persiste um resultado DEPS já obtido e atualiza o balão na hora.
-  async function saveDeps(alvo: 'ced' | 'sac', payload: { norm: any; nome: string; doc: string; raw: any; reutilizou: boolean }) {
-    const { norm, nome, doc, raw, reutilizou } = payload;
-    const saveRes = await api('', 'POST', { action: 'save_lead_deps', lead_id: id, alvo, nome, documento: doc, norm, raw });
-    if (saveRes?.error) { toast('error', 'Não foi possível salvar o relatório DEPS', saveRes.error); return; }
-    // Atualiza o balão imediatamente (sem depender da releitura, que pode ter lag).
-    setDepsSaved(prev => ({ ...prev, [alvo]: { nome, documento: doc, norm, raw, criado_em: new Date().toISOString() } }));
-    setDepsReused(prev => ({ ...prev, [alvo]: !!reutilizou }));
-    toast('success', `DEPS ${alvo === 'ced' ? 'cedente' : 'sacado'} (${reutilizou ? 'reaproveitada' : 'nova'})`, norm.resumo || 'Relatório atualizado.');
-    api(`?action=deps_by_lead&lead_id=${id}`)
-      .then(r => { if (r?.deps && Object.keys(r.deps).length) setDepsSaved(prev => ({ ...prev, ...r.deps })); })
-      .catch(() => {});
-  }
-
-  // Gera/atualiza a DEPS de uma parte direto do card. forcarNova=false primeiro tenta
-  // reaproveitar (grátis): se houver consulta válida, pergunta ao usuário (mostrando a
-  // data) se reaproveita ou gera nova (paga); se não houver, sinaliza needsNew.
-  async function gerarDeps(alvo: 'ced' | 'sac', forcarNova: boolean) {
-    const s0 = detail?.submission;
-    const doc = String((alvo === 'ced' ? s0?.cnpj_contratado : s0?.cnpj_sacado) ?? '').replace(/\D/g, '');
-    if (doc.length !== 11 && doc.length !== 14) { toast('error', 'CNPJ/CPF da parte não disponível'); return; }
-    setDepsConfirm(null);
-    setDepsReuse(null);
-    setDepsBusy(alvo);
-    try {
-      const res = await fetch('/api/deps-consulta', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-session': token },
-        body: JSON.stringify({ documento: doc, identificadorProduto: depsProduto, reutilizarDadosExistentes: !forcarNova }),
-      });
-      const data = await res.json().catch(() => null);
-      if (data?.needsNew) { setDepsBusy(null); setDepsConfirm(alvo); return; } // sem recente → confirmar consulta paga
-      if (!res.ok || !data?.success) {
-        toast('error', 'Falha na consulta DEPS', data?.detalhe?.message ?? data?.error ?? `Erro ${res.status}`);
-        return;
-      }
-      const { normalizeDepsMix } = await import('../lib/depsParser');
-      const norm = normalizeDepsMix(data.resultado);
-      const nome = norm.empresa?.razao ?? String((alvo === 'ced' ? s0?.nome_contratado : s0?.nome_sacado) ?? '');
-      const payload = { norm, nome, doc, raw: data.resultado, reutilizou: !!data.reutilizou };
-      // Reaproveitável (não forçamos nova): pergunta antes de gravar, mostrando a data da consulta.
-      if (!forcarNova && data.reutilizou) {
-        const dataConsulta = depsDataConsulta(data.resultado);
-        setDepsBusy(null);
-        setDepsReuse({ alvo, dataConsulta, payload });
-        return;
-      }
-      // Consulta nova (paga) → grava direto.
-      await saveDeps(alvo, payload);
-    } catch (e: any) {
-      toast('error', 'Erro na consulta DEPS', e?.message);
-    } finally {
-      setDepsBusy(null);
-    }
-  }
-
-  // Painel de DEPS dentro do balão da parte (ver relatório salvo + gerar/atualizar).
-  function depsControl(alvo: 'ced' | 'sac') {
-    const d = depsSaved[alvo];
-    const busy = depsBusy === alvo;
-    const score = d?.norm?.deps?.score ?? '';
-    const risco = d?.norm?.deps?.class ?? '';
-    // Data real da consulta na DEPS (do payload); cai para a data de gravação se não houver.
-    const dataConsulta = d?.raw ? depsDataConsulta(d.raw) : '';
-    const dateStr = dataConsulta || (d?.criado_em ? new Date(d.criado_em).toLocaleDateString('pt-BR') : '');
-    return (
-      <DepsPanel
-        score={score}
-        sub={[risco && `risco ${risco}`, dateStr].filter(Boolean).join(' · ')}
-        temRelatorio={!!d}
-        reutilizou={!!depsReused[alvo]}
-        busy={busy}
-        onVer={() => openDepsReport(alvo)}
-        onNovaAba={() => openDepsReportTab(alvo)}
-        onAtualizar={() => setDepsConfirm(alvo)}
-        onGerar={() => gerarDeps(alvo, false)}
-        produtoSelect={<DepsProdutoSelect value={depsProduto} onChange={setDepsProduto} disabled={busy} />}
-      />
-    );
   }
 
   // Copia um link direto para este card (?lead=<id>) - compartilhável com
@@ -2404,11 +1485,6 @@ export function DetailPanel({
     void load();
   }
 
-  async function patchLiquidez(value: string) {
-    setDetail(prev => prev ? { ...prev, submission: { ...prev.submission, liquidez: value || null } } : prev);
-    await api('', 'POST', { action: 'patch_submission', id, field: 'liquidez', value: value || null });
-  }
-
   // Grava a data (otimista + backend), sem efeitos de status
   async function saveExecField(field: 'previsao_execucao' | 'data_execucao', value: string) {
     setDetail(prev => prev ? { ...prev, submission: { ...prev.submission, [field]: value || null } } : prev);
@@ -2451,9 +1527,9 @@ export function DetailPanel({
   async function handleDeleteSubmission() {
     await api('', 'POST', { action: 'delete_submission', id });
     setDeleteSubmissionConfirm(false);
-    toast('success', 'Lead excluída');
+    toast('success', 'Lead excluído');
     onDelete?.(id);
-    onClose();
+    fechar();
   }
 
   async function performMove(statusId: number) {
@@ -2496,6 +1572,11 @@ export function DetailPanel({
       setPendingConversion(statusId);
       return;
     }
+    // Etapa de descarte → registrar o motivo antes de mover.
+    if (cfg?.is_excluded && Number(curId) !== Number(statusId)) {
+      setPendingPerda(statusId);
+      return;
+    }
     // Etapa que exige pendências → registrar antes de mover.
     if (cfg?.requires_pendencia && Number(curId) !== Number(statusId)) {
       setPendingPendencia(statusId);
@@ -2518,6 +1599,24 @@ export function DetailPanel({
       await performMove(statusId);
     } finally {
       setSavingPendMove(false);
+    }
+  }
+
+  // O motivo entra na ficha no gesto; o servidor confirma por baixo.
+  async function confirmPerda(motivo: string) {
+    const statusId = pendingPerda;
+    if (statusId == null) return;
+    const anterior = detail?.submission.motivo_perda ?? null;
+    setPendingPerda(null);
+    setDetail(prev => prev ? { ...prev, submission: { ...prev.submission, motivo_perda: motivo } } : prev);
+    onEdited?.(id, { motivo_perda: motivo } as Partial<Submission>);
+    void performMove(statusId);
+    try {
+      const r = await api('', 'POST', { action: 'update_submission', id, motivo_perda: motivo });
+      if (r?.error) throw new Error(r.error);
+    } catch {
+      setDetail(prev => prev ? { ...prev, submission: { ...prev.submission, motivo_perda: anterior } } : prev);
+      toast('error', 'Não foi possível gravar o motivo da perda');
     }
   }
 
@@ -2721,12 +1820,13 @@ export function DetailPanel({
   const s = detail?.submission;
   const _scEvts = detail?.eventos.filter(ev => ev.tipo === 'status_change') ?? [];
   const currentStatusId = _scEvts[_scEvts.length - 1]?.status_id;
-  const fim = s?.fim_type ? FIM_LABELS[s.fim_type as number] : null;
 
 
   return (
-    <div className="admin-modal-overlay" onClick={onClose}>
-      <div className="admin-modal" onClick={e => e.stopPropagation()}>
+    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`} {...fundo}>
+      <PuxadorDoPainel {...painel} />
+      <div className="admin-modal" onClick={e => e.stopPropagation()}
+        style={{ width: `min(${painel.largura}px, 96vw)` }}>
 
         {/* Header */}
         <div className="admin-modal-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
@@ -2736,7 +1836,7 @@ export function DetailPanel({
               <p style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                 Lead
               </p>
-              <h3 style={{ fontSize: 16, fontWeight: 800 }}>{s?.nome_contratado ?? '…'}</h3>
+              <h3 style={{ fontSize: 16, fontWeight: 800 }}>{s?.empresa ?? '…'}</h3>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
               {detail && (
@@ -2745,17 +1845,12 @@ export function DetailPanel({
                     className="admin-toolbar-btn"
                     title={copied ? 'Link copiado!' : 'Copiar link de compartilhamento'}
                     onClick={copyShareLink}
-                    style={{ width: 30, height: 30, color: copied ? '#1E8A3E' : undefined, borderColor: copied ? 'rgba(30,138,62,.4)' : undefined }}
+                    style={{ width: 30, height: 30, color: copied ? 'var(--green)' : undefined, borderColor: copied ? 'var(--green)' : undefined }}
                   >
                     {copied ? (
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                        <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
+                      <IconCheck size={15} />
                     ) : (
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                        <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
+                      <IconLink size={15} />
                     )}
                   </button>
                   <button
@@ -2764,27 +1859,19 @@ export function DetailPanel({
                     onClick={() => setShowEdit(true)}
                     style={{ width: 30, height: 30 }}
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
+                    <IconEdit size={14} />
                   </button>
                   <button
                     className="admin-toolbar-btn"
                     title="Excluir lead"
                     onClick={() => setDeleteSubmissionConfirm(true)}
-                    style={{ width: 30, height: 30, color: '#D93025' }}
+                    style={{ width: 30, height: 30, color: 'var(--red)' }}
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                      <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                      <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
+                    <IconTrash size={14} />
                   </button>
                 </>
               )}
-              <button className="admin-modal-close" aria-label="Fechar" onClick={onClose}><IconX size={16} /></button>
+              <button className="admin-modal-close" aria-label="Fechar" onClick={fechar}><IconX size={16} /></button>
             </div>
           </div>
           {/* Row 2: status select + download all + drive link */}
@@ -2810,31 +1897,11 @@ export function DetailPanel({
                     </>
                   ) : (
                     <>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
+                      <IconDownload size={13} />
                       Baixar todos ({detail.form_arquivos.length + detail.etapa_arquivos.length})
                     </>
                   )}
                 </button>
-              )}
-              {detail.submission.cedente_link_drive && (
-                <a
-                  href={String(detail.submission.cedente_link_drive)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="cedente-drive-link"
-                  style={{ marginLeft: 'auto' }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L28 48.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
-                    <path d="M43.65 25L29.35 0c-1.35.8-2.5 1.9-3.3 3.3L1.2 44.3C.4 45.7 0 47.25 0 48.8h28z" fill="#00ac47"/>
-                    <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75L86.1 57.3c.8-1.4 1.2-2.95 1.2-4.5H59.3l5.9 12.4z" fill="#ea4335"/>
-                    <path d="M43.65 25L57.95 0H29.35z" fill="#00832d"/>
-                    <path d="M59.3 48.8h28L73.55 20.3c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25 59.3 48.8z" fill="#2684fc"/>
-                    <path d="M13.8 76.8c1.35.8 2.9 1.2 4.5 1.2h50.7c1.6 0 3.15-.45 4.5-1.2L57.95 48.8H28z" fill="#ffba00"/>
-                  </svg>
-                </a>
               )}
             </div>
           )}
@@ -2845,122 +1912,111 @@ export function DetailPanel({
         ) : (
           <div className="admin-modal-body">
 
-            {/* Liquidez */}
+            {/* A ficha do lead: com quem se fala, o que quer e quanto vale. */}
             <section>
-              <p className="admin-info-label" style={{ marginBottom: 6 }}>Liquidez</p>
-              <LiquidezSelect
-                value={s!.liquidez ? String(s!.liquidez) : null}
-                onChange={patchLiquidez}
-              />
-            </section>
-
-            {/* Partes */}
-            <section>
-              <p className="admin-section-title">Partes envolvidas</p>
-              <div className="detail-party-grid">
-                <div className="detail-party-card detail-party-cedente">
-                  <p className="detail-party-role">Cedente (Contratado)</p>
-                  <p className="detail-party-name">{s!.nome_contratado ?? '-'}</p>
-                  <p className="detail-party-cnpj">{s!.cnpj_contratado ?? '-'}</p>
-                  {s!.situacao_contratado && (
-                    <span className={`detail-party-badge${String(s!.situacao_contratado).toUpperCase().includes('ATIVA') ? ' ativa' : ' inativa'}`}>
-                      {s!.situacao_contratado}
-                    </span>
-                  )}
-                  {depsControl('ced')}
+              <p className="admin-section-title">Contato</p>
+              <div className="lead-ficha">
+                <div className="lead-ficha-item">
+                  <p className="admin-info-label">Empresa</p>
+                  <p className="lead-ficha-valor">{s!.empresa ?? '-'}</p>
+                  {s!.cnpj && <p className="lead-ficha-sub">{s!.cnpj}</p>}
                 </div>
-                <div className="detail-party-arrow">→</div>
-                <div className="detail-party-card detail-party-sacado">
-                  <p className="detail-party-role">Sacado (Contratante)</p>
-                  <p className="detail-party-name">{s!.nome_sacado ?? '-'}</p>
-                  <p className="detail-party-cnpj">{s!.cnpj_sacado ?? '-'}</p>
-                  {s!.situacao_sacado && (
-                    <span className={`detail-party-badge${String(s!.situacao_sacado).toUpperCase().includes('ATIVA') ? ' ativa' : ' inativa'}`}>
-                      {s!.situacao_sacado}
-                    </span>
-                  )}
-                  {depsControl('sac')}
+                <div className="lead-ficha-item">
+                  <p className="admin-info-label">Quem fala com a gente</p>
+                  <p className="lead-ficha-valor">{s!.contato_nome ?? '-'}</p>
+                  {s!.contato_cargo && <p className="lead-ficha-sub">{s!.contato_cargo}</p>}
+                </div>
+                {/* E-mail e telefone são para usar, não para ler: viram link de
+                    escrever e de ligar. */}
+                <div className="lead-ficha-item">
+                  <p className="admin-info-label">E-mail</p>
+                  {s!.contato_email
+                    ? <a className="lead-ficha-valor lead-ficha-link" href={`mailto:${s!.contato_email}`}>{s!.contato_email}</a>
+                    : <p className="lead-ficha-valor">-</p>}
+                </div>
+                <div className="lead-ficha-item">
+                  <p className="admin-info-label">Telefone</p>
+                  {s!.contato_telefone
+                    ? <a className="lead-ficha-valor lead-ficha-link" href={`tel:${String(s!.contato_telefone).replace(/\D/g, '')}`}>{s!.contato_telefone}</a>
+                    : <p className="lead-ficha-valor">-</p>}
                 </div>
               </div>
             </section>
 
-            {/* Operação */}
             <section>
-              <p className="admin-section-title">Dados da operação</p>
-              {(() => {
-                let parcelas: Array<{ valor: string; valorNumerico: number; vencimento: string }> | null = null;
-                try { parcelas = s!.parcelas ? JSON.parse(String(s!.parcelas)) : null; } catch {}
-                return (
-                  <>
-                    <div className="detail-op-grid">
-                      <div className="detail-op-item">
-                        <p className="admin-info-label">Valor total</p>
-                        <p className="detail-op-value">{s!.valor ?? '-'}</p>
-                      </div>
-                      {parcelas ? (
-                        <div className="detail-op-item">
-                          <p className="admin-info-label">Parcelas</p>
-                          <p className="detail-op-value">{parcelas.length}x</p>
-                        </div>
-                      ) : (
-                        <div className="detail-op-item">
-                          <p className="admin-info-label">Vencimento</p>
-                          <p className="detail-op-value">{formatPrazo(s!.prazo_limite as string)}</p>
-                        </div>
-                      )}
-                      {fim && (
-                        <div className="detail-op-item detail-op-fluxo">
-                          <p className="admin-info-label">Fluxo de pagamento</p>
-                          <span className="admin-badge" style={{ background: fim.bg, color: fim.color, marginTop: 4, display: 'inline-block', fontSize: 12 }}>
-                            {fim.label}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    {parcelas && (
-                      <div className="parcelas-detail-table">
-                        <div className="parcelas-detail-header">
-                          <span>#</span>
-                          <span>Valor</span>
-                          <span>Vencimento</span>
-                        </div>
-                        {parcelas.map((p, i) => (
-                          <div key={i} className="parcelas-detail-row">
-                            <span className="parcelas-detail-num">{i + 1}ª</span>
-                            <span className="parcelas-detail-valor">{p.valor}</span>
-                            <span className="parcelas-detail-venc">{formatPrazo(p.vencimento)}</span>
-                          </div>
-                        ))}
-                        <div className="parcelas-detail-footer">
-                          <span>Total</span>
-                          <strong>{s!.valor ?? '-'}</strong>
-                          <span />
-                        </div>
-                      </div>
-                    )}
-                    {/* Execução - datas de sistema (não vêm do formulário) */}
-                    <div style={{ display: 'flex', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
-                      <div className="form-group" style={{ flex: 1, minWidth: 160 }}>
-                        <label className="form-label">Previsão de execução</label>
-                        <DatePicker
-                          value={s!.previsao_execucao ? String(s!.previsao_execucao) : ''}
-                          onChange={v => patchExecField('previsao_execucao', v)}
-                          compact
-                        />
-                      </div>
-                      <div className="form-group" style={{ flex: 1, minWidth: 160 }}>
-                        <label className="form-label">Data da execução</label>
-                        <DatePicker
-                          value={s!.data_execucao ? String(s!.data_execucao) : ''}
-                          onChange={v => patchExecField('data_execucao', v)}
-                          compact
-                          allowPast
-                        />
-                      </div>
-                    </div>
-                  </>
-                );
-              })()}
+              <p className="admin-section-title">Negócio</p>
+              <div className="lead-ficha">
+                <div className="lead-ficha-item">
+                  <p className="admin-info-label">Origem</p>
+                  <p className="lead-ficha-valor">{s!.origem ?? '-'}</p>
+                </div>
+                <div className="lead-ficha-item">
+                  <p className="admin-info-label">Interesse</p>
+                  <p className="lead-ficha-valor">{s!.interesse ?? '-'}</p>
+                </div>
+                <div className="lead-ficha-item">
+                  <p className="admin-info-label">Valor estimado</p>
+                  <p className="lead-ficha-valor lead-ficha-valor-forte">{fmtValor(s!.valor_estimado)}</p>
+                </div>
+                <div className="lead-ficha-item">
+                  <p className="admin-info-label">Responsável</p>
+                  <p className="lead-ficha-valor">{s!.responsavel_nome ?? '-'}</p>
+                </div>
+              </div>
+
+              {/* O próximo passo é o que faz o funil andar. Vencido, ele cobra. */}
+              <div className={`lead-passo${s!.proxima_acao_em && String(s!.proxima_acao_em) < hojeISO() ? ' atrasado' : ''}`}>
+                <IconCalendario size={15} />
+                <div style={{ minWidth: 0 }}>
+                  <p className="lead-passo-acao">{s!.proxima_acao ?? 'Sem próximo passo marcado'}</p>
+                  {s!.proxima_acao_em && (
+                    <p className="lead-passo-data">
+                      {String(s!.proxima_acao_em) < hojeISO() ? 'Era para ' : 'Para '}
+                      {fmtDataBR(String(s!.proxima_acao_em))}
+                    </p>
+                  )}
+                </div>
+                <button className="admin-toolbar-btn" style={{ marginLeft: 'auto', height: 28, padding: '0 10px', fontSize: 12 }}
+                  onClick={() => setShowEdit(true)}>
+                  {s!.proxima_acao ? 'Alterar' : 'Marcar'}
+                </button>
+              </div>
+
+              {s!.observacoes && (
+                <div className="lead-observacoes">
+                  <p className="admin-info-label">Observações</p>
+                  <p>{String(s!.observacoes)}</p>
+                </div>
+              )}
+
+              {s!.motivo_perda && (
+                <div className="lead-observacoes lead-perda">
+                  <p className="admin-info-label">Motivo da perda</p>
+                  <p>{String(s!.motivo_perda)}</p>
+                </div>
+              )}
+
+              {/* Fechamento: a previsão é aposta do comercial; a data só existe
+                  depois que o negócio fecha de fato. */}
+              <div style={{ display: 'flex', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
+                <div className="form-group" style={{ flex: 1, minWidth: 160 }}>
+                  <label className="form-label">Previsão de fechamento</label>
+                  <DatePicker
+                    value={s!.previsao_execucao ? String(s!.previsao_execucao) : ''}
+                    onChange={v => patchExecField('previsao_execucao', v)}
+                    compact
+                  />
+                </div>
+                <div className="form-group" style={{ flex: 1, minWidth: 160 }}>
+                  <label className="form-label">Fechado em</label>
+                  <DatePicker
+                    value={s!.data_execucao ? String(s!.data_execucao) : ''}
+                    onChange={v => patchExecField('data_execucao', v)}
+                    compact
+                    allowPast
+                  />
+                </div>
+              </div>
             </section>
 
             {/* Lead time por etapa */}
@@ -3029,57 +2085,6 @@ export function DetailPanel({
               );
             })()}
 
-            {/* Avaliação */}
-            {s!.decisions && (() => {
-              let dec: Record<string, boolean> = {};
-              try { dec = JSON.parse(String(s!.decisions)); } catch {}
-              const QUESTIONS: Array<{ key: string; question: string; fileCategoria?: string }> = [
-                { key: 'node5',           question: 'Essa operação já tem contrato assinado?',                                                              fileCategoria: 'contrato' },
-                { key: 'nodeB',           question: 'Podemos sinalizar a conta escrow na operação?' },
-                { key: 'nodeA',           question: 'A nota já foi emitida?',                                                                               fileCategoria: 'nota_fiscal' },
-                { key: 'nodeA1',          question: 'É possível a anuência do sacado para pagamento direto para a DUX?' },
-                { key: 'nodeA2',          question: 'É possível sinalizar a conta escrow na descrição da nota e buscar aceite do sacado via e-mail?' },
-                { key: 'nodeConvergente', question: 'É possível sinalizar mudança de domicílio bancário para conta escrow e receber aceite do sacado por e-mail?' },
-              ];
-              const answered = QUESTIONS.filter(q => q.key in dec);
-              if (!answered.length) return null;
-              // Anexos do formulário agora aparecem na seção "Anexos" - a avaliação mostra só o Q&A.
-              return (
-                <section>
-                  <button type="button" onClick={() => setShowAvaliacao(v => !v)}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    <span className="admin-section-title" style={{ marginBottom: 0 }}>Avaliação da operação</span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600, color: 'var(--gray2)' }}>
-                      {answered.length} {answered.length === 1 ? 'resposta' : 'respostas'}
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ transition: 'transform .15s', transform: showAvaliacao ? 'rotate(180deg)' : 'none' }}>
-                        <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </span>
-                  </button>
-                  {showAvaliacao && (
-                    <div className="detail-decisions" style={{ marginTop: 10 }}>
-                      {answered.map(q => (
-                        <DecisionCard
-                          key={q.key}
-                          question={q.question}
-                          answer={dec[q.key]}
-                          files={[]}
-                          onDownload={(id, nome) => downloadFile(id, false, nome)}
-                          onFetchBase64={async (id) => {
-                            const data = await api('', 'POST', { action: 'get_form_file_base64', id });
-                            return data;
-                          }}
-                          onRename={async (id, nome) => {
-                            await api('', 'POST', { action: 'rename_form_file', id, nome });
-                          }}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </section>
-              );
-            })()}
-
             {/* Pendências (checklist) */}
             <PendenciaSection
               pendencias={detail.pendencias ?? []}
@@ -3133,18 +2138,11 @@ export function DetailPanel({
                     </div>
                     <CatSelect f={f} isStage={isStage} />
                     <button className="file-eye-btn" title="Abrir link" onClick={() => openLink(f, isStage)}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                        <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
+                      <IconExternal size={14} />
                     </button>
                     {isStage && (
                       <button className="file-delete-btn" title="Excluir anexo" onClick={() => askDeleteFile(f.id, f.nome, false)}>
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                          <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                          <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                          <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                          <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
+                        <IconTrash size={13} />
                       </button>
                     )}
                   </div>
@@ -3161,25 +2159,14 @@ export function DetailPanel({
                     <CatSelect f={f} isStage={false} />
                     {canPreviewPipeline(f.tipo) && (
                       <button className="file-eye-btn" title="Visualizar" onClick={() => openPipelinePreview(f, true)}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" strokeWidth="1.8"/>
-                          <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8"/>
-                        </svg>
+                        <IconEye size={14} />
                       </button>
                     )}
                     <button className="admin-file-download" title="Baixar" onClick={() => downloadFile(f.id, false, f.nome)}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                        <path d="M12 3v13M7 11l5 5 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M5 20h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                      </svg>
+                      <IconDownload size={13} />
                     </button>
                     <button className="file-delete-btn" title="Excluir anexo" onClick={() => askDeleteFile(f.id, f.nome, true)}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                        <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                        <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
+                      <IconTrash size={13} />
                     </button>
                   </div>
                 );
@@ -3218,29 +2205,18 @@ export function DetailPanel({
                   <CatSelect f={f} isStage={true} />
                   {canPreviewPipeline(f.tipo) && (
                     <button className="file-eye-btn" title="Visualizar" onClick={() => openPipelinePreview(f)}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" strokeWidth="1.8"/>
-                        <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8"/>
-                      </svg>
+                      <IconEye size={14} />
                     </button>
                   )}
                   <button className="admin-file-download" title="Baixar" onClick={() => downloadFile(f.id, true, displayName)}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                      <path d="M12 3v13M7 11l5 5 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M5 20h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                    </svg>
+                    <IconDownload size={13} />
                   </button>
                   <button
                     className="file-delete-btn"
                     title="Excluir anexo"
                     onClick={() => askDeleteFile(f.id, displayName, false)}
                   >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                      <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                      <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
+                    <IconTrash size={13} />
                   </button>
                 </div>
               );
@@ -3259,9 +2235,7 @@ export function DetailPanel({
                 </p>
                 <label className="detail-attach-btn" title="Inserir anexo" style={{ cursor: 'pointer' }}>
                   <input type="file" accept=".pdf,.jpg,.jpeg,.png,.zip" style={{ display: 'none' }} onChange={handleFileUpload} />
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66L9.64 17.2a2 2 0 01-2.83-2.83l8.49-8.48" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                  </svg>
+                  <IconClip size={14} />
                 </label>
               </div>
               {showLinkForm && (
@@ -3361,7 +2335,7 @@ export function DetailPanel({
                 <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
                   <p className="delete-confirm-title">Excluir lead?</p>
                   <p className="delete-confirm-desc">
-                    <strong>{detail?.submission.nome_contratado}</strong> será removida do sistema. Esta ação pode ser revertida pelo suporte, mas não pela interface.
+                    <strong>{detail?.submission.empresa}</strong> será removida do sistema. Esta ação pode ser revertida pelo suporte, mas não pela interface.
                   </p>
                   <div className="delete-confirm-actions">
                     <button className="delete-confirm-cancel" onClick={() => setDeleteSubmissionConfirm(false)}>Cancelar</button>
@@ -3374,6 +2348,15 @@ export function DetailPanel({
 
 
 
+
+            {pendingPerda !== null && (
+              <MotivoPerdaModal
+                statusName={statuses.find(st => Number(st.id) === Number(pendingPerda))?.nome ?? 'esta etapa'}
+                inicial={String(detail?.submission.motivo_perda ?? '')}
+                onConfirm={confirmPerda}
+                onCancel={() => setPendingPerda(null)}
+              />
+            )}
 
             {pendingConversion !== null && (
               <ExecutionDateModal
@@ -3394,71 +2377,13 @@ export function DetailPanel({
               />
             )}
 
-            {/* Preview embutido do relatório DEPS */}
-            {depsPreview && (
-              <DepsPreviewModal
-                nome={depsPreview.nome}
-                url={depsPreview.url}
-                onClose={() => setDepsPreview(null)}
-                onOpenTab={() => window.open(depsPreview.url, '_blank', 'noopener')}
-              />
-            )}
-
-            {/* Consulta reaproveitável encontrada - reaproveitar (grátis) ou gerar nova (paga) */}
-            {depsReuse !== null && createPortal(
-              <div className="admin-modal-overlay" style={{ zIndex: 1200, alignItems: 'center', justifyContent: 'center' }} onClick={() => setDepsReuse(null)}>
-                <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-                  <p className="delete-confirm-title">Consulta DEPS encontrada</p>
-                  <p className="delete-confirm-desc">
-                    Há uma consulta deste CNPJ {depsReuse.dataConsulta
-                      ? <>de <strong>{depsReuse.dataConsulta}</strong></>
-                      : 'no histórico da DEPS'} para <strong>{depsReuse.alvo === 'ced' ? 'o cedente' : 'o sacado'}</strong>.
-                    Deseja <strong>reaproveitá-la sem custo</strong> ou gerar uma <strong>nova consulta (com custo)</strong>?
-                  </p>
-                  <div className="delete-confirm-actions" style={{ flexWrap: 'wrap' }}>
-                    <button className="delete-confirm-cancel" onClick={() => setDepsReuse(null)}>Cancelar</button>
-                    <button className="delete-confirm-ok" style={{ background: 'var(--yellow)', borderColor: 'var(--yellow)', color: '#000' }}
-                      onClick={() => { const a = depsReuse.alvo; setDepsReuse(null); gerarDeps(a, true); }}>
-                      Gerar nova (cobra)
-                    </button>
-                    <button className="delete-confirm-ok" style={{ background: '#1E8A3E', borderColor: '#1E8A3E', color: '#fff' }}
-                      onClick={() => { const r = depsReuse; setDepsReuse(null); saveDeps(r.alvo, r.payload); }}>
-                      Reaproveitar (grátis)
-                    </button>
-                  </div>
-                </div>
-              </div>,
-              document.body
-            )}
-
-            {/* Confirmar consulta DEPS nova (paga) - quando não há recente ou ao atualizar */}
-            {depsConfirm !== null && createPortal(
-              <div className="admin-modal-overlay" style={{ zIndex: 1200, alignItems: 'center', justifyContent: 'center' }} onClick={() => setDepsConfirm(null)}>
-                <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-                  <p className="delete-confirm-title">Gerar nova consulta DEPS?</p>
-                  <p className="delete-confirm-desc">
-                    Não há consulta recente reaproveitável para <strong>{depsConfirm === 'ced' ? 'o cedente' : 'o sacado'}</strong> (ou você optou por atualizar).
-                    Gerar uma <strong>nova consulta DEPS é cobrado</strong>. Deseja continuar?
-                  </p>
-                  <div className="delete-confirm-actions">
-                    <button className="delete-confirm-cancel" onClick={() => setDepsConfirm(null)}>Cancelar</button>
-                    <button className="delete-confirm-ok" style={{ background: 'var(--yellow)', borderColor: 'var(--yellow)', color: '#000' }}
-                      onClick={() => { const a = depsConfirm; setDepsConfirm(null); if (a) gerarDeps(a, true); }}>
-                      Gerar nova (cobra)
-                    </button>
-                  </div>
-                </div>
-              </div>,
-              document.body
-            )}
-
             {/* Confirmar mover p/ conversão após registrar a data de execução direto */}
             {pendingAutoConv !== null && createPortal(
               <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }} onClick={() => setPendingAutoConv(null)}>
                 <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-                  <p className="delete-confirm-title">Mover para conversão?</p>
+                  <p className="delete-confirm-title">Mover para fechado?</p>
                   <p className="delete-confirm-desc">
-                    A data de execução foi registrada. O status será alterado automaticamente para
+                    A data do fechamento foi registrada. A etapa será alterada automaticamente para
                     <strong> {statuses.find(st => Number(st.id) === Number(pendingAutoConv))?.nome}</strong>. Deseja continuar?
                   </p>
                   <div className="delete-confirm-actions">
@@ -3474,10 +2399,10 @@ export function DetailPanel({
             {pendingExecClear !== null && createPortal(
               <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }} onClick={() => setPendingExecClear(null)}>
                 <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-                  <p className="delete-confirm-title">Limpar data de execução?</p>
+                  <p className="delete-confirm-title">Limpar a data do fechamento?</p>
                   <p className="delete-confirm-desc">
                     Mover para <strong>{statuses.find(st => Number(st.id) === Number(pendingExecClear))?.nome}</strong> vai
-                    <strong> limpar a data de execução</strong> registrada (a etapa deixa de ser de conversão). Deseja continuar?
+                    <strong> limpar a data do fechamento</strong> registrada, porque o negócio volta a estar em aberto. Deseja continuar?
                   </p>
                   <div className="delete-confirm-actions">
                     <button className="delete-confirm-cancel" onClick={() => setPendingExecClear(null)}>Cancelar</button>
@@ -3595,9 +2520,7 @@ function AnexosModal({ leadId, onClose }: { leadId: string; onClose: () => void 
                 <CategoriaTag categoria={it.categoria} />
                 {it.isLink ? (
                   <button className="anexos-mini" title="Abrir link" onClick={() => it.url && window.open(it.url, '_blank', 'noopener')}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                      <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
+                    <IconExternal size={14} />
                   </button>
                 ) : (
                   <>
@@ -3663,11 +2586,12 @@ function KanbanCard({
   // então não faz sentido exibir o tempo acumulado ali.
   hideAging?: boolean;
 }) {
-  const [hov, setHov] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [showAnexos, setShowAnexos] = useState(false);
   const days = daysSince(sub.status_since);
-  const fim = sub.fim_type ? FIM_LABELS[sub.fim_type] : null;
+  // O próximo passo é o que faz o funil andar: atrasado, ele vira o aviso do
+  // card. Sem próximo passo marcado, o card não cobra nada.
+  const acaoAtrasada = !!sub.proxima_acao_em && sub.proxima_acao_em < hojeISO();
 
   return (
     <div
@@ -3676,23 +2600,49 @@ function KanbanCard({
       draggable={!confirmDel}
       onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; definirImagemArrasto(e); onDragStart(sub.id); }}
       onClick={() => !confirmDel && onClick(sub.id)}
-      onMouseEnter={() => { setHov(true); onPrefetch?.(sub.id); }}
-      onMouseLeave={() => { setHov(false); onCancelPrefetch?.(sub.id); if (!confirmDel) setConfirmDel(false); }}
+      onMouseEnter={() => onPrefetch?.(sub.id)}
+      onMouseLeave={() => onCancelPrefetch?.(sub.id)}
     >
-      <p className="kanban-card-title">{sub.nome_contratado ?? '-'}</p>
-      <p className="kanban-card-sub">{sub.nome_sacado ?? '-'}</p>
+      {/* As ações aparecem com o ponteiro no card, pelo CSS: sempre visíveis
+          seriam duas lixeiras por cartão numa coluna cheia, e o clique que
+          interessa no card é o de abrir. */}
+      <div className="kanban-card-topo">
+        <p className="kanban-card-title">{sub.empresa ?? '-'}</p>
+        <span className="kanban-card-acoes">
+          <button type="button" className="kanban-card-acao" title="Abrir o lead"
+            aria-label={`Abrir ${sub.empresa ?? 'o lead'}`}
+            onClick={e => { e.stopPropagation(); onClick(sub.id); }}>
+            <IconEdit size={12} />
+          </button>
+          {onDelete && (
+            <button type="button" className="kanban-card-acao perigo" title="Excluir lead"
+              aria-label={`Excluir ${sub.empresa ?? 'o lead'}`}
+              onClick={e => { e.stopPropagation(); setConfirmDel(true); }}>
+              <IconTrash size={12} />
+            </button>
+          )}
+        </span>
+      </div>
+      {(sub.contato_nome || sub.interesse) && (
+        <p className="kanban-card-sub">
+          {[sub.contato_nome, sub.interesse].filter(Boolean).join(' · ')}
+        </p>
+      )}
       <div className="kanban-card-meta">
-        <span className="kanban-card-value">{sub.valor ?? '-'}</span>
+        <span className="kanban-card-value">{fmtValor(sub.valor_estimado)}</span>
         {!hideAging && days > 0 && (
           <span className={`kanban-card-days${days >= 7 ? ' late' : ''}`}>
             {days}d
           </span>
         )}
       </div>
-      {fim && (
-        <span className="admin-badge" style={{ background: fim.bg, color: fim.color, marginTop: 8, display: 'inline-block', fontSize: 10 }}>
-          {fim.label}
-        </span>
+      {sub.proxima_acao && (
+        <p className={`lead-proxima${acaoAtrasada ? ' atrasada' : ''}`}
+          title={sub.proxima_acao_em ? `Para ${fmtDataBR(sub.proxima_acao_em)}` : 'Sem data'}>
+          <IconCalendario size={11} />
+          <span>{sub.proxima_acao}</span>
+          {sub.proxima_acao_em && <em>{fmtDataCurta(sub.proxima_acao_em)}</em>}
+        </p>
       )}
       {(sub.arquivo_count > 0 || (sub.comentario_count ?? 0) > 0 || (sub.pendencia_total_count ?? 0) > 0) && (
         <div className="kanban-card-footer">
@@ -3708,9 +2658,7 @@ function KanbanCard({
           )}
           {(sub.comentario_count ?? 0) > 0 && (
             <span className="kanban-card-comments" title={`${sub.comentario_count} comentário(s)`}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ display: 'block' }}>
-                <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+              <span style={{ display: 'block' }}><IconComentario size={12} /></span>
               {sub.comentario_count}
             </span>
           )}
@@ -3721,16 +2669,12 @@ function KanbanCard({
               <span
                 className="kanban-card-pend"
                 title={resolvido ? 'Pendências resolvidas' : `${abertas} pendência(s) aberta(s)`}
-                style={{ color: resolvido ? '#1E8A3E' : '#B45309', background: resolvido ? 'rgba(30,138,62,.12)' : 'rgba(180,83,9,.13)' }}
+                style={{ color: resolvido ? 'var(--green)' : '#B45309', background: resolvido ? 'var(--green-soft)' : 'rgba(180,83,9,.13)' }}
               >
                 {resolvido ? (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ display: 'block' }}>
-                    <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+                  <span style={{ display: 'block' }}><IconCheck size={12} /></span>
                 ) : (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ display: 'block' }}>
-                    <path d="M12 9v4M12 17h.01M10.3 3.9L2 18a2 2 0 001.7 3h16.6a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+                  <span style={{ display: 'block' }}><IconAlert size={12} /></span>
                 )}
                 {resolvido ? '' : abertas}
               </span>
@@ -3744,71 +2688,26 @@ function KanbanCard({
         </div>
       )}
 
-      {/* ── Hover actions ── */}
-      {(hov || confirmDel) && (
-        <div
-          onClick={e => e.stopPropagation()}
-          style={{
-            position: 'absolute', top: 8, right: 8,
-            display: 'flex', gap: 4, animation: 'fadeIn 0.12s ease both',
-          }}
-        >
-          {!confirmDel ? (
-            <>
-              {/* Editar */}
-              <button
-                type="button"
-                title="Editar"
-                onClick={e => { e.stopPropagation(); onClick(sub.id); }}
-                style={{
-                  width: 26, height: 26, borderRadius: 7, border: '1px solid var(--gray3)',
-                  background: 'var(--white)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--yellow)'; e.currentTarget.style.color = 'var(--yellow)'; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--gray3)'; e.currentTarget.style.color = 'inherit'; }}
-              >
-                <svg width={12} height={12} viewBox="0 0 16 16" fill="none">
-                  <path d="M11.5 2.5a1.414 1.414 0 012 2L5 13H3v-2L11.5 2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </button>
-              {/* Excluir */}
-              {onDelete && (
-                <button
-                  type="button"
-                  title="Excluir"
-                  onClick={e => { e.stopPropagation(); setConfirmDel(true); }}
-                  style={{
-                    width: 26, height: 26, borderRadius: 7, border: '1px solid rgba(220,38,38,0.25)',
-                    background: 'var(--white)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,38,38,0.08)'; e.currentTarget.style.borderColor = '#DC2626'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'var(--white)'; e.currentTarget.style.borderColor = 'rgba(220,38,38,0.25)'; }}
-                >
-                  <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
-                    <path d="M2 3h8M4.5 3V2h3v1M3.5 3l.6 7h3.8l.6-7" stroke="#DC2626" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-              )}
-            </>
-          ) : (
-            /* mini confirm */
-            <div style={{ display: 'flex', gap: 4, alignItems: 'center', background: 'var(--white)', border: '1px solid var(--gray3)', borderRadius: 8, padding: '4px 8px', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray)', marginRight: 2 }}>Excluir?</span>
-              <button
-                type="button"
-                onClick={e => { e.stopPropagation(); onDelete?.(sub.id); }}
-                style={{ padding: '2px 8px', borderRadius: 5, border: 'none', background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
-              >Sim</button>
-              <button
-                type="button"
-                onClick={e => { e.stopPropagation(); setConfirmDel(false); }}
-                style={{ padding: '2px 8px', borderRadius: 5, border: '1px solid var(--gray3)', background: 'none', color: 'var(--gray2)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
-              >Não</button>
+      {/* Excluir é o único gesto sem volta do card: pergunta no diálogo da
+          casa, e não num balão só desta tela. */}
+      {confirmDel && createPortal(
+        <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }}
+          onClick={e => { e.stopPropagation(); setConfirmDel(false); }}>
+          <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
+            <p className="delete-confirm-title">Excluir este lead?</p>
+            <p className="delete-confirm-desc">
+              <strong>{sub.empresa ?? 'O lead'}</strong> sai do funil com a conversa e os
+              anexos. O suporte consegue reverter; a tela, não.
+            </p>
+            <div className="delete-confirm-actions">
+              <button className="delete-confirm-cancel"
+                onClick={e => { e.stopPropagation(); setConfirmDel(false); }}>Cancelar</button>
+              <button className="delete-confirm-ok"
+                onClick={e => { e.stopPropagation(); setConfirmDel(false); onDelete?.(sub.id); }}>Excluir</button>
             </div>
-          )}
-        </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -3896,8 +2795,8 @@ function KanbanColumn({
     ...(collapsible ? { onMouseEnter: hoverEnter, onMouseLeave: hoverLeave } : {}),
   };
 
-  // Valor total das operações nesta etapa (usa valor_numerico; cai no parse da string BRL se ausente)
-  const colTotal = cards.reduce((sum, c) => sum + (typeof c.valor_numerico === 'number' ? c.valor_numerico : parseCurrencyBRL(c.valor ?? '')), 0);
+  // O que está em jogo nesta etapa: a soma do valor estimado dos leads dela.
+  const colTotal = cards.reduce((sum, c) => sum + (c.valor_estimado ?? 0), 0);
   // Na etapa de conversão (Executada), ordena pela data de execução - a última executada no topo.
   const orderedCards = status.is_conversion
     ? [...cards].sort((a, b) => String(b.data_execucao ?? '').localeCompare(String(a.data_execucao ?? '')))
@@ -3940,13 +2839,9 @@ function KanbanColumn({
                   : 'Manter esta etapa recolhida no board, mesmo com cards dentro'}
               >
                 {status.always_collapsed ? (
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                    <path d="M9 7l-5 5 5 5M15 7l5 5-5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+                  <IconRecolher size={13} />
                 ) : (
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                    <path d="M20 17l-5-5 5-5M4 7l5 5-5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+                  <IconRecolher size={13} aberta />
                 )}
               </button>
             )}
@@ -3975,60 +2870,24 @@ function KanbanColumn({
 function DetailSkeleton() {
   return (
     <div className="admin-modal-body sk-wrap">
-      {/* Partes envolvidas */}
-      <section>
-        <SkeletonBlock w={130} h={9} radius={4} />
-        <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 10, alignItems: 'center' }}>
-          <div style={{ background: 'var(--gray3)', borderRadius: 10, padding: '14px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <SkeletonBlock w={55} h={8} radius={3} />
-            <SkeletonBlock w="82%" h={13} radius={5} />
-            <SkeletonBlock w="60%" h={10} radius={4} />
+      {/* Contato e negócio: dois blocos de quatro campos, como a ficha. */}
+      {[130, 90].map(largura => (
+        <section key={largura}>
+          <SkeletonBlock w={largura} h={9} radius={4} />
+          <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px 18px' }}>
+            {[0, 1, 2, 3].map(i => (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <SkeletonBlock w="45%" h={8} radius={3} />
+                <SkeletonBlock w={`${85 - i * 8}%`} h={14} radius={5} />
+              </div>
+            ))}
           </div>
-          <span style={{ fontSize: 18, color: 'var(--gray2)', padding: '0 4px' }}>→</span>
-          <div style={{ background: 'var(--gray3)', borderRadius: 10, padding: '14px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <SkeletonBlock w={55} h={8} radius={3} />
-            <SkeletonBlock w="75%" h={13} radius={5} />
-            <SkeletonBlock w="65%" h={10} radius={4} />
-          </div>
-        </div>
-      </section>
+        </section>
+      ))}
 
-      {/* Dados da operação */}
+      {/* Próximo passo */}
       <section>
-        <SkeletonBlock w={145} h={9} radius={4} />
-        <div style={{ marginTop: 12, display: 'flex', gap: 20 }}>
-          {[1, 1, 1].map((_, i) => (
-            <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <SkeletonBlock w="55%" h={8} radius={3} />
-              <SkeletonBlock w="80%" h={14} radius={5} />
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Avaliação da operação */}
-      <section>
-        <SkeletonBlock w={165} h={9} radius={4} />
-        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {[0, 1, 2, 3].map(i => (
-            <div
-              key={i}
-              style={{
-                border: '1.5px solid var(--gray3)',
-                borderRadius: 10,
-                padding: '12px 14px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: 12,
-                opacity: 1 - i * 0.18,
-              }}
-            >
-              <SkeletonBlock w={`${58 - i * 4}%`} h={11} radius={4} />
-              <SkeletonBlock w={40} h={22} radius={100} />
-            </div>
-          ))}
-        </div>
+        <SkeletonBlock w="100%" h={44} radius={10} />
       </section>
 
       {/* Anexos */}
@@ -4135,9 +2994,12 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'kanban' | 'lista'>('kanban');
-  const [filterCedente, setFilterCedente] = useState<string[]>([]);
-  const [filterSacado, setFilterSacado] = useState<string[]>([]);
-  const [filterFluxo, setFilterFluxo] = useState<string[]>([]);
+  // A busca varre o que os filtros deixaram passar - é a mesma faixa de
+  // Projetos e de Tarefas, no mesmo lugar da tela.
+  const [busca, setBusca] = useState('');
+  const [filterResponsavel, setFilterResponsavel] = useState<string[]>([]);
+  const [filterOrigem, setFilterOrigem] = useState<string[]>([]);
+  const [filterInteresse, setFilterInteresse] = useState<string[]>([]);
   const [filterStatus, setFilterStatus] = useState<string[]>([]);
   const [sortCol, setSortCol] = useState<string>('created_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -4147,6 +3009,8 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
   const [dragOverCol, setDragOverCol] = useState<number | null>(null);
   // Conversão pendente via drag-and-drop: exige registrar a data de execução
   const [pendingConv, setPendingConv] = useState<{ subId: string; statusId: number } | null>(null);
+  // Arrastar para a etapa de descarte também pede o motivo da perda.
+  const [pendingPerdaBoard, setPendingPerdaBoard] = useState<{ subId: string; statusId: number } | null>(null);
   // Sair da etapa de conversão pelo kanban (limpa a data de execução) → confirmação
   const [pendingClearExec, setPendingClearExec] = useState<{ subId: string; statusId: number } | null>(null);
   // Mover (kanban) para etapa que exige pendências → registrar antes
@@ -4277,6 +3141,11 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
       setPendingConv({ subId, statusId });
       return;
     }
+    // Etapa de descarte: registrar o motivo antes de mover.
+    if (cfg?.is_excluded) {
+      setPendingPerdaBoard({ subId, statusId });
+      return;
+    }
     // Etapa que exige pendências: registrar antes de mover. Busca as pendências
     // abertas do card para pré-preencher o modal (segue com elas, edita ou adiciona).
     if (cfg?.requires_pendencia) {
@@ -4310,6 +3179,16 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
     } finally {
       setSavingBoardPend(false);
     }
+  }
+
+  async function confirmBoardPerda(motivo: string) {
+    if (!pendingPerdaBoard) return;
+    const { subId, statusId } = pendingPerdaBoard;
+    setPendingPerdaBoard(null);
+    setSubmissions(prev => prev.map(s => s.id === subId ? { ...s, motivo_perda: motivo } : s));
+    commitMove(subId, statusId);
+    const r = await api('', 'POST', { action: 'update_submission', id: subId, motivo_perda: motivo });
+    if (r?.error) toast('error', 'Não foi possível gravar o motivo da perda', r.error);
   }
 
   async function confirmBoardConversion(date: string) {
@@ -4346,7 +3225,7 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
     try {
       await api('', 'POST', { action: 'delete_submission', id });
       handleDeleted(id);
-      toast('success', 'Lead excluída');
+      toast('success', 'Lead excluído');
     } catch {
       toast('error', 'Erro ao excluir lead');
     }
@@ -4361,29 +3240,43 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
   const unique = <T,>(arr: (T | null | undefined)[]): T[] =>
     [...new Set(arr.filter((v): v is T => v != null && v !== ''))];
 
-  const cedenteOptions = unique(submissions.map(s => s.nome_contratado))
+  // As opções saem do que existe no funil, e não de uma lista fixa: origem
+  // escrita à mão aparece aqui sozinha, e a que ninguém usa não polui a lista.
+  const responsavelOptions = unique(submissions.map(s => s.responsavel_nome))
     .map(v => ({ value: v, label: v }));
-  const sacadoOptions = unique(submissions.map(s => s.nome_sacado))
+  const origemOptions = unique(submissions.map(s => s.origem))
     .map(v => ({ value: v, label: v }));
-  const fluxoOptions = FIM_SELECT_OPTIONS;
+  const interesseOptions = unique(submissions.map(s => s.interesse))
+    .map(v => ({ value: v, label: v }));
   const statusOptions = statuses.map(s => ({ value: String(s.id), label: s.nome }));
 
-  const hasFilter = filterCedente.length > 0 || filterSacado.length > 0 || filterFluxo.length > 0 || filterStatus.length > 0;
+  const hasFilter = filterResponsavel.length > 0 || filterOrigem.length > 0
+    || filterInteresse.length > 0 || filterStatus.length > 0;
 
   function clearFilters() {
-    setFilterCedente([]);
-    setFilterSacado([]);
-    setFilterFluxo([]);
+    setFilterResponsavel([]);
+    setFilterOrigem([]);
+    setFilterInteresse([]);
     setFilterStatus([]);
   }
 
-  // Filter
+  // Empresa, contato, o que a pessoa quer e o próximo passo: é por um desses
+  // que se procura um lead. O CNPJ entra pelos dígitos, com ou sem máscara.
+  const termo = busca.trim().toLowerCase();
+  const digitos = termo.replace(/\D/g, '');
+  const casaBusca = (s: Submission) => {
+    if (!termo) return true;
+    const campos = [s.empresa, s.contato_nome, s.contato_email, s.origem, s.interesse, s.proxima_acao, s.responsavel_nome];
+    if (campos.some(c => String(c ?? '').toLowerCase().includes(termo))) return true;
+    return digitos.length >= 3 && String(s.cnpj ?? '').replace(/\D/g, '').includes(digitos);
+  };
+
   const filtered = submissions.filter(s => {
-    if (filterCedente.length > 0 && !filterCedente.includes(s.nome_contratado ?? '')) return false;
-    if (filterSacado.length > 0 && !filterSacado.includes(s.nome_sacado ?? '')) return false;
-    if (filterFluxo.length > 0 && !filterFluxo.includes(String(s.fim_type ?? ''))) return false;
+    if (filterResponsavel.length > 0 && !filterResponsavel.includes(s.responsavel_nome ?? '')) return false;
+    if (filterOrigem.length > 0 && !filterOrigem.includes(s.origem ?? '')) return false;
+    if (filterInteresse.length > 0 && !filterInteresse.includes(s.interesse ?? '')) return false;
     if (filterStatus.length > 0 && !filterStatus.includes(String(s.current_status_id ?? ''))) return false;
-    return true;
+    return casaBusca(s);
   });
 
   function toggleSort(col: string) {
@@ -4394,34 +3287,36 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
   const sorted = [...filtered].sort((a, b) => {
     let va: any, vb: any;
     if (sortCol === 'created_at') { va = a.created_at; vb = b.created_at; }
-    else if (sortCol === 'nome_contratado') { va = a.nome_contratado ?? ''; vb = b.nome_contratado ?? ''; }
-    else if (sortCol === 'nome_sacado') { va = a.nome_sacado ?? ''; vb = b.nome_sacado ?? ''; }
-    else if (sortCol === 'valor') {
-      va = parseFloat((a.valor ?? '0').replace(/[^\d,]/g, '').replace(',', '.')) || 0;
-      vb = parseFloat((b.valor ?? '0').replace(/[^\d,]/g, '').replace(',', '.')) || 0;
+    else if (sortCol === 'empresa') { va = a.empresa ?? ''; vb = b.empresa ?? ''; }
+    else if (sortCol === 'contato_nome') { va = a.contato_nome ?? ''; vb = b.contato_nome ?? ''; }
+    else if (sortCol === 'origem') { va = a.origem ?? ''; vb = b.origem ?? ''; }
+    else if (sortCol === 'responsavel') { va = a.responsavel_nome ?? ''; vb = b.responsavel_nome ?? ''; }
+    else if (sortCol === 'valor_estimado') { va = a.valor_estimado ?? 0; vb = b.valor_estimado ?? 0; }
+    // Sem data marcada vai para o fim: quem ordena por próximo passo quer ver
+    // primeiro o que tem hora para acontecer.
+    else if (sortCol === 'proxima_acao_em') {
+      va = a.proxima_acao_em ?? '9999'; vb = b.proxima_acao_em ?? '9999';
     }
-    else if (sortCol === 'prazo_limite') { va = a.prazo_limite ?? ''; vb = b.prazo_limite ?? ''; }
     else if (sortCol === 'status') {
       va = statuses.find(x => Number(x.id) === a.current_status_id)?.nome ?? '';
       vb = statuses.find(x => Number(x.id) === b.current_status_id)?.nome ?? '';
     }
-    else if (sortCol === 'fim_type') { va = a.fim_type ?? 0; vb = b.fim_type ?? 0; }
     else if (sortCol === 'arquivo_count') { va = a.arquivo_count; vb = b.arquivo_count; }
     if (va < vb) return sortDir === 'asc' ? -1 : 1;
     if (va > vb) return sortDir === 'asc' ? 1 : -1;
     return 0;
   });
 
-  const statusByName = (name: string) => statuses.find(s => s.nome.toLowerCase() === name.toLowerCase());
   // Os cartões contam sobre `filtered`, e não sobre `submissions`: mexer num
   // filtro e ver o número parado faria duvidar de qual dos dois está certo.
-  const countByStatus = (name: string) => {
-    const st = statusByName(name);
-    return st ? filtered.filter(s => s.current_status_id === Number(st.id)).length : 0;
-  };
-  const executadaSt = statusByName('Executada');
-  const reprovadaSt = statusByName('Reprovada');
-  const doneIds = new Set([executadaSt?.id, reprovadaSt?.id].filter(Boolean).map(Number));
+  const contarNaEtapa = (st?: StatusConfig) =>
+    st ? filtered.filter(s => s.current_status_id === Number(st.id)).length : 0;
+  // Quem fecha e quem descarta vem da marcação da etapa em Configurações, e não
+  // do nome dela: o funil do comercial chama "Venda realizada" e "Perdido", e
+  // procurar por nome deixava os dois cartões sempre em zero.
+  const ganhaSt = statuses.find(st => st.is_conversion);
+  const perdidaSt = statuses.find(st => st.is_excluded);
+  const doneIds = new Set([ganhaSt?.id, perdidaSt?.id].filter(Boolean).map(Number));
   const pendentes = filtered.filter(s => !doneIds.has(s.current_status_id as number)).length;
 
   // Lead time médio: tempo de vida de cada lead (criação → conclusão, ou → agora se em aberto)
@@ -4437,21 +3332,18 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
   })();
 
   return (
-    <div className="admin-content-wrap">
+    <div className="admin-content-wrap pagina-cristal pagina-funil">
       <div className="admin-page-header">
         <div>
           <h1 className="admin-page-title">Funil</h1>
           <p className="admin-page-desc">Acompanhe os leads em negociação, do primeiro contato ao desfecho.</p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          <button className="admin-toolbar-btn" onClick={loadBoard} title="Atualizar" disabled={loading}>
-            <svg
-              width="13" height="13" viewBox="0 0 24 24" fill="none"
-              style={{ animation: loading ? 'spin 0.7s linear infinite' : undefined }}
-            >
-              <path d="M1 4v6h6M23 20v-6h-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+        <div className="admin-page-acoes">
+          <button className="admin-toolbar-btn" onClick={loadBoard} title="Atualizar"
+            aria-label="Atualizar o funil" disabled={loading}>
+            <span style={{ display: 'inline-flex', animation: loading ? 'spin 0.7s linear infinite' : undefined }}>
+              <IconRefresh size={13} />
+            </span>
           </button>
           <button onClick={() => setShowCreate(true)} className="btn btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13, flexShrink: 0 }}>
             + Novo lead
@@ -4459,66 +3351,45 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Os mesmos cartões de Projetos e de Tarefas: o desenho saiu daqui e
+          voltou como componente, para as três telas não divergirem. */}
       {loading ? (
-        <div className="admin-stats">
-          {[0, 1, 2, 3].map(i => (
-            <div key={i} className="admin-stat-card-v2" style={{ '--accent-color': 'var(--gray3)', gap: 8, animationDelay: `${i * 0.05}s` } as any}>
-              <SkeletonBlock w="55%" h={11} />
-              <SkeletonBlock w={44} h={30} radius={6} />
-              <SkeletonBlock w="70%" h={10} />
-            </div>
-          ))}
-        </div>
+        <CartoesKpiEsqueleto cartoes={5} />
       ) : (
-        <div className="admin-stats">
-          <div className="admin-stat-card-v2" style={{ '--accent-color': 'var(--yellow)', animationDelay: '0s' } as any}>
-            <p className="stat-v2-label">Total de leads</p>
-            <p className="stat-v2-value">{filtered.length}</p>
-            <p className="stat-v2-desc">{hasFilter ? 'no filtro atual' : 'no funil'}</p>
-          </div>
-          <div className="admin-stat-card-v2" style={{ '--accent-color': '#6366F1', animationDelay: '0.05s' } as any}>
-            <p className="stat-v2-label">Em negociação</p>
-            <p className="stat-v2-value">{pendentes}</p>
-            <p className="stat-v2-desc">ainda sem desfecho</p>
-          </div>
-          {executadaSt && (
-            <div
-              className={`admin-stat-card-v2${filterStatus.includes(String(executadaSt.id)) ? ' active-filter' : ''}`}
-              style={{ '--accent-color': executadaSt.cor, animationDelay: '0.1s', cursor: 'pointer' } as any}
-              onClick={() => setFilterStatus(filterStatus.includes(String(executadaSt.id)) ? filterStatus.filter(x => x !== String(executadaSt.id)) : [...filterStatus, String(executadaSt.id)])}
-            >
-              <p className="stat-v2-label">{executadaSt.nome}</p>
-              <p className="stat-v2-value">{countByStatus('Executada')}</p>
-              <p className="stat-v2-desc">fecharam negócio</p>
-            </div>
+        <div className="admin-stats" style={{ marginBottom: 18 }}>
+          <CartaoKpi rotulo="Total de leads" valor={filtered.length}
+            nota={hasFilter || busca ? 'no recorte atual' : 'no funil'}
+            cor="var(--yellow)" atraso={0} />
+          <CartaoKpi rotulo="Em negociação" valor={pendentes} nota="ainda sem desfecho"
+            cor="#6366F1" atraso={0.05} />
+          {ganhaSt && (
+            <CartaoKpi rotulo={ganhaSt.nome} valor={contarNaEtapa(ganhaSt)} nota="fecharam negócio"
+              cor={ganhaSt.cor} atraso={0.1}
+              ativo={filterStatus.includes(String(ganhaSt.id))}
+              onClick={() => setFilterStatus(f => f.includes(String(ganhaSt.id))
+                ? f.filter(x => x !== String(ganhaSt.id))
+                : [...f, String(ganhaSt.id)])} />
           )}
-          {reprovadaSt && (
-            <div
-              className={`admin-stat-card-v2${filterStatus.includes(String(reprovadaSt.id)) ? ' active-filter' : ''}`}
-              style={{ '--accent-color': reprovadaSt.cor, animationDelay: '0.15s', cursor: 'pointer' } as any}
-              onClick={() => setFilterStatus(filterStatus.includes(String(reprovadaSt.id)) ? filterStatus.filter(x => x !== String(reprovadaSt.id)) : [...filterStatus, String(reprovadaSt.id)])}
-            >
-              <p className="stat-v2-label">{reprovadaSt.nome}</p>
-              <p className="stat-v2-value">{countByStatus('Reprovada')}</p>
-              <p className="stat-v2-desc">não avançaram</p>
-            </div>
+          {perdidaSt && (
+            <CartaoKpi rotulo={perdidaSt.nome} valor={contarNaEtapa(perdidaSt)} nota="não avançaram"
+              cor={perdidaSt.cor} atraso={0.15}
+              ativo={filterStatus.includes(String(perdidaSt.id))}
+              onClick={() => setFilterStatus(f => f.includes(String(perdidaSt.id))
+                ? f.filter(x => x !== String(perdidaSt.id))
+                : [...f, String(perdidaSt.id)])} />
           )}
-          <div className="admin-stat-card-v2" style={{ '--accent-color': '#0EA5E9', animationDelay: '0.2s' } as any}>
-            <p className="stat-v2-label">Ciclo médio</p>
-            <p className="stat-v2-value">{fmtDuracao(leadTimeMedioMs)}</p>
-            <p className="stat-v2-desc">da entrada ao desfecho</p>
-          </div>
+          <CartaoKpi rotulo="Ciclo médio" valor={fmtDuracao(leadTimeMedioMs)}
+            nota="da entrada ao desfecho" cor="#0EA5E9" atraso={0.2} />
         </div>
       )}
 
       {/* Toolbar */}
       {!loading && <div className="admin-toolbar">
         <span className="admin-toolbar-label">Filtrar</span>
-        <FilterDropdown label="Cedente" values={filterCedente} options={cedenteOptions} onChange={setFilterCedente} />
-        <FilterDropdown label="Sacado" values={filterSacado} options={sacadoOptions} onChange={setFilterSacado} />
-        <FilterDropdown label="Tipo de pagamento" values={filterFluxo} options={fluxoOptions} onChange={setFilterFluxo} />
-        <FilterDropdown label="Status" values={filterStatus} options={statusOptions} onChange={setFilterStatus} />
+        <FilterDropdown label="Etapa" values={filterStatus} options={statusOptions} onChange={setFilterStatus} />
+        <FilterDropdown label="Responsável" values={filterResponsavel} options={responsavelOptions} onChange={setFilterResponsavel} />
+        <FilterDropdown label="Origem" values={filterOrigem} options={origemOptions} onChange={setFilterOrigem} />
+        <FilterDropdown label="Interesse" values={filterInteresse} options={interesseOptions} onChange={setFilterInteresse} />
         {hasFilter && (
           <button
             style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray2)', background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}
@@ -4530,21 +3401,43 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
         <div className="admin-toolbar-spacer" />
         <div className="view-toggle">
           <div className="view-toggle-pill" style={{ left: view === 'kanban' ? 3 : 35 }} />
-          <button className={view === 'kanban' ? 'active' : ''} onClick={() => setView('kanban')} title="Kanban">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="18" rx="2" stroke="currentColor" strokeWidth="1.8"/><rect x="14" y="3" width="7" height="11" rx="2" stroke="currentColor" strokeWidth="1.8"/></svg>
+          <button className={view === 'kanban' ? 'active' : ''} onClick={() => setView('kanban')}
+            title="Quadro" aria-label="Ver em quadro">
+            <IconVisaoQuadro size={14} />
           </button>
-          <button className={view === 'lista' ? 'active' : ''} onClick={() => setView('lista')} title="Lista">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+          <button className={view === 'lista' ? 'active' : ''} onClick={() => setView('lista')}
+            title="Lista" aria-label="Ver em lista">
+            <IconVisaoLista size={14} />
           </button>
         </div>
       </div>}
+
+      {/* A busca fica à vista, e não atrás de um botão: é a mesma faixa da tela
+          de Projetos e da de Tarefas. Os filtros ficam acima porque estreitam o
+          conjunto; a busca varre o que sobrou. */}
+      {!loading && submissions.length > 0 && (
+        <div className="secao-busca">
+          <span className="secao-busca-campo">
+            <IconSearch size={13} />
+            <input value={busca} aria-label="Buscar lead"
+              onChange={e => setBusca(e.target.value)}
+              placeholder="Buscar por empresa, contato, CNPJ ou próximo passo"
+              onKeyDown={e => { if (e.key === 'Escape') setBusca(''); }} />
+            {busca && (
+              <button type="button" aria-label="Limpar a busca" onClick={() => setBusca('')}>
+                <IconX size={12} />
+              </button>
+            )}
+          </span>
+        </div>
+      )}
 
       {loading ? (
         <LeadsSkeleton view={view} />
       ) : filtered.length === 0 ? (
         <div className="admin-empty">
           <p style={{ color: 'var(--gray2)', marginBottom: 6 }}><IconInbox size={34} /></p>
-          <p>Nenhum lead encontrado</p>
+          <p>{busca || hasFilter ? 'Nenhum lead no recorte atual' : 'Nenhum lead cadastrado ainda'}</p>
         </div>
       ) : view === 'kanban' ? (
         <div className="kanban-board" ref={boardRef}>
@@ -4568,7 +3461,7 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
           {/* Unassigned column */}
           {filtered.some(s => !s.current_status_id) && (() => {
             const semEtapa = filtered.filter(s => !s.current_status_id);
-            const total = semEtapa.reduce((sum, c) => sum + (typeof c.valor_numerico === 'number' ? c.valor_numerico : parseCurrencyBRL(c.valor ?? '')), 0);
+            const total = semEtapa.reduce((sum, c) => sum + (c.valor_estimado ?? 0), 0);
             return (
             <div className="kanban-column" style={{ '--col-color': '#aaa' } as any}>
               <div className="kanban-column-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
@@ -4600,23 +3493,29 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
             <thead>
               <tr>
                 {([
-                  ['created_at', 'Data'],
-                  ['nome_contratado', 'Cedente'],
-                  ['nome_sacado', 'Sacado'],
-                  ['valor', 'Valor'],
-                  ['prazo_limite', 'Prazo'],
+                  ['empresa', 'Empresa'],
+                  ['contato_nome', 'Contato'],
+                  ['origem', 'Origem'],
+                  ['interesse', 'Interesse'],
+                  ['valor_estimado', 'Valor'],
+                  ['responsavel', 'Responsável'],
                   ['status', 'Etapa'],
-                  ['fim_type', 'Fluxo'],
-                  ['arquivo_count', 'Arq.'],
+                  ['proxima_acao_em', 'Próximo passo'],
+                  ['created_at', 'Entrou em'],
                 ] as [string, string][]).map(([col, label]) => (
                   <th
                     key={col}
                     className={`sortable-th${sortCol === col ? ' sorted' : ''}`}
+                    aria-sort={sortCol === col ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
                     onClick={() => toggleSort(col)}
                   >
                     {label}
-                    <span className="sort-arrow">
-                      {sortCol === col ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                    {/* A seta vem de `icons.tsx`, com os três estados - é a
+                        mesma do cabeçalho de Projetos. */}
+                    <span className="sort-arrow" style={{ display: 'inline-flex', verticalAlign: 'middle' }}>
+                      {sortCol === col
+                        ? (sortDir === 'asc' ? <IconChevronUp size={12} /> : <IconChevronDown size={12} />)
+                        : <IconChevronUpDown size={12} />}
                     </span>
                   </th>
                 ))}
@@ -4625,30 +3524,44 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
             <tbody>
               {sorted.map(s => {
                 const st = statuses.find(x => Number(x.id) === s.current_status_id);
-                const fim = s.fim_type ? FIM_LABELS[s.fim_type] : null;
+                const atrasada = !!s.proxima_acao_em && s.proxima_acao_em < hojeISO();
                 return (
                   <tr key={s.id} onClick={() => setSelectedId(s.id)}>
-                    <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{new Date(s.created_at).toLocaleDateString('pt-BR')}</td>
                     <td>
-                      <p style={{ fontWeight: 600 }}>{s.nome_contratado ?? '-'}</p>
-                      <p className="admin-cell-sub">{s.cnpj_contratado ?? ''}</p>
+                      <p style={{ fontWeight: 600 }}>{s.empresa ?? '-'}</p>
+                      {s.cnpj && <p className="admin-cell-sub">{s.cnpj}</p>}
                     </td>
                     <td>
-                      <p style={{ fontWeight: 600 }}>{s.nome_sacado ?? '-'}</p>
-                      <p className="admin-cell-sub">{s.cnpj_sacado ?? ''}</p>
+                      <p style={{ fontWeight: 600 }}>{s.contato_nome ?? '-'}</p>
+                      {/* Cargo e telefone embaixo do nome: numa ligação, é o que
+                          se procura junto. */}
+                      <p className="admin-cell-sub">
+                        {[s.contato_cargo, s.contato_telefone].filter(Boolean).join(' · ')}
+                      </p>
                     </td>
-                    <td style={{ whiteSpace: 'nowrap' }}>{s.valor ?? '-'}</td>
-                    <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{formatPrazo(s.prazo_limite as string)}</td>
+                    <td style={{ whiteSpace: 'nowrap', fontSize: 12.5 }}>{s.origem ?? '-'}</td>
+                    <td style={{ whiteSpace: 'nowrap', fontSize: 12.5 }}>{s.interesse ?? '-'}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{fmtValor(s.valor_estimado)}</td>
+                    <td style={{ whiteSpace: 'nowrap', fontSize: 12.5 }}>{s.responsavel_nome ?? '-'}</td>
                     <td>
                       {st ? (
                         <span className="admin-badge" style={{ background: `${st.cor}18`, color: st.cor }}>{st.nome}</span>
                       ) : <span style={{ color: 'var(--gray2)', fontSize: 12 }}>-</span>}
                     </td>
-                    <td>
-                      {fim && <span className="admin-badge" style={{ background: fim.bg, color: fim.color }}>{fim.label}</span>}
+                    <td style={{ fontSize: 12.5 }}>
+                      {s.proxima_acao ? (
+                        <>
+                          <p>{s.proxima_acao}</p>
+                          {s.proxima_acao_em && (
+                            <p className="admin-cell-sub" style={atrasada ? { color: 'var(--red)' } : undefined}>
+                              {fmtDataBR(s.proxima_acao_em)}
+                            </p>
+                          )}
+                        </>
+                      ) : <span style={{ color: 'var(--gray2)' }}>-</span>}
                     </td>
-                    <td style={{ textAlign: 'center' }}>
-                      {s.arquivo_count > 0 ? <span style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}><IconClip size={12} /> {s.arquivo_count}</span> : '-'}
+                    <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                      {new Date(s.created_at).toLocaleDateString('pt-BR')}
                     </td>
                   </tr>
                 );
@@ -4693,6 +3606,15 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
         />
       )}
 
+      {pendingPerdaBoard && (
+        <MotivoPerdaModal
+          statusName={statuses.find(st => Number(st.id) === pendingPerdaBoard.statusId)?.nome ?? 'esta etapa'}
+          inicial={String(submissions.find(s => s.id === pendingPerdaBoard.subId)?.motivo_perda ?? '')}
+          onConfirm={confirmBoardPerda}
+          onCancel={() => setPendingPerdaBoard(null)}
+        />
+      )}
+
       {pendingBoardPend && (
         <PendenciaMoveModal
           statusName={statuses.find(st => Number(st.id) === pendingBoardPend.statusId)?.nome ?? 'esta etapa'}
@@ -4706,10 +3628,10 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
       {pendingClearExec && createPortal(
         <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }} onClick={() => setPendingClearExec(null)}>
           <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-            <p className="delete-confirm-title">Limpar data de execução?</p>
+            <p className="delete-confirm-title">Limpar a data do fechamento?</p>
             <p className="delete-confirm-desc">
               Mover para <strong>{statuses.find(st => Number(st.id) === pendingClearExec.statusId)?.nome}</strong> vai
-              <strong> limpar a data de execução</strong> registrada. Deseja continuar?
+              <strong> limpar a data do fechamento</strong> registrada. Deseja continuar?
             </p>
             <div className="delete-confirm-actions">
               <button className="delete-confirm-cancel" onClick={() => setPendingClearExec(null)}>Cancelar</button>

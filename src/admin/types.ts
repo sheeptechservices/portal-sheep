@@ -43,18 +43,37 @@ export interface UsuarioNotificavel {
   foto_url: string | null;
 }
 
+/** Um lead do funil comercial.
+ *
+ *  A tabela nasceu para operação de crédito - cedente, sacado, parcelas -, e o
+ *  que o comercial precisa é outra coisa: com quem se está falando, de onde
+ *  veio, o que quer, quanto vale e qual é o próximo passo. Os campos antigos
+ *  saíram da tela; as colunas continuam no banco, vazias, porque apagar coluna
+ *  em produção é risco sem prêmio. */
 export interface Submission {
   id: string;
   created_at: string;
-  nome_contratado: string | null;
-  cnpj_contratado: string | null;
-  nome_sacado: string | null;
-  cnpj_sacado: string | null;
-  valor: string | null;
-  valor_numerico?: number | null;
-  prazo_limite: string | null;
-  decisions: string | null;
-  fim_type: number | null;
+  /** Com quem se está falando. É o título do card e o único obrigatório. */
+  empresa: string | null;
+  cnpj: string | null;
+  contato_nome: string | null;
+  contato_cargo: string | null;
+  contato_email: string | null;
+  contato_telefone: string | null;
+  /** De onde veio: indicação, prospecção, site, evento, LinkedIn. */
+  origem: string | null;
+  /** O que quer, no vocabulário dos projetos da casa. */
+  interesse: string | null;
+  valor_estimado: number | null;
+  responsavel_id: string | null;
+  responsavel_nome?: string | null;
+  responsavel_foto?: string | null;
+  /** O próximo passo e quando ele é: é o que faz o funil andar. */
+  proxima_acao: string | null;
+  proxima_acao_em: string | null;
+  observacoes?: string | null;
+  /** Preenchido quando o lead cai na etapa de perda. */
+  motivo_perda?: string | null;
   arquivo_count: number;
   comentario_count?: number;
   pendencia_aberta_count?: number;
