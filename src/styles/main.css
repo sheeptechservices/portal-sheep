@@ -2651,8 +2651,10 @@ body.arrastando-painel {
   color: var(--gray2);
 }
 /* O caminho para a tela de Tarefas continua existindo, agora como saida e nao
-   como unico lugar onde da para mexer. */
+   como unico lugar onde da para mexer. Vai para o canto direito: saida fica na
+   borda, e nao colada no titulo que abre a secao. */
 .entrega-tarefas-link {
+  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -2687,11 +2689,19 @@ body.arrastando-painel {
   padding: 2px 0 4px;
 }
 .entrega-kanban .kanban-column {
-  flex: 0 0 170px;
-  min-width: 170px;
   border-width: 1px;
   border-radius: 10px;
 }
+/* A largura miuda so vale para a coluna aberta de verdade: a recolhivel tem a
+   dela, que cresce e encolhe animando o flex-basis, e cravar aqui apagaria o
+   traco fechado. */
+.entrega-kanban .kanban-column:not(.kanban-column-collapsible) {
+  flex: 0 0 170px;
+  min-width: 170px;
+}
+.entrega-kanban .kanban-column.kanban-column-collapsible { min-height: 120px; }
+/* Aberta, ela assume a largura do quadro miudo - e nao os 270px do grande. */
+.entrega-kanban .kanban-column.kanban-column-collapsible.is-open { flex-basis: 170px; }
 .entrega-kanban .kanban-column-header {
   padding: 6px 8px;
   gap: 6px;
@@ -2727,11 +2737,6 @@ body.arrastando-painel {
 .entrega-kanban .kanban-card-title {
   font-size: 11.5px;
   -webkit-line-clamp: 3;
-}
-.entrega-kanban-conta {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--gray2);
 }
 /* O pe do card: prazo a esquerda, quem cuida e a lixeira a direita. A lixeira
    so aparece com o ponteiro no card - uma por cartao numa coluna cheia seria
@@ -3611,10 +3616,29 @@ body.arrastando-painel {
   border-bottom: 1px solid var(--gray3);
   flex-shrink: 0;
 }
-/* O título empurra o resto para a direita; a contagem e o botão de fixar ficam
-   colados no canto. Com `space-between` e três itens, a contagem ficava solta
-   no meio da barra. */
-.kanban-column-header .kanban-column-title { flex: 1; min-width: 0; }
+/* O titulo ocupa so o que precisa: a contagem vem colada nele, e e a bolinha
+   que empurra o resto - os botoes da coluna - para o canto direito. */
+.kanban-column-header .kanban-column-title { flex: 0 1 auto; min-width: 0; }
+
+/* O subtotal da etapa, numa bolinha ao lado do nome. Cresce com o numero em
+   vez de virar circulo apertado: uma coluna com 59 cartoes precisa caber. */
+.kanban-conta-bolha {
+  flex: none;
+  margin-right: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--gray4);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--gray2);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
 
 /* Fixar a etapa recolhida. Apagado em repouso: é ajuste de arrumação, e não
    pode competir com a contagem de tarefas da coluna. */

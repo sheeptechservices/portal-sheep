@@ -9,6 +9,7 @@ import {
   IconAgrupar, IconCalendario, IconCheck, IconExternal, IconOrdenar, IconSearch,
   IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado, IconMarcoValidado,
   IconPlay, IconPlus, IconPrioridadeAlta, IconPrioridadeBaixa, IconPrioridadeMaxima,
+  IconRecolher,
   IconPrioridadeMedia, IconTrash, IconTrendDown, IconTrendFlat, IconTrendUp, IconTrendWavy,
   IconTriangulo, IconVisaoLista, IconVisaoQuadro,
   IconX, IconZip,
@@ -1386,20 +1387,176 @@ function SeletorPessoas({ pessoas, valor, onChange, vazio = 'Escolher pessoas' }
 
 // ── Entregas do projeto ─────────────────────────────────────────────────────
 
+/** Carência antes de uma coluna recolhida voltar a recolher (ms). */
+const RECOLHER_APOS_MS = 2000;
+/** Tempo parado sobre o traço antes de ele abrir: atravessar o quadro com o
+ *  ponteiro não deve disparar a expansão. */
+const INTENCAO_MS = 200;
+
+/** Uma coluna do quadro da entrega.
+ *
+ *  Recolhe quando está vazia - padrão de todo quadro da casa - ou quando a
+ *  etapa foi marcada como pontual pelo botão do próprio cabeçalho. Fechada, ela
+ *  é um traço com a bolinha da cor e a contagem; abre parando o ponteiro em
+ *  cima, e na hora quando um card está sendo arrastado, porque aí a coluna
+ *  precisa estar pronta para receber. */
+function ColunaDaEntrega({ etapa, tarefas, podeEditar, arrastando, onAbrir, onCriar,
+  onExcluir, onSoltarAqui, onArrastar, onFimDoArraste, onFixarRecolhida }: {
+  etapa: EtapaTarefa;
+  tarefas: Tarefa[];
+  podeEditar: boolean;
+  arrastando: number | null;
+  onAbrir: (t: Tarefa) => void;
+  onCriar: () => void;
+  onExcluir: (t: Tarefa) => void;
+  onSoltarAqui: () => void;
+  onArrastar: (id: number) => void;
+  onFimDoArraste: () => void;
+  /** Ausente para quem não configura etapas. */
+  onFixarRecolhida?: (etapaId: number) => void;
+}) {
+  const [aberta, setAberta] = useState(false);
+  const [sobre, setSobre] = useState(false);
+  const abrirTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fecharTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const limparAbrir = () => {
+    if (abrirTimer.current) { clearTimeout(abrirTimer.current); abrirTimer.current = null; }
+  };
+  const limparFechar = () => {
+    if (fecharTimer.current) { clearTimeout(fecharTimer.current); fecharTimer.current = null; }
+  };
+  useEffect(() => () => { limparAbrir(); limparFechar(); }, []);
+
+  const recolhivel = tarefas.length === 0 || Number(etapa.always_collapsed) === 1;
+
+  function agendarFechar() {
+    limparFechar();
+    fecharTimer.current = setTimeout(() => setAberta(false), RECOLHER_APOS_MS);
+  }
+  function entrou() {
+    limparFechar();
+    if (aberta) return;
+    limparAbrir();
+    abrirTimer.current = setTimeout(() => setAberta(true), INTENCAO_MS);
+  }
+  function saiu() { limparAbrir(); agendarFechar(); }
+  // O arraste não espera intenção: a coluna abre na hora para receber a tarefa.
+  function segurarAberta() { limparAbrir(); limparFechar(); setAberta(true); }
+
+  const classes = [
+    'kanban-column',
+    recolhivel ? 'kanban-column-collapsible' : '',
+    recolhivel && aberta ? 'is-open' : '',
+    recolhivel && arrastando !== null ? 'drop-ready' : '',
+    sobre ? 'drag-over' : '',
+  ].filter(Boolean).join(' ');
+
+  return (
+    <div className={classes}
+      style={{ ['--col-color' as string]: etapa.cor }}
+      onDragOver={ev => {
+        if (!podeEditar || arrastando === null) return;
+        ev.preventDefault();
+        setSobre(true);
+        if (recolhivel) segurarAberta();
+      }}
+      onDragLeave={() => { setSobre(false); if (recolhivel) agendarFechar(); }}
+      onDrop={ev => {
+        ev.preventDefault();
+        setSobre(false);
+        if (recolhivel) agendarFechar();
+        onSoltarAqui();
+      }}
+      {...(recolhivel ? { onMouseEnter: entrou, onMouseLeave: saiu } : {})}>
+
+      {recolhivel && (
+        <div className="kanban-rail" aria-hidden="true">
+          <span className="kanban-dot" style={{ background: etapa.cor }} />
+          {tarefas.length > 0 && <span className="kanban-rail-count">{tarefas.length}</span>}
+        </div>
+      )}
+
+      <div className="kanban-column-header">
+        {/* A descrição da etapa vira a dica, como no quadro grande. */}
+        <div className="kanban-column-title" title={etapa.descricao ?? undefined}>
+          <span className="kanban-dot" style={{ background: etapa.cor }} />
+          {etapa.nome}
+        </div>
+        {/* O subtotal colado no titulo, como na tela de Tarefas. */}
+        <span className="kanban-conta-bolha">{tarefas.length}</span>
+        {/* Manter a etapa recolhida é decisão sobre o quadro, e se toma olhando
+            para ele. É a mesma marca da tela de Tarefas: a etapa marcada aqui
+            fica recolhida lá também. Na mesma ordem de lá - marca, contagem e
+            o mais -, senão a mesma cabeça de coluna se leria de dois jeitos. */}
+        {onFixarRecolhida && (
+          <button type="button" className="kanban-column-fixar"
+            aria-pressed={Number(etapa.always_collapsed) === 1}
+            title={Number(etapa.always_collapsed) === 1
+              ? 'Etapa recolhida por padrão. Clique para mantê-la aberta.'
+              : 'Manter esta etapa recolhida, mesmo com tarefas dentro'}
+            aria-label={Number(etapa.always_collapsed) === 1
+              ? 'Manter a etapa aberta' : 'Manter a etapa recolhida'}
+            onClick={ev => { ev.stopPropagation(); onFixarRecolhida(etapa.id); }}>
+            <IconRecolher size={12} aberta={Number(etapa.always_collapsed) !== 1} />
+          </button>
+        )}
+        {podeEditar && (
+          <button type="button" className="kanban-column-fixar"
+            title={`Nova tarefa em "${etapa.nome}"`}
+            aria-label={`Nova tarefa em ${etapa.nome}`}
+            onClick={ev => { ev.stopPropagation(); onCriar(); }}>
+            <IconPlus size={12} />
+          </button>
+        )}
+      </div>
+
+      <div className="kanban-column-body">
+        {tarefas.map(x => (
+          <div key={x.id} className="kanban-card"
+            draggable={podeEditar}
+            onDragStart={() => onArrastar(x.id)}
+            onDragEnd={onFimDoArraste}
+            onClick={() => podeEditar && onAbrir(x)}
+            style={{ cursor: podeEditar ? 'pointer' : 'default',
+              opacity: arrastando === x.id ? 0.45 : 1 }}>
+            <p className="kanban-card-title">{x.titulo}</p>
+            <div className="entrega-kanban-pe">
+              {x.prazo && <span>{fmtData(x.prazo)}</span>}
+              {x.responsavel_nome && (
+                <span title={x.responsavel_nome} style={{ marginLeft: 'auto' }}>
+                  <Avatar nome={x.responsavel_nome} foto={x.responsavel_foto} size={16} />
+                </span>
+              )}
+              {podeEditar && (
+                <button type="button" className="kanban-card-acao perigo"
+                  title="Excluir tarefa" aria-label={`Excluir ${x.titulo}`}
+                  onClick={ev => { ev.stopPropagation(); onExcluir(x); }}>
+                  <IconTrash size={11} />
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** As tarefas de uma entrega, em quadro.
  *
  *  Mesmo quadro da tela de Tarefas, em tamanho de painel: as mesmas colunas, na
- *  mesma ordem do fluxo, com as mesmas cores e o mesmo arraste. Duas leituras
- *  diferentes da mesma coisa fariam a pessoa reaprender o que ela já sabe.
+ *  mesma ordem do fluxo, com as mesmas cores, o mesmo arraste e as mesmas
+ *  colunas recolhíveis. Duas leituras diferentes da mesma coisa fariam a pessoa
+ *  reaprender o que ela já sabe.
  *
- *  Todas as etapas aparecem, inclusive as vazias: coluna que some esconde
- *  justamente que não há nada ali, e é nela que o "+" cria a tarefa já no lugar
- *  certo. O quadro rola de lado dentro do próprio bloco, e nunca empurra a
- *  largura do painel.
+ *  Todas as etapas aparecem, inclusive as vazias - fechadas num traço, que é
+ *  onde o card cabe quando alguém arrasta. O quadro rola de lado dentro do
+ *  próprio bloco, e nunca empurra a largura do painel.
  *
  *  Quem abre o quadro é a seção de tarefas, que nasce fechada: a entrega aberta
  *  responde primeiro sobre ela mesma. */
-function KanbanDaEntrega({ tarefas, etapas, podeEditar, onAbrir, onCriar, onExcluir, onMover }: {
+function KanbanDaEntrega({ tarefas, etapas, podeEditar, onAbrir, onCriar, onExcluir,
+  onMover, onFixarRecolhida }: {
   tarefas: Tarefa[];
   etapas: EtapaTarefa[];
   podeEditar: boolean;
@@ -1408,80 +1565,30 @@ function KanbanDaEntrega({ tarefas, etapas, podeEditar, onAbrir, onCriar, onExcl
   onCriar: (status: string) => void;
   onExcluir: (t: Tarefa) => void;
   onMover: (t: Tarefa, status: string) => void;
+  onFixarRecolhida?: (etapaId: number) => void;
 }) {
   const [arrastando, setArrastando] = useState<number | null>(null);
-  const [sobre, setSobre] = useState<string | null>(null);
 
   return (
     <div className="kanban-board entrega-kanban">
-      {etapas.map(et => {
-        const daEtapa = tarefas.filter(x => x.status === et.nome);
-        return (
-          <div key={et.id}
-            className={`kanban-column${sobre === et.nome ? ' drag-over' : ''}`}
-            style={{ ['--col-color' as string]: et.cor }}
-            onDragOver={ev => {
-              if (!podeEditar || arrastando === null) return;
-              ev.preventDefault();
-              setSobre(et.nome);
-            }}
-            onDragLeave={() => setSobre(x => (x === et.nome ? null : x))}
-            onDrop={ev => {
-              ev.preventDefault();
-              setSobre(null);
-              const alvo = tarefas.find(x => x.id === arrastando);
-              setArrastando(null);
-              if (alvo && alvo.status !== et.nome) onMover(alvo, et.nome);
-            }}>
-
-            <div className="kanban-column-header">
-              {/* A descrição da etapa vira a dica, como no quadro grande. */}
-              <div className="kanban-column-title" title={et.descricao ?? undefined}>
-                <span className="kanban-dot" style={{ background: et.cor }} />
-                {et.nome}
-              </div>
-              <span className="entrega-kanban-conta">{daEtapa.length}</span>
-              {podeEditar && (
-                <button type="button" className="kanban-column-fixar"
-                  title={`Nova tarefa em "${et.nome}"`}
-                  aria-label={`Nova tarefa em ${et.nome}`}
-                  onClick={() => onCriar(et.nome)}>
-                  <IconPlus size={12} />
-                </button>
-              )}
-            </div>
-
-            <div className="kanban-column-body">
-              {daEtapa.map(x => (
-                <div key={x.id} className="kanban-card"
-                  draggable={podeEditar}
-                  onDragStart={() => setArrastando(x.id)}
-                  onDragEnd={() => { setArrastando(null); setSobre(null); }}
-                  onClick={() => podeEditar && onAbrir(x)}
-                  style={{ cursor: podeEditar ? 'pointer' : 'default',
-                    opacity: arrastando === x.id ? 0.45 : 1 }}>
-                  <p className="kanban-card-title">{x.titulo}</p>
-                  <div className="entrega-kanban-pe">
-                    {x.prazo && <span>{fmtData(x.prazo)}</span>}
-                    {x.responsavel_nome && (
-                      <span title={x.responsavel_nome} style={{ marginLeft: 'auto' }}>
-                        <Avatar nome={x.responsavel_nome} foto={x.responsavel_foto} size={16} />
-                      </span>
-                    )}
-                    {podeEditar && (
-                      <button type="button" className="kanban-card-acao perigo"
-                        title="Excluir tarefa" aria-label={`Excluir ${x.titulo}`}
-                        onClick={ev => { ev.stopPropagation(); onExcluir(x); }}>
-                        <IconTrash size={11} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
+      {etapas.map(et => (
+        <ColunaDaEntrega key={et.id}
+          etapa={et}
+          tarefas={tarefas.filter(x => x.status === et.nome)}
+          podeEditar={podeEditar}
+          arrastando={arrastando}
+          onAbrir={onAbrir}
+          onCriar={() => onCriar(et.nome)}
+          onExcluir={onExcluir}
+          onArrastar={setArrastando}
+          onFimDoArraste={() => setArrastando(null)}
+          onSoltarAqui={() => {
+            const alvo = tarefas.find(x => x.id === arrastando);
+            setArrastando(null);
+            if (alvo && alvo.status !== et.nome) onMover(alvo, et.nome);
+          }}
+          onFixarRecolhida={onFixarRecolhida} />
+      ))}
     </div>
   );
 }
@@ -1645,7 +1752,7 @@ function EditorEntrega({ inicial, pessoas, marcadores, submarcadores, salvando, 
  *  projeto novo elas ficam em memória até o projeto existir. */
 function SecaoEntregas({
   entregas, pendentes, tarefas, onVerTarefasDaEntrega, onCriarTarefa, onAbrirTarefa,
-  onExcluirTarefa, onMoverTarefa, podeEditarTarefa, etapasTarefa,
+  onExcluirTarefa, onMoverTarefa, onFixarRecolhida, podeEditarTarefa, etapasTarefa,
   pessoas, marcadores, submarcadores,
   salvando, somenteLeitura,
   reunioes, focada, onVincular, onAbrirReuniao,
@@ -1675,6 +1782,9 @@ function SecaoEntregas({
   onMoverTarefa: (t: Tarefa, status: string) => void;
   /** As colunas do quadro, na ordem do fluxo. */
   etapasTarefa: EtapaTarefa[];
+  /** Marca a etapa como recolhida por padrão. Ausente para quem não configura
+   *  etapas: é ajuste do quadro de todo mundo, e não desta entrega. */
+  onFixarRecolhida?: (etapaId: number) => void;
   /** Sem isto a lista continua à vista, só que sem criar, abrir nem excluir. */
   podeEditarTarefa: boolean;
   /** Em memória, no cadastro de um projeto novo. */
@@ -2271,7 +2381,8 @@ function SecaoEntregas({
                             onAbrir={onAbrirTarefa}
                             onCriar={status => onCriarTarefa(e.id, status)}
                             onExcluir={onExcluirTarefa}
-                            onMover={onMoverTarefa} />
+                            onMover={onMoverTarefa}
+                            onFixarRecolhida={onFixarRecolhida} />
                         </div>
                       </div>
                     </div>
@@ -4533,7 +4644,7 @@ function AbaGestao({
 function FormularioProjeto({
   editando, base, pessoas, clientes, salvando, onFechar, onSalvar,
   onCriarTarefaNaEntrega, onAbrirTarefa, onExcluirTarefa, onMoverTarefa,
-  podeEditarTarefa, etapasTarefa, onBaixarAnexo, onVerAnexo, onEtiquetar,
+  onFixarRecolhida, podeEditarTarefa, etapasTarefa, onBaixarAnexo, onVerAnexo, onEtiquetar,
   marcadores, submarcadores, onExcluir, somenteLeitura, onVerTarefasDaEntrega,
   onRegistrarSaude, onExcluirSaude, onRegistrarReuniao, onVincularReuniao,
   onBuscarReunioesFireflies, onBuscarGravacaoFireflies, onAnexarReuniaoFireflies,
@@ -4554,6 +4665,7 @@ function FormularioProjeto({
   onAbrirTarefa: (t: Tarefa) => void;
   onExcluirTarefa: (t: Tarefa) => void;
   onMoverTarefa: (t: Tarefa, status: string) => void;
+  onFixarRecolhida?: (etapaId: number) => void;
   podeEditarTarefa: boolean;
   etapasTarefa: EtapaTarefa[];
   /** `intacto` diz que ninguém mexeu no projeto desde que ele nasceu: abrir e
@@ -5121,6 +5233,7 @@ function FormularioProjeto({
             onAbrirTarefa={onAbrirTarefa}
             onExcluirTarefa={onExcluirTarefa}
             onMoverTarefa={onMoverTarefa}
+            onFixarRecolhida={onFixarRecolhida}
             podeEditarTarefa={podeEditarTarefa}
             etapasTarefa={etapasTarefa}
             pessoas={pessoas}
@@ -5616,6 +5729,21 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     // reconciliação vem buscar, já com a tela pintada.
     reconciliar();
   }, [api, pessoas, pintarTarefa, reconciliar, toast]);
+
+  /** Marca ou desmarca a etapa como recolhida por padrão, direto do quadro da
+   *  entrega. É a mesma marca da tela de Tarefas - a etapa vale para o quadro
+   *  todo, e não para esta entrega. Pinta na hora e grava: esperar a resposta
+   *  para a coluna reagir faria o botão parecer travado. */
+  const fixarEtapaRecolhida = useCallback(async (etapaId: number) => {
+    const virar = (es: EtapaTarefa[]) => es.map(e => (e.id === etapaId
+      ? { ...e, always_collapsed: e.always_collapsed ? 0 : 1 } : e));
+    setEtapasTarefa(virar);
+    const r = await api('', 'POST', { action: 'toggle_collapsed_tarefa_status', id: etapaId });
+    if (r?.error) {
+      setEtapasTarefa(virar);
+      toast('error', 'Não foi possível mudar a etapa', r.error);
+    }
+  }, [api, toast]);
 
   /** Arrastou o card de uma coluna para outra dentro da entrega. Cair na etapa
    *  de conversão conclui a tarefa, e sair dela reabre: é a mesma regra do
@@ -6272,9 +6400,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
                     <span className="kanban-dot" style={{ background: cor }} />
                     {st}
                   </div>
-                  <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--gray2)' }}>
-                    {daColuna.length}
-                  </span>
+                  <span className="kanban-conta-bolha">{daColuna.length}</span>
                 </div>
                 <div className="kanban-column-body">
                   {daColuna.map(p => (
@@ -6502,6 +6628,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
           onAbrirTarefa={abrirTarefa}
           onExcluirTarefa={setExcluindoTarefa}
           onMoverTarefa={moverTarefaDeEtapa}
+          onFixarRecolhida={pode('configuracoes:etapas') ? fixarEtapaRecolhida : undefined}
           podeEditarTarefa={pode('tarefas:editar')}
           etapasTarefa={etapasTarefa}
           pessoas={pessoas}

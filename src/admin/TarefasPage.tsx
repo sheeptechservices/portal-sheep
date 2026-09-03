@@ -16,7 +16,7 @@ import { createPortal } from 'react-dom';
 import { iniciais, useAuth, useToast } from './AdminApp';
 import {
   IconAgrupar, IconAlert, IconCalendario, IconCheck, IconChevronDown, IconClip, IconComentario, IconInbox, IconRecolher,
-  IconDownload, IconDuplicar, IconOrdenar, IconSearch, IconTrash, IconUser,
+  IconDownload, IconDuplicar, IconOrdenar, IconPlus, IconSearch, IconTrash, IconUser,
   IconVisaoLista, IconVisaoQuadro,
   IconVisaoTabela, IconX,
 } from '../components/icons';
@@ -736,8 +736,11 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
    *  O painel abre no clique, e a criação corre por baixo: esperar a ida e a
    *  volta para abrir punha meio segundo de nada entre o clique e o cursor no
    *  campo do título. */
-  function novaTarefa() {
-    const base = { ...tarefaNova(), titulo: TITULO_PADRAO };
+  function novaTarefa(status?: string) {
+    // Vindo do "+" de uma coluna, a tarefa nasce naquela etapa: quem pede uma
+    // tarefa dali já disse em que ponto do fluxo ela entra, e abrir na etapa de
+    // entrada obrigaria a corrigir logo em seguida.
+    const base = { ...tarefaNova(), titulo: TITULO_PADRAO, status: status || entrada };
     nasceuAssim.current = JSON.stringify(base);
     setForm(base);
     criando.current = api('', 'POST', { action: 'salvar_tarefa', ...base, entrega_id: null })
@@ -953,6 +956,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
       ) : view === 'quadro' ? (
         <Quadro grupos={grupos} agrupamento={agrupamento} et={et} etq={etq} podeEditar={podeEditar}
           onAbrir={abrirEdicao} onMover={mover}
+          onCriarNaEtapa={podeEditar ? novaTarefa : undefined}
           onFixarRecolhida={pode('configuracoes:etapas') ? fixarRecolhida : undefined}
           onExcluir={podeExcluir ? setExcluindo : undefined}
           onDuplicar={podeEditar ? (x => void duplicar(x)) : undefined} />
@@ -1059,7 +1063,8 @@ const INTENCAO_MS = 200;
 /** Uma coluna do quadro. Recolhe quando está vazia (padrão de todo board da
  *  casa) ou quando a etapa foi marcada como pontual em Configurações, e volta a
  *  abrir com intenção: mouse parado em cima, ou uma tarefa arrastada até ela. */
-function Coluna({ grupo, et, etq, podeEditar, arrastando, isOver, onAbrir, onDragOver, onDragLeave, onDrop, onArrastar, onSoltar, onFixarRecolhida, onExcluir, onDuplicar }: {
+function Coluna({ grupo, et, etq, podeEditar, arrastando, isOver, onAbrir, onDragOver, onDragLeave,
+  onDrop, onArrastar, onSoltar, onCriarNaEtapa, onFixarRecolhida, onExcluir, onDuplicar }: {
   grupo: Grupo;
   et: Etapario;
   etq: Etiquetario;
@@ -1072,6 +1077,9 @@ function Coluna({ grupo, et, etq, podeEditar, arrastando, isOver, onAbrir, onDra
   onDrop: () => void;
   onArrastar: (id: number) => void;
   onSoltar: () => void;
+  /** Cria uma tarefa já nesta etapa. Só no agrupamento por status: nas outras
+   *  dimensões a coluna não é uma etapa, e "criar aqui" não teria significado. */
+  onCriarNaEtapa?: (status: string) => void;
   /** Ausente para quem não configura etapas, e fora do agrupamento por status. */
   onFixarRecolhida?: (etapaId: number) => void;
   /** Ausentes para quem não pode excluir / criar tarefa. */
@@ -1151,6 +1159,9 @@ function Coluna({ grupo, et, etq, podeEditar, arrastando, isOver, onAbrir, onDra
             : <span className="kanban-dot" style={{ background: grupo.cor }} />}
           {grupo.rotulo}
         </div>
+        {/* O subtotal colado no titulo: e a contagem daquela etapa, e no canto
+            direito ele lia como um numero solto da coluna. */}
+        <span className="kanban-conta-bolha">{tarefas.length}</span>
         {/* Manter a etapa recolhida é decisão sobre o quadro, e agora se toma
             olhando para ele. Só aparece no agrupamento por status: nas outras
             dimensões a coluna não é uma etapa configurável. */}
@@ -1168,9 +1179,20 @@ function Coluna({ grupo, et, etq, podeEditar, arrastando, isOver, onAbrir, onDra
             <IconRecolher size={12} aberta={!grupo.recolhida} />
           </button>
         )}
-        <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--gray2)' }}>
-          {tarefas.length}
-        </span>
+        {/* Criar já na coluna. O quadro é onde se decide em que ponto do fluxo a
+            tarefa entra, e ter de abrir o painel para corrigir a etapa logo
+            depois de criar era um passo a mais em todo cadastro. */}
+        {onCriarNaEtapa && grupo.etapaId != null && (
+          <button
+            type="button"
+            className="kanban-column-fixar"
+            title={`Nova tarefa em "${grupo.rotulo}"`}
+            aria-label={`Nova tarefa em ${grupo.rotulo}`}
+            onClick={e => { e.stopPropagation(); onCriarNaEtapa(grupo.chave); }}
+          >
+            <IconPlus size={12} />
+          </button>
+        )}
       </div>
 
       <div ref={corpo} onScroll={conferirFim}
@@ -1245,7 +1267,8 @@ function Coluna({ grupo, et, etq, podeEditar, arrastando, isOver, onAbrir, onDra
   );
 }
 
-function Quadro({ grupos, agrupamento, et, etq, podeEditar, onAbrir, onMover, onFixarRecolhida, onExcluir, onDuplicar }: {
+function Quadro({ grupos, agrupamento, et, etq, podeEditar, onAbrir, onMover, onCriarNaEtapa,
+  onFixarRecolhida, onExcluir, onDuplicar }: {
   grupos: Grupo[];
   agrupamento: string;
   et: Etapario;
@@ -1253,6 +1276,8 @@ function Quadro({ grupos, agrupamento, et, etq, podeEditar, onAbrir, onMover, on
   podeEditar: boolean;
   onAbrir: (t: Tarefa) => void;
   onMover: (t: TarefaComProjeto, campo: 'status' | 'prioridade', valor: string) => void;
+  /** Cria uma tarefa já na etapa da coluna. Ausente para quem não edita. */
+  onCriarNaEtapa?: (status: string) => void;
   onFixarRecolhida?: (etapaId: number) => void;
   onExcluir?: (t: TarefaComProjeto) => void;
   onDuplicar?: (t: TarefaComProjeto) => void;
@@ -1288,6 +1313,7 @@ function Quadro({ grupos, agrupamento, et, etq, podeEditar, onAbrir, onMover, on
           }}
           onArrastar={setArrastando}
           onSoltar={() => { setArrastando(null); setSobre(null); }}
+          onCriarNaEtapa={onCriarNaEtapa}
           onFixarRecolhida={onFixarRecolhida}
           onExcluir={onExcluir}
           onDuplicar={onDuplicar}
