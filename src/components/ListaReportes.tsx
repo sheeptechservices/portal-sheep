@@ -10,9 +10,9 @@
 //  ordenada por chegada ela devolveria a caixa de entrada. Quem ordena é o
 //  servidor; aqui só se desenha o que veio.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { IconAlert, IconImage, IconX } from './icons';
+import { IconAlert, IconChevronRight, IconImage, IconImagemSem, IconX } from './icons';
 import { PreviaArquivo } from './PreviaArquivo';
 import { SelectSistema } from './SelectSistema';
 import { Avatar } from '../admin/FormularioTarefa';
@@ -71,6 +71,12 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
   const [erro, setErro] = useState('');
   const [vendo, setVendo] = useState<ReporteNaLista | null>(null);
   const [erroStatus, setErroStatus] = useState('');
+  /** Uma linha aberta por vez: a fila é para varrer, e três detalhes abertos
+   *  juntos empurram o resto para fora da tela. */
+  const [aberta, setAberta] = useState<number | null>(null);
+  /** Os ids já abertos alguma vez. O detalhe deles fica montado daí em diante:
+   *  montado só enquanto aberto, o bloco animaria de nada para nada. */
+  const [jaAbertas, setJaAbertas] = useState<Set<number>>(new Set());
   const { saindo, fechar } = useSaidaSuave(onFechar);
   const fundo = useFecharNoFundo(fechar);
 
@@ -102,6 +108,11 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
       setLista(antes);
       setErroStatus(r.error);
     }
+  }
+
+  function alternar(id: number) {
+    setJaAbertas(s => (s.has(id) ? s : new Set(s).add(id)));
+    setAberta(a => (a === id ? null : id));
   }
 
   return createPortal(
@@ -147,35 +158,58 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
                 <tbody>
                   {lista.map(r => {
                     const Icone = ICONE_PRIORIDADE[r.urgencia];
+                    const abertaAqui = aberta === r.id;
                     return (
-                      <tr key={r.id}>
-                        <td className="reportes-urgencia">
-                          {Icone && <Icone size={13} />} {r.urgencia}
-                        </td>
+                      <Fragment key={r.id}>
+                      <tr className={`reportes-linha${abertaAqui ? ' aberta' : ''}`}
+                        role="button" tabIndex={0} aria-expanded={abertaAqui}
+                        onClick={() => alternar(r.id)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); alternar(r.id); }
+                        }}>
                         <td>
-                          {/* Uma linha por relato, cortada com reticências. O
-                              texto inteiro e a tela de onde veio ficam no
-                              `title`: numa fila, o que se lê de relance é a
-                              primeira frase, e um relato de dez linhas empurrava
-                              todos os outros para fora da tela. */}
-                          <p className="reportes-texto"
-                            title={r.pagina ? `${r.texto}
-
-Em: ${r.pagina}` : r.texto}>
-                            {r.texto}
-                          </p>
+                          {/* O selo vai num `span`, e não na própria célula: uma
+                              célula com `display: flex` deixa de ser célula de
+                              tabela, e a borda de baixo dela para de acompanhar
+                              a linha - era o traço torto embaixo da urgência. */}
+                          <span className="reportes-urgencia">
+                            {Icone && <Icone size={13} />} {r.urgencia}
+                          </span>
                         </td>
-                        <td>
+                        <td className="reportes-col-relato">
+                          {/* A linha mostra o começo; o resto abre no detalhe.
+                              Numa fila, o que se lê de relance é a primeira
+                              frase, e um relato de dez linhas empurrava todos os
+                              outros para fora da tela. */}
+                          <div className="reportes-relato">
+                            <span className={`entrega-seta${abertaAqui ? ' aberta' : ''}`}>
+                              <IconChevronRight size={12} />
+                            </span>
+                            <p className="reportes-texto">{r.texto}</p>
+                          </div>
+                        </td>
+                        {/* Só a célula que TEM algo para clicar engole o clique:
+                            ver o print não é abrir o detalhe. Sem print, ela
+                            volta a ser parte da linha - engolir o clique de uma
+                            célula vazia deixa um pedaço morto no meio da fila, e
+                            quem clicasse ali acharia que a linha não abre. */}
+                        <td onClick={r.tem_print ? (e => e.stopPropagation()) : undefined}>
                           {r.tem_print ? (
                             <button type="button" className="reportes-print" onClick={() => setVendo(r)}
                               title={r.print_nome ?? 'Ver o print'}>
                               <IconImage size={13} /> Ver
                             </button>
                           ) : (
-                            <span className="reportes-sem">-</span>
+                            <span className="reportes-sem" title="Sem print">
+                              <IconImagemSem size={14} />
+                            </span>
                           )}
                         </td>
-                        <td>
+                        {/* Mesma coisa aqui: o campo de status engole o clique
+                            para escolher um status não abrir o detalhe junto.
+                            Para quem só lê, a célula é um chip, e o clique volta
+                            a ser da linha - expandir é de todo mundo. */}
+                        <td onClick={podeMudarStatus && mudarStatus ? (e => e.stopPropagation()) : undefined}>
                           {podeMudarStatus && mudarStatus ? (
                             <div style={{ width: 138 }}>
                               <SelectSistema
@@ -210,6 +244,28 @@ Em: ${r.pagina}` : r.texto}>
                           <span className="reportes-relativo">{tempoRelativo(r.criado_em)}</span>
                         </td>
                       </tr>
+                      {/* O detalhe: o relato inteiro, sem corte, e de onde ele
+                          veio. Fica montado depois da primeira abertura - montado
+                          só enquanto aberto, o bloco animaria de nada para nada. */}
+                      {jaAbertas.has(r.id) && (
+                        <tr className="reportes-detalhe">
+                          <td colSpan={6}>
+                            <div className={`revelar${abertaAqui ? ' aberto' : ''}`}>
+                              <div>
+                                <div className="reportes-detalhe-corpo">
+                                  <p className="reportes-detalhe-texto">{r.texto}</p>
+                                  <p className="reportes-detalhe-meta">
+                                    {r.pagina && <>Reportado em <strong>{r.pagina}</strong></>}
+                                    {r.pagina && r.autor_email ? ' · ' : ''}
+                                    {r.autor_email}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     );
                   })}
                 </tbody>
@@ -218,6 +274,7 @@ Em: ${r.pagina}` : r.texto}>
           </div>
         </div>
       </div>
+
 
       {/* A prévia é a mesma janela de todo anexo do sistema: imagem abre dentro
           dela, e o download sai de lá. */}

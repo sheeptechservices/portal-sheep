@@ -68,6 +68,19 @@ export function IconDoc({ size = 14 }: { size?: number }) {
 export function IconImage({ size = 14 }: { size?: number }) {
   return <Ico size={size}><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.6" /><path d="M21 15l-5-5L5 21" /></Ico>;
 }
+// Imagem que nao existe: a mesma moldura da `IconImage`, cortada pela diagonal.
+// Serve de "sem print" numa coluna que as vezes tem imagem - um traco ali dizia
+// tanto "nao tem" quanto "nao carregou", e a moldura riscada so diz a primeira.
+export function IconImagemSem({ size = 14 }: { size?: number }) {
+  return (
+    <Ico size={size}>
+      <path d="M21 12.5V5a2 2 0 00-2-2h-7.5" />
+      <path d="M6 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-1" />
+      <path d="M21 16l-4.5-4.5-2 2" />
+      <path d="M3 3l18 18" />
+    </Ico>
+  );
+}
 // A escala de temperatura da oportunidade. Tres desenhos que se leem de longe
 // pela silhueta - chama, termometro e floco -, e nao tres variacoes do mesmo
 // simbolo: numa lista de tres linhas, o que separa e a forma, nao o detalhe.

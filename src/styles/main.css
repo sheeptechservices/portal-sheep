@@ -14501,9 +14501,9 @@ button.checklist-texto:focus-visible {
 .reportar-voltar:focus-visible { outline: none; color: var(--reportar-tinta); }
 
 /* ── A janela da fila de relatos ──────────────────────────────────────────── */
-/* Seis colunas, e a do relato e a que come espaco: a janela e mais larga que o
-   dialogo padrao para a fila caber sem barra de rolagem lateral. */
-.reportes-modal { width: min(1020px, calc(100vw - 32px)); }
+/* Seis colunas, e a do relato e a que come espaco: a janela e a mais larga do
+   sistema para caber a frase inteira antes das reticencias. */
+.reportes-modal { width: min(1240px, calc(100vw - 48px)); }
 .reportes-corpo {
   padding: 4px 20px 20px;
   overflow: auto;
@@ -14541,22 +14541,46 @@ button.checklist-texto:focus-visible {
   color: var(--black);
 }
 .reportes-tabela tbody tr { transition: background var(--transition); }
-.reportes-tabela tbody tr:hover { background: var(--card-hover-bg); }
+/* A linha inteira e o gatilho do detalhe: o alvo de clique e a linha que se
+   estava lendo, e nao um botao a mais no fim dela. */
+.reportes-linha { cursor: pointer; }
+.reportes-linha:hover { background: var(--card-hover-bg); }
+.reportes-linha:focus-visible { outline: 2px solid var(--gray2); outline-offset: -2px; }
+.reportes-linha:hover .entrega-seta { color: var(--black); }
+/* Aberta, a linha se cola ao proprio detalhe: a borda entre os dois some para
+   os dois lerem como um bloco so. */
+.reportes-linha.aberta { background: var(--card-hover-bg); }
+.reportes-linha.aberta > td { border-bottom-color: transparent; }
 /* A urgencia nao quebra linha: ela e a coluna que se le de relance para achar
-   onde a fila muda de degrau. */
+   onde a fila muda de degrau. O `flex` fica no `span`, e nao na celula: celula
+   com `display: flex` deixa de ser celula de tabela, e a borda de baixo dela
+   para de acompanhar a linha - era o traco torto embaixo da urgencia. */
 .reportes-urgencia {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   font-weight: 700;
   white-space: nowrap;
 }
+/* A seta e o texto na mesma linha, com o texto encolhendo ate as reticencias -
+   e por isso o `min-width: 0` nos dois. */
+.reportes-relato {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* A coluna do relato fica com todo o espaco que sobra das outras cinco, que sao
+   estreitas e de largura previsivel. O `max-width: 0` e o que faz isso
+   funcionar: sem ele a celula cresce com o texto e empurra a tabela para fora
+   da janela em vez de cortar. */
+.reportes-col-relato { width: 100%; max-width: 0; }
 /* Uma linha por relato: a fila e para varrer de cima a baixo, e um relato de
    dez linhas empurrava os outros para fora da tela. O texto inteiro fica no
    `title`. */
 .reportes-texto {
   margin: 0;
-  max-width: 44ch;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -14577,7 +14601,14 @@ button.checklist-texto:focus-visible {
   transition: border-color var(--transition), background var(--transition);
 }
 .reportes-print:hover { border-color: var(--gray2); background: var(--gray4); }
-.reportes-sem { color: var(--gray3); }
+/* A moldura riscada de "sem print". Em `--gray2`, o cinza de texto apagado: ela
+   diz que nao ha nada e nao compete com o botao da linha de cima, mas continua
+   visivel. Em `--gray3`, que e cor de borda, o desenho sumia - no tema escuro
+   ele e quase a propria superficie. */
+.reportes-sem {
+  display: inline-flex;
+  color: var(--gray2);
+}
 /* O status de quem so le: a mesma pilula de status do resto do sistema - ponto
    de cor, rotulo, fundo na propria cor bem diluida. A cor vem por `--cor`, e
    nao repetida em quatro regras. */
@@ -14599,6 +14630,34 @@ button.checklist-texto:focus-visible {
   border-radius: 50%;
   flex-shrink: 0;
 }
+
+/* O detalhe, na linha de baixo. A celula nao tem folga nem borda propria: quem
+   as carrega e o bloco de dentro, senao a linha fechada deixaria um fio a mais
+   entre duas linhas. */
+.reportes-detalhe > td {
+  padding: 0;
+  border: 0;
+  background: var(--card-hover-bg);
+}
+.reportes-detalhe-corpo {
+  padding: 2px 14px 14px 32px;
+  border-bottom: 1px solid var(--gray4);
+}
+/* O relato inteiro: sem corte, com as quebras de linha que a pessoa escreveu. */
+.reportes-detalhe-texto {
+  margin: 0;
+  max-width: 90ch;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--black);
+  white-space: pre-wrap;
+}
+.reportes-detalhe-meta {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  color: var(--gray2);
+}
+.reportes-detalhe-meta strong { color: var(--gray); font-weight: 700; }
 
 .reportes-quem {
   display: flex;
