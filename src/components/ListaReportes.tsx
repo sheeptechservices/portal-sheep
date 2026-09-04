@@ -13,6 +13,7 @@
 import { Fragment, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { IconAlert, IconChevronRight, IconImage, IconImagemSem, IconX } from './icons';
+import { Dialogo } from './Dialogo';
 import { PreviaArquivo } from './PreviaArquivo';
 import { SelectSistema } from './SelectSistema';
 import { Avatar } from '../admin/FormularioTarefa';
@@ -58,7 +59,7 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
   carregar: () => Promise<{ reportes?: ReporteNaLista[]; error?: string }>;
   /** O conteúdo do print vem um por vez: na lista ele não viaja. */
   carregarPrint: (id: number) => Promise<{ nome: string; tipo: string; base64: string } | null>;
-  mudarStatus?: (id: number, status: string) => Promise<{ error?: string } | null>;
+  mudarStatus?: (id: number, status: string, avisar: boolean) => Promise<{ error?: string; aviso?: string | null } | null>;
   /**
    * Só o dono do painel muda o andamento. Esconder aqui é não oferecer um
    * caminho que voltaria 403 - a trava de verdade é o servidor, onde a ação
@@ -71,6 +72,10 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
   const [erro, setErro] = useState('');
   const [vendo, setVendo] = useState<ReporteNaLista | null>(null);
   const [erroStatus, setErroStatus] = useState('');
+  /** O andamento escolhido, esperando a resposta sobre o e-mail. A troca só
+   *  acontece depois: perguntar depois de aplicar deixaria a pergunta sem efeito
+   *  sobre o que já tinha acontecido. */
+  const [confirmando, setConfirmando] = useState<{ id: number; status: string } | null>(null);
   /** Uma linha aberta por vez: a fila é para varrer, e três detalhes abertos
    *  juntos empurram o resto para fora da tela. */
   const [aberta, setAberta] = useState<number | null>(null);
@@ -89,26 +94,37 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
   }, []);
 
   // Modal em portal não recebe tecla por si: o Esc é escutado na janela. Com a
-  // prévia aberta ele é dela, senão as duas fecham no mesmo toque.
+  // prévia ou a pergunta do e-mail abertas, o Esc é delas - senão duas caixas
+  // fechavam no mesmo toque, e a fila sumia junto com a pergunta.
   useEffect(() => {
-    const sair = (e: KeyboardEvent) => { if (e.key === 'Escape' && !vendo) fechar(); };
+    const sair = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !vendo && !confirmando) fechar();
+    };
     window.addEventListener('keydown', sair);
     return () => window.removeEventListener('keydown', sair);
-  }, [fechar, vendo]);
+  }, [fechar, vendo, confirmando]);
 
   /** Pinta primeiro e desfaz no erro: ninguém espera a ida e a volta para ver o
    *  próprio gesto. */
-  async function trocar(id: number, status: string) {
+  async function trocar(id: number, status: string, avisar: boolean) {
     if (!mudarStatus) return;
     const antes = lista;
     setErroStatus('');
     setLista(l => l?.map(x => (x.id === id ? { ...x, status } : x)) ?? l);
-    const r = await mudarStatus(id, status);
+    const r = await mudarStatus(id, status, avisar);
     if (r?.error) {
       setLista(antes);
       setErroStatus(r.error);
+      return;
     }
+    // Gravou, mas o e-mail não saiu: não é erro - o andamento mudou -, e mesmo
+    // assim precisa ser dito, senão quem clicou acha que avisou alguém.
+    if (r?.aviso) setErroStatus(r.aviso);
   }
+
+  /** Quem o e-mail iria avisar, para a pergunta dizer o nome em vez de "a
+   *  pessoa". */
+  const alvoDoAviso = confirmando ? lista?.find(x => x.id === confirmando.id) : null;
 
   function alternar(id: number) {
     setJaAbertas(s => (s.has(id) ? s : new Set(s).add(id)));
@@ -214,7 +230,9 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
                             <div style={{ width: 138 }}>
                               <SelectSistema
                                 valor={r.status}
-                                onChange={v => { void trocar(r.id, v); }}
+                                // Escolher o andamento abre a pergunta do
+                                // e-mail; a troca acontece na resposta dela.
+                                onChange={v => setConfirmando({ id: r.id, status: v })}
                                 opcoes={STATUS_DO_RELATO.map(st => ({
                                   valor: st.valor,
                                   label: st.label,
@@ -275,6 +293,29 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
         </div>
       </div>
 
+      {/* Mudar o andamento pergunta se quem reportou deve saber. Duas saídas, e
+          as duas mudam o status: a pergunta é sobre o e-mail, e não sobre a
+          mudança - essa já foi feita no gesto de escolher. Fechar pelo Escape ou
+          pelo fundo vale como "não avisar". */}
+      {confirmando && (
+        <Dialogo
+          titulo="Avisar quem reportou?"
+          descricao={
+            <>
+              O chamado passa para <strong>{ROTULO_STATUS[confirmando.status]?.label ?? confirmando.status}</strong>
+              {alvoDoAviso?.autor_email
+                ? <> e um e-mail vai para <strong>{alvoDoAviso.autor_nome}</strong>, com o andamento novo.</>
+                : <>. Este relato não tem e-mail de quem reportou, então não há para quem avisar.</>}
+            </>
+          }
+          perigo={false}
+          rotuloOk="Enviar"
+          rotuloCancelar="Não enviar"
+          zIndex={10070}
+          onConfirmar={() => { const c = confirmando; setConfirmando(null); void trocar(c.id, c.status, true); }}
+          onFechar={() => { const c = confirmando; setConfirmando(null); void trocar(c.id, c.status, false); }}
+        />
+      )}
 
       {/* A prévia é a mesma janela de todo anexo do sistema: imagem abre dentro
           dela, e o download sai de lá. */}

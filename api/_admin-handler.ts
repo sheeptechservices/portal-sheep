@@ -2403,6 +2403,15 @@ const URGENCIAS_DO_RELATO = ['Urgente', 'Alta', 'Média', 'Baixa'];
  *  pequena só cria dúvida sobre qual usar. */
 const STATUS_DO_RELATO = ['aberto', 'em_analise', 'resolvido', 'descartado'];
 
+/** Como cada estado se escreve para quem lê. A chave é de banco; o e-mail que
+ *  chega em quem reportou não pode dizer "em_analise". */
+const ROTULO_DO_STATUS: Record<string, string> = {
+  aberto: 'Aberto',
+  em_analise: 'Em análise',
+  resolvido: 'Resolvido',
+  descartado: 'Descartado',
+};
+
 /**
  * Envia um e-mail pelo Resend, e registra o que aconteceu.
  *
@@ -5559,7 +5568,45 @@ function faltaEmProjeto(p: any): string | null {
         args: [status, body?.id],
       });
       if (!r.rowsAffected) return { status: 404, body: { error: 'Relato não encontrado.' } };
-      return { status: 200, body: { ok: true } };
+
+      // Avisar quem reportou é escolha de quem mexeu no status, e vem no corpo:
+      // nem toda mudança merece um e-mail - passar de Aberto para Em análise no
+      // meio da triagem não é notícia, e resolver é.
+      if (!body?.avisar) return { status: 200, body: { ok: true } };
+
+      const linha = (await db.execute({
+        sql: 'SELECT texto, urgencia, pagina, autor_nome, autor_email FROM reportes WHERE id = ?',
+        args: [body?.id],
+      })).rows[0];
+      const para = String(linha?.autor_email ?? '').trim();
+      // Sem e-mail não há para quem mandar - e o status já mudou, então isso é
+      // aviso, e não erro.
+      if (!para) {
+        return { status: 200, body: { ok: true, aviso: 'O status mudou, mas o relato não tem o e-mail de quem reportou.' } };
+      }
+
+      const rotulo = ROTULO_DO_STATUS[status] ?? status;
+      const texto = String(linha?.texto ?? '');
+      const envio = await notifyEmail(
+        db, para,
+        `Seu chamado está "${rotulo}"`,
+        fichaEmail([
+          ['Andamento', rotulo],
+          ['Urgência', String(linha?.urgencia ?? '')],
+          ['Onde', String(linha?.pagina ?? '')],
+        ])
+        + citacaoEmail(texto)
+        + notaEmail(`Quem mudou: ${esc(autorNome ?? 'alguém do time')}.`),
+        'reporte_status',
+        {
+          previa: `Agora está ${rotulo.toLowerCase()}.`,
+          rodape: 'Você recebe este aviso porque foi você quem reportou isso.',
+        },
+      );
+      return {
+        status: 200,
+        body: { ok: true, aviso: envio.ok ? null : `O status mudou, mas o e-mail não saiu: ${envio.erro}` },
+      };
     }
 
     if (action === 'delete_comment') {
