@@ -86,6 +86,17 @@ export interface Submission {
   arquivo_count: number;
   comentario_count?: number;
   pendencia_aberta_count?: number;
+  /** Onde a empresa fica. Três colunas, e não uma: o comercial conta lead por
+   *  praça, e "Belo Horizonte / MG" numa string não se agrupa. */
+  cidade?: string | null;
+  estado?: string | null;
+  pais?: string | null;
+  /** Quem apontou o lead. Vale sobretudo quando a origem é indicação. */
+  indicado_por?: string | null;
+  /** Chegou por um parceiro. Vem do banco como 0 ou 1. */
+  parceria?: number | null;
+  /** O mercado em que a empresa atua, e não o que ela quer da gente. */
+  segmento?: string | null;
   pendencia_total_count?: number;
   /** As reuniões do lead, no mínimo que o chip do card mostra. O resumo e os
    *  tópicos ficam no servidor: são parágrafos por reunião, e o quadro inteiro

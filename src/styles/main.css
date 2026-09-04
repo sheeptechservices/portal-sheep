@@ -4319,6 +4319,22 @@ body.arrastando-painel {
 .status-select-option:hover {
   background: var(--bg);
 }
+/* A marca de "veio por parceria", ao lado da origem na ficha do lead. So
+   aparece quando e sim, entao ela nao precisa competir: pilula pequena, no
+   amarelo da casa. */
+.lead-tag-parceria {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--yd);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--on-yellow);
+  vertical-align: 1px;
+}
+
 /* A linha que diz o que a opcao quer dizer. Menor e em cinza: ela apoia o nome,
    e no mesmo peso as duas competiriam pela leitura. */
 .select-opcao-descricao {

@@ -330,6 +330,21 @@ async function migrarSchema(db: Client) {
     // Cobrado quando o lead cai na etapa de perda: sem o motivo, o funil
     // registra que se perdeu e não ensina nada.
     `ALTER TABLE leads ADD COLUMN motivo_perda TEXT`,
+    // Onde a empresa fica. Separado em três colunas, e não num campo só: o
+    // comercial filtra por estado e conta lead por praça, e "Belo Horizonte /
+    // MG" numa string não se agrupa.
+    `ALTER TABLE leads ADD COLUMN cidade TEXT`,
+    `ALTER TABLE leads ADD COLUMN estado TEXT`,
+    `ALTER TABLE leads ADD COLUMN pais TEXT`,
+    // Quem apontou o lead. Vale principalmente quando a origem é indicação, e é
+    // o que permite agradecer a quem indicou - e ver quem indica mais.
+    `ALTER TABLE leads ADD COLUMN indicado_por TEXT`,
+    // Veio por um parceiro. Marca, e não texto: é o que separa o funil próprio
+    // do que chega por canal, e essa conta precisa de um sim ou não.
+    `ALTER TABLE leads ADD COLUMN parceria INTEGER NOT NULL DEFAULT 0`,
+    // Em que mercado a empresa atua. Diferente de `interesse`, que é o que ela
+    // quer da gente.
+    `ALTER TABLE leads ADD COLUMN segmento TEXT`,
   ]) {
     try { await ddl(col); } catch { /* já existe */ }
   }
@@ -3772,6 +3787,14 @@ function texto(v: unknown): string | null {
 }
 
 /** Número do corpo, ou nulo. */
+/** Uma marca de sim ou não, como o banco a guarda. Aceita o que a tela mandar -
+ *  booleano, 0/1, "sim" - porque o corpo vem de JSON e nem todo caminho manda
+ *  do mesmo jeito. */
+function marca(v: unknown): number {
+  if (typeof v === 'string') return /^(1|true|sim)$/i.test(v.trim()) ? 1 : 0;
+  return v ? 1 : 0;
+}
+
 function numero(v: unknown): number | null {
   if (v === null || v === undefined || v === '') return null;
   const n = Number(v);
@@ -5931,8 +5954,9 @@ function faltaEmProjeto(p: any): string | null {
               (id, created_at, empresa, cnpj, contato_nome, contato_cargo, contato_email,
                contato_telefone, origem, interesse, valor_estimado, responsavel_id,
                proxima_acao, proxima_acao_em, observacoes,
+               cidade, estado, pais, indicado_por, parceria, segmento,
                criado_por_id, criado_por_nome)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         args: [
           id, now, empresa,
           texto(body?.cnpj), texto(body?.contato_nome), texto(body?.contato_cargo),
@@ -5940,6 +5964,8 @@ function faltaEmProjeto(p: any): string | null {
           texto(body?.origem), texto(body?.interesse),
           numero(body?.valor_estimado), texto(body?.responsavel_id),
           texto(body?.proxima_acao), texto(body?.proxima_acao_em), texto(body?.observacoes),
+          texto(body?.cidade), texto(body?.estado), texto(body?.pais),
+          texto(body?.indicado_por), marca(body?.parceria), texto(body?.segmento),
           autorId, autorNome,
         ],
       });
@@ -5976,6 +6002,12 @@ function faltaEmProjeto(p: any): string | null {
             responsavel_nome: texto(body?.responsavel_nome),
             proxima_acao: texto(body?.proxima_acao),
             proxima_acao_em: texto(body?.proxima_acao_em),
+            cidade: texto(body?.cidade),
+            estado: texto(body?.estado),
+            pais: texto(body?.pais),
+            indicado_por: texto(body?.indicado_por),
+            parceria: marca(body?.parceria),
+            segmento: texto(body?.segmento),
             arquivo_count: 0,
             comentario_count: 0,
             pendencia_aberta_count: 0,
@@ -6010,6 +6042,12 @@ function faltaEmProjeto(p: any): string | null {
         proxima_acao_em: texto,
         observacoes: texto,
         motivo_perda: texto,
+        cidade: texto,
+        estado: texto,
+        pais: texto,
+        indicado_por: texto,
+        parceria: marca,
+        segmento: texto,
       };
       const sets: string[] = [];
       const args: unknown[] = [];

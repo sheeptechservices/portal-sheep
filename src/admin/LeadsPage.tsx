@@ -642,6 +642,22 @@ export const INTERESSES_LEAD = [
   'BI', 'SaaS', 'Automação', 'Integração', 'App', 'Site', 'Consultoria', 'Outro',
 ] as const;
 
+/** As unidades da federação, na ordem em que se procura: pela sigla. Lista
+ *  fechada porque estado é dado de agrupamento - "MG", "Minas" e "minas gerais"
+ *  escritos à mão viram três praças diferentes no mesmo relatório. */
+export const ESTADOS_BR = [
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
+  'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE',
+  'TO',
+] as const;
+
+/** Em que mercado a empresa atua. Diferente do interesse, que é o que ela quer
+ *  da gente: uma transportadora pode querer BI. */
+export const SEGMENTOS_LEAD = [
+  'Indústria', 'Comércio', 'Serviços', 'Tecnologia', 'Saúde', 'Educação',
+  'Financeiro', 'Logística', 'Agro', 'Construção', 'Varejo', 'Governo', 'Outro',
+] as const;
+
 export interface RascunhoLead {
   empresa: string;
   cnpj: string;
@@ -649,7 +665,16 @@ export interface RascunhoLead {
   contato_cargo: string;
   contato_email: string;
   contato_telefone: string;
+  cidade: string;
+  estado: string;
+  pais: string;
   origem: string;
+  /** Quem apontou o lead. Vale sobretudo quando a origem é indicação. */
+  indicado_por: string;
+  /** Chegou por um parceiro. */
+  parceria: boolean;
+  /** O mercado em que a empresa atua, e não o que ela quer da gente. */
+  segmento: string;
   interesse: string;
   /** Guardado com máscara enquanto se digita; vira número no envio. */
   valor_estimado: string;
@@ -661,7 +686,12 @@ export interface RascunhoLead {
 
 export const LEAD_VAZIO: RascunhoLead = {
   empresa: '', cnpj: '', contato_nome: '', contato_cargo: '', contato_email: '',
-  contato_telefone: '', origem: '', interesse: '', valor_estimado: '',
+  contato_telefone: '', cidade: '', estado: '',
+  // Quase todo lead é daqui; quem for de fora troca. Deixar em branco faria a
+  // maioria preencher a mesma palavra toda vez.
+  pais: 'Brasil',
+  origem: '', indicado_por: '', parceria: false, segmento: '',
+  interesse: '', valor_estimado: '',
   responsavel_id: '', proxima_acao: '', proxima_acao_em: '', observacoes: '',
 };
 
@@ -674,7 +704,15 @@ export function corpoDoLead(r: RascunhoLead) {
     contato_cargo: r.contato_cargo.trim() || null,
     contato_email: r.contato_email.trim() || null,
     contato_telefone: r.contato_telefone.trim() || null,
+    cidade: r.cidade.trim() || null,
+    estado: r.estado || null,
+    pais: r.pais.trim() || null,
     origem: r.origem || null,
+    indicado_por: r.indicado_por.trim() || null,
+    // 0 ou 1, como a coluna guarda: o mesmo corpo vira `Partial<Submission>`
+    // na tela, e um booleano ali seria um tipo a mais para a ficha conferir.
+    parceria: r.parceria ? 1 : 0,
+    segmento: r.segmento || null,
     interesse: r.interesse || null,
     valor_estimado: parseCurrencyBRL(r.valor_estimado) || null,
     responsavel_id: r.responsavel_id || null,
@@ -791,6 +829,25 @@ function CamposDoLead({ r, set, token, pessoas }: {
         </div>
       </div>
 
+      <p className="lead-secao">Onde fica</p>
+      <div className="lead-campos">
+        <div className="form-group" style={{ flex: '1 1 180px' }}>
+          <label className="form-label">Cidade</label>
+          <input className="form-input" value={r.cidade} placeholder="Belo Horizonte"
+            onChange={e => set('cidade', e.target.value)} />
+        </div>
+        <div className="form-group" style={{ flex: '0 1 110px' }}>
+          <label className="form-label">Estado</label>
+          <FormSelect value={r.estado} onChange={v => set('estado', v)}
+            options={ESTADOS_BR.map(o => ({ value: o, label: o }))} />
+        </div>
+        <div className="form-group" style={{ flex: '0 1 150px' }}>
+          <label className="form-label">País</label>
+          <input className="form-input" value={r.pais} placeholder="Brasil"
+            onChange={e => set('pais', e.target.value)} />
+        </div>
+      </div>
+
       <p className="lead-secao">Negócio</p>
       <div className="lead-campos">
         <div className="form-group" style={{ flex: '1 1 160px' }}>
@@ -798,10 +855,35 @@ function CamposDoLead({ r, set, token, pessoas }: {
           <FormSelect value={r.origem} onChange={v => set('origem', v)}
             options={ORIGENS_LEAD.map(o => ({ value: o, label: o }))} />
         </div>
+        <div className="form-group" style={{ flex: '1 1 180px' }}>
+          <label className="form-label">Quem indicou</label>
+          <input className="form-input" value={r.indicado_por}
+            placeholder="Pessoa ou empresa que apontou"
+            onChange={e => set('indicado_por', e.target.value)} />
+        </div>
+      </div>
+      <div className="lead-campos">
+        <div className="form-group" style={{ flex: '1 1 160px' }}>
+          <label className="form-label">Segmento</label>
+          <FormSelect value={r.segmento} onChange={v => set('segmento', v)}
+            options={SEGMENTOS_LEAD.map(o => ({ value: o, label: o }))} />
+        </div>
         <div className="form-group" style={{ flex: '1 1 160px' }}>
           <label className="form-label">Interesse</label>
           <FormSelect value={r.interesse} onChange={v => set('interesse', v)}
             options={INTERESSES_LEAD.map(o => ({ value: o, label: o }))} />
+        </div>
+      </div>
+      <div className="lead-campos">
+        <div className="form-group" style={{ flex: '0 1 190px' }}>
+          {/* Sim ou não à vista, e não uma caixinha para marcar: a pergunta é
+              fechada, e ver as duas respostas é o que deixa claro que "não" foi
+              escolhido, em vez de esquecido. */}
+          <label className="form-label">Veio por parceria</label>
+          <SegSwitch valor={r.parceria ? 'sim' : 'nao'}
+            onChange={v => set('parceria', v === 'sim')}
+            opcoes={[{ valor: 'nao', label: 'Não' }, { valor: 'sim', label: 'Sim' }]}
+            pequeno full />
         </div>
       </div>
       <div className="lead-campos">
@@ -958,10 +1040,20 @@ function EditModal({ detail, token, onClose, onSaved }: {
     contato_cargo: s.contato_cargo ?? '',
     contato_email: s.contato_email ?? '',
     contato_telefone: s.contato_telefone ?? '',
+    cidade: s.cidade ?? '',
+    estado: s.estado ?? '',
+    pais: s.pais ?? '',
     origem: s.origem ?? '',
+    indicado_por: s.indicado_por ?? '',
+    parceria: Number(s.parceria) === 1,
+    segmento: s.segmento ?? '',
     interesse: s.interesse ?? '',
+    // Formatado como moeda, e não passado pela máscara: ela lê o que recebe
+    // como centavos, então um lead de R$ 50.000 abria a edição valendo
+    // R$ 500,00 - e ao salvar era isso que ia para o banco.
     valor_estimado: s.valor_estimado != null
-      ? maskCurrencyBRL(String(s.valor_estimado).replace('.', ',')) : '',
+      ? Number(s.valor_estimado).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+      : '',
     responsavel_id: s.responsavel_id ?? '',
     proxima_acao: s.proxima_acao ?? '',
     proxima_acao_em: s.proxima_acao_em ?? '',
@@ -1743,7 +1835,22 @@ export function DetailPanel({
               <div className="lead-ficha">
                 <div className="lead-ficha-item">
                   <p className="admin-info-label">Origem</p>
-                  <p className="lead-ficha-valor">{s!.origem ?? '-'}</p>
+                  <p className="lead-ficha-valor">
+                    {s!.origem ?? '-'}
+                    {/* A marca de parceria anda com a origem: as duas dizem por
+                        onde o lead entrou. Só aparece quando é sim - um "não"
+                        escrito em todo lead não informa nada. */}
+                    {Number(s!.parceria) === 1 && (
+                      <span className="lead-tag-parceria" title="Lead que chegou por um parceiro">
+                        parceria
+                      </span>
+                    )}
+                  </p>
+                  {s!.indicado_por && <p className="lead-ficha-sub">por {s!.indicado_por}</p>}
+                </div>
+                <div className="lead-ficha-item">
+                  <p className="admin-info-label">Segmento</p>
+                  <p className="lead-ficha-valor">{s!.segmento ?? '-'}</p>
                 </div>
                 <div className="lead-ficha-item">
                   <p className="admin-info-label">Interesse</p>
