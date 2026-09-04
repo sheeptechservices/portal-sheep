@@ -432,13 +432,20 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
 
   const filtradas = useMemo(() => {
     const q = semAcento(busca.trim());
+    /** O nome da entrega a que a tarefa pertence. A busca inclui ele porque é
+     *  assim que a entrega é chamada em voz alta - ninguém procura "as tarefas
+     *  do projeto X que estão na entrega 12", procura pelo nome dela. O título
+     *  mora no projeto, e não na tarefa: a tarefa só carrega o id. */
+    const entregaDe = (t: TarefaComProjeto) =>
+      t.entrega_id == null ? '' : (t.projeto.entregas?.find(e => e.id === t.entrega_id)?.titulo ?? '');
     const lista = tarefas.filter(t =>
       (fProjeto.length === 0 || fProjeto.includes(t.projeto.nome)) &&
       (fStatus.length === 0 || fStatus.includes(t.status)) &&
       (fResponsavel.length === 0 || fResponsavel.includes(t.responsavel_nome ?? '')) &&
       (fEtiqueta.length === 0 || t.etiquetas.some(e => fEtiqueta.includes(e))) &&
       (fEntrega.length === 0 || fEntrega.includes(String(t.entrega_id))) &&
-      (!q || semAcento(t.titulo).includes(q) || semAcento(t.descricao ?? '').includes(q))
+      (!q || semAcento(t.titulo).includes(q) || semAcento(t.descricao ?? '').includes(q)
+        || semAcento(entregaDe(t)).includes(q))
     );
     const chave: Record<string, (t: TarefaComProjeto) => string | number> = {
       // Sem prazo vai para o fim: o que tem data é o que cobra decisão hoje.
@@ -964,7 +971,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
               <IconSearch size={13} />
               <input value={busca} aria-label="Buscar tarefa"
                 onChange={e => setBusca(e.target.value)}
-                placeholder="Buscar por título ou descrição"
+                placeholder="Buscar por título, descrição ou entrega"
                 onKeyDown={e => { if (e.key === 'Escape') setBusca(''); }} />
               {busca && (
                 <button type="button" aria-label="Limpar a busca" onClick={() => setBusca('')}>
