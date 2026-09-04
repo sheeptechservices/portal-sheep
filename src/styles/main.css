@@ -4724,24 +4724,68 @@ body.arrastando-painel {
   transition: background var(--transition);
 }
 .checklist-item:hover { background: var(--gray4); }
-.checklist-item > label {
+.checklist-marca {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: flex-start;
+  cursor: pointer;
+  /* O rotulo cobria a linha inteira e agora cobre so a caixinha; a folga
+     devolve o alvo do clique sem mover nada de lugar. */
+  padding: 4px;
+  margin: -4px;
+}
+.checklist-marca input { margin-top: 1px; flex-shrink: 0; }
+/* O texto do passo e um campo em repouso: clicar nele abre a escrita, como no
+   titulo da tarefa. Botao, e nao span, para o teclado alcancar o mesmo gesto. */
+.checklist-texto {
   flex: 1;
   min-width: 0;
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
   font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
   color: var(--black);
-  cursor: pointer;
+  cursor: text;
+  transition: text-decoration-color var(--transition);
 }
-.checklist-item > label input { margin-top: 1px; flex-shrink: 0; }
+/* A linha inteira ja acende no hover; aqui basta o sublinhado dizendo que
+   aquele texto e o que se pode reescrever. */
+button.checklist-texto:hover,
+button.checklist-texto:focus-visible {
+  outline: none;
+  text-decoration: underline;
+  text-decoration-color: var(--gray3);
+  text-underline-offset: 2px;
+}
 /* Feito continua legivel, e nao apagado: e historico do que foi andado, nao
    lixo. O risco basta para dizer que saiu da fila. */
-.checklist-item.feito > label {
+.checklist-item.feito .checklist-texto {
   color: var(--gray2);
   text-decoration: line-through;
   text-decoration-color: var(--gray3);
 }
+/* Escrevendo, o passo continua na mesma linha e no mesmo tamanho: so ganha o
+   fio embaixo. Fonte e altura sao as do texto de proposito - um campo mais
+   alto empurraria os itens de baixo no meio da edicao. */
+.checklist-texto-campo {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  border-bottom: 1px solid var(--gray3);
+  border-radius: 0;
+  background: none;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--black);
+  outline: none;
+  transition: border-color var(--transition);
+}
+.checklist-texto-campo:focus { border-bottom-color: var(--gray2); }
 /* O tirar so aparece na linha sob o cursor: cinco "x" numa lista de cinco itens
    competem com o que esta escrito. */
 .checklist-tirar {
@@ -4805,7 +4849,9 @@ body.arrastando-painel {
 
 @media (prefers-reduced-motion: reduce) {
   .checklist-add,
-  .checklist-novo { transition: none; }
+  .checklist-novo,
+  .checklist-texto,
+  .checklist-texto-campo { transition: none; }
 }
 /* O pai marca `span` em vermelho, que e o asterisco de campo obrigatorio. A
    contagem nao e isso: ela e apoio, e precisa vencer aquela regra pelo nome. */

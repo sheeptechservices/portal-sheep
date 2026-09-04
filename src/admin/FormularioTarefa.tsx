@@ -264,6 +264,15 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
   /** O campo de acrescentar só existe depois do "+". Em repouso a lista termina
    *  no último passo, e não numa caixa vazia esperando alguém. */
   const [escrevendo, setEscrevendo] = useState(false);
+  /** Qual passo está sendo reescrito, pela posição na lista, e o texto em
+   *  andamento. Um de cada vez: dois campos abertos na mesma lista não têm para
+   *  que servir. */
+  const [reescrevendo, setReescrevendo] = useState<number | null>(null);
+  const [texto, setTexto] = useState('');
+  /** A edição ainda está de pé. O Enter e o Escape fecham o campo, e o `blur`
+   *  que vem logo atrás encontraria a marca já baixada - sem isto, o mesmo
+   *  texto iria duas vezes, ou o Escape gravaria o que acabou de descartar. */
+  const emEdicao = useRef(false);
 
   /** Chave provisória do passo que ainda está nascendo, apontando para a
    *  promessa do id verdadeiro. Marcar ou tirar um passo recém-escrito espera
@@ -324,6 +333,36 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
     return (await nascendo.current.get(chave)) ?? null;
   }
 
+  /** Abre o passo para reescrita, com o texto que já está nele. */
+  function abrirTexto(item: Subtarefa, i: number) {
+    emEdicao.current = true;
+    setTexto(item.titulo);
+    setReescrevendo(i);
+  }
+
+  function fecharTexto() {
+    emEdicao.current = false;
+    setReescrevendo(null);
+  }
+
+  /** Grava o texto novo do passo. Texto vazio ou igual ao que já estava não
+   *  vira gravação: fechar sem mudar nada não é uma edição, e apagar tudo é
+   *  desistir, não excluir - para tirar o passo existe o botão ao lado. */
+  function renomear(item: Subtarefa, i: number) {
+    if (!emEdicao.current) return;
+    fecharTexto();
+    const titulo = texto.trim();
+    if (!titulo || titulo === item.titulo) return;
+    aplicar(
+      itens.map((x, j) => (j === i ? { ...x, titulo } : x)),
+      async () => {
+        const id = await idDoPasso(item);
+        if (!id) return { error: 'O passo não chegou a ser gravado.' };
+        return api!('', 'POST', { action: 'atualizar_tarefa_subtarefa', id, titulo });
+      },
+    );
+  }
+
   function adicionar() {
     const titulo = novo.trim();
     if (!titulo) return;
@@ -370,10 +409,14 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
           {itens.map((item, i) => (
             <div key={item.id ?? `novo-${i}`}
               className={`checklist-item${Number(item.feita) === 1 ? ' feito' : ''}`}>
-              <label>
+              {/* A marca ficou sozinha no rótulo: com o texto dentro dele,
+                  clicar na palavra marcava o passo, e é justamente ali que
+                  agora se clica para reescrever. */}
+              <label className="checklist-marca" title="Marcar como feito">
                 <input type="checkbox" className="form-checkbox"
                   checked={Number(item.feita) === 1}
                   disabled={desabilitado}
+                  aria-label={`Marcar "${item.titulo}" como feito`}
                   onChange={e => {
                     const feita = e.target.checked ? 1 : 0;
                     aplicar(
@@ -387,8 +430,27 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
                       },
                     );
                   }} />
-                <span>{item.titulo}</span>
               </label>
+              {/* O texto é lido e escrito no mesmo lugar, então a troca é só de
+                  opacidade: um deslocamento aqui leria como se o passo tivesse
+                  pulado de linha. */}
+              {reescrevendo === i && !desabilitado ? (
+                <input className="checklist-texto-campo troca" value={texto} autoFocus
+                  aria-label="Texto do passo"
+                  onChange={e => setTexto(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') { e.preventDefault(); renomear(item, i); }
+                    if (e.key === 'Escape') { e.preventDefault(); fecharTexto(); }
+                  }}
+                  onBlur={() => renomear(item, i)} />
+              ) : desabilitado ? (
+                <span className="checklist-texto troca">{item.titulo}</span>
+              ) : (
+                <button type="button" className="checklist-texto troca"
+                  title="Clique para editar" onClick={() => abrirTexto(item, i)}>
+                  {item.titulo}
+                </button>
+              )}
               {!desabilitado && (
                 <button type="button" className="checklist-tirar"
                   aria-label={`Tirar "${item.titulo}"`} title="Tirar da lista"
