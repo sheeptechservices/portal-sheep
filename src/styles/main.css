@@ -9064,6 +9064,12 @@ button.checklist-texto:focus-visible {
   flex-wrap: wrap;
   gap: 6px;
 }
+/* No card do funil o chip e menor: ele divide a largura de uma coluna com o
+   titulo, o proximo passo e o rodape, e no tamanho do painel ele sozinho
+   ocuparia duas linhas. */
+.kanban-card-reunioes { margin-top: 8px; gap: 4px; }
+.kanban-card-reunioes .vinculo-chip-alvo { padding: 3px 8px; gap: 5px; }
+.kanban-card-reunioes .vinculo-chip strong { max-width: 132px; font-size: 11px; }
 .vinculo-chip {
   display: inline-flex;
   align-items: stretch;

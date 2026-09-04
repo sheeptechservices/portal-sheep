@@ -50,6 +50,15 @@ export interface UsuarioNotificavel {
  *  veio, o que quer, quanto vale e qual é o próximo passo. Os campos antigos
  *  saíram da tela; as colunas continuam no banco, vazias, porque apagar coluna
  *  em produção é risco sem prêmio. */
+/** A reunião como o card do funil precisa dela. */
+export interface ReuniaoDoCard {
+  id: number;
+  assunto: string;
+  data: string;
+  /** Veio do Fireflies: a marca do chip diz de onde. */
+  fireflies: number;
+}
+
 export interface Submission {
   id: string;
   created_at: string;
@@ -78,6 +87,10 @@ export interface Submission {
   comentario_count?: number;
   pendencia_aberta_count?: number;
   pendencia_total_count?: number;
+  /** As reuniões do lead, no mínimo que o chip do card mostra. O resumo e os
+   *  tópicos ficam no servidor: são parágrafos por reunião, e o quadro inteiro
+   *  os carregaria para desenhar um chip. */
+  reunioes?: ReuniaoDoCard[];
   current_status_id: number | null;
   status_since: string | null;
   parcelas: string | null;

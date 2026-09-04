@@ -271,6 +271,7 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   get_file_base64: 'leads:ver',
   get_form_file_base64: 'leads:ver',
   pendencias_by_lead: 'leads:ver',
+  reuniao_lead: 'leads:ver',
   deps_by_lead: 'leads:ver',
   status_configs: ['leads:ver', 'cadastros:ver', 'configuracoes:ver'],
   create_submission: 'leads:criar',

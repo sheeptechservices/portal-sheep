@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import type { Submission, StatusConfig, SubmissionDetail, Evento, EtapaArquivo, FormArquivo, Pendencia } from './types';
+import type {
+  Submission, StatusConfig, SubmissionDetail, Evento, EtapaArquivo, FormArquivo,
+  Pendencia, ReuniaoDoCard,
+} from './types';
 import { useToast, useAuth, iniciais, nomeCurto } from './AdminApp';
 import { DatePicker } from '../components/DatePicker';
 import { ExecutionDateModal } from '../components/ExecutionDateModal';
@@ -21,6 +24,8 @@ import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import FilterDropdown from '../components/FilterDropdown';
 import { Abas } from '../components/Abas';
 import { SecaoReunioes, type Reuniao } from '../components/SecaoReunioes';
+import { ChipReuniao } from '../components/VinculoReuniao';
+import { ReuniaoModal } from '../components/ReuniaoModal';
 import type { Pessoa } from './FormularioTarefa';
 
 import { definirImagemArrasto } from '../lib/dragImage';
@@ -2699,6 +2704,91 @@ function AnexosModal({ leadId, onClose }: { leadId: string; onClose: () => void 
 }
 
 // ── Kanban Card ─────────────────────────────────────
+/** Quantos chips cabem no card sem ele virar uma lista. O resto vira um chip
+ *  de contagem, que leva para a aba onde as reuniões todas moram. */
+const CHIPS_NO_CARD = 2;
+
+/** As reuniões do lead como chips no card do quadro, e a reunião que eles
+ *  abrem.
+ *
+ *  O quadro carrega só o que o chip mostra - assunto, data e de onde veio.
+ *  Clicar busca a reunião inteira e abre o `ReuniaoModal`, o mesmo modal
+ *  central do chip dentro da entrega e do chip dentro da tarefa: ver a conversa
+ *  é o que se quer ali, e abrir o lead para procurá-la seria o caminho longo
+ *  para a mesma coisa. */
+function ChipsDeReuniao({ reunioes, onAbrirLead }: {
+  reunioes: ReuniaoDoCard[];
+  onAbrirLead: () => void;
+}) {
+  const { toast } = useToast();
+  const [aberta, setAberta] = useState<Reuniao | null>(null);
+  const [buscando, setBuscando] = useState<number | null>(null);
+
+  // Da mais recente para a mais antiga: cabendo duas, são as duas últimas
+  // conversas que ficam à vista.
+  const ordenadas = [...reunioes]
+    .sort((a, b) => (b.data ?? '').localeCompare(a.data ?? '') || b.id - a.id);
+  const visiveis = ordenadas.slice(0, CHIPS_NO_CARD);
+  const restantes = ordenadas.length - visiveis.length;
+
+  async function abrir(id: number) {
+    setBuscando(id);
+    const r = await pedir(`?action=reuniao_lead&id=${id}`);
+    setBuscando(null);
+    if (r?.error || !r?.reuniao) {
+      toast('error', 'Não foi possível abrir a reunião', r?.error ?? 'Tente de novo.');
+      return;
+    }
+    setAberta(r.reuniao as Reuniao);
+  }
+
+  return (
+    // O card inteiro abre o lead ao ser clicado; o chip tem destino próprio, e
+    // sem isto ele abriria os dois.
+    <div className="vinculo-chips kanban-card-reunioes" onClick={e => e.stopPropagation()}>
+      {visiveis.map(r => (
+        <ChipReuniao key={r.id}
+          assunto={r.assunto}
+          data={fmtDataCurta(r.data)}
+          fireflies={Number(r.fireflies) === 1}
+          titulo={buscando === r.id ? 'Abrindo…' : `Abrir "${r.assunto}"`}
+          onAbrir={() => void abrir(r.id)}
+        />
+      ))}
+      {restantes > 0 && (
+        <ChipReuniao
+          assunto={`+${restantes}`}
+          data={restantes === 1 ? 'reunião' : 'reuniões'}
+          titulo={`Ver as ${ordenadas.length} reuniões deste lead`}
+          onAbrir={onAbrirLead}
+        />
+      )}
+      {aberta && (
+        <ReuniaoModal
+          reuniao={aberta}
+          buscarGravacao={async id => (
+            await pedir(`?action=fireflies_gravacao&id=${encodeURIComponent(id)}`)
+          )}
+          onFechar={() => setAberta(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Uma leitura curta do servidor, com a sessão que está na janela. Mesmo
+ *  caminho do modal de anexos aqui do lado: o card é folha da árvore, e passar
+ *  o token por três componentes só para chegar nele não paga. */
+async function pedir(caminho: string): Promise<any> {
+  const token = localStorage.getItem('dux_admin_token') ?? '';
+  try {
+    const r = await fetch(`/api/admin-data${caminho}`, { headers: { 'x-admin-session': token } });
+    return await r.json();
+  } catch {
+    return { error: 'Erro de conexão.' };
+  }
+}
+
 function KanbanCard({
   sub, onDragStart, onClick, color, onPrefetch, onCancelPrefetch, onDelete, hideAging,
 }: {
@@ -2766,6 +2856,9 @@ function KanbanCard({
           <span>{sub.proxima_acao}</span>
           {sub.proxima_acao_em && <em>{fmtDataCurta(sub.proxima_acao_em)}</em>}
         </p>
+      )}
+      {(sub.reunioes?.length ?? 0) > 0 && (
+        <ChipsDeReuniao reunioes={sub.reunioes!} onAbrirLead={() => onClick(sub.id)} />
       )}
       {(sub.arquivo_count > 0 || (sub.comentario_count ?? 0) > 0 || (sub.pendencia_total_count ?? 0) > 0) && (
         <div className="kanban-card-footer">

@@ -2625,6 +2625,13 @@ async function despacharAdminData(
           (SELECT COUNT(*) FROM lead_eventos c WHERE c.lead_id = s.id AND c.tipo = 'comentario') AS comentario_count,
           (SELECT COUNT(*) FROM lead_pendencias p WHERE p.lead_id = s.id AND p.resolvida = 0) AS pendencia_aberta_count,
           (SELECT COUNT(*) FROM lead_pendencias p WHERE p.lead_id = s.id) AS pendencia_total_count,
+          -- O bastante para desenhar o chip: assunto, data e de onde veio. O
+          -- resumo e os tópicos ficam de fora de propósito - são parágrafos por
+          -- reunião, e o quadro inteiro os carregaria para mostrar um chip.
+          (SELECT json_group_array(json_object(
+              'id', r.id, 'assunto', r.assunto, 'data', r.data,
+              'fireflies', CASE WHEN r.fireflies_id IS NULL THEN 0 ELSE 1 END))
+           FROM projeto_reunioes r WHERE r.lead_id = s.id) AS reunioes,
           curr.status_id AS current_status_id,
           curr.criado_em  AS status_since
         FROM leads s
@@ -3326,6 +3333,33 @@ async function despacharAdminData(
         args: [projetoId],
       });
       return { status: 200, body: { dados: r.rows } };
+    }
+
+    // Uma reunião de lead inteira, pedida quando o chip do card é clicado. O
+    // quadro carrega só o que o chip mostra; o resumo, os tópicos e os
+    // combinados vêm agora, e de uma reunião só.
+    if (action === 'reuniao_lead') {
+      const id = Number(query.get('id'));
+      if (!Number.isFinite(id) || id <= 0) return { status: 400, body: { error: 'id ausente.' } };
+      const r = await db.execute({
+        // `lead_id IS NOT NULL` porque a permissão daqui é a do funil: sem isto
+        // ela leria a reunião de um projeto pelo id.
+        sql: `SELECT id, projeto_id, lead_id, data, assunto, notas, participantes,
+                     fireflies_id, link, dados, criado_por_nome
+              FROM projeto_reunioes WHERE id = ? AND lead_id IS NOT NULL`,
+        args: [id],
+      });
+      const linha = r.rows[0];
+      if (!linha) return { status: 404, body: { error: 'Reunião não encontrada.' } };
+      return {
+        status: 200,
+        body: {
+          reuniao: {
+            ...linha,
+            participantes: JSON.parse(String(linha.participantes ?? '[]')) as string[],
+          },
+        },
+      };
     }
 
     // O endereço da gravação, na hora de assistir. Não fica guardado: a URL da
