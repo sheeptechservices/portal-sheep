@@ -47,7 +47,7 @@ export type Permissoes = '*' | string[];
  * Página fora deste mapa é aberta a qualquer sessão (Perfil, por exemplo).
  */
 export const PERMISSAO_DA_PAGINA: Record<string, string> = {
-  'leads': 'leads:ver',
+  'oportunidades': 'oportunidades:ver',
   'cadastros': 'cadastros:ver',
   'projetos': 'projetos:ver',
   'tarefas': 'tarefas:ver',

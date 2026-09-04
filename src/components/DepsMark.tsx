@@ -1,5 +1,5 @@
 // Símbolo (sol) da marca DEPS, recriado em SVG - coral #EE5B45. Centro vazado.
-// Compartilhado entre o painel de análise (Leads) e o card de integração
+// Compartilhado entre o painel de análise (Oportunidades) e o card de integração
 // (Configurações), para os dois não saírem do padrão da marca.
 export function DepsMark({ size = 15, color = '#EE5B45' }: { size?: number; color?: string }) {
   return (

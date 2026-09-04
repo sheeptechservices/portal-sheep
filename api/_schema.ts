@@ -36,6 +36,7 @@ const RE_CREATE_INDEX = /^\s*CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS
 const RE_ADD_COLUNA = /^\s*ALTER\s+TABLE\s+["'`[]?(\w+)["'`\]]?\s+ADD\s+COLUMN\s+["'`[]?(\w+)/i;
 const RE_DROP_COLUNA = /^\s*ALTER\s+TABLE\s+["'`[]?(\w+)["'`\]]?\s+DROP\s+(?:COLUMN\s+)?["'`[]?(\w+)/i;
 const RE_RENAME_COLUNA = /^\s*ALTER\s+TABLE\s+["'`[]?(\w+)["'`\]]?\s+RENAME\s+COLUMN\s+["'`[]?(\w+)["'`\]]?\s+TO\s+["'`[]?(\w+)/i;
+const RE_RENAME_TABELA = /^\s*ALTER\s+TABLE\s+["'`[]?(\w+)["'`\]]?\s+RENAME\s+TO\s+["'`[]?(\w+)/i;
 
 async function lerInventario(db: Client): Promise<Inventario> {
   const inv: Inventario = { tabelas: new Set(), indices: new Set(), colunas: new Map(), novas: new Set() };
@@ -96,6 +97,22 @@ function montarDdl(db: Client, inv: Inventario): DDL {
       if (!inv.colunas.get(tab)?.has(col)) return;
       await db.execute(sql);
       inv.colunas.get(tab)?.delete(col);
+      return;
+    }
+
+    // Antes do de coluna: `RENAME COLUMN` tambem casa "ALTER TABLE ... RENAME",
+    // e a ordem e o que separa os dois.
+    const renomearTabela = RE_RENAME_TABELA.exec(sql);
+    if (renomearTabela) {
+      const [, de, para] = renomearTabela;
+      // Ja renomeada, ou base nova que ja nasceu com o nome certo. Nos dois
+      // casos nao ha o que fazer - e tentar daria erro de tabela inexistente.
+      if (!inv.tabelas.has(de) || inv.tabelas.has(para)) return;
+      await db.execute(sql);
+      inv.tabelas.delete(de);
+      inv.tabelas.add(para);
+      const cols = inv.colunas.get(de);
+      if (cols) { inv.colunas.delete(de); inv.colunas.set(para, cols); }
       return;
     }
 

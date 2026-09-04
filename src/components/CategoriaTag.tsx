@@ -1,4 +1,4 @@
-// Categorias de anexos de lead - fonte única (usada em todas as visualizações).
+// Categorias de anexos de oportunidade - fonte única (usada em todas as visualizações).
 export const ANEXO_CATEGORIAS = ['Lastro', 'Proposta', 'Contrato', 'DEPS', 'Financeiro', 'Identidade', 'Comprovante', 'Outros'] as const;
 export type AnexoCategoria = typeof ANEXO_CATEGORIAS[number];
 

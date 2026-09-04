@@ -7,7 +7,7 @@ import { podeAbrirPagina, podeGerenciarUsuarios } from './papeis';
 // Alvo de navegação devolvido ao shell. Um alvo é ou um card (abre a página e
 // destaca o card) ou um destino de navegação (só troca de página).
 export type QuickTarget =
-  | { kind: 'card'; page: 'leads'; id: string; titulo: string; sub?: string | null }
+  | { kind: 'card'; page: 'oportunidades'; id: string; titulo: string; sub?: string | null }
   | { kind: 'nav'; page: Page; titulo: string; sub?: string | null };
 
 interface SolHit {
@@ -58,7 +58,7 @@ function maskDoc(v: string | null): string {
 }
 
 const CardIcon = {
-  leads: (
+  oportunidades: (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
       <rect x="3" y="3" width="7" height="18" rx="2" stroke="currentColor" strokeWidth="1.8"/>
       <rect x="14" y="3" width="7" height="11" rx="2" stroke="currentColor" strokeWidth="1.8"/>
@@ -119,7 +119,7 @@ export default function QuickSearch({ token, onClose, onSelect }: {
         signal: ctrl.signal,
       })
         .then(r => r.json())
-        .then(d => { setSols(d.leads ?? []); })
+        .then(d => { setSols(d.oportunidades ?? []); })
         .catch(() => { /* abortado ou offline */ })
         .finally(() => { if (!ctrl.signal.aborted) setLoading(false); });
     }, 180);
@@ -133,11 +133,11 @@ export default function QuickSearch({ token, onClose, onSelect }: {
           rows: buscarDestinos(termo).filter(visivel).map(linhaDestino),
         },
         {
-          titulo: 'Leads',
+          titulo: 'Oportunidades',
           rows: sols.map(s => ({
             target: {
               kind: 'card' as const,
-              page: 'leads' as const,
+              page: 'oportunidades' as const,
               id: s.id,
               titulo: s.empresa || 'Sem empresa',
               // Quem atendeu diz mais que o CNPJ; o documento fica de reserva.
@@ -196,7 +196,7 @@ export default function QuickSearch({ token, onClose, onSelect }: {
             className="qs-input"
             value={q}
             onChange={e => setQ(e.target.value)}
-            placeholder="Buscar páginas, ferramentas e leads…"
+            placeholder="Buscar páginas, ferramentas e oportunidades…"
             spellCheck={false}
           />
           {loading && <span className="qs-spinner" aria-hidden />}

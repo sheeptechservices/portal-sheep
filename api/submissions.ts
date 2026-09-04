@@ -22,11 +22,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     if (id) {
-      const sub = await db.execute({ sql: 'SELECT * FROM leads WHERE id = ?', args: [id] });
+      const sub = await db.execute({ sql: 'SELECT * FROM oportunidades WHERE id = ?', args: [id] });
       if (sub.rows.length === 0) return res.status(404).json({ error: 'Not found' });
 
       const arqs = await db.execute({
-        sql: 'SELECT id, categoria, nome, tipo, tamanho, base64 FROM lead_arquivos WHERE lead_id = ?',
+        sql: 'SELECT id, categoria, nome, tipo, tamanho, base64 FROM oportunidade_arquivos WHERE oportunidade_id = ?',
         args: [id],
       });
 
@@ -35,8 +35,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const result = await db.execute(`
       SELECT s.*, COUNT(a.id) AS arquivo_count
-      FROM leads s
-      LEFT JOIN lead_arquivos a ON a.lead_id = s.id
+      FROM oportunidades s
+      LEFT JOIN oportunidade_arquivos a ON a.oportunidade_id = s.id
       GROUP BY s.id
       ORDER BY s.created_at DESC
     `);

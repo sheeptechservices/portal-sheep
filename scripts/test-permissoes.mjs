@@ -70,7 +70,7 @@ async function rodar(P) {
 
   titulo('3. Configurado: vale só o que está marcado');
   await P.salvarMatrizPapel(db, 'membro', [
-    'leads:ver', 'leads:comentar', 'leads:mover',
+    'oportunidades:ver', 'oportunidades:comentar', 'oportunidades:mover',
     'onboarding:ver', 'cadastros:ver',
   ], admin);
   P.invalidarCachePermissoes();
@@ -84,7 +84,7 @@ async function rodar(P) {
   eq('excluir comentário NÃO', P.podeAcao(perm, 'delete_comment'), false);
   eq('cofre de credenciais NÃO', P.podeAcao(perm, 'save_anthropic_key'), false);
   eq('liquidez NÃO', P.pode(perm, 'liquidez:ver'), false);
-  eq('DEPS pago NÃO', P.pode(perm, ['leads:deps']), false);
+  eq('DEPS pago NÃO', P.pode(perm, ['oportunidades:deps']), false);
 
   titulo('4. Ações sempre livres continuam livres');
   for (const a of ['me', 'perfil', 'quick_search']) eq(a, P.podeAcao(perm, a), true);
@@ -101,7 +101,7 @@ async function rodar(P) {
   const recusa = await P.exigir(db, membro, 'liquidez:ver');
   eq('status 403', recusa?.status, 403);
   eq('nomeia a permissão que faltou', recusa?.body?.permissao, 'liquidez:ver');
-  eq('liberado devolve null', await P.exigir(db, membro, 'leads:ver'), null);
+  eq('liberado devolve null', await P.exigir(db, membro, 'oportunidades:ver'), null);
   eq('master passa em tudo', await P.exigir(db, master, 'liquidez:excluir'), null);
 
   titulo('8. Configurado sem nada bloqueia tudo (não é o mesmo que nunca configurado)');
@@ -113,8 +113,8 @@ async function rodar(P) {
   eq('me segue livre', P.podeAcao(perm, 'me'), true);
 
   titulo('9. Chave inventada pela tela é descartada na gravação');
-  const m = await P.salvarMatrizPapel(db, 'membro', ['leads:ver', 'inventada:tudo', 'usuarios:gerenciar'], admin);
-  eq('só a válida sobrou', m.chaves.join(','), 'leads:ver');
+  const m = await P.salvarMatrizPapel(db, 'membro', ['oportunidades:ver', 'inventada:tudo', 'usuarios:gerenciar'], admin);
+  eq('só a válida sobrou', m.chaves.join(','), 'oportunidades:ver');
   eq('marcou como configurado', m.configurado, true);
 
   titulo('10. Metadados da última alteração');

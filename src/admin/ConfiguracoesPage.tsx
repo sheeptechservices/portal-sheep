@@ -246,14 +246,14 @@ function UsuarioDropdown({
   );
 }
 
-// ── Novo lead notification section ────────────
+// ── Nova oportunidade notification section ────────────
 function NovaNotificacaoSection({ token }: { token: string }) {
   const api = useApi(token);
   const [notifs, setNotifs] = useState<NovaNotificacao[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api('?action=novo_lead_notifs').then(d => {
+    api('?action=nova_oportunidade_notifs').then(d => {
       setNotifs(d.notificacoes ?? []);
       setLoading(false);
     }).catch(() => setLoading(false));
@@ -261,14 +261,14 @@ function NovaNotificacaoSection({ token }: { token: string }) {
 
   async function addNotif(user: UsuarioNotificavel) {
     const data = await api('', 'POST', {
-      action: 'add_novo_lead_notif',
+      action: 'add_nova_oportunidade_notif',
       usuario_id: user.id,
     });
     if (data.notificacao) setNotifs(prev => [...prev, data.notificacao]);
   }
 
   async function removeNotif(id: number) {
-    await api('', 'POST', { action: 'remove_novo_lead_notif', id });
+    await api('', 'POST', { action: 'remove_nova_oportunidade_notif', id });
     setNotifs(prev => prev.filter(n => n.id !== id));
   }
 
@@ -282,8 +282,8 @@ function NovaNotificacaoSection({ token }: { token: string }) {
           </svg>
         </div>
         <div>
-          <p className="nova-notif-title">Novo lead recebido</p>
-          <p className="nova-notif-desc">Enviar e-mail quando um lead entrar no funil</p>
+          <p className="nova-notif-title">Nova oportunidade recebido</p>
+          <p className="nova-notif-desc">Enviar e-mail quando uma oportunidade entrar no funil</p>
         </div>
       </div>
       {loading ? (
@@ -431,7 +431,7 @@ function StatusRow({
       const res = await api('', 'POST', { action: 'delete_status_with_move', id: status.id, move_to_id: targetId });
       if (res.error) throw new Error(res.error);
       onDelete(status.id);
-      toast('success', `${res.moved ?? 0} lead(ões) movida(s) e etapa excluída`);
+      toast('success', `${res.moved ?? 0} oportunidade(ões) movida(s) e etapa excluída`);
       setMoveModal(null);
     } catch (err) {
       console.error('[handleMoveAndDelete]', err);
@@ -657,8 +657,8 @@ function StatusRow({
             >
               <strong style={{ display: 'block', marginBottom: 6 }}>Etapa de entrada</strong>
               <ul style={{ margin: 0, paddingLeft: 14, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <li>Leads enviadas pelo <em>formulário</em> caem nesta etapa. Só uma etapa pode ter essa marcação.</li>
-                <li>Também é a etapa sugerida ao criar um lead pelo painel.</li>
+                <li>Oportunidades enviadas pelo <em>formulário</em> caem nesta etapa. Só uma etapa pode ter essa marcação.</li>
+                <li>Também é a etapa sugerida ao criar uma oportunidade pelo painel.</li>
                 <li>Sem marcação, vale a <em>primeira</em> etapa da lista.</li>
               </ul>
             </span>,
@@ -703,8 +703,8 @@ function StatusRow({
               <strong style={{ display: 'block', marginBottom: 6 }}>Etapa de conversão</strong>
               <ul style={{ margin: 0, paddingLeft: 14, display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <li>Marca a etapa que representa <em>negócio fechado</em>. Só uma etapa pode ter essa marcação.</li>
-                <li>O relógio do lead <em>para</em> ao chegar aqui, e é esta etapa que alimenta o card de fechados no Funil.</li>
-                <li>Leads nesta etapa ficam <em>fora</em> do Gerador de Contratos.</li>
+                <li>O relógio da oportunidade <em>para</em> ao chegar aqui, e é esta etapa que alimenta o card de fechados no Funil.</li>
+                <li>Oportunidades nesta etapa ficam <em>fora</em> do Gerador de Contratos.</li>
               </ul>
             </span>,
             document.body
@@ -748,8 +748,8 @@ function StatusRow({
             >
               <strong style={{ display: 'block', marginBottom: 6 }}>Etapa desconsiderada</strong>
               <ul style={{ margin: 0, paddingLeft: 14, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <li>Leads nesta etapa ficam <em>fora</em> do Gerador de Contratos.</li>
-                <li>Use para etapas que tiram o lead do fluxo sem serem fechamento - descartado, em espera, duplicado.</li>
+                <li>Oportunidades nesta etapa ficam <em>fora</em> do Gerador de Contratos.</li>
+                <li>Use para etapas que tiram a oportunidade do fluxo sem serem fechamento - descartado, em espera, duplicado.</li>
               </ul>
             </span>,
             document.body
@@ -847,7 +847,7 @@ function StatusRow({
       {moveModal && (
         <Dialogo
           titulo="Excluir etapa?"
-          descricao={<><strong>{status.nome}</strong> tem <strong>{moveModal.count}</strong> lead(ões). Para qual etapa deseja movê-las?</>}
+          descricao={<><strong>{status.nome}</strong> tem <strong>{moveModal.count}</strong> oportunidade(ões). Para qual etapa deseja movê-las?</>}
           rotuloOk="Mover e excluir"
           ocupado={deleting || (!creatingNew && !moveTargetId) || (creatingNew && !newNome.trim())}
           ocupadoRotulo={deleting ? 'Movendo…' : undefined}
@@ -2983,7 +2983,7 @@ function EtiquetasTarefaTab({ token, adicionando, onFecharNova }: {
 type ConfigTab = 'etapas' | 'integracoes' | 'desenho';
 
 /** Qual quadro está sendo configurado. São duas listas de etapas independentes
- *  - o funil das leads e o quadro de tarefas - e o switcher escolhe uma. */
+ *  - o funil das oportunidades e o quadro de tarefas - e o switcher escolhe uma. */
 type EscopoEtapas = 'funil' | 'tarefas';
 
 export default function ConfiguracoesPage({ token }: { token: string }) {

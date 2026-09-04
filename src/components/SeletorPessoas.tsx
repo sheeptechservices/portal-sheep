@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  Escolha de pessoas.
 //
-//  Morava na tela de Projetos, e saiu de lá quando o painel do lead passou a
+//  Morava na tela de Projetos, e saiu de lá quando o painel da oportunidade passou a
 //  registrar reunião: a mesma escolha de participantes, no mesmo desenho.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useRef, useState } from 'react';

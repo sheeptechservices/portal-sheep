@@ -1,11 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  A seção de reuniões: registrar à mão, puxar do Fireflies, abrir e assistir.
 //
-//  Morava na tela de Projetos. Saiu de lá quando o painel do lead passou a ter
+//  Morava na tela de Projetos. Saiu de lá quando o painel da oportunidade passou a ter
 //  a mesma aba: é a mesma conversa guardada do mesmo jeito, e duas cópias do
 //  desenho começariam iguais e terminariam diferentes.
 //
-//  O que muda de um dono para o outro é só o vínculo com entregas, que o lead
+//  O que muda de um dono para o outro é só o vínculo com entregas, que a oportunidade
 //  não tem: sem `entregas`, o seletor de vínculo não aparece.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useState } from 'react';
@@ -35,7 +35,7 @@ export interface EntregaDaReuniao {
 }
 
 /** Quem está na equipe do projeto, para aparecer primeiro na escolha de
- *  participantes. O lead não tem equipe, e por isso ela é opcional. */
+ *  participantes. A oportunidade não tem equipe, e por isso ela é opcional. */
 export interface MembroDaReuniao extends Pessoa { papel: string }
 
 export interface Reuniao {
@@ -65,17 +65,19 @@ export interface Reuniao {
  *
  *  Os assuntos e as ações são clicáveis quando há gravação: cada um leva ao
  *  minuto em que aquilo foi dito. */
-export function CorpoReuniao({ reg, pessoas, entregas, somenteLeitura, onAssistir, onVincular, onAbrirEntrega }: {
+export function CorpoReuniao({ reg, pessoas, entregas, somenteLeitura, onAssistir,
+  onVincular, onAbrirEntrega }: {
   reg: Reuniao;
   pessoas: Pessoa[];
   /** As entregas do projeto, para escolher onde a reunião foi tratada.
-   *  Ausente no lead: ali não há entrega a que vincular, e sem elas o seletor
+   *  Ausente na oportunidade: ali não há entrega a que vincular, e sem elas o seletor
    *  e os chips não aparecem. */
   entregas?: EntregaDaReuniao[];
   /** Quem só lê continua abrindo a reunião, os tópicos e a gravação. O que
    *  some é o gatilho de vincular e o de soltar o vínculo. */
   somenteLeitura: boolean;
   onAssistir: () => void;
+  /** Busca a transcrição inteira. Ausente, o botão de baixar não aparece. */
   onVincular?: (tipo: 'entrega', alvoId: number, ligar: boolean) => void;
   onAbrirEntrega?: (entregaId: number) => void;
 }) {
@@ -355,13 +357,13 @@ export function SecaoReunioes({ registros, pessoas, equipe, entregas, focada, sa
   onAnexarFireflies, onExcluir }: {
   registros: Reuniao[];
   pessoas: Pessoa[];
-  /** Quem está no projeto aparece primeiro na escolha de participantes. O lead
+  /** Quem está no projeto aparece primeiro na escolha de participantes. A oportunidade
    *  não tem equipe, então ali a lista vem na ordem em que veio. */
   equipe?: MembroDaReuniao[];
   salvando: boolean;
   somenteLeitura: boolean;
   onRegistrar: (r: { data: string; assunto: string; notas: string; participantes: string[] }) => Promise<void>;
-  /** As entregas do projeto, para vincular a reunião a elas. Ausentes no lead. */
+  /** As entregas do projeto, para vincular a reunião a elas. Ausentes na oportunidade. */
   entregas?: EntregaDaReuniao[];
   onVincular?: (reuniaoId: number, tipo: 'entrega', alvoId: number, ligar: boolean) => void;
   onAbrirEntrega?: (entregaId: number) => void;

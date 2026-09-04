@@ -15,25 +15,25 @@ function getDb() {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { leadId, arquivo } = req.body ?? {};
+  const { oportunidadeId, arquivo } = req.body ?? {};
 
-  if (!leadId || !arquivo?.base64 || !arquivo.nome) {
+  if (!oportunidadeId || !arquivo?.base64 || !arquivo.nome) {
     return res.status(400).json({ error: 'Dados ausentes.' });
   }
 
   const db = getDb();
   try {
     const row = await db.execute({
-      sql: 'SELECT id FROM leads WHERE id = ? LIMIT 1',
-      args: [leadId],
+      sql: 'SELECT id FROM oportunidades WHERE id = ? LIMIT 1',
+      args: [oportunidadeId],
     });
-    if (row.rows.length === 0) return res.status(404).json({ error: 'Lead não encontrada.' });
+    if (row.rows.length === 0) return res.status(404).json({ error: 'Oportunidade não encontrada.' });
 
     await db.execute({
-      sql: `INSERT INTO lead_arquivos (lead_id, categoria, nome, tipo, tamanho, base64)
+      sql: `INSERT INTO oportunidade_arquivos (oportunidade_id, categoria, nome, tipo, tamanho, base64)
             VALUES (?, ?, ?, ?, ?, ?)`,
       args: [
-        leadId,
+        oportunidadeId,
         arquivo.categoria ?? '',
         arquivo.nome,
         arquivo.tipo ?? '',

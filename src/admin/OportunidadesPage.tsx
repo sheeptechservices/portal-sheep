@@ -213,7 +213,7 @@ function PendCatSelect({ value, onChange }: { value: string; onChange: (v: strin
   );
 }
 
-/** Ao mover um lead para uma etapa de descarte, pergunta por quê. Funil
+/** Ao mover uma oportunidade para uma etapa de descarte, pergunta por quê. Funil
  *  perdido sem motivo não ensina nada a quem for prospectar depois - e o
  *  motivo fica na ficha, à vista de quem reabrir a conversa. */
 function MotivoPerdaModal({ statusName, inicial = '', onConfirm, onCancel }: {
@@ -228,7 +228,7 @@ function MotivoPerdaModal({ statusName, inicial = '', onConfirm, onCancel }: {
 
   return (
     <Dialogo
-      titulo="Por que este lead se perdeu?"
+      titulo="Por que esta oportunidade se perdeu?"
       descricao={<>
         Para mover para <strong>{statusName}</strong>, conte em uma linha o que
         aconteceu: preço, prazo, concorrente, sumiu.
@@ -448,10 +448,10 @@ function ordenarReunioes(rs: Reuniao[]): Reuniao[] {
   return [...rs].sort((a, b) => (b.data ?? '').localeCompare(a.data ?? '') || b.id - a.id);
 }
 
-/** O diário do lead em português. O funil registra outra coisa que a tarefa -
+/** O diário da oportunidade em português. O funil registra outra coisa que a tarefa -
  *  aqui se move de etapa, se anexa arquivo e se edita a ficha -, e é por isso
  *  que a frase é montada de cada lado e não dentro do componente. */
-function eventoDoLead(e: Evento): EventoAtividade {
+function eventoDaOportunidade(e: Evento): EventoAtividade {
   const base = {
     id: e.id,
     usuario_nome: e.autor_nome ?? 'Alguém',
@@ -467,15 +467,15 @@ function eventoDoLead(e: Evento): EventoAtividade {
     return { ...base, texto: 'anexou', alvo: nome || 'um arquivo', de: null, para: null };
   }
   if (e.tipo === 'edicao') {
-    return { ...base, texto: e.descricao === 'Dados editados' ? 'editou a ficha' : (e.descricao ?? 'editou o lead'), de: null, para: null };
+    return { ...base, texto: e.descricao === 'Dados editados' ? 'editou a ficha' : (e.descricao ?? 'editou a oportunidade'), de: null, para: null };
   }
   return { ...base, texto: e.descricao ?? e.tipo, de: null, para: null };
 }
 
 /** Um comentário do funil no formato da conversa. As menções antigas viviam no
- *  texto (`@apelido`) e continuam sendo lidas de lá; o comentário do lead não
+ *  texto (`@apelido`) e continuam sendo lidas de lá; o comentário da oportunidade não
  *  leva anexo, e por isso a lista vem vazia. */
-function comentarioDoLead(e: Evento): ComentarioAtividade {
+function comentarioDaOportunidade(e: Evento): ComentarioAtividade {
   return {
     id: e.id,
     pai_id: e.parent_id,
@@ -501,7 +501,7 @@ function hojeISO(): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** O valor estimado do lead. Sem valor, um traço: zero diria que a negociação
+/** O valor estimado da oportunidade. Sem valor, um traço: zero diria que a negociação
  *  não vale nada, e o que existe é a falta da informação. */
 function fmtValor(v: number | null | undefined): string {
   if (v == null) return '-';
@@ -509,9 +509,9 @@ function fmtValor(v: number | null | undefined): string {
 }
 
 /** `YYYY-MM-DD` em `dd/mm/aaaa`. */
-/** De onde o lead veio. Lista curta e fechada: origem digitada à mão vira dez
+/** De onde a oportunidade veio. Lista curta e fechada: origem digitada à mão vira dez
  *  grafias da mesma coisa e o filtro deixa de somar. */
-export const ORIGENS_LEAD = [
+export const ORIGENS_OPORTUNIDADE = [
   'Indicação', 'Prospecção ativa', 'Site', 'Evento', 'LinkedIn', 'Outro',
 ] as const;
 
@@ -629,16 +629,16 @@ function parseCurrencyBRL(masked: string): number {
   return parseFloat((masked || '0').replace(/[^\d,]/g, '').replace(',', '.')) || 0;
 }
 
-// ── O lead comercial ──────────────────────────────────────────────────────
+// ── A oportunidade comercial ──────────────────────────────────────────────────────
 //
 //  Com quem se está falando, de onde veio, o que quer, quanto vale e qual é o
 //  próximo passo. Os mesmos campos no cadastro e na edição - um formulário só,
 //  usado pelos dois, para não existirem duas versões da mesma ficha.
 
-/** O que uma empresa pode querer da casa. É o vocabulário dos projetos: o lead
+/** O que uma empresa pode querer da casa. É o vocabulário dos projetos: a oportunidade
  *  que fecha vira projeto desse tipo, e duas listas diferentes obrigariam a
  *  traduzir na passagem. */
-export const INTERESSES_LEAD = [
+export const INTERESSES_OPORTUNIDADE = [
   'BI', 'SaaS', 'Automação', 'Integração', 'App', 'Site', 'Consultoria', 'Outro',
 ] as const;
 
@@ -653,12 +653,12 @@ export const ESTADOS_BR = [
 
 /** Em que mercado a empresa atua. Diferente do interesse, que é o que ela quer
  *  da gente: uma transportadora pode querer BI. */
-export const SEGMENTOS_LEAD = [
+export const SEGMENTOS_OPORTUNIDADE = [
   'Indústria', 'Comércio', 'Serviços', 'Tecnologia', 'Saúde', 'Educação',
   'Financeiro', 'Logística', 'Agro', 'Construção', 'Varejo', 'Governo', 'Outro',
 ] as const;
 
-export interface RascunhoLead {
+export interface RascunhoOportunidade {
   empresa: string;
   cnpj: string;
   contato_nome: string;
@@ -669,7 +669,7 @@ export interface RascunhoLead {
   estado: string;
   pais: string;
   origem: string;
-  /** Quem apontou o lead. Vale sobretudo quando a origem é indicação. */
+  /** Quem apontou a oportunidade. Vale sobretudo quando a origem é indicação. */
   indicado_por: string;
   /** Chegou por um parceiro. */
   parceria: boolean;
@@ -684,10 +684,10 @@ export interface RascunhoLead {
   observacoes: string;
 }
 
-export const LEAD_VAZIO: RascunhoLead = {
+export const OPORTUNIDADE_VAZIA: RascunhoOportunidade = {
   empresa: '', cnpj: '', contato_nome: '', contato_cargo: '', contato_email: '',
   contato_telefone: '', cidade: '', estado: '',
-  // Quase todo lead é daqui; quem for de fora troca. Deixar em branco faria a
+  // Quase toda oportunidade é daqui; quem for de fora troca. Deixar em branco faria a
   // maioria preencher a mesma palavra toda vez.
   pais: 'Brasil',
   origem: '', indicado_por: '', parceria: false, segmento: '',
@@ -696,7 +696,7 @@ export const LEAD_VAZIO: RascunhoLead = {
 };
 
 /** O corpo que o servidor espera, a partir do rascunho da tela. */
-export function corpoDoLead(r: RascunhoLead) {
+export function corpoDaOportunidade(r: RascunhoOportunidade) {
   return {
     empresa: r.empresa.trim(),
     cnpj: r.cnpj.trim() || null,
@@ -741,11 +741,11 @@ function mascaraCnpj(v: string): string {
     .replace(/(\d{4})(\d)/, '$1-$2');
 }
 
-/** A ficha do lead. Serve ao cadastro e à edição: mesmos campos, mesma ordem,
+/** A ficha da oportunidade. Serve ao cadastro e à edição: mesmos campos, mesma ordem,
  *  mesma validação - quem cadastra e quem edita olham para a mesma coisa. */
-function CamposDoLead({ r, set, token, pessoas }: {
-  r: RascunhoLead;
-  set: <K extends keyof RascunhoLead>(k: K, v: RascunhoLead[K]) => void;
+function CamposDaOportunidade({ r, set, token, pessoas }: {
+  r: RascunhoOportunidade;
+  set: <K extends keyof RascunhoOportunidade>(k: K, v: RascunhoOportunidade[K]) => void;
   token: string;
   pessoas: { id: string; nome: string }[];
 }) {
@@ -755,7 +755,7 @@ function CamposDoLead({ r, set, token, pessoas }: {
   // ajustou à mão - só um CNPJ novo manda buscar.
   const cnpjBuscado = useRef(r.cnpj.replace(/\D/g, ''));
 
-  /** O CNPJ preenche a empresa: quem cadastra um lead tem o cartão na mão, e
+  /** O CNPJ preenche a empresa: quem cadastra uma oportunidade tem o cartão na mão, e
    *  digitar de novo o que a Receita já sabe é trabalho à toa. A razão social
    *  manda - se havia um apelido escrito ali, ele dá lugar ao nome de registro,
    *  que é o que vai no contrato e o que a busca vai procurar depois. */
@@ -776,7 +776,7 @@ function CamposDoLead({ r, set, token, pessoas }: {
 
   return (
     <>
-      <div className="lead-campos">
+      <div className="oportunidade-campos">
         {/* O CNPJ abre o cadastro: com ele, o nome da empresa vem sozinho. A
             consulta dispara no 14º dígito, e não só ao sair do campo - quem
             colou o número não precisa de mais um gesto para ver o resultado. */}
@@ -801,8 +801,8 @@ function CamposDoLead({ r, set, token, pessoas }: {
         </div>
       </div>
 
-      <p className="lead-secao">Contato</p>
-      <div className="lead-campos">
+      <p className="oportunidade-secao">Contato</p>
+      <div className="oportunidade-campos">
         <div className="form-group" style={{ flex: '1 1 200px' }}>
           <label className="form-label">Nome</label>
           <input className="form-input" value={r.contato_nome}
@@ -815,7 +815,7 @@ function CamposDoLead({ r, set, token, pessoas }: {
             onChange={e => set('contato_cargo', e.target.value)} />
         </div>
       </div>
-      <div className="lead-campos">
+      <div className="oportunidade-campos">
         <div className="form-group" style={{ flex: '1 1 200px' }}>
           <label className="form-label">E-mail</label>
           <input className="form-input" type="email" value={r.contato_email}
@@ -829,8 +829,8 @@ function CamposDoLead({ r, set, token, pessoas }: {
         </div>
       </div>
 
-      <p className="lead-secao">Onde fica</p>
-      <div className="lead-campos">
+      <p className="oportunidade-secao">Onde fica</p>
+      <div className="oportunidade-campos">
         <div className="form-group" style={{ flex: '1 1 180px' }}>
           <label className="form-label">Cidade</label>
           <input className="form-input" value={r.cidade} placeholder="Belo Horizonte"
@@ -848,12 +848,12 @@ function CamposDoLead({ r, set, token, pessoas }: {
         </div>
       </div>
 
-      <p className="lead-secao">Negócio</p>
-      <div className="lead-campos">
+      <p className="oportunidade-secao">Negócio</p>
+      <div className="oportunidade-campos">
         <div className="form-group" style={{ flex: '1 1 160px' }}>
           <label className="form-label">Origem</label>
           <FormSelect value={r.origem} onChange={v => set('origem', v)}
-            options={ORIGENS_LEAD.map(o => ({ value: o, label: o }))} />
+            options={ORIGENS_OPORTUNIDADE.map(o => ({ value: o, label: o }))} />
         </div>
         <div className="form-group" style={{ flex: '1 1 180px' }}>
           <label className="form-label">Quem indicou</label>
@@ -862,19 +862,19 @@ function CamposDoLead({ r, set, token, pessoas }: {
             onChange={e => set('indicado_por', e.target.value)} />
         </div>
       </div>
-      <div className="lead-campos">
+      <div className="oportunidade-campos">
         <div className="form-group" style={{ flex: '1 1 160px' }}>
           <label className="form-label">Segmento</label>
           <FormSelect value={r.segmento} onChange={v => set('segmento', v)}
-            options={SEGMENTOS_LEAD.map(o => ({ value: o, label: o }))} />
+            options={SEGMENTOS_OPORTUNIDADE.map(o => ({ value: o, label: o }))} />
         </div>
         <div className="form-group" style={{ flex: '1 1 160px' }}>
           <label className="form-label">Interesse</label>
           <FormSelect value={r.interesse} onChange={v => set('interesse', v)}
-            options={INTERESSES_LEAD.map(o => ({ value: o, label: o }))} />
+            options={INTERESSES_OPORTUNIDADE.map(o => ({ value: o, label: o }))} />
         </div>
       </div>
-      <div className="lead-campos">
+      <div className="oportunidade-campos">
         <div className="form-group" style={{ flex: '0 1 190px' }}>
           {/* Sim ou não à vista, e não uma caixinha para marcar: a pergunta é
               fechada, e ver as duas respostas é o que deixa claro que "não" foi
@@ -886,7 +886,7 @@ function CamposDoLead({ r, set, token, pessoas }: {
             pequeno full />
         </div>
       </div>
-      <div className="lead-campos">
+      <div className="oportunidade-campos">
         <div className="form-group" style={{ flex: '0 1 150px' }}>
           <label className="form-label">Valor estimado</label>
           <input className="form-input" value={r.valor_estimado} placeholder="R$ 0,00"
@@ -899,8 +899,8 @@ function CamposDoLead({ r, set, token, pessoas }: {
         </div>
       </div>
 
-      <p className="lead-secao">Próximo passo</p>
-      <div className="lead-campos">
+      <p className="oportunidade-secao">Próximo passo</p>
+      <div className="oportunidade-campos">
         <div className="form-group" style={{ flex: '1 1 220px' }}>
           <label className="form-label">O que fazer</label>
           <input className="form-input" value={r.proxima_acao}
@@ -924,7 +924,7 @@ function CamposDoLead({ r, set, token, pessoas }: {
   );
 }
 
-/** Quem pode ficar responsável por um lead: o time do portal. */
+/** Quem pode ficar responsável por uma oportunidade: o time do portal. */
 function usePessoasDoPortal(token: string): Pessoa[] {
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   useEffect(() => {
@@ -952,8 +952,8 @@ function CreateModal({ statuses, token, onClose, onCreated }: {
   const api = useApi(token);
   const { toast } = useToast();
   const pessoas = usePessoasDoPortal(token);
-  const [r, setR] = useState<RascunhoLead>(LEAD_VAZIO);
-  const set = <K extends keyof RascunhoLead>(k: K, v: RascunhoLead[K]) =>
+  const [r, setR] = useState<RascunhoOportunidade>(OPORTUNIDADE_VAZIA);
+  const set = <K extends keyof RascunhoOportunidade>(k: K, v: RascunhoOportunidade[K]) =>
     setR(p => ({ ...p, [k]: v }));
   // Etapa de entrada configurada em Configurações; sem marcação, a primeira.
   const [statusId, setStatusId] = useState<number | ''>(
@@ -963,22 +963,22 @@ function CreateModal({ statuses, token, onClose, onCreated }: {
   const { saindo, fechar } = useSaidaSuave(onClose);
   const fundo = useFecharNoFundo(fechar);
   // Cadastro e edição dividem a mesma memória de largura: é a mesma ficha.
-  const painel = useLarguraPainel('lead-form');
+  const painel = useLarguraPainel('oportunidade-form');
 
   async function criar() {
-    if (!r.empresa.trim()) { toast('error', 'Falta a empresa', 'Um lead é uma empresa com quem se fala.'); return; }
+    if (!r.empresa.trim()) { toast('error', 'Falta a empresa', 'Uma oportunidade é uma empresa com quem se fala.'); return; }
     setSaving(true);
     try {
       const res = await api('', 'POST', {
         action: 'create_submission',
-        ...corpoDoLead(r),
+        ...corpoDaOportunidade(r),
         responsavel_nome: pessoas.find(p => p.id === r.responsavel_id)?.nome ?? null,
         status_id: statusId !== '' ? Number(statusId) : null,
       });
       if (res?.error) throw new Error(res.error);
       if (!res?.submission?.id) throw new Error('Resposta inválida do servidor.');
       onCreated(res.submission as Submission);
-      toast('success', 'Lead cadastrado', `${r.empresa.trim()} entrou no funil.`);
+      toast('success', 'Oportunidade cadastrado', `${r.empresa.trim()} entrou no funil.`);
       fechar();
     } catch (e) {
       toast('error', 'Não foi possível cadastrar', (e as Error).message);
@@ -993,12 +993,12 @@ function CreateModal({ statuses, token, onClose, onCreated }: {
       <div className="admin-modal" onClick={e => e.stopPropagation()}
         style={{ width: `min(${painel.largura}px, 96vw)` }}>
         <div className="admin-modal-header">
-          <h3 className="admin-modal-title">Novo lead</h3>
+          <h3 className="admin-modal-title">Nova oportunidade</h3>
           <button className="admin-modal-close" aria-label="Fechar" onClick={fechar}><IconX size={16} /></button>
         </div>
 
-        <div className="admin-modal-body form-lead">
-          <CamposDoLead r={r} set={set} token={token} pessoas={pessoas} />
+        <div className="admin-modal-body form-oportunidade">
+          <CamposDaOportunidade r={r} set={set} token={token} pessoas={pessoas} />
           <div className="form-group">
             <label className="form-label">Etapa</label>
             <FormSelect
@@ -1013,7 +1013,7 @@ function CreateModal({ statuses, token, onClose, onCreated }: {
           <button type="button" className="modal-acao" onClick={fechar}>Cancelar</button>
           <button type="button" className="modal-acao-primaria" disabled={saving || !r.empresa.trim()}
             onClick={() => void criar()}>
-            {saving ? 'Cadastrando…' : 'Cadastrar lead'}
+            {saving ? 'Cadastrando…' : 'Cadastrar oportunidade'}
           </button>
         </div>
       </div>
@@ -1033,7 +1033,7 @@ function EditModal({ detail, token, onClose, onSaved }: {
   const pessoas = usePessoasDoPortal(token);
   const s = detail.submission;
 
-  const [r, setR] = useState<RascunhoLead>({
+  const [r, setR] = useState<RascunhoOportunidade>({
     empresa: s.empresa ?? '',
     cnpj: s.cnpj ?? '',
     contato_nome: s.contato_nome ?? '',
@@ -1049,7 +1049,7 @@ function EditModal({ detail, token, onClose, onSaved }: {
     segmento: s.segmento ?? '',
     interesse: s.interesse ?? '',
     // Formatado como moeda, e não passado pela máscara: ela lê o que recebe
-    // como centavos, então um lead de R$ 50.000 abria a edição valendo
+    // como centavos, então uma oportunidade de R$ 50.000 abria a edição valendo
     // R$ 500,00 - e ao salvar era isso que ia para o banco.
     valor_estimado: s.valor_estimado != null
       ? Number(s.valor_estimado).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -1059,18 +1059,18 @@ function EditModal({ detail, token, onClose, onSaved }: {
     proxima_acao_em: s.proxima_acao_em ?? '',
     observacoes: s.observacoes ?? '',
   });
-  const set = <K extends keyof RascunhoLead>(k: K, v: RascunhoLead[K]) =>
+  const set = <K extends keyof RascunhoOportunidade>(k: K, v: RascunhoOportunidade[K]) =>
     setR(p => ({ ...p, [k]: v }));
   const [saving, setSaving] = useState(false);
   const { saindo, fechar } = useSaidaSuave(onClose);
   const fundo = useFecharNoFundo(fechar);
-  const painel = useLarguraPainel('lead-form');
+  const painel = useLarguraPainel('oportunidade-form');
 
   async function salvar() {
-    if (!r.empresa.trim()) { toast('error', 'Falta a empresa', 'Um lead é uma empresa com quem se fala.'); return; }
+    if (!r.empresa.trim()) { toast('error', 'Falta a empresa', 'Uma oportunidade é uma empresa com quem se fala.'); return; }
     setSaving(true);
     try {
-      const corpo = corpoDoLead(r);
+      const corpo = corpoDaOportunidade(r);
       const res = await api('', 'POST', { action: 'update_submission', id: s.id, ...corpo });
       if (res?.error) throw new Error(res.error);
       // A tela repinta com o que foi gravado, sem recarregar a listagem.
@@ -1078,7 +1078,7 @@ function EditModal({ detail, token, onClose, onSaved }: {
         ...corpo,
         responsavel_nome: pessoas.find(p => p.id === r.responsavel_id)?.nome ?? null,
       } as Partial<Submission>);
-      toast('success', 'Lead atualizado');
+      toast('success', 'Oportunidade atualizado');
       fechar();
     } catch (e) {
       toast('error', 'Não foi possível salvar', (e as Error).message);
@@ -1093,11 +1093,11 @@ function EditModal({ detail, token, onClose, onSaved }: {
       <div className="admin-modal" onClick={e => e.stopPropagation()}
         style={{ width: `min(${painel.largura}px, 96vw)` }}>
         <div className="admin-modal-header">
-          <h3 className="admin-modal-title">Editar lead</h3>
+          <h3 className="admin-modal-title">Editar oportunidade</h3>
           <button className="admin-modal-close" aria-label="Fechar" onClick={fechar}><IconX size={16} /></button>
         </div>
-        <div className="admin-modal-body form-lead">
-          <CamposDoLead r={r} set={set} token={token} pessoas={pessoas} />
+        <div className="admin-modal-body form-oportunidade">
+          <CamposDaOportunidade r={r} set={set} token={token} pessoas={pessoas} />
         </div>
         <div className="admin-modal-footer">
           <button type="button" className="modal-acao" onClick={fechar}>Cancelar</button>
@@ -1126,13 +1126,13 @@ export function DetailPanel({
   const { toast } = useToast();
   // Quem está logado: usado para assinar o evento otimista antes de o servidor responder.
   const { usuario, pode } = useAuth();
-  const painel = useLarguraPainel('lead');
+  const painel = useLarguraPainel('oportunidade');
   /** As pessoas da casa, para escolher quem esteve na reunião. */
   const pessoas = usePessoasDoPortal(token);
-  /** A aba aberta. Mesma navegação do painel de projeto: a ficha do lead de um
+  /** A aba aberta. Mesma navegação do painel de projeto: a ficha da oportunidade de um
    *  lado, o que já foi conversado do outro. */
   const [aba, setAba] = useState<'geral' | 'reunioes'>('geral');
-  /** As reuniões do lead. Vivem fora do `detail` porque cada gesto as pinta na
+  /** As reuniões da oportunidade. Vivem fora do `detail` porque cada gesto as pinta na
    *  hora, e o `detail` só é relido quando alguma outra coisa muda. */
   const [reunioes, setReunioes] = useState<Reuniao[]>([]);
   const [salvandoReuniao, setSalvandoReuniao] = useState(false);
@@ -1189,10 +1189,10 @@ export function DetailPanel({
     setReunioes((data?.reunioes ?? []) as Reuniao[]);
   }
 
-  // Copia um link direto para este card (?lead=<id>) - compartilhável com
+  // Copia um link direto para este card (?oportunidade=<id>) - compartilhável com
   // qualquer pessoa que tenha acesso à plataforma. Feedback visual + toast.
   async function copyShareLink() {
-    const url = `${window.location.origin}${window.location.pathname}?lead=${id}`;
+    const url = `${window.location.origin}${window.location.pathname}?oportunidade=${id}`;
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(url);
@@ -1215,18 +1215,18 @@ export function DetailPanel({
    *  atividade relê, e é assim que uma mudança de etapa aparece nela sem
    *  ninguém ter clicado em nada. */
   const donoDaAtividade = useMemo(() => ({
-    chave: `lead:${id}`,
+    chave: `oportunidade:${id}`,
     versao: detail?.eventos.length ?? 0,
     ler: async () => {
       const eventos = ultimoDetail.current?.eventos ?? [];
       return {
-        eventos: eventos.filter(e => e.tipo !== 'comentario').map(eventoDoLead),
-        comentarios: eventos.filter(e => e.tipo === 'comentario').map(comentarioDoLead),
+        eventos: eventos.filter(e => e.tipo !== 'comentario').map(eventoDaOportunidade),
+        comentarios: eventos.filter(e => e.tipo === 'comentario').map(comentarioDaOportunidade),
       };
     },
     enviar: async (texto: string, _anexos: unknown[], paiId: number | null) => {
       const r = await api('', 'POST', {
-        action: 'comment', lead_id: id, texto, parent_id: paiId,
+        action: 'comment', oportunidade_id: id, texto, parent_id: paiId,
         mencoes: idsMarcados(texto),
       });
       if (!r?.error) await load();
@@ -1237,14 +1237,14 @@ export function DetailPanel({
       if (!r?.error) await load();
       return r ?? {};
     },
-    // Sem `anexo`: o comentário do funil não leva arquivo - os anexos do lead
+    // Sem `anexo`: o comentário do funil não leva arquivo - os anexos da oportunidade
     // têm seção própria, com categoria -, e por isso o clipe não aparece.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [api, id, detail?.eventos.length]);
 
-  // ── Reuniões do lead ──────────────────────────────────────────────────
+  // ── Reuniões da oportunidade ──────────────────────────────────────────────────
   //
-  //  Os mesmos gestos do painel de projeto, com o lead no lugar dele: cada um
+  //  Os mesmos gestos do painel de projeto, com a oportunidade no lugar dele: cada um
   //  pinta a lista na hora e desfaz se o servidor recusar.
 
   /** Registra a reunião escrita à mão. O servidor devolve a linha pronta - id e
@@ -1253,7 +1253,7 @@ export function DetailPanel({
     reg: { data: string; assunto: string; notas: string; participantes: string[] },
   ) {
     setSalvandoReuniao(true);
-    const r = await api('', 'POST', { action: 'registrar_reuniao_lead', lead_id: id, ...reg });
+    const r = await api('', 'POST', { action: 'registrar_reuniao_oportunidade', oportunidade_id: id, ...reg });
     setSalvandoReuniao(false);
     if (r?.error || !r?.reuniao) {
       toast('error', 'Não foi possível registrar', r?.error ?? 'Tente de novo.');
@@ -1263,12 +1263,12 @@ export function DetailPanel({
     toast('success', 'Reunião registrada');
   }
 
-  /** Puxa reuniões do Fireflies para o lead. O resumo vira a nota e o link fica
+  /** Puxa reuniões do Fireflies para a oportunidade. O resumo vira a nota e o link fica
    *  guardado; a transcrição inteira continua morando lá. */
   async function anexarReunioesFireflies(firefliesIds: string[]) {
     setSalvandoReuniao(true);
     const r = await api('', 'POST', {
-      action: 'anexar_reuniao_fireflies_lead', lead_id: id, fireflies_ids: firefliesIds,
+      action: 'anexar_reuniao_fireflies_oportunidade', oportunidade_id: id, fireflies_ids: firefliesIds,
     });
     setSalvandoReuniao(false);
     if (r?.error) { toast('error', 'Não foi possível anexar', r.error); return; }
@@ -1278,12 +1278,12 @@ export function DetailPanel({
     toast('success', novas.length === 1 ? 'Reunião anexada' : `${novas.length} reuniões anexadas`);
   }
 
-  /** Tira a reunião do lead. Some da lista no gesto e volta se o servidor
+  /** Tira a reunião da oportunidade. Some da lista no gesto e volta se o servidor
    *  recusar: esperar a ida e a volta faria o clique parecer perdido. */
   async function excluirReuniao(reg: Reuniao) {
     const antes = reunioes;
     setReunioes(rs => rs.filter(x => x.id !== reg.id));
-    const r = await api('', 'POST', { action: 'excluir_reuniao_lead', id: reg.id });
+    const r = await api('', 'POST', { action: 'excluir_reuniao_oportunidade', id: reg.id });
     if (r?.error) {
       setReunioes(antes);
       toast('error', 'Não foi possível excluir', r.error);
@@ -1367,7 +1367,7 @@ export function DetailPanel({
   async function handleDeleteSubmission() {
     await api('', 'POST', { action: 'delete_submission', id });
     setDeleteSubmissionConfirm(false);
-    toast('success', 'Lead excluído');
+    toast('success', 'Oportunidade excluído');
     onDelete?.(id);
     fechar();
   }
@@ -1380,7 +1380,7 @@ export function DetailPanel({
     setDetail(prev => prev ? {
       ...prev,
       eventos: [...prev.eventos, {
-        id: -Date.now(), lead_id: id, tipo: 'status_change',
+        id: -Date.now(), oportunidade_id: id, tipo: 'status_change',
         status_id: statusId, status_nome: statusName ?? null, status_cor: (st as any)?.cor ?? null,
         descricao: null, parent_id: null, criado_em: new Date().toISOString(),
         autor_id: usuario?.id ?? null, autor_nome: usuario?.nome ?? null, autor_foto: usuario?.foto_url ?? null,
@@ -1389,7 +1389,7 @@ export function DetailPanel({
     toast('success', statusName ? `Movido para "${statusName}"` : 'Status atualizado');
     setMovingTo(statusId);
     try {
-      await api('', 'POST', { action: 'move', lead_id: id, status_id: statusId });
+      await api('', 'POST', { action: 'move', oportunidade_id: id, status_id: statusId });
       await load();
     } finally {
       setMovingTo(null);
@@ -1433,7 +1433,7 @@ export function DetailPanel({
       const orig = new Map((detail?.pendencias ?? []).map(p => [p.id, p]));
       const novas = itens.filter(i => !i.id && i.descricao.trim()).map(i => ({ descricao: i.descricao.trim(), categoria: i.categoria }));
       const editadas = itens.filter(i => i.id && (orig.get(i.id)?.descricao !== i.descricao.trim() || normPendCat(orig.get(i.id)?.categoria) !== i.categoria));
-      if (novas.length) await api('', 'POST', { action: 'add_pendencias', lead_id: id, status_id: statusId, itens: novas });
+      if (novas.length) await api('', 'POST', { action: 'add_pendencias', oportunidade_id: id, status_id: statusId, itens: novas });
       for (const e of editadas) await api('', 'POST', { action: 'update_pendencia', id: e.id, descricao: e.descricao.trim(), categoria: e.categoria });
       setPendingPendencia(null);
       await performMove(statusId);
@@ -1550,7 +1550,7 @@ export function DetailPanel({
   async function addPendencia(descricao: string, categoria: string) {
     const scEvts = detail?.eventos.filter(ev => ev.tipo === 'status_change') ?? [];
     const currentStatusId = scEvts[scEvts.length - 1]?.status_id ?? null;
-    await api('', 'POST', { action: 'add_pendencias', lead_id: id, status_id: currentStatusId, itens: [{ descricao, categoria }] });
+    await api('', 'POST', { action: 'add_pendencias', oportunidade_id: id, status_id: currentStatusId, itens: [{ descricao, categoria }] });
     await load();
   }
 
@@ -1594,7 +1594,7 @@ export function DetailPanel({
       try {
         await api('', 'POST', {
           action: 'upload_file',
-          lead_id: id,
+          oportunidade_id: id,
           status_id: currentStatusId,
           arquivo: { nome: file.name, tipo: file.type, tamanho: file.size, base64: reader.result, categoria: 'Outros' },
         });
@@ -1626,7 +1626,7 @@ export function DetailPanel({
     try {
       await api('', 'POST', {
         action: 'upload_file',
-        lead_id: id,
+        oportunidade_id: id,
         status_id: currentStatusId,
         arquivo: { nome: linkNome.trim() || url, tipo: 'link', tamanho: 0, base64: url, categoria: 'Outros' },
       });
@@ -1678,7 +1678,7 @@ export function DetailPanel({
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ minWidth: 0 }}>
               <p style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                Lead
+                Oportunidade
               </p>
               <h3 style={{ fontSize: 16, fontWeight: 800 }}>{s?.empresa ?? '…'}</h3>
             </div>
@@ -1699,7 +1699,7 @@ export function DetailPanel({
                   </button>
                   <button
                     className="admin-toolbar-btn"
-                    title="Editar lead"
+                    title="Editar oportunidade"
                     onClick={() => setShowEdit(true)}
                     style={{ width: 30, height: 30 }}
                   >
@@ -1707,7 +1707,7 @@ export function DetailPanel({
                   </button>
                   <button
                     className="admin-toolbar-btn"
-                    title="Excluir lead"
+                    title="Excluir oportunidade"
                     onClick={() => setDeleteSubmissionConfirm(true)}
                     style={{ width: 30, height: 30, color: 'var(--red)' }}
                   >
@@ -1774,7 +1774,7 @@ export function DetailPanel({
 
           {aba === 'reunioes' && (
             <SecaoReunioes
-              somenteLeitura={!pode('leads:editar')}
+              somenteLeitura={!pode('oportunidades:editar')}
               registros={reunioes}
               pessoas={pessoas}
               salvando={salvandoReuniao}
@@ -1788,91 +1788,91 @@ export function DetailPanel({
 
           <div style={{ display: aba === 'geral' ? 'block' : 'none' }}>
 
-            {/* A ficha do lead: com quem se fala, o que quer e quanto vale. */}
+            {/* A ficha da oportunidade: com quem se fala, o que quer e quanto vale. */}
             <section>
               <p className="admin-section-title">Contato</p>
-              <div className="lead-ficha">
-                <div className="lead-ficha-item">
+              <div className="oportunidade-ficha">
+                <div className="oportunidade-ficha-item">
                   <p className="admin-info-label">Empresa</p>
-                  <p className="lead-ficha-valor">{s!.empresa ?? '-'}</p>
-                  {s!.cnpj && <p className="lead-ficha-sub">{s!.cnpj}</p>}
+                  <p className="oportunidade-ficha-valor">{s!.empresa ?? '-'}</p>
+                  {s!.cnpj && <p className="oportunidade-ficha-sub">{s!.cnpj}</p>}
                 </div>
-                <div className="lead-ficha-item">
+                <div className="oportunidade-ficha-item">
                   <p className="admin-info-label">Quem fala com a gente</p>
-                  <p className="lead-ficha-valor">{s!.contato_nome ?? '-'}</p>
-                  {s!.contato_cargo && <p className="lead-ficha-sub">{s!.contato_cargo}</p>}
+                  <p className="oportunidade-ficha-valor">{s!.contato_nome ?? '-'}</p>
+                  {s!.contato_cargo && <p className="oportunidade-ficha-sub">{s!.contato_cargo}</p>}
                 </div>
                 {/* E-mail e telefone são para usar, não para ler: viram link de
                     escrever e de ligar. */}
-                <div className="lead-ficha-item">
+                <div className="oportunidade-ficha-item">
                   <p className="admin-info-label">E-mail</p>
                   {s!.contato_email
-                    ? <a className="lead-ficha-valor lead-ficha-link" href={`mailto:${s!.contato_email}`}>{s!.contato_email}</a>
-                    : <p className="lead-ficha-valor">-</p>}
+                    ? <a className="oportunidade-ficha-valor oportunidade-ficha-link" href={`mailto:${s!.contato_email}`}>{s!.contato_email}</a>
+                    : <p className="oportunidade-ficha-valor">-</p>}
                 </div>
-                <div className="lead-ficha-item">
+                <div className="oportunidade-ficha-item">
                   <p className="admin-info-label">Telefone</p>
                   {s!.contato_telefone
-                    ? <a className="lead-ficha-valor lead-ficha-link" href={`tel:${String(s!.contato_telefone).replace(/\D/g, '')}`}>{s!.contato_telefone}</a>
-                    : <p className="lead-ficha-valor">-</p>}
+                    ? <a className="oportunidade-ficha-valor oportunidade-ficha-link" href={`tel:${String(s!.contato_telefone).replace(/\D/g, '')}`}>{s!.contato_telefone}</a>
+                    : <p className="oportunidade-ficha-valor">-</p>}
                 </div>
                 {/* Cidade e estado numa linha só: é assim que se lê um lugar, e
                     em dois campos separados a ficha ganharia um vão no meio de
                     "Belo Horizonte" e "MG". O país fica embaixo, e some quando
-                    é o daqui - dizer "Brasil" em todo lead é ruído. */}
-                <div className="lead-ficha-item">
+                    é o daqui - dizer "Brasil" em toda oportunidade é ruído. */}
+                <div className="oportunidade-ficha-item">
                   <p className="admin-info-label">Onde fica</p>
-                  <p className="lead-ficha-valor">
+                  <p className="oportunidade-ficha-valor">
                     {[s!.cidade, s!.estado].filter(Boolean).join(' / ') || '-'}
                   </p>
-                  {s!.pais && s!.pais !== 'Brasil' && <p className="lead-ficha-sub">{s!.pais}</p>}
+                  {s!.pais && s!.pais !== 'Brasil' && <p className="oportunidade-ficha-sub">{s!.pais}</p>}
                 </div>
               </div>
             </section>
 
             <section>
               <p className="admin-section-title">Negócio</p>
-              <div className="lead-ficha">
-                <div className="lead-ficha-item">
+              <div className="oportunidade-ficha">
+                <div className="oportunidade-ficha-item">
                   <p className="admin-info-label">Origem</p>
-                  <p className="lead-ficha-valor">
+                  <p className="oportunidade-ficha-valor">
                     {s!.origem ?? '-'}
                     {/* A marca de parceria anda com a origem: as duas dizem por
-                        onde o lead entrou. Só aparece quando é sim - um "não"
-                        escrito em todo lead não informa nada. */}
+                        onde a oportunidade entrou. Só aparece quando é sim - um "não"
+                        escrito em toda oportunidade não informa nada. */}
                     {Number(s!.parceria) === 1 && (
-                      <span className="lead-tag-parceria" title="Lead que chegou por um parceiro">
+                      <span className="oportunidade-tag-parceria" title="Oportunidade que chegou por um parceiro">
                         parceria
                       </span>
                     )}
                   </p>
-                  {s!.indicado_por && <p className="lead-ficha-sub">por {s!.indicado_por}</p>}
+                  {s!.indicado_por && <p className="oportunidade-ficha-sub">por {s!.indicado_por}</p>}
                 </div>
-                <div className="lead-ficha-item">
+                <div className="oportunidade-ficha-item">
                   <p className="admin-info-label">Segmento</p>
-                  <p className="lead-ficha-valor">{s!.segmento ?? '-'}</p>
+                  <p className="oportunidade-ficha-valor">{s!.segmento ?? '-'}</p>
                 </div>
-                <div className="lead-ficha-item">
+                <div className="oportunidade-ficha-item">
                   <p className="admin-info-label">Interesse</p>
-                  <p className="lead-ficha-valor">{s!.interesse ?? '-'}</p>
+                  <p className="oportunidade-ficha-valor">{s!.interesse ?? '-'}</p>
                 </div>
-                <div className="lead-ficha-item">
+                <div className="oportunidade-ficha-item">
                   <p className="admin-info-label">Valor estimado</p>
-                  <p className="lead-ficha-valor lead-ficha-valor-forte">{fmtValor(s!.valor_estimado)}</p>
+                  <p className="oportunidade-ficha-valor oportunidade-ficha-valor-forte">{fmtValor(s!.valor_estimado)}</p>
                 </div>
-                <div className="lead-ficha-item">
+                <div className="oportunidade-ficha-item">
                   <p className="admin-info-label">Responsável</p>
-                  <p className="lead-ficha-valor">{s!.responsavel_nome ?? '-'}</p>
+                  <p className="oportunidade-ficha-valor">{s!.responsavel_nome ?? '-'}</p>
                 </div>
               </div>
 
               {/* O próximo passo é o que faz o funil andar. Vencido, ele cobra. */}
-              <div className={`lead-passo${s!.proxima_acao_em && String(s!.proxima_acao_em) < hojeISO() ? ' atrasado' : ''}`}>
+              <div className={`oportunidade-passo${s!.proxima_acao_em && String(s!.proxima_acao_em) < hojeISO() ? ' atrasado' : ''}`}>
                 <IconCalendario size={15} />
                 <div style={{ minWidth: 0 }}>
-                  <p className="lead-passo-acao">{s!.proxima_acao ?? 'Sem próximo passo marcado'}</p>
+                  <p className="oportunidade-passo-acao">{s!.proxima_acao ?? 'Sem próximo passo marcado'}</p>
                   {s!.proxima_acao_em && (
-                    <p className="lead-passo-data">
+                    <p className="oportunidade-passo-data">
                       {String(s!.proxima_acao_em) < hojeISO() ? 'Era para ' : 'Para '}
                       {fmtDataBR(String(s!.proxima_acao_em))}
                     </p>
@@ -1885,14 +1885,14 @@ export function DetailPanel({
               </div>
 
               {s!.observacoes && (
-                <div className="lead-observacoes">
+                <div className="oportunidade-observacoes">
                   <p className="admin-info-label">Observações</p>
                   <p>{String(s!.observacoes)}</p>
                 </div>
               )}
 
               {s!.motivo_perda && (
-                <div className="lead-observacoes lead-perda">
+                <div className="oportunidade-observacoes oportunidade-perda">
                   <p className="admin-info-label">Motivo da perda</p>
                   <p>{String(s!.motivo_perda)}</p>
                 </div>
@@ -1921,7 +1921,7 @@ export function DetailPanel({
               </div>
             </section>
 
-            {/* Lead time por etapa */}
+            {/* Quanto tempo ela passou em cada etapa */}
             {(() => {
               const changes = detail.eventos
                 .filter(e => e.tipo === 'status_change' && e.status_nome)
@@ -1964,22 +1964,22 @@ export function DetailPanel({
               const maxMs = Math.max(...stages.map(s => s.ms), 1);
               return (
                 <section>
-                  <p className="admin-section-title">Lead time por etapa</p>
-                  <div className="lead-time-list">
+                  <p className="admin-section-title">Tempo por etapa</p>
+                  <div className="oportunidade-time-list">
                     {stages.map((st, i) => (
-                      <div key={i} className="lead-time-row">
-                        <div className="lead-time-name">
-                          <span className="lead-time-dot" style={{ background: st.cor }} />
+                      <div key={i} className="oportunidade-time-row">
+                        <div className="oportunidade-time-name">
+                          <span className="oportunidade-time-dot" style={{ background: st.cor }} />
                           <span>{st.nome}</span>
-                          {st.isCurrent && <span className="lead-time-current">{st.frozen ? 'final' : 'atual'}</span>}
+                          {st.isCurrent && <span className="oportunidade-time-current">{st.frozen ? 'final' : 'atual'}</span>}
                         </div>
-                        <div className="lead-time-bar-wrap">
+                        <div className="oportunidade-time-bar-wrap">
                           <div
-                            className="lead-time-bar"
+                            className="oportunidade-time-bar"
                             style={{ width: `${Math.max((st.ms / maxMs) * 100, 2)}%`, background: st.cor + '55', borderColor: st.cor }}
                           />
                         </div>
-                        <span className="lead-time-value">{st.label}</span>
+                        <span className="oportunidade-time-value">{st.label}</span>
                       </div>
                     ))}
                   </div>
@@ -2212,7 +2212,7 @@ export function DetailPanel({
 
             {deleteSubmissionConfirm && (
               <Dialogo
-                titulo="Excluir lead?"
+                titulo="Excluir oportunidade?"
                 descricao={<><strong>{detail?.submission.empresa}</strong> será removida do sistema. Esta ação pode ser revertida pelo suporte, mas não pela interface.</>}
                 rotuloOk="Excluir" zIndex={1100}
                 onFechar={() => setDeleteSubmissionConfirm(false)}
@@ -2298,7 +2298,7 @@ export function DetailPanel({
               pessoas={pessoas}
               etapas={detail.statuses.map(st => ({ id: Number(st.id), nome: st.nome, cor: st.cor }))}
               usuarioId={usuario?.id}
-              podeComentar={pode('leads:comentar')}
+              podeComentar={pode('oportunidades:comentar')}
             />
 
           </div>
@@ -2311,7 +2311,7 @@ export function DetailPanel({
 
 // ── Modal de anexos (pré-visualização + download) ───
 type AnexoItem = { nome: string; tipo: string; tamanho: number; categoria?: string | null; url: string; isLink?: boolean };
-function AnexosModal({ leadId, onClose }: { leadId: string; onClose: () => void }) {
+function AnexosModal({ oportunidadeId, onClose }: { oportunidadeId: string; onClose: () => void }) {
   const { toast } = useToast();
   const [itens, setItens] = useState<AnexoItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2320,7 +2320,7 @@ function AnexosModal({ leadId, onClose }: { leadId: string; onClose: () => void 
   useEffect(() => {
     const token = localStorage.getItem('dux_admin_token') ?? '';
     let urls: string[] = [];
-    fetch(`/api/admin-data?action=get_lead_files&id=${encodeURIComponent(leadId)}`, {
+    fetch(`/api/admin-data?action=get_oportunidade_files&id=${encodeURIComponent(oportunidadeId)}`, {
       headers: { 'x-admin-session': token },
     })
       .then(r => r.json())
@@ -2344,7 +2344,7 @@ function AnexosModal({ leadId, onClose }: { leadId: string; onClose: () => void 
       .catch(() => toast('error', 'Erro ao carregar anexos'))
       .finally(() => setLoading(false));
     return () => { urls.forEach(u => URL.revokeObjectURL(u)); };
-  }, [leadId]);
+  }, [oportunidadeId]);
 
   const baixar = (it: AnexoItem) => {
     if (!it.url) return;
@@ -2363,7 +2363,7 @@ function AnexosModal({ leadId, onClose }: { leadId: string; onClose: () => void 
     <div className="anexos-overlay" style={{ zIndex: 1060 }} onClick={onClose}>
       <div className="anexos-card" onClick={e => e.stopPropagation()}>
         <div className="admin-modal-header">
-          <h3 style={{ fontSize: 16, fontWeight: 800 }}>Anexos do lead {loading ? '' : `(${itens.length})`}</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 800 }}>Anexos da oportunidade {loading ? '' : `(${itens.length})`}</h3>
           <button className="admin-modal-close" aria-label="Fechar" onClick={onClose}><IconX size={16} /></button>
         </div>
 
@@ -2443,17 +2443,17 @@ function AnexosModal({ leadId, onClose }: { leadId: string; onClose: () => void 
  *  de contagem, que leva para a aba onde as reuniões todas moram. */
 const CHIPS_NO_CARD = 2;
 
-/** As reuniões do lead como chips no card do quadro, e a reunião que eles
+/** As reuniões da oportunidade como chips no card do quadro, e a reunião que eles
  *  abrem.
  *
  *  O quadro carrega só o que o chip mostra - assunto, data e de onde veio.
  *  Clicar busca a reunião inteira e abre o `ReuniaoModal`, o mesmo modal
  *  central do chip dentro da entrega e do chip dentro da tarefa: ver a conversa
- *  é o que se quer ali, e abrir o lead para procurá-la seria o caminho longo
+ *  é o que se quer ali, e abrir a oportunidade para procurá-la seria o caminho longo
  *  para a mesma coisa. */
-function ChipsDeReuniao({ reunioes, onAbrirLead }: {
+function ChipsDeReuniao({ reunioes, onAbrirOportunidade }: {
   reunioes: ReuniaoDoCard[];
-  onAbrirLead: () => void;
+  onAbrirOportunidade: () => void;
 }) {
   const { toast } = useToast();
   const [aberta, setAberta] = useState<Reuniao | null>(null);
@@ -2468,7 +2468,7 @@ function ChipsDeReuniao({ reunioes, onAbrirLead }: {
 
   async function abrir(id: number) {
     setBuscando(id);
-    const r = await pedir(`?action=reuniao_lead&id=${id}`);
+    const r = await pedir(`?action=reuniao_oportunidade&id=${id}`);
     setBuscando(null);
     if (r?.error || !r?.reuniao) {
       toast('error', 'Não foi possível abrir a reunião', r?.error ?? 'Tente de novo.');
@@ -2478,7 +2478,7 @@ function ChipsDeReuniao({ reunioes, onAbrirLead }: {
   }
 
   return (
-    // O card inteiro abre o lead ao ser clicado; o chip tem destino próprio, e
+    // O card inteiro abre a oportunidade ao ser clicado; o chip tem destino próprio, e
     // sem isto ele abriria os dois.
     <div className="vinculo-chips kanban-card-reunioes" onClick={e => e.stopPropagation()}>
       {visiveis.map(r => (
@@ -2494,8 +2494,8 @@ function ChipsDeReuniao({ reunioes, onAbrirLead }: {
         <ChipReuniao
           assunto={`+${restantes}`}
           data={restantes === 1 ? 'reunião' : 'reuniões'}
-          titulo={`Ver as ${ordenadas.length} reuniões deste lead`}
-          onAbrir={onAbrirLead}
+          titulo={`Ver as ${ordenadas.length} reuniões deste oportunidade`}
+          onAbrir={onAbrirOportunidade}
         />
       )}
       {aberta && (
@@ -2557,14 +2557,14 @@ function KanbanCard({
       <div className="kanban-card-topo">
         <p className="kanban-card-title">{sub.empresa ?? '-'}</p>
         <span className="kanban-card-acoes">
-          <button type="button" className="kanban-card-acao" title="Abrir o lead"
-            aria-label={`Abrir ${sub.empresa ?? 'o lead'}`}
+          <button type="button" className="kanban-card-acao" title="Abrir a oportunidade"
+            aria-label={`Abrir ${sub.empresa ?? 'a oportunidade'}`}
             onClick={e => { e.stopPropagation(); onClick(sub.id); }}>
             <IconEdit size={12} />
           </button>
           {onDelete && (
-            <button type="button" className="kanban-card-acao perigo" title="Excluir lead"
-              aria-label={`Excluir ${sub.empresa ?? 'o lead'}`}
+            <button type="button" className="kanban-card-acao perigo" title="Excluir oportunidade"
+              aria-label={`Excluir ${sub.empresa ?? 'a oportunidade'}`}
               onClick={e => { e.stopPropagation(); setConfirmDel(true); }}>
               <IconTrash size={12} />
             </button>
@@ -2585,7 +2585,7 @@ function KanbanCard({
         )}
       </div>
       {sub.proxima_acao && (
-        <p className={`lead-proxima${acaoAtrasada ? ' atrasada' : ''}`}
+        <p className={`oportunidade-proxima${acaoAtrasada ? ' atrasada' : ''}`}
           title={sub.proxima_acao_em ? `Para ${fmtDataBR(sub.proxima_acao_em)}` : 'Sem data'}>
           <IconCalendario size={11} />
           <span>{sub.proxima_acao}</span>
@@ -2593,7 +2593,7 @@ function KanbanCard({
         </p>
       )}
       {(sub.reunioes?.length ?? 0) > 0 && (
-        <ChipsDeReuniao reunioes={sub.reunioes!} onAbrirLead={() => onClick(sub.id)} />
+        <ChipsDeReuniao reunioes={sub.reunioes!} onAbrirOportunidade={() => onClick(sub.id)} />
       )}
       {(sub.arquivo_count > 0 || (sub.comentario_count ?? 0) > 0 || (sub.pendencia_total_count ?? 0) > 0) && (
         <div className="kanban-card-footer">
@@ -2635,20 +2635,20 @@ function KanbanCard({
       )}
       {showAnexos && (
         <div onClick={e => e.stopPropagation()}>
-          <AnexosModal leadId={sub.id} onClose={() => setShowAnexos(false)} />
+          <AnexosModal oportunidadeId={sub.id} onClose={() => setShowAnexos(false)} />
         </div>
       )}
 
       {/* Excluir é o único gesto sem volta do card: pergunta no diálogo da
           casa, e não num balão só desta tela. */}
       {confirmDel && (
-        // O clique fica preso aqui: o card inteiro abre o lead, e sem isto
+        // O clique fica preso aqui: o card inteiro abre a oportunidade, e sem isto
         // confirmar a exclusão abriria o que se acabou de excluir.
         <span onClick={e => e.stopPropagation()}>
           <Dialogo
-            titulo="Excluir este lead?"
+            titulo="Excluir esta oportunidade?"
             descricao={<>
-              <strong>{sub.empresa ?? 'O lead'}</strong> sai do funil com a conversa e os
+              <strong>{sub.empresa ?? 'A oportunidade'}</strong> sai do funil com a conversa e os
               anexos. O suporte consegue reverter; a tela, não.
             </>}
             rotuloOk="Excluir" zIndex={1100}
@@ -2743,7 +2743,7 @@ function KanbanColumn({
     ...(collapsible ? { onMouseEnter: hoverEnter, onMouseLeave: hoverLeave } : {}),
   };
 
-  // O que está em jogo nesta etapa: a soma do valor estimado dos leads dela.
+  // O que está em jogo nesta etapa: a soma do valor estimado das oportunidades dela.
   const colTotal = cards.reduce((sum, c) => sum + (c.valor_estimado ?? 0), 0);
   // Na etapa de conversão (Executada), ordena pela data de execução - a última executada no topo.
   const orderedCards = status.is_conversion
@@ -2876,7 +2876,7 @@ function SkeletonBlock({ w, h, radius = 6 }: { w: string | number; h: string | n
   );
 }
 
-function LeadsSkeleton({ view }: { view: 'kanban' | 'lista' }) {
+function OportunidadesSkeleton({ view }: { view: 'kanban' | 'lista' }) {
   if (view === 'kanban') {
     return (
       <div className="kanban-board sk-wrap">
@@ -2930,7 +2930,7 @@ function LeadsSkeleton({ view }: { view: 'kanban' | 'lista' }) {
 }
 
 // ── Main Page ───────────────────────────────────────
-export default function LeadsPage({ token, openCard, onCardOpened }: {
+export default function OportunidadesPage({ token, openCard, onCardOpened }: {
   token: string;
   // Card vindo da busca rápida - abre o painel de detalhe ao entrar na página.
   openCard?: { id: string; nonce: number };
@@ -3067,7 +3067,7 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
       ? { ...s, current_status_id: statusId, status_since: new Date().toISOString() }
       : s
     ));
-    api('', 'POST', { action: 'move', lead_id: subId, status_id: statusId });
+    api('', 'POST', { action: 'move', oportunidade_id: subId, status_id: statusId });
     toast('success', statusName ? `Movido para "${statusName}"` : 'Status atualizado');
   }
 
@@ -3097,7 +3097,7 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
     // Etapa que exige pendências: registrar antes de mover. Busca as pendências
     // abertas do card para pré-preencher o modal (segue com elas, edita ou adiciona).
     if (cfg?.requires_pendencia) {
-      api(`?action=pendencias_by_lead&lead_id=${subId}`)
+      api(`?action=pendencias_by_oportunidade&oportunidade_id=${subId}`)
         .then(r => {
           const existentes: PendItem[] = (r?.pendencias ?? [])
             .filter((p: any) => !p.resolvida)
@@ -3118,7 +3118,7 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
       const orig = new Map(existentes.map(p => [p.id, p]));
       const novas = itens.filter(i => !i.id && i.descricao.trim()).map(i => ({ descricao: i.descricao.trim(), categoria: i.categoria }));
       const editadas = itens.filter(i => i.id && (orig.get(i.id)?.descricao !== i.descricao.trim() || orig.get(i.id)?.categoria !== i.categoria));
-      if (novas.length) await api('', 'POST', { action: 'add_pendencias', lead_id: subId, status_id: statusId, itens: novas });
+      if (novas.length) await api('', 'POST', { action: 'add_pendencias', oportunidade_id: subId, status_id: statusId, itens: novas });
       for (const e of editadas) await api('', 'POST', { action: 'update_pendencia', id: e.id, descricao: e.descricao.trim(), categoria: e.categoria });
       // Só as novas aumentam a contagem; as existentes já estavam contabilizadas.
       if (novas.length) setSubmissions(prev => prev.map(s => s.id === subId ? { ...s, pendencia_aberta_count: (s.pendencia_aberta_count ?? 0) + novas.length, pendencia_total_count: (s.pendencia_total_count ?? 0) + novas.length } : s));
@@ -3173,9 +3173,9 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
     try {
       await api('', 'POST', { action: 'delete_submission', id });
       handleDeleted(id);
-      toast('success', 'Lead excluído');
+      toast('success', 'Oportunidade excluído');
     } catch {
-      toast('error', 'Erro ao excluir lead');
+      toast('error', 'Erro ao excluir oportunidade');
     }
   }
 
@@ -3209,7 +3209,7 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
   }
 
   // Empresa, contato, o que a pessoa quer e o próximo passo: é por um desses
-  // que se procura um lead. O CNPJ entra pelos dígitos, com ou sem máscara.
+  // que se procura uma oportunidade. O CNPJ entra pelos dígitos, com ou sem máscara.
   const termo = busca.trim().toLowerCase();
   const digitos = termo.replace(/\D/g, '');
   const casaBusca = (s: Submission) => {
@@ -3267,8 +3267,8 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
   const doneIds = new Set([ganhaSt?.id, perdidaSt?.id].filter(Boolean).map(Number));
   const pendentes = filtered.filter(s => !doneIds.has(s.current_status_id as number)).length;
 
-  // Lead time médio: tempo de vida de cada lead (criação → conclusão, ou → agora se em aberto)
-  const leadTimeMedioMs = (() => {
+  // Tempo médio de vida de cada oportunidade (criação → conclusão, ou → agora se em aberto)
+  const oportunidadeTimeMedioMs = (() => {
     if (filtered.length === 0) return 0;
     const now = Date.now();
     const total = filtered.reduce((acc, s) => {
@@ -3284,7 +3284,7 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
       <div className="admin-page-header">
         <div>
           <h1 className="admin-page-title">Funil</h1>
-          <p className="admin-page-desc">Acompanhe os leads em negociação, do primeiro contato ao desfecho.</p>
+          <p className="admin-page-desc">Acompanhe as oportunidades em negociação, do primeiro contato ao desfecho.</p>
         </div>
         <div className="admin-page-acoes">
           <button className="admin-toolbar-btn" onClick={loadBoard} title="Atualizar"
@@ -3294,7 +3294,7 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
             </span>
           </button>
           <button onClick={() => setShowCreate(true)} className="btn btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13, flexShrink: 0 }}>
-            + Novo lead
+            + Nova oportunidade
           </button>
         </div>
       </div>
@@ -3305,7 +3305,7 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
         <CartoesKpiEsqueleto cartoes={5} />
       ) : (
         <div className="admin-stats" style={{ marginBottom: 18 }}>
-          <CartaoKpi rotulo="Total de leads" valor={filtered.length}
+          <CartaoKpi rotulo="Total de oportunidades" valor={filtered.length}
             nota={hasFilter || busca ? 'no recorte atual' : 'no funil'}
             cor="var(--yellow)" atraso={0} />
           <CartaoKpi rotulo="Em negociação" valor={pendentes} nota="ainda sem desfecho"
@@ -3326,7 +3326,7 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
                 ? f.filter(x => x !== String(perdidaSt.id))
                 : [...f, String(perdidaSt.id)])} />
           )}
-          <CartaoKpi rotulo="Ciclo médio" valor={fmtDuracao(leadTimeMedioMs)}
+          <CartaoKpi rotulo="Ciclo médio" valor={fmtDuracao(oportunidadeTimeMedioMs)}
             nota="da entrada ao desfecho" cor="#0EA5E9" atraso={0.2} />
         </div>
       )}
@@ -3367,7 +3367,7 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
         <div className="secao-busca">
           <span className="secao-busca-campo">
             <IconSearch size={13} />
-            <input value={busca} aria-label="Buscar lead"
+            <input value={busca} aria-label="Buscar oportunidade"
               onChange={e => setBusca(e.target.value)}
               placeholder="Buscar por empresa, contato, CNPJ ou próximo passo"
               onKeyDown={e => { if (e.key === 'Escape') setBusca(''); }} />
@@ -3381,11 +3381,11 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
       )}
 
       {loading ? (
-        <LeadsSkeleton view={view} />
+        <OportunidadesSkeleton view={view} />
       ) : filtered.length === 0 ? (
         <div className="admin-empty">
           <p style={{ color: 'var(--gray2)', marginBottom: 6 }}><IconInbox size={34} /></p>
-          <p>{busca || hasFilter ? 'Nenhum lead no recorte atual' : 'Nenhum lead cadastrado ainda'}</p>
+          <p>{busca || hasFilter ? 'Nenhuma oportunidade no recorte atual' : 'Nenhuma oportunidade cadastrado ainda'}</p>
         </div>
       ) : view === 'kanban' ? (
         <div className="kanban-board" ref={boardRef}>

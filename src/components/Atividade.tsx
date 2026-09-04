@@ -6,10 +6,10 @@
 //  escrita por gente, tem thread, marcação e anexo. Misturar as duas numa lista
 //  só faz a conversa se perder no meio de vinte "mudou o prazo".
 //
-//  Nasceu na gaveta de tarefa e saiu de lá quando o painel do lead passou a
+//  Nasceu na gaveta de tarefa e saiu de lá quando o painel da oportunidade passou a
 //  querer a mesma coisa. O que muda de um dono para o outro fica todo nas
 //  quatro funções que ele recebe - ler, enviar, excluir e baixar o anexo -, e
-//  nada aqui dentro sabe se está falando de uma tarefa ou de um lead.
+//  nada aqui dentro sabe se está falando de uma tarefa ou de uma oportunidade.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -22,7 +22,7 @@ import { Avatar, type Pessoa } from '../admin/FormularioTarefa';
 /** Uma linha do diário, já em português.
  *
  *  A frase vem pronta de quem chama: "alterou a etapa" numa tarefa e "moveu o
- *  lead" no funil saem de vocabulários diferentes, e traduzir os dois aqui
+ *  oportunidade" no funil saem de vocabulários diferentes, e traduzir os dois aqui
  *  dentro amarraria este arquivo às duas telas. */
 export interface EventoAtividade {
   id: number;
@@ -492,7 +492,7 @@ function Comentario({ c, respostas, pessoas, etapas, usuarioId, podeComentar, en
  *  volta na hora e a releitura acontece por baixo. Fora do componente de
  *  propósito - dentro dele, o cache morreria junto com o painel, que é
  *  exatamente quando ele precisa sobreviver. */
-/** O que já foi lido, por dono. Reabrir a mesma tarefa - ou o mesmo lead -
+/** O que já foi lido, por dono. Reabrir a mesma tarefa - ou o mesmo oportunidade -
  *  mostra a conversa que estava e se atualiza por baixo, em vez de piscar um
  *  vazio enquanto a leitura vai e volta. */
 const lidas = new Map<string, { eventos: EventoAtividade[]; comentarios: ComentarioAtividade[] }>();
@@ -501,7 +501,7 @@ const lidas = new Map<string, { eventos: EventoAtividade[]; comentarios: Comenta
  *  componente de que coisa se trata. */
 export interface DonoDaAtividade {
   /** Identidade do dono, para o que já foi lido não ser confundido com o de
-   *  outro card: `tarefa:12`, `lead:abc`. */
+   *  outro card: `tarefa:12`, `oportunidade:abc`. */
   chave: string;
   ler: () => Promise<{ eventos: EventoAtividade[]; comentarios: ComentarioAtividade[] }>;
   enviar: (texto: string, anexos: AnexoPendente[], paiId: number | null) => Promise<{ error?: string }>;

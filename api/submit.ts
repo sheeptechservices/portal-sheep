@@ -12,7 +12,7 @@ function getDb() {
 
 async function ensureSchema(db: ReturnType<typeof getDb>) {
   await db.execute(`
-    CREATE TABLE IF NOT EXISTS leads (
+    CREATE TABLE IF NOT EXISTS oportunidades (
       id                 TEXT PRIMARY KEY,
       created_at         TEXT NOT NULL,
       cnpj_contratado    TEXT,
@@ -28,14 +28,14 @@ async function ensureSchema(db: ReturnType<typeof getDb>) {
       fim_type           INTEGER
     )
   `);
-  try { await db.execute(`ALTER TABLE leads ADD COLUMN parcelas TEXT`); } catch {}
-  try { await db.execute(`ALTER TABLE leads ADD COLUMN previsao_execucao TEXT`); } catch {}
-  try { await db.execute(`ALTER TABLE leads ADD COLUMN data_execucao TEXT`); } catch {}
+  try { await db.execute(`ALTER TABLE oportunidades ADD COLUMN parcelas TEXT`); } catch {}
+  try { await db.execute(`ALTER TABLE oportunidades ADD COLUMN previsao_execucao TEXT`); } catch {}
+  try { await db.execute(`ALTER TABLE oportunidades ADD COLUMN data_execucao TEXT`); } catch {}
 
   await db.execute(`
-    CREATE TABLE IF NOT EXISTS lead_arquivos (
+    CREATE TABLE IF NOT EXISTS oportunidade_arquivos (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
-      lead_id TEXT NOT NULL,
+      oportunidade_id TEXT NOT NULL,
       categoria      TEXT NOT NULL,
       nome           TEXT NOT NULL,
       tipo           TEXT NOT NULL,
@@ -98,7 +98,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     await db.execute({
-      sql: `INSERT INTO leads (
+      sql: `INSERT INTO oportunidades (
               id, created_at,
               cnpj_contratado, nome_contratado, situacao_contratado,
               cnpj_sacado, nome_sacado, situacao_sacado,
@@ -131,8 +131,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const statusId = await getEntryStatusId(db);
       if (statusId !== null) {
         await db.execute({
-          sql: `INSERT INTO lead_eventos (lead_id, tipo, status_id, descricao, criado_em)
-                VALUES (?, 'status_change', ?, 'Lead recebida', ?)`,
+          sql: `INSERT INTO oportunidade_eventos (oportunidade_id, tipo, status_id, descricao, criado_em)
+                VALUES (?, 'status_change', ?, 'Oportunidade recebida', ?)`,
           args: [id, statusId, createdAt],
         });
       }
@@ -143,6 +143,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ ok: true, id });
   } catch (err) {
     console.error('[submit]', err);
-    return res.status(500).json({ error: 'Erro ao salvar lead. Tente novamente.' });
+    return res.status(500).json({ error: 'Erro ao salvar a oportunidade. Tente novamente.' });
   }
 }

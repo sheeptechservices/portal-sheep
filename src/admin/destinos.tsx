@@ -3,7 +3,7 @@
 // por ⌘K (QuickSearch), que casa por título, descrição e apelidos de cada destino.
 
 export type Page =
-  | 'projetos' | 'tarefas' | 'leads' | 'cadastros' | 'configuracoes'
+  | 'projetos' | 'tarefas' | 'oportunidades' | 'cadastros' | 'configuracoes'
   | 'ferramentas' | 'gerador-documentos' | 'perfil'
   | 'usuarios';
 
@@ -27,13 +27,13 @@ const ic = {
 
 export const DESTINOS: Destino[] = [
   {
-    page: 'leads',
-    titulo: 'Funil',
-    descricao: 'Esteira de demandas das operações',
+    page: 'oportunidades',
+    titulo: 'Oportunidades',
+    descricao: 'O funil comercial: com quem se está falando e o que pode virar projeto',
     grupo: 'Páginas',
-    termos: ['esteira', 'demandas', 'operacoes', 'kanban', 'leads',
+    termos: ['funil', 'esteira', 'demandas', 'operacoes', 'kanban', 'comercial',
       // nomes anteriores da tela, para quem a conhece assim ainda encontrar
-      'solicitacoes', 'solicitações'],
+      'lead', 'leads', 'solicitacoes', 'solicitações'],
     icon: (
       <svg {...ic}>
         <path d="M3 4h18l-7 8.5V19l-4 2v-8.5L3 4z" />

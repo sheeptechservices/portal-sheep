@@ -81,7 +81,7 @@ export function parseMoedaBR(v: string): number {
 
 /**
  * Empurra vencimento que cai em fim de semana ou feriado para o próximo dia útil.
- * Aplica só no que o sistema preenche (leitura de documento e lead) - data
+ * Aplica só no que o sistema preenche (leitura de documento e oportunidade) - data
  * digitada à mão é escolha do analista e fica como está.
  */
 export function ajustarParaDiaUtil(datas: string[]): { datas: string[]; ajustes: { de: string; para: string }[] } {

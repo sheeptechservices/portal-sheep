@@ -9,7 +9,7 @@ import { PAINEL_MIN, PAINEL_MAX } from '../lib/painelLateral';
  *
  * Recebe o que `useLarguraPainel` devolve, e nada mais:
  *
- *   const painel = useLarguraPainel('lead');
+ *   const painel = useLarguraPainel('oportunidade');
  *   <PuxadorDoPainel {...painel} />
  *   <div className="admin-modal" style={{ width: `min(${painel.largura}px, 96vw)` }}>
  */

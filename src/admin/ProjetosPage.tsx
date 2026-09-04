@@ -1434,7 +1434,7 @@ function EditorEntrega({ inicial, pessoas, marcadores, submarcadores, salvando, 
         <label className="form-label">Título *</label>
         <input className={`form-input${erros.titulo ? ' error' : ''}`} value={titulo} autoFocus
           onChange={e => { setTitulo(e.target.value); setErros({}); }}
-          placeholder="Funil de leads no ar" />
+          placeholder="Funil de oportunidades no ar" />
         {erros.titulo && <p className="form-error">{erros.titulo}</p>}
       </div>
 
@@ -3786,7 +3786,7 @@ function FormularioProjeto({
   const fundo = useFecharNoFundo(fechar);
 
   /** Link que abre este projeto direto, para quem já tem acesso ao portal. É o
-   *  mesmo formato que o Funil usa em `?lead=`. */
+   *  mesmo formato que o Funil usa em `?oportunidade=`. */
   /** Copia um endereço, com o `prompt` como plano B: sem HTTPS ou com a
    *  permissão negada, a área de transferência não existe. */
   async function copiar(url: string, marcar: (v: boolean) => void, rotulo: string) {

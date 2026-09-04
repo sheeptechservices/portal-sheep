@@ -144,7 +144,7 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
 .theme-seg {
   --seg-w: 30px;          /* largura de cada opção */
   --seg-gap: 2px;
-  /* Mesmo movimento do switch kanban/lista das Leads (.view-toggle-pill) */
+  /* Mesmo movimento do switch quadro/lista das Oportunidades (.view-toggle-pill) */
   --seg-curva: cubic-bezier(0.4, 0, 0.2, 1);
   --seg-dur: 0.22s;
   position: relative;
@@ -4319,10 +4319,10 @@ body.arrastando-painel {
 .status-select-option:hover {
   background: var(--bg);
 }
-/* A marca de "veio por parceria", ao lado da origem na ficha do lead. So
+/* A marca de "veio por parceria", ao lado da origem na ficha da oportunidade. So
    aparece quando e sim, entao ela nao precisa competir: pilula pequena, no
    amarelo da casa. */
-.lead-tag-parceria {
+.oportunidade-tag-parceria {
   margin-left: 6px;
   padding: 1px 7px;
   border-radius: var(--radius-pill);
@@ -4434,34 +4434,34 @@ body.arrastando-painel {
   color: var(--black);
 }
 
-/* ── Lead time track ────────────────────────────────── */
-.lead-time-track {
+/* ── Tempo por etapa: a barra ────────────────────────────────── */
+.oportunidade-time-track {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.lead-time-segment {
+.oportunidade-time-segment {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 12px;
 }
 
-.lead-time-dot {
+.oportunidade-time-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-.lead-time-nome {
+.oportunidade-time-nome {
   flex: 1;
   font-weight: 600;
   color: var(--black);
 }
 
-.lead-time-dur {
+.oportunidade-time-dur {
   font-size: 11px;
   font-weight: 700;
   color: var(--gray);
@@ -7884,7 +7884,7 @@ button.checklist-texto:focus-visible {
   transform: scale(1.1);
 }
 
-/* ── Novo lead notification section ──────────── */
+/* ── Aviso de nova oportunidade ──────────── */
 .nova-notif-section {
   border: 1px solid var(--gray3);
   border-radius: 10px;
@@ -8577,21 +8577,21 @@ button.checklist-texto:focus-visible {
 }
 @keyframes deps-frame-spin { to { transform: rotate(360deg); } }
 
-/* ── Lead time por etapa ─────────────────────────────── */
-.lead-time-list {
+/* ── Tempo por etapa ─────────────────────────────── */
+.oportunidade-time-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.lead-time-row {
+.oportunidade-time-row {
   display: grid;
   grid-template-columns: 160px 1fr 64px;
   align-items: center;
   gap: 10px;
 }
 
-.lead-time-name {
+.oportunidade-time-name {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -8604,14 +8604,14 @@ button.checklist-texto:focus-visible {
   text-overflow: ellipsis;
 }
 
-.lead-time-dot {
+.oportunidade-time-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-.lead-time-current {
+.oportunidade-time-current {
   font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
@@ -8623,21 +8623,21 @@ button.checklist-texto:focus-visible {
   flex-shrink: 0;
 }
 
-.lead-time-bar-wrap {
+.oportunidade-time-bar-wrap {
   height: 8px;
   background: var(--gray3);
   border-radius: 99px;
   overflow: hidden;
 }
 
-.lead-time-bar {
+.oportunidade-time-bar {
   height: 100%;
   border-radius: 99px;
   border: 1px solid transparent;
   transition: width .4s ease;
 }
 
-.lead-time-value {
+.oportunidade-time-value {
   font-size: 11px;
   font-weight: 600;
   color: var(--gray);
@@ -10651,7 +10651,7 @@ button.checklist-texto:focus-visible {
 .ac-icobtn:hover { background: var(--ac-g900); color: #fff; border-color: var(--ac-g900); }
 .ac-icobtn.danger:hover { background: #DC2626; border-color: #DC2626; color: #fff; }
 
-/* Detalhamento de parcelas (info do lead) */
+/* Detalhamento de parcelas (info da oportunidade) */
 .ac-parcelas { border: 1px solid var(--ac-g200); border-radius: 10px; overflow: hidden; }
 .ac-parcelas-head, .ac-parcelas-row { display: grid; grid-template-columns: 56px 1fr 1fr; gap: 12px; padding: 9px 14px; font-size: 13px; align-items: center; }
 .ac-parcelas-head { background: var(--bg); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ac-g500); }
@@ -10756,7 +10756,7 @@ button.checklist-texto:focus-visible {
 .ac-ov-warn { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 10px; font-size: 13px; color: #92400E; line-height: 1.5; margin-bottom: 16px; }
 .ac-ov-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 
-/* Opção do dropdown de leads (Análise de Crédito) - hover claro */
+/* Opção do dropdown de oportunidades (Análise de Crédito) - hover claro */
 .ac-sol-opt { padding: 11px 14px; cursor: pointer; border-radius: var(--radius-sm); transition: background .12s, box-shadow .12s; border: 1px solid transparent; }
 .ac-sol-opt:hover { background: var(--yd); border-color: var(--yellow); }
 
@@ -10822,7 +10822,7 @@ button.checklist-texto:focus-visible {
 .ac-note.ok { background: var(--ac-ok-bg); border-color: var(--ac-ok); color: var(--ac-green-dark); }
 .ac-note.info { background: #E7EEFB; border-color: #3B82F6; color: #1E40AF; }
 
-/* Read-only info (lead) */
+/* Read-only info (oportunidade) */
 .ac-sol-info { background: var(--bg); border: 1.5px solid var(--ac-g200); border-radius: var(--radius-md); }
 
 /* Status cards (decisão) */
@@ -13574,31 +13574,31 @@ button.checklist-texto:focus-visible {
 }
 
 /* ── Funil comercial ────────────────────────────────────────────────────────
-   O lead é uma conversa com uma empresa: quem fala, o que quer, quanto vale e
+   A oportunidade é uma conversa com uma empresa: quem fala, o que quer, quanto vale e
    qual é o próximo passo. Tudo aqui serve a essas quatro perguntas. */
 
 /* Uma linha de campos do cadastro. Cada campo diz a largura que quer pelo
    flex-basis; abaixo de 520px todos ocupam a linha inteira. */
-.lead-campos {
+.oportunidade-campos {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
 }
-.lead-campos > .form-group { margin-bottom: 0; }
+.oportunidade-campos > .form-group { margin-bottom: 0; }
 
-/* O corpo do modal de lead. O `.admin-modal-body` da casa nasce sem folga em
+/* O corpo do modal da oportunidade. O `.admin-modal-body` da casa nasce sem folga em
    cima porque quem o usa começa com uma `<section>`, que traz a sua; o
    formulário não tem seção nenhuma, então o primeiro rótulo encostava no
    título. O ar entre os blocos vem de um `gap` só - margem somada a gap dá
    distâncias diferentes conforme o vizinho. */
-.form-lead {
+.form-oportunidade {
   padding-top: 18px;
   gap: 14px;
 }
-.form-lead .lead-secao { margin: 6px 0 -2px; }
+.form-oportunidade .oportunidade-secao { margin: 6px 0 -2px; }
 
 /* Título de um trecho do formulário (Contato, Negócio, Próximo passo). */
-.lead-secao {
+.oportunidade-secao {
   margin: 18px 0 8px;
   font-size: 11px;
   font-weight: 700;
@@ -13608,7 +13608,7 @@ button.checklist-texto:focus-visible {
 }
 
 /* O próximo passo no card do kanban: uma linha só, com a data à direita. */
-.lead-proxima {
+.oportunidade-proxima {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -13619,53 +13619,53 @@ button.checklist-texto:focus-visible {
   color: var(--gray2);
   min-width: 0;
 }
-.lead-proxima > span {
+.oportunidade-proxima > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.lead-proxima > em {
+.oportunidade-proxima > em {
   margin-left: auto;
   flex-shrink: 0;
   font-style: normal;
   font-weight: 700;
 }
-.lead-proxima svg { flex-shrink: 0; }
+.oportunidade-proxima svg { flex-shrink: 0; }
 /* Passo vencido: o card cobra, sem gritar. */
-.lead-proxima.atrasada { color: var(--red); }
+.oportunidade-proxima.atrasada { color: var(--red); }
 
-/* A ficha, no painel do lead. */
-.lead-ficha {
+/* A ficha, no painel da oportunidade. */
+.oportunidade-ficha {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 14px 18px;
 }
-.lead-ficha-valor {
+.oportunidade-ficha-valor {
   font-size: 13.5px;
   font-weight: 600;
   color: var(--black);
   margin-top: 2px;
   word-break: break-word;
 }
-.lead-ficha-valor-forte { font-size: 15px; font-weight: 800; }
-.lead-ficha-sub {
+.oportunidade-ficha-valor-forte { font-size: 15px; font-weight: 800; }
+.oportunidade-ficha-sub {
   font-size: 11.5px;
   color: var(--gray2);
   margin-top: 1px;
 }
-.lead-ficha-link {
+.oportunidade-ficha-link {
   display: inline-block;
   text-decoration: none;
   border-bottom: 1px solid transparent;
   transition: var(--transition);
 }
-.lead-ficha-link:hover {
+.oportunidade-ficha-link:hover {
   color: var(--black);
   border-bottom-color: var(--gray2);
 }
 
 /* O próximo passo no painel: a única linha que pede ação. */
-.lead-passo {
+.oportunidade-passo {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -13676,45 +13676,45 @@ button.checklist-texto:focus-visible {
   background: var(--bg);
   transition: var(--transition);
 }
-.lead-passo.atrasado {
+.oportunidade-passo.atrasado {
   border-color: color-mix(in srgb, var(--red) 40%, transparent);
   background: color-mix(in srgb, var(--red) 7%, transparent);
 }
-.lead-passo > svg { flex-shrink: 0; color: var(--gray2); }
+.oportunidade-passo > svg { flex-shrink: 0; color: var(--gray2); }
 /* O botão não encolhe: o texto do passo é que cede espaço. */
-.lead-passo > button { flex-shrink: 0; width: auto; }
-.lead-passo.atrasado > svg { color: var(--red); }
-.lead-passo-acao {
+.oportunidade-passo > button { flex-shrink: 0; width: auto; }
+.oportunidade-passo.atrasado > svg { color: var(--red); }
+.oportunidade-passo-acao {
   font-size: 13px;
   font-weight: 600;
   color: var(--black);
 }
-.lead-passo-data {
+.oportunidade-passo-data {
   font-size: 11.5px;
   color: var(--gray2);
   margin-top: 1px;
 }
-.lead-passo.atrasado .lead-passo-data { color: var(--red); }
+.oportunidade-passo.atrasado .oportunidade-passo-data { color: var(--red); }
 
 /* Observações e motivo da perda: texto corrido, com as quebras que a pessoa
    escreveu. */
-.lead-observacoes {
+.oportunidade-observacoes {
   margin-top: 14px;
   padding: 10px 12px;
   border: 1px solid var(--gray4);
   border-radius: var(--radius-md);
 }
-.lead-observacoes > p:last-child {
+.oportunidade-observacoes > p:last-child {
   margin-top: 4px;
   font-size: 13px;
   line-height: 1.5;
   color: var(--black);
   white-space: pre-wrap;
 }
-.lead-perda { border-color: color-mix(in srgb, var(--red) 35%, transparent); }
+.oportunidade-perda { border-color: color-mix(in srgb, var(--red) 35%, transparent); }
 
 @media (prefers-reduced-motion: reduce) {
-  .lead-passo, .lead-ficha-link { transition: none; }
+  .oportunidade-passo, .oportunidade-ficha-link { transition: none; }
 }
 
 
@@ -13805,10 +13805,10 @@ button.checklist-texto:focus-visible {
      espremer o título até sumir. */
   .admin-modal-header { flex-wrap: wrap; }
 
-  /* A ficha do lead cabe em duas colunas curtas; o formulário fica com um
+  /* A ficha da oportunidade cabe em duas colunas curtas; o formulário fica com um
      campo por linha, que é o que dá largura para o texto. */
-  .lead-ficha { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
-  .lead-campos > .form-group { flex: 1 1 100% !important; }
+  .oportunidade-ficha { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+  .oportunidade-campos > .form-group { flex: 1 1 100% !important; }
 
   /* O aviso não pode nascer atrás da barra de navegação, nem mais largo que a
      tela. */

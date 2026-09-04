@@ -23,7 +23,7 @@ interface UsuarioPerfil {
 interface Resumo {
   comentarios: number;
   eventos: number;
-  leads: number;
+  oportunidades: number;
   cedentes: number;
   pendencias: number;
   acoes: number;
@@ -43,10 +43,10 @@ const ACAO_LABEL: Record<string, string> = {
   move: 'Moveu de etapa',
   upload_file: 'Anexou arquivo',
   delete_file: 'Excluiu arquivo',
-  create_submission: 'Criou lead',
-  update_submission: 'Editou lead',
-  delete_submission: 'Excluiu lead',
-  patch_submission: 'Ajustou campo do lead',
+  create_submission: 'Criou oportunidade',
+  update_submission: 'Editou oportunidade',
+  delete_submission: 'Excluiu oportunidade',
+  patch_submission: 'Ajustou campo da oportunidade',
   create_cedente: 'Criou cedente',
   update_cedente: 'Editou cedente',
   delete_cedente: 'Desativou cedente',
@@ -178,7 +178,7 @@ export default function PerfilPage({ token }: { token: string }) {
         <div className="admin-stats">
           <Estatistica label="Comentários" valor={resumo.comentarios} desc="escritos por você" />
           <Estatistica label="Movimentações" valor={resumo.eventos} desc="eventos no histórico" />
-          <Estatistica label="Leads" valor={resumo.leads} desc="criadas por você" />
+          <Estatistica label="Oportunidades" valor={resumo.oportunidades} desc="criadas por você" />
           <Estatistica label="Cedentes" valor={resumo.cedentes} desc="cadastrados por você" />
           <Estatistica label="Ações" valor={resumo.acoes} desc="registradas na auditoria" />
         </div>

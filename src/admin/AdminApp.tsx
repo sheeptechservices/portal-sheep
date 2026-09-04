@@ -11,7 +11,7 @@ import { MARCAS } from '../lib/marcas';
 import { SkeletonPagina } from '../components/Skeleton';
 import { GOOGLE_CLIENT_ID, GOOGLE_DOMINIO, carregarGis } from '../lib/google';
 // Cada página é carregada sob demanda (code-splitting) - só entra no bundle quando aberta
-const LeadsPage = lazy(() => import('./LeadsPage'));
+const OportunidadesPage = lazy(() => import('./OportunidadesPage'));
 const ProjetosPage = lazy(() => import('./ProjetosPage'));
 const TarefasPage = lazy(() => import('./TarefasPage'));
 const ConfiguracoesPage = lazy(() => import('./ConfiguracoesPage'));
@@ -190,12 +190,12 @@ const NAV_SECTIONS: { section: string; items: NavLeaf[] }[] = [
         disabled: true,
         icon: <IconDashboard size={15} />,
       },
-      // Onboarding, Leads e Operações ficavam sob o título "Esteira de
+      // Onboarding, Oportunidades e Operações ficavam sob o título "Esteira de
       // Crédito". O título saiu e os itens vieram para cá, e não para um grupo
       // próprio sem rótulo: a lista é montada com `key={group.section}`, então
       // dois grupos de título vazio colidiriam na mesma chave.
       {
-        page: 'leads',
+        page: 'oportunidades',
         label: 'Funil',
         icon: (
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
@@ -1174,7 +1174,7 @@ function LoginArte() {
 interface NewCedente { cnpj: string; razao_social: string; natureza_juridica?: string }
 
 function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLogout: () => void; saindo: boolean; newCedente?: NewCedente }) {
-  const [page, setPage] = useState<Page>(newCedente ? 'cadastros' : 'leads');
+  const [page, setPage] = useState<Page>(newCedente ? 'cadastros' : 'oportunidades');
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -1262,7 +1262,7 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
     [pode, admin],
   );
 
-  // A tela abre em Leads, que é o certo para quase todo mundo. Quando as
+  // A tela abre em Oportunidades, que é o certo para quase todo mundo. Quando as
   // permissões chegam e a página aberta não é alcançável, vai para a primeira que
   // é - em vez de deixar a pessoa parada num "sem acesso" que ela não escolheu.
   useEffect(() => {
@@ -1278,14 +1278,16 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
     return () => { document.title = prev; };
   }, []);
 
-  // Deep link: ?lead=<id> abre direto o card do lead (link compartilhável).
+  // Deep link: ?oportunidade=<id> abre direto o card da oportunidade (link compartilhável).
   // Lê uma vez na montagem (após o login, a URL é preservada) e limpa a query para não reabrir.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const sid = params.get('lead');
+    // `?lead=` continua valendo: a seção mudou de nome, e os links que já foram
+    // mandados por aí não mudaram junto.
+    const sid = params.get('oportunidade') ?? params.get('lead');
     if (sid) {
-      setPage('leads');
-      setOpenCard({ page: 'leads', id: sid, nonce: 1 });
+      setPage('oportunidades');
+      setOpenCard({ page: 'oportunidades', id: sid, nonce: 1 });
       window.history.replaceState({}, '', window.location.pathname + window.location.hash);
       return;
     }
@@ -1453,7 +1455,7 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
                 onFiltroAplicado={() => setTarefasDaEntrega(null)}
               />
             )}
-            {page === 'leads'  && <LeadsPage  token={token} openCard={openCard?.page === 'leads' ? openCard : undefined} onCardOpened={() => setOpenCard(null)} />}
+            {page === 'oportunidades'  && <OportunidadesPage  token={token} openCard={openCard?.page === 'oportunidades' ? openCard : undefined} onCardOpened={() => setOpenCard(null)} />}
             {page === 'cadastros'     && <CadastrosPage     token={token} newCedente={newCedente} />}
             {page === 'configuracoes' && <ConfiguracoesPage token={token} />}
             {page === 'ferramentas'   && <FerramentasPage onNavigate={p => setPage(p as Page)} />}

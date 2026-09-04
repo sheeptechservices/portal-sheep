@@ -9,7 +9,7 @@ export interface StatusConfig {
   is_conversion?: number;
   is_excluded?: number;
   requires_pendencia?: number;
-  /** Etapa que recebe os leads enviadas pelo formulário público. */
+  /** Etapa que recebe as oportunidades enviadas pelo formulário público. */
   is_entrada?: number;
   /** Etapa pontual: fica recolhida no kanban mesmo tendo cards. */
   always_collapsed?: number;
@@ -43,7 +43,7 @@ export interface UsuarioNotificavel {
   foto_url: string | null;
 }
 
-/** Um lead do funil comercial.
+/** Uma oportunidade do funil comercial.
  *
  *  A tabela nasceu para operação de crédito - cedente, sacado, parcelas -, e o
  *  que o comercial precisa é outra coisa: com quem se está falando, de onde
@@ -81,24 +81,24 @@ export interface Submission {
   proxima_acao: string | null;
   proxima_acao_em: string | null;
   observacoes?: string | null;
-  /** Preenchido quando o lead cai na etapa de perda. */
+  /** Preenchido quando a oportunidade cai na etapa de perda. */
   motivo_perda?: string | null;
   arquivo_count: number;
   comentario_count?: number;
   pendencia_aberta_count?: number;
-  /** Onde a empresa fica. Três colunas, e não uma: o comercial conta lead por
+  /** Onde a empresa fica. Três colunas, e não uma: o comercial conta oportunidade por
    *  praça, e "Belo Horizonte / MG" numa string não se agrupa. */
   cidade?: string | null;
   estado?: string | null;
   pais?: string | null;
-  /** Quem apontou o lead. Vale sobretudo quando a origem é indicação. */
+  /** Quem apontou a oportunidade. Vale sobretudo quando a origem é indicação. */
   indicado_por?: string | null;
   /** Chegou por um parceiro. Vem do banco como 0 ou 1. */
   parceria?: number | null;
   /** O mercado em que a empresa atua, e não o que ela quer da gente. */
   segmento?: string | null;
   pendencia_total_count?: number;
-  /** As reuniões do lead, no mínimo que o chip do card mostra. O resumo e os
+  /** As reuniões da oportunidade, no mínimo que o chip do card mostra. O resumo e os
    *  tópicos ficam no servidor: são parágrafos por reunião, e o quadro inteiro
    *  os carregaria para desenhar um chip. */
   reunioes?: ReuniaoDoCard[];
@@ -113,7 +113,7 @@ export interface Submission {
 
 export interface Evento {
   id: number;
-  lead_id: string;
+  oportunidade_id: string;
   tipo: 'status_change' | 'comentario' | 'arquivo' | 'edicao';
   status_id: number | null;
   status_nome: string | null;

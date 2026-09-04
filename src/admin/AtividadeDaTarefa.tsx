@@ -2,7 +2,7 @@
 //  A atividade de uma tarefa.
 //
 //  O desenho, as abas e o comportamento moram em `components/Atividade`, que é
-//  o mesmo do painel do lead. Aqui fica só o que é da tarefa: de onde ler, para
+//  o mesmo do painel da oportunidade. Aqui fica só o que é da tarefa: de onde ler, para
 //  onde enviar, e como o diário dela se lê em português.
 //
 //  Vive fora das telas porque o formulário de tarefa é compartilhado entre a

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { DatePicker } from './DatePicker'
 
 /**
- * Modal obrigatório exibido ao mover um lead para a etapa de fechamento.
+ * Modal obrigatório exibido ao mover uma oportunidade para a etapa de fechamento.
  * Força quem move a registrar a data em que o negócio foi de fato fechado
  * antes de concluir a mudança de etapa. A data pode ser no passado.
  */

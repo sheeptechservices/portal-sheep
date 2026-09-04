@@ -286,8 +286,52 @@ async function migrarSchema(db: Client) {
   // DDL que só vai ao banco quando muda alguma coisa - ver `_schema.ts`.
   const ddl = await obterDdl(db);
 
+  // ── O funil passa a se chamar Oportunidades ──────────────────────────────
+  //
+  //  O rename vem antes de qualquer CREATE, e essa ordem é a coisa mais
+  //  importante deste bloco: se as tabelas novas nascessem primeiro, o rename
+  //  encontraria o destino ocupado, falharia, e os dados ficariam presos nas
+  //  antigas enquanto a tela lê as vazias.
+  //
+  //  Cada linha é conferida contra o inventário do banco (`_schema.ts`): base
+  //  já renomeada não tenta de novo, e base nova - que já nasce com o nome
+  //  certo - simplesmente pula.
+  //
+  //  É migração quebrante, e vale dizer: a versão anterior do portal procura
+  //  `leads` e para de funcionar assim que isto roda. Ela roda no servidor, na
+  //  primeira requisição depois do deploy, junto do código que já usa os nomes
+  //  novos.
+  for (const [de, para] of [
+    ['leads', 'oportunidades'],
+    ['lead_eventos', 'oportunidade_eventos'],
+    ['lead_arquivos', 'oportunidade_arquivos'],
+    ['lead_etapa_arquivos', 'oportunidade_etapa_arquivos'],
+    ['lead_pendencias', 'oportunidade_pendencias'],
+    ['lead_deps', 'oportunidade_deps'],
+  ]) {
+    try { await ddl(`ALTER TABLE ${de} RENAME TO ${para}`); } catch { /* já renomeada */ }
+  }
+  for (const tabela of [
+    'oportunidade_eventos', 'oportunidade_arquivos', 'oportunidade_etapa_arquivos',
+    'oportunidade_pendencias', 'oportunidade_deps', 'projeto_reunioes',
+  ]) {
+    try {
+      await ddl(`ALTER TABLE ${tabela} RENAME COLUMN lead_id TO oportunidade_id`);
+    } catch { /* já renomeada */ }
+  }
+  // As permissões gravadas seguem o nome: sem isto, todo papel que já foi
+  // configurado perderia o funil inteiro no instante do deploy - as chaves no
+  // banco continuariam `leads:*` e o código passaria a perguntar por
+  // `oportunidades:*`.
+  try {
+    await db.execute(
+      `UPDATE papel_permissoes SET chave = 'oportunidades:' || substr(chave, 7)
+       WHERE chave LIKE 'leads:%'`,
+    );
+  } catch { /* a tabela de permissões ainda não existe nesta base */ }
+
   await ddl(`
-    CREATE TABLE IF NOT EXISTS leads (
+    CREATE TABLE IF NOT EXISTS oportunidades (
       id                  TEXT PRIMARY KEY,
       created_at          TEXT NOT NULL,
       cnpj_contratado     TEXT,
@@ -303,7 +347,7 @@ async function migrarSchema(db: Client) {
       fim_type            INTEGER
     )
   `);
-  try { await ddl(`ALTER TABLE leads ADD COLUMN parcelas TEXT`); } catch {}
+  try { await ddl(`ALTER TABLE oportunidades ADD COLUMN parcelas TEXT`); } catch {}
 
   // O funil comercial. A tabela nasceu para operação de crédito - cedente,
   // sacado, parcelas, trava - e o que o comercial precisa é outra coisa: com
@@ -311,48 +355,48 @@ async function migrarSchema(db: Client) {
   // próximo passo. As colunas antigas ficam onde estão, sem uso: a tabela está
   // vazia, e apagar coluna em produção é risco sem prêmio nenhum.
   for (const col of [
-    `ALTER TABLE leads ADD COLUMN empresa TEXT`,
-    `ALTER TABLE leads ADD COLUMN cnpj TEXT`,
-    `ALTER TABLE leads ADD COLUMN contato_nome TEXT`,
-    `ALTER TABLE leads ADD COLUMN contato_cargo TEXT`,
-    `ALTER TABLE leads ADD COLUMN contato_email TEXT`,
-    `ALTER TABLE leads ADD COLUMN contato_telefone TEXT`,
-    // De onde o lead veio: indicação, prospecção, site, evento, LinkedIn.
-    `ALTER TABLE leads ADD COLUMN origem TEXT`,
+    `ALTER TABLE oportunidades ADD COLUMN empresa TEXT`,
+    `ALTER TABLE oportunidades ADD COLUMN cnpj TEXT`,
+    `ALTER TABLE oportunidades ADD COLUMN contato_nome TEXT`,
+    `ALTER TABLE oportunidades ADD COLUMN contato_cargo TEXT`,
+    `ALTER TABLE oportunidades ADD COLUMN contato_email TEXT`,
+    `ALTER TABLE oportunidades ADD COLUMN contato_telefone TEXT`,
+    // De onde a oportunidade veio: indicação, prospecção, site, evento, LinkedIn.
+    `ALTER TABLE oportunidades ADD COLUMN origem TEXT`,
     // O que ele quer, no vocabulário dos projetos da casa (BI, SaaS...).
-    `ALTER TABLE leads ADD COLUMN interesse TEXT`,
-    `ALTER TABLE leads ADD COLUMN valor_estimado REAL`,
-    `ALTER TABLE leads ADD COLUMN responsavel_id TEXT`,
+    `ALTER TABLE oportunidades ADD COLUMN interesse TEXT`,
+    `ALTER TABLE oportunidades ADD COLUMN valor_estimado REAL`,
+    `ALTER TABLE oportunidades ADD COLUMN responsavel_id TEXT`,
     // O próximo passo e quando ele é: é o que faz o funil andar.
-    `ALTER TABLE leads ADD COLUMN proxima_acao TEXT`,
-    `ALTER TABLE leads ADD COLUMN proxima_acao_em TEXT`,
-    `ALTER TABLE leads ADD COLUMN observacoes TEXT`,
-    // Cobrado quando o lead cai na etapa de perda: sem o motivo, o funil
+    `ALTER TABLE oportunidades ADD COLUMN proxima_acao TEXT`,
+    `ALTER TABLE oportunidades ADD COLUMN proxima_acao_em TEXT`,
+    `ALTER TABLE oportunidades ADD COLUMN observacoes TEXT`,
+    // Cobrado quando a oportunidade cai na etapa de perda: sem o motivo, o funil
     // registra que se perdeu e não ensina nada.
-    `ALTER TABLE leads ADD COLUMN motivo_perda TEXT`,
+    `ALTER TABLE oportunidades ADD COLUMN motivo_perda TEXT`,
     // Onde a empresa fica. Separado em três colunas, e não num campo só: o
-    // comercial filtra por estado e conta lead por praça, e "Belo Horizonte /
+    // comercial filtra por estado e conta oportunidade por praça, e "Belo Horizonte /
     // MG" numa string não se agrupa.
-    `ALTER TABLE leads ADD COLUMN cidade TEXT`,
-    `ALTER TABLE leads ADD COLUMN estado TEXT`,
-    `ALTER TABLE leads ADD COLUMN pais TEXT`,
-    // Quem apontou o lead. Vale principalmente quando a origem é indicação, e é
+    `ALTER TABLE oportunidades ADD COLUMN cidade TEXT`,
+    `ALTER TABLE oportunidades ADD COLUMN estado TEXT`,
+    `ALTER TABLE oportunidades ADD COLUMN pais TEXT`,
+    // Quem apontou a oportunidade. Vale principalmente quando a origem é indicação, e é
     // o que permite agradecer a quem indicou - e ver quem indica mais.
-    `ALTER TABLE leads ADD COLUMN indicado_por TEXT`,
+    `ALTER TABLE oportunidades ADD COLUMN indicado_por TEXT`,
     // Veio por um parceiro. Marca, e não texto: é o que separa o funil próprio
     // do que chega por canal, e essa conta precisa de um sim ou não.
-    `ALTER TABLE leads ADD COLUMN parceria INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE oportunidades ADD COLUMN parceria INTEGER NOT NULL DEFAULT 0`,
     // Em que mercado a empresa atua. Diferente de `interesse`, que é o que ela
     // quer da gente.
-    `ALTER TABLE leads ADD COLUMN segmento TEXT`,
+    `ALTER TABLE oportunidades ADD COLUMN segmento TEXT`,
   ]) {
     try { await ddl(col); } catch { /* já existe */ }
   }
 
   await ddl(`
-    CREATE TABLE IF NOT EXISTS lead_arquivos (
+    CREATE TABLE IF NOT EXISTS oportunidade_arquivos (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
-      lead_id TEXT NOT NULL,
+      oportunidade_id TEXT NOT NULL,
       categoria      TEXT NOT NULL,
       nome           TEXT NOT NULL,
       tipo           TEXT NOT NULL,
@@ -385,16 +429,16 @@ async function migrarSchema(db: Client) {
   `);
 
   await ddl(`
-    CREATE TABLE IF NOT EXISTS novo_lead_notificacoes (
+    CREATE TABLE IF NOT EXISTS nova_oportunidade_notificacoes (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
       usuario_id TEXT NOT NULL UNIQUE
     )
   `);
 
   await ddl(`
-    CREATE TABLE IF NOT EXISTS lead_eventos (
+    CREATE TABLE IF NOT EXISTS oportunidade_eventos (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
-      lead_id TEXT NOT NULL,
+      oportunidade_id TEXT NOT NULL,
       tipo           TEXT NOT NULL,
       status_id      INTEGER,
       descricao      TEXT,
@@ -404,7 +448,7 @@ async function migrarSchema(db: Client) {
   `);
   // Migration: add parent_id if it doesn't exist yet
   try {
-    await ddl(`ALTER TABLE lead_eventos ADD COLUMN parent_id INTEGER`);
+    await ddl(`ALTER TABLE oportunidade_eventos ADD COLUMN parent_id INTEGER`);
   } catch (_) { /* already exists */ }
 
   await ddl(`
@@ -452,13 +496,13 @@ async function migrarSchema(db: Client) {
     `ALTER TABLE cedentes ADD COLUMN wpp_contato TEXT`,
     `ALTER TABLE cedentes ADD COLUMN conta_escrow TEXT`,
     `ALTER TABLE cedentes ADD COLUMN link_drive TEXT`,
-    `ALTER TABLE leads ADD COLUMN cedente_id INTEGER`,
-    `ALTER TABLE leads ADD COLUMN sacado_id INTEGER`,
+    `ALTER TABLE oportunidades ADD COLUMN cedente_id INTEGER`,
+    `ALTER TABLE oportunidades ADD COLUMN sacado_id INTEGER`,
     `ALTER TABLE sacados ADD COLUMN ativo INTEGER NOT NULL DEFAULT 1`,
     // `cidade_estado` saiu daqui: a lista tinha o ADD e o DROP da mesma coluna,
     // então toda partida recriava e derrubava a coluna de novo, sem fim. A
     // coluna não deve existir, e não existe - nada a migrar.
-    `ALTER TABLE leads ADD COLUMN liquidez TEXT`,
+    `ALTER TABLE oportunidades ADD COLUMN liquidez TEXT`,
     // Auto-cadastro (onboarding self-service) - pipeline de aprovação.
     // ADD COLUMN com DEFAULT 'aprovado' marca todos os cedentes já existentes como aprovados.
     `ALTER TABLE cedentes ADD COLUMN aprovacao_status TEXT DEFAULT 'aprovado'`,
@@ -524,9 +568,9 @@ async function migrarSchema(db: Client) {
   }
 
   await ddl(`
-    CREATE TABLE IF NOT EXISTS lead_etapa_arquivos (
+    CREATE TABLE IF NOT EXISTS oportunidade_etapa_arquivos (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
-      lead_id TEXT NOT NULL,
+      oportunidade_id TEXT NOT NULL,
       status_id      INTEGER NOT NULL,
       nome           TEXT NOT NULL,
       tipo           TEXT NOT NULL,
@@ -536,7 +580,7 @@ async function migrarSchema(db: Client) {
     )
   `);
   // Categoria do anexo (Lastro, Proposta, etc.) - em ambas as tabelas de arquivos
-  try { await ddl(`ALTER TABLE lead_etapa_arquivos ADD COLUMN categoria TEXT`); } catch {}
+  try { await ddl(`ALTER TABLE oportunidade_etapa_arquivos ADD COLUMN categoria TEXT`); } catch {}
 
   await ddl(`
     CREATE TABLE IF NOT EXISTS admin_sessions (
@@ -617,7 +661,7 @@ async function migrarSchema(db: Client) {
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
       destino     TEXT NOT NULL,
       assunto     TEXT NOT NULL,
-      /** O que gerou o e-mail: 'mencao', 'etapa_tarefa', 'etapa_lead', 'teste'. */
+      /** O que gerou o e-mail: 'mencao', 'etapa_tarefa', 'etapa_oportunidade', 'teste'. */
       tipo        TEXT NOT NULL DEFAULT 'aviso',
       /** 'enviado' | 'falhou' | 'sem_integracao'. */
       situacao    TEXT NOT NULL,
@@ -655,11 +699,11 @@ async function migrarSchema(db: Client) {
     )
   `);
 
-  try { await ddl(`ALTER TABLE leads ADD COLUMN deleted_at TEXT`); } catch {}
+  try { await ddl(`ALTER TABLE oportunidades ADD COLUMN deleted_at TEXT`); } catch {}
   // Datas de execução, gravadas só pelo sistema e não pelo formulário:
   // `data_execucao` registra quando a operação foi de fato executada.
-  try { await ddl(`ALTER TABLE leads ADD COLUMN previsao_execucao TEXT`); } catch {}
-  try { await ddl(`ALTER TABLE leads ADD COLUMN data_execucao TEXT`); } catch {}
+  try { await ddl(`ALTER TABLE oportunidades ADD COLUMN previsao_execucao TEXT`); } catch {}
+  try { await ddl(`ALTER TABLE oportunidades ADD COLUMN data_execucao TEXT`); } catch {}
 
 
 
@@ -678,7 +722,7 @@ async function migrarSchema(db: Client) {
     await ddl(`ALTER TABLE status_configs ADD COLUMN requires_pendencia INTEGER NOT NULL DEFAULT 0`);
   } catch (_) { /* already exists */ }
 
-  // Migration: add is_entrada flag (etapa que recebe os leads do formulário)
+  // Migration: add is_entrada flag (etapa que recebe as oportunidades do formulário)
   try {
     await ddl(`ALTER TABLE status_configs ADD COLUMN is_entrada INTEGER NOT NULL DEFAULT 0`);
   } catch (_) { /* already exists */ }
@@ -711,11 +755,11 @@ async function migrarSchema(db: Client) {
     await ddl(`ALTER TABLE status_configs ADD COLUMN always_collapsed INTEGER NOT NULL DEFAULT 0`);
   } catch (_) { /* already exists */ }
 
-  // Pendências (checklist) de um lead - ex.: "Aprovado com Pendência"
+  // Pendências (checklist) de uma oportunidade - ex.: "Aprovado com Pendência"
   await ddl(`
-    CREATE TABLE IF NOT EXISTS lead_pendencias (
+    CREATE TABLE IF NOT EXISTS oportunidade_pendencias (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
-      lead_id TEXT NOT NULL,
+      oportunidade_id TEXT NOT NULL,
       descricao      TEXT NOT NULL,
       categoria      TEXT,
       resolvida      INTEGER NOT NULL DEFAULT 0,
@@ -725,12 +769,12 @@ async function migrarSchema(db: Client) {
     )
   `);
 
-  // Relatório DEPS (cedente/sacado) persistido por lead - gerado no módulo
-  // de Análise de Crédito e acessível no balão da parte no card do lead.
+  // Relatório DEPS (cedente/sacado) persistido por oportunidade - gerado no módulo
+  // de Análise de Crédito e acessível no balão da parte no card da oportunidade.
   await ddl(`
-    CREATE TABLE IF NOT EXISTS lead_deps (
+    CREATE TABLE IF NOT EXISTS oportunidade_deps (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
-      lead_id TEXT NOT NULL,
+      oportunidade_id TEXT NOT NULL,
       alvo           TEXT NOT NULL,
       nome           TEXT,
       documento      TEXT,
@@ -741,13 +785,13 @@ async function migrarSchema(db: Client) {
   // Payload BRUTO da consulta DEPS (~50-150 KB de JSON). O norm_json guarda só ~15
   // campos; o bruto é o que permite renderizar o relatório completo (todos os blocos)
   // e alimentar o parecer da IA sem uma nova consulta paga.
-  try { await ddl(`ALTER TABLE lead_deps ADD COLUMN raw_json TEXT`); } catch {}
+  try { await ddl(`ALTER TABLE oportunidade_deps ADD COLUMN raw_json TEXT`); } catch {}
 
   // Data migration: strip hyphens from conta_escrow (idempotent)
   await db.execute(`UPDATE cedentes SET conta_escrow = REPLACE(conta_escrow, '-', '') WHERE conta_escrow IS NOT NULL AND conta_escrow LIKE '%-%'`);
 
   // Data migration: corrige "FIDIC" → "FIDC" na origem de liquidez (idempotente) - DUX-327
-  await db.execute(`UPDATE leads SET liquidez = 'FIDC' WHERE liquidez = 'FIDIC'`);
+  await db.execute(`UPDATE oportunidades SET liquidez = 'FIDC' WHERE liquidez = 'FIDIC'`);
 
   // Seed default statuses on first run
   const cnt = await db.execute('SELECT COUNT(*) as c FROM status_configs');
@@ -758,7 +802,7 @@ async function migrarSchema(db: Client) {
     await db.execute(`INSERT INTO status_configs (nome, cor, ordem) VALUES ('Cancelado', '#D93025', 4)`);
   }
 
-  // Notificações do pipeline de auto-cadastro de cedentes (mesma lógica dos leads).
+  // Notificações do pipeline de auto-cadastro de cedentes (mesma lógica das oportunidades).
   // Por etapa fixa (pendente/em_analise/aprovado/rejeitado):
   // No momento da submissão do formulário de cadastro:
   // Etapas configuráveis do pipeline de onboarding (auto-cadastro).
@@ -782,11 +826,11 @@ async function migrarSchema(db: Client) {
   // pessoa saia da empresa e o cadastro dela seja desativado. Linha gravada antes
   // do login individual fica com os dois nulos e aparece como "Sistema" na UI.
   const colunasAutoria: Array<[string, string[]]> = [
-    ['lead_eventos',    ['autor_id TEXT', 'autor_nome TEXT']],
-    ['leads',           ['criado_por_id TEXT', 'criado_por_nome TEXT', 'atualizado_por_id TEXT', 'atualizado_por_nome TEXT', 'atualizado_em TEXT']],
+    ['oportunidade_eventos',    ['autor_id TEXT', 'autor_nome TEXT']],
+    ['oportunidades',           ['criado_por_id TEXT', 'criado_por_nome TEXT', 'atualizado_por_id TEXT', 'atualizado_por_nome TEXT', 'atualizado_em TEXT']],
     ['cedentes',               ['criado_por_id TEXT', 'criado_por_nome TEXT', 'atualizado_por_id TEXT', 'atualizado_por_nome TEXT', 'atualizado_em TEXT']],
     ['sacados',                ['criado_por_id TEXT', 'criado_por_nome TEXT', 'atualizado_por_id TEXT', 'atualizado_por_nome TEXT', 'atualizado_em TEXT']],
-    ['lead_pendencias', ['criado_por_id TEXT', 'criado_por_nome TEXT', 'resolvido_por_id TEXT', 'resolvido_por_nome TEXT']],
+    ['oportunidade_pendencias', ['criado_por_id TEXT', 'criado_por_nome TEXT', 'resolvido_por_id TEXT', 'resolvido_por_nome TEXT']],
   ];
   for (const [tabela, colunas] of colunasAutoria) {
     for (const coluna of colunas) {
@@ -1183,29 +1227,29 @@ async function migrarSchema(db: Client) {
   // palavras-chave, itens de ação. JSON num campo só: é conteúdo de leitura,
   // não dado que a casa consulte ou cruze.
   try { await ddl(`ALTER TABLE projeto_reunioes ADD COLUMN dados TEXT`); } catch {}
-  // A reunião do funil: a mesma tabela, com o lead no lugar do projeto. O
+  // A reunião do funil: a mesma tabela, com a oportunidade no lugar do projeto. O
   // comercial conversa antes de existir projeto, e um segundo diário de
   // reuniões nasceria igual a este e terminaria diferente.
   //
   // `projeto_id` é NOT NULL desde o início e continua sendo: a reunião de um
-  // lead entra com ele vazio, que é o que a diz de quem ela não é. Nenhum
+  // a oportunidade entra com ele vazio, que é o que a diz de quem ela não é. Nenhum
   // projeto tem id vazio, então a listagem de projetos não a alcança.
-  try { await ddl(`ALTER TABLE projeto_reunioes ADD COLUMN lead_id TEXT`); } catch {}
+  try { await ddl(`ALTER TABLE projeto_reunioes ADD COLUMN oportunidade_id TEXT`); } catch {}
   try {
-    await ddl(`CREATE INDEX IF NOT EXISTS idx_reuniao_lead
-               ON projeto_reunioes (lead_id, data)`);
+    await ddl(`CREATE INDEX IF NOT EXISTS idx_reuniao_oportunidade
+               ON projeto_reunioes (oportunidade_id, data)`);
   } catch { /* índice já existe */ }
 
   // Quem garante que a mesma reunião não entra duas vezes é o banco, e não uma
   // consulta antes do INSERT: dois cliques quase juntos passavam os dois pela
   // conferência e inseriam os dois.
   //
-  // O dono entra na chave: com dois leads a reunião de ambos teria o mesmo
-  // `projeto_id` vazio, e o segundo lead não conseguiria anexar a mesma
-  // conversa. Para a reunião de projeto nada muda - ali `lead_id` é nulo.
+  // O dono entra na chave: com duas oportunidades a reunião de ambos teria o mesmo
+  // `projeto_id` vazio, e o segunda oportunidade não conseguiria anexar a mesma
+  // conversa. Para a reunião de projeto nada muda - ali `oportunidade_id` é nulo.
   try {
     await ddl(`CREATE UNIQUE INDEX IF NOT EXISTS idx_reuniao_dono_fireflies
-               ON projeto_reunioes (projeto_id, COALESCE(lead_id, ''), fireflies_id)
+               ON projeto_reunioes (projeto_id, COALESCE(oportunidade_id, ''), fireflies_id)
                WHERE fireflies_id IS NOT NULL`);
     await ddl(`DROP INDEX IF EXISTS idx_reuniao_fireflies`);
   } catch { /* índice já existe, ou há duplicata antiga a limpar */ }
@@ -1336,18 +1380,18 @@ async function migrarSchema(db: Client) {
     }
   }
 
-  // Índices nas chaves estrangeiras. Sem eles, cada busca por `lead_id`
+  // Índices nas chaves estrangeiras. Sem eles, cada busca por `oportunidade_id`
   // (etc.) vira full table scan: o board roda subqueries correlacionadas por
   // linha e cada abertura de detalhe varre as tabelas filhas inteiras, o que
   // dispara o "rows read" do Turso. Os índices transformam isso em busca direta.
   const indices = [
     // Cobre comentario_count, o MAX(id) de status_change do board e o detalhe.
-    `CREATE INDEX IF NOT EXISTS idx_eventos_sol ON lead_eventos (lead_id, tipo, id)`,
-    `CREATE INDEX IF NOT EXISTS idx_eventos_parent ON lead_eventos (parent_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_etapa_arq_sol ON lead_etapa_arquivos (lead_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_sol_arq_sol ON lead_arquivos (lead_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_pend_sol ON lead_pendencias (lead_id, resolvida)`,
-    `CREATE INDEX IF NOT EXISTS idx_deps_sol ON lead_deps (lead_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_eventos_sol ON oportunidade_eventos (oportunidade_id, tipo, id)`,
+    `CREATE INDEX IF NOT EXISTS idx_eventos_parent ON oportunidade_eventos (parent_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_etapa_arq_sol ON oportunidade_etapa_arquivos (oportunidade_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_sol_arq_sol ON oportunidade_arquivos (oportunidade_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_pend_sol ON oportunidade_pendencias (oportunidade_id, resolvida)`,
+    `CREATE INDEX IF NOT EXISTS idx_deps_sol ON oportunidade_deps (oportunidade_id)`,
     // A listagem de projetos lê o histórico de saúde inteiro e separa por
     // projeto; a ordem por data já vem do índice.
     `CREATE INDEX IF NOT EXISTS idx_saude_projeto ON projeto_saude (projeto_id, criado_em)`,
@@ -1367,10 +1411,10 @@ async function migrarSchema(db: Client) {
     // porque índice também custa em toda gravação.
     // `(autor_id, tipo)` serve as duas contagens de eventos: a de comentários
     // usa as duas colunas, a de eventos usa só o prefixo.
-    `CREATE INDEX IF NOT EXISTS idx_eventos_autor ON lead_eventos (autor_id, tipo)`,
-    `CREATE INDEX IF NOT EXISTS idx_sol_autor ON leads (criado_por_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_eventos_autor ON oportunidade_eventos (autor_id, tipo)`,
+    `CREATE INDEX IF NOT EXISTS idx_oport_autor ON oportunidades (criado_por_id)`,
     `CREATE INDEX IF NOT EXISTS idx_ced_autor ON cedentes (criado_por_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_pend_autor ON lead_pendencias (criado_por_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_pend_autor ON oportunidade_pendencias (criado_por_id)`,
     // `(usuario_id, id DESC)` cobre a contagem e as últimas 15 ações no mesmo
     // índice - o ORDER BY sai de graça, sem passo de ordenação.
     `CREATE INDEX IF NOT EXISTS idx_auditoria_usuario ON auditoria (usuario_id, id DESC)`,
@@ -1423,7 +1467,7 @@ export const AUTOR_PORTAL = 'Portal de aceite';
 
 /** Tabelas que guardam "quem mexeu por último". União de literais de propósito:
  *  o nome da tabela entra na SQL por interpolação e nunca pode vir de fora. */
-export type TabelaComEdicao = 'leads' | 'cedentes' | 'sacados';
+export type TabelaComEdicao = 'oportunidades' | 'cedentes' | 'sacados';
 
 /**
  * Carimba "quem mexeu por último". Nunca derruba a ação que a chamou - autoria
@@ -1943,7 +1987,7 @@ export async function clearLoginAttempts(db: Client, ip: string): Promise<void> 
 }
 
 /**
- * Etapa de entrada do pipeline de leads: a marcada com `is_entrada` nas
+ * Etapa de entrada do pipeline de oportunidades: a marcada com `is_entrada` nas
  * Configurações → Etapas. Sem marcação (ou se a etapa marcada foi excluída),
  * cai na primeira etapa ativa por ordem - o comportamento antigo.
  */
@@ -1965,22 +2009,22 @@ export async function healOrphanedCards(db: Client) {
     const now = new Date().toISOString();
     const orphans = await db.execute(`
       SELECT s.id
-      FROM leads s
+      FROM oportunidades s
       INNER JOIN (
-        SELECT e.lead_id, e.status_id
-        FROM lead_eventos e
+        SELECT e.oportunidade_id, e.status_id
+        FROM oportunidade_eventos e
         WHERE e.tipo = 'status_change'
           AND e.id = (
-            SELECT MAX(e2.id) FROM lead_eventos e2
-            WHERE e2.lead_id = e.lead_id AND e2.tipo = 'status_change'
+            SELECT MAX(e2.id) FROM oportunidade_eventos e2
+            WHERE e2.oportunidade_id = e.oportunidade_id AND e2.tipo = 'status_change'
           )
-      ) curr ON curr.lead_id = s.id
+      ) curr ON curr.oportunidade_id = s.id
       LEFT JOIN status_configs sc ON sc.id = curr.status_id AND sc.ativo = 1
       WHERE sc.id IS NULL
     `);
     for (const row of orphans.rows) {
       await db.execute({
-        sql: `INSERT INTO lead_eventos (lead_id, tipo, status_id, descricao, criado_em)
+        sql: `INSERT INTO oportunidade_eventos (oportunidade_id, tipo, status_id, descricao, criado_em)
               VALUES (?, 'status_change', ?, 'Reagrupado após exclusão de etapa', ?)`,
         args: [row.id, targetId, now],
       });
@@ -2012,20 +2056,20 @@ async function inscritoCriado(db: Client, id: number, usuarioId: string) {
 
 export async function getNovaSubmissaoRecipients(db: Client): Promise<string[]> {
   await ensureAdminSchema(db);
-  return (await emailsDosInscritos(db, 'novo_lead_notificacoes')).map(u => u.email);
+  return (await emailsDosInscritos(db, 'nova_oportunidade_notificacoes')).map(u => u.email);
 }
 
 
-async function notifyMentions(texto: string, leadId: string, db: Client, ids: string[] = []) {
+async function notifyMentions(texto: string, oportunidadeId: string, db: Client, ids: string[] = []) {
   // O ponto faz parte do apelido ("guilherme.zaidan"), então [\w.]+ e não \w+.
   const apelidos = [...new Set((texto.match(/@([\w.]+)/g) ?? []).map(m => m.slice(1)))];
   if (apelidos.length === 0 && ids.length === 0) return;
 
   const sol = await db.execute({
-    sql: 'SELECT empresa FROM leads WHERE id = ?',
-    args: [leadId],
+    sql: 'SELECT empresa FROM oportunidades WHERE id = ?',
+    args: [oportunidadeId],
   });
-  const nomeSol = String(sol.rows[0]?.empresa ?? leadId);
+  const nomeSol = String(sol.rows[0]?.empresa ?? oportunidadeId);
 
   // Quem a tela marcou pela lista: o id é o que segura a ligação quando alguém
   // muda de nome, e não depende de o apelido casar com a parte local do e-mail.
@@ -2040,7 +2084,7 @@ async function notifyMentions(texto: string, leadId: string, db: Client, ids: st
     if (avisados.has(email.toLowerCase())) continue;
     avisados.add(email.toLowerCase());
     notifyEmail(db, email, 'Você foi mencionado em um comentário', `
-  <p style="font-size:14px;color:#555;margin:0 0 6px"><strong>Lead:</strong> ${esc(nomeSol)}</p>
+  <p style="font-size:14px;color:#555;margin:0 0 6px"><strong>Oportunidade:</strong> ${esc(nomeSol)}</p>
   <blockquote style="margin:12px 0 0;padding:10px 14px;background:#F7F6F3;border-left:3px solid #00C9A7;border-radius:0 8px 8px 0;font-size:14px;color:#333">${esc(texto)}</blockquote>`);
   }
 
@@ -2057,22 +2101,22 @@ async function notifyMentions(texto: string, leadId: string, db: Client, ids: st
     if (avisados.has(String(dest.email).toLowerCase())) continue;
     avisados.add(String(dest.email).toLowerCase());
     notifyEmail(db, String(dest.email), 'Você foi mencionado em um comentário', `
-  <p style="font-size:14px;color:#555;margin:0 0 6px"><strong>Lead:</strong> ${esc(nomeSol)}</p>
+  <p style="font-size:14px;color:#555;margin:0 0 6px"><strong>Oportunidade:</strong> ${esc(nomeSol)}</p>
   <blockquote style="margin:12px 0 0;padding:10px 14px;background:#F7F6F3;border-left:3px solid #00C9A7;border-radius:0 8px 8px 0;font-size:14px;color:#333">${esc(texto)}</blockquote>`);
   }
 }
 
-async function notifyStageMentions(texto: string, leadId: string, db: Client) {
+async function notifyStageMentions(texto: string, oportunidadeId: string, db: Client) {
   const stageNames = [...new Set((texto.match(/#\[([^\]]+)\]/g) ?? []).map(m => m.slice(2, -1)))];
   if (stageNames.length === 0) return;
 
   console.log('[stage-notify] stage mentions detected:', stageNames);
 
   const sol = await db.execute({
-    sql: 'SELECT empresa FROM leads WHERE id = ?',
-    args: [leadId],
+    sql: 'SELECT empresa FROM oportunidades WHERE id = ?',
+    args: [oportunidadeId],
   });
-  const nomeSol = String(sol.rows[0]?.empresa ?? leadId);
+  const nomeSol = String(sol.rows[0]?.empresa ?? oportunidadeId);
 
   for (const stageName of stageNames) {
     const statusResult = await db.execute({
@@ -2087,7 +2131,7 @@ async function notifyStageMentions(texto: string, leadId: string, db: Client) {
 
     for (const dest of inscritos) {
       notifyEmail(db, dest.email, `A etapa "${stageName}" foi mencionada em um comentário`, `
-  <p style="font-size:14px;color:#555;margin:0 0 6px"><strong>Lead:</strong> ${esc(nomeSol)}</p>
+  <p style="font-size:14px;color:#555;margin:0 0 6px"><strong>Oportunidade:</strong> ${esc(nomeSol)}</p>
   <blockquote style="margin:12px 0 0;padding:10px 14px;background:#F7F6F3;border-left:3px solid #00C9A7;border-radius:0 8px 8px 0;font-size:14px;color:#333">${esc(texto)}</blockquote>`);
     }
   }
@@ -2100,7 +2144,6 @@ function esc(v: unknown): string {
     .replace(/"/g, '&quot;');
 }
 
-/** Moldura única dos e-mails de notificação, no acento da casa. */
 /**
  * O endereço do portal, para os links que saem por e-mail.
  *
@@ -2237,7 +2280,7 @@ async function notifyEmail(
  * limpar inscrição nenhuma.
  */
 async function emailsDosInscritos(
-  db: Client, tabela: 'status_notificacoes' | 'novo_lead_notificacoes' | 'tarefa_status_notificacoes',
+  db: Client, tabela: 'status_notificacoes' | 'nova_oportunidade_notificacoes' | 'tarefa_status_notificacoes',
   filtro?: { coluna: 'status_id'; valor: unknown },
 ): Promise<{ email: string; nome: string }[]> {
   const r = await db.execute({
@@ -2295,7 +2338,7 @@ function foldTerm(s: string): string {
  * Numa criação o id ainda não existe no pedido, então vem da resposta.
  */
 function alvoDaAcao(body: any, resposta: any): string | null {
-  const alvo = body?.id ?? body?.lead_id ?? body?.cedente_id ?? body?.analise_id ??
+  const alvo = body?.id ?? body?.oportunidade_id ?? body?.cedente_id ?? body?.analise_id ??
                body?.status_id ?? body?.sacado_id ?? body?.chave ??
                body?.usuario_id ?? body?.papel ??
                resposta?.id ?? resposta?.submission?.id ?? resposta?.cedente?.id ??
@@ -2313,7 +2356,7 @@ function idsDoCorpo(body: any): string[] {
 }
 
 /**
- * Anexa reuniões do Fireflies a um projeto ou a um lead.
+ * Anexa reuniões do Fireflies a um projeto ou a uma oportunidade.
  *
  * O dono é o que muda entre os dois lados, e é só ele: o resto - o que já está
  * anexado, a busca em paralelo, o resumo virando nota - é a mesma coisa, e em
@@ -2324,14 +2367,14 @@ function idsDoCorpo(body: any): string[] {
  */
 async function anexarDoFireflies(
   db: Client,
-  dono: { projetoId?: string; leadId?: string },
+  dono: { projetoId?: string; oportunidadeId?: string },
   ids: string[],
   autorId: string | null,
   autorNome: string | null,
 ): Promise<{ status: number; body: any }> {
   if (ids.length === 0) return { status: 400, body: { error: 'Escolha a reunião.' } };
   const projetoId = dono.projetoId ?? '';
-  const leadId = dono.leadId ?? null;
+  const oportunidadeId = dono.oportunidadeId ?? null;
 
   const cred = await getIntegrationCredential(db, FIREFLIES_KEY);
   if (!cred?.value) {
@@ -2342,8 +2385,8 @@ async function anexarDoFireflies(
   // um erro porque uma delas já estava lá.
   const jaTem = await db.execute({
     sql: `SELECT fireflies_id FROM projeto_reunioes
-          WHERE projeto_id = ? AND COALESCE(lead_id, '') = ? AND fireflies_id IS NOT NULL`,
-    args: [projetoId, leadId ?? ''],
+          WHERE projeto_id = ? AND COALESCE(oportunidade_id, '') = ? AND fireflies_id IS NOT NULL`,
+    args: [projetoId, oportunidadeId ?? ''],
   });
   const conhecidos = new Set(jaTem.rows.map(r => String(r.fireflies_id)));
   const novos = ids.filter(id => !conhecidos.has(id));
@@ -2370,7 +2413,7 @@ async function anexarDoFireflies(
       || 'Reunião gravada no Fireflies. A transcrição e o resumo estão no link.';
     const linha = {
       projeto_id: projetoId,
-      lead_id: leadId,
+      oportunidade_id: oportunidadeId,
       data: (m.data ?? agora).slice(0, 10),
       assunto: m.titulo,
       notas,
@@ -2391,11 +2434,11 @@ async function anexarDoFireflies(
     // reunião no meio do caminho, esta simplesmente não faz nada.
     const ins = await db.execute({
       sql: `INSERT OR IGNORE INTO projeto_reunioes
-              (projeto_id, lead_id, data, assunto, notas, participantes, fireflies_id, link,
+              (projeto_id, oportunidade_id, data, assunto, notas, participantes, fireflies_id, link,
                dados, criado_em, criado_por_id, criado_por_nome)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       args: [
-        linha.projeto_id, linha.lead_id, linha.data, linha.assunto, linha.notas,
+        linha.projeto_id, linha.oportunidade_id, linha.data, linha.assunto, linha.notas,
         JSON.stringify(linha.participantes), linha.fireflies_id, linha.link,
         linha.dados, agora, autorId, autorNome,
       ],
@@ -2490,15 +2533,15 @@ async function despacharAdminData(
     if (action === 'perfil') {
       if (!usuario) return { status: 200, body: { usuario: null } };
       const conta = (sql: string) => db.execute({ sql, args: [usuario.id] });
-      const [linha, comentarios, eventos, leads, cedentes, pendencias, acoes, ultimas] = await Promise.all([
+      const [linha, comentarios, eventos, oportunidades, cedentes, pendencias, acoes, ultimas] = await Promise.all([
         conta('SELECT id, email, nome, foto_url, papel, criado_em, ultimo_acesso FROM usuarios WHERE id = ?'),
-        conta("SELECT COUNT(*) c FROM lead_eventos WHERE autor_id = ? AND tipo = 'comentario'"),
-        conta('SELECT COUNT(*) c FROM lead_eventos WHERE autor_id = ?'),
-        conta('SELECT COUNT(*) c FROM leads WHERE criado_por_id = ?'),
+        conta("SELECT COUNT(*) c FROM oportunidade_eventos WHERE autor_id = ? AND tipo = 'comentario'"),
+        conta('SELECT COUNT(*) c FROM oportunidade_eventos WHERE autor_id = ?'),
+        conta('SELECT COUNT(*) c FROM oportunidades WHERE criado_por_id = ?'),
         conta('SELECT COUNT(*) c FROM cedentes WHERE criado_por_id = ?'),
         // Só conta o que foi aberto depois que a coluna passou a ser gravada:
         // pendência anterior a isso tem o nome, mas não o id.
-        conta('SELECT COUNT(*) c FROM lead_pendencias WHERE criado_por_id = ?'),
+        conta('SELECT COUNT(*) c FROM oportunidade_pendencias WHERE criado_por_id = ?'),
         conta('SELECT COUNT(*) c FROM auditoria WHERE usuario_id = ?'),
         conta('SELECT acao, alvo, criado_em FROM auditoria WHERE usuario_id = ? ORDER BY id DESC LIMIT 15'),
       ]);
@@ -2508,7 +2551,7 @@ async function despacharAdminData(
         body: {
           usuario: linha.rows[0] ?? null,
           resumo: {
-            comentarios: n(comentarios), eventos: n(eventos), leads: n(leads),
+            comentarios: n(comentarios), eventos: n(eventos), oportunidades: n(oportunidades),
             cedentes: n(cedentes), pendencias: n(pendencias), acoes: n(acoes),
           },
           ultimas_acoes: ultimas.rows,
@@ -2656,31 +2699,31 @@ async function despacharAdminData(
           s.origem, s.interesse, s.valor_estimado,
           s.responsavel_id, u.nome AS responsavel_nome, u.foto_url AS responsavel_foto,
           s.proxima_acao, s.proxima_acao_em, s.motivo_perda,
-          COUNT(DISTINCT a.id) + (SELECT COUNT(*) FROM lead_etapa_arquivos ea WHERE ea.lead_id = s.id) AS arquivo_count,
-          (SELECT COUNT(*) FROM lead_eventos c WHERE c.lead_id = s.id AND c.tipo = 'comentario') AS comentario_count,
-          (SELECT COUNT(*) FROM lead_pendencias p WHERE p.lead_id = s.id AND p.resolvida = 0) AS pendencia_aberta_count,
-          (SELECT COUNT(*) FROM lead_pendencias p WHERE p.lead_id = s.id) AS pendencia_total_count,
+          COUNT(DISTINCT a.id) + (SELECT COUNT(*) FROM oportunidade_etapa_arquivos ea WHERE ea.oportunidade_id = s.id) AS arquivo_count,
+          (SELECT COUNT(*) FROM oportunidade_eventos c WHERE c.oportunidade_id = s.id AND c.tipo = 'comentario') AS comentario_count,
+          (SELECT COUNT(*) FROM oportunidade_pendencias p WHERE p.oportunidade_id = s.id AND p.resolvida = 0) AS pendencia_aberta_count,
+          (SELECT COUNT(*) FROM oportunidade_pendencias p WHERE p.oportunidade_id = s.id) AS pendencia_total_count,
           -- O bastante para desenhar o chip: assunto, data e de onde veio. O
           -- resumo e os tópicos ficam de fora de propósito - são parágrafos por
           -- reunião, e o quadro inteiro os carregaria para mostrar um chip.
           (SELECT json_group_array(json_object(
               'id', r.id, 'assunto', r.assunto, 'data', r.data,
               'fireflies', CASE WHEN r.fireflies_id IS NULL THEN 0 ELSE 1 END))
-           FROM projeto_reunioes r WHERE r.lead_id = s.id) AS reunioes,
+           FROM projeto_reunioes r WHERE r.oportunidade_id = s.id) AS reunioes,
           curr.status_id AS current_status_id,
           curr.criado_em  AS status_since
-        FROM leads s
+        FROM oportunidades s
         LEFT JOIN usuarios u ON u.id = s.responsavel_id
-        LEFT JOIN lead_arquivos a ON a.lead_id = s.id
+        LEFT JOIN oportunidade_arquivos a ON a.oportunidade_id = s.id
         LEFT JOIN (
-          SELECT e.lead_id, e.status_id, e.criado_em
-          FROM lead_eventos e
+          SELECT e.oportunidade_id, e.status_id, e.criado_em
+          FROM oportunidade_eventos e
           WHERE e.tipo = 'status_change'
             AND e.id = (
-              SELECT MAX(e2.id) FROM lead_eventos e2
-              WHERE e2.lead_id = e.lead_id AND e2.tipo = 'status_change'
+              SELECT MAX(e2.id) FROM oportunidade_eventos e2
+              WHERE e2.oportunidade_id = e.oportunidade_id AND e2.tipo = 'status_change'
             )
-        ) curr ON curr.lead_id = s.id
+        ) curr ON curr.oportunidade_id = s.id
         WHERE s.deleted_at IS NULL
         GROUP BY s.id
         ORDER BY s.created_at DESC
@@ -2700,17 +2743,17 @@ async function despacharAdminData(
       };
     }
 
-    // Busca rápida global (⌘K): os leads do funil.
+    // Busca rápida global (⌘K): as oportunidades do funil.
     // Casa por empresa, nome do contato, CNPJ (com ou sem máscara) e id do card.
     if (action === 'quick_search') {
       const raw = (query.get('q') ?? '').trim();
-      if (raw.length < 2) return { status: 200, body: { leads: [] } };
+      if (raw.length < 2) return { status: 200, body: { oportunidades: [] } };
 
       // A busca é livre para qualquer sessão, mas o resultado não: quem não
       // enxerga o kanban não pode achar cards dele por aqui. Sem este filtro a
       // busca rápida seria a porta dos fundos das duas páginas.
-      const veLeads = pode(permissoes, 'leads:ver');
-      if (!veLeads) return { status: 200, body: { leads: [] } };
+      const veOportunidades = pode(permissoes, 'oportunidades:ver');
+      if (!veOportunidades) return { status: 200, body: { oportunidades: [] } };
 
       const digits = raw.replace(/\D/g, '');
       const LIMIT = 8;
@@ -2723,10 +2766,10 @@ async function despacharAdminData(
         SELECT
           s.id, s.created_at, s.empresa, s.cnpj, s.contato_nome, s.valor_estimado,
           st.nome AS status_nome, st.cor AS status_cor
-        FROM leads s
+        FROM oportunidades s
         LEFT JOIN status_configs st ON st.id = (
-          SELECT e.status_id FROM lead_eventos e
-          WHERE e.lead_id = s.id AND e.tipo = 'status_change'
+          SELECT e.status_id FROM oportunidade_eventos e
+          WHERE e.oportunidade_id = s.id AND e.tipo = 'status_change'
           ORDER BY e.id DESC LIMIT 1
         )
         WHERE s.deleted_at IS NULL
@@ -2746,7 +2789,7 @@ async function despacharAdminData(
       return {
         status: 200,
         body: {
-          leads: achados,
+          oportunidades: achados,
         },
       };
     }
@@ -2838,15 +2881,15 @@ async function despacharAdminData(
       const statusId = query.get('status_id');
       // Count cards whose latest status_change points to this stage (active or inactive)
       const r = await db.execute({
-        sql: `SELECT COUNT(*) as count FROM leads s
+        sql: `SELECT COUNT(*) as count FROM oportunidades s
               INNER JOIN (
-                SELECT e.lead_id FROM lead_eventos e
+                SELECT e.oportunidade_id FROM oportunidade_eventos e
                 WHERE e.tipo = 'status_change' AND CAST(e.status_id AS TEXT) = CAST(? AS TEXT)
                   AND e.id = (
-                    SELECT MAX(e2.id) FROM lead_eventos e2
-                    WHERE e2.lead_id = e.lead_id AND e2.tipo = 'status_change'
+                    SELECT MAX(e2.id) FROM oportunidade_eventos e2
+                    WHERE e2.oportunidade_id = e.oportunidade_id AND e2.tipo = 'status_change'
                   )
-              ) curr ON curr.lead_id = s.id
+              ) curr ON curr.oportunidade_id = s.id
               WHERE s.deleted_at IS NULL`,
         args: [statusId],
       });
@@ -2872,16 +2915,16 @@ async function despacharAdminData(
     // Histórico de análises de crédito. Filtros opcionais: q (cedente/sacado/
     // protocolo), status, de/ate (data ISO yyyy-mm-dd). Sem snapshot - a lista
     // só precisa dos campos de prateleira.
-    // Relatórios DEPS (cedente/sacado) salvos de um lead - para o link no balão.
-    if (action === 'deps_by_lead') {
-      const sid = query.get('lead_id');
-      if (!sid) return { status: 400, body: { error: 'lead_id required' } };
+    // Relatórios DEPS (cedente/sacado) salvos de uma oportunidade - para o link no balão.
+    if (action === 'deps_by_oportunidade') {
+      const sid = query.get('oportunidade_id');
+      if (!sid) return { status: 400, body: { error: 'oportunidade_id required' } };
       // Mais recente por alvo (agrupa por alvo, pega o maior id).
       const r = await db.execute({
         sql: `SELECT d.alvo, d.nome, d.documento, d.norm_json, d.raw_json, d.criado_em
-              FROM lead_deps d
-              WHERE d.lead_id = ? AND d.id = (
-                SELECT MAX(d2.id) FROM lead_deps d2 WHERE d2.lead_id = d.lead_id AND d2.alvo = d.alvo
+              FROM oportunidade_deps d
+              WHERE d.oportunidade_id = ? AND d.id = (
+                SELECT MAX(d2.id) FROM oportunidade_deps d2 WHERE d2.oportunidade_id = d.oportunidade_id AND d2.alvo = d.alvo
               )`,
         args: [sid],
       });
@@ -2895,13 +2938,13 @@ async function despacharAdminData(
       return { status: 200, body: { deps } };
     }
 
-    // Pendências de um lead (leve) - usada ao mover no board para pré-preencher
+    // Pendências de uma oportunidade (leve) - usada ao mover no board para pré-preencher
     // o modal de "Registrar pendências" com as pendências já existentes.
-    if (action === 'pendencias_by_lead') {
-      const sid = query.get('lead_id');
-      if (!sid) return { status: 400, body: { error: 'lead_id required' } };
+    if (action === 'pendencias_by_oportunidade') {
+      const sid = query.get('oportunidade_id');
+      if (!sid) return { status: 400, body: { error: 'oportunidade_id required' } };
       const r = await db.execute({
-        sql: 'SELECT id, descricao, categoria, resolvida FROM lead_pendencias WHERE lead_id = ? ORDER BY resolvida ASC, criado_em ASC',
+        sql: 'SELECT id, descricao, categoria, resolvida FROM oportunidade_pendencias WHERE oportunidade_id = ? ORDER BY resolvida ASC, criado_em ASC',
         args: [sid],
       });
       return { status: 200, body: { pendencias: r.rows } };
@@ -3370,18 +3413,18 @@ async function despacharAdminData(
       return { status: 200, body: { dados: r.rows } };
     }
 
-    // Uma reunião de lead inteira, pedida quando o chip do card é clicado. O
+    // Uma reunião de oportunidade inteira, pedida quando o chip do card é clicado. O
     // quadro carrega só o que o chip mostra; o resumo, os tópicos e os
     // combinados vêm agora, e de uma reunião só.
-    if (action === 'reuniao_lead') {
+    if (action === 'reuniao_oportunidade') {
       const id = Number(query.get('id'));
       if (!Number.isFinite(id) || id <= 0) return { status: 400, body: { error: 'id ausente.' } };
       const r = await db.execute({
-        // `lead_id IS NOT NULL` porque a permissão daqui é a do funil: sem isto
+        // `oportunidade_id IS NOT NULL` porque a permissão daqui é a do funil: sem isto
         // ela leria a reunião de um projeto pelo id.
-        sql: `SELECT id, projeto_id, lead_id, data, assunto, notas, participantes,
+        sql: `SELECT id, projeto_id, oportunidade_id, data, assunto, notas, participantes,
                      fireflies_id, link, dados, criado_por_nome
-              FROM projeto_reunioes WHERE id = ? AND lead_id IS NOT NULL`,
+              FROM projeto_reunioes WHERE id = ? AND oportunidade_id IS NOT NULL`,
         args: [id],
       });
       const linha = r.rows[0];
@@ -3499,13 +3542,13 @@ async function despacharAdminData(
     if (action === 'list_sacados_by_cedente') {
       const cedenteCnpj = (query.get('cnpj') ?? '').replace(/\D/g, '');
       if (!cedenteCnpj) return { status: 400, body: { error: 'cnpj required' } };
-      // Sacados que já operaram com esse cedente (via leads)
+      // Sacados que já operaram com esse cedente (via oportunidades)
       const linked = await db.execute({
         sql: `SELECT DISTINCT s.id, s.cnpj_cpf, s.razao_social FROM sacados s
               WHERE s.ativo = 1
               AND s.cnpj_cpf IN (
                 SELECT DISTINCT REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(sol.cnpj_sacado,'.',''),'/',''),'-',''),' ',''),'_','')
-                FROM leads sol
+                FROM oportunidades sol
                 WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(sol.cnpj_contratado,'.',''),'/',''),'-',''),' ',''),'_','') = ?
                 AND sol.cnpj_sacado IS NOT NULL AND sol.cnpj_sacado != ''
               )
@@ -3520,13 +3563,13 @@ async function despacharAdminData(
       return { status: 200, body: { sacados: linked.rows, filtered: true } };
     }
 
-    if (action === 'get_lead_files') {
+    if (action === 'get_oportunidade_files') {
       const id = query.get('id');
       if (!id) return { status: 400, body: { error: 'id required' } };
       const rows = await db.execute({
-        sql: `SELECT nome, tipo, tamanho, categoria, base64 FROM lead_arquivos WHERE lead_id = ?
+        sql: `SELECT nome, tipo, tamanho, categoria, base64 FROM oportunidade_arquivos WHERE oportunidade_id = ?
               UNION ALL
-              SELECT nome, tipo, tamanho, categoria, base64 FROM lead_etapa_arquivos WHERE lead_id = ?`,
+              SELECT nome, tipo, tamanho, categoria, base64 FROM oportunidade_etapa_arquivos WHERE oportunidade_id = ?`,
         args: [id, id],
       });
       return { status: 200, body: { arquivos: rows.rows } };
@@ -3550,10 +3593,10 @@ async function despacharAdminData(
       return { status: 200, body: { base64: row.rows[0].base64 } };
     }
 
-    if (action === 'novo_lead_notifs') {
+    if (action === 'nova_oportunidade_notifs') {
       const notifs = await db.execute(`SELECT n.*, u.nome AS usuario_nome, u.email AS usuario_email,
                             u.foto_url AS usuario_foto
-                     FROM novo_lead_notificacoes n JOIN usuarios u ON u.id = n.usuario_id
+                     FROM nova_oportunidade_notificacoes n JOIN usuarios u ON u.id = n.usuario_id
                      ORDER BY u.nome`);
       return { status: 200, body: { notificacoes: notifs.rows } };
     }
@@ -3562,10 +3605,10 @@ async function despacharAdminData(
       const id = query.get('id');
       if (!id) return { status: 400, body: { error: 'Missing id' } };
 
-      const sub = await db.execute({ sql: 'SELECT * FROM leads WHERE id = ?', args: [id] });
+      const sub = await db.execute({ sql: 'SELECT * FROM oportunidades WHERE id = ?', args: [id] });
       if (!sub.rows[0]) return { status: 404, body: { error: 'Not found' } };
       const submission = sub.rows[0] as Record<string, any>;
-      // Quem responde pelo lead: a ficha mostra a pessoa, e a linha guarda o id.
+      // Quem responde pela oportunidade: a ficha mostra a pessoa, e a linha guarda o id.
       if (submission.responsavel_id) {
         const r = await db.execute({ sql: 'SELECT nome, foto_url FROM usuarios WHERE id = ?', args: [submission.responsavel_id] });
         submission.responsavel_nome = (r.rows[0] as any)?.nome ?? null;
@@ -3598,24 +3641,24 @@ async function despacharAdminData(
         // acompanha a foto atual da pessoa, enquanto `autor_nome` continua
         // sendo o nome congelado na hora em que a ação aconteceu.
         sql: `SELECT e.*, sc.nome AS status_nome, sc.cor AS status_cor, u.foto_url AS autor_foto
-              FROM lead_eventos e
+              FROM oportunidade_eventos e
               LEFT JOIN status_configs sc ON sc.id = e.status_id
               LEFT JOIN usuarios u ON u.id = e.autor_id
-              WHERE e.lead_id = ? ORDER BY e.criado_em ASC`,
+              WHERE e.oportunidade_id = ? ORDER BY e.criado_em ASC`,
         args: [id],
       });
 
       const etapaArquivos = await db.execute({
         sql: `SELECT sa.id, sa.status_id, sa.nome, sa.tipo, sa.tamanho, sa.categoria, sa.criado_em,
                      sc.nome AS status_nome
-              FROM lead_etapa_arquivos sa
+              FROM oportunidade_etapa_arquivos sa
               LEFT JOIN status_configs sc ON sc.id = sa.status_id
-              WHERE sa.lead_id = ? ORDER BY sa.criado_em DESC`,
+              WHERE sa.oportunidade_id = ? ORDER BY sa.criado_em DESC`,
         args: [id],
       });
 
       const formArquivos = await db.execute({
-        sql: 'SELECT id, categoria, nome, tipo, tamanho FROM lead_arquivos WHERE lead_id = ?',
+        sql: 'SELECT id, categoria, nome, tipo, tamanho FROM oportunidade_arquivos WHERE oportunidade_id = ?',
         args: [id],
       });
 
@@ -3624,16 +3667,16 @@ async function despacharAdminData(
       );
 
       const pendencias = await db.execute({
-        sql: 'SELECT id, descricao, categoria, resolvida, status_id, criado_em, resolvido_em FROM lead_pendencias WHERE lead_id = ? ORDER BY resolvida ASC, criado_em ASC',
+        sql: 'SELECT id, descricao, categoria, resolvida, status_id, criado_em, resolvido_em FROM oportunidade_pendencias WHERE oportunidade_id = ? ORDER BY resolvida ASC, criado_em ASC',
         args: [id],
       });
 
       // As reuniões vêm junto, como vêm no projeto: a aba abre com elas na
       // mão, e não com uma segunda ida ao servidor depois do clique.
       const reunioes = await db.execute({
-        sql: `SELECT id, projeto_id, lead_id, data, assunto, notas, participantes,
+        sql: `SELECT id, projeto_id, oportunidade_id, data, assunto, notas, participantes,
                      fireflies_id, link, dados, criado_por_nome
-              FROM projeto_reunioes WHERE lead_id = ? ORDER BY data DESC, id DESC`,
+              FROM projeto_reunioes WHERE oportunidade_id = ? ORDER BY data DESC, id DESC`,
         args: [id],
       });
 
@@ -4578,13 +4621,13 @@ function faltaEmProjeto(p: any): string | null {
     }
 
     // A mesma coisa, do lado do funil. Ação própria porque a permissão é outra:
-    // quem cuida de lead não é necessariamente quem edita projeto.
-    if (action === 'anexar_reuniao_fireflies_lead') {
-      const leadId = String(body?.lead_id ?? '');
-      if (!leadId) return { status: 400, body: { error: 'lead_id ausente.' } };
-      const existe = await db.execute({ sql: 'SELECT id FROM leads WHERE id = ?', args: [leadId] });
-      if (!existe.rows[0]) return { status: 404, body: { error: 'Lead não encontrado.' } };
-      return anexarDoFireflies(db, { leadId }, idsDoCorpo(body), autorId, autorNome);
+    // quem cuida de oportunidade não é necessariamente quem edita projeto.
+    if (action === 'anexar_reuniao_fireflies_oportunidade') {
+      const oportunidadeId = String(body?.oportunidade_id ?? '');
+      if (!oportunidadeId) return { status: 400, body: { error: 'oportunidade_id ausente.' } };
+      const existe = await db.execute({ sql: 'SELECT id FROM oportunidades WHERE id = ?', args: [oportunidadeId] });
+      if (!existe.rows[0]) return { status: 404, body: { error: 'Oportunidade não encontrada.' } };
+      return anexarDoFireflies(db, { oportunidadeId }, idsDoCorpo(body), autorId, autorNome);
     }
 
     // Liga ou desliga uma reunião de uma entrega ou de uma tarefa. O mesmo
@@ -4637,27 +4680,27 @@ function faltaEmProjeto(p: any): string | null {
       return { status: 200, body: { ok: true } };
     }
 
-    // A reunião do lead. Registrar à mão, como no projeto: nem toda conversa
+    // A reunião da oportunidade. Registrar à mão, como no projeto: nem toda conversa
     // do comercial passa por uma chamada gravada.
-    if (action === 'registrar_reuniao_lead') {
-      const leadId = String(body?.lead_id ?? '');
+    if (action === 'registrar_reuniao_oportunidade') {
+      const oportunidadeId = String(body?.oportunidade_id ?? '');
       const assunto = String(body.assunto ?? '').trim();
       const notas = String(body.notas ?? '').trim();
-      if (!leadId) return { status: 400, body: { error: 'lead_id ausente.' } };
+      if (!oportunidadeId) return { status: 400, body: { error: 'oportunidade_id ausente.' } };
       if (!body.data) return { status: 400, body: { error: 'Informe a data da reunião.' } };
       if (!assunto) return { status: 400, body: { error: 'Informe o assunto da reunião.' } };
       if (!notas) return { status: 400, body: { error: 'Registre o que foi tratado.' } };
-      const existe = await db.execute({ sql: 'SELECT id FROM leads WHERE id = ?', args: [leadId] });
-      if (!existe.rows[0]) return { status: 404, body: { error: 'Lead não encontrado.' } };
+      const existe = await db.execute({ sql: 'SELECT id FROM oportunidades WHERE id = ?', args: [oportunidadeId] });
+      if (!existe.rows[0]) return { status: 404, body: { error: 'Oportunidade não encontrada.' } };
 
       const participantes = Array.isArray(body.participantes) ? body.participantes : [];
       const r = await db.execute({
         sql: `INSERT INTO projeto_reunioes
-                (projeto_id, lead_id, data, assunto, notas, participantes, criado_em,
+                (projeto_id, oportunidade_id, data, assunto, notas, participantes, criado_em,
                  criado_por_id, criado_por_nome)
               VALUES ('',?,?,?,?,?,?,?,?)`,
         args: [
-          leadId, body.data, assunto, notas, JSON.stringify(participantes),
+          oportunidadeId, body.data, assunto, notas, JSON.stringify(participantes),
           new Date().toISOString(), autorId, autorNome,
         ],
       });
@@ -4668,7 +4711,7 @@ function faltaEmProjeto(p: any): string | null {
         body: {
           ok: true,
           reuniao: {
-            id: Number(r.lastInsertRowid), projeto_id: '', lead_id: leadId,
+            id: Number(r.lastInsertRowid), projeto_id: '', oportunidade_id: oportunidadeId,
             data: body.data, assunto, notas, participantes,
             fireflies_id: null, link: null, dados: null, criado_por_nome: autorNome,
           },
@@ -4676,13 +4719,13 @@ function faltaEmProjeto(p: any): string | null {
       };
     }
 
-    // Só reunião de lead sai por aqui: sem o `lead_id` no WHERE, quem cuida do
+    // Só reunião de oportunidade sai por aqui: sem o `oportunidade_id` no WHERE, quem cuida do
     // funil apagaria a reunião de um projeto pelo id.
-    if (action === 'excluir_reuniao_lead') {
+    if (action === 'excluir_reuniao_oportunidade') {
       const id = Number(body?.id);
       if (!Number.isFinite(id) || id <= 0) return { status: 400, body: { error: 'id ausente.' } };
       const r = await db.execute({
-        sql: 'DELETE FROM projeto_reunioes WHERE id = ? AND lead_id IS NOT NULL',
+        sql: 'DELETE FROM projeto_reunioes WHERE id = ? AND oportunidade_id IS NOT NULL',
         args: [id],
       });
       if (Number(r.rowsAffected ?? 0) === 0) {
@@ -5029,45 +5072,45 @@ function faltaEmProjeto(p: any): string | null {
       return { status: 200, body: { ok: true, usuario_id: alvoId, ativo: ativo === 1 } };
     }
 
-    // Persiste (upsert) o relatório DEPS de um alvo, ligado ao lead - fica
+    // Persiste (upsert) o relatório DEPS de um alvo, ligado à oportunidade - fica
     // acessível no balão do cedente/sacado no card.
-    if (action === 'save_lead_deps') {
-      const { lead_id, alvo, nome, documento, norm, raw } = body;
-      if (!lead_id || (alvo !== 'ced' && alvo !== 'sac') || !norm) {
+    if (action === 'save_oportunidade_deps') {
+      const { oportunidade_id, alvo, nome, documento, norm, raw } = body;
+      if (!oportunidade_id || (alvo !== 'ced' && alvo !== 'sac') || !norm) {
         return { status: 400, body: { error: 'Dados inválidos.' } };
       }
-      await db.execute({ sql: 'DELETE FROM lead_deps WHERE lead_id = ? AND alvo = ?', args: [lead_id, alvo] });
+      await db.execute({ sql: 'DELETE FROM oportunidade_deps WHERE oportunidade_id = ? AND alvo = ?', args: [oportunidade_id, alvo] });
       await db.execute({
-        sql: `INSERT INTO lead_deps (lead_id, alvo, nome, documento, norm_json, raw_json, criado_em) VALUES (?,?,?,?,?,?,?)`,
-        args: [lead_id, alvo, nome ?? null, documento ?? null, JSON.stringify(norm),
+        sql: `INSERT INTO oportunidade_deps (oportunidade_id, alvo, nome, documento, norm_json, raw_json, criado_em) VALUES (?,?,?,?,?,?,?)`,
+        args: [oportunidade_id, alvo, nome ?? null, documento ?? null, JSON.stringify(norm),
                raw ? JSON.stringify(raw) : null, new Date().toISOString()],
       });
       return { status: 200, body: { ok: true } };
     }
 
     if (action === 'move') {
-      const { lead_id, status_id } = body;
+      const { oportunidade_id, status_id } = body;
       const now = new Date().toISOString();
       const sc = await db.execute({ sql: 'SELECT nome FROM status_configs WHERE id = ?', args: [status_id] });
       const nome = String(sc.rows[0]?.nome ?? '');
 
       await db.execute({
-        sql: `INSERT INTO lead_eventos (lead_id, tipo, status_id, descricao, criado_em, autor_id, autor_nome)
+        sql: `INSERT INTO oportunidade_eventos (oportunidade_id, tipo, status_id, descricao, criado_em, autor_id, autor_nome)
               VALUES (?, 'status_change', ?, ?, ?, ?, ?)`,
-        args: [lead_id, status_id, `Movido para ${nome}`, now, autorId, autorNome],
+        args: [oportunidade_id, status_id, `Movido para ${nome}`, now, autorId, autorNome],
       });
-      await marcarEdicao(db, 'leads', lead_id, autorId, autorNome, now);
+      await marcarEdicao(db, 'oportunidades', oportunidade_id, autorId, autorNome, now);
 
       // Avisa por e-mail quem acompanha a etapa de destino
       {
         const inscritos = await emailsDosInscritos(db, 'status_notificacoes', { coluna: 'status_id', valor: status_id });
         if (inscritos.length > 0) {
-          const s = (await db.execute({ sql: 'SELECT nome_contratado, cnpj_contratado, valor FROM leads WHERE id = ?', args: [lead_id] })).rows[0];
+          const s = (await db.execute({ sql: 'SELECT nome_contratado, cnpj_contratado, valor FROM oportunidades WHERE id = ?', args: [oportunidade_id] })).rows[0];
           const corpo = `
   <p style="font-size:14px;color:#555;margin:0 0 4px"><strong>Contratado:</strong> ${esc(s?.nome_contratado ?? '-')} (${esc(s?.cnpj_contratado ?? '-')})</p>
   <p style="font-size:14px;color:#555;margin:0"><strong>Valor:</strong> ${esc(s?.valor ?? '-')}</p>`;
           for (const dest of inscritos) {
-            notifyEmail(db, dest.email, `Lead movido para "${nome}"`, corpo, 'etapa_lead');
+            notifyEmail(db, dest.email, `Oportunidade movida para "${nome}"`, corpo, 'etapa_oportunidade');
           }
         }
       }
@@ -5077,9 +5120,9 @@ function faltaEmProjeto(p: any): string | null {
     if (action === 'comment') {
       const now = new Date().toISOString();
       const result = await db.execute({
-        sql: `INSERT INTO lead_eventos (lead_id, tipo, descricao, parent_id, criado_em, autor_id, autor_nome)
+        sql: `INSERT INTO oportunidade_eventos (oportunidade_id, tipo, descricao, parent_id, criado_em, autor_id, autor_nome)
               VALUES (?, 'comentario', ?, ?, ?, ?, ?)`,
-        args: [body.lead_id, body.texto, body.parent_id ?? null, now, autorId, autorNome],
+        args: [body.oportunidade_id, body.texto, body.parent_id ?? null, now, autorId, autorNome],
       });
       if (body.texto) {
         // Os ids vêm da tela, que sabe quem foi escolhido na lista; o texto
@@ -5087,9 +5130,9 @@ function faltaEmProjeto(p: any): string | null {
         // `@apelido` antes de a caixa passar a guardar o id.
         const marcados: string[] = Array.isArray(body?.mencoes)
           ? [...new Set<string>(body.mencoes.map((v: unknown) => String(v)))] : [];
-        notifyMentions(body.texto, body.lead_id, db, marcados)
+        notifyMentions(body.texto, body.oportunidade_id, db, marcados)
           .catch(e => console.error('[mention-notify]', e));
-        notifyStageMentions(body.texto, body.lead_id, db).catch(e => console.error('[stage-notify]', e));
+        notifyStageMentions(body.texto, body.oportunidade_id, db).catch(e => console.error('[stage-notify]', e));
       }
       return {
         status: 200,
@@ -5097,94 +5140,101 @@ function faltaEmProjeto(p: any): string | null {
       };
     }
 
-    if (action === 'delete_comment') {
+    // Um relato do time: bug, ideia ou dúvida, mandado do menu lateral.
+    //
+    //  Não vira registro em tabela própria de propósito. O que se quer aqui é
+    //  que alguém leia, e o e-mail já é lido todo dia - uma caixa de entrada
+    //  nova dentro do portal seria mais um lugar para esquecer de olhar. E o
+    //  `emails_enviados` guarda o texto de toda tentativa, então nem o envio
+    //  que falhar some sem deixar rastro.
+            if (action === 'delete_comment') {
       // Delete replies first, then the comment itself
-      await db.execute({ sql: `DELETE FROM lead_eventos WHERE parent_id = ? AND tipo = 'comentario'`, args: [body.id] });
-      await db.execute({ sql: `DELETE FROM lead_eventos WHERE id = ? AND tipo = 'comentario'`, args: [body.id] });
+      await db.execute({ sql: `DELETE FROM oportunidade_eventos WHERE parent_id = ? AND tipo = 'comentario'`, args: [body.id] });
+      await db.execute({ sql: `DELETE FROM oportunidade_eventos WHERE id = ? AND tipo = 'comentario'`, args: [body.id] });
       return { status: 200, body: { ok: true } };
     }
 
     if (action === 'upload_file') {
-      const { lead_id, status_id, arquivo } = body;
+      const { oportunidade_id, status_id, arquivo } = body;
       const now = new Date().toISOString();
       await db.execute({
-        sql: `INSERT INTO lead_etapa_arquivos (lead_id, status_id, nome, tipo, tamanho, base64, categoria, criado_em)
+        sql: `INSERT INTO oportunidade_etapa_arquivos (oportunidade_id, status_id, nome, tipo, tamanho, base64, categoria, criado_em)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        args: [lead_id, status_id, arquivo.nome, arquivo.tipo, arquivo.tamanho, arquivo.base64, arquivo.categoria ?? null, now],
+        args: [oportunidade_id, status_id, arquivo.nome, arquivo.tipo, arquivo.tamanho, arquivo.base64, arquivo.categoria ?? null, now],
       });
       await db.execute({
-        sql: `INSERT INTO lead_eventos (lead_id, tipo, status_id, descricao, criado_em, autor_id, autor_nome)
+        sql: `INSERT INTO oportunidade_eventos (oportunidade_id, tipo, status_id, descricao, criado_em, autor_id, autor_nome)
               VALUES (?, 'arquivo', ?, ?, ?, ?, ?)`,
-        args: [lead_id, status_id, `Arquivo: ${arquivo.nome}`, now, autorId, autorNome],
+        args: [oportunidade_id, status_id, `Arquivo: ${arquivo.nome}`, now, autorId, autorNome],
       });
-      await marcarEdicao(db, 'leads', lead_id, autorId, autorNome, now);
+      await marcarEdicao(db, 'oportunidades', oportunidade_id, autorId, autorNome, now);
       return { status: 200, body: { ok: true } };
     }
 
     if (action === 'delete_stage_file') {
-      await db.execute({ sql: 'DELETE FROM lead_etapa_arquivos WHERE id = ?', args: [body.id] });
+      await db.execute({ sql: 'DELETE FROM oportunidade_etapa_arquivos WHERE id = ?', args: [body.id] });
       return { status: 200, body: { ok: true } };
     }
 
     if (action === 'get_file_base64') {
-      const f = await db.execute({ sql: 'SELECT base64, nome FROM lead_etapa_arquivos WHERE id = ?', args: [body.id] });
+      const f = await db.execute({ sql: 'SELECT base64, nome FROM oportunidade_etapa_arquivos WHERE id = ?', args: [body.id] });
       if (!f.rows[0]) return { status: 404, body: { error: 'Not found' } };
       return { status: 200, body: f.rows[0] };
     }
 
     if (action === 'get_form_file_base64') {
-      const f = await db.execute({ sql: 'SELECT base64, nome FROM lead_arquivos WHERE id = ?', args: [body.id] });
+      const f = await db.execute({ sql: 'SELECT base64, nome FROM oportunidade_arquivos WHERE id = ?', args: [body.id] });
       if (!f.rows[0]) return { status: 404, body: { error: 'Not found' } };
       return { status: 200, body: f.rows[0] };
     }
 
     if (action === 'rename_form_file') {
-      await db.execute({ sql: 'UPDATE lead_arquivos SET nome = ? WHERE id = ?', args: [body.nome, body.id] });
+      await db.execute({ sql: 'UPDATE oportunidade_arquivos SET nome = ? WHERE id = ?', args: [body.nome, body.id] });
       return { status: 200, body: { ok: true } };
     }
 
     if (action === 'rename_file') {
-      await db.execute({ sql: 'UPDATE lead_etapa_arquivos SET nome = ? WHERE id = ?', args: [body.nome, body.id] });
+      await db.execute({ sql: 'UPDATE oportunidade_etapa_arquivos SET nome = ? WHERE id = ?', args: [body.nome, body.id] });
       return { status: 200, body: { ok: true } };
     }
 
     if (action === 'delete_file') {
-      await db.execute({ sql: 'DELETE FROM lead_etapa_arquivos WHERE id = ?', args: [body.id] });
+      await db.execute({ sql: 'DELETE FROM oportunidade_etapa_arquivos WHERE id = ?', args: [body.id] });
       return { status: 200, body: { ok: true } };
     }
 
     if (action === 'delete_form_file') {
-      await db.execute({ sql: 'DELETE FROM lead_arquivos WHERE id = ?', args: [body.id] });
+      await db.execute({ sql: 'DELETE FROM oportunidade_arquivos WHERE id = ?', args: [body.id] });
       return { status: 200, body: { ok: true } };
     }
 
     if (action === 'update_arquivo_categoria') {
-      const table = body.is_stage ? 'lead_etapa_arquivos' : 'lead_arquivos';
+      const table = body.is_stage ? 'oportunidade_etapa_arquivos' : 'oportunidade_arquivos';
       await db.execute({ sql: `UPDATE ${table} SET categoria = ? WHERE id = ?`, args: [body.categoria ?? null, body.id] });
       return { status: 200, body: { ok: true } };
     }
 
     // Pendências (checklist)
     if (action === 'add_pendencias') {
-      const { lead_id, status_id, itens } = body;
+      const { oportunidade_id, status_id, itens } = body;
       const now = new Date().toISOString();
       const lista = (Array.isArray(itens) ? itens : [])
         .map((it: any) => ({ descricao: String(it?.descricao ?? '').trim(), categoria: it?.categoria ?? null }))
         .filter((it: any) => it.descricao);
       for (const it of lista) {
         await db.execute({
-          sql: `INSERT INTO lead_pendencias (lead_id, descricao, categoria, resolvida, status_id, criado_em, criado_por_id, criado_por_nome)
+          sql: `INSERT INTO oportunidade_pendencias (oportunidade_id, descricao, categoria, resolvida, status_id, criado_em, criado_por_id, criado_por_nome)
                 VALUES (?, ?, ?, 0, ?, ?, ?, ?)`,
-          args: [lead_id, it.descricao, it.categoria, status_id ?? null, now, autorId, autorNome],
+          args: [oportunidade_id, it.descricao, it.categoria, status_id ?? null, now, autorId, autorNome],
         });
       }
       // Resumo na timeline (histórico)
       if (lista.length > 0) {
         const resumo = lista.map((it: any) => `• ${it.categoria ? `[${it.categoria}] ` : ''}${it.descricao}`).join('\n');
         await db.execute({
-          sql: `INSERT INTO lead_eventos (lead_id, tipo, status_id, descricao, criado_em, autor_id, autor_nome)
+          sql: `INSERT INTO oportunidade_eventos (oportunidade_id, tipo, status_id, descricao, criado_em, autor_id, autor_nome)
                 VALUES (?, 'comentario', ?, ?, ?, ?, ?)`,
-          args: [lead_id, status_id ?? null, `Pendências registradas:\n${resumo}`, now, autorId, autorNome],
+          args: [oportunidade_id, status_id ?? null, `Pendências registradas:\n${resumo}`, now, autorId, autorNome],
         });
       }
       return { status: 200, body: { ok: true, count: lista.length } };
@@ -5193,7 +5243,7 @@ function faltaEmProjeto(p: any): string | null {
     if (action === 'toggle_pendencia') {
       const resolvida = body.resolvida ? 1 : 0;
       await db.execute({
-        sql: `UPDATE lead_pendencias SET resolvida = ?, resolvido_em = ?, resolvido_por_id = ?, resolvido_por_nome = ? WHERE id = ?`,
+        sql: `UPDATE oportunidade_pendencias SET resolvida = ?, resolvido_em = ?, resolvido_por_id = ?, resolvido_por_nome = ? WHERE id = ?`,
         args: [
           resolvida,
           resolvida ? new Date().toISOString() : null,
@@ -5207,14 +5257,14 @@ function faltaEmProjeto(p: any): string | null {
 
     if (action === 'update_pendencia') {
       await db.execute({
-        sql: `UPDATE lead_pendencias SET descricao = COALESCE(?, descricao), categoria = ? WHERE id = ?`,
+        sql: `UPDATE oportunidade_pendencias SET descricao = COALESCE(?, descricao), categoria = ? WHERE id = ?`,
         args: [body.descricao != null ? String(body.descricao).trim() : null, body.categoria ?? null, body.id],
       });
       return { status: 200, body: { ok: true } };
     }
 
     if (action === 'delete_pendencia') {
-      await db.execute({ sql: 'DELETE FROM lead_pendencias WHERE id = ?', args: [body.id] });
+      await db.execute({ sql: 'DELETE FROM oportunidade_pendencias WHERE id = ?', args: [body.id] });
       return { status: 200, body: { ok: true } };
     }
 
@@ -5541,23 +5591,23 @@ function faltaEmProjeto(p: any): string | null {
       const now = new Date().toISOString();
       const sc = await db.execute({ sql: 'SELECT nome FROM status_configs WHERE id = ?', args: [move_to_id] });
       const targetNome = String(sc.rows[0]?.nome ?? '');
-      // Find all leads currently in this status
+      // As oportunidades que estão nesta etapa
       const cards = await db.execute({
-        sql: `SELECT s.id FROM leads s
+        sql: `SELECT s.id FROM oportunidades s
               INNER JOIN (
-                SELECT e.lead_id FROM lead_eventos e
+                SELECT e.oportunidade_id FROM oportunidade_eventos e
                 WHERE e.tipo = 'status_change' AND e.status_id = ?
                   AND e.id = (
-                    SELECT MAX(e2.id) FROM lead_eventos e2
-                    WHERE e2.lead_id = e.lead_id AND e2.tipo = 'status_change'
+                    SELECT MAX(e2.id) FROM oportunidade_eventos e2
+                    WHERE e2.oportunidade_id = e.oportunidade_id AND e2.tipo = 'status_change'
                   )
-              ) curr ON curr.lead_id = s.id
+              ) curr ON curr.oportunidade_id = s.id
               WHERE s.deleted_at IS NULL`,
         args: [id],
       });
       for (const row of cards.rows) {
         await db.execute({
-          sql: `INSERT INTO lead_eventos (lead_id, tipo, status_id, descricao, criado_em, autor_id, autor_nome)
+          sql: `INSERT INTO oportunidade_eventos (oportunidade_id, tipo, status_id, descricao, criado_em, autor_id, autor_nome)
                 VALUES (?, 'status_change', ?, ?, ?, ?, ?)`,
           args: [row.id, move_to_id, `Movido para ${targetNome}`, now, autorId, autorNome],
         });
@@ -5777,7 +5827,7 @@ function faltaEmProjeto(p: any): string | null {
       return { status: 200, body: { ok: true } };
     }
 
-    // Etapa de entrada: a que recebe os leads do formulário público.
+    // Etapa de entrada: a que recebe as oportunidades do formulário público.
     // Exclusiva - marcar uma desmarca as outras. id = null volta ao padrão
     // (primeira etapa ativa por ordem).
     if (action === 'set_entrada_status') {
@@ -5870,18 +5920,18 @@ function faltaEmProjeto(p: any): string | null {
     // Importação em lote de diretrizes (ex.: metodologia que o analista mantinha
     // num markdown próprio). Já vem revisada pelo operador na tela; aqui só
     // validamos e gravamos, pulando o que já existe ativo com o mesmo texto.
-    // Novo lead notifications
-    if (action === 'add_novo_lead_notif') {
+    // Notificações de nova oportunidade
+    if (action === 'add_nova_oportunidade_notif') {
       const r = await db.execute({
-        sql: 'INSERT OR IGNORE INTO novo_lead_notificacoes (usuario_id) VALUES (?)',
+        sql: 'INSERT OR IGNORE INTO nova_oportunidade_notificacoes (usuario_id) VALUES (?)',
         args: [body.usuario_id],
       });
       const notif = await inscritoCriado(db, Number(r.lastInsertRowid), body.usuario_id);
       return { status: 200, body: { notificacao: notif } };
     }
 
-    if (action === 'remove_novo_lead_notif') {
-      await db.execute({ sql: 'DELETE FROM novo_lead_notificacoes WHERE id = ?', args: [body.id] });
+    if (action === 'remove_nova_oportunidade_notif') {
+      await db.execute({ sql: 'DELETE FROM nova_oportunidade_notificacoes WHERE id = ?', args: [body.id] });
       return { status: 200, body: { ok: true } };
     }
 
@@ -5910,10 +5960,10 @@ function faltaEmProjeto(p: any): string | null {
       const field = body.field as string;
       if (!allowed.includes(field)) return { status: 400, body: { error: 'Field not allowed' } };
       await db.execute({
-        sql: `UPDATE leads SET ${field} = ? WHERE id = ?`,
+        sql: `UPDATE oportunidades SET ${field} = ? WHERE id = ?`,
         args: [body.value ?? null, body.id],
       });
-      await marcarEdicao(db, 'leads', String(body.id), autorId, autorNome, new Date().toISOString());
+      await marcarEdicao(db, 'oportunidades', String(body.id), autorId, autorNome, new Date().toISOString());
       return { status: 200, body: { ok: true } };
     }
 
@@ -5950,7 +6000,7 @@ function faltaEmProjeto(p: any): string | null {
       const now = new Date().toISOString();
 
       await db.execute({
-        sql: `INSERT INTO leads
+        sql: `INSERT INTO oportunidades
               (id, created_at, empresa, cnpj, contato_nome, contato_cargo, contato_email,
                contato_telefone, origem, interesse, valor_estimado, responsavel_id,
                proxima_acao, proxima_acao_em, observacoes,
@@ -5975,14 +6025,14 @@ function faltaEmProjeto(p: any): string | null {
         const sc = await db.execute({ sql: 'SELECT nome FROM status_configs WHERE id = ?', args: [status_id] });
         const nome = String(sc.rows[0]?.nome ?? '');
         await db.execute({
-          sql: `INSERT INTO lead_eventos (lead_id, tipo, status_id, descricao, criado_em, autor_id, autor_nome)
+          sql: `INSERT INTO oportunidade_eventos (oportunidade_id, tipo, status_id, descricao, criado_em, autor_id, autor_nome)
                 VALUES (?, 'status_change', ?, ?, ?, ?, ?)`,
           args: [id, status_id, `Movido para ${nome}`, now, autorId, autorNome],
         });
         currentStatusId = Number(status_id);
       }
 
-      // Devolve o card montado: a tela põe o lead no funil sem recarregar a
+      // Devolve o card montado: a tela põe a oportunidade no funil sem recarregar a
       // listagem inteira só para ver aparecer o que ela acabou de criar.
       return {
         status: 200,
@@ -6058,30 +6108,30 @@ function faltaEmProjeto(p: any): string | null {
       }
       if (sets.length === 0) return { status: 400, body: { error: 'Nada para gravar.' } };
       await db.execute({
-        sql: `UPDATE leads SET ${sets.join(', ')} WHERE id=?`,
+        sql: `UPDATE oportunidades SET ${sets.join(', ')} WHERE id=?`,
         args: [...args, subId] as never,
       });
       await db.execute({
-        sql: `INSERT INTO lead_eventos (lead_id, tipo, descricao, criado_em, autor_id, autor_nome)
+        sql: `INSERT INTO oportunidade_eventos (oportunidade_id, tipo, descricao, criado_em, autor_id, autor_nome)
               VALUES (?, 'edicao', 'Dados editados', ?, ?, ?)`,
         args: [subId, now, autorId, autorNome],
       });
-      await marcarEdicao(db, 'leads', subId, autorId, autorNome, now);
+      await marcarEdicao(db, 'oportunidades', subId, autorId, autorNome, now);
       return { status: 200, body: { ok: true } };
     }
 
     if (action === 'delete_submission') {
       const now = new Date().toISOString();
       await db.execute({
-        sql: 'UPDATE leads SET deleted_at = ? WHERE id = ?',
+        sql: 'UPDATE oportunidades SET deleted_at = ? WHERE id = ?',
         args: [now, body.id],
       });
       await db.execute({
-        sql: `INSERT INTO lead_eventos (lead_id, tipo, descricao, criado_em, autor_id, autor_nome)
-              VALUES (?, 'edicao', 'Lead excluída', ?, ?, ?)`,
+        sql: `INSERT INTO oportunidade_eventos (oportunidade_id, tipo, descricao, criado_em, autor_id, autor_nome)
+              VALUES (?, 'edicao', 'Oportunidade excluída', ?, ?, ?)`,
         args: [body.id, now, autorId, autorNome],
       });
-      await marcarEdicao(db, 'leads', String(body.id), autorId, autorNome, now);
+      await marcarEdicao(db, 'oportunidades', String(body.id), autorId, autorNome, now);
       return { status: 200, body: { ok: true } };
     }
 

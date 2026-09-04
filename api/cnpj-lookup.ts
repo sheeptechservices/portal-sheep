@@ -104,7 +104,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Quem consulta CNPJ são as telas de Cadastros e do Funil; qualquer uma das
   // duas permissões basta.
-  const recusa = await exigir(db, sessao.usuario, ['cadastros:ver', 'leads:ver']);
+  const recusa = await exigir(db, sessao.usuario, ['cadastros:ver', 'oportunidades:ver']);
   if (recusa) return res.status(recusa.status).json(recusa.body);
 
   const digits = String(getQuery(req).get('cnpj') ?? '').replace(/\D/g, '');

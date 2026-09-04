@@ -53,22 +53,22 @@ export default defineConfig(({ mode }) => {
               }
 
               if (id) {
-                const sub = await db.execute({ sql: 'SELECT * FROM leads WHERE id = ?', args: [id] })
+                const sub = await db.execute({ sql: 'SELECT * FROM oportunidades WHERE id = ?', args: [id] })
                 if (sub.rows.length === 0) {
                   res.statusCode = 404
                   res.end(JSON.stringify({ error: 'Not found' }))
                   return
                 }
                 const arqs = await db.execute({
-                  sql: 'SELECT id, categoria, nome, tipo, tamanho, base64 FROM lead_arquivos WHERE lead_id = ?',
+                  sql: 'SELECT id, categoria, nome, tipo, tamanho, base64 FROM oportunidade_arquivos WHERE oportunidade_id = ?',
                   args: [id],
                 })
                 res.end(JSON.stringify({ submission: sub.rows[0], arquivos: arqs.rows }))
               } else {
                 const result = await db.execute(`
                   SELECT s.*, COUNT(a.id) AS arquivo_count
-                  FROM leads s
-                  LEFT JOIN lead_arquivos a ON a.lead_id = s.id
+                  FROM oportunidades s
+                  LEFT JOIN oportunidade_arquivos a ON a.oportunidade_id = s.id
                   GROUP BY s.id
                   ORDER BY s.created_at DESC
                 `)
@@ -121,7 +121,7 @@ export default defineConfig(({ mode }) => {
                 }
 
                 await db.execute(`
-                  CREATE TABLE IF NOT EXISTS leads (
+                  CREATE TABLE IF NOT EXISTS oportunidades (
                     id                  TEXT PRIMARY KEY,
                     created_at          TEXT NOT NULL,
                     status              TEXT NOT NULL DEFAULT 'submitted',
@@ -138,14 +138,14 @@ export default defineConfig(({ mode }) => {
                     fim_type            INTEGER
                   )
                 `)
-                try { await db.execute(`ALTER TABLE leads ADD COLUMN parcelas TEXT`) } catch {}
-                try { await db.execute(`ALTER TABLE leads ADD COLUMN previsao_execucao TEXT`) } catch {}
-                try { await db.execute(`ALTER TABLE leads ADD COLUMN data_execucao TEXT`) } catch {}
+                try { await db.execute(`ALTER TABLE oportunidades ADD COLUMN parcelas TEXT`) } catch {}
+                try { await db.execute(`ALTER TABLE oportunidades ADD COLUMN previsao_execucao TEXT`) } catch {}
+                try { await db.execute(`ALTER TABLE oportunidades ADD COLUMN data_execucao TEXT`) } catch {}
 
                 await db.execute(`
-                  CREATE TABLE IF NOT EXISTS lead_arquivos (
+                  CREATE TABLE IF NOT EXISTS oportunidade_arquivos (
                     id             INTEGER PRIMARY KEY AUTOINCREMENT,
-                    lead_id TEXT NOT NULL,
+                    oportunidade_id TEXT NOT NULL,
                     categoria      TEXT NOT NULL,
                     nome           TEXT NOT NULL,
                     tipo           TEXT NOT NULL,
@@ -170,7 +170,7 @@ export default defineConfig(({ mode }) => {
                 }
 
                 await db.execute({
-                  sql: `INSERT INTO leads (
+                  sql: `INSERT INTO oportunidades (
                           id, created_at,
                           cnpj_contratado, nome_contratado, situacao_contratado,
                           cnpj_sacado, nome_sacado, situacao_sacado,
@@ -205,8 +205,8 @@ export default defineConfig(({ mode }) => {
                   )
                   if (firstStatus.rows.length > 0) {
                     await db.execute({
-                      sql: `INSERT INTO lead_eventos (lead_id, tipo, status_id, descricao, criado_em)
-                            VALUES (?, 'status_change', ?, 'Lead recebida', ?)`,
+                      sql: `INSERT INTO oportunidade_eventos (oportunidade_id, tipo, status_id, descricao, criado_em)
+                            VALUES (?, 'status_change', ?, 'Oportunidade recebida', ?)`,
                       args: [id, firstStatus.rows[0].id, createdAt],
                     })
                   }
@@ -218,7 +218,7 @@ export default defineConfig(({ mode }) => {
               } catch (err) {
                 console.error('[api/submit]', err)
                 res.statusCode = 500
-                res.end(JSON.stringify({ error: 'Erro ao salvar lead. Tente novamente.' }))
+                res.end(JSON.stringify({ error: 'Erro ao salvar a oportunidade. Tente novamente.' }))
               }
             })
           })
@@ -235,8 +235,8 @@ export default defineConfig(({ mode }) => {
             req.on('end', async () => {
               res.setHeader('Content-Type', 'application/json')
               try {
-                const { leadId, arquivo } = JSON.parse(body)
-                if (!leadId || !arquivo?.base64 || !arquivo.nome) {
+                const { oportunidadeId, arquivo } = JSON.parse(body)
+                if (!oportunidadeId || !arquivo?.base64 || !arquivo.nome) {
                   res.statusCode = 400
                   res.end(JSON.stringify({ error: 'Dados ausentes.' }))
                   return
@@ -245,17 +245,17 @@ export default defineConfig(({ mode }) => {
                 const { createClient } = await import('@libsql/client')
                 const db = createClient({ url: env.TURSO_DATABASE_URL, authToken: env.TURSO_AUTH_TOKEN })
 
-                const row = await db.execute({ sql: 'SELECT id FROM leads WHERE id = ? LIMIT 1', args: [leadId] })
+                const row = await db.execute({ sql: 'SELECT id FROM oportunidades WHERE id = ? LIMIT 1', args: [oportunidadeId] })
                 if (row.rows.length === 0) {
                   res.statusCode = 404
-                  res.end(JSON.stringify({ error: 'Lead não encontrada.' }))
+                  res.end(JSON.stringify({ error: 'Oportunidade não encontrada.' }))
                   return
                 }
 
                 await db.execute({
-                  sql: `INSERT INTO lead_arquivos (lead_id, categoria, nome, tipo, tamanho, base64)
+                  sql: `INSERT INTO oportunidade_arquivos (oportunidade_id, categoria, nome, tipo, tamanho, base64)
                         VALUES (?, ?, ?, ?, ?, ?)`,
-                  args: [leadId, arquivo.categoria ?? '', arquivo.nome, arquivo.tipo ?? '', arquivo.tamanho ?? 0, arquivo.base64],
+                  args: [oportunidadeId, arquivo.categoria ?? '', arquivo.nome, arquivo.tipo ?? '', arquivo.tamanho ?? 0, arquivo.base64],
                 })
 
                 res.end(JSON.stringify({ ok: true }))
