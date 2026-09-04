@@ -597,6 +597,15 @@ export default function UsuariosPage({ token }: { token: string }) {
                               convidado
                             </span>
                           )}
+                          {/* Quem já criou a senha pelo convite. O estado mora
+                              aqui, com os outros: dois botões de mesmo rótulo e
+                              aparências diferentes leem como falha, e não como
+                              informação. */}
+                          {u.tem_senha && (
+                            <span className="usuarios-tag" title="Já entra por e-mail e senha, além do Google">
+                              com senha
+                            </span>
+                          )}
                           {u.sessoes_abertas > 0 && (
                             <span className="usuarios-tag online" title={`${u.sessoes_abertas} ${u.sessoes_abertas === 1 ? 'sessão aberta' : 'sessões abertas'}`}>
                               no painel
@@ -636,7 +645,7 @@ export default function UsuariosPage({ token }: { token: string }) {
                         {u.convidado && salvando !== u.id && (
                           <button
                             type="button"
-                            className={`usuarios-btn-acesso${u.tem_senha ? ' com-senha' : ''}`}
+                            className="usuarios-btn-acesso"
                             title={u.tem_senha
                               ? 'Já entra por e-mail e senha. Clique para mandar um convite novo.'
                               : 'Mandar por e-mail um link para esta pessoa criar a própria senha'}

@@ -13839,13 +13839,6 @@ body.arrastando-painel {
   color: var(--gray2);
 }
 
-/* Quem ja entra por senha: o botao da linha muda de tom para dizer isso sem
-   precisar de mais uma etiqueta ao lado do nome. */
-.usuarios-btn-acesso.com-senha {
-  border-color: var(--yb);
-  color: var(--black);
-}
-
 /* ── A segunda porta, na tela de entrada ─────────────────────────────────── */
 /* O gatilho e discreto: a porta da casa e o Google, e esta e a excecao. */
 .login-outra-porta {
