@@ -26,6 +26,7 @@ import {
   ComNegrito, ReuniaoModal, lerAcoes, lerDados, lerTopicos, type TopicoReuniao,
 } from '../components/ReuniaoModal';
 import { EntregaModal } from '../components/EntregaModal';
+import type { Transcricao } from '../components/BotaoTranscricao';
 import { Dialogo } from '../components/Dialogo';
 import { dia as fmtData, diaCurto as fmtDataCurta, tamanho as fmtTamanho } from '../lib/datas';
 import { ancorar } from '../lib/ancorar';
@@ -3662,7 +3663,8 @@ function FormularioProjeto({
   onFixarRecolhida, podeEditarTarefa, etapasTarefa, onBaixarAnexo, onVerAnexo, onEtiquetar,
   marcadores, submarcadores, onExcluir, somenteLeitura, onVerTarefasDaEntrega,
   onRegistrarSaude, onExcluirSaude, onRegistrarReuniao, onVincularReuniao,
-  onBuscarReunioesFireflies, onBuscarGravacaoFireflies, onAnexarReuniaoFireflies,
+  onBuscarReunioesFireflies, onBuscarGravacaoFireflies, onBuscarTranscricaoFireflies,
+  onAnexarReuniaoFireflies,
   onExcluirReuniao,
   onPublicar, onSalvarEntrega, onExcluirEntrega, onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
 }: {
@@ -3699,6 +3701,7 @@ function FormularioProjeto({
   onVincularReuniao: (reuniaoId: number, tipo: 'entrega', alvoId: number, ligar: boolean) => void;
   onBuscarReunioesFireflies: (busca: string) => Promise<{ reunioes?: ReuniaoFF[]; error?: string }>;
   onBuscarGravacaoFireflies: (firefliesId: string) => Promise<{ video?: string | null; audio?: string | null; error?: string }>;
+  onBuscarTranscricaoFireflies: (firefliesId: string) => Promise<Transcricao | null>;
   onAnexarReuniaoFireflies: (p: Projeto, firefliesIds: string[]) => Promise<void>;
   onExcluirReuniao: (r: Reuniao) => void;
   /** Categorias de entrega já usadas, para sugerir no cadastro. */
@@ -4113,6 +4116,7 @@ function FormularioProjeto({
               onRegistrar={reg => onRegistrarReuniao(editando, reg)}
               onBuscarFireflies={onBuscarReunioesFireflies}
               onBuscarGravacao={onBuscarGravacaoFireflies}
+          onBuscarTranscricao={onBuscarTranscricaoFireflies}
               onAnexarFireflies={ids => onAnexarReuniaoFireflies(editando, ids)}
               onExcluir={onExcluirReuniao}
             />
@@ -4372,6 +4376,7 @@ function FormularioProjeto({
         <ReuniaoModal
           reuniao={reuniaoAberta}
           buscarGravacao={onBuscarGravacaoFireflies}
+          buscarTranscricao={onBuscarTranscricaoFireflies}
           onFechar={() => setReuniaoAberta(null)}
         />
       )}
@@ -5153,6 +5158,12 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
 
   /** O endereço da gravação, buscado só quando alguém vai assistir: a URL vem
    *  assinada pela CDN do Fireflies e expira em poucos dias. */
+  /** A transcrição inteira, buscada no clique de baixar. */
+  async function buscarTranscricaoFireflies(firefliesId: string) {
+    const r = await api(`?action=fireflies_transcricao&id=${encodeURIComponent(firefliesId)}`);
+    return r ?? { error: 'Sessão expirada.' };
+  }
+
   async function buscarGravacaoFireflies(firefliesId: string) {
     const r = await api(`?action=fireflies_gravacao&id=${encodeURIComponent(firefliesId)}`);
     return r ?? { error: 'Sessão expirada.' };
@@ -5762,6 +5773,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
           onVincularReuniao={vincularReuniao}
           onBuscarReunioesFireflies={buscarReunioesFireflies}
           onBuscarGravacaoFireflies={buscarGravacaoFireflies}
+          onBuscarTranscricaoFireflies={buscarTranscricaoFireflies}
           onAnexarReuniaoFireflies={anexarReuniaoFireflies}
           onExcluirReuniao={excluirReuniao}
           onPublicar={publicarProjeto}

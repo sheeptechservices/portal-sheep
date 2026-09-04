@@ -305,6 +305,56 @@ export async function obterReuniaoFireflies(
   return { ok: true, reuniao: reuniaoDeFireflies(t) };
 }
 
+/** Uma fala da reunião, como o Fireflies a devolve. */
+export interface FraseFireflies {
+  /** Segundos desde o começo da gravação. */
+  inicio: number;
+  quem: string;
+  texto: string;
+}
+
+/**
+ * A transcrição inteira, buscada só quando alguém pede para baixar.
+ *
+ * Nunca guardada: sao centenas de falas por reuniao, e o que o portal mostra
+ * dela - o resumo, os assuntos com minutagem, os combinados - ja esta no
+ * `dados`. Guardar o texto todo seria carregar o banco com o que se le uma vez
+ * e se quer em arquivo.
+ */
+export async function obterTranscricaoFireflies(
+  apiKey: string, id: string,
+): Promise<{ ok: true; titulo: string; data: string | null; duracao: number | null;
+             participantes: string[]; frases: FraseFireflies[] } | { ok: false; error: string }> {
+  const query = `query($id: String!) {
+    transcript(id: $id) {
+      id title date duration participants
+      meeting_attendees { displayName name email }
+      sentences { speaker_name raw_text text start_time }
+    }
+  }`;
+  const r = await consultarFireflies(apiKey, query, { id });
+  if (!r.ok) return r;
+  const t = r.dados?.transcript;
+  if (!t) return { ok: false, error: 'Reunião não encontrada no Fireflies.' };
+  const base = reuniaoDeFireflies(t);
+  const frases: FraseFireflies[] = (Array.isArray(t.sentences) ? t.sentences : [])
+    // `raw_text` e o que foi dito; `text` vem com a pontuacao arrumada por eles.
+    // Fica o arrumado, e o cru serve de reserva quando ele nao vem.
+    .map((f: any) => ({
+      inicio: Number.isFinite(Number(f?.start_time)) ? Number(f.start_time) : 0,
+      quem: String(f?.speaker_name ?? '').trim() || 'Alguém',
+      texto: String(f?.text ?? f?.raw_text ?? '').trim(),
+    }))
+    .filter((f: FraseFireflies) => f.texto);
+  if (frases.length === 0) {
+    return { ok: false, error: 'Esta reunião não tem transcrição no Fireflies.' };
+  }
+  return {
+    ok: true, titulo: base.titulo, data: base.data, duracao: base.duracao,
+    participantes: base.participantes, frases,
+  };
+}
+
 /** O endereço da gravação, buscado na hora de assistir.
  *
  *  Nunca guardado: a URL vem assinada pela CDN deles e expira em poucos dias.

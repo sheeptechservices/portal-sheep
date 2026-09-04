@@ -14,6 +14,7 @@ import {
   IconPlus, IconSearch, IconX,
 } from './icons';
 import { COR_ENTREGA, ICONE_ENTREGA } from '../lib/etapasEntrega';
+import { BotaoTranscricao, type Transcricao } from './BotaoTranscricao';
 import { DatePicker } from './DatePicker';
 import { dia as fmtData } from '../lib/datas';
 import { SeletorPessoas } from './SeletorPessoas';
@@ -66,7 +67,7 @@ export interface Reuniao {
  *  Os assuntos e as ações são clicáveis quando há gravação: cada um leva ao
  *  minuto em que aquilo foi dito. */
 export function CorpoReuniao({ reg, pessoas, entregas, somenteLeitura, onAssistir,
-  onVincular, onAbrirEntrega }: {
+  onBuscarTranscricao, onVincular, onAbrirEntrega }: {
   reg: Reuniao;
   pessoas: Pessoa[];
   /** As entregas do projeto, para escolher onde a reunião foi tratada.
@@ -78,6 +79,7 @@ export function CorpoReuniao({ reg, pessoas, entregas, somenteLeitura, onAssisti
   somenteLeitura: boolean;
   onAssistir: () => void;
   /** Busca a transcrição inteira. Ausente, o botão de baixar não aparece. */
+  onBuscarTranscricao?: (firefliesId: string) => Promise<Transcricao | null>;
   onVincular?: (tipo: 'entrega', alvoId: number, ligar: boolean) => void;
   onAbrirEntrega?: (entregaId: number) => void;
 }) {
@@ -95,6 +97,9 @@ export function CorpoReuniao({ reg, pessoas, entregas, somenteLeitura, onAssisti
           <button type="button" className="modal-acao-primaria" onClick={onAssistir}>
             <IconPlay size={13} /> Assistir a gravação
           </button>
+        )}
+        {reg.fireflies_id && onBuscarTranscricao && (
+          <BotaoTranscricao firefliesId={reg.fireflies_id} buscar={onBuscarTranscricao} compacto />
         )}
         {dados?.duracao ? <span className="reuniao-duracao">{dados.duracao} min</span> : null}
         <span style={{ marginLeft: 'auto' }}>
@@ -354,7 +359,7 @@ function BuscaFireflies({ jaAnexadas, salvando, onBuscar, onAnexar, onFechar }: 
 
 export function SecaoReunioes({ registros, pessoas, equipe, entregas, focada, salvando, somenteLeitura,
   onRegistrar, onVincular, onAbrirEntrega, onBuscarFireflies, onBuscarGravacao,
-  onAnexarFireflies, onExcluir }: {
+  onBuscarTranscricao, onAnexarFireflies, onExcluir }: {
   registros: Reuniao[];
   pessoas: Pessoa[];
   /** Quem está no projeto aparece primeiro na escolha de participantes. A oportunidade
@@ -371,6 +376,8 @@ export function SecaoReunioes({ registros, pessoas, equipe, entregas, focada, sa
   focada?: number | null;
   onBuscarFireflies: (busca: string) => Promise<{ reunioes?: ReuniaoFF[]; error?: string }>;
   onBuscarGravacao: (firefliesId: string) => Promise<{ video?: string | null; audio?: string | null; error?: string }>;
+  /** A transcrição inteira, para o botão de baixar. */
+  onBuscarTranscricao?: (firefliesId: string) => Promise<Transcricao | null>;
   onAnexarFireflies: (firefliesIds: string[]) => Promise<void>;
   onExcluir: (r: Reuniao) => void;
 }) {
@@ -526,6 +533,7 @@ export function SecaoReunioes({ registros, pessoas, equipe, entregas, focada, sa
         <ReuniaoModal
           reuniao={assistindo}
           buscarGravacao={onBuscarGravacao}
+          buscarTranscricao={onBuscarTranscricao}
           onFechar={() => setAssistindo(null)}
         />
       )}
@@ -590,6 +598,7 @@ export function SecaoReunioes({ registros, pessoas, equipe, entregas, focada, sa
                     <CorpoReuniao reg={reg} pessoas={pessoas} entregas={entregas}
                       somenteLeitura={somenteLeitura}
                       onAssistir={() => setAssistindo(reg)}
+                      onBuscarTranscricao={onBuscarTranscricao}
                       onVincular={(tipo, alvo, ligar) => onVincular?.(reg.id, tipo, alvo, ligar)}
                       onAbrirEntrega={onAbrirEntrega} />
                   )}

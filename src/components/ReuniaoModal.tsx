@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { IconAlert, IconX } from './icons';
+import { BotaoTranscricao, type Transcricao } from './BotaoTranscricao';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import { dia } from '../lib/datas';
@@ -142,10 +143,14 @@ const fmtData = (v: string | null) => dia(v, '');
  * Clicar num assunto - ou no horário de um combinado - move o vídeo para
  * aquele instante: é o mesmo `currentTime` que a barra do player usa.
  */
-export function ReuniaoModal({ reuniao, buscarGravacao, onFechar }: {
+export function ReuniaoModal({ reuniao, buscarGravacao, buscarTranscricao, onFechar }: {
   reuniao: ReuniaoAberta;
   /** Devolve as mídias assinadas do Fireflies. */
   buscarGravacao: (firefliesId: string) => Promise<{ video?: string | null; audio?: string | null; error?: string }>;
+  /** Devolve a transcrição inteira, para virar arquivo. Ausente onde a tela
+   *  ainda não sabe buscá-la - e aí o botão não aparece, em vez de aparecer e
+   *  não fazer nada. */
+  buscarTranscricao?: (firefliesId: string) => Promise<Transcricao | null>;
   onFechar: () => void;
 }) {
   const { saindo, fechar } = useSaidaSuave(onFechar);
@@ -206,10 +211,17 @@ export function ReuniaoModal({ reuniao, buscarGravacao, onFechar }: {
               )}
             </span>
           </p>
-          <button type="button" className="admin-modal-close" onClick={fechar}
-            aria-label="Fechar a reunião">
-            <IconX size={16} />
-          </button>
+          <span className="gravacao-topo-acoes">
+            {/* Só onde há gravação: registro escrito à mão não tem transcrição
+                do que ninguém falou. */}
+            {reuniao.fireflies_id && buscarTranscricao && (
+              <BotaoTranscricao firefliesId={reuniao.fireflies_id} buscar={buscarTranscricao} compacto />
+            )}
+            <button type="button" className="admin-modal-close" onClick={fechar}
+              aria-label="Fechar a reunião">
+              <IconX size={16} />
+            </button>
+          </span>
         </div>
 
         <div className="gravacao-corpo">

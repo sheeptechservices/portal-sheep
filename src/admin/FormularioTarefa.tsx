@@ -1221,6 +1221,10 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
             await api(`?action=fireflies_gravacao&id=${encodeURIComponent(id)}`)
               ?? { error: 'Sessão expirada.' }
           )}
+          buscarTranscricao={async id => (
+            await api(`?action=fireflies_transcricao&id=${encodeURIComponent(id)}`)
+              ?? { error: 'Sessão expirada.' }
+          )}
           onFechar={() => setReuniaoAberta(null)}
         />
       )}

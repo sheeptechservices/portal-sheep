@@ -1297,6 +1297,12 @@ export function DetailPanel({
     return r ?? { error: 'Sessão expirada.' };
   }
 
+  /** A transcrição inteira, buscada no clique de baixar. */
+  async function buscarTranscricaoFireflies(firefliesId: string) {
+    const r = await api(`?action=fireflies_transcricao&id=${encodeURIComponent(firefliesId)}`);
+    return r ?? { error: 'Sessão expirada.' };
+  }
+
   async function buscarGravacaoFireflies(firefliesId: string) {
     const r = await api(`?action=fireflies_gravacao&id=${encodeURIComponent(firefliesId)}`);
     return r ?? { error: 'Sessão expirada.' };
@@ -1781,6 +1787,7 @@ export function DetailPanel({
               onRegistrar={registrarReuniao}
               onBuscarFireflies={buscarReunioesFireflies}
               onBuscarGravacao={buscarGravacaoFireflies}
+              onBuscarTranscricao={buscarTranscricaoFireflies}
               onAnexarFireflies={anexarReunioesFireflies}
               onExcluir={excluirReuniao}
             />
@@ -2503,6 +2510,9 @@ function ChipsDeReuniao({ reunioes, onAbrirOportunidade }: {
           reuniao={aberta}
           buscarGravacao={async id => (
             await pedir(`?action=fireflies_gravacao&id=${encodeURIComponent(id)}`)
+          )}
+          buscarTranscricao={async id => (
+            await pedir(`?action=fireflies_transcricao&id=${encodeURIComponent(id)}`)
           )}
           onFechar={() => setAberta(null)}
         />

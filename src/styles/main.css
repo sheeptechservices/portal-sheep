@@ -478,6 +478,13 @@ body {
               color var(--transition), filter var(--transition), box-shadow var(--transition);
 }
 .modal-acao {
+  /* Mesma caixa da primaria: com icone ao lado do texto - o de baixar a
+     transcricao, por exemplo -, sem isto o desenho ficava colado na palavra e
+     desalinhado da linha de base. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   font-weight: 600;
   border: 1.5px solid var(--gray3);
   background: none;
@@ -9222,8 +9229,20 @@ button.checklist-texto:focus-visible {
 .reuniao-acoes {
   display: flex;
   align-items: center;
+  /* Quebra a linha: o aviso de erro da transcricao dividia a faixa com os
+     botoes, e "Assistir a gravacao" partia em duas linhas por causa dele. */
+  flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 10px;
+}
+/* O aviso ocupa a faixa inteira, embaixo dos botoes: ele e uma frase, e ao lado
+   deles rouba a largura de quem precisa dela. */
+.transcricao-erro {
+  /* Ultimo da faixa e sozinho na linha: no meio dela, ele empurrava a duracao
+     da reuniao para uma terceira linha. */
+  order: 1;
+  flex-basis: 100%;
+  margin: 0;
 }
 .reuniao-duracao { font-size: 11.5px; color: var(--gray2); }
 .reuniao-notas {
@@ -9325,6 +9344,17 @@ button.checklist-texto:focus-visible {
   border-bottom: 1px solid var(--gray3);
   flex-shrink: 0;
 }
+/* As acoes do cabecalho: baixar a transcricao e fechar. Nao encolhem, senao o
+   titulo longo as empurra para fora da caixa. */
+.gravacao-topo-acoes {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 /* Titulo e a data na mesma linha: o titulo trunca quando e longo, e a data
    nunca quebra - ela e curta e e o que ancora a reuniao no tempo. */
 .gravacao-titulo {

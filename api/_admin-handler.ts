@@ -6,6 +6,7 @@ import {
   RESEND_KEY, validateResendKey,
   updateIntegrationMeta, removeIntegrationCredential, validateAnthropicKey,
   validateFirefliesKey, listarReunioesFireflies, obterReuniaoFireflies,
+  obterTranscricaoFireflies,
   obterGravacaoFireflies,
 } from './_credentials.js';
 import { obterDdl } from './_schema.js';
@@ -3442,6 +3443,27 @@ async function despacharAdminData(
 
     // O endereço da gravação, na hora de assistir. Não fica guardado: a URL da
     // CDN deles é assinada e expira em dias.
+    // A transcrição inteira, na hora de baixar. Como a gravação, ela não fica
+    // guardada: o que o portal mostra da reunião já está no `dados`, e o texto
+    // todo se lê uma vez e se quer em arquivo.
+    if (action === 'fireflies_transcricao') {
+      const id = String(query.get('id') ?? '').trim();
+      if (!id) return { status: 400, body: { error: 'id ausente.' } };
+      const cred = await getIntegrationCredential(db, FIREFLIES_KEY);
+      if (!cred?.value) {
+        return { status: 400, body: { error: 'Fireflies não conectado. Configure em Configurações › Integrações.' } };
+      }
+      const r = await obterTranscricaoFireflies(cred.value, id);
+      if (!r.ok) return { status: 400, body: { error: r.error } };
+      return {
+        status: 200,
+        body: {
+          titulo: r.titulo, data: r.data, duracao: r.duracao,
+          participantes: r.participantes, frases: r.frases,
+        },
+      };
+    }
+
     if (action === 'fireflies_gravacao') {
       const id = String(query.get('id') ?? '').trim();
       if (!id) return { status: 400, body: { error: 'id ausente.' } };
