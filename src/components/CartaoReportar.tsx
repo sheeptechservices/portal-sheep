@@ -227,19 +227,25 @@ export function CartaoReportar({
       <OndasCartao />
       <span className="reportar-veu" aria-hidden="true" />
       <div className="reportar-conteudo">
-        {pronto ? (
-          <>
-            <p className="reportar-obrigado troca">
+        {/* O agradecimento e o convite trocam de lugar pelos dois lados: um
+            encolhe enquanto o outro cresce, com a opacidade indo junto. Antes o
+            convite voltava de estalo depois dos quatro segundos - e um bloco que
+            muda de altura num quadro só é notado como falha, não lido. Os dois
+            ficam montados; quem decide é a classe. */}
+        <div className={`revelar${pronto ? ' aberto' : ''}`}>
+          <div>
+            <p className="reportar-obrigado">
               <IconCheck size={13} /> Recebido. Obrigado.
             </p>
             {aviso && <p className="reportar-aviso surge">{aviso}</p>}
-          </>
-        ) : (
-          <>
+          </div>
+        </div>
+        <div className={`revelar${pronto ? '' : ' aberto'}`}>
+          <div>
             <p className="reportar-titulo">Achou algo para melhorar?</p>
             <p className="reportar-chamada">Bug, ideia ou dúvida - manda para o time.</p>
-          </>
-        )}
+          </div>
+        </div>
 
         {/* O formulário nasce montado e fica: com ele nascendo e morrendo, abrir
             e fechar seria um corte, e o rascunho sumiria a cada toque fora. */}
