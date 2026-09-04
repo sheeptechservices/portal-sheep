@@ -13995,3 +13995,111 @@ button.checklist-texto:focus-visible {
   .login-senha-botao { transition: none; }
   .login-senha-botao:hover:not(:disabled) { transform: none; }
 }
+
+/* ─── Sistema de desenho: a pagina que mostra as pecas ──────────────────
+   Ela nao tem estilo proprio nenhum alem do palco. Tudo que aparece dentro de
+   um quadro e a classe de verdade - se esta folha ganhar cor aqui, a pagina
+   passa a mentir. */
+.estilo-pagina { padding-bottom: 60px; }
+
+.estilo-secao { margin-top: 34px; }
+.estilo-secao-titulo {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--black);
+  margin: 0 0 4px;
+}
+.estilo-secao-porque {
+  max-width: 74ch;
+  margin: 0 0 16px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--gray);
+}
+
+.estilo-grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+/* A peca larga ocupa a faixa inteira: campo e tabela nao se leem espremidos
+   numa coluna de 190px. */
+.estilo-peca.larga { grid-column: 1 / -1; }
+
+.estilo-peca {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+/* O palco e neutro de proposito: fundo da tela, sem borda e sem sombra. Uma
+   moldura aqui competiria com a sombra da peca que esta sendo mostrada. */
+.estilo-palco {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 62px;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  border: 1px dashed var(--gray3);
+}
+.estilo-peca.larga .estilo-palco { display: block; }
+
+.estilo-nome {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--black);
+  word-break: break-word;
+}
+.estilo-nota {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--gray2);
+}
+
+/* As amostras. Quadrado grande para cor, para a diferenca entre dois cinzas
+   aparecer; a borda existe porque `--white` sobre o palco claro sumiria. */
+.estilo-cor {
+  width: 100%;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--gray3);
+}
+.estilo-raio {
+  width: 56px;
+  height: 34px;
+  background: var(--gray4);
+  border: 1.5px solid var(--gray3);
+}
+.estilo-caixa {
+  width: 56px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: var(--white);
+}
+
+/* Os tres tempos, para comparar passando o cursor. Cada alvo muda a mesma
+   coisa; o que difere e so a transicao. */
+.estilo-alvo {
+  width: 56px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: var(--gray4);
+  border: 1.5px solid var(--gray3);
+}
+.estilo-alvo.t-cor { transition: background var(--transition), border-color var(--transition); }
+.estilo-alvo.t-mola { transition: transform var(--transition-spring), box-shadow var(--transition-spring); }
+.estilo-alvo.t-anti { transition: transform .5s var(--curva-anti); }
+.estilo-alvo.t-cor:hover { background: var(--yd); border-color: var(--yb); }
+.estilo-alvo.t-mola:hover { transform: translateY(-4px); box-shadow: var(--shadow-card-hover); }
+.estilo-alvo.t-anti:hover { transform: translateX(38px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .estilo-alvo { transition: none; }
+  .estilo-alvo.t-mola:hover,
+  .estilo-alvo.t-anti:hover { transform: none; }
+}

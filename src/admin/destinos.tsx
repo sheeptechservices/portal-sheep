@@ -95,9 +95,11 @@ export const DESTINOS: Destino[] = [
   {
     page: 'configuracoes',
     titulo: 'Configurações',
-    descricao: 'Status, etapas, integrações e credenciais',
+    descricao: 'Status, etapas, integrações, credenciais e o sistema de desenho',
     grupo: 'Páginas',
-    termos: ['ajustes', 'settings', 'integracoes', 'credenciais', 'status', 'etapas'],
+    termos: ['ajustes', 'settings', 'integracoes', 'credenciais', 'status', 'etapas',
+      // A aba Desenho mora aqui dentro, e é por estes nomes que se procura por ela.
+      'design', 'design system', 'estilo', 'desenho', 'tokens', 'cores', 'ui'],
     icon: (
       <svg {...ic}>
         <circle cx="12" cy="12" r="3" />

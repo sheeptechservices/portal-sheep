@@ -12,6 +12,7 @@ import {
 import { SegSwitch } from '../components/SegSwitch';
 import { Dialogo } from '../components/Dialogo';
 import { Abas, AbaPainel } from '../components/Abas';
+import EstiloPage from './EstiloPage';
 import { PAPEIS_EQUIPE } from '../lib/papeisDeEquipe';
 
 // ── Move target dropdown ─────────────────────────────
@@ -2979,7 +2980,7 @@ function EtiquetasTarefaTab({ token, adicionando, onFecharNova }: {
 }
 
 // ── Main ─────────────────────────────────────────────
-type ConfigTab = 'etapas' | 'integracoes';
+type ConfigTab = 'etapas' | 'integracoes' | 'desenho';
 
 /** Qual quadro está sendo configurado. São duas listas de etapas independentes
  *  - o funil das leads e o quadro de tarefas - e o switcher escolhe uma. */
@@ -3069,16 +3070,24 @@ export default function ConfiguracoesPage({ token }: { token: string }) {
       <Abas
         valor={activeTab}
         onChange={setActiveTab}
-        opcoes={[{ valor: 'etapas', label: 'Etapas' }, { valor: 'integracoes', label: 'Integrações' }]}
+        opcoes={[
+          { valor: 'etapas', label: 'Etapas' },
+          { valor: 'integracoes', label: 'Integrações' },
+          { valor: 'desenho', label: 'Desenho' },
+        ]}
       />
 
       <div className="admin-page-header">
         <div>
           <h1 className="admin-page-title">
-            {activeTab === 'etapas' ? 'Etapas' : 'Integrações'}
+            {activeTab === 'etapas' ? 'Etapas'
+              : activeTab === 'integracoes' ? 'Integrações'
+              : 'Sistema de desenho'}
           </h1>
           <p className="admin-page-desc">
-            {activeTab === 'integracoes'
+            {activeTab === 'desenho'
+              ? 'As cores, as medidas e as peças da casa, mostradas com elas mesmas.'
+              : activeTab === 'integracoes'
               ? 'Conecte ferramentas externas ao sistema.'
               : escopo === 'funil'
               ? 'Gerencie as etapas do funil e as notificações de cada uma.'
@@ -3108,7 +3117,9 @@ export default function ConfiguracoesPage({ token }: { token: string }) {
         // filtros, busca e lista -, e um vao proprio deixava esta tela mais
         // solta que as outras.
         style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {activeTab === 'integracoes' ? (
+      {activeTab === 'desenho' ? (
+        <EstiloPage />
+      ) : activeTab === 'integracoes' ? (
         <IntegracoesTab token={token} />
       ) : escopo === 'tarefas' ? (
         <>
