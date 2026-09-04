@@ -2895,6 +2895,39 @@ async function despacharAdminData(
       return { status: 200, body: { comentarios: linhas } };
     }
 
+    // O passo a passo de muitas tarefas de uma vez, para a exportação. Mesmo
+    // motivo do de cima: uma consulta por tarefa faria da exportação de uma
+    // base inteira centenas de idas ao banco.
+    if (action === 'tarefas_subtarefas') {
+      const ids = String(query.get('ids') ?? '')
+        .split(',')
+        .map(x => Number(x.trim()))
+        .filter(n => Number.isFinite(n) && n > 0);
+      if (ids.length === 0) return { status: 200, body: { subtarefas: [] } };
+
+      // Mesmo corte da listagem: membro não lê o passo a passo de tarefa que
+      // ele nem enxerga.
+      const soDaEquipe = papelEfetivo(usuario?.email, usuario?.papel) === 'membro';
+      const linhas: unknown[] = [];
+      for (let i = 0; i < ids.length; i += 400) {
+        const lote = ids.slice(i, i + 400);
+        const r = await db.execute({
+          sql: `SELECT s.tarefa_id, s.titulo, s.feita
+                FROM tarefa_subtarefas s
+                JOIN projeto_tarefas t ON t.id = s.tarefa_id
+                WHERE s.tarefa_id IN (${lote.map(() => '?').join(',')})
+                  AND (? = 0 OR EXISTS (
+                    SELECT 1 FROM projeto_equipe e
+                    WHERE e.projeto_id = t.projeto_id AND e.usuario_id = ?
+                  ))
+                ORDER BY s.tarefa_id, s.ordem, s.id`,
+          args: [...lote, soDaEquipe ? 1 : 0, usuario?.id ?? ''],
+        });
+        linhas.push(...r.rows);
+      }
+      return { status: 200, body: { subtarefas: linhas } };
+    }
+
     // O passo a passo da tarefa. Leitura: mora aqui, com o resto do que a tela
     // busca ao abrir uma tarefa.
     if (action === 'tarefa_subtarefas') {

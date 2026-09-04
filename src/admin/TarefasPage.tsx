@@ -28,6 +28,7 @@ import { CartaoKpi, CartoesKpiEsqueleto } from '../components/CartaoKpi';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import {
   exportar, type ComentarioExport, type Formato as FormatoExport, type Pacote as PacoteExport,
+  type SubtarefaExport,
 } from '../lib/exportarTarefas';
 // Só tipos: um valor vindo daqui fecharia um ciclo com ProjetosPage, que
 // importa o formulário de tarefa.
@@ -622,7 +623,10 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
    *  Projeto entra com o diretório dele - ficha, equipe e entregas -, porque
    *  tarefa fora do contexto do projeto não serve nem para planilha nem para
    *  alimentar uma IA. */
-  function montarPacote(conversas: Map<number, ComentarioExport[]>): PacoteExport {
+  function montarPacote(
+    conversas: Map<number, ComentarioExport[]>,
+    passos: Map<number, SubtarefaExport[]>,
+  ): PacoteExport {
     const porProjeto = new Map<string, TarefaComProjeto[]>();
     for (const t of filtradas) {
       const lista = porProjeto.get(t.projeto.id);
@@ -667,6 +671,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
             etiquetas: t.etiquetas ?? [],
             concluida_em: t.concluida_em ?? null,
             entrega_titulo: (p.entregas ?? []).find(e => e.id === t.entrega_id)?.titulo ?? null,
+            subtarefas: passos.get(t.id) ?? [],
             comentarios: conversas.get(t.id) ?? [],
           })),
         };
@@ -682,10 +687,8 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
     const mapa = new Map<number, ComentarioExport[]>();
     if (ids.length === 0) return mapa;
     try {
-      const r = await api(`?action=tarefas_comentarios&ids=${ids.join(',')}`);
-      if (!r.ok) return mapa;
-      const dados = await r.json();
-      for (const c of (dados.comentarios ?? []) as any[]) {
+      const dados = await api(`?action=tarefas_comentarios&ids=${ids.join(',')}`);
+      for (const c of (dados?.comentarios ?? []) as any[]) {
         const id = Number(c.tarefa_id);
         const lista = mapa.get(id) ?? [];
         lista.push({
@@ -700,13 +703,36 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
     return mapa;
   }
 
+  /** O checklist de todas as tarefas do recorte, numa chamada só. Mesmo acordo
+   *  da conversa: se a busca falhar, o arquivo sai sem os passos em vez de não
+   *  sair. */
+  async function buscarPassos(ids: number[]): Promise<Map<number, SubtarefaExport[]>> {
+    const mapa = new Map<number, SubtarefaExport[]>();
+    if (ids.length === 0) return mapa;
+    try {
+      const dados = await api(`?action=tarefas_subtarefas&ids=${ids.join(',')}`);
+      for (const p of (dados?.subtarefas ?? []) as any[]) {
+        const id = Number(p.tarefa_id);
+        const lista = mapa.get(id) ?? [];
+        lista.push({ titulo: String(p.titulo ?? ''), feita: Number(p.feita) === 1 });
+        mapa.set(id, lista);
+      }
+    } catch { /* segue sem o checklist */ }
+    return mapa;
+  }
+
   async function exportarComo(formato: FormatoExport) {
     if (filtradas.length === 0) {
       toast('error', 'Nada para exportar', 'O recorte atual não tem nenhuma tarefa.');
       return;
     }
-    const conversas = await buscarConversas(filtradas.map(t => t.id));
-    exportar(formato, montarPacote(conversas));
+    // As duas buscas são independentes: em fila, quem exporta espera as duas
+    // somadas para ver o mesmo arquivo.
+    const ids = filtradas.map(t => t.id);
+    const [conversas, passos] = await Promise.all([
+      buscarConversas(ids), buscarPassos(ids),
+    ]);
+    exportar(formato, montarPacote(conversas, passos));
     if (formato === 'pdf') {
       toast('info', 'Escolha "Salvar como PDF"', 'O PDF sai pela caixa de impressão do navegador.');
     }

@@ -29,6 +29,12 @@ export interface ComentarioExport {
   resposta: boolean;
 }
 
+/** Um passo do checklist da tarefa. */
+export interface SubtarefaExport {
+  titulo: string;
+  feita: boolean;
+}
+
 export interface TarefaExport {
   titulo: string;
   descricao: string | null;
@@ -39,6 +45,7 @@ export interface TarefaExport {
   etiquetas: string[];
   concluida_em: string | null;
   entrega_titulo: string | null;
+  subtarefas: SubtarefaExport[];
   comentarios: ComentarioExport[];
 }
 
@@ -72,7 +79,7 @@ const COLUNAS = [
   // "Etapa" como na tela: o campo da tarefa se chama assim no painel, e a
   // planilha que sai daqui é lida ao lado dele.
   'Etapa', 'Prioridade', 'Responsável', 'Prazo', 'Etiquetas', 'Concluída em',
-  'Comentários',
+  'Checklist', 'Passos feitos', 'Comentários',
 ] as const;
 
 const dia = (v: string | null | undefined) => (v ? String(v).slice(0, 10) : '');
@@ -84,6 +91,16 @@ const conversaEmTexto = (cs: ComentarioExport[] | undefined) =>
   (cs ?? []).map(c => `${c.resposta ? '> ' : ''}${c.autor} (${dia(c.em)}): ${c.texto}`)
     .join('\n');
 
+/** O checklist numa célula, um passo por linha e com a marca do que está feito
+ *  na frente - a mesma forma que ele tem na tela. */
+const checklistEmTexto = (ps: SubtarefaExport[] | undefined) =>
+  (ps ?? []).map(p => `[${p.feita ? 'x' : ' '}] ${p.titulo}`).join('\n');
+
+/** "3/5", e vazio quando a tarefa não tem passo nenhum. Numa planilha o quanto
+ *  já andou vale mais que o texto: dá para ordenar e filtrar por ele. */
+const andamentoDoChecklist = (ps: SubtarefaExport[] | undefined) =>
+  !ps?.length ? '' : `${ps.filter(p => p.feita).length}/${ps.length}`;
+
 /** Uma linha por tarefa, com o projeto repetido: é o formato que planilha e
  *  tabela dinâmica esperam. Projeto sem tarefa entra com a linha do projeto
  *  mesmo assim - senão ele sumiria da exportação. */
@@ -91,7 +108,7 @@ function linhas(pacote: Pacote): string[][] {
   const saida: string[][] = [];
   for (const p of pacote.projetos) {
     if (p.tarefas.length === 0) {
-      saida.push([p.nome, p.codigo ?? '', p.cliente ?? '', '', '', '', p.status, p.prioridade ?? '', p.gestor ?? '', dia(p.previsao_entrega), '', '', '']);
+      saida.push([p.nome, p.codigo ?? '', p.cliente ?? '', '', '', '', p.status, p.prioridade ?? '', p.gestor ?? '', dia(p.previsao_entrega), '', '', '', '', '']);
       continue;
     }
     for (const t of p.tarefas) {
@@ -99,7 +116,8 @@ function linhas(pacote: Pacote): string[][] {
         p.nome, p.codigo ?? '', p.cliente ?? '', t.entrega_titulo ?? '',
         t.titulo, t.descricao ?? '', t.status, t.prioridade ?? '',
         t.responsavel_nome ?? '', dia(t.prazo), (t.etiquetas ?? []).join('; '),
-        dia(t.concluida_em), conversaEmTexto(t.comentarios),
+        dia(t.concluida_em), checklistEmTexto(t.subtarefas),
+        andamentoDoChecklist(t.subtarefas), conversaEmTexto(t.comentarios),
       ]);
     }
   }
@@ -172,7 +190,7 @@ function exportarXlsx(pacote: Pacote) {
 
   // Larguras pensadas para a leitura, não para o conteúdo: título e descrição
   // largos, datas estreitas.
-  const larguras = [26, 12, 18, 24, 40, 52, 15, 12, 20, 12, 24, 14, 60];
+  const larguras = [26, 12, 18, 24, 40, 52, 15, 12, 20, 12, 24, 14, 44, 13, 60];
   const cols = larguras.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('');
 
   const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -300,6 +318,15 @@ function markdown(pacote: Pacote): string {
           // preservada mantém o texto legível como o autor escreveu.
           L.push(...t.descricao.trim().split('\n').map(x => `  > ${x}`));
         }
+        // O passo a passo vem logo depois do enunciado, como na tela: um diz
+        // o que é a tarefa, o outro diz por onde ela anda. A caixa marcada é a
+        // do markdown, então a lista continua sendo lista para quem lê o
+        // arquivo e para a IA que o recebe.
+        if (t.subtarefas?.length) {
+          const feitos = t.subtarefas.filter(x => x.feita).length;
+          L.push(`  - Checklist (${feitos}/${t.subtarefas.length}):`);
+          for (const p of t.subtarefas) L.push(`    - [${p.feita ? 'x' : ' '}] ${p.titulo}`);
+        }
         // A conversa entra depois da descrição, na ordem em que aconteceu: é
         // onde costuma estar a decisão que o título não conta.
         if (t.comentarios?.length) {
@@ -357,6 +384,14 @@ function exportarPdf(pacote: Pacote) {
       if (t.descricao?.trim()) {
         abaixo.push(`<div class="t-desc">${escHtml(t.descricao.trim())}</div>`);
       }
+      if (t.subtarefas?.length) {
+        const feitos = t.subtarefas.filter(x => x.feita).length;
+        abaixo.push(`<div class="t-passos"><b>Checklist ${feitos}/${t.subtarefas.length}</b>`
+          + t.subtarefas.map(p =>
+            `<span class="t-passo${p.feita ? ' feito' : ''}">`
+            + `${p.feita ? '[x]' : '[ ]'} ${escHtml(p.titulo)}</span>`).join('')
+          + '</div>');
+      }
       if (t.comentarios?.length) {
         abaixo.push('<div class="t-conversa">'
           + t.comentarios.map(c =>
@@ -402,6 +437,13 @@ th { text-align:left; font-size:7.5pt; letter-spacing:.08em; text-transform:uppe
 td { padding:1.5mm 2mm; border-bottom:1px solid #C8C8C8; vertical-align:top; }
 .vazio { color:#A8A8A8; }
 .t-desc { margin-top:1mm; font-size:8pt; color:#5F5F5F; white-space:pre-wrap; }
+.t-passos { margin-top:1.5mm; font-size:8pt; color:#3F3F3F; }
+.t-passos b { display:block; font-size:7.5pt; letter-spacing:.04em;
+              text-transform:uppercase; color:#6E6E6E; margin-bottom:.6mm; }
+/* Um passo por linha, com a marca alinhada: em texto corrido a lista deixa de
+   se ler como lista. */
+.t-passo { display:block; }
+.t-passo.feito { color:#8A8A8A; text-decoration:line-through; }
 .t-conversa { margin-top:1.5mm; padding-left:2mm; border-left:2px solid #C8C8C8; }
 .t-conversa p { margin:0 0 1.2mm; font-size:8pt; color:#3F3F3F; white-space:pre-wrap; }
 .t-quando { color:#8A8A8A; font-size:7.5pt; }
