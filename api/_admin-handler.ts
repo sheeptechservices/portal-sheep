@@ -397,6 +397,17 @@ async function migrarSchema(db: Client) {
     // de fora. Sem um lugar para isso, esse entendimento fica na cabeça de quem
     // atendeu, e a proposta é escrita duas vezes.
     `ALTER TABLE oportunidades ADD COLUMN briefing TEXT`,
+    // Quente, Morno ou Frio: o quanto essa conversa está perto de virar
+    // negócio. Escala fechada de propósito - "meio quente" escrito à mão vira
+    // um quarto degrau que só quem escreveu entende.
+    `ALTER TABLE oportunidades ADD COLUMN temperatura TEXT`,
+    // Recorrente ou de escopo fechado. Muda o que a proposta é, e muda a conta:
+    // um contrato que se repete e uma entrega que acaba não se somam no mesmo
+    // lugar de um relatório.
+    `ALTER TABLE oportunidades ADD COLUMN tipo_projeto TEXT`,
+    // Quanto do negócio fica com quem trouxe, em porcento. Só faz sentido com
+    // `parceria = 1`, e por isso o campo só aparece quando ela está marcada.
+    `ALTER TABLE oportunidades ADD COLUMN parceria_percentual REAL`,
   ]) {
     try { await ddl(col); } catch { /* já existe */ }
   }
@@ -6383,8 +6394,9 @@ function faltaEmProjeto(p: any): string | null {
                contato_telefone, origem, interesse, valor_estimado, responsavel_id,
                proxima_acao, proxima_acao_em, observacoes,
                cidade, estado, pais, indicado_por, parceria, segmento, briefing,
+               temperatura, tipo_projeto, parceria_percentual,
                criado_por_id, criado_por_nome)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         args: [
           id, now, empresa,
           texto(body?.cnpj), texto(body?.contato_nome), texto(body?.contato_cargo),
@@ -6395,6 +6407,10 @@ function faltaEmProjeto(p: any): string | null {
           texto(body?.cidade), texto(body?.estado), texto(body?.pais),
           texto(body?.indicado_por), marca(body?.parceria), texto(body?.segmento),
           texto(body?.briefing),
+          texto(body?.temperatura), texto(body?.tipo_projeto),
+          // Sem parceria não há percentual: guardar um número solto ali deixaria
+          // a conta viva depois de a marca ser desmarcada.
+          marca(body?.parceria) ? numero(body?.parceria_percentual) : null,
           autorId, autorNome,
         ],
       });
@@ -6438,6 +6454,9 @@ function faltaEmProjeto(p: any): string | null {
             parceria: marca(body?.parceria),
             segmento: texto(body?.segmento),
             briefing: texto(body?.briefing),
+            temperatura: texto(body?.temperatura),
+            tipo_projeto: texto(body?.tipo_projeto),
+            parceria_percentual: marca(body?.parceria) ? numero(body?.parceria_percentual) : null,
             arquivo_count: 0,
             comentario_count: 0,
             pendencia_aberta_count: 0,
@@ -6479,6 +6498,9 @@ function faltaEmProjeto(p: any): string | null {
         parceria: marca,
         segmento: texto,
         briefing: texto,
+        temperatura: texto,
+        tipo_projeto: texto,
+        parceria_percentual: numero,
       };
       const sets: string[] = [];
       const args: unknown[] = [];
@@ -6486,6 +6508,13 @@ function faltaEmProjeto(p: any): string | null {
         if (body[campo] === undefined) continue;
         sets.push(`${campo}=?`);
         args.push(normalizar(body[campo]));
+      }
+      // Desmarcou a parceria: o percentual vai junto. Guardá-lo escondido faria
+      // a conta voltar sozinha se alguém remarcasse a flag meses depois, com um
+      // número que ninguém escolheu de novo.
+      if (body.parceria !== undefined && !marca(body.parceria) && !sets.includes('parceria_percentual=?')) {
+        sets.push('parceria_percentual=?');
+        args.push(null);
       }
       if (sets.length === 0) return { status: 400, body: { error: 'Nada para gravar.' } };
       await db.execute({

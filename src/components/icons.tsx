@@ -68,6 +68,54 @@ export function IconDoc({ size = 14 }: { size?: number }) {
 export function IconImage({ size = 14 }: { size?: number }) {
   return <Ico size={size}><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.6" /><path d="M21 15l-5-5L5 21" /></Ico>;
 }
+// A escala de temperatura da oportunidade. Tres desenhos que se leem de longe
+// pela silhueta - chama, termometro e floco -, e nao tres variacoes do mesmo
+// simbolo: numa lista de tres linhas, o que separa e a forma, nao o detalhe.
+export function IconChama({ size = 14 }: { size?: number }) {
+  return (
+    <Ico size={size}>
+      <path d="M12 3s5.2 4.1 5.2 8.6A5.2 5.2 0 0 1 12 17a5.2 5.2 0 0 1-5.2-5.4C6.8 7.1 12 3 12 3z" />
+      <path d="M12 20.5c2 0 3.4-1.2 3.4-2.9 0-2-2.2-2.8-3.4-4.6-1.2 1.8-3.4 2.6-3.4 4.6 0 1.7 1.4 2.9 3.4 2.9z" />
+    </Ico>
+  );
+}
+export function IconTermometro({ size = 14 }: { size?: number }) {
+  return (
+    <Ico size={size}>
+      <path d="M12.5 14.2V5.2a2.2 2.2 0 0 0-4.4 0v9a4 4 0 1 0 4.4 0z" />
+      <path d="M10.3 16.4v-4.6" />
+      <path d="M15.5 7h4M15.5 10.5h2.5" />
+    </Ico>
+  );
+}
+export function IconFloco({ size = 14 }: { size?: number }) {
+  return (
+    <Ico size={size}>
+      <path d="M12 2.5v19M3.7 7.2l16.6 9.6M20.3 7.2L3.7 16.8" />
+      <path d="M9.4 4.6L12 7.2l2.6-2.6M9.4 19.4L12 16.8l2.6 2.6" />
+    </Ico>
+  );
+}
+// O projeto que se repete todo mes, e o que tem fim combinado. Um ciclo fechado
+// e uma bandeira de chegada: a diferenca entre eles e ter ou nao ter linha final.
+export function IconCiclo({ size = 14 }: { size?: number }) {
+  return (
+    <Ico size={size}>
+      <path d="M4.2 12a7.8 7.8 0 0 1 13.1-5.7L20 8.6" />
+      <path d="M20 4.2v4.4h-4.4" />
+      <path d="M19.8 12a7.8 7.8 0 0 1-13.1 5.7L4 15.4" />
+      <path d="M4 19.8v-4.4h4.4" />
+    </Ico>
+  );
+}
+export function IconBandeiraFinal({ size = 14 }: { size?: number }) {
+  return (
+    <Ico size={size}>
+      <path d="M6 21V3.5" />
+      <path d="M6 4.4h12.5l-2.6 4.3 2.6 4.3H6" />
+    </Ico>
+  );
+}
 // Link externo.
 export function IconLink({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" /></Ico>;

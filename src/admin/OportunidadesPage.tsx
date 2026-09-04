@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type {
   Submission, StatusConfig, SubmissionDetail, Evento, EtapaArquivo, FormArquivo,
@@ -8,7 +8,8 @@ import { useToast, useAuth } from './AdminApp';
 import { DatePicker } from '../components/DatePicker';
 import { ExecutionDateModal } from '../components/ExecutionDateModal';
 import {
-  IconAlert, IconCalendario, IconCheck, IconChevronDown, IconClip, IconComentario, IconDoc,
+  IconAlert, IconBandeiraFinal, IconCalendario, IconChama, IconCheck, IconChevronDown, IconCiclo,
+  IconClip, IconComentario, IconDoc, IconFloco, IconTermometro,
   IconDownload, IconEdit, IconExternal, IconEye, IconImage, IconInbox, IconLink,
   IconPlus, IconRecolher, IconRefresh, IconSearch, IconSpinner, IconTrash, IconVisaoLista,
   IconVisaoQuadro, IconX, IconZip, IconChevronUp, IconChevronUpDown,
@@ -40,7 +41,11 @@ import { definirImagemArrasto } from '../lib/dragImage';
 function FormSelect({ value, onChange, options, placeholder = '- Não definido -' }: {
   value: string;
   onChange: (v: string) => void;
-  options: { value: string; label: string }[];
+  /** `icone` e `descricao` são opcionais: a maioria dos campos aqui é uma lista
+   *  de palavras, e desenho em lista de palavras vira ruído. Entram onde a
+   *  escolha é uma escala e a frase de apoio é a régua - temperatura e tipo de
+   *  projeto -, do mesmo jeito que a urgência do cartão de chamados. */
+  options: { value: string; label: string; icone?: ReactNode; descricao?: string }[];
   placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -51,7 +56,10 @@ function FormSelect({ value, onChange, options, placeholder = '- Não definido -
 
   function openDropdown() {
     const rect = triggerRef.current!.getBoundingClientRect();
-    const dropH = Math.min(8 + (options.length + 1) * 36, 320);
+    // Com descrição a opção ocupa duas linhas, e é essa altura que decide se a
+    // lista abre para cima.
+    const alturaOpcao = options.some(o => o.descricao) ? 55 : 36;
+    const dropH = Math.min(8 + (options.length + 1) * alturaOpcao, 320);
     const spaceBelow = window.innerHeight - rect.bottom - 8;
     const flipUp = spaceBelow < dropH && rect.top > dropH;
     setPos({ top: flipUp ? rect.top - dropH - 4 : rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 180), flipUp });
@@ -59,6 +67,19 @@ function FormSelect({ value, onChange, options, placeholder = '- Não definido -
   }
 
   useDropdownDismiss(open, [triggerRef, dropRef], () => setOpen(false));
+
+  // A altura de antes de montar é uma estimativa, e a opção com descrição tem
+  // duas linhas: errando para mais, a lista que abre para cima nasce boiando
+  // longe do campo. Medida de verdade, ela é reencostada no gatilho.
+  useLayoutEffect(() => {
+    if (!open || !dropRef.current || !triggerRef.current) return;
+    const r = dropRef.current.getBoundingClientRect();
+    const g = triggerRef.current.getBoundingClientRect();
+    if (r.top >= g.top) return;
+    const top = Math.max(8, g.top - 4 - r.height);
+    if (Math.abs(top - r.top) < 1) return;
+    setPos(p => ({ ...p, top }));
+  }, [open]);
 
   return (
     <>
@@ -69,7 +90,11 @@ function FormSelect({ value, onChange, options, placeholder = '- Não definido -
         className="liquidez-trigger"
         style={{ width: '100%', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 500, borderColor: open ? 'var(--yellow)' : undefined, boxShadow: open ? '0 0 0 4px var(--yd)' : undefined }}
       >
-        <span style={{ color: current ? 'var(--gray)' : 'var(--gray2)' }}>{current?.label ?? placeholder}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0,
+          color: current ? 'var(--gray)' : 'var(--gray2)' }}>
+          {current?.icone}
+          {current?.label ?? placeholder}
+        </span>
         <span style={{ display: 'inline-flex', transition: 'transform var(--transition)', transform: open ? 'rotate(180deg)' : 'none', flexShrink: 0 }}><IconChevronDown size={10} /></span>
       </button>
       {open && createPortal(
@@ -80,7 +105,18 @@ function FormSelect({ value, onChange, options, placeholder = '- Não definido -
           </div>
           {options.map(opt => (
             <div key={opt.value} className={`status-select-option${value === opt.value ? ' active' : ''}`} onClick={() => { onChange(opt.value); setOpen(false); }}>
-              <span>{opt.label}</span>
+              {/* Com duas linhas o desenho sobe para o topo: centrado ao lado
+                  delas ele cai no meio das duas, longe do nome a que se refere. */}
+              <span style={{
+                display: 'inline-flex', gap: 9, minWidth: 0,
+                alignItems: opt.descricao ? 'flex-start' : 'center',
+              }}>
+                {opt.icone && <span style={{ display: 'inline-flex', marginTop: opt.descricao ? 1 : 0 }}>{opt.icone}</span>}
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: 'block' }}>{opt.label}</span>
+                  {opt.descricao && <span className="select-opcao-descricao">{opt.descricao}</span>}
+                </span>
+              </span>
               {value === opt.value && <span style={{ display: 'inline-flex', marginLeft: 'auto' }}><IconCheck size={12} /></span>}
             </div>
           ))}
@@ -630,6 +666,19 @@ function maskCurrencyBRL(raw: string): string {
 function parseCurrencyBRL(masked: string): number {
   return parseFloat((masked || '0').replace(/[^\d,]/g, '').replace(',', '.')) || 0;
 }
+/** Percentual de 0 a 100, com uma casa depois da vírgula. Trava no 100 aqui, e
+ *  não só na validação: um campo que aceita 250 e reclama depois faz a pessoa
+ *  digitar duas vezes. */
+function mascaraPorcento(raw: string): string {
+  const limpo = raw.replace(/[^\d.,]/g, '').replace(',', '.');
+  if (limpo === '') return '';
+  const n = Number(limpo);
+  if (!Number.isFinite(n)) return '';
+  const preso = Math.min(100, Math.max(0, n));
+  // Enquanto a pessoa digita "12." o número já é 12, e reescrever apagaria o
+  // ponto que ela acabou de pôr.
+  return limpo.endsWith('.') && preso === n ? limpo : String(preso);
+}
 
 // ── A oportunidade comercial ──────────────────────────────────────────────────────
 //
@@ -643,6 +692,40 @@ function parseCurrencyBRL(masked: string): number {
 export const INTERESSES_OPORTUNIDADE = [
   'BI', 'SaaS', 'Automação', 'Integração', 'App', 'Site', 'Consultoria', 'Outro',
 ] as const;
+
+/** O quanto a conversa está perto de virar negócio. Três degraus e nada entre
+ *  eles: "meio quente" escrito à mão vira um quarto degrau que só quem escreveu
+ *  entende, e a coluna deixa de servir para varrer o funil. */
+export const TEMPERATURAS_OPORTUNIDADE = ['Quente', 'Morno', 'Frio'] as const;
+
+/**
+ * O que cada degrau quer dizer, e o desenho que o acompanha.
+ *
+ * A frase de apoio existe pelo mesmo motivo da urgência do cartão de chamados:
+ * sem régua, "Quente" vira o padrão de todo mundo - quem cadastra está sempre
+ * animado com a conversa que acabou de ter. Dizer que quente é quem já pediu
+ * proposta dá o critério sem precisar de política.
+ *
+ * A cor vem de token e mora aqui, e não em cada uso, senão a lista e o gatilho
+ * acabariam divergindo.
+ */
+export const TEMPERATURA_DETALHE: Record<string, { descricao: string; cor: string; icone: (p: { size?: number }) => JSX.Element }> = {
+  'Quente': { descricao: 'Pediu proposta, decide em dias', cor: 'var(--red)', icone: IconChama },
+  'Morno': { descricao: 'Conversa viva, sem data para decidir', cor: 'var(--amber)', icone: IconTermometro },
+  'Frio': { descricao: 'Sem resposta ou sem prioridade agora', cor: 'var(--link)', icone: IconFloco },
+};
+
+/** Recorrente ou de escopo fechado. Muda o que a proposta é, e muda a conta: um
+ *  contrato que se repete e uma entrega que acaba não se somam no mesmo lugar de
+ *  um relatório. */
+export const TIPOS_PROJETO_OPORTUNIDADE = ['Recorrente', 'Escopo fechado'] as const;
+
+/** Os dois tipos, com o que separa um do outro: ter ou não ter linha de
+ *  chegada. Sem cor - não é escala, são dois caminhos. */
+export const TIPO_PROJETO_DETALHE: Record<string, { descricao: string; icone: (p: { size?: number }) => JSX.Element }> = {
+  'Recorrente': { descricao: 'Cobra todo mês, sem data para acabar', icone: IconCiclo },
+  'Escopo fechado': { descricao: 'Começo, meio e fim combinados', icone: IconBandeiraFinal },
+};
 
 /** As unidades da federação, na ordem em que se procura: pela sigla. Lista
  *  fechada porque estado é dado de agrupamento - "MG", "Minas" e "minas gerais"
@@ -675,6 +758,12 @@ export interface RascunhoOportunidade {
   indicado_por: string;
   /** Chegou por um parceiro. */
   parceria: boolean;
+  /** Quanto do negócio fica com quem trouxe, em porcento. Só com `parceria`. */
+  parceria_percentual: string;
+  /** Quente, Morno ou Frio. */
+  temperatura: string;
+  /** Recorrente ou de escopo fechado. */
+  tipo_projeto: string;
   /** O mercado em que a empresa atua, e não o que ela quer da gente. */
   segmento: string;
   interesse: string;
@@ -694,7 +783,8 @@ export const OPORTUNIDADE_VAZIA: RascunhoOportunidade = {
   // Quase toda oportunidade é daqui; quem for de fora troca. Deixar em branco faria a
   // maioria preencher a mesma palavra toda vez.
   pais: 'Brasil',
-  origem: '', indicado_por: '', parceria: false, segmento: '',
+  origem: '', indicado_por: '', parceria: false, parceria_percentual: '',
+  temperatura: '', tipo_projeto: '', segmento: '',
   interesse: '', briefing: '', valor_estimado: '',
   responsavel_id: '', proxima_acao: '', proxima_acao_em: '', observacoes: '',
 };
@@ -719,6 +809,13 @@ export function corpoDaOportunidade(r: RascunhoOportunidade) {
     segmento: r.segmento || null,
     interesse: r.interesse || null,
     briefing: r.briefing.trim() || null,
+    temperatura: r.temperatura || null,
+    tipo_projeto: r.tipo_projeto || null,
+    // Sem parceria não vai percentual: o servidor limpa de qualquer forma, e
+    // mandar o número aqui só faria a tela e o banco discordarem por um instante.
+    parceria_percentual: r.parceria && r.parceria_percentual !== ''
+      ? Number(r.parceria_percentual)
+      : null,
     valor_estimado: parseCurrencyBRL(r.valor_estimado) || null,
     responsavel_id: r.responsavel_id || null,
     proxima_acao: r.proxima_acao.trim() || null,
@@ -880,15 +977,61 @@ function CamposDaOportunidade({ r, set, token, pessoas }: {
         </div>
       </div>
       <div className="oportunidade-campos">
+        <div className="form-group" style={{ flex: '1 1 160px' }}>
+          <label className="form-label">Temperatura</label>
+          <FormSelect value={r.temperatura} onChange={v => set('temperatura', v)}
+            options={TEMPERATURAS_OPORTUNIDADE.map(o => ({
+              value: o,
+              label: o,
+              descricao: TEMPERATURA_DETALHE[o].descricao,
+              icone: (
+                <span style={{ color: TEMPERATURA_DETALHE[o].cor, display: 'inline-flex' }}>
+                  {TEMPERATURA_DETALHE[o].icone({ size: 15 })}
+                </span>
+              ),
+            }))} />
+        </div>
+        <div className="form-group" style={{ flex: '1 1 160px' }}>
+          <label className="form-label">Tipo de projeto</label>
+          <FormSelect value={r.tipo_projeto} onChange={v => set('tipo_projeto', v)}
+            options={TIPOS_PROJETO_OPORTUNIDADE.map(o => ({
+              value: o,
+              label: o,
+              descricao: TIPO_PROJETO_DETALHE[o].descricao,
+              icone: TIPO_PROJETO_DETALHE[o].icone({ size: 15 }),
+            }))} />
+        </div>
+      </div>
+      <div className="oportunidade-campos">
         <div className="form-group" style={{ flex: '0 1 190px' }}>
           {/* Sim ou não à vista, e não uma caixinha para marcar: a pergunta é
               fechada, e ver as duas respostas é o que deixa claro que "não" foi
               escolhido, em vez de esquecido. */}
           <label className="form-label">Veio por parceria</label>
           <SegSwitch valor={r.parceria ? 'sim' : 'nao'}
-            onChange={v => set('parceria', v === 'sim')}
+            onChange={v => {
+              set('parceria', v === 'sim');
+              // Voltou para "não": o percentual sai junto. Guardá-lo escondido
+              // faria a conta reaparecer sozinha na próxima vez que alguém
+              // marcasse "sim", com um número que ninguém escolheu de novo.
+              if (v === 'nao') set('parceria_percentual', '');
+            }}
             opcoes={[{ valor: 'nao', label: 'Não' }, { valor: 'sim', label: 'Sim' }]}
             pequeno full />
+        </div>
+        {/* O percentual só existe com a parceria marcada, e nasce com o
+            `.revelar`: aparecendo de estalo ele empurraria a linha inteira num
+            quadro. O bloco fica montado - montado só enquanto aberto, ele
+            animaria de nada para nada. */}
+        <div className={`revelar${r.parceria ? ' aberto' : ''}`} style={{ flex: '0 1 150px' }}>
+          <div>
+            <div className="form-group">
+              <label className="form-label">% da parceria</label>
+              <input className="form-input" inputMode="decimal" value={r.parceria_percentual}
+                placeholder="0"
+                onChange={e => set('parceria_percentual', mascaraPorcento(e.target.value))} />
+            </div>
+          </div>
         </div>
       </div>
       <div className="oportunidade-campos">
@@ -1068,6 +1211,9 @@ function EditModal({ detail, token, onClose, onSaved }: {
     segmento: s.segmento ?? '',
     interesse: s.interesse ?? '',
     briefing: s.briefing ?? '',
+    temperatura: s.temperatura ?? '',
+    tipo_projeto: s.tipo_projeto ?? '',
+    parceria_percentual: s.parceria_percentual != null ? String(s.parceria_percentual) : '',
     // Formatado como moeda, e não passado pela máscara: ela lê o que recebe
     // como centavos, então uma oportunidade de R$ 50.000 abria a edição valendo
     // R$ 500,00 - e ao salvar era isso que ia para o banco.
@@ -1869,11 +2015,19 @@ export function DetailPanel({
                         escrito em toda oportunidade não informa nada. */}
                     {Number(s!.parceria) === 1 && (
                       <span className="oportunidade-tag-parceria" title="Oportunidade que chegou por um parceiro">
-                        parceria
+                        parceria{s!.parceria_percentual != null ? ` ${s!.parceria_percentual}%` : ''}
                       </span>
                     )}
                   </p>
                   {s!.indicado_por && <p className="oportunidade-ficha-sub">por {s!.indicado_por}</p>}
+                </div>
+                <div className="oportunidade-ficha-item">
+                  <p className="admin-info-label">Temperatura</p>
+                  <p className="oportunidade-ficha-valor">{s!.temperatura ?? '-'}</p>
+                </div>
+                <div className="oportunidade-ficha-item">
+                  <p className="admin-info-label">Tipo de projeto</p>
+                  <p className="oportunidade-ficha-valor">{s!.tipo_projeto ?? '-'}</p>
                 </div>
                 <div className="oportunidade-ficha-item">
                   <p className="admin-info-label">Segmento</p>

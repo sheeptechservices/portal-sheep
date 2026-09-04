@@ -100,6 +100,12 @@ export interface Submission {
   /** O entendimento inteiro da oportunidade: a operação, o problema, o que se
    *  propôs e o que ficou de fora. */
   briefing?: string | null;
+  /** Quente, Morno ou Frio: o quanto a conversa está perto de virar negócio. */
+  temperatura?: string | null;
+  /** Recorrente ou de escopo fechado. */
+  tipo_projeto?: string | null;
+  /** Quanto do negócio fica com quem trouxe, em porcento. Só com `parceria`. */
+  parceria_percentual?: number | null;
   pendencia_total_count?: number;
   /** As reuniões da oportunidade, no mínimo que o chip do card mostra. O resumo e os
    *  tópicos ficam no servidor: são parágrafos por reunião, e o quadro inteiro
