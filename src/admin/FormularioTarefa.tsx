@@ -22,12 +22,18 @@ import { ancorar } from '../lib/ancorar';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { TextoRico } from '../components/TextoRico';
 import { EditorRico } from '../components/EditorRico';
-import { ChipVinculo } from '../components/VinculoReuniao';
+import { ChipReuniao } from '../components/VinculoReuniao';
+import { ReuniaoModal } from '../components/ReuniaoModal';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import { useLarguraPainel } from '../lib/painelLateral';
 import { PuxadorDoPainel } from '../components/PuxadorDoPainel';
 import { ICONE_PRIORIDADE, PRIORIDADES } from '../lib/prioridades';
-import type { Projeto, Tarefa } from './ProjetosPage';
+import type { Projeto, Reuniao, Tarefa } from './ProjetosPage';
+
+/** A data da reunião no chip: dia e mês, que é o que cabe ali e o que basta
+ *  para situar a conversa. */
+const fmtDataCurta = (v: string) =>
+  v ? new Date(`${v}T00:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
 
 // ── Etapas e etiquetas ────────────────────────────────────────────────────────
 
@@ -712,13 +718,9 @@ export function ConfirmarExclusao({ titulo, oQue = 'tarefa', onCancelar, onConfi
 
 export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etiquetaPorPapel,
   usuarioId, etq, pessoas, salvando, somenteLeitura, podeComentar, api,
-  onAbrirReuniao,
   onMudar, onFechar, onSalvar, onExcluir, onDuplicar }: {
   rascunho: Rascunho;
   projetos: Projeto[];
-  /** Leva à reunião, no painel do projeto. Ausente na tela de Tarefas, onde não
-   *  existe para onde levar - lá os chips só informam. */
-  onAbrirReuniao?: (reuniaoId: number) => void;
   etapas: EtapaTarefa[];
   etiquetas: EtiquetaTarefa[];
   etiquetaPorPapel: boolean;
@@ -772,6 +774,10 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
   /** A descrição em modo de escrita. Fora dele, o texto aparece formatado - é o
    *  que faz a marcação valer a pena para quem lê. */
   const [editandoDesc, setEditandoDesc] = useState(false);
+  /** A reunião aberta pelo chip: gravação, índice e resumos, num modal central.
+   *  Ver a conversa é o que se quer ali - trocar de tela para procurá-la era o
+   *  caminho longo para a mesma coisa. */
+  const [reuniaoAberta, setReuniaoAberta] = useState<Reuniao | null>(null);
 
   /** O painel grava sozinho, sem botão.
    *
@@ -1084,23 +1090,25 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
               conversa acontece, e a tarefa é um pedaço dela. Aqui só se lê -
               vincular é do lado da entrega ou da própria reunião. */}
           {reunioesDaEntrega.length > 0 && (
-            <div className="form-group">
-              <label className="form-label">
-                Reuniões da entrega
-                <span className="form-hint" style={{ display: 'block', marginTop: 2 }}>
-                  Onde esta entrega foi tratada.
-                </span>
-              </label>
+            <section>
+              <div className="admin-section-head">
+                <p className="admin-section-title">
+                  Reuniões da entrega
+                  <span style={{ marginLeft: 6, fontWeight: 600 }}>({reunioesDaEntrega.length})</span>
+                </p>
+              </div>
               <div className="vinculo-chips">
                 {reunioesDaEntrega.map(r => (
-                  <ChipVinculo key={r.id}
-                    nome={r.assunto}
-                    titulo={onAbrirReuniao ? 'Ver a reunião no projeto' : r.assunto}
-                    onAbrir={onAbrirReuniao ? () => onAbrirReuniao(r.id) : undefined}
+                  <ChipReuniao key={r.id}
+                    assunto={r.assunto}
+                    data={fmtDataCurta(r.data)}
+                    fireflies={!!r.fireflies_id}
+                    titulo={`Abrir "${r.assunto}"`}
+                    onAbrir={() => setReuniaoAberta(r)}
                   />
                 ))}
               </div>
-            </div>
+            </section>
           )}
 
           {/* Só em tarefa que já existe: diário de tarefa não gravada não é
@@ -1156,6 +1164,19 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
         </div>
 
       </div>
+
+      {/* A reunião aberta pelo chip. Fora da gaveta porque é modal central: ela
+          cobre a tela, e não o painel. */}
+      {reuniaoAberta && api && (
+        <ReuniaoModal
+          reuniao={reuniaoAberta}
+          buscarGravacao={async id => (
+            await api(`?action=fireflies_gravacao&id=${encodeURIComponent(id)}`)
+              ?? { error: 'Sessão expirada.' }
+          )}
+          onFechar={() => setReuniaoAberta(null)}
+        />
+      )}
     </div>,
     document.body,
   );

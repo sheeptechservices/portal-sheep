@@ -21,7 +21,11 @@ import { SkeletonCards, SkeletonTabela } from '../components/Skeleton';
 import { CartaoKpi, CartoesKpiEsqueleto } from '../components/CartaoKpi';
 import { Abas, AbaPainel } from '../components/Abas';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
-import { SeletorVinculo, ChipVinculo } from '../components/VinculoReuniao';
+import { SeletorVinculo, Chip, ChipReuniao } from '../components/VinculoReuniao';
+import {
+  ComNegrito, ReuniaoModal, lerAcoes, lerDados, lerTopicos, type TopicoReuniao,
+} from '../components/ReuniaoModal';
+import { EntregaModal } from '../components/EntregaModal';
 import { ancorar } from '../lib/ancorar';
 import {
   DIMENSOES, chavesDe, comparadorDe, marcaDaLinha as marcaFora, type Dimensao,
@@ -417,6 +421,11 @@ function rascunhoDePartida(usuarioId?: string): Rascunho {
 
 const fmtData = (v: string | null) =>
   v ? new Date(`${v}T00:00:00`).toLocaleDateString('pt-BR') : '-';
+
+/** A data no chip: dia e mês, que é o que cabe ali e o que basta para situar
+ *  a conversa. */
+const fmtDataCurta = (v: string | null) =>
+  v ? new Date(`${v}T00:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
 
 const fmtTamanho = (b: number) =>
   b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
@@ -2155,8 +2164,10 @@ function SecaoEntregas({
                         {reunioes.some(r => (r.entregas ?? []).includes(e.id)) && (
                           <div className="vinculo-chips" style={{ marginTop: 8 }}>
                             {reunioes.filter(r => (r.entregas ?? []).includes(e.id)).map(r => (
-                              <ChipVinculo key={r.id}
-                                nome={r.assunto}
+                              <ChipReuniao key={r.id}
+                                assunto={r.assunto}
+                                data={fmtDataCurta(r.data)}
+                                fireflies={!!r.fireflies_id}
                                 titulo="Ver na aba de reuniões"
                                 onAbrir={() => onAbrirReuniao(r.id)}
                                 onSoltar={somenteLeitura
@@ -2699,107 +2710,6 @@ function DialogoEvidencia({ entrega, alvo, salvando, onConcluir, onFechar }: {
 
 /** Diário de reuniões. Mesma forma da saúde: cada registro é gravado na hora e
  *  o valor está na série, não no último item. */
-/** O texto do Fireflies vem em markdown, e o que ele usa é o negrito: sem
- *  tratar, a nota aparece com `**` cru no meio da frase. Não é um interpretador
- *  de markdown - é o mínimo que o conteúdo pede, e o resto passa como texto. */
-function ComNegrito({ texto }: { texto: string }) {
-  const partes = texto.split('**');
-  return (
-    <>
-      {partes.map((p, i) => (
-        // Índice ímpar é o que estava entre os dois asteriscos.
-        i % 2 === 1 ? <strong key={i}>{p}</strong> : <span key={i}>{p}</span>
-      ))}
-    </>
-  );
-}
-
-/** O detalhe que o Fireflies mandou junto com a reunião. */
-interface DadosReuniao {
-  duracao?: number | null;
-  participantes?: string[];
-  gist?: string | null;
-  curto?: string | null;
-  topicos?: string | null;
-  notas?: string | null;
-  palavras?: string[];
-  acoes?: string | null;
-  organizador?: string | null;
-  reuniao_url?: string | null;
-}
-
-/** JSON malformado - de uma gravação antiga, por exemplo - não pode derrubar a
- *  aba inteira: vira ausência de detalhe. */
-function lerDados(bruto: string | null | undefined): DadosReuniao | null {
-  if (!bruto) return null;
-  try {
-    const d = JSON.parse(bruto);
-    return d && typeof d === 'object' ? d as DadosReuniao : null;
-  } catch { return null; }
-}
-
-/** Um bloco da conversa, com o momento em que ele começa. */
-interface TopicoReuniao {
-  titulo: string;
-  /** Segundos desde o início da gravação. */
-  inicio: number;
-  rotulo: string;
-  linhas: string[];
-}
-
-const emSegundos = (mmss: string): number => {
-  const p = mmss.split(':').map(n => Number(n));
-  if (p.some(n => !Number.isFinite(n))) return 0;
-  // "07:21" e "1:02:11" - o Fireflies usa os dois conforme a duração.
-  return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1];
-};
-
-/** Transforma o `shorthand_bullet` do Fireflies na linha do tempo.
- *
- *  O formato de lá é `EMOJI **Título** (01:48 - 02:00)` seguido das linhas de
- *  descrição. O emoji é descartado: dentro do produto ele não entra, e aqui
- *  seria decoração vinda de fora. */
-function lerTopicos(texto: string | null | undefined): TopicoReuniao[] {
-  if (!texto) return [];
-  const topicos: TopicoReuniao[] = [];
-  for (const linha of texto.split('\n')) {
-    const cabeca = linha.match(/\*\*(.+?)\*\*\s*\((\d{1,2}:\d{2}(?::\d{2})?)(?:\s*-\s*(\d{1,2}:\d{2}(?::\d{2})?))?\)/);
-    if (cabeca) {
-      topicos.push({
-        titulo: cabeca[1].trim(),
-        inicio: emSegundos(cabeca[2]),
-        rotulo: cabeca[2],
-        linhas: [],
-      });
-      continue;
-    }
-    const corpo = linha.trim();
-    if (corpo && topicos.length > 0) topicos[topicos.length - 1].linhas.push(corpo);
-  }
-  return topicos;
-}
-
-/** Os itens de ação, que vêm agrupados por pessoa em `**Nome**`. */
-interface AcaoReuniao { quem: string; itens: { texto: string; rotulo: string | null; inicio: number }[] }
-
-function lerAcoes(texto: string | null | undefined): AcaoReuniao[] {
-  if (!texto) return [];
-  const grupos: AcaoReuniao[] = [];
-  for (const linha of texto.split('\n')) {
-    const nome = linha.trim().match(/^\*\*(.+?)\*\*$/);
-    if (nome) { grupos.push({ quem: nome[1].trim(), itens: [] }); continue; }
-    const corpo = linha.trim();
-    if (!corpo || grupos.length === 0) continue;
-    const quando = corpo.match(/\((\d{1,2}:\d{2}(?::\d{2})?)\)\s*$/);
-    grupos[grupos.length - 1].itens.push({
-      texto: quando ? corpo.slice(0, quando.index).trim() : corpo,
-      rotulo: quando ? quando[1] : null,
-      inicio: quando ? emSegundos(quando[1]) : 0,
-    });
-  }
-  return grupos.filter(g => g.itens.length > 0);
-}
-
 /** O que a reunião carrega, aberto: resumo, assuntos com horário, itens de
  *  ação por pessoa, palavras-chave e quem participou.
  *
@@ -2851,10 +2761,17 @@ function CorpoReuniao({ reg, pessoas, entregas, somenteLeitura, onAssistir, onVi
         <div className="vinculo-chips">
           {reg.entregas!.map(id => {
             const e = entregas.find(x => x.id === id);
+            // A marca da entrega é a da etapa dela, na cor da etapa: é o mesmo
+            // sinal que a linha da entrega mostra, e ele diz de relance se
+            // aquilo que a reunião tratou já andou.
+            const Marca = ICONE_ENTREGA[e?.status ?? ''] ?? IconMarcoPlanejado;
             return (
-              <ChipVinculo key={id}
+              <Chip key={id}
+                icone={<Marca size={12} />}
+                cor={COR_ENTREGA[e?.status ?? ''] ?? 'var(--gray2)'}
                 nome={e?.titulo ?? 'Entrega removida'}
-                titulo="Ver a entrega"
+                nota={e?.status}
+                titulo={e ? `Ver a entrega - ${e.status}` : 'Entrega removida'}
                 onAbrir={() => onAbrirEntrega(id)}
                 onSoltar={somenteLeitura ? undefined : () => onVincular('entrega', id, false)}
               />
@@ -2921,115 +2838,6 @@ function CorpoReuniao({ reg, pessoas, entregas, somenteLeitura, onAssistir, onVi
         </div>
       )}
     </div>
-  );
-}
-
-/** A gravação da reunião, com a linha do tempo ao lado.
- *
- *  O endereço do vídeo é buscado quando o modal abre, e não guardado: a URL da
- *  CDN do Fireflies vem assinada e expira em poucos dias. Clicar num tópico
- *  move o vídeo para aquele instante - é o mesmo `currentTime` que a barra do
- *  próprio player usa. */
-function GravacaoReuniao({ reuniao, topicos, onBuscar, onFechar }: {
-  reuniao: Reuniao;
-  topicos: TopicoReuniao[];
-  onBuscar: (firefliesId: string) => Promise<{ video?: string | null; audio?: string | null; error?: string }>;
-  onFechar: () => void;
-}) {
-  const { saindo, fechar } = useSaidaSuave(onFechar);
-  const fundo = useFecharNoFundo(fechar);
-  const player = useRef<HTMLVideoElement>(null);
-  const [midia, setMidia] = useState<{ video: string | null; audio: string | null } | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
-  const [agora, setAgora] = useState(0);
-
-  useEffect(() => {
-    let vivo = true;
-    onBuscar(reuniao.fireflies_id ?? '')
-      .then(d => {
-        if (!vivo) return;
-        if (d?.error) setErro(d.error);
-        else setMidia({ video: d.video ?? null, audio: d.audio ?? null });
-      })
-      .catch(() => { if (vivo) setErro('Não foi possível buscar a gravação.'); });
-    return () => { vivo = false; };
-  }, [reuniao.fireflies_id]);
-
-  const irPara = (segundos: number) => {
-    const el = player.current;
-    if (!el) return;
-    el.currentTime = segundos;
-    void el.play().catch(() => { /* o navegador pode exigir gesto; a barra move igual */ });
-  };
-
-  // O tópico em curso é o último que já começou.
-  const emCurso = topicos.reduce((atual, t, i) => (t.inicio <= agora ? i : atual), -1);
-
-  return createPortal(
-    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`}
-      style={{ zIndex: 10002 }} {...fundo}>
-      <div className="gravacao-modal" onClick={e => e.stopPropagation()}>
-        {/* Título, data e atalho na mesma linha: o vídeo é o conteúdo, e o
-            cabeçalho não pode comer altura de tela por causa de duas linhas. */}
-        <div className="gravacao-topo">
-          <p className="gravacao-titulo">
-            <span className="gravacao-nome" title={reuniao.assunto}>{reuniao.assunto}</span>
-            <span className="gravacao-meta">
-              {fmtData(reuniao.data)}
-              {reuniao.link ? ' · ' : ''}
-              {reuniao.link && (
-                <a href={reuniao.link} target="_blank" rel="noopener noreferrer">
-                  ver no Fireflies
-                </a>
-              )}
-            </span>
-          </p>
-          <button type="button" className="admin-modal-close" onClick={fechar}
-            aria-label="Fechar a gravação">
-            <IconX size={16} />
-          </button>
-        </div>
-
-        <div className="gravacao-corpo">
-          {erro ? (
-            <p className="ff-vazio ff-erro"><IconAlert size={13} /> {erro}</p>
-          ) : !midia ? (
-            <div className="dux-spinner-row" style={{ padding: '48px' }}>
-              <span className="dux-spinner" />
-            </div>
-          ) : midia.video ? (
-            <video ref={player} className="gravacao-video" src={midia.video} controls
-              onTimeUpdate={e => setAgora((e.target as HTMLVideoElement).currentTime)} />
-          ) : (
-            <div className="gravacao-so-audio">
-              <p>Esta reunião só tem áudio.</p>
-              {/* O `video` toca áudio também; assim a linha do tempo continua
-                  valendo, com o mesmo `currentTime`. */}
-              <video ref={player} className="gravacao-audio" src={midia.audio ?? undefined} controls
-                onTimeUpdate={e => setAgora((e.target as HTMLVideoElement).currentTime)} />
-            </div>
-          )}
-
-          {topicos.length > 0 && (
-            <div className="gravacao-linha-tempo">
-              <p className="gravacao-secao">Assuntos</p>
-              {topicos.map((t, i) => (
-                <button key={`${t.inicio}-${i}`} type="button"
-                  className={`gravacao-topico${i === emCurso ? ' agora' : ''}`}
-                  onClick={() => irPara(t.inicio)}>
-                  <span className="gravacao-tempo">{t.rotulo}</span>
-                  <span className="gravacao-topico-texto">
-                    <strong>{t.titulo}</strong>
-                    {t.linhas.length > 0 && <span><ComNegrito texto={t.linhas.join(' ')} /></span>}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>,
-    document.body,
   );
 }
 
@@ -3360,10 +3168,9 @@ function SecaoReunioes({ registros, pessoas, equipe, entregas, focada, salvando,
       )}
 
       {assistindo && (
-        <GravacaoReuniao
+        <ReuniaoModal
           reuniao={assistindo}
-          topicos={lerTopicos(lerDados(assistindo.dados)?.topicos)}
-          onBuscar={onBuscarGravacao}
+          buscarGravacao={onBuscarGravacao}
           onFechar={() => setAssistindo(null)}
         />
       )}
@@ -4739,6 +4546,11 @@ function FormularioProjeto({
   const [entregaFocada, setEntregaFocada] = useState<number | null>(null);
   /** E o caminho inverso: a reunião que o chip da entrega quer mostrar. */
   const [reuniaoFocada, setReuniaoFocada] = useState<number | null>(null);
+  /** A reunião aberta no modal central. Quem clica no chip dentro da entrega
+   *  quer ver a conversa, e não ser levado para outra aba para procurá-la. */
+  const [reuniaoAberta, setReuniaoAberta] = useState<Reuniao | null>(null);
+  /** E a entrega aberta pelo chip de dentro de uma reunião, pelo mesmo motivo. */
+  const [entregaAberta, setEntregaAberta] = useState<Entrega | null>(null);
   const [reetiquetados, setReetiquetados] = useState<Record<number, string>>({});
   const jaAnexados = (editando?.arquivos ?? [])
     .filter(a => !removidos.includes(a.id))
@@ -5009,7 +4821,12 @@ function FormularioProjeto({
                 onVincularReuniao(reuniaoId, tipo, alvo, ligar)}
               // Clicar no chip volta para a aba Geral e abre a entrega: é lá
               // que a entrega mora, e o vínculo só vale se levar a ela.
-              onAbrirEntrega={id => { setAbaModal('geral'); setEntregaFocada(id); }}
+              // O chip abre a entrega ali mesmo: etapa, andamento, tarefas e
+            // as reuniões que trataram dela.
+            onAbrirEntrega={id => {
+              const e = (editando?.entregas ?? []).find(x => x.id === id);
+              if (e) setEntregaAberta(e);
+            }}
               salvando={salvando}
               onRegistrar={reg => onRegistrarReuniao(editando, reg)}
               onBuscarFireflies={onBuscarReunioesFireflies}
@@ -5128,8 +4945,11 @@ function FormularioProjeto({
             reunioes={editando?.reunioes ?? []}
             focada={entregaFocada}
             onVincular={onVincularReuniao}
-            // O caminho de volta: do chip da entrega para a aba de reuniões.
-            onAbrirReuniao={id => { setAbaModal('reunioes'); setReuniaoFocada(id); }}
+            // O chip abre a reunião ali mesmo: gravação, índice e resumos.
+            onAbrirReuniao={id => {
+              const r = (editando?.reunioes ?? []).find(x => x.id === id);
+              if (r) setReuniaoAberta(r);
+            }}
             pendentes={r.entregas}
             tarefas={editando?.tarefas ?? []}
             onVerTarefasDaEntrega={onVerTarefasDaEntrega}
@@ -5262,6 +5082,64 @@ function FormularioProjeto({
         </div>
 
       </div>
+
+      {/* A reunião aberta pelo chip de uma entrega. Fora do painel porque é
+          modal central: ela cobre a tela, e não a gaveta. */}
+      {reuniaoAberta && (
+        <ReuniaoModal
+          reuniao={reuniaoAberta}
+          buscarGravacao={onBuscarGravacaoFireflies}
+          onFechar={() => setReuniaoAberta(null)}
+        />
+      )}
+
+      {entregaAberta && (() => {
+        const Marca = ICONE_ENTREGA[entregaAberta.status] ?? IconMarcoPlanejado;
+        const cor = COR_ENTREGA[entregaAberta.status] ?? 'var(--gray2)';
+        const daEntrega = (editando?.tarefas ?? []).filter(t => t.entrega_id === entregaAberta.id);
+        return (
+          <EntregaModal
+            entrega={entregaAberta}
+            cor={cor}
+            icone={<Marca size={14} />}
+            avatares={entregaAberta.responsaveis.length > 0 ? (
+              <>
+                {entregaAberta.responsaveis.map(id => {
+                  const p = pessoas.find(x => x.id === id);
+                  return (
+                    <span key={id} title={p?.nome ?? 'Usuário removido'}>
+                      <Avatar nome={p?.nome ?? '?'} foto={p?.foto_url} size={20} />
+                    </span>
+                  );
+                })}
+              </>
+            ) : undefined}
+            tarefas={daEntrega.map(t => ({
+              id: t.id,
+              titulo: t.titulo,
+              status: t.status,
+              cor: etapasTarefa.find(x => x.nome === t.status)?.cor ?? 'var(--gray2)',
+              feita: !!t.concluida_em,
+            }))}
+            reunioes={(editando?.reunioes ?? [])
+              .filter(r => (r.entregas ?? []).includes(entregaAberta.id))
+              .map(r => ({
+                id: r.id, assunto: r.assunto, data: r.data, fireflies: !!r.fireflies_id,
+              }))}
+            // De uma para a outra sem passar pela lista: a entrega abre a
+            // reunião, e a reunião abre a entrega.
+            onAbrirReuniao={id => {
+              const r = (editando?.reunioes ?? []).find(x => x.id === id);
+              if (r) { setEntregaAberta(null); setReuniaoAberta(r); }
+            }}
+            onAbrirTarefa={id => {
+              const t = (editando?.tarefas ?? []).find(x => x.id === id);
+              if (t) { setEntregaAberta(null); onAbrirTarefa(t); }
+            }}
+            onFechar={() => setEntregaAberta(null)}
+          />
+        );
+      })()}
     </div>,
     document.body,
   );

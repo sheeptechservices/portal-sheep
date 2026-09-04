@@ -4172,7 +4172,7 @@ body.arrastando-painel {
 /* Dialogo centrado - confirmacao, previa, gravacao - encolhe de leve em vez de
    escorregar: ele nao veio da borda. */
 .admin-modal-overlay.saindo .delete-confirm-modal,
-.admin-modal-overlay.saindo .gravacao-modal,
+.admin-modal-overlay.saindo .modal-central,
 .admin-modal-overlay.saindo .previa-caixa {
   animation: encolhe .18s var(--curva-anti) both;
 }
@@ -4195,7 +4195,7 @@ body.arrastando-painel {
   .admin-modal-overlay.saindo,
   .admin-modal-overlay.saindo .admin-modal,
   .admin-modal-overlay.saindo .delete-confirm-modal,
-  .admin-modal-overlay.saindo .gravacao-modal { animation: none; }
+  .admin-modal-overlay.saindo .modal-central { animation: none; }
 }
 
 @keyframes fadeIn {
@@ -6046,6 +6046,15 @@ body.arrastando-painel {
   margin-top: 18px;
   padding-top: 16px;
   border-top: 1px solid var(--gray3);
+}
+
+/* Logo abaixo de uma seção, a conversa não traz linha própria: a seção já
+   fechou com a dela, e as duas juntas viravam um risco duplo. O respiro que
+   sobra é o mesmo que separa duas seções. */
+.admin-modal-body section + .ativ {
+  margin-top: 0;
+  padding-top: 18px;
+  border-top: none;
 }
 
 .ativ-abas {
@@ -8998,46 +9007,107 @@ body.arrastando-painel {
 }
 .vinculo-cabeca .form-label { margin: 0; }
 
-.vinculo-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+/* ── O chip de vinculo ────────────────────────────────
+   Um so desenho para tudo que uma coisa aponta: a reuniao dentro da entrega, a
+   entrega dentro da reuniao e a reuniao dentro da tarefa. Marca do que e, nome
+   em negrito e uma nota curta que situa - a data da conversa, a etapa da
+   entrega. O material e o da casa: moldura de cristal em repouso, borda forte
+   e uma elevacao curta no hover, porque a peca inteira leva a algum lugar. */
+.vinculo-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
 .vinculo-chip {
   display: inline-flex;
-  align-items: center;
+  align-items: stretch;
   max-width: 100%;
-  border: 1px solid var(--gray3);
+  border: 1px solid var(--cristal-borda, var(--gray3));
   border-radius: var(--radius-pill);
-  background: var(--white);
-  transition: border-color var(--transition);
+  background: var(--cristal, var(--white));
+  box-shadow: inset 0 1px 0 var(--cristal-luz), var(--shadow-card);
+  transition: border-color var(--transition), box-shadow var(--transition-spring),
+    transform var(--transition-spring);
 }
-.vinculo-chip:hover { border-color: var(--cristal-borda-forte, var(--gray2)); }
+.vinculo-chip:hover {
+  transform: translateY(-1px);
+  border-color: var(--cristal-borda-forte, var(--gray2));
+  box-shadow: inset 0 1px 0 var(--cristal-luz), var(--shadow-card-hover);
+}
+.vinculo-chip:focus-within { border-color: var(--cristal-borda-forte, var(--gray2)); }
 /* Sem destino, o chip nao finge ser clicavel. */
 .vinculo-chip.parado { cursor: default; }
-.vinculo-chip.parado:hover { border-color: var(--gray3); }
-.vinculo-chip.parado > button:first-child { cursor: default; }
-.vinculo-chip > button:first-child {
-  max-width: 220px;
-  padding: 2px 4px 2px 9px;
+.vinculo-chip.parado:hover {
+  transform: none;
+  border-color: var(--cristal-borda, var(--gray3));
+  box-shadow: inset 0 1px 0 var(--cristal-luz), var(--shadow-card);
+}
+
+.vinculo-chip-alvo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 11px;
   border: 0;
+  border-radius: inherit;
   background: none;
   font-family: inherit;
-  font-size: 11px;
-  font-weight: 600;
   color: var(--gray);
   cursor: pointer;
+}
+.vinculo-chip-alvo:disabled { cursor: default; }
+.vinculo-chip-alvo:focus-visible { outline: none; }
+/* Com o X ao lado, o alvo perde o arredondado da direita: sao duas metades da
+   mesma pilula. */
+.vinculo-chip:has(.vinculo-soltar) .vinculo-chip-alvo { padding-right: 4px; }
+
+/* A marca do que a peca e. Cor propria quando ela quer dizer alguma coisa - a
+   etapa da entrega -, cinza quando e so um simbolo. */
+.vinculo-chip-ico {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--chip-cor, var(--gray2));
+}
+.vinculo-chip-ico img { display: block; object-fit: contain; }
+
+/* O nome cede espaco antes da nota: sem a nota, o chip nao situa nada, e um
+   nome pela metade ainda diz de que peca se trata. */
+.vinculo-chip strong {
+  min-width: 0;
+  max-width: 260px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--black);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.vinculo-chip:hover > button:first-child { color: var(--black); }
+.vinculo-chip-alvo > span:not(.vinculo-chip-ico) {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray2);
+  font-variant-numeric: tabular-nums;
+}
+
 .vinculo-soltar {
   display: inline-flex;
   align-items: center;
-  padding: 0 7px 0 3px;
+  padding: 0 9px 0 4px;
   border: 0;
+  border-radius: inherit;
   background: none;
   color: var(--gray2);
   cursor: pointer;
+  transition: color var(--transition);
 }
 .vinculo-soltar:hover { color: var(--red); }
+
+@media (prefers-reduced-motion: reduce) {
+  .vinculo-chip { transition: none; }
+  .vinculo-chip:hover { transform: none; }
+}
 
 /* ── Reuniao do Fireflies: corpo e gravacao ───────────
    O chip aberto mostra o que veio de la - resumo, assuntos com horario,
@@ -9126,7 +9196,10 @@ body.arrastando-painel {
 }
 
 /* ── O modal da gravacao ────────────────────────────── */
-.gravacao-modal {
+/* A casca do modal do meio da tela: a gravacao da reuniao e a entrega aberta
+   usam a mesma. Largura de leitura, teto de altura e o corpo rolando por
+   dentro - o cabecalho fica. */
+.modal-central {
   animation: scaleIn .16s var(--curva-anti) both;
   width: min(880px, calc(100vw - 32px));
   max-height: calc(100vh - 48px);
@@ -9197,6 +9270,167 @@ body.arrastando-painel {
 }
 .gravacao-audio { width: 100%; height: 44px; }
 
+/* ── A entrega no modal central ───────────────────────
+   A mesma casca da reuniao, com o que a entrega tem a dizer: a etapa e o
+   andamento numa faixa so, e embaixo a descricao, os links, as tarefas e as
+   reunioes que trataram dela. */
+.entrega-modal-estado {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--gray3);
+}
+.entrega-modal-marco {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.entrega-modal-marco strong {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: currentColor;
+}
+.entrega-modal-gente { display: inline-flex; align-items: center; gap: 4px; }
+/* O andamento empurra para a direita: e o numero que fecha a linha. */
+.entrega-modal-progresso {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.entrega-modal-progresso strong {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--gray);
+  font-variant-numeric: tabular-nums;
+}
+.entrega-modal-barra {
+  display: block;
+  width: 120px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--gray4);
+  overflow: hidden;
+}
+.entrega-modal-barra > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  transition: width var(--transition-spring);
+}
+
+/* A contagem ao lado do rotulo da secao: "3 de 8". */
+.gravacao-conta {
+  margin-left: 6px;
+  font-weight: 700;
+  color: var(--gray2);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.entrega-modal-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.entrega-modal-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border: 1px solid var(--cristal-borda, var(--gray3));
+  border-radius: var(--radius-pill);
+  background: var(--cristal, var(--white));
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--gray);
+  text-decoration: none;
+  transition: border-color var(--transition), color var(--transition);
+}
+.entrega-modal-link:hover { border-color: var(--cristal-borda-forte, var(--gray2)); color: var(--black); }
+
+.entrega-modal-tarefas { display: flex; flex-direction: column; gap: 2px; }
+.entrega-modal-tarefa {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+.entrega-modal-tarefa:hover:not(:disabled) {
+  background: var(--gray4);
+  border-color: var(--cristal-borda, var(--gray3));
+}
+.entrega-modal-tarefa:disabled { cursor: default; }
+.entrega-modal-ponto {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.entrega-modal-tarefa-nome {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--black);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Feita continua na lista, riscada: tirar da lista esconderia o que ja andou. */
+.entrega-modal-tarefa-nome.feita { color: var(--gray2); text-decoration: line-through; }
+.entrega-modal-tarefa-etapa {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entrega-modal-barra > span,
+  .entrega-modal-tarefa,
+  .entrega-modal-link { transition: none; }
+}
+
+/* Os blocos do modal: resumo, combinados, palavras-chave e quem participou.
+   O mesmo respiro do indice, para a leitura descer sem degrau. */
+.gravacao-bloco { margin-top: 18px; }
+.gravacao-resumo {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--gray);
+  white-space: pre-wrap;
+}
+
+/* O horario de um combinado tambem leva ao ponto da gravacao. */
+.gravacao-marca {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--gray4);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gray2);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.gravacao-marca:hover { background: var(--yd); color: var(--black); }
+
+/* Sem gravacao, o indice continua valendo como leitura - so nao leva a lugar
+   nenhum, e o cursor diz isso. */
+.gravacao-topico:disabled { cursor: default; }
+.gravacao-topico:disabled:hover { background: none; border-color: transparent; }
+
 .gravacao-linha-tempo { margin-top: 16px; }
 .gravacao-secao {
   margin: 0 0 8px;
@@ -9248,7 +9482,7 @@ body.arrastando-painel {
 .gravacao-topico-texto strong { color: var(--black); font-weight: 700; }
 
 @media (max-width: 640px) {
-  .gravacao-modal { width: 100vw; max-height: 100vh; border-radius: 0; }
+  .modal-central { width: 100vw; max-height: 100vh; border-radius: 0; }
   .gravacao-video { max-height: 40vh; }
 }
 
