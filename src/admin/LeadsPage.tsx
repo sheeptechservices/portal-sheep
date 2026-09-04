@@ -19,6 +19,9 @@ import { useLarguraPainel } from '../lib/painelLateral';
 import { PuxadorDoPainel } from '../components/PuxadorDoPainel';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import FilterDropdown from '../components/FilterDropdown';
+import { Abas } from '../components/Abas';
+import { SecaoReunioes, type Reuniao } from '../components/SecaoReunioes';
+import type { Pessoa } from './FormularioTarefa';
 
 import { definirImagemArrasto } from '../lib/dragImage';
 // ── FormSelect ───────────────────────────────────────
@@ -455,6 +458,13 @@ function daysSince(iso: string | null): number {
 }
 
 /** Hoje em `YYYY-MM-DD`, para comparar com data guardada sem fuso. */
+/** Da mais recente para a mais antiga, que é a ordem em que o servidor as
+ *  entrega: uma reunião registrada agora sobre uma conversa de mês passado
+ *  entra no lugar dela, e não no fim da lista. */
+function ordenarReunioes(rs: Reuniao[]): Reuniao[] {
+  return [...rs].sort((a, b) => (b.data ?? '').localeCompare(a.data ?? '') || b.id - a.id);
+}
+
 function hojeISO(): string {
   const d = new Date();
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
@@ -1176,13 +1186,18 @@ function CamposDoLead({ r, set, token, pessoas }: {
 }
 
 /** Quem pode ficar responsável por um lead: o time do portal. */
-function usePessoasDoPortal(token: string) {
-  const [pessoas, setPessoas] = useState<{ id: string; nome: string }[]>([]);
+function usePessoasDoPortal(token: string): Pessoa[] {
+  const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   useEffect(() => {
     let vivo = true;
     fetch('/api/admin-data?action=usuarios_notificaveis', { headers: { 'x-admin-session': token } })
       .then(r => r.json())
-      .then(d => { if (vivo) setPessoas((d?.usuarios ?? []).map((u: any) => ({ id: String(u.id), nome: String(u.nome) }))); })
+      // O e-mail e a foto vêm junto: são o que o seletor de participantes e o
+      // avatar de quem esteve na reunião mostram.
+      .then(d => { if (vivo) setPessoas((d?.usuarios ?? []).map((u: any) => ({
+        id: String(u.id), nome: String(u.nome),
+        email: String(u.email ?? ''), foto_url: u.foto_url ?? null,
+      }))); })
       .catch(() => {});
     return () => { vivo = false; };
   }, [token]);
@@ -1361,8 +1376,17 @@ export function DetailPanel({
   const api = useApi(token);
   const { toast } = useToast();
   // Quem está logado: usado para assinar o evento otimista antes de o servidor responder.
-  const { usuario } = useAuth();
+  const { usuario, pode } = useAuth();
   const painel = useLarguraPainel('lead');
+  /** As pessoas da casa, para escolher quem esteve na reunião. */
+  const pessoas = usePessoasDoPortal(token);
+  /** A aba aberta. Mesma navegação do painel de projeto: a ficha do lead de um
+   *  lado, o que já foi conversado do outro. */
+  const [aba, setAba] = useState<'geral' | 'reunioes'>('geral');
+  /** As reuniões do lead. Vivem fora do `detail` porque cada gesto as pinta na
+   *  hora, e o `detail` só é relido quando alguma outra coisa muda. */
+  const [reunioes, setReunioes] = useState<Reuniao[]>([]);
+  const [salvandoReuniao, setSalvandoReuniao] = useState(false);
   // A saída animada é o que permite arrastar o puxador: sem o gancho do fundo,
   // soltar o arrasto sobre o overlay contava como clique fora e fechava tudo.
   const { saindo, fechar } = useSaidaSuave(onClose);
@@ -1406,6 +1430,7 @@ export function DetailPanel({
   async function load() {
     const data = await api(`?action=detail&id=${id}`);
     setDetail(data);
+    setReunioes((data?.reunioes ?? []) as Reuniao[]);
   }
 
   // Copia um link direto para este card (?lead=<id>) - compartilhável com
@@ -1429,10 +1454,71 @@ export function DetailPanel({
     }
   }
 
+  // ── Reuniões do lead ──────────────────────────────────────────────────
+  //
+  //  Os mesmos gestos do painel de projeto, com o lead no lugar dele: cada um
+  //  pinta a lista na hora e desfaz se o servidor recusar.
+
+  /** Registra a reunião escrita à mão. O servidor devolve a linha pronta - id e
+   *  autor são o que só ele sabe -, e a tela a coloca na lista sem reler nada. */
+  async function registrarReuniao(
+    reg: { data: string; assunto: string; notas: string; participantes: string[] },
+  ) {
+    setSalvandoReuniao(true);
+    const r = await api('', 'POST', { action: 'registrar_reuniao_lead', lead_id: id, ...reg });
+    setSalvandoReuniao(false);
+    if (r?.error || !r?.reuniao) {
+      toast('error', 'Não foi possível registrar', r?.error ?? 'Tente de novo.');
+      return;
+    }
+    setReunioes(rs => ordenarReunioes([...rs, r.reuniao as Reuniao]));
+    toast('success', 'Reunião registrada');
+  }
+
+  /** Puxa reuniões do Fireflies para o lead. O resumo vira a nota e o link fica
+   *  guardado; a transcrição inteira continua morando lá. */
+  async function anexarReunioesFireflies(firefliesIds: string[]) {
+    setSalvandoReuniao(true);
+    const r = await api('', 'POST', {
+      action: 'anexar_reuniao_fireflies_lead', lead_id: id, fireflies_ids: firefliesIds,
+    });
+    setSalvandoReuniao(false);
+    if (r?.error) { toast('error', 'Não foi possível anexar', r.error); return; }
+    const novas = (r?.reunioes ?? []) as Reuniao[];
+    if (novas.length === 0) { toast('info', 'Nada a anexar', 'Essas reuniões já estavam aqui.'); return; }
+    setReunioes(rs => ordenarReunioes([...rs, ...novas]));
+    toast('success', novas.length === 1 ? 'Reunião anexada' : `${novas.length} reuniões anexadas`);
+  }
+
+  /** Tira a reunião do lead. Some da lista no gesto e volta se o servidor
+   *  recusar: esperar a ida e a volta faria o clique parecer perdido. */
+  async function excluirReuniao(reg: Reuniao) {
+    const antes = reunioes;
+    setReunioes(rs => rs.filter(x => x.id !== reg.id));
+    const r = await api('', 'POST', { action: 'excluir_reuniao_lead', id: reg.id });
+    if (r?.error) {
+      setReunioes(antes);
+      toast('error', 'Não foi possível excluir', r.error);
+      return;
+    }
+    toast('success', 'Reunião excluída');
+  }
+
+  async function buscarReunioesFireflies(busca: string) {
+    const r = await api(`?action=fireflies_reunioes&busca=${encodeURIComponent(busca)}`);
+    return r ?? { error: 'Sessão expirada.' };
+  }
+
+  async function buscarGravacaoFireflies(firefliesId: string) {
+    const r = await api(`?action=fireflies_gravacao&id=${encodeURIComponent(firefliesId)}`);
+    return r ?? { error: 'Sessão expirada.' };
+  }
+
   useEffect(() => {
     const cached = prefetchCache?.current?.get(id);
     if (cached) {
       setDetail(cached);
+      setReunioes((cached.reunioes ?? []) as Reuniao[]);
       prefetchCache!.current!.delete(id);
       return;
     }
@@ -1829,7 +1915,11 @@ export function DetailPanel({
         style={{ width: `min(${painel.largura}px, 96vw)` }}>
 
         {/* Header */}
-        <div className="admin-modal-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+        {/* `com-abas` só quando há abas: a linha que separa cabeçalho e corpo
+            passa a ser a das abas, e sem isso são duas a poucos pixels uma da
+            outra. É a mesma marca do painel de projeto. */}
+        <div className={`admin-modal-header${detail ? ' com-abas' : ''}`}
+          style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
           {/* Row 1: label + actions + close */}
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ minWidth: 0 }}>
@@ -1905,12 +1995,44 @@ export function DetailPanel({
               )}
             </div>
           )}
+
+          {/* A mesma navegação do painel de projeto: a ficha de um lado, o que
+              já foi conversado do outro. */}
+          {detail && (
+            <Abas
+              valor={aba}
+              onChange={setAba}
+              style={{ marginBottom: 0, marginTop: 2 }}
+              opcoes={[
+                { valor: 'geral', label: 'Geral' },
+                { valor: 'reunioes', label: 'Reuniões' },
+              ]}
+            />
+          )}
         </div>
 
         {!detail ? (
           <DetailSkeleton />
         ) : (
-          <div className="admin-modal-body">
+          /* A chave repete a entrada a cada aba, e de quebra devolve a rolagem
+             ao topo, que é onde a aba nova começa. */
+          <div className="admin-modal-body aba-painel" key={aba}>
+
+          {aba === 'reunioes' && (
+            <SecaoReunioes
+              somenteLeitura={!pode('leads:editar')}
+              registros={reunioes}
+              pessoas={pessoas}
+              salvando={salvandoReuniao}
+              onRegistrar={registrarReuniao}
+              onBuscarFireflies={buscarReunioesFireflies}
+              onBuscarGravacao={buscarGravacaoFireflies}
+              onAnexarFireflies={anexarReunioesFireflies}
+              onExcluir={excluirReuniao}
+            />
+          )}
+
+          <div style={{ display: aba === 'geral' ? 'block' : 'none' }}>
 
             {/* A ficha do lead: com quem se fala, o que quer e quanto vale. */}
             <section>
@@ -2439,6 +2561,7 @@ export function DetailPanel({
               }}
             />
 
+          </div>
           </div>
         )}
       </div>

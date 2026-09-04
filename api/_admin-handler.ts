@@ -1168,13 +1168,31 @@ async function migrarSchema(db: Client) {
   // palavras-chave, itens de ação. JSON num campo só: é conteúdo de leitura,
   // não dado que a casa consulte ou cruze.
   try { await ddl(`ALTER TABLE projeto_reunioes ADD COLUMN dados TEXT`); } catch {}
+  // A reunião do funil: a mesma tabela, com o lead no lugar do projeto. O
+  // comercial conversa antes de existir projeto, e um segundo diário de
+  // reuniões nasceria igual a este e terminaria diferente.
+  //
+  // `projeto_id` é NOT NULL desde o início e continua sendo: a reunião de um
+  // lead entra com ele vazio, que é o que a diz de quem ela não é. Nenhum
+  // projeto tem id vazio, então a listagem de projetos não a alcança.
+  try { await ddl(`ALTER TABLE projeto_reunioes ADD COLUMN lead_id TEXT`); } catch {}
+  try {
+    await ddl(`CREATE INDEX IF NOT EXISTS idx_reuniao_lead
+               ON projeto_reunioes (lead_id, data)`);
+  } catch { /* índice já existe */ }
+
   // Quem garante que a mesma reunião não entra duas vezes é o banco, e não uma
   // consulta antes do INSERT: dois cliques quase juntos passavam os dois pela
   // conferência e inseriam os dois.
+  //
+  // O dono entra na chave: com dois leads a reunião de ambos teria o mesmo
+  // `projeto_id` vazio, e o segundo lead não conseguiria anexar a mesma
+  // conversa. Para a reunião de projeto nada muda - ali `lead_id` é nulo.
   try {
-    await ddl(`CREATE UNIQUE INDEX IF NOT EXISTS idx_reuniao_fireflies
-               ON projeto_reunioes (projeto_id, fireflies_id)
+    await ddl(`CREATE UNIQUE INDEX IF NOT EXISTS idx_reuniao_dono_fireflies
+               ON projeto_reunioes (projeto_id, COALESCE(lead_id, ''), fireflies_id)
                WHERE fireflies_id IS NOT NULL`);
+    await ddl(`DROP INDEX IF EXISTS idx_reuniao_fireflies`);
   } catch { /* índice já existe, ou há duplicata antiga a limpar */ }
 
   await ddl(`
@@ -2250,6 +2268,122 @@ function alvoDaAcao(body: any, resposta: any): string | null {
   return alvo != null && alvo !== '' ? String(alvo) : null;
 }
 
+/** Os ids do Fireflies que vieram no corpo. Uma lista, e não um por
+ *  requisição: escolher cinco reuniões e esperar cinco idas ao servidor faria
+ *  a tela piscar cinco vezes. */
+function idsDoCorpo(body: any): string[] {
+  return Array.isArray(body?.fireflies_ids)
+    ? body.fireflies_ids.map((x: unknown) => String(x).trim()).filter(Boolean)
+    : [String(body?.fireflies_id ?? '').trim()].filter(Boolean);
+}
+
+/**
+ * Anexa reuniões do Fireflies a um projeto ou a um lead.
+ *
+ * O dono é o que muda entre os dois lados, e é só ele: o resto - o que já está
+ * anexado, a busca em paralelo, o resumo virando nota - é a mesma coisa, e em
+ * duas cópias começaria igual e terminaria diferente.
+ *
+ * Devolve as linhas que entraram, e não só a conta: quem anexou vê a reunião
+ * aparecer no gesto, sem esperar a listagem inteira voltar.
+ */
+async function anexarDoFireflies(
+  db: Client,
+  dono: { projetoId?: string; leadId?: string },
+  ids: string[],
+  autorId: string | null,
+  autorNome: string | null,
+): Promise<{ status: number; body: any }> {
+  if (ids.length === 0) return { status: 400, body: { error: 'Escolha a reunião.' } };
+  const projetoId = dono.projetoId ?? '';
+  const leadId = dono.leadId ?? null;
+
+  const cred = await getIntegrationCredential(db, FIREFLIES_KEY);
+  if (!cred?.value) {
+    return { status: 400, body: { error: 'Fireflies não conectado. Configure em Configurações › Integrações.' } };
+  }
+
+  // O que já está anexado sai da lista em silêncio: quem mandou cinco não quer
+  // um erro porque uma delas já estava lá.
+  const jaTem = await db.execute({
+    sql: `SELECT fireflies_id FROM projeto_reunioes
+          WHERE projeto_id = ? AND COALESCE(lead_id, '') = ? AND fireflies_id IS NOT NULL`,
+    args: [projetoId, leadId ?? ''],
+  });
+  const conhecidos = new Set(jaTem.rows.map(r => String(r.fireflies_id)));
+  const novos = ids.filter(id => !conhecidos.has(id));
+  if (novos.length === 0) {
+    return { status: 400, body: { error: 'Essas reuniões já estão anexadas.' } };
+  }
+
+  // As buscas vão juntas: eram uma por vez, e dez reuniões viravam dez idas em
+  // fila ao Fireflies - segundos de tela parada, que foi o que fez a pessoa
+  // clicar de novo.
+  const buscadas = await Promise.all(
+    novos.map(id => obterReuniaoFireflies(cred.value, id).then(r => ({ id, r }))),
+  );
+
+  const agora = new Date().toISOString();
+  const entraram: any[] = [];
+  const falhas: string[] = [];
+  for (const { id: firefliesId, r } of buscadas) {
+    if (!r.ok) { falhas.push(r.error); continue; }
+    const m = r.reuniao;
+    // Sem resumo, a nota diz de onde veio em vez de ficar vazia: o registro
+    // existe para apontar a conversa, e o link é o que ele carrega.
+    const notas = m.resumo?.trim()
+      || 'Reunião gravada no Fireflies. A transcrição e o resumo estão no link.';
+    const linha = {
+      projeto_id: projetoId,
+      lead_id: leadId,
+      data: (m.data ?? agora).slice(0, 10),
+      assunto: m.titulo,
+      notas,
+      // Os participantes de lá são nomes e e-mails de fora, e não ids da casa:
+      // guardar no mesmo campo faria a tela procurar usuário que não existe.
+      // Vão no `dados`, junto do resto.
+      participantes: [] as string[],
+      fireflies_id: firefliesId,
+      link: m.url,
+      dados: JSON.stringify({
+        duracao: m.duracao,
+        participantes: m.participantes,
+        ...(m.detalhe ?? {}),
+      }),
+      criado_por_nome: autorNome,
+    };
+    // `OR IGNORE` com o índice único: se outra requisição inseriu a mesma
+    // reunião no meio do caminho, esta simplesmente não faz nada.
+    const ins = await db.execute({
+      sql: `INSERT OR IGNORE INTO projeto_reunioes
+              (projeto_id, lead_id, data, assunto, notas, participantes, fireflies_id, link,
+               dados, criado_em, criado_por_id, criado_por_nome)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      args: [
+        linha.projeto_id, linha.lead_id, linha.data, linha.assunto, linha.notas,
+        JSON.stringify(linha.participantes), linha.fireflies_id, linha.link,
+        linha.dados, agora, autorId, autorNome,
+      ],
+    });
+    if (Number(ins.rowsAffected ?? 0) > 0) {
+      entraram.push({ ...linha, id: Number(ins.lastInsertRowid) });
+    }
+  }
+  // Todas já estavam lá (o clique repetido chegou depois do primeiro): não é
+  // erro, é nada a fazer.
+  if (entraram.length === 0 && falhas.length === 0) {
+    return { status: 200, body: { ok: true, anexadas: 0, falhas: 0, reunioes: [] } };
+  }
+  // Nenhuma entrou: o motivo da primeira falha explica melhor que um "ok".
+  if (entraram.length === 0) {
+    return { status: 400, body: { error: falhas[0] ?? 'Não foi possível anexar.' } };
+  }
+  return {
+    status: 200,
+    body: { ok: true, anexadas: entraram.length, falhas: falhas.length, reunioes: entraram },
+  };
+}
+
 export async function handleAdminData(
   method: string,
   query: URLSearchParams,
@@ -2510,7 +2644,18 @@ async function despacharAdminData(
         ORDER BY s.created_at DESC
       `),
       ]);
-      return { status: 200, body: { statuses: statuses.rows, submissions: subs.rows } };
+      return {
+        status: 200,
+        body: {
+          statuses: statuses.rows,
+          // O JSON vira lista aqui, e não na tela: o quadro tem um formato só,
+          // e desmontar texto no navegador seria repetir isto em cada visão.
+          submissions: subs.rows.map(r => ({
+            ...r,
+            reunioes: JSON.parse(String(r.reunioes ?? '[]')) as unknown[],
+          })),
+        },
+      };
     }
 
     // Busca rápida global (⌘K): os leads do funil.
@@ -3414,6 +3559,15 @@ async function despacharAdminData(
         args: [id],
       });
 
+      // As reuniões vêm junto, como vêm no projeto: a aba abre com elas na
+      // mão, e não com uma segunda ida ao servidor depois do clique.
+      const reunioes = await db.execute({
+        sql: `SELECT id, projeto_id, lead_id, data, assunto, notas, participantes,
+                     fireflies_id, link, dados, criado_por_nome
+              FROM projeto_reunioes WHERE lead_id = ? ORDER BY data DESC, id DESC`,
+        args: [id],
+      });
+
       return {
         status: 200,
         body: {
@@ -3423,6 +3577,10 @@ async function despacharAdminData(
           form_arquivos: formArquivos.rows,
           statuses: statuses.rows,
           pendencias: pendencias.rows,
+          reunioes: reunioes.rows.map(r => ({
+            ...r,
+            participantes: JSON.parse(String(r.participantes ?? '[]')) as string[],
+          })),
         },
       };
     }
@@ -4332,93 +4490,24 @@ function faltaEmProjeto(p: any): string | null {
       return { status: 200, body: { ok: true, id: Number(r.lastInsertRowid), criado_por_nome: autorNome } };
     }
 
-    // Anexa uma reunião do Fireflies ao projeto. O resumo vira a nota, e o
-    // link fica guardado: a transcrição inteira mora lá, e copiá-la para cá
-    // seria manter duas versões da mesma conversa.
+    // Anexa reuniões do Fireflies ao projeto. O resumo vira a nota, e o link
+    // fica guardado: a transcrição inteira mora lá, e copiá-la para cá seria
+    // manter duas versões da mesma conversa.
     if (action === 'anexar_reuniao_fireflies') {
       { const barrado = await guardaDaEquipe(db, usuario, body.projeto_id); if (barrado) return barrado; }
       const projetoId = String(body?.projeto_id ?? '');
-      // Uma lista, e não uma por requisição: escolher cinco reuniões e esperar
-      // cinco idas ao servidor faria a tela piscar cinco vezes.
-      const ids: string[] = Array.isArray(body?.fireflies_ids)
-        ? body.fireflies_ids.map((x: unknown) => String(x).trim()).filter(Boolean)
-        : [String(body?.fireflies_id ?? '').trim()].filter(Boolean);
       if (!projetoId) return { status: 400, body: { error: 'projeto_id ausente.' } };
-      if (ids.length === 0) return { status: 400, body: { error: 'Escolha a reunião.' } };
+      return anexarDoFireflies(db, { projetoId }, idsDoCorpo(body), autorId, autorNome);
+    }
 
-      const cred = await getIntegrationCredential(db, FIREFLIES_KEY);
-      if (!cred?.value) {
-        return { status: 400, body: { error: 'Fireflies não conectado. Configure em Configurações › Integrações.' } };
-      }
-
-      // O que já está anexado sai da lista em silêncio: quem mandou cinco não
-      // quer um erro porque uma delas já estava lá.
-      const jaTem = await db.execute({
-        sql: `SELECT fireflies_id FROM projeto_reunioes
-              WHERE projeto_id = ? AND fireflies_id IS NOT NULL`,
-        args: [projetoId],
-      });
-      const conhecidos = new Set(jaTem.rows.map(r => String(r.fireflies_id)));
-      const novos = ids.filter(id => !conhecidos.has(id));
-      if (novos.length === 0) {
-        return { status: 400, body: { error: 'Essas reuniões já estão anexadas ao projeto.' } };
-      }
-
-      // As buscas vão juntas: eram uma por vez, e dez reuniões viravam dez
-      // idas em fila ao Fireflies - segundos de tela parada, que foi o que fez
-      // a pessoa clicar de novo.
-      const buscadas = await Promise.all(
-        novos.map(id => obterReuniaoFireflies(cred.value, id).then(r => ({ id, r }))),
-      );
-
-      const agora = new Date().toISOString();
-      let anexadas = 0;
-      const falhas: string[] = [];
-      for (const { id: firefliesId, r } of buscadas) {
-        if (!r.ok) { falhas.push(r.error); continue; }
-        const m = r.reuniao;
-        // Sem resumo, a nota diz de onde veio em vez de ficar vazia: o registro
-        // existe para apontar a conversa, e o link é o que ele carrega.
-        const notas = m.resumo?.trim()
-          || 'Reunião gravada no Fireflies. A transcrição e o resumo estão no link.';
-        // `OR IGNORE` com o índice único: se outra requisição inseriu a mesma
-        // reunião no meio do caminho, esta simplesmente não faz nada.
-        const ins = await db.execute({
-          sql: `INSERT OR IGNORE INTO projeto_reunioes
-                  (projeto_id, data, assunto, notas, participantes, fireflies_id, link,
-                   dados, criado_em, criado_por_id, criado_por_nome)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-          args: [
-            projetoId,
-            (m.data ?? agora).slice(0, 10),
-            m.titulo,
-            notas,
-            // Os participantes de lá são nomes e e-mails de fora, e não ids da
-            // casa: guardar no mesmo campo faria a tela procurar usuário que não
-            // existe. Vão no `dados`, junto do resto.
-            JSON.stringify([]),
-            firefliesId,
-            m.url,
-            JSON.stringify({
-              duracao: m.duracao,
-              participantes: m.participantes,
-              ...(m.detalhe ?? {}),
-            }),
-            agora, autorId, autorNome,
-          ],
-        });
-        if (Number(ins.rowsAffected ?? 0) > 0) anexadas++;
-      }
-      // Todas já estavam lá (o clique repetido chegou depois do primeiro): não
-      // é erro, é nada a fazer.
-      if (anexadas === 0 && falhas.length === 0) {
-        return { status: 200, body: { ok: true, anexadas: 0, falhas: 0 } };
-      }
-      // Nenhuma entrou: o motivo da primeira falha explica melhor que um "ok".
-      if (anexadas === 0) {
-        return { status: 400, body: { error: falhas[0] ?? 'Não foi possível anexar.' } };
-      }
-      return { status: 200, body: { ok: true, anexadas, falhas: falhas.length } };
+    // A mesma coisa, do lado do funil. Ação própria porque a permissão é outra:
+    // quem cuida de lead não é necessariamente quem edita projeto.
+    if (action === 'anexar_reuniao_fireflies_lead') {
+      const leadId = String(body?.lead_id ?? '');
+      if (!leadId) return { status: 400, body: { error: 'lead_id ausente.' } };
+      const existe = await db.execute({ sql: 'SELECT id FROM leads WHERE id = ?', args: [leadId] });
+      if (!existe.rows[0]) return { status: 404, body: { error: 'Lead não encontrado.' } };
+      return anexarDoFireflies(db, { leadId }, idsDoCorpo(body), autorId, autorNome);
     }
 
     // Liga ou desliga uma reunião de uma entrega ou de uma tarefa. O mesmo
@@ -4468,6 +4557,60 @@ function faltaEmProjeto(p: any): string | null {
       { const barrado = await guardaDaEquipe(db, usuario, body.id, 'reuniao'); if (barrado) return barrado; }
       await db.execute({ sql: 'DELETE FROM reuniao_vinculos WHERE reuniao_id = ?', args: [body.id] });
       await db.execute({ sql: 'DELETE FROM projeto_reunioes WHERE id = ?', args: [body.id] });
+      return { status: 200, body: { ok: true } };
+    }
+
+    // A reunião do lead. Registrar à mão, como no projeto: nem toda conversa
+    // do comercial passa por uma chamada gravada.
+    if (action === 'registrar_reuniao_lead') {
+      const leadId = String(body?.lead_id ?? '');
+      const assunto = String(body.assunto ?? '').trim();
+      const notas = String(body.notas ?? '').trim();
+      if (!leadId) return { status: 400, body: { error: 'lead_id ausente.' } };
+      if (!body.data) return { status: 400, body: { error: 'Informe a data da reunião.' } };
+      if (!assunto) return { status: 400, body: { error: 'Informe o assunto da reunião.' } };
+      if (!notas) return { status: 400, body: { error: 'Registre o que foi tratado.' } };
+      const existe = await db.execute({ sql: 'SELECT id FROM leads WHERE id = ?', args: [leadId] });
+      if (!existe.rows[0]) return { status: 404, body: { error: 'Lead não encontrado.' } };
+
+      const participantes = Array.isArray(body.participantes) ? body.participantes : [];
+      const r = await db.execute({
+        sql: `INSERT INTO projeto_reunioes
+                (projeto_id, lead_id, data, assunto, notas, participantes, criado_em,
+                 criado_por_id, criado_por_nome)
+              VALUES ('',?,?,?,?,?,?,?,?)`,
+        args: [
+          leadId, body.data, assunto, notas, JSON.stringify(participantes),
+          new Date().toISOString(), autorId, autorNome,
+        ],
+      });
+      // A linha inteira volta: a tela desenha a reunião com o que a pessoa
+      // acabou de escrever, sem recarregar o painel para vê-la aparecer.
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          reuniao: {
+            id: Number(r.lastInsertRowid), projeto_id: '', lead_id: leadId,
+            data: body.data, assunto, notas, participantes,
+            fireflies_id: null, link: null, dados: null, criado_por_nome: autorNome,
+          },
+        },
+      };
+    }
+
+    // Só reunião de lead sai por aqui: sem o `lead_id` no WHERE, quem cuida do
+    // funil apagaria a reunião de um projeto pelo id.
+    if (action === 'excluir_reuniao_lead') {
+      const id = Number(body?.id);
+      if (!Number.isFinite(id) || id <= 0) return { status: 400, body: { error: 'id ausente.' } };
+      const r = await db.execute({
+        sql: 'DELETE FROM projeto_reunioes WHERE id = ? AND lead_id IS NOT NULL',
+        args: [id],
+      });
+      if (Number(r.rowsAffected ?? 0) === 0) {
+        return { status: 404, body: { error: 'Reunião não encontrada.' } };
+      }
       return { status: 200, body: { ok: true } };
     }
 
