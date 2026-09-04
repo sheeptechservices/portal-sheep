@@ -1874,7 +1874,17 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   max-width: 380px;
   display: flex;
   flex-direction: column;
+  /* A coluna centraliza, entao a margem se reparte entre cima e baixo: sao 80px
+     aqui para o bloco descer 40 de verdade. Ele estava alto demais para o olho -
+     com a fita de clientes embaixo, o conjunto pedia mais peso na parte de
+     baixo da tela. */
+  margin-top: 80px;
   animation: login-sobe .7s cubic-bezier(.22, 1, .36, 1) both;
+}
+/* Tela baixa nao tem 40px para dar: ali o bloco volta ao centro, senao a fita
+   de clientes sai pela borda de baixo. */
+@media (max-height: 760px) {
+  .login-bloco { margin-top: 0; }
 }
 
 .login-lockup {
