@@ -25,6 +25,9 @@
   /* Fundos suaves de estado, na mesma ideia do --yd para o amarelo: translúcidos,
      então funcionam sobre a superfície clara e a escura sem redefinição. */
   --red-soft:   rgba(217, 48, 37, 0.09);
+  /* Azul de link. O sistema não tinha um: todo endereço no meio de um texto
+     era cinza como o resto, e ninguém via que dava para clicar. */
+  --link: #0B63CE;
   --green-soft: rgba(30, 138, 62, 0.10);
 
   --radius-sm:   8px;
@@ -72,6 +75,9 @@
   --yb:     rgba(0, 201, 167, 0.45);
   --shadow-card: 0 2px 10px rgba(0,0,0,0.55);
   --shadow-card-hover: 0 8px 32px rgba(0,0,0,0.65), 0 2px 8px rgba(0,0,0,0.5);
+  /* O azul do tema claro fica escuro demais sobre a folha quase preta: aqui
+     ele sobe de luminosidade para continuar legível sem virar néon. */
+  --link: #6FB2FF;
 }
 
 /* ─── Troca de tema: revelação circular (View Transitions API) ─────────── */
@@ -4642,6 +4648,48 @@ body.arrastando-painel {
 /* Linha em branco e respiro entre blocos, e nao um paragrafo vazio. */
 .texto-rico-vao { display: block; height: 7px; }
 
+/* Endereco no meio do texto: azul e sublinhado, como link e em qualquer
+   lugar. Vale no que se le e no que se escreve - o campo mostra o link ja
+   formatado, e o Ctrl+clique abre. */
+.texto-rico-link,
+.editor-rico a {
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.texto-rico-link:hover,
+.editor-rico a:hover { text-decoration-thickness: 2px; }
+
+/* ── O campo que mostra a formatacao ──────────────────
+   Mesma moldura do `.form-input` (a classe vem junto), mesma metrica do texto
+   lido: a troca entre escrever e ler nao pode mexer no desenho da coluna. */
+.editor-rico {
+  min-height: 62px;
+  max-height: 260px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  /* O espaco digitado e do texto, e nao do markup: sem isto dois espacos
+     viram um so na hora de escrever. */
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+}
+.editor-rico:empty::before {
+  content: attr(data-vazio);
+  color: var(--gray2);
+  pointer-events: none;
+}
+.editor-rico strong, .editor-rico b { font-weight: 700; color: var(--black); }
+.editor-rico u { text-decoration-color: var(--gray2); }
+.editor-rico ul {
+  margin: 2px 0;
+  padding-left: 18px;
+  list-style: disc;
+}
+.editor-rico li { margin: 1px 0; }
+
 /* A caixa que veste o texto com a mesma moldura do campo, para a troca entre
    ler e escrever nao mexer no desenho da coluna. */
 .texto-rico-caixa {
@@ -4656,19 +4704,6 @@ body.arrastando-painel {
   box-shadow: 0 0 0 3px var(--gray4);
 }
 .texto-rico-vazio { font-size: 13px; color: var(--gray2); }
-
-/* A regua dos atalhos, ao lado do rotulo, so enquanto se escreve. O pai pinta
-   `span` de vermelho - e o asterisco de campo obrigatorio -, entao esta precisa
-   vencer aquela regra pelo nome. */
-.form-label > span.form-dica,
-.form-dica {
-  margin-left: 8px;
-  font-size: 10.5px;
-  font-weight: 500;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--gray2);
-}
 
 /* ── Checklist da tarefa ──────────────────────────────
    O passo a passo, abaixo da descricao. Linha simples, sem moldura por item: o
