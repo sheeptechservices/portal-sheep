@@ -168,6 +168,16 @@ export function IconReply({ size = 14 }: { size?: number }) {
 export function IconEnviar({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M21.5 2.5L10.8 13.2" /><path d="M21.5 2.5l-6.8 19-3.9-8.3-8.3-3.9 19-6.8z" /></Ico>;
 }
+// Megafone - contar alguma coisa ao time.
+export function IconMegafone({ size = 14 }: { size?: number }) {
+  return (
+    <Ico size={size}>
+      <path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z" />
+      <path d="M16 9.5a3.5 3.5 0 0 1 0 5" />
+      <path d="M19 7a7 7 0 0 1 0 10" />
+    </Ico>
+  );
+}
 // Buscar / conferir.
 export function IconSearch({ size = 14 }: { size?: number }) {
   return <Ico size={size}><circle cx="11" cy="11" r="7" /><path d="M20 20l-4.1-4.1" /></Ico>;

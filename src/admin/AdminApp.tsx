@@ -22,7 +22,10 @@ const PerfilPage = lazy(() => import('./PerfilPage'));
 const UsuariosPage = lazy(() => import('./UsuariosPage'));
 const QuickSearch = lazy(() => import('./QuickSearch'));
 import type { QuickTarget } from './QuickSearch';
-import { TOOL_PAGES, TOOL_LABELS, type Page } from './destinos';
+import { DESTINOS, TOOL_PAGES, TOOL_LABELS, type Page } from './destinos';
+import { CartaoReportar, type Relato } from '../components/CartaoReportar';
+import type { ReporteNaLista } from '../components/ListaReportes';
+import { iniciarOndas } from '../lib/ondas';
 
 // ── Toast system ─────────────────────────────────────────────────────────────
 interface ToastItem { id: string; type: 'success' | 'error' | 'info'; title: string; message?: string }
@@ -564,9 +567,14 @@ function NavInferior({ page, setPage, onMais }: {
 }
 
 function Sidebar({
-  page, setPage, open, pinned, onClose,
+  page, setPage, open, pinned, onClose, onReportar, onListarReportes, onPrintDoReporte,
+  onMudarStatusDoReporte,
 }: {
   page: Page; setPage: (p: Page) => void; open: boolean; pinned: boolean; onClose: () => void;
+  onReportar: (relato: Relato) => Promise<{ error?: string; aviso?: string | null } | null>;
+  onListarReportes: () => Promise<{ reportes?: ReporteNaLista[]; error?: string }>;
+  onPrintDoReporte: (id: number) => Promise<{ nome: string; tipo: string; base64: string } | null>;
+  onMudarStatusDoReporte: (id: number, status: string) => Promise<{ error?: string } | null>;
 }) {
   // Só o que depende de estar preso ou solto, e de estar aberto ou fechado: a
   // aparência - folha, fio da borda e sombra - mora na folha de estilo, com o
@@ -660,6 +668,18 @@ function Sidebar({
         </div>
       ))}
       </div>
+
+      {/* Abaixo da navegação e acima do tema: é o pé do menu, e não mais um
+          destino. O nome da página vai junto para quem lê o e-mail saber de
+          onde veio o relato. */}
+      <CartaoReportar
+        pagina={DESTINOS.find(d => d.page === page)?.titulo ?? page}
+        enviar={onReportar}
+        listar={onListarReportes}
+        carregarPrint={onPrintDoReporte}
+        mudarStatus={onMudarStatusDoReporte}
+        podeMudarStatus={admin}
+      />
 
       <div className="app-menu-rodape">
         <span>Tema</span>
@@ -969,128 +989,6 @@ function MarcasDoGrupo() {
   );
 }
 
-// Shader das ondas, porte fiel do template: deforma o plano com uma soma de
-// senos e cossenos realimentada e tira dali o brilho e a banda em teal.
-const FRAG_ONDAS = `
-precision highp float;
-uniform vec2 u_res; uniform float u_time; uniform float u_speed; uniform float u_warm;
-void main(){
-  vec2 uv = (gl_FragCoord.xy - .5*u_res) / min(u_res.x, u_res.y);
-  float t = u_time * u_speed;
-  vec2 q = uv * 1.6;
-  for (float i = 1.; i < 7.; i++) {
-    q.x += (0.42/i) * sin(i*2.1*q.y + t + i*1.7) ;
-    q.y += (0.46/i) * cos(i*1.6*q.x + t*1.13 + i*0.8);
-  }
-  float v = sin(q.x*1.2 + q.y*1.1 + t*0.3);
-  float s = 0.5 + 0.5*v;
-  float sheen = pow(s, 6.0);
-  float mid = pow(s, 2.2);
-  float gold = pow(0.5 + 0.5*sin(q.x*0.9 - q.y*1.3 + t*0.5), 3.0);
-  vec3 base = vec3(0.016, 0.018, 0.026);
-  vec3 midC = mix(vec3(0.020, 0.080, 0.068), vec3(0.035, 0.150, 0.125), gold*u_warm);
-  vec3 hi   = mix(vec3(0.10, 0.82, 0.68), vec3(0.25, 0.92, 0.80), gold*u_warm);
-  vec3 col = base + midC*mid + hi*sheen*0.85;
-  col += vec3(0.05, 0.72, 0.60) * gold * mid * sheen * 0.5 * u_warm;
-  float vig = smoothstep(1.45, 0.35, length(uv));
-  col *= 0.55 + 0.45*vig;
-  gl_FragColor = vec4(col, 1.0);
-}`;
-const VERT_ONDAS = 'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
-const ONDAS_VELOCIDADE = 0.28;
-const ONDAS_DOURADO = 1.0;
-// Período exato do shader. Todos os termos que dependem do tempo lá em cima são
-// t, 1.13t, 0.3t e 0.5t; a cada t = 200π os quatro completam voltas inteiras de
-// 2π ao mesmo tempo, então reiniciar o relógio aí devolve exatamente a mesma
-// imagem, sem salto. É o que impede o `float` do shader de perder precisão numa
-// aba deixada aberta a noite toda - passadas algumas horas de segundos crus, o
-// seno começa a se repetir em degraus e a onda empastela até parar de andar.
-const ONDAS_PERIODO = (200 * Math.PI) / ONDAS_VELOCIDADE;
-
-interface Ondas {
-  parar(): void;
-  /** Contexto perdido ou quadros travados: o vigia usa isto para remontar. */
-  morto(): boolean;
-}
-
-/**
- * Ondas animadas em WebGL. Devolve null quando o contexto não pôde ser criado
- * - nesse caso o painel fica com o degradê do CSS, que sozinho já é um fundo
- * apresentável.
- */
-function iniciarOndas(canvas: HTMLCanvasElement): Ondas | null {
-  const gl = canvas.getContext('webgl', { antialias: true, powerPreference: 'low-power' });
-  if (!gl || gl.isContextLost()) return null;
-
-  const compilar = (tipo: number, fonte: string) => {
-    const sh = gl.createShader(tipo)!;
-    gl.shaderSource(sh, fonte);
-    gl.compileShader(sh);
-    return sh;
-  };
-  const prog = gl.createProgram()!;
-  gl.attachShader(prog, compilar(gl.VERTEX_SHADER, VERT_ONDAS));
-  gl.attachShader(prog, compilar(gl.FRAGMENT_SHADER, FRAG_ONDAS));
-  gl.linkProgram(prog);
-  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return null;
-  gl.useProgram(prog);
-
-  // Um triângulo só, maior que a tela: mais barato que dois para um fundo.
-  const buf = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-  const loc = gl.getAttribLocation(prog, 'p');
-  gl.enableVertexAttribArray(loc);
-  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-
-  const uRes = gl.getUniformLocation(prog, 'u_res');
-  const uTime = gl.getUniformLocation(prog, 'u_time');
-  const uSpeed = gl.getUniformLocation(prog, 'u_speed');
-  const uWarm = gl.getUniformLocation(prog, 'u_warm');
-
-  const redimensionar = () => {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = Math.round(canvas.clientWidth * dpr);
-    const h = Math.round(canvas.clientHeight * dpr);
-    if (w && h && (canvas.width !== w || canvas.height !== h)) {
-      canvas.width = w; canvas.height = h;
-      gl.viewport(0, 0, w, h);
-    }
-  };
-  window.addEventListener('resize', redimensionar);
-
-  let raf = 0;
-  let ultimoQuadro = performance.now();
-  const inicio = ultimoQuadro;
-  const quadro = () => {
-    if (gl.isContextLost()) return;
-    ultimoQuadro = performance.now();
-    redimensionar();
-    gl.uniform2f(uRes, canvas.width, canvas.height);
-    gl.uniform1f(uTime, ((ultimoQuadro - inicio) / 1000) % ONDAS_PERIODO);
-    gl.uniform1f(uSpeed, ONDAS_VELOCIDADE);
-    gl.uniform1f(uWarm, ONDAS_DOURADO);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
-    raf = requestAnimationFrame(quadro);
-  };
-  const perdeu = (e: Event) => { e.preventDefault(); cancelAnimationFrame(raf); };
-  canvas.addEventListener('webglcontextlost', perdeu);
-  quadro();
-
-  return {
-    parar() {
-      cancelAnimationFrame(raf);
-      window.removeEventListener('resize', redimensionar);
-      canvas.removeEventListener('webglcontextlost', perdeu);
-      // Nada de WEBGL_lose_context aqui: um canvas com contexto perdido devolve
-      // o MESMO contexto morto no getContext seguinte, e sob StrictMode (que
-      // monta, limpa e remonta) as ondas nunca mais subiriam. Quem libera a GPU
-      // é o navegador, quando o elemento é coletado.
-    },
-    morto: () => gl.isContextLost() || performance.now() - ultimoQuadro > 3000,
-  };
-}
-
 /**
  * Espera antes de tentar montar as ondas de novo, por falhas seguidas (ms). A
  * última se repete para sempre: a tela nunca desiste de vez do WebGL, só passa
@@ -1183,6 +1081,55 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
   // o mesmo card é escolhido duas vezes; a página zera o pedido ao consumi-lo, para
   // não reabrir o detalhe quando o usuário voltar à página pelo menu.
   const [openCard, setOpenCard] = useState<{ page: Page; id: string; nonce: number } | null>(null);
+
+  /** Manda o relato para o administrador do sistema. O cartão do menu cuida do
+   *  próprio estado; daqui sai só a ida ao servidor. */
+  const reportar = useCallback(async (relato: Relato) => {
+    try {
+      const r = await fetch('/api/admin-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-session': token },
+        body: JSON.stringify({ action: 'reportar', ...relato }),
+      });
+      return await r.json().catch(() => ({ error: 'Não foi possível enviar.' }));
+    } catch {
+      return { error: 'Erro de conexão. Tente de novo.' };
+    }
+  }, [token]);
+
+  /** A fila de relatos, e o print de um deles. Duas idas separadas de propósito:
+   *  o print é o que pesa, e ele não viaja junto da lista. */
+  const lerAdmin = useCallback(async (busca: string) => {
+    const r = await fetch(`/api/admin-data?${busca}`, { headers: { 'x-admin-session': token } });
+    return await r.json().catch(() => null);
+  }, [token]);
+  const listarReportes = useCallback(async () => {
+    try {
+      return await lerAdmin('action=reportes') ?? { error: 'Não foi possível carregar os relatos.' };
+    } catch {
+      return { error: 'Erro de conexão. Tente de novo.' };
+    }
+  }, [lerAdmin]);
+  const mudarStatusDoReporte = useCallback(async (id: number, status: string) => {
+    try {
+      const r = await fetch('/api/admin-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-session': token },
+        body: JSON.stringify({ action: 'set_reporte_status', id, status }),
+      });
+      return await r.json().catch(() => ({ error: 'Não foi possível mudar o status.' }));
+    } catch {
+      return { error: 'Erro de conexão. Tente de novo.' };
+    }
+  }, [token]);
+  const printDoReporte = useCallback(async (id: number) => {
+    try {
+      const d = await lerAdmin(`action=reporte_print&id=${id}`);
+      return d?.base64 ? d : null;
+    } catch {
+      return null;
+    }
+  }, [lerAdmin]);
   // Pedido vindo da tela de Projetos: abrir Tarefas já estreitada numa entrega.
   const [tarefasDaEntrega, setTarefasDaEntrega] = useState<
     { projeto: string; entrega: number; nonce: number } | null>(null);
@@ -1390,6 +1337,10 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
           open={open}
           pinned={pinned}
           onClose={() => setOpen(false)}
+          onReportar={reportar}
+          onListarReportes={listarReportes}
+          onPrintDoReporte={printDoReporte}
+          onMudarStatusDoReporte={mudarStatusDoReporte}
         />
 
         <NavInferior page={page} setPage={setPage} onMais={() => setOpen(true)} />

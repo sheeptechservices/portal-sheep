@@ -674,6 +674,37 @@ async function migrarSchema(db: Client) {
   `);
   await ddl(`CREATE INDEX IF NOT EXISTS idx_emails_enviados_data ON emails_enviados (criado_em DESC)`);
 
+  // Os relatos do cartão do menu.
+  //
+  // Existe porque o e-mail sozinho não é registro: ele some numa caixa de
+  // entrada, e some de vez quando o Resend recusa - e aí o que a pessoa
+  // escreveu não está em lugar nenhum. Gravar antes de avisar inverte isso: o
+  // aviso pode falhar, o relato fica.
+  //
+  // O print mora aqui em base64, como os outros anexos do sistema. Ele é
+  // opcional e é o que pesa na linha, então toda leitura de lista o deixa de
+  // fora - quem quiser ver busca um por vez.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS reportes (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      texto        TEXT NOT NULL,
+      /** 'Urgente' | 'Alta' | 'Média' | 'Baixa' - a escala de prioridade da casa. */
+      urgencia     TEXT NOT NULL,
+      /** Em que tela a pessoa estava. */
+      pagina       TEXT,
+      autor_id     TEXT,
+      autor_nome   TEXT NOT NULL,
+      autor_email  TEXT,
+      print_nome   TEXT,
+      print_tipo   TEXT,
+      print_base64 TEXT,
+      /** 'aberto' | 'em_analise' | 'resolvido' | 'descartado'. Quem muda é o
+       *  dono do painel; todo mundo vê. */
+      status       TEXT NOT NULL DEFAULT 'aberto',
+      criado_em    TEXT NOT NULL
+    )
+  `);
+  await ddl(`CREATE INDEX IF NOT EXISTS idx_reportes_data ON reportes (criado_em DESC)`);
 
   await ensurePermissoesSchema(ddl);
 
@@ -2345,6 +2376,15 @@ export async function remetenteDeEmail(db: Client): Promise<RemetenteEmail | nul
   return null;
 }
 
+/** A escala de urgência do relato: as mesmas quatro palavras que o portal já
+ *  usa em projeto e em tarefa (ver `src/lib/prioridades.tsx`). */
+const URGENCIAS_DO_RELATO = ['Urgente', 'Alta', 'Média', 'Baixa'];
+
+/** Andamento do relato. Quatro estados e nada de "reaberto": se voltou, volta
+ *  para `aberto`, e a auditoria conta a história. Estado a mais numa fila
+ *  pequena só cria dúvida sobre qual usar. */
+const STATUS_DO_RELATO = ['aberto', 'em_analise', 'resolvido', 'descartado'];
+
 /**
  * Envia um e-mail pelo Resend, e registra o que aconteceu.
  *
@@ -3509,8 +3549,75 @@ async function despacharAdminData(
 
     // O que já saiu: a régua de comunicação vai crescer em cima disto, e por
     // enquanto ele responde "o e-mail chegou?" sem virar investigação.
-        // O print de um relato, um por vez - ver o comentário da lista.
-        if (action === 'emails_enviados') {
+    // A fila de relatos, para o cartão do menu.
+    //
+    // A ordem é fixa e é por urgência, não por data: a fila existe para dizer o
+    // que atacar primeiro, e ordenada por chegada ela devolveria a caixa de
+    // entrada que ela veio substituir. Dentro do mesmo degrau, o mais recente
+    // na frente.
+    //
+    // O `print_base64` fica de fora: é ele que pesa, e uma lista de cinquenta
+    // linhas traria dezenas de megabytes para mostrar miniatura nenhuma. O que
+    // vai é o aviso de que existe print, e quem quiser ver busca aquele.
+    if (action === 'reportes') {
+      // A foto sai de `usuarios` no momento da leitura, e não de cópia gravada
+      // junto do relato: quem troca a foto troca em toda a fila, inclusive no
+      // que reportou no mês passado.
+      const r = await db.execute(`
+        SELECT r.id, r.texto, r.urgencia, r.pagina, r.autor_nome, r.autor_email,
+               r.print_nome, r.print_base64 IS NOT NULL AS tem_print, r.status,
+               r.criado_em, u.foto_url AS autor_foto
+        FROM reportes r
+        LEFT JOIN usuarios u ON u.id = r.autor_id
+        ORDER BY CASE r.urgencia
+                   WHEN 'Urgente' THEN 0
+                   WHEN 'Alta'    THEN 1
+                   WHEN 'Média'   THEN 2
+                   WHEN 'Baixa'   THEN 3
+                   ELSE 4
+                 END,
+                 r.criado_em DESC
+        LIMIT 200
+      `);
+      return {
+        status: 200,
+        body: {
+          reportes: r.rows.map(x => ({
+            id: Number(x.id),
+            texto: String(x.texto),
+            urgencia: String(x.urgencia),
+            pagina: x.pagina != null ? String(x.pagina) : null,
+            autor_nome: String(x.autor_nome),
+            autor_email: x.autor_email != null ? String(x.autor_email) : null,
+            autor_foto: x.autor_foto != null ? String(x.autor_foto) : null,
+            print_nome: x.print_nome != null ? String(x.print_nome) : null,
+            tem_print: Number(x.tem_print) === 1,
+            status: String(x.status ?? 'aberto'),
+            criado_em: String(x.criado_em),
+          })),
+        },
+      };
+    }
+
+    // O print de um relato, um por vez - ver o comentário da lista.
+    if (action === 'reporte_print') {
+      const r = await db.execute({
+        sql: 'SELECT print_nome, print_tipo, print_base64 FROM reportes WHERE id = ?',
+        args: [query.get('id')],
+      });
+      const linha = r.rows[0];
+      if (!linha?.print_base64) return { status: 404, body: { error: 'Sem print.' } };
+      return {
+        status: 200,
+        body: {
+          nome: linha.print_nome != null ? String(linha.print_nome) : 'print.png',
+          tipo: linha.print_tipo != null ? String(linha.print_tipo) : 'image/png',
+          base64: String(linha.print_base64),
+        },
+      };
+    }
+
+    if (action === 'emails_enviados') {
       const r = await db.execute(`
         SELECT id, destino, assunto, tipo, situacao, erro, criado_em
         FROM emails_enviados
@@ -5313,10 +5420,105 @@ function faltaEmProjeto(p: any): string | null {
     //  nova dentro do portal seria mais um lugar para esquecer de olhar. E o
     //  `emails_enviados` guarda o texto de toda tentativa, então nem o envio
     //  que falhar some sem deixar rastro.
-        // O andamento do relato. Só o dono do painel muda - a ação está marcada
+    if (action === 'reportar') {
+      const texto = String(body?.texto ?? '').trim();
+      if (!texto) return { status: 400, body: { error: 'Escreva o que você quer contar.' } };
+      if (texto.length > 4000) {
+        return { status: 400, body: { error: 'O relato passou de 4000 caracteres.' } };
+      }
+      // A urgência é a escala de prioridade da casa. Escolha fora da escala não
+      // vira "sem urgência" caladamente: é recusada, porque o que chega no
+      // e-mail vira fila de trabalho de alguém.
+      const urgencia = String(body?.urgencia ?? '').trim();
+      if (!URGENCIAS_DO_RELATO.includes(urgencia)) {
+        return { status: 400, body: { error: 'Escolha a urgência.' } };
+      }
+      // O print é opcional, e só imagem: o campo abre um seletor de imagem, mas
+      // quem chama a ação direto não passa por ele.
+      const print = body?.print as { nome?: string; tipo?: string; base64?: string } | undefined;
+      let anexos: { filename: string; content: string }[] | undefined;
+      if (print?.base64) {
+        const tipo = String(print.tipo ?? '');
+        if (!tipo.startsWith('image/')) {
+          return { status: 400, body: { error: 'O anexo precisa ser uma imagem.' } };
+        }
+        const conteudo = String(print.base64).split(',').pop() ?? '';
+        // Cada 4 letras de base64 são 3 bytes: dá para conferir o tamanho sem
+        // decodificar a imagem inteira na memória da função.
+        if (conteudo.length * 0.75 > 5 * 1024 * 1024) {
+          return { status: 400, body: { error: 'A imagem passa de 5 MB.' } };
+        }
+        if (conteudo) {
+          anexos = [{ filename: String(print.nome || 'print.png').slice(0, 80), content: conteudo }];
+        }
+      }
+      // De onde veio, para quem lê não precisar perguntar "em que tela?".
+      const de = String(body?.pagina ?? '').trim().slice(0, 80);
+      const quem = autorNome ?? usuario?.email ?? 'Alguém';
+      const agora = new Date().toISOString();
+
+      // Grava PRIMEIRO. O e-mail é o aviso, não o registro: se o Resend recusar,
+      // o relato continua existindo e aparece na fila do cartão. Ao contrário,
+      // uma recusa apagaria o que a pessoa escreveu.
+      const gravado = await db.execute({
+        sql: `INSERT INTO reportes
+                (texto, urgencia, pagina, autor_id, autor_nome, autor_email,
+                 print_nome, print_tipo, print_base64, criado_em)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          texto, urgencia, de || null, autorId, quem, usuario?.email ?? null,
+          anexos ? anexos[0].filename : null,
+          anexos ? String(print?.tipo ?? '') : null,
+          anexos ? anexos[0].content : null,
+          agora,
+        ],
+      });
+      const id = Number(gravado.lastInsertRowid ?? 0);
+
+      const r = await notifyEmail(
+        db, emailAdmin(),
+        // A urgência vai no assunto porque é nele que se faz a triagem de uma
+        // caixa de entrada: dentro do corpo ela só aparece depois de abrir.
+        `Portal: ${quem} reportou alguma coisa (${urgencia})`,
+        fichaEmail([
+          ['Quem', usuario?.email ? `${quem} (${usuario.email})` : quem],
+          ['Onde', de],
+          ['Urgência', urgencia],
+        ])
+        + citacaoEmail(texto)
+        + (anexos ? notaEmail('O print vai anexado.') : ''),
+        'reporte',
+        {
+          anexos,
+          previa: texto,
+          rodape: 'Você recebe este aviso porque é quem cuida do portal.',
+        },
+      );
+      // Aviso que falhou não vira erro: o relato está registrado, e dizer "não
+      // deu" depois de gravar seria mentira. O que a tela mostra é o aviso.
+      return {
+        status: 200,
+        body: { ok: true, id, aviso: r.ok ? null : `Gravado, mas o e-mail não saiu: ${r.erro}` },
+      };
+    }
+
+    // O andamento do relato. Só o dono do painel muda - a ação está marcada
     // `SO_ADMIN` -, e é por isso que a fila mostra o status a todo mundo sem
     // oferecer o campo a ninguém mais.
-        if (action === 'delete_comment') {
+    if (action === 'set_reporte_status') {
+      const status = String(body?.status ?? '');
+      if (!STATUS_DO_RELATO.includes(status)) {
+        return { status: 400, body: { error: 'Status desconhecido.' } };
+      }
+      const r = await db.execute({
+        sql: 'UPDATE reportes SET status = ? WHERE id = ?',
+        args: [status, body?.id],
+      });
+      if (!r.rowsAffected) return { status: 404, body: { error: 'Relato não encontrado.' } };
+      return { status: 200, body: { ok: true } };
+    }
+
+    if (action === 'delete_comment') {
       // Delete replies first, then the comment itself
       await db.execute({ sql: `DELETE FROM oportunidade_eventos WHERE parent_id = ? AND tipo = 'comentario'`, args: [body.id] });
       await db.execute({ sql: `DELETE FROM oportunidade_eventos WHERE id = ? AND tipo = 'comentario'`, args: [body.id] });

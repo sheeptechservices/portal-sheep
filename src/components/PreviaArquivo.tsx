@@ -18,12 +18,18 @@ import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 
 /** Serve a qualquer anexo do sistema: todos são arquivo com id, e o que muda é
  *  só de onde o conteúdo vem. */
-export function PreviaArquivo({ arquivo, onCarregar, onBaixar, onFechar }: {
+export function PreviaArquivo({ arquivo, onCarregar, onBaixar, onFechar, camada }: {
   arquivo: { nome: string; comentario?: string | null };
   /** O buscador vem da página: o `api` carrega o token da sessão. */
   onCarregar: () => Promise<{ tipo: string; base64: string } | null>;
   onBaixar: () => void;
   onFechar: () => void;
+  /**
+   * Em que camada a prévia abre. O padrão cobre as gavetas do sistema, mas quem
+   * a chama de dentro de uma janela que sobe mais alto precisa dizer - a prévia
+   * é sempre o que está por cima, e não o que fica atrás de quem a abriu.
+   */
+  camada?: number;
 }) {
   const [conteudo, setConteudo] = useState<{ tipo: string; url: string } | null>(null);
   const [erro, setErro] = useState('');
@@ -62,7 +68,7 @@ export function PreviaArquivo({ arquivo, onCarregar, onBaixar, onFechar }: {
 
   return createPortal(
     <div className={`file-preview-backdrop${saindo ? ' saindo' : ''}`}
-      style={{ zIndex: 10002 }} {...fundo}>
+      style={{ zIndex: camada ?? 10002 }} {...fundo}>
       <div className="file-preview-modal" onClick={e => e.stopPropagation()}>
         <div className="file-preview-header">
           <span className="file-preview-name">{arquivo.nome}</span>

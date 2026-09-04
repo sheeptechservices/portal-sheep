@@ -265,6 +265,16 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   set_permissoes_papel: SO_ADMIN,
 
   // ── Oportunidades ──────────────────────────────────────────────────────────
+  // Reportar é de qualquer sessão: quem usa o portal pode contar o que achou,
+  // e uma permissão aqui só serviria para calar alguém.
+  reportar: LIVRE,
+  // A fila e os prints também: quem pode contar o que achou pode ver o que já
+  // foi contado - inclusive para não reportar duas vezes a mesma coisa.
+  reportes: LIVRE,
+  reporte_print: LIVRE,
+  // Mudar o andamento é do dono do painel. Ver, é de todo mundo: quem reportou
+  // precisa saber se aquilo virou alguma coisa.
+  set_reporte_status: SO_ADMIN,
   board: 'oportunidades:ver',
   detail: 'oportunidades:ver',
   status_card_count: 'oportunidades:ver',

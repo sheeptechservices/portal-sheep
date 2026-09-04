@@ -18,6 +18,13 @@
   --spinner: #00C9A7;
   --red:    #D93025;
   --green:  #1E8A3E;
+  /* Ambar de estado. O `--yellow` da casa e o teal da marca, entao "amarelo" no
+     sentido de atencao precisava de token proprio - e o mesmo tom que a
+     prioridade Media ja usa. */
+  --amber:  #B58300;
+  /* Um degrau mais claro que o `--green`: o verde escuro pesa demais num chip
+     pequeno, onde ele lê como preto. */
+  --green-light: #23A455;
   /* Texto/ícone SOBRE o vermelho. Fixo nos dois temas, pelo mesmo motivo do
      --on-yellow: o vermelho não muda, então --white (que no escuro é superfície
      escura) deixaria o rótulo do botão ilegível. */
@@ -14132,4 +14139,483 @@ button.checklist-texto:focus-visible {
   .estilo-alvo { transition: none; }
   .estilo-alvo.t-mola:hover,
   .estilo-alvo.t-anti:hover { transform: none; }
+}
+
+/* ─── O convite a reportar, no pe do menu ────────────────────────────────
+   Fundo escuro com o mesmo movimento do palco do login - dois focos de luz com
+   tempos diferentes, no teal da casa. Ele nao e decoracao: parado e chapado, o
+   cartao viraria mais uma linha do menu, e o convite se perderia entre os itens
+   de navegacao. */
+.reportar-cartao {
+  /* Os mesmos valores do palco do login. Repetidos aqui, e nao importados de
+     la, porque `--lg-*` sao tokens da tela de login: eles so existem dentro do
+     `.login-tela`, e um `var()` que nao resolve nao pinta nada - foi o que
+     aconteceu na primeira tentativa, e o feixe simplesmente nao apareceu. */
+  --reportar-tinta:  #F5F3EE;
+  /* Realce do campo aberto, para o SelectSistema. O cinza do sistema e
+     desenhado para fundo branco: aqui ele vira um anel branco em volta do
+     campo, que e a coisa mais clara do cartao. */
+  --select-realce-borda: rgba(255, 255, 255, .34);
+  --select-realce-halo:  rgba(255, 255, 255, .09);
+  --reportar-brasa:  rgba(30, 190, 160, .34);
+  --reportar-brilho: rgba(18, 120, 102, .30);
+  position: relative;
+  flex-shrink: 0;
+  /* Recuado dos dois lados: o menu nao tem folga horizontal (os itens vao de
+     borda a borda e sao eles que trazem o recuo, no proprio padding), entao sem
+     margem o cartao encostaria nas duas beiradas e leria como faixa, e nao como
+     peca. */
+  margin: 12px 14px 0;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  /* Contexto proprio: sem isto, o recorte arredondado disputa com a camada que o
+     canvas cria, e o canto sai em escada. */
+  isolation: isolate;
+  /* Vale nos dois temas: e a mesma noite do palco do login. */
+  background: radial-gradient(120% 100% at 70% 30%, #10201C 0%, #0C0B08 55%, #060709 100%);
+}
+/* O canvas das ondas. Fica entre os focos em CSS (que sao a reserva, atras) e o
+   conteudo, e some junto com o cartao quando o menu recolhe. */
+.reportar-ondas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  /* O raio vai NO canvas, e nao so no `overflow` do cartao. Canvas ganha camada
+     propria no compositor, e camada recortada pelo arredondamento de um
+     ancestral sai em degraus. */
+  border-radius: inherit;
+  /* Entra em fade: o canvas e opaco e cobriria os focos de reserva num corte
+     seco, que e exatamente o que se nota num bloco pequeno. */
+  animation: reportar-ondas-entra .5s ease both;
+}
+@keyframes reportar-ondas-entra {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+/* Os focos em CSS: um elemento so com dois gradientes, em vaivem lento. Ficam
+   ATRAS do canvas das ondas e sao a reserva dele - e o que a pessoa ve quando o
+   WebGL nao sobe, cai no meio do caminho ou esta desligado por movimento
+   reduzido. Mesmo papel que o `::before` do palco do login, e a mesma geometria:
+   com as ondas por cima, isto nao e mais o efeito, e sim o fundo que segura o
+   lugar dele. */
+.reportar-luz {
+  position: absolute;
+  inset: -40%;
+  pointer-events: none;
+  will-change: transform;
+  background:
+    radial-gradient(38% 44% at 32% 34%, var(--reportar-brasa) 0%, transparent 62%),
+    radial-gradient(30% 36% at 72% 62%, var(--reportar-brilho) 0%, transparent 66%);
+  animation: reportar-brasa 18s ease-in-out infinite alternate;
+}
+/* O vaivem do palco do login, so que na escala daqui. Reaproveitar `login-brasa`
+   nao funcionou: a viagem dele e uma fracao da caixa, e numa caixa de 190px isso
+   da 39px em 26s, 1,5px por segundo - movimento que existe no arquivo e nao
+   existe no olho. Distancia maior e tempo mais curto devolvem a velocidade
+   aparente do palco. */
+@keyframes reportar-brasa {
+  from { transform: translate3d(-13%, -9%, 0) scale(1); }
+  to   { transform: translate3d(15%, 11%, 0) scale(1.2); }
+}
+/* Escurece a esquerda, onde mora o texto: o mesmo recurso do `.login-palco-veu`,
+   virado de lado porque aqui a luz vem da direita e nao de baixo. */
+.reportar-veu {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(100deg, rgba(6, 7, 9, .82) 0%, rgba(6, 7, 9, .52) 50%, rgba(6, 7, 9, .06) 86%);
+}
+
+/* Daqui para baixo, tudo em escala baixa: o cartao mora no pe do menu, e cada
+   pixel de altura que ele toma sai da navegacao. */
+.reportar-conteudo {
+  position: relative;
+  padding: 13px 14px 12px;
+}
+.reportar-titulo {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -.01em;
+  /* Cor fixa, e nao token: o cartao e escuro nos dois temas, entao o texto dele
+     nao acompanha a troca. */
+  color: var(--reportar-tinta);
+}
+.reportar-chamada {
+  margin: 3px 0 0;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: rgba(245, 243, 238, .58);
+}
+.reportar-obrigado {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #5FE8CE;
+}
+
+/* Vidro, e nao um retangulo preto: o campo fica em cima do feixe, e um fundo
+   opaco recortaria um buraco escuro bem no meio da luz. Assim o cartao continua
+   sendo uma peca so quando abre, em vez de virar moldura com furo. */
+.reportar-campo {
+  width: 100%;
+  margin-top: 9px;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, .06);
+  backdrop-filter: blur(3px);
+  font-family: inherit;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #FFFFFF;
+  resize: none;
+  outline: none;
+  transition: border-color var(--transition), background var(--transition);
+}
+.reportar-campo::placeholder { color: rgba(245, 243, 238, .4); }
+/* No foco o vidro clareia junto com a borda: e o mesmo realce dos campos da
+   casa, traduzido para fundo escuro. */
+.reportar-campo:focus { border-color: var(--yellow); background: rgba(255, 255, 255, .1); }
+
+/* Rotulo dos campos que vieram depois do texto. Pequeno e em caixa alta, como
+   o `.form-label` da casa, so que na tinta clara do cartao. */
+.reportar-rotulo {
+  display: block;
+  margin: 10px 0 4px;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: rgba(245, 243, 238, .5);
+}
+
+/* O gatilho do SelectSistema dentro do cartao. A metrica e a cor dele vao por
+   `estiloGatilho`, porque sao inline no componente; aqui fica so o que estado
+   nenhum resolve inline - o hover e o vidro fosco. A lista continua sendo a da
+   casa: ela abre num portal, longe daqui. */
+.reportar-cartao .liquidez-trigger {
+  border-color: rgba(255, 255, 255, .16);
+  backdrop-filter: blur(3px);
+}
+.reportar-cartao .liquidez-trigger:hover { border-color: rgba(255, 255, 255, .3); }
+
+/* A lista de urgencia do cartao. Ela mora num portal no `body`, entao nao herda
+   nada daqui - por isso a classe vem do componente, e por isso a tinta e
+   repetida em vez de vir do cartao: `var()` que nao resolve nao pinta nada.
+   Escura e na escala dos campos do cartao; clara e no tamanho do sistema, ela
+   descia como uma peca de outra tela por cima das ondas. */
+.status-select-dropdown.reportar-lista {
+  --reportar-tinta: #F5F3EE;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: var(--radius-sm);
+  background: rgba(16, 18, 20, .96);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .5);
+}
+.reportar-lista .status-select-option {
+  gap: 8px;
+  padding: 6px 8px;
+  font-size: 11.5px;
+  color: var(--reportar-tinta);
+}
+.reportar-lista .select-opcao-descricao {
+  font-size: 10px;
+  line-height: 1.35;
+  color: rgba(245, 243, 238, .5);
+}
+.reportar-lista .status-select-option:hover,
+.reportar-lista .status-select-option.active { background: rgba(255, 255, 255, .09); }
+.reportar-lista .status-select-option:hover .select-opcao-descricao,
+.reportar-lista .status-select-option.active .select-opcao-descricao {
+  color: rgba(245, 243, 238, .72);
+}
+
+/* Area de soltar o print: a mesma moldura tracejada do resto do sistema, na
+   escala do cartao. O texto grande diz o caminho mais provavel (colar), e o
+   pequeno o de reserva. */
+.reportar-solta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 9px;
+  border: 1px dashed rgba(255, 255, 255, .2);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, .04);
+  font-family: inherit;
+  text-align: left;
+  color: rgba(245, 243, 238, .7);
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition), color var(--transition);
+}
+.reportar-solta span { flex: 1; min-width: 0; }
+.reportar-solta b { display: block; font-size: 11px; font-weight: 700; color: var(--reportar-tinta); }
+.reportar-solta small { display: block; font-size: 10px; color: rgba(245, 243, 238, .5); }
+.reportar-solta:hover,
+.reportar-solta.sobre {
+  border-color: rgba(255, 255, 255, .38);
+  background: rgba(255, 255, 255, .09);
+  color: var(--reportar-tinta);
+}
+.reportar-solta:focus-visible { outline: none; border-color: var(--yellow); }
+
+/* Print escolhido: miniatura, nome e peso, e o x para trocar de ideia. */
+.reportar-print {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, .06);
+}
+.reportar-print img {
+  width: 34px;
+  height: 26px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.reportar-print-info { flex: 1; min-width: 0; }
+.reportar-print-nome {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--reportar-tinta);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reportar-print-peso { margin: 1px 0 0; font-size: 9.5px; color: rgba(245, 243, 238, .5); }
+.reportar-print-tirar {
+  display: inline-flex;
+  padding: 5px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: rgba(245, 243, 238, .6);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.reportar-print-tirar:hover { background: rgba(255, 255, 255, .12); color: var(--red); }
+
+/* Gravou, mas o e-mail nao saiu. Fica junto do agradecimento, e nao no lugar
+   dele: o relato entrou na fila, e dizer so o problema esconderia isso. */
+.reportar-aviso {
+  margin: 5px 0 0;
+  font-size: 10px;
+  line-height: 1.4;
+  color: rgba(245, 243, 238, .6);
+}
+
+.reportar-erro {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 7px 0 0;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: #FF9C93;
+}
+
+.reportar-acoes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+/* Pilula fantasma sobre o fundo escuro: vidro fosco com um aro claro, que e
+   como a peca aparece no cartao em repouso. */
+.reportar-botao {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, .08);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--reportar-tinta);
+  cursor: pointer;
+  transition: transform var(--transition-spring), box-shadow var(--transition-spring),
+              background var(--transition), border-color var(--transition), opacity var(--transition);
+}
+.reportar-botao:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, .28);
+  background: rgba(255, 255, 255, .15);
+}
+/* Com o campo aberto o botao deixa de ser convite e passa a ser a acao que
+   grava: ai ele fica solido, como toda primaria da casa. */
+.reportar-botao.primaria {
+  border-color: transparent;
+  background: #FFFFFF;
+  color: #121316;
+}
+.reportar-botao.primaria:hover:not(:disabled) { background: #FFFFFF; border-color: transparent; }
+/* Mesmo vidro, so o icone: quadrada, para nao parecer um botao de texto vazio.
+   Encostada na direita - `margin-left: auto` em vez de `space-between` na fila,
+   para o Reportar continuar colado a esquerda quando ela nao esta la. */
+.reportar-botao-ico { padding: 6px; margin-left: auto; }
+.reportar-botao:disabled { opacity: .5; cursor: not-allowed; }
+.reportar-botao:focus-visible { outline: 2px solid var(--yellow); outline-offset: 2px; }
+
+.reportar-voltar {
+  padding: 6px 4px;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(245, 243, 238, .6);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.reportar-voltar:hover { color: var(--reportar-tinta); }
+.reportar-voltar:focus-visible { outline: none; color: var(--reportar-tinta); }
+
+/* ── A janela da fila de relatos ──────────────────────────────────────────── */
+/* Seis colunas, e a do relato e a que come espaco: a janela e mais larga que o
+   dialogo padrao para a fila caber sem barra de rolagem lateral. */
+.reportes-modal { width: min(1020px, calc(100vw - 32px)); }
+.reportes-corpo {
+  padding: 4px 20px 20px;
+  overflow: auto;
+}
+.reportes-vazio {
+  margin: 0;
+  padding: 40px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--gray2);
+}
+.reportes-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.reportes-tabela th {
+  position: sticky;
+  top: 0;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--gray4);
+  background: var(--white);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--gray2);
+  white-space: nowrap;
+}
+.reportes-tabela td {
+  padding: 10px;
+  border-bottom: 1px solid var(--gray4);
+  vertical-align: middle;
+  color: var(--black);
+}
+.reportes-tabela tbody tr { transition: background var(--transition); }
+.reportes-tabela tbody tr:hover { background: var(--card-hover-bg); }
+/* A urgencia nao quebra linha: ela e a coluna que se le de relance para achar
+   onde a fila muda de degrau. */
+.reportes-urgencia {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+/* Uma linha por relato: a fila e para varrer de cima a baixo, e um relato de
+   dez linhas empurrava os outros para fora da tela. O texto inteiro fica no
+   `title`. */
+.reportes-texto {
+  margin: 0;
+  max-width: 44ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reportes-print {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-pill);
+  background: var(--white);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--black);
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+}
+.reportes-print:hover { border-color: var(--gray2); background: var(--gray4); }
+.reportes-sem { color: var(--gray3); }
+/* O status de quem so le: a mesma pilula de status do resto do sistema - ponto
+   de cor, rotulo, fundo na propria cor bem diluida. A cor vem por `--cor`, e
+   nao repetida em quatro regras. */
+.reportes-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--cor) 12%, transparent);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--cor);
+  white-space: nowrap;
+}
+.reportes-ponto {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.reportes-quem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.reportes-quando { white-space: nowrap; }
+/* O relativo situa, a data informa - por isso os dois, e na mesma linha. */
+.reportes-relativo {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--gray2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reportes-tabela tbody tr,
+  .reportes-print { transition: none; }
+}
+
+/* O menu recolhido vira uma coluna de icones: o cartao nao cabe la, e um
+   retangulo escuro de 60px de largura nao diria nada. */
+.app-menu.solto:not(.aberto) .reportar-cartao { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .reportar-luz,
+  .reportar-luz::after,
+  .reportar-ondas { animation: none; }
+  .reportar-botao,
+  .reportar-solta,
+  .reportar-print-tirar { transition: none; }
+  .reportar-botao:hover:not(:disabled) { transform: none; }
 }

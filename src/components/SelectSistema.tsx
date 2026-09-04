@@ -5,7 +5,9 @@ import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 // Select PADRÃO do sistema (substitui o <select> nativo) - gatilho .liquidez-trigger
 // + dropdown .status-select-dropdown num portal (não é cortado por overflow).
 // Sem opção vazia: o campo é obrigatório.
-export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWidth, placeholder }: {
+export function SelectSistema<T extends string>({
+  valor, onChange, opcoes, minWidth, placeholder, estiloGatilho, classeLista,
+}: {
   valor: T;
   onChange: (v: T) => void;
   /** `logo` troca o texto da opção pela marca. `label` continua obrigatório:
@@ -25,6 +27,23 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
   /** Texto do gatilho enquanto nada foi escolhido. Fica fora da lista: é
    *  convite a escolher, e não uma opção que se possa selecionar. */
   placeholder?: string;
+  /**
+   * Retoques no gatilho, para quando ele não mora sobre o fundo branco do
+   * sistema - hoje só o cartão de reportar, que é escuro nos dois temas. A
+   * lista continua sendo a da casa: ela abre num portal, longe daqui.
+   *
+   * Existe como prop porque a métrica do gatilho é inline, e regra de CSS
+   * externa não a alcança sem `!important` - e `!important` num campo usado em
+   * toda tela é dívida que a próxima pessoa paga. O que tem estado (a borda no
+   * hover) continua na folha: inline ele venceria o hover.
+   */
+  estiloGatilho?: CSSProperties;
+  /**
+   * Classe extra na lista, para o mesmo caso do `estiloGatilho`. A lista abre
+   * num portal no `body`, então nenhuma regra escrita a partir de quem chamou a
+   * alcança - sem esta classe, campo e lista acabam em escalas diferentes.
+   */
+  classeLista?: string;
 }) {
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState('');
@@ -81,11 +100,17 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
     }
     // A altura de antes de montar é uma estimativa - a opção com descrição tem
     // duas linhas, e o quanto elas ocupam depende da fonte. Medida de verdade,
-    // a lista que abriu para cima é reencostada no gatilho em vez de cobri-lo.
+    // a lista que abriu para cima é reencostada no gatilho.
+    //
+    // Reencostada sempre, e não só quando cobria o gatilho: a estimativa erra
+    // para os dois lados, e errando para mais ela deixava a lista boiando longe
+    // do campo que a abriu - que foi o que apareceu com a lista compacta do
+    // cartão de reportar. O que ancora é a base dela, que é a borda vizinha do
+    // gatilho quando se abre para cima.
     let top: number | null = null;
     const paraCima = r.top < g.top;
-    if (paraCima && r.bottom > g.top - 4) top = Math.max(MARGEM, g.top - 4 - r.height);
-    else if (!paraCima && r.bottom > window.innerHeight - MARGEM) {
+    if (paraCima) top = Math.max(MARGEM, g.top - 4 - r.height);
+    else if (r.bottom > window.innerHeight - MARGEM) {
       top = Math.max(MARGEM, window.innerHeight - MARGEM - r.height);
     }
     if (left == null && top == null) return;
@@ -155,11 +180,17 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
           height: 42, padding: '0 14px', borderRadius: 'var(--radius-md)',
           fontFamily: "'Manrope', sans-serif", fontSize: 14, fontWeight: 500,
           background: 'var(--white)',
+          ...estiloGatilho,
           // Aberto, o gatilho usa o mesmo realce de `.form-input`: cinza. O
           // verde ali dizia "atencao" onde a unica coisa acontecendo era o
-          // cursor estar naquele campo.
-          borderColor: aberto ? 'var(--gray2)' : undefined,
-          boxShadow: aberto ? '0 0 0 3px var(--gray4)' : undefined,
+          // cursor estar naquele campo. Fica por último para o realce valer
+          // também sobre os retoques - e, fechado, devolve o que veio deles.
+          //
+          // Os dois tons saem de variável com padrão: sobre fundo escuro o
+          // cinza do sistema vira um anel branco, e quem estiver ali só precisa
+          // redefinir `--select-realce-*` no bloco em volta.
+          borderColor: aberto ? 'var(--select-realce-borda, var(--gray2))' : estiloGatilho?.borderColor,
+          boxShadow: aberto ? '0 0 0 3px var(--select-realce-halo, var(--gray4))' : estiloGatilho?.boxShadow,
         }}
       >
         {atual ? marca(atual) : <span style={{ color: 'var(--gray2)' }}>{placeholder ?? ''}</span>}
@@ -169,7 +200,7 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
         </svg>
       </button>
       {aberto && createPortal(
-        <div ref={dropRef} className="status-select-dropdown"
+        <div ref={dropRef} className={`status-select-dropdown${classeLista ? ` ${classeLista}` : ''}`}
           style={{ top: pos.top, left: pos.left, minWidth: pos.width, zIndex: 10050 }}>
           {buscando && (
             <input autoFocus className="form-input" value={busca}
