@@ -1363,6 +1363,295 @@ function LinhaIntegracao({ nome, categoria, descricao, logo, estado, aberta, onA
   );
 }
 
+
+// ── Resend: quem entrega os e-mails ──────────────────
+/** A marca do Resend é preta no claro e branca no escuro - é assim que eles a
+ *  distribuem. Aqui ela é a cor do texto do tema, que é a mesma ideia. */
+const RESEND_COR = 'var(--black)';
+
+/** A marca do Resend, no traçado oficial. Vem inline, e não como imagem: o
+ *  desenho é de uma cor só, e `currentColor` faz ele acompanhar o tema - em
+ *  arquivo, o preto do original sumiria na folha quase preta do tema escuro.
+ *  As outras marcas são imagem porque têm cor própria. */
+function ResendLogo({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 1800 1800" fill="none" aria-hidden="true">
+      <path fill="currentColor" d="M1000.46 450C1174.77 450 1278.43 553.669 1278.43 691.282C1278.43 828.896 1174.77 932.563 1000.46 932.563H912.382L1350 1350H1040.82L707.794 1033.48C683.944 1011.47 672.936 985.781 672.935 963.765C672.935 932.572 694.959 905.049 737.161 893.122L908.712 847.244C973.85 829.812 1018.81 779.353 1018.81 713.298C1018.8 632.567 952.745 585.78 871.095 585.78H450V450H1000.46Z" />
+    </svg>
+  );
+}
+
+function ResendIntegrationCard({ api, inicial, onEstado }: {
+  api: ReturnType<typeof useApi>;
+  inicial: EstadoIntegracao;
+  onEstado: (e: EstadoIntegracao) => void;
+}) {
+  const { toast } = useToast();
+  const { usuario } = useAuth();
+  const [chave, setChave] = useState('');
+  const [verChave, setVerChave] = useState(false);
+  const [temChave, setTemChave] = useState(inicial.temChave);
+  const [conectada, setConectada] = useState(inicial.conectada);
+  const [erro, setErro] = useState<string | null>(null);
+  /** Quem assina o e-mail. Aceita `Nome <endereco>`, que é o formato que faz a
+   *  caixa de quem recebe mostrar o nome em vez do endereço cru. */
+  const [de, setDe] = useState('');
+  const [responder, setResponder] = useState('');
+  const [dominios, setDominios] = useState<{ nome: string; situacao: string; verificado: boolean }[]>([]);
+  /** A chave envia, mas não lista domínios (é uma chave de acesso de envio).
+   *  Sem a lista, não dá para afirmar nada sobre a verificação do domínio. */
+  const [somenteEnvio, setSomenteEnvio] = useState(false);
+  const [peloAmbiente, setPeloAmbiente] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [salvo, setSalvo] = useState(false);
+  const [testando, setTestando] = useState(false);
+  /** O que o último teste devolveu. Fica na tela, e não só no toast: é o
+   *  diagnóstico da integração, e ele some antes de alguém conseguir ler. */
+  const [teste, setTeste] = useState<{ ok: boolean; texto: string } | null>(null);
+  const [removendo, setRemovendo] = useState(false);
+
+  // A tela abre com o que já está gravado: o remetente é o que a régua vai
+  // usar, e vê-lo em branco faria parecer que não há nenhum.
+  useEffect(() => {
+    let vivo = true;
+    api('?action=resend_config').then(d => {
+      if (!vivo || !d) return;
+      setTemChave(!!d.has_key);
+      setConectada(!!d.connected);
+      setErro(d.error ?? null);
+      setDe(d.from ?? '');
+      setResponder(d.reply_to ?? '');
+      setDominios(d.dominios ?? []);
+      setSomenteEnvio(!!d.somente_envio);
+      setPeloAmbiente(!!d.pelo_ambiente);
+    }).catch(() => {});
+    return () => { vivo = false; };
+  }, []);
+
+  useEffect(() => {
+    setTemChave(inicial.temChave);
+    setConectada(inicial.conectada);
+  }, [inicial.temChave, inicial.conectada]);
+
+  const endereco = (/<([^>]+)>/.exec(de)?.[1] ?? de).trim();
+  const dominioDoRemetente = endereco.split('@')[1]?.toLowerCase() ?? '';
+  const dominioVerificado = dominios.some(x => x.verificado && x.nome.toLowerCase() === dominioDoRemetente);
+
+  async function salvar() {
+    if (!chave.trim() || !endereco) return;
+    setSalvando(true);
+    const r = await api('', 'POST', {
+      action: 'save_resend_key', key: chave.trim(), from: de.trim(), reply_to: responder.trim(),
+    });
+    setSalvando(false);
+    if (r?.error) {
+      setConectada(false);
+      setErro(r.error);
+      toast('error', 'Não foi possível conectar', r.error);
+      return;
+    }
+    setTemChave(true);
+    setConectada(true);
+    setErro(null);
+    setDominios(r.dominios ?? []);
+    setSomenteEnvio(!!r.somente_envio);
+    setPeloAmbiente(false);
+    setChave('');
+    setSalvo(true);
+    setTimeout(() => setSalvo(false), 2500);
+    onEstado({ temChave: true, conectada: true, detalhe: de.trim(), em: new Date().toISOString(), carregando: false });
+    toast('success', 'Resend conectado', `Os e-mails saem como ${de.trim()}.`);
+  }
+
+  /** Trocar só o remetente: quem já conectou não precisa buscar a chave de novo
+   *  para mudar o endereço que assina os e-mails. */
+  async function salvarRemetente() {
+    if (!endereco) return;
+    setSalvando(true);
+    const r = await api('', 'POST', {
+      action: 'set_resend_remetente', from: de.trim(), reply_to: responder.trim(),
+    });
+    setSalvando(false);
+    if (r?.error) { toast('error', 'Não deu', r.error); return; }
+    setSalvo(true);
+    setTimeout(() => setSalvo(false), 2500);
+    onEstado({ temChave: true, conectada, detalhe: de.trim(), em: new Date().toISOString(), carregando: false });
+    toast('success', 'Remetente atualizado', `Os e-mails passam a sair como ${de.trim()}.`);
+  }
+
+  async function testar() {
+    setTestando(true);
+    setTeste(null);
+    const r = await api('', 'POST', { action: 'enviar_email_teste' });
+    setTestando(false);
+    if (r?.error) {
+      setTeste({ ok: false, texto: String(r.error) });
+      toast('error', 'O teste não saiu', r.error);
+      return;
+    }
+    setTeste({ ok: true, texto: `Enviado para ${r.destino}.` });
+    toast('success', 'E-mail de teste enviado', `Confira a caixa de ${r.destino}.`);
+  }
+
+  async function remover() {
+    setRemovendo(true);
+    await api('', 'POST', { action: 'remove_resend_key' });
+    setTemChave(false);
+    setConectada(false);
+    setDominios([]);
+    setErro(null);
+    setRemovendo(false);
+    onEstado({ temChave: false, conectada: false, detalhe: null, em: null, carregando: false });
+  }
+
+  return (
+    <div className="integration-card expanded">
+      <div className="integration-form">
+        <div className="integration-form-group">
+          <label className="integration-label">Chave da API</label>
+          <div className="integration-input-wrap">
+            <input
+              className="integration-input"
+              type={verChave ? 'text' : 'password'}
+              placeholder={temChave ? '•••••••••••••••• (chave salva)' : 'Cole a chave do Resend'}
+              value={chave}
+              onChange={e => setChave(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && salvar()}
+              style={{ ['--focus-color' as string]: RESEND_COR }}
+            />
+            <button className="integration-eye" type="button" onClick={() => setVerChave(v => !v)}
+              aria-label={verChave ? 'Ocultar a chave' : 'Mostrar a chave'}>
+              {verChave ? <IconEyeOff size={14} /> : <IconEye size={14} />}
+            </button>
+          </div>
+          <p className="integration-hint">
+            Gere a chave em <strong>resend.com</strong> › API Keys. Fica criptografada no
+            banco, como as demais.
+          </p>
+          {temChave && !conectada && erro && (
+            <p className="integration-hint" style={{ color: '#B91C1C', fontWeight: 600 }}>
+              <IconAlert size={12} /> {erro}
+            </p>
+          )}
+          {!temChave && peloAmbiente && (
+            <p className="integration-hint">
+              <IconAlert size={12} /> Hoje os e-mails saem pela configuração do ambiente.
+              Conectar aqui passa o controle para o painel.
+            </p>
+          )}
+        </div>
+
+        <div className="integration-form-group">
+          <label className="integration-label">Quem envia</label>
+          <div className="integration-input-wrap">
+            <input className="integration-input" value={de}
+              placeholder="Portal Sheep &lt;avisos@sheeptechnology.com.br&gt;"
+              onChange={e => setDe(e.target.value)}
+              style={{ ['--focus-color' as string]: RESEND_COR }} />
+          </div>
+          <p className="integration-hint">
+            O nome entre aspas não é obrigatório, mas é o que aparece na caixa de quem recebe.
+          </p>
+          {/* O domínio precisa estar verificado no Resend: sem isso ele só
+              entrega para o dono da conta, e a régua sairia mandando no vazio. */}
+          {temChave && somenteEnvio ? (
+            <p className="integration-hint">
+              <IconAlert size={12} /> Esta chave só tem acesso de envio, então a lista de
+              domínios não vem. Confira em <strong>resend.com</strong> › Domains se
+              <strong> {dominioDoRemetente}</strong> está verificado.
+            </p>
+          ) : temChave && endereco.includes('@') && !dominioVerificado && (
+            <p className="integration-hint" style={{ color: '#B45309', fontWeight: 600 }}>
+              <IconAlert size={12} /> O domínio <strong>{dominioDoRemetente}</strong> não está
+              verificado no Resend. Verifique-o lá antes de contar com a entrega.
+            </p>
+          )}
+        </div>
+
+        <div className="integration-form-group">
+          <label className="integration-label">Responder para (opcional)</label>
+          <div className="integration-input-wrap">
+            <input className="integration-input" value={responder}
+              placeholder="para onde vai a resposta de quem recebe"
+              onChange={e => setResponder(e.target.value)}
+              style={{ ['--focus-color' as string]: RESEND_COR }} />
+          </div>
+        </div>
+
+        {dominios.length > 0 && (
+          <div className="integration-form-group">
+            <label className="integration-label">Domínios da conta</label>
+            <div className="resend-dominios">
+              {dominios.map(d => (
+                <span key={d.nome} className={`resend-dominio${d.verificado ? ' ok' : ''}`}>
+                  {d.verificado ? <IconCheck size={11} /> : <IconAlert size={11} />}
+                  {d.nome}
+                  <em>{d.verificado ? 'verificado' : d.situacao}</em>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* O que o Resend respondeu ao último teste. A recusa por domínio é a
+            mais comum e a menos óbvia - a chave está certa, mas não vale para
+            aquele remetente -, então ela vem com o caminho da correção. */}
+        {teste && (
+          <div className="integration-form-group">
+            <p className="integration-hint"
+              style={{ color: teste.ok ? 'var(--green)' : '#B91C1C', fontWeight: 600 }}>
+              {teste.ok ? <IconCheck size={12} /> : <IconAlert size={12} />} {teste.texto}
+            </p>
+            {/* Conta sem domínio verificado: o Resend só entrega para o dono
+                dela. É o estado normal de quem acabou de criar a conta. */}
+            {!teste.ok && /only send testing emails/i.test(teste.texto) && (
+              <p className="integration-hint">
+                Enquanto o domínio não estiver verificado, esta conta do Resend só entrega
+                para o e-mail do dono dela - o endereço que aparece na mensagem acima. O
+                teste sai para quem está logado aqui, então ele só chega se as duas contas
+                forem a mesma. Verifique o domínio em <strong>resend.com › Domains</strong>
+                para escrever para o resto do mundo.
+              </p>
+            )}
+            {!teste.ok && /not authorized to send|não autorizad/i.test(teste.texto) && (
+              <p className="integration-hint">
+                A chave autenticou, mas não vale para <strong>{dominioDoRemetente}</strong>. Em
+                <strong> resend.com</strong>: confira em <strong>Domains</strong> se o domínio
+                está verificado nesta conta, e em <strong>API Keys</strong> se a chave não está
+                restrita a outro domínio. Enquanto isso, um remetente de um domínio já
+                verificado - ou o <strong>onboarding@resend.dev</strong>, que só entrega para o
+                dono da conta - faz o teste passar.
+              </p>
+            )}
+          </div>
+        )}
+
+        <div className="integration-form-actions">
+          <button className="integration-save-btn" style={{ background: RESEND_COR }}
+            onClick={chave.trim() ? salvar : salvarRemetente}
+            disabled={salvando || !endereco || (!chave.trim() && !temChave)}>
+            {salvando ? 'Salvando…'
+              : salvo ? <><IconCheck size={12} /> Salvo!</>
+                : chave.trim() ? (temChave ? 'Trocar a chave' : 'Conectar')
+                  : 'Salvar remetente'}
+          </button>
+          {temChave && (
+            <button className="integration-remove-btn" onClick={testar} disabled={testando}
+              title={usuario?.email ? `O teste vai para ${usuario.email}` : undefined}>
+              {testando ? 'Enviando…' : 'Enviar e-mail de teste'}
+            </button>
+          )}
+          {temChave && (
+            <button className="integration-remove-btn" onClick={remover} disabled={removendo}>
+              {removendo ? 'Removendo…' : 'Remover integração'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function IntegracoesTab({ token: sessionToken }: { token: string }) {
   const api = useApi(sessionToken);
   /** Uma aberta por vez: são formulários de credencial, e duas abertas ao mesmo
@@ -1381,6 +1670,18 @@ function IntegracoesTab({ token: sessionToken }: { token: string }) {
         temChave: !!d.has_key,
         conectada: !!d.connected,
         detalhe: d.has_key ? (ANTHROPIC_MODELS.find(x => x.id === d.model)?.label ?? d.model ?? null) : null,
+        em: d.updated_at ?? null,
+        carregando: false,
+      } }));
+    }).catch(() => {});
+    api('?action=resend_config').then(d => {
+      if (!vivo || !d) return;
+      setEstados(m => ({ ...m, resend: {
+        temChave: !!d.has_key,
+        // Sem chave no cofre, mas com o ambiente entregando: a linha diz que
+        // funciona, porque funciona - só não é daqui que se controla.
+        conectada: !!d.connected || !!d.pelo_ambiente,
+        detalhe: d.from ?? null,
         em: d.updated_at ?? null,
         carregando: false,
       } }));
@@ -1445,6 +1746,18 @@ function IntegracoesTab({ token: sessionToken }: { token: string }) {
             onAlternar={() => alternar('fireflies')}>
             <FirefliesIntegrationCard api={api} inicial={estadoDe('fireflies')}
               onEstado={e => anotar('fireflies', e)} />
+          </LinhaIntegracao>
+
+          <LinhaIntegracao
+            nome="Resend"
+            categoria="E-mail"
+            descricao="Entrega os avisos do portal - e a régua de comunicação que vier."
+            logo={<span className="integracao-logo integracao-logo-resend"><ResendLogo size={18} /></span>}
+            estado={estadoDe('resend')}
+            aberta={aberta === 'resend'}
+            onAlternar={() => alternar('resend')}>
+            <ResendIntegrationCard api={api} inicial={estadoDe('resend')}
+              onEstado={e => anotar('resend', e)} />
           </LinhaIntegracao>
 
         </tbody>

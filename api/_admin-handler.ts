@@ -1,8 +1,9 @@
 import type { Client } from '@libsql/client';
-import { randomUUID, randomBytes } from 'crypto';
+import { randomUUID, randomBytes, scrypt, timingSafeEqual, createHash } from 'crypto';
 import {
   ANTHROPIC_KEY, DEFAULT_ANTHROPIC_MODEL, FIREFLIES_KEY,
   getIntegrationCredential, saveIntegrationCredential,
+  RESEND_KEY, validateResendKey,
   updateIntegrationMeta, removeIntegrationCredential, validateAnthropicKey,
   validateFirefliesKey, listarReunioesFireflies, obterReuniaoFireflies,
   obterGravacaoFireflies,
@@ -570,6 +571,48 @@ async function migrarSchema(db: Client) {
       ultimo_acesso TEXT
     )
   `);
+
+  // Convite para criar a própria senha. O que vai no e-mail é um link de uso
+  // único, e não a senha: senha no corpo da mensagem fica na caixa de quem
+  // recebe e no painel de quem envia, e continua valendo depois de vazar. Um
+  // link morre no primeiro uso, e o que ele deixa para trás não abre nada.
+  //
+  // A tabela guarda o *hash* do token, como as senhas: quem ler a tabela não
+  // consegue montar o link de volta.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS senha_tokens (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      usuario_id  TEXT NOT NULL,
+      token_hash  TEXT NOT NULL UNIQUE,
+      criado_em   TEXT NOT NULL,
+      expira_em   TEXT NOT NULL,
+      usado_em    TEXT,
+      /** Quem mandou o convite - a auditoria de quem abriu a porta. */
+      criado_por  TEXT
+    )
+  `);
+  await ddl(`CREATE INDEX IF NOT EXISTS idx_senha_tokens_usuario ON senha_tokens (usuario_id)`);
+
+  // Cada e-mail que sai fica registrado: para quem foi, sobre o quê, e se o
+  // Resend aceitou. É o começo da régua de comunicação - régua que não sabe o
+  // que já mandou reenvia a mesma coisa - e é também o que faz "o e-mail não
+  // chegou" ter resposta, em vez de virar investigação.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS emails_enviados (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      destino     TEXT NOT NULL,
+      assunto     TEXT NOT NULL,
+      /** O que gerou o e-mail: 'mencao', 'etapa_tarefa', 'etapa_lead', 'teste'. */
+      tipo        TEXT NOT NULL DEFAULT 'aviso',
+      /** 'enviado' | 'falhou' | 'sem_integracao'. */
+      situacao    TEXT NOT NULL,
+      /** O id que o Resend devolve, para cruzar com o painel deles. */
+      resend_id   TEXT,
+      erro        TEXT,
+      criado_em   TEXT NOT NULL
+    )
+  `);
+  await ddl(`CREATE INDEX IF NOT EXISTS idx_emails_enviados_data ON emails_enviados (criado_em DESC)`);
 
   await ensurePermissoesSchema(ddl);
 
@@ -1756,7 +1799,7 @@ async function notifyMentions(texto: string, leadId: string, db: Client) {
     });
     const dest = u.rows[0];
     if (!dest) { console.warn('[mention-notify] sem usuário para o apelido:', apelido); continue; }
-    notifyEmail(String(dest.email), 'Você foi mencionado em um comentário', `
+    notifyEmail(db, String(dest.email), 'Você foi mencionado em um comentário', `
   <p style="font-size:14px;color:#555;margin:0 0 6px"><strong>Lead:</strong> ${esc(nomeSol)}</p>
   <blockquote style="margin:12px 0 0;padding:10px 14px;background:#F7F6F3;border-left:3px solid #00C9A7;border-radius:0 8px 8px 0;font-size:14px;color:#333">${esc(texto)}</blockquote>`);
   }
@@ -1786,7 +1829,7 @@ async function notifyStageMentions(texto: string, leadId: string, db: Client) {
     if (inscritos.length === 0) { console.log('[stage-notify] sem inscritos na etapa:', stageName); continue; }
 
     for (const dest of inscritos) {
-      notifyEmail(dest.email, `A etapa "${stageName}" foi mencionada em um comentário`, `
+      notifyEmail(db, dest.email, `A etapa "${stageName}" foi mencionada em um comentário`, `
   <p style="font-size:14px;color:#555;margin:0 0 6px"><strong>Lead:</strong> ${esc(nomeSol)}</p>
   <blockquote style="margin:12px 0 0;padding:10px 14px;background:#F7F6F3;border-left:3px solid #00C9A7;border-radius:0 8px 8px 0;font-size:14px;color:#333">${esc(texto)}</blockquote>`);
     }
@@ -1801,6 +1844,36 @@ function esc(v: unknown): string {
 }
 
 /** Moldura única dos e-mails de notificação, no acento da casa. */
+/**
+ * O endereço do portal, para os links que saem por e-mail.
+ *
+ * Vem do ambiente, e nunca do cabeçalho `Host` da requisição - esse é o ataque
+ * clássico contra justamente esta função: quem consegue forjar o `Host` faz o
+ * convite de senha apontar para um domínio dele e colhe o token na caixa de
+ * quem recebeu. O que o ambiente diz, o cliente não escolhe.
+ *
+ * `PORTAL_URL` manda quando existe; sem ela, vale o domínio de produção que a
+ * própria Vercel publica - o que dispensa configurar nada no caso normal.
+ */
+function enderecoDoPortal(): string {
+  const daCasa = (process.env.PORTAL_URL ?? '').trim();
+  // `VERCEL_PROJECT_PRODUCTION_URL` é o domínio de produção do projeto (o
+  // customizado, quando há um), e vem sem protocolo.
+  const daVercel = (process.env.VERCEL_PROJECT_PRODUCTION_URL ?? '').trim();
+  const url = daCasa
+    || (daVercel ? `https://${daVercel.replace(/^https?:\/\//, '')}` : '')
+    // O endereço oficial do portal, para o caso de nem uma nem outra existirem.
+    || 'https://portal-sheep.vercel.app';
+  return url.replace(/\/+$/, '');
+}
+
+/** O endereço de dentro de um remetente. O Resend aceita `Nome <a@b.com>`, e é
+ *  o formato que faz o e-mail chegar assinado; a validação olha só o endereço. */
+function remetenteEndereco(from: string): string {
+  const m = /<([^>]+)>/.exec(from);
+  return (m ? m[1] : from).trim();
+}
+
 function layoutEmail(titulo: string, corpo: string): string {
   return `<!DOCTYPE html><html><body style="font-family:Arial,Helvetica,sans-serif;color:#121316;background:#F7F6F3;padding:32px 0;margin:0">
 <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:14px;padding:28px 28px 24px">
@@ -1813,25 +1886,89 @@ function layoutEmail(titulo: string, corpo: string): string {
 }
 
 /**
- * Envia um e-mail pelo Resend.
+ * De onde sai o e-mail: a integração salva no painel, com as variáveis de
+ * ambiente como plano B.
+ *
+ * O cofre vem primeiro porque é onde a casa configura - trocar o remetente ou
+ * girar a chave não deveria exigir um deploy. As `RESEND_*` continuam valendo
+ * para o ambiente que ainda não passou pelo painel.
+ */
+export interface RemetenteEmail {
+  apiKey: string;
+  from: string;
+  replyTo: string | null;
+  /** De onde veio a configuração, para a tela saber o que dizer. */
+  origem: 'cofre' | 'ambiente';
+}
+
+export async function remetenteDeEmail(db: Client): Promise<RemetenteEmail | null> {
+  const cred = await getIntegrationCredential(db, RESEND_KEY).catch(() => null);
+  const doCofre = cred?.value ? String(cred.value) : '';
+  const fromCofre = String(cred?.meta?.from ?? '').trim();
+  if (doCofre && fromCofre) {
+    return {
+      apiKey: doCofre,
+      from: fromCofre,
+      replyTo: String(cred?.meta?.reply_to ?? '').trim() || null,
+      origem: 'cofre',
+    };
+  }
+  const apiKey = process.env.RESEND_API_KEY ?? '';
+  const from = process.env.RESEND_FROM_EMAIL ?? '';
+  if (apiKey && from) return { apiKey, from, replyTo: null, origem: 'ambiente' };
+  return null;
+}
+
+/**
+ * Envia um e-mail pelo Resend, e registra o que aconteceu.
  *
  * Falhar aqui é sempre não-fatal: notificação é efeito colateral, e perder uma
  * não pode derrubar a ação que a disparou (mover etapa, comentar, cadastrar).
- * Sem `RESEND_API_KEY` ou `RESEND_FROM_EMAIL` a função simplesmente não envia.
+ * Sem integração configurada a função não envia - mas registra a tentativa, que
+ * é o que transforma "o e-mail não chegou" em pergunta com resposta.
  */
-async function notifyEmail(to: string, assunto: string, corpo: string) {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM_EMAIL;
-  if (!apiKey || !from || !to) return;
+async function notifyEmail(
+  db: Client, to: string, assunto: string, corpo: string, tipo = 'aviso',
+): Promise<{ ok: boolean; id?: string; erro?: string }> {
+  if (!to) return { ok: false, erro: 'Sem destinatário.' };
+  const registrar = (situacao: string, resendId: string | null, erro: string | null) =>
+    db.execute({
+      sql: `INSERT INTO emails_enviados (destino, assunto, tipo, situacao, resend_id, erro, criado_em)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: [to, assunto, tipo, situacao, resendId, erro, new Date().toISOString()],
+    }).catch(() => { /* registro é apoio: falhar aqui não derruba o envio */ });
+
+  const remetente = await remetenteDeEmail(db);
+  if (!remetente) {
+    await registrar('sem_integracao', null, 'Resend não configurado.');
+    return { ok: false, erro: 'O envio de e-mail não está configurado.' };
+  }
   try {
     const r = await fetch('https://api.resend.com/emails', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to, subject: assunto, html: layoutEmail(assunto, corpo) }),
+      headers: { Authorization: `Bearer ${remetente.apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: remetente.from,
+        to,
+        ...(remetente.replyTo ? { reply_to: remetente.replyTo } : {}),
+        subject: assunto,
+        html: layoutEmail(assunto, corpo),
+      }),
     });
-    if (!r.ok) console.error('[notify-email]', to, await r.text().catch(() => ''));
+    const resposta: any = await r.json().catch(() => null);
+    if (!r.ok) {
+      const erro = resposta?.message ?? `HTTP ${r.status}`;
+      console.error('[notify-email]', to, erro);
+      await registrar('falhou', null, String(erro));
+      return { ok: false, erro: String(erro) };
+    }
+    await registrar('enviado', resposta?.id ? String(resposta.id) : null, null);
+    return { ok: true, id: resposta?.id ? String(resposta.id) : undefined };
   } catch (e) {
-    console.error('[notify-email]', (e as Error).message);
+    const erro = (e as Error).message;
+    console.error('[notify-email]', erro);
+    await registrar('falhou', null, erro);
+    return { ok: false, erro };
   }
 }
 
@@ -2720,6 +2857,76 @@ async function despacharAdminData(
       };
     }
 
+    // ── Resend: quem entrega os e-mails ──────────────────────────────────────
+    //
+    // A chave mora no cofre, e o remetente mora ao lado dela, nos metadados: os
+    // dois juntos são a integração. As variáveis de ambiente seguem valendo
+    // como plano B para o ambiente que ainda não passou por aqui.
+    if (action === 'resend_config') {
+      const cred = await getIntegrationCredential(db, RESEND_KEY);
+      const doAmbiente = !!(process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL);
+      if (!cred?.value) {
+        return {
+          status: 200,
+          body: {
+            has_key: false,
+            connected: false,
+            // O ambiente ainda entrega, e a tela precisa dizer isso - senão
+            // "não conectado" contradiz os e-mails que estão saindo.
+            pelo_ambiente: doAmbiente,
+            from: process.env.RESEND_FROM_EMAIL ?? null,
+            reply_to: null,
+            dominios: [],
+            updated_at: null,
+          },
+        };
+      }
+      // A checagem é ao vivo, como nas outras: chave salva não quer dizer chave
+      // válida, e a tela precisa saber a diferença.
+      const teste = await validateResendKey(cred.value);
+      return {
+        status: 200,
+        body: {
+          has_key: true,
+          connected: teste.ok,
+          error: teste.ok ? null : (teste.error ?? 'Conexão inválida.'),
+          pelo_ambiente: false,
+          from: cred.meta?.from ?? null,
+          reply_to: cred.meta?.reply_to ?? null,
+          dominios: teste.dominios?.length ? teste.dominios : (cred.meta?.dominios ?? []),
+          // Chave de acesso de envio não lista domínio: a tela precisa saber
+          // disso para não acusar de "não verificado" o que ela não consegue ver.
+          somente_envio: !!teste.somenteEnvio,
+          updated_at: cred.updatedAt ?? null,
+        },
+      };
+    }
+
+    // O que já saiu: a régua de comunicação vai crescer em cima disto, e por
+    // enquanto ele responde "o e-mail chegou?" sem virar investigação.
+    if (action === 'emails_enviados') {
+      const r = await db.execute(`
+        SELECT id, destino, assunto, tipo, situacao, erro, criado_em
+        FROM emails_enviados
+        ORDER BY criado_em DESC
+        LIMIT 50
+      `);
+      return {
+        status: 200,
+        body: {
+          emails: r.rows.map(x => ({
+            id: Number(x.id),
+            destino: String(x.destino),
+            assunto: String(x.assunto),
+            tipo: String(x.tipo),
+            situacao: String(x.situacao),
+            erro: x.erro != null ? String(x.erro) : null,
+            criado_em: String(x.criado_em),
+          })),
+        },
+      };
+    }
+
     // As reuniões da conta do Fireflies, para escolher qual anexar. Não grava
     // nada: é a vitrine de onde se puxa.
     // O resumo das reuniões de um projeto: tópicos, itens de ação e palavras
@@ -2986,6 +3193,79 @@ async function despacharAdminData(
   // ── POST ─────────────────────────────────────────────
   if (method === 'POST') {
     const action = body?.action;
+
+    if (action === 'save_resend_key') {
+      const key = String(body?.key ?? '').trim();
+      const from = String(body?.from ?? '').trim();
+      if (!key) return { status: 400, body: { error: 'Informe a chave da API.' } };
+      // Sem remetente não há envio: o Resend recusa, e é melhor recusar aqui,
+      // onde a pessoa está olhando o campo.
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(remetenteEndereco(from))) {
+        return { status: 400, body: { error: 'Informe o e-mail de quem envia.' } };
+      }
+      const teste = await validateResendKey(key);
+      if (!teste.ok) return { status: 400, body: { error: teste.error ?? 'Chave inválida.' } };
+      await saveIntegrationCredential(db, RESEND_KEY, key, {
+        from,
+        reply_to: String(body?.reply_to ?? '').trim() || null,
+        dominios: teste.dominios ?? [],
+        somente_envio: !!teste.somenteEnvio,
+        validated_at: new Date().toISOString(),
+      });
+      await registrarAuditoria(db, usuario, 'save_resend_key', from);
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          connected: true,
+          dominios: teste.dominios ?? [],
+          somente_envio: !!teste.somenteEnvio,
+        },
+      };
+    }
+
+    // Trocar só o remetente, sem reenviar a chave: quem já conectou não precisa
+    // ir buscar a chave de novo para mudar o endereço que assina os e-mails.
+    if (action === 'set_resend_remetente') {
+      const cred = await getIntegrationCredential(db, RESEND_KEY);
+      if (!cred?.value) return { status: 400, body: { error: 'Conecte o Resend antes.' } };
+      const from = String(body?.from ?? '').trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(remetenteEndereco(from))) {
+        return { status: 400, body: { error: 'Informe o e-mail de quem envia.' } };
+      }
+      await updateIntegrationMeta(db, RESEND_KEY, {
+        ...cred.meta,
+        from,
+        reply_to: String(body?.reply_to ?? '').trim() || null,
+      });
+      await registrarAuditoria(db, usuario, 'set_resend_remetente', from);
+      return { status: 200, body: { ok: true, from } };
+    }
+
+    if (action === 'remove_resend_key') {
+      await removeIntegrationCredential(db, RESEND_KEY);
+      await registrarAuditoria(db, usuario, 'remove_resend_key', null);
+      return { status: 200, body: { ok: true } };
+    }
+
+    // O teste vai para quem pediu, e só para ele: o que se quer saber é se o
+    // e-mail chega, e a caixa de quem está olhando a tela é a única que dá para
+    // conferir na hora. Escolher o destino era uma decisão a mais no meio de um
+    // gesto que existe justamente para não exigir nenhuma.
+    if (action === 'enviar_email_teste') {
+      const destino = usuario?.email ?? '';
+      if (!destino) return { status: 400, body: { error: 'Sua sessão está sem e-mail.' } };
+      const r = await notifyEmail(db, destino, 'Teste de envio do Portal Sheep', `
+  <p style="font-size:14px;color:#555;margin:0 0 6px">
+    Se você está lendo isto, a integração com o Resend está entregando.
+  </p>
+  <p style="font-size:13px;color:#777;margin:10px 0 0">
+    Enviado a pedido de ${esc(usuario?.nome ?? 'alguém')} pelo painel de Integrações.
+  </p>`, 'teste');
+      if (!r.ok) return { status: 400, body: { error: r.erro ?? 'O envio falhou.' } };
+      return { status: 200, body: { ok: true, destino, id: r.id ?? null } };
+    }
+
 
     // Código do projeto: PRJ-<ano com 2 dígitos>-<sequencial de 3>. Gerado aqui e
     // não no formulário, para não existirem dois projetos disputando o mesmo
@@ -3402,7 +3682,7 @@ function faltaEmProjeto(p: any): string | null {
   <p style="font-size:14px;color:#555;margin:0 0 4px"><strong>Projeto:</strong> ${esc(String(projeto.rows[0]?.nome ?? '-'))}</p>
   <p style="font-size:14px;color:#555;margin:0"><strong>Responsável:</strong> ${esc(String(resp.rows[0]?.nome ?? 'sem responsável'))}</p>`;
             for (const dest of inscritos) {
-              notifyEmail(dest.email, `Tarefa "${titulo}" chegou em "${statusPedido}"`, corpo);
+              notifyEmail(db, dest.email, `Tarefa "${titulo}" chegou em "${statusPedido}"`, corpo, 'etapa_tarefa');
             }
           }
         }
@@ -4213,7 +4493,7 @@ function faltaEmProjeto(p: any): string | null {
   <p style="font-size:14px;color:#555;margin:0 0 4px"><strong>Contratado:</strong> ${esc(s?.nome_contratado ?? '-')} (${esc(s?.cnpj_contratado ?? '-')})</p>
   <p style="font-size:14px;color:#555;margin:0"><strong>Valor:</strong> ${esc(s?.valor ?? '-')}</p>`;
           for (const dest of inscritos) {
-            notifyEmail(dest.email, `Lead movido para "${nome}"`, corpo);
+            notifyEmail(db, dest.email, `Lead movido para "${nome}"`, corpo, 'etapa_lead');
           }
         }
       }

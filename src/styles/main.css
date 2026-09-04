@@ -9614,6 +9614,14 @@ body.arrastando-painel {
   flex: none;
   border-radius: var(--radius-md);
 }
+/* A marca do Resend e de uma cor so: a chapa e neutra e o desenho acompanha o
+   texto do tema, em vez de um preto fixo que sumiria na folha escura. */
+.integracao-logo-resend {
+  background: var(--gray4);
+  border: 1px solid var(--gray3);
+  color: var(--black);
+}
+
 .integracao-conta,
 .integracao-quando {
   font-size: 12px;
@@ -13740,3 +13748,41 @@ body.arrastando-painel {
   .pub-entrega-fim { gap: 8px; }
   .pub-entrega-topo { padding: 10px 12px; }
 }
+
+
+/* ── Dominios do Resend ────────────────────────────────────────────────────
+   O que a conta pode assinar. Verificado e a unica situacao que importa: sem
+   ela o Resend so entrega para o dono da conta, e a regua sairia mandando no
+   vazio. */
+.resend-dominios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.resend-dominio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-pill);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--gray);
+}
+.resend-dominio > svg { color: var(--gray2); flex-shrink: 0; }
+.resend-dominio > em {
+  font-style: normal;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--gray2);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.resend-dominio.ok {
+  border-color: color-mix(in srgb, var(--green) 35%, transparent);
+  background: var(--green-soft);
+}
+.resend-dominio.ok > svg,
+.resend-dominio.ok > em { color: var(--green); }
+

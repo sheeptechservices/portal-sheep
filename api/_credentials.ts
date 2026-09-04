@@ -111,6 +111,8 @@ export async function removeIntegrationCredential(db: Client, chave: string): Pr
 export const ANTHROPIC_KEY = 'anthropic';
 /** Identificador do Fireflies no cofre. */
 export const FIREFLIES_KEY = 'fireflies';
+/** Identificador do Resend no cofre - o serviço que entrega os e-mails. */
+export const RESEND_KEY = 'resend';
 // Opus 5 custa o mesmo que o 4.8 ($5/$25 por MTok) e é melhor em compreensão de
 // documento/visão - o que importa direto na leitura dos anexos da análise.
 export const DEFAULT_ANTHROPIC_MODEL = 'claude-opus-5';
@@ -343,4 +345,75 @@ export async function getAnthropicCredential(db: Client): Promise<AnthropicCrede
   const envKey = process.env.ANTHROPIC_API_KEY;
   if (envKey) return { apiKey: envKey, model: DEFAULT_ANTHROPIC_MODEL, source: 'env' };
   return null;
+}
+
+/** A chave do Resend, conferida em duas tentativas.
+ *
+ *  A primeira é a lista de domínios: é a consulta mais barata que existe lá,
+ *  não envia nada, e devolve justamente o que a tela precisa mostrar - de quais
+ *  domínios esta conta pode enviar, e quais já estão verificados. Sem domínio
+ *  verificado, o Resend só entrega para o e-mail do dono da conta, e é melhor a
+ *  tela dizer isso antes de a régua começar a disparar.
+ *
+ *  Só que chave do Resend tem alcance: a de **acesso de envio** - a que a
+ *  maioria cria - não enxerga domínio nenhum, e responde 401 ali. Recusá-la
+ *  seria dizer "chave inválida" para uma chave que envia perfeitamente. Então a
+ *  segunda tentativa bate na porta do envio com um corpo vazio: chave boa volta
+ *  com erro de validação (falta destinatário), chave ruim volta com 401. Nada é
+ *  enviado nos dois casos. */
+export async function validateResendKey(apiKey: string): Promise<{
+  ok: boolean;
+  dominios?: { nome: string; situacao: string; verificado: boolean }[];
+  /** A chave envia, mas não lista domínios: é uma chave de acesso de envio. */
+  somenteEnvio?: boolean;
+  error?: string;
+}> {
+  const chave = (apiKey ?? '').trim();
+  if (!chave) return { ok: false, error: 'Chave ausente.' };
+  try {
+    const res = await fetch('https://api.resend.com/domains', {
+      headers: { Authorization: `Bearer ${chave}` },
+    });
+    if (res.status === 401 || res.status === 403) {
+      const envia = await chavePodeEnviar(chave);
+      if (envia.ok) return { ok: true, dominios: [], somenteEnvio: true };
+      return { ok: false, error: envia.error ?? 'Chave inválida ou revogada.' };
+    }
+    const corpo: any = await res.json().catch(() => null);
+    if (!res.ok) {
+      return { ok: false, error: corpo?.message ?? `Falha na validação (HTTP ${res.status}).` };
+    }
+    const lista: any[] = Array.isArray(corpo?.data) ? corpo.data : [];
+    return {
+      ok: true,
+      dominios: lista.map(d => ({
+        nome: String(d?.name ?? ''),
+        situacao: String(d?.status ?? ''),
+        verificado: String(d?.status ?? '').toLowerCase() === 'verified',
+      })).filter(d => d.nome),
+    };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Sem conexão com o Resend.' };
+  }
+}
+
+/** Bate na porta do envio sem enviar nada: corpo vazio é recusado pela
+ *  validação deles, e o que interessa aqui é justamente *qual* recusa vem. */
+async function chavePodeEnviar(chave: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${chave}`, 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    if (res.status === 401 || res.status === 403) {
+      const corpo: any = await res.json().catch(() => null);
+      return { ok: false, error: corpo?.message ?? 'Chave inválida ou revogada.' };
+    }
+    // Qualquer outra resposta veio de uma chave autenticada: 422 e 400 são a
+    // validação reclamando do corpo vazio, que é o que se queria.
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Sem conexão com o Resend.' };
+  }
 }
