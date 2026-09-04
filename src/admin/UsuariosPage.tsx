@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { iniciais, useAuth, useToast } from './AdminApp';
 import { IconAlert, IconCheck, IconChevronDown, IconSpinner } from '../components/icons';
+import { CampoSenha } from '../components/CampoSenha';
+import { useSaidaSuave } from '../lib/useSaidaSuave';
+import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import {
   PAPEIS_ATRIBUIVEIS, PAPEL_DESCRICAO, PAPEL_LABEL,
@@ -38,6 +41,8 @@ interface UsuarioLinha {
   ativo: boolean;
   /** Entrou por convite, e não pelo domínio da casa. */
   convidado: boolean;
+  /** Tem senha definida: entra também pela porta de e-mail e senha. */
+  tem_senha: boolean;
   criado_em: string;
   ultimo_acesso: string | null;
   sessoes_abertas: number;
@@ -221,17 +226,69 @@ function ConfirmarDesativar({ nome, onCancelar, onConfirmar }: {
  *  cliente, um parceiro, alguém com conta pessoal - a entrada só existe depois
  *  de cadastrada aqui: o login com o Google confere este cadastro antes de
  *  deixar passar. */
+/** O mesmo mínimo que o servidor exige. Escrito aqui de novo porque o front
+ *  não importa de `api/` - o servidor continua sendo quem decide, e a tela só
+ *  evita a ida ao servidor para ouvir o óbvio. */
+const SENHA_MINIMA = 8;
+
+/** A confirmação de mandar o convite de criar a senha.
+ *
+ *  Não há campo: nem quem clica nem o servidor escolhem a senha. O que vai por
+ *  e-mail é um link de uso único, e quem cria a senha é a própria pessoa - só
+ *  ela abre a caixa onde o link chegou. Senha escrita no corpo do e-mail ficaria
+ *  na caixa de quem recebe e no painel de quem envia, e continuaria valendo
+ *  depois de vazar. */
+function EnviarSenhaAoConvidado({ pessoa, enviando, onEnviar, onFechar }: {
+  pessoa: UsuarioLinha;
+  enviando: boolean;
+  onEnviar: () => void;
+  onFechar: () => void;
+}) {
+  const { saindo, fechar } = useSaidaSuave(onFechar);
+  const fundo = useFecharNoFundo(fechar);
+
+  return createPortal(
+    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`}
+      style={{ zIndex: 1200, alignItems: 'center', justifyContent: 'center' }} {...fundo}>
+      <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
+        <p className="delete-confirm-title">
+          {pessoa.tem_senha ? 'Mandar um convite novo?' : 'Mandar o convite de senha?'}
+        </p>
+        <p className="delete-confirm-desc">
+          <strong>{pessoa.email}</strong> recebe um link para criar a própria senha. Ele vale
+          24 horas e só pode ser usado uma vez. {pessoa.tem_senha
+            ? 'A senha atual continua valendo até ela criar a nova.'
+            : 'Depois disso, ela entra por e-mail e senha, além do Google.'}
+        </p>
+        <div className="delete-confirm-actions">
+          <button className="delete-confirm-cancel" onClick={fechar}>Cancelar</button>
+          <button className="delete-confirm-ok" disabled={enviando}
+            style={{ background: 'var(--yellow)', color: 'var(--on-yellow)' }}
+            onClick={onEnviar}>
+            {enviando ? 'Enviando…' : 'Enviar convite'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function ConvidarPessoa({ aberto, onConvidar, onFechar, enviando }: {
   /** O bloco fica montado o tempo todo: é o que permite abrir e fechar com
    *  animação em vez de aparecer de estalo. */
   aberto: boolean;
-  onConvidar: (nome: string, email: string, papel: Papel) => void;
+  onConvidar: (nome: string, email: string, papel: Papel, senha: string) => void;
   onFechar: () => void;
   enviando: boolean;
 }) {
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [papel, setPapel] = useState<Papel>('membro');
+  /** A senha é opcional: sem ela, a pessoa entra pelo Google. Com ela, ganha
+   *  também a porta de e-mail e senha - a única saída para quem não tem conta
+   *  Google nenhuma. */
+  const [senha, setSenha] = useState('');
   const primeiro = useRef<HTMLInputElement>(null);
 
   // O foco vai para o primeiro campo quando o bloco abre - e não na montagem,
@@ -240,10 +297,12 @@ function ConvidarPessoa({ aberto, onConvidar, onFechar, enviando }: {
     if (aberto) primeiro.current?.focus();
   }, [aberto]);
 
+  const senhaCurta = senha.length > 0 && senha.length < SENHA_MINIMA;
+
   function enviar() {
-    if (!nome.trim() || !email.trim()) return;
-    onConvidar(nome.trim(), email.trim(), papel);
-    setNome(''); setEmail(''); setPapel('membro');
+    if (!nome.trim() || !email.trim() || senhaCurta) return;
+    onConvidar(nome.trim(), email.trim(), papel, senha);
+    setNome(''); setEmail(''); setPapel('membro'); setSenha('');
     onFechar();
   }
 
@@ -258,7 +317,7 @@ function ConvidarPessoa({ aberto, onConvidar, onFechar, enviando }: {
             onKeyDown={e => { if (e.key === 'Enter') enviar(); if (e.key === 'Escape') onFechar(); }} />
         </label>
         <label className="form-group">
-          <span className="form-label">E-mail do Google</span>
+          <span className="form-label">E-mail</span>
           <input className="form-input" value={email} type="email"
             placeholder="a conta com que ela vai entrar"
             onChange={e => setEmail(e.target.value)}
@@ -274,11 +333,33 @@ function ConvidarPessoa({ aberto, onConvidar, onFechar, enviando }: {
             onEscolher={setPapel} />
         </div>
       </div>
+      {/* A senha vem numa linha própria, embaixo: ela é a exceção - quem tem
+          conta Google não precisa dela, e deixá-la no meio dos campos
+          obrigatórios faria parecer que precisa. */}
+      <div className="usuarios-convite-campos">
+        <label className="form-group" style={{ flex: '1 1 240px' }}>
+          <span className="form-label">Senha (opcional)</span>
+          <CampoSenha
+            valor={senha}
+            onMudar={setSenha}
+            erro={senhaCurta}
+            comSorteio
+            placeholder="para quem não tem conta Google"
+            onKeyDown={e => { if (e.key === 'Enter') enviar(); if (e.key === 'Escape') onFechar(); }}
+          />
+          <span className="usuarios-senha-dica">
+            {senhaCurta
+              ? `Ao menos ${SENHA_MINIMA} caracteres.`
+              : 'Com senha, a pessoa também entra por e-mail e senha na tela de acesso.'}
+          </span>
+        </label>
+      </div>
       <div className="usuarios-convite-acoes">
         <button type="button" className="btn btn-secondary btn-sm" onClick={onFechar}>
           Cancelar
         </button>
-        <button type="button" className="btn btn-primary btn-sm" disabled={enviando || !nome.trim() || !email.trim()}
+        <button type="button" className="btn btn-primary btn-sm"
+          disabled={enviando || !nome.trim() || !email.trim() || senhaCurta}
           onClick={enviar}>
           {enviando ? 'Convidando…' : 'Convidar'}
         </button>
@@ -330,19 +411,34 @@ export default function UsuariosPage({ token }: { token: string }) {
   }, [token, onSessionExpired, toast]);
 
   const [convidando, setConvidando] = useState(false);
+  /** De quem é a senha que está sendo definida agora, no diálogo. */
+  const [senhaDe, setSenhaDe] = useState<UsuarioLinha | null>(null);
   const [convitePronto, setConvitePronto] = useState(false);
 
-  async function convidar(nome: string, email: string, papel: Papel) {
+  async function convidar(nome: string, email: string, papel: Papel, senha: string) {
     setConvidando(true);
-    const r = await chamar({ action: 'convidar_usuario', nome, email, papel });
+    const r = await chamar({ action: 'convidar_usuario', nome, email, papel, senha });
     setConvidando(false);
     if (!r?.usuario) return;
     // Entra na lista na hora, com o id que o servidor acabou de dar.
     const nova = r.usuario;
     setUsuarios(lista => [nova, ...(lista ?? []).filter(x => x.id !== nova.id)]);
     setConvitePronto(false);
-    toast('success', 'Convite feito',
-      `${nova.nome} já pode entrar com ${nova.email}.`);
+    toast('success', 'Convite feito', senha
+      ? `${nova.nome} entra com ${nova.email}, pelo Google ou pela senha.`
+      : `${nova.nome} já pode entrar com ${nova.email}.`);
+  }
+
+  /** Manda o convite de criar a senha. Nem esta tela nem o servidor escolhem a
+   *  senha: quem cria é a pessoa, do outro lado do link. */
+  async function enviarSenha(u: UsuarioLinha) {
+    setSalvando(u.id);
+    const r = await chamar({ action: 'enviar_link_senha', usuario_id: u.id });
+    setSalvando(null);
+    if (!r) return;
+    setSenhaDe(null);
+    toast('success', 'Convite enviado',
+      `${u.nome} recebeu em ${u.email} o link para criar a senha. Ele vale 24 horas.`);
   }
 
   async function trocarPapel(u: UsuarioLinha, papel: Papel) {
@@ -455,7 +551,7 @@ export default function UsuariosPage({ token }: { token: string }) {
         <div>
           <ConvidarPessoa
             aberto={convitePronto}
-            onConvidar={(n, e, p) => void convidar(n, e, p)}
+            onConvidar={(n, e, p, senha) => void convidar(n, e, p, senha)}
             onFechar={() => setConvitePronto(false)}
             enviando={convidando}
           />
@@ -534,6 +630,21 @@ export default function UsuariosPage({ token }: { token: string }) {
                         <span className={`usuarios-situacao${u.ativo ? ' ativa' : ''}`}>
                           {u.ativo ? 'Ativo' : 'Sem acesso'}
                         </span>
+                        {/* Só de convidado: quem é da casa entra pelo Workspace, e
+                            uma senha ali seria uma segunda porta para uma conta
+                            que já tem dono. */}
+                        {u.convidado && salvando !== u.id && (
+                          <button
+                            type="button"
+                            className={`usuarios-btn-acesso${u.tem_senha ? ' com-senha' : ''}`}
+                            title={u.tem_senha
+                              ? 'Já entra por e-mail e senha. Clique para mandar um convite novo.'
+                              : 'Mandar por e-mail um link para esta pessoa criar a própria senha'}
+                            onClick={() => setSenhaDe(u)}
+                          >
+                            Enviar senha
+                          </button>
+                        )}
                         {salvando === u.id
                           ? <span className="usuarios-salvando"><IconSpinner size={13} /></span>
                           : !dono && (
@@ -554,6 +665,15 @@ export default function UsuariosPage({ token }: { token: string }) {
           </table>
         </div>
       </div>
+
+      {senhaDe && (
+        <EnviarSenhaAoConvidado
+          pessoa={senhaDe}
+          enviando={salvando === senhaDe.id}
+          onEnviar={() => void enviarSenha(senhaDe)}
+          onFechar={() => setSenhaDe(null)}
+        />
+      )}
 
       <div>
         <p className="admin-section-title">O que cada papel pode</p>

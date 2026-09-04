@@ -345,15 +345,44 @@ export default defineConfig(({ mode }) => {
               try {
                 const { createClient } = await import('@libsql/client')
                 const db = createClient({ url: env.TURSO_DATABASE_URL, authToken: env.TURSO_AUTH_TOKEN })
-                const { handleAdminData, createAdminSession, getAdminSession, deleteAdminSession, checkLoginRateLimit, recordFailedLogin, clearLoginAttempts, upsertUsuarioGoogle, registrarAuditoria } = await import('./api/_admin-handler')
+                const { handleAdminData, createAdminSession, getAdminSession, deleteAdminSession, checkLoginRateLimit, recordFailedLogin, clearLoginAttempts, upsertUsuarioGoogle, registrarAuditoria, usuarioPorSenha, donoDoTokenSenha, usarTokenSenha } = await import('./api/_admin-handler')
                 const qs = new URLSearchParams(url.search)
                 const parsed = body ? JSON.parse(body) : {}
                 const bodyAction = req.method === 'POST' ? (parsed?.action ?? '') : ''
 
-                // Entrada por senha removida em 28/08/2026 - espelha api/admin-data.ts.
+                // Entrada por senha compartilhada removida em 28/08/2026 - espelha
+                // api/admin-data.ts.
                 if (bodyAction === 'login') {
                   res.statusCode = 410
-                  res.end(JSON.stringify({ error: 'A entrada por senha foi desativada. Use sua conta Google da DUX.' }))
+                  res.end(JSON.stringify({ error: 'A entrada por senha compartilhada foi desativada.' }))
+                  return
+                }
+
+                // E-mail e senha do convidado - espelha api/admin-data.ts.
+                if (bodyAction === 'login-senha') {
+                  const ip = String(
+                    (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() ??
+                    req.socket?.remoteAddress ??
+                    '0.0.0.0'
+                  )
+                  if (await checkLoginRateLimit(db, ip)) {
+                    res.statusCode = 429
+                    res.end(JSON.stringify({ error: 'Muitas tentativas incorretas. Aguarde 15 minutos.' }))
+                    return
+                  }
+                  const email = String(parsed?.email ?? '').trim().toLowerCase()
+                  const senha = String(parsed?.senha ?? '')
+                  const usuario = email && senha ? await usuarioPorSenha(db, email, senha) : null
+                  if (!usuario) {
+                    await recordFailedLogin(db, ip)
+                    res.statusCode = 401
+                    res.end(JSON.stringify({ error: 'E-mail ou senha incorretos.' }))
+                    return
+                  }
+                  await clearLoginAttempts(db, ip)
+                  const token = await createAdminSession(db, usuario.id)
+                  await registrarAuditoria(db, usuario, 'login-senha', usuario.email)
+                  res.end(JSON.stringify({ token, usuario }))
                   return
                 }
 
@@ -400,6 +429,43 @@ export default defineConfig(({ mode }) => {
                     res.statusCode = 401
                     res.end(JSON.stringify({ error: 'Esta conta Google não tem acesso.' }))
                   }
+                  return
+                }
+
+                // O convite de criar a senha - espelha api/admin-data.ts.
+                if (bodyAction === 'senha-token-info') {
+                  const dono = await donoDoTokenSenha(db, String(parsed?.token ?? ''))
+                  if (!dono) {
+                    res.statusCode = 410
+                    res.end(JSON.stringify({ error: 'Este link não vale mais. Peça um novo ao time.' }))
+                    return
+                  }
+                  res.end(JSON.stringify({ nome: dono.nome, email: dono.email }))
+                  return
+                }
+
+                if (bodyAction === 'senha-token-usar') {
+                  const ip = String(
+                    (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() ??
+                    req.socket?.remoteAddress ??
+                    '0.0.0.0'
+                  )
+                  if (await checkLoginRateLimit(db, ip)) {
+                    res.statusCode = 429
+                    res.end(JSON.stringify({ error: 'Muitas tentativas. Aguarde 15 minutos.' }))
+                    return
+                  }
+                  const r = await usarTokenSenha(db, String(parsed?.token ?? ''), String(parsed?.senha ?? ''))
+                  if (!r.ok) {
+                    await recordFailedLogin(db, ip)
+                    res.statusCode = 400
+                    res.end(JSON.stringify({ error: r.erro }))
+                    return
+                  }
+                  await clearLoginAttempts(db, ip)
+                  const token = await createAdminSession(db, r.usuario.id)
+                  await registrarAuditoria(db, r.usuario, 'senha-criada-por-link', r.usuario.email)
+                  res.end(JSON.stringify({ token, usuario: r.usuario }))
                   return
                 }
 

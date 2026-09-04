@@ -3,7 +3,7 @@ import { createClient } from '@libsql/client';
 import {
   handleAdminData, createAdminSession, getAdminSession, deleteAdminSession,
   checkLoginRateLimit, recordFailedLogin, clearLoginAttempts, upsertUsuarioGoogle, registrarAuditoria,
-  usuarioConvidadoAtivo,
+  usuarioConvidadoAtivo, usuarioPorSenha, donoDoTokenSenha, usarTokenSenha,
   type SessaoAdmin,
 } from './_admin-handler.js';
 import { getQuery } from './_query.js';
@@ -24,12 +24,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const db = getDb();
   const bodyAction = req.method === 'POST' ? (req.body?.action ?? '') : '';
 
-  // A entrada por senha compartilhada foi removida em 28/08/2026: ela criava
-  // sessão sem dono, e toda escrita dela ficava anônima na auditoria. O único
-  // caminho é `login-google`, abaixo. A ação antiga responde 410 para deixar
-  // claro que sumiu de propósito, em vez de 400 de "ação inválida".
+  // A senha *compartilhada* foi removida em 28/08/2026: ela criava sessão sem
+  // dono, e toda escrita dela ficava anônima na auditoria. A ação antiga
+  // responde 410 para deixar claro que sumiu de propósito, em vez de 400 de
+  // "ação inválida". O que existe hoje é outra coisa: senha por pessoa, só de
+  // convidado, criada por quem convidou - ver `login-senha` logo abaixo.
   if (bodyAction === 'login') {
-    return res.status(410).json({ error: 'A entrada por senha foi desativada. Use sua conta Google da DUX.' });
+    return res.status(410).json({ error: 'A entrada por senha compartilhada foi desativada.' });
+  }
+
+  // A porta alternativa: e-mail e senha, para o convidado que não tem conta
+  // Google. Mesmo limitador do Google - é o caminho mais fácil de martelar.
+  if (bodyAction === 'login-senha') {
+    const ip = String(
+      (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() ??
+      req.socket?.remoteAddress ??
+      '0.0.0.0'
+    );
+    try {
+      if (await checkLoginRateLimit(db, ip)) {
+        return res.status(429).json({ error: 'Muitas tentativas incorretas. Aguarde 15 minutos.' });
+      }
+      const email = String(req.body?.email ?? '').trim().toLowerCase();
+      const senha = String(req.body?.senha ?? '');
+      const usuario = email && senha ? await usuarioPorSenha(db, email, senha) : null;
+      if (!usuario) {
+        // Uma recusa só, sem dizer se o que falhou foi o e-mail ou a senha:
+        // a diferença entre as duas mensagens é um mapa de quem existe.
+        await recordFailedLogin(db, ip);
+        return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
+      }
+      await clearLoginAttempts(db, ip);
+      const token = await createAdminSession(db, usuario.id);
+      await registrarAuditoria(db, usuario, 'login-senha', usuario.email);
+      console.log('[admin-data] login-senha ok:', usuario.email);
+      return res.status(200).json({ token, usuario });
+    } catch (err) {
+      console.error('[admin-data] login-senha error', err);
+      return res.status(500).json({ error: 'Erro interno.' });
+    }
   }
 
   // Login com o Google - também não exige sessão. Conta pelo mesmo limitador do
@@ -87,6 +120,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ token, usuario });
     } catch (err) {
       console.error('[admin-data] login-google error', err);
+      return res.status(500).json({ error: 'Erro interno.' });
+    }
+  }
+
+  // ── O convite de criar a senha ───────────────────────────────────────────
+  //
+  // Sem sessão, e é o ponto: quem chega aqui ainda não tem uma. O que prova
+  // quem a pessoa é não é um login, é o token que só existe na caixa de e-mail
+  // dela - e ele vale 24 horas e uma vez só.
+
+  // De quem é o convite, para a tela dizer "crie a senha de fulano" em vez de
+  // pedir a senha de ninguém.
+  if (bodyAction === 'senha-token-info') {
+    try {
+      const dono = await donoDoTokenSenha(db, String(req.body?.token ?? ''));
+      if (!dono) return res.status(410).json({ error: 'Este link não vale mais. Peça um novo ao time.' });
+      return res.status(200).json({ nome: dono.nome, email: dono.email });
+    } catch (err) {
+      console.error('[admin-data] senha-token-info', err);
+      return res.status(500).json({ error: 'Erro interno.' });
+    }
+  }
+
+  // Gasta o convite: grava a senha escolhida e já devolve a sessão, para quem
+  // acabou de criar a senha entrar sem digitá-la de novo na tela ao lado.
+  if (bodyAction === 'senha-token-usar') {
+    const ip = String(
+      (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() ??
+      req.socket?.remoteAddress ??
+      '0.0.0.0'
+    );
+    try {
+      // Mesmo limitador da entrada: token é adivinhável no papel, e sem freio
+      // alguém poderia tentar aos milhares.
+      if (await checkLoginRateLimit(db, ip)) {
+        return res.status(429).json({ error: 'Muitas tentativas. Aguarde 15 minutos.' });
+      }
+      const r = await usarTokenSenha(db, String(req.body?.token ?? ''), String(req.body?.senha ?? ''));
+      if (!r.ok) {
+        await recordFailedLogin(db, ip);
+        return res.status(400).json({ error: r.erro });
+      }
+      await clearLoginAttempts(db, ip);
+      const token = await createAdminSession(db, r.usuario.id);
+      await registrarAuditoria(db, r.usuario, 'senha-criada-por-link', r.usuario.email);
+      console.log('[admin-data] senha criada por link:', r.usuario.email);
+      return res.status(200).json({ token, usuario: r.usuario });
+    } catch (err) {
+      console.error('[admin-data] senha-token-usar', err);
       return res.status(500).json({ error: 'Erro interno.' });
     }
   }

@@ -684,6 +684,10 @@ async function migrarSchema(db: Client) {
   // de um e-mail de fora. Sem a marca, e-mail de fora continua sem acesso.
   try {
     await ddl(`ALTER TABLE usuarios ADD COLUMN convidado INTEGER NOT NULL DEFAULT 0`);
+    // A senha de quem entra sem Google. Só o convidado tem: quem é da casa
+    // entra pelo Workspace, e uma segunda porta para ele seria uma porta a
+    // mais para defender. Guarda o hash, nunca a senha.
+    await ddl(`ALTER TABLE usuarios ADD COLUMN senha_hash TEXT`);
   } catch (_) { /* already exists */ }
 
   // Migration: add always_collapsed flag (etapa pontual - fica recolhida no kanban
@@ -1451,6 +1455,206 @@ function rowToUsuario(r: Record<string, any>): UsuarioAdmin {
  * responde sim para linha marcada como convidada e ativa - desligar o acesso no
  * painel basta para barrar a próxima entrada.
  */
+// ── Senha do convidado ───────────────────────────────────────────────────────
+//
+//  Quem tem e-mail da casa entra pelo Google e ponto. O convidado - um cliente,
+//  um parceiro - nem sempre tem conta Google, e para ele existe esta segunda
+//  porta: e-mail e senha, criados por quem convidou.
+//
+//  A senha nunca é guardada. O que fica na linha é `scrypt$sal$hash`, com sal
+//  próprio por pessoa: duas pessoas com a mesma senha têm hashes diferentes, e
+//  um vazamento da tabela não devolve as senhas.
+
+/** Custo do scrypt. O padrão do Node, que leva ~100ms por conferência - tempo
+ *  de sobra para uma entrada, e caro o suficiente para quem tenta adivinhar. */
+const SCRYPT_N = 16384;
+const SCRYPT_BYTES = 64;
+
+function derivar(senha: string, sal: Buffer): Promise<Buffer> {
+  return new Promise((ok, erro) => {
+    scrypt(senha.normalize('NFKC'), sal, SCRYPT_BYTES, { N: SCRYPT_N }, (e, chave) => {
+      if (e) erro(e); else ok(chave);
+    });
+  });
+}
+
+/** O tamanho mínimo. Curto demais não protege nem contra chute de terceiro. */
+export const SENHA_MINIMA = 8;
+
+/** Uma senha sorteada aqui, e não na tela: a senha que vai por e-mail nunca
+ *  passa pelo navegador de quem clicou - ele pede o envio, e é só. Sem letra
+ *  parecida com número (l, I, O, 0), porque alguém vai digitá-la à mão. */
+export function sortearSenha(tamanho = 14): string {
+  const alfabeto = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = randomBytes(tamanho);
+  return Array.from(bytes, b => alfabeto[b % alfabeto.length]).join('');
+}
+
+export async function criarHashSenha(senha: string): Promise<string> {
+  const sal = randomBytes(16);
+  const chave = await derivar(senha, sal);
+  return `scrypt$${sal.toString('hex')}$${chave.toString('hex')}`;
+}
+
+/** Confere a senha contra o hash guardado, sem vazar tempo: a comparação é
+ *  constante, senão o próprio relógio diria quantos bytes acertaram. */
+export async function conferirSenha(senha: string, guardado: string | null): Promise<boolean> {
+  if (!guardado) return false;
+  const [algo, salHex, chaveHex] = guardado.split('$');
+  if (algo !== 'scrypt' || !salHex || !chaveHex) return false;
+  try {
+    const esperado = Buffer.from(chaveHex, 'hex');
+    const veio = await derivar(senha, Buffer.from(salHex, 'hex'));
+    return esperado.length === veio.length && timingSafeEqual(esperado, veio);
+  } catch {
+    return false;
+  }
+}
+
+// ── O link de criar a própria senha ─────────────────────────────────────────
+//
+//  O que viaja por e-mail é um endereço com um token grande e aleatório. Aqui
+//  fica só o hash dele: a tabela não permite remontar o link, do mesmo jeito
+//  que a coluna de senha não permite remontar a senha.
+//
+//  O token vale 24 horas e uma vez só. E a checagem de quem ele é acontece no
+//  resgate, não na criação: se a pessoa perdeu o acesso no meio do caminho, o
+//  link deixa de abrir.
+
+/** Quanto tempo o convite fica de pé. Curto porque é um caminho de acesso
+ *  esperando ser usado - e longo o bastante para caber um fim de semana. */
+const TOKEN_SENHA_HORAS = 24;
+
+const hashDoToken = (token: string) => createHash('sha256').update(token).digest('hex');
+
+/** Cria o convite e devolve o token cru - a única vez em que ele existe fora
+ *  do e-mail. Convites anteriores da mesma pessoa morrem aqui: dois links
+ *  vivos são duas portas, e só uma delas foi pedida. */
+export async function criarTokenSenha(
+  db: Client, usuarioId: string, criadoPor: string | null,
+): Promise<string> {
+  await ensureAdminSchema(db);
+  await db.execute({
+    sql: 'DELETE FROM senha_tokens WHERE usuario_id = ? AND usado_em IS NULL',
+    args: [usuarioId],
+  });
+  const token = randomBytes(32).toString('base64url');
+  const agora = new Date();
+  await db.execute({
+    sql: `INSERT INTO senha_tokens (usuario_id, token_hash, criado_em, expira_em, criado_por)
+          VALUES (?, ?, ?, ?, ?)`,
+    args: [
+      usuarioId,
+      hashDoToken(token),
+      agora.toISOString(),
+      new Date(agora.getTime() + TOKEN_SENHA_HORAS * 3600_000).toISOString(),
+      criadoPor,
+    ],
+  });
+  return token;
+}
+
+/** De quem é o convite, se ele ainda vale. Devolve `null` para token
+ *  inexistente, expirado, já usado ou de alguém que perdeu o acesso - sem
+ *  distinguir entre os casos para fora. */
+export async function donoDoTokenSenha(
+  db: Client, token: string,
+): Promise<{ id: string; nome: string; email: string } | null> {
+  await ensureAdminSchema(db);
+  if (!token) return null;
+  const r = await db.execute({
+    sql: `SELECT t.id, t.expira_em, t.usado_em, u.id AS usuario_id, u.nome, u.email, u.ativo, u.convidado
+          FROM senha_tokens t
+          JOIN usuarios u ON u.id = t.usuario_id
+          WHERE t.token_hash = ?
+          LIMIT 1`,
+    args: [hashDoToken(token)],
+  });
+  const linha = r.rows[0] as Record<string, any> | undefined;
+  if (!linha) return null;
+  if (linha.usado_em) return null;
+  if (String(linha.expira_em) <= new Date().toISOString()) return null;
+  // A elegibilidade é conferida agora, e não quando o link foi criado: acesso
+  // removido no meio do caminho fecha a porta.
+  if (Number(linha.ativo) !== 1 || Number(linha.convidado) !== 1) return null;
+  return { id: String(linha.usuario_id), nome: String(linha.nome), email: String(linha.email) };
+}
+
+/** Gasta o convite e grava a senha que a pessoa escolheu. Devolve o usuário,
+ *  para quem chamou poder abrir a sessão dele em seguida. */
+export async function usarTokenSenha(
+  db: Client, token: string, senha: string,
+): Promise<{ ok: true; usuario: UsuarioAdmin } | { ok: false; erro: string }> {
+  const dono = await donoDoTokenSenha(db, token);
+  if (!dono) return { ok: false, erro: 'Este link não vale mais. Peça um novo ao time.' };
+  if (senha.length < SENHA_MINIMA) {
+    return { ok: false, erro: `A senha precisa de ao menos ${SENHA_MINIMA} caracteres.` };
+  }
+  const agora = new Date().toISOString();
+  // Marca primeiro, e só grava a senha se a marca pegou: dois cliques ao mesmo
+  // tempo no mesmo link não podem virar duas gravações.
+  const gasto = await db.execute({
+    sql: 'UPDATE senha_tokens SET usado_em = ? WHERE token_hash = ? AND usado_em IS NULL',
+    args: [agora, hashDoToken(token)],
+  });
+  if ((gasto.rowsAffected ?? 0) === 0) {
+    return { ok: false, erro: 'Este link já foi usado. Peça um novo ao time.' };
+  }
+  await db.execute({
+    sql: 'UPDATE usuarios SET senha_hash = ? WHERE id = ?',
+    args: [await criarHashSenha(senha), dono.id],
+  });
+  // Senha nova fecha as sessões antigas daquela pessoa - inclusive as de quem
+  // porventura estivesse entrando com a senha anterior.
+  await db.execute({ sql: 'DELETE FROM admin_sessions WHERE usuario_id = ?', args: [dono.id] });
+  const r = await db.execute({
+    sql: 'SELECT id, email, nome, foto_url, papel FROM usuarios WHERE id = ?', args: [dono.id],
+  });
+  const u = r.rows[0] as Record<string, any>;
+  return {
+    ok: true,
+    usuario: {
+      id: String(u.id),
+      email: String(u.email),
+      nome: String(u.nome),
+      foto_url: u.foto_url != null ? String(u.foto_url) : null,
+      papel: papelEfetivo(String(u.email), u.papel),
+    },
+  };
+}
+
+/** Quem entra por e-mail e senha. Só convidado ativo com senha definida - e a
+ *  recusa é sempre a mesma, sem dizer se o que falhou foi o e-mail ou a senha. */
+export async function usuarioPorSenha(
+  db: Client, email: string, senha: string,
+): Promise<UsuarioAdmin | null> {
+  await ensureAdminSchema(db);
+  const r = await db.execute({
+    sql: `SELECT id, email, nome, foto_url, papel, ativo, senha_hash
+          FROM usuarios
+          WHERE email = ? AND ativo = 1 AND convidado = 1
+          LIMIT 1`,
+    args: [email.trim().toLowerCase()],
+  });
+  const linha = r.rows[0] as Record<string, any> | undefined;
+  if (!linha) return null;
+  if (!await conferirSenha(senha, linha.senha_hash != null ? String(linha.senha_hash) : null)) {
+    return null;
+  }
+  const agora = new Date().toISOString();
+  await db.execute({
+    sql: 'UPDATE usuarios SET ultimo_acesso = ? WHERE id = ?',
+    args: [agora, String(linha.id)],
+  });
+  return {
+    id: String(linha.id),
+    email: String(linha.email),
+    nome: String(linha.nome),
+    foto_url: linha.foto_url != null ? String(linha.foto_url) : null,
+    papel: papelEfetivo(String(linha.email), linha.papel),
+  };
+}
+
 export async function usuarioConvidadoAtivo(db: Client, email: string): Promise<boolean> {
   await ensureAdminSchema(db);
   const r = await db.execute({
@@ -2220,7 +2424,8 @@ async function despacharAdminData(
         // A ordem final é dada em JS, pelo papel *efetivo* - ver o sort abaixo.
         // Aqui fica só o critério de desempate, que o banco resolve de graça.
         db.execute(`
-          SELECT id, email, nome, foto_url, papel, ativo, convidado, criado_em, ultimo_acesso
+          SELECT id, email, nome, foto_url, papel, ativo, convidado, criado_em, ultimo_acesso,
+                 senha_hash IS NOT NULL AS tem_senha
           FROM usuarios
           ORDER BY ativo DESC, ultimo_acesso DESC, nome
         `),
@@ -2248,6 +2453,8 @@ async function despacharAdminData(
           ativo: Number(r.ativo) === 1,
           // Quem entra por convite, e não pelo domínio da casa.
           convidado: Number(r.convidado) === 1,
+          // Tem senha definida: pode entrar sem Google, pela porta alternativa.
+          tem_senha: Number(r.tem_senha) === 1,
           criado_em: String(r.criado_em ?? ''),
           ultimo_acesso: r.ultimo_acesso != null ? String(r.ultimo_acesso) : null,
           sessoes_abertas: abertas.get(String(r.id)) ?? 0,
@@ -4353,6 +4560,10 @@ function faltaEmProjeto(p: any): string | null {
       const email = String(body?.email ?? '').trim().toLowerCase();
       const nome = String(body?.nome ?? '').trim();
       const papel = String(body?.papel ?? 'membro').trim().toLowerCase() as Papel;
+      // A senha é opcional: sem ela, a pessoa entra pelo Google. Com ela, ganha
+      // também a porta de e-mail e senha - que é a única saída para quem não
+      // tem conta Google nenhuma.
+      const senha = String(body?.senha ?? '');
 
       // Endereço exato, e nunca um domínio inteiro: convite é para uma pessoa.
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -4362,6 +4573,10 @@ function faltaEmProjeto(p: any): string | null {
       if (!PAPEIS_ATRIBUIVEIS.includes(papel)) {
         return { status: 400, body: { error: `Papel inválido. Use ${PAPEIS_ATRIBUIVEIS.join(' ou ')}.` } };
       }
+      if (senha && senha.length < SENHA_MINIMA) {
+        return { status: 400, body: { error: `A senha precisa de ao menos ${SENHA_MINIMA} caracteres.` } };
+      }
+      const hash = senha ? await criarHashSenha(senha) : null;
 
       const ja = await db.execute({
         sql: 'SELECT id, ativo FROM usuarios WHERE email = ?', args: [email],
@@ -4376,21 +4591,26 @@ function faltaEmProjeto(p: any): string | null {
         if (Number(linha.ativo) === 1) {
           return { status: 409, body: { error: 'Esse e-mail já tem acesso ao portal.' } };
         }
+        // Sem senha no corpo, a que existia continua valendo: reativar um
+        // convite não é motivo para tirar a porta de quem já entrava por ela.
         await db.execute({
-          sql: 'UPDATE usuarios SET nome = ?, papel = ?, ativo = 1, convidado = 1 WHERE id = ?',
-          args: [nome, papel, String(linha.id)],
+          sql: hash
+            ? 'UPDATE usuarios SET nome = ?, papel = ?, ativo = 1, convidado = 1, senha_hash = ? WHERE id = ?'
+            : 'UPDATE usuarios SET nome = ?, papel = ?, ativo = 1, convidado = 1 WHERE id = ?',
+          args: hash ? [nome, papel, hash, String(linha.id)] : [nome, papel, String(linha.id)],
         });
       } else {
         await db.execute({
-          sql: `INSERT INTO usuarios (id, email, nome, foto_url, papel, ativo, convidado, criado_em, ultimo_acesso)
-                VALUES (?, ?, ?, NULL, ?, 1, 1, ?, NULL)`,
-          args: [randomUUID(), email, nome, papel, agora],
+          sql: `INSERT INTO usuarios (id, email, nome, foto_url, papel, ativo, convidado, criado_em, ultimo_acesso, senha_hash)
+                VALUES (?, ?, ?, NULL, ?, 1, 1, ?, NULL, ?)`,
+          args: [randomUUID(), email, nome, papel, agora, hash],
         });
       }
 
       // Devolve a linha inteira: a tela põe a pessoa na lista sem recarregar.
       const criado = await db.execute({
-        sql: `SELECT id, email, nome, foto_url, papel, ativo, convidado, criado_em, ultimo_acesso
+        sql: `SELECT id, email, nome, foto_url, papel, ativo, convidado, criado_em, ultimo_acesso,
+                     senha_hash IS NOT NULL AS tem_senha
               FROM usuarios WHERE email = ?`,
         args: [email],
       });
@@ -4406,12 +4626,113 @@ function faltaEmProjeto(p: any): string | null {
             papel: papelEfetivo(String(u.email), u.papel),
             ativo: Number(u.ativo) === 1,
             convidado: Number(u.convidado) === 1,
+            tem_senha: Number(u.tem_senha) === 1,
             criado_em: String(u.criado_em ?? ''),
             ultimo_acesso: u.ultimo_acesso != null ? String(u.ultimo_acesso) : null,
             sessoes_abertas: 0,
           },
         },
       };
+    }
+
+    // A senha de um convidado, depois do convite: definir, trocar ou tirar.
+    //
+    // Só de convidado. Quem tem e-mail da casa entra pelo Workspace, e dar a
+    // ele uma senha seria abrir uma segunda porta para uma conta que já tem
+    // dono - com a diferença de que essa porta não passa pelo 2FA da empresa.
+    if (action === 'definir_senha_usuario') {
+      if (!podeGerenciarUsuarios(usuario)) return NEGADO_USUARIOS;
+
+      const alvoId = String(body?.usuario_id ?? '');
+      const senha = String(body?.senha ?? '');
+      if (!alvoId) return { status: 400, body: { error: 'Falta dizer de quem é a senha.' } };
+
+      const r = await db.execute({
+        sql: 'SELECT email, nome, convidado FROM usuarios WHERE id = ?', args: [alvoId],
+      });
+      const alvo = r.rows[0] as Record<string, any> | undefined;
+      if (!alvo) return { status: 404, body: { error: 'Essa pessoa não está na lista.' } };
+      if (Number(alvo.convidado) !== 1) {
+        return { status: 400, body: { error: 'Só convidado entra por senha. Quem é da casa entra pelo Google.' } };
+      }
+      // Senha vazia tira a senha: a pessoa continua no portal, mas volta a
+      // entrar só pelo Google.
+      if (senha && senha.length < SENHA_MINIMA) {
+        return { status: 400, body: { error: `A senha precisa de ao menos ${SENHA_MINIMA} caracteres.` } };
+      }
+
+      await db.execute({
+        sql: 'UPDATE usuarios SET senha_hash = ? WHERE id = ?',
+        args: [senha ? await criarHashSenha(senha) : null, alvoId],
+      });
+      // Trocar a senha derruba as sessões abertas daquela pessoa: senha nova com
+      // sessão velha de pé não fecha porta nenhuma.
+      await db.execute({ sql: 'DELETE FROM admin_sessions WHERE usuario_id = ?', args: [alvoId] });
+
+      await registrarAuditoria(db, usuario,
+        senha ? 'definir_senha_usuario' : 'remover_senha_usuario', String(alvo.email));
+      return { status: 200, body: { ok: true, tem_senha: !!senha } };
+    }
+
+    // Manda para o convidado um link de criar a própria senha.
+    //
+    // O que viaja não é a senha: é um endereço com um token grande, que vale 24
+    // horas e uma vez só. Senha escrita no corpo do e-mail fica na caixa de quem
+    // recebe e no painel de quem envia, e continua valendo depois de vazar. Um
+    // link morre no primeiro uso.
+    //
+    // A senha atual - se houver - continua valendo até a pessoa criar a nova:
+    // derrubá-la aqui trancaria quem ainda não abriu o e-mail.
+    if (action === 'enviar_link_senha') {
+      if (!podeGerenciarUsuarios(usuario)) return NEGADO_USUARIOS;
+
+      const alvoId = String(body?.usuario_id ?? '');
+      if (!alvoId) return { status: 400, body: { error: 'Falta dizer para quem é a senha.' } };
+
+      const r = await db.execute({
+        sql: 'SELECT email, nome, ativo, convidado FROM usuarios WHERE id = ?', args: [alvoId],
+      });
+      const alvo = r.rows[0] as Record<string, any> | undefined;
+      if (!alvo) return { status: 404, body: { error: 'Essa pessoa não está na lista.' } };
+      if (Number(alvo.convidado) !== 1) {
+        return { status: 400, body: { error: 'Só convidado entra por senha. Quem é da casa entra pelo Google.' } };
+      }
+      if (Number(alvo.ativo) !== 1) {
+        return { status: 400, body: { error: 'Devolva o acesso antes de mandar uma senha.' } };
+      }
+
+      const token = await criarTokenSenha(db, alvoId, usuario?.email ?? null);
+      const link = `${enderecoDoPortal()}/senha/${token}`;
+      const envio = await notifyEmail(db, String(alvo.email), 'Crie sua senha do Portal Sheep', `
+  <p style="font-size:14px;color:#555;margin:0 0 16px">
+    Olá, ${esc(String(alvo.nome))}. Você tem acesso ao Portal Sheep. Crie sua senha por
+    este link:
+  </p>
+  <p style="margin:0 0 16px;text-align:center">
+    <a href="${esc(link)}" style="display:inline-block;background:#121316;color:#fff;text-decoration:none;font-size:14px;font-weight:700;padding:12px 22px;border-radius:100px">
+      Criar minha senha
+    </a>
+  </p>
+  <p style="font-size:12px;color:#777;margin:0 0 4px;word-break:break-all">
+    Se o botão não abrir, copie este endereço: ${esc(link)}
+  </p>
+  <p style="font-size:12px;color:#9A958A;margin:14px 0 0">
+    O link vale por 24 horas e só pode ser usado uma vez. Depois de criar a senha, entre
+    com <strong>${esc(String(alvo.email))}</strong> em "Entrar com e-mail e senha".
+  </p>`, 'convite_senha');
+
+      if (!envio.ok) {
+        // O convite fica sem valor prático: ninguém o recebeu. Some daqui para
+        // não deixar link vivo que não chegou a lugar nenhum.
+        await db.execute({
+          sql: 'DELETE FROM senha_tokens WHERE usuario_id = ? AND usado_em IS NULL',
+          args: [alvoId],
+        });
+        return { status: 400, body: { error: envio.erro ?? 'O e-mail não saiu.' } };
+      }
+
+      await registrarAuditoria(db, usuario, 'enviar_link_senha', String(alvo.email));
+      return { status: 200, body: { ok: true, destino: String(alvo.email) } };
     }
 
     // Papel e acesso de outra pessoa. Só o dono do painel, e nunca sobre a

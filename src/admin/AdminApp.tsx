@@ -5,6 +5,7 @@ import {
   type Permissoes, type Pode,
 } from './papeis';
 import { createPortal, flushSync } from 'react-dom';
+import { CampoSenha } from '../components/CampoSenha';
 import { lojaTema, comRevelacao, type Tema } from '../lib/tema';
 import { MARCAS } from '../lib/marcas';
 import { SkeletonPagina } from '../components/Skeleton';
@@ -761,13 +762,29 @@ function BotaoGoogle({ onCodigo, entrando }: { onCodigo: (c: string) => void; en
   );
 }
 
-// A conta Google é o único caminho de entrada. A senha compartilhada foi
-// removida em 28/08/2026: era uma porta anônima num sistema cuja auditoria
-// pressupõe identidade, e o valor dela era adivinhável. Não há plano B por
-// decisão consciente - se o Google estiver fora, o painel fica fora.
+// Duas portas, e as duas com dono.
+//
+// A conta Google é a da casa. A senha *compartilhada* foi removida em
+// 28/08/2026 - era uma porta anônima num sistema cuja auditoria pressupõe
+// identidade, e o valor dela era adivinhável. O que existe ao lado dela hoje é
+// outra coisa: e-mail e senha por pessoa, só de quem foi convidado no painel de
+// Usuários, para o cliente ou parceiro que não tem conta Google nenhuma. Cada
+// entrada continua assinada por alguém.
 function LoginScreen({ onLogin, saindo }: { onLogin: (token: string) => void; saindo: boolean }) {
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  /** Por qual porta a entrada está correndo. Um booleano só punha "Entrando…"
+   *  nos dois botões ao mesmo tempo - e quem clicou num deles ficava sem saber
+   *  qual dos dois estava respondendo. */
+  const [entrando, setEntrando] = useState<null | 'google' | 'senha'>(null);
+  /** A porta alternativa fica fechada até alguém pedir: quem é da casa não
+   *  precisa dela, e um formulário de senha aberto convida a tentar. */
+  const [comSenha, setComSenha] = useState(false);
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
+  const campoEmail = useRef<HTMLInputElement>(null);
+  // O foco vai para o e-mail quando a área abre - e não na montagem, que
+  // acontece com a tela, muito antes de alguém pedir a outra porta.
+  useEffect(() => { if (comSenha) campoEmail.current?.focus(); }, [comSenha]);
   // Dispara a negativa do card e se apaga sozinho, para a animação poder rodar
   // de novo quando a próxima tentativa também falhar.
   const [nega, setNega] = useState(false);
@@ -781,7 +798,7 @@ function LoginScreen({ onLogin, saindo }: { onLogin: (token: string) => void; sa
    */
   async function entrarComGoogle(code: string) {
     setError('');
-    setLoading(true);
+    setEntrando('google');
     try {
       const res = await fetch('/api/admin-data', {
         method: 'POST',
@@ -799,7 +816,35 @@ function LoginScreen({ onLogin, saindo }: { onLogin: (token: string) => void; sa
     } catch {
       recusar('Erro de conexão. Tente novamente.');
     } finally {
-      setLoading(false);
+      setEntrando(null);
+    }
+  }
+
+  /** A outra porta: e-mail e senha, para o convidado sem conta Google. */
+  async function entrarComSenha(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email.trim() || !senha || entrando) return;
+    setError('');
+    setEntrando('senha');
+    try {
+      const res = await fetch('/api/admin-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'login-senha', email: email.trim(), senha }),
+      });
+      if (res.ok) {
+        const { token } = await res.json();
+        localStorage.setItem(SESSION_KEY, token);
+        onLogin(token);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        recusar(data.error ?? 'E-mail ou senha incorretos.');
+        setSenha('');
+      }
+    } catch {
+      recusar('Erro de conexão. Tente novamente.');
+    } finally {
+      setEntrando(null);
     }
   }
 
@@ -829,7 +874,34 @@ function LoginScreen({ onLogin, saindo }: { onLogin: (token: string) => void; sa
 
           {GOOGLE_CLIENT_ID ? (
             <div className={nega ? 'login-nega' : undefined}>
-              <BotaoGoogle onCodigo={entrarComGoogle} entrando={loading} />
+              <BotaoGoogle onCodigo={entrarComGoogle} entrando={entrando === 'google'} />
+
+              {/* A segunda porta, recolhida. O bloco fica montado o tempo todo:
+                  é o que deixa abrir e fechar com animação em vez de aparecer
+                  de estalo. */}
+              <button type="button" className="login-outra-porta"
+                aria-expanded={comSenha}
+                onClick={() => { setComSenha(v => !v); setError(''); }}>
+                {comSenha ? 'Voltar para o Google' : 'Entrar com e-mail e senha'}
+              </button>
+              <div className={`revelar${comSenha ? ' aberto' : ''}`}>
+                <div>
+                  <form className="login-senha" onSubmit={entrarComSenha}>
+                    <input ref={campoEmail} className="form-input" type="email" value={email}
+                      placeholder="E-mail" autoComplete="username"
+                      onChange={e => setEmail(e.target.value)} />
+                    <CampoSenha valor={senha} onMudar={setSenha}
+                      placeholder="Senha" autoComplete="current-password" />
+                    <button type="submit" className="login-senha-botao"
+                      disabled={!!entrando || !email.trim() || !senha}>
+                      {entrando === 'senha'
+                        ? <><IconSpinner size={13} /> Entrando…</>
+                        : 'Entrar'}
+                    </button>
+                  </form>
+                </div>
+              </div>
+
               {error && <p className="login-erro" role="alert">{error}</p>}
             </div>
           ) : (

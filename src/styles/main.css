@@ -13786,3 +13786,114 @@ body.arrastando-painel {
 .resend-dominio.ok > svg,
 .resend-dominio.ok > em { color: var(--green); }
 
+/* ── A senha do convidado ──────────────────────────────────────────────────
+   Quem tem e-mail da casa entra pelo Google. O convidado - um cliente, um
+   parceiro - nem sempre tem conta Google, e para ele existe a segunda porta:
+   e-mail e senha, criados por quem convidou. Estas sao as duas pecas disso, a
+   do painel e a da tela de entrada. */
+
+/* O campo com o olho - e o sorteio, onde a senha esta sendo criada. Senha
+   digitada as cegas e erro de digitacao garantido, ainda mais quando ela foi
+   passada por escrito para outra pessoa. */
+.campo-senha {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.campo-senha .form-input {
+  width: 100%;
+  /* Espaco para o olho. */
+  padding-right: 40px;
+}
+/* Com o sorteio, os dois botoes dividem a direita do campo. */
+.campo-senha.com-sorteio .form-input { padding-right: 86px; }
+.campo-senha-olho,
+.campo-senha-sortear {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.campo-senha-olho { right: 10px; width: 24px; height: 24px; border-radius: var(--radius-sm); }
+.campo-senha.com-sorteio .campo-senha-olho { right: 62px; }
+.campo-senha-sortear {
+  right: 10px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--gray4);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+}
+.campo-senha-olho:hover,
+.campo-senha-sortear:hover { color: var(--black); }
+.usuarios-senha-dica {
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--gray2);
+}
+
+/* Quem ja entra por senha: o botao da linha muda de tom para dizer isso sem
+   precisar de mais uma etiqueta ao lado do nome. */
+.usuarios-btn-acesso.com-senha {
+  border-color: var(--yb);
+  color: var(--black);
+}
+
+/* ── A segunda porta, na tela de entrada ─────────────────────────────────── */
+/* O gatilho e discreto: a porta da casa e o Google, e esta e a excecao. */
+.login-outra-porta {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 6px;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.login-outra-porta:hover { color: var(--black); }
+
+.login-senha {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+}
+.login-senha .form-input { font-size: 13px; }
+.login-senha-botao {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 40px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--black);
+  color: var(--bg);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity var(--transition), transform var(--transition-spring);
+}
+.login-senha-botao:hover:not(:disabled) { transform: translateY(-1px); }
+.login-senha-botao:disabled { opacity: .5; cursor: not-allowed; }
+
+@media (prefers-reduced-motion: reduce) {
+  .campo-senha-olho,
+  .campo-senha-sortear,
+  .login-outra-porta,
+  .login-senha-botao { transition: none; }
+  .login-senha-botao:hover:not(:disabled) { transform: none; }
+}
