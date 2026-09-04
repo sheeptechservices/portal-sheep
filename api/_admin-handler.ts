@@ -674,6 +674,7 @@ async function migrarSchema(db: Client) {
   `);
   await ddl(`CREATE INDEX IF NOT EXISTS idx_emails_enviados_data ON emails_enviados (criado_em DESC)`);
 
+
   await ensurePermissoesSchema(ddl);
 
   // Trilha de auditoria: uma linha por ação que grava algo, com quem fez. É o
@@ -2084,9 +2085,9 @@ async function notifyMentions(texto: string, oportunidadeId: string, db: Client,
     const email = String(linha.email);
     if (avisados.has(email.toLowerCase())) continue;
     avisados.add(email.toLowerCase());
-    notifyEmail(db, email, 'Você foi mencionado em um comentário', `
-  <p style="font-size:14px;color:#555;margin:0 0 6px"><strong>Oportunidade:</strong> ${esc(nomeSol)}</p>
-  <blockquote style="margin:12px 0 0;padding:10px 14px;background:#F7F6F3;border-left:3px solid #00C9A7;border-radius:0 8px 8px 0;font-size:14px;color:#333">${esc(texto)}</blockquote>`);
+    notifyEmail(db, email, 'Você foi mencionado em um comentário',
+      corpoDeMencao(nomeSol, texto), 'mencao',
+      { previa: texto, rodape: 'Você recebe este aviso porque foi citado no comentário.' });
   }
 
   for (const apelido of apelidos) {
@@ -2101,9 +2102,9 @@ async function notifyMentions(texto: string, oportunidadeId: string, db: Client,
     // Já avisado pelo id: o mesmo comentário não manda dois e-mails.
     if (avisados.has(String(dest.email).toLowerCase())) continue;
     avisados.add(String(dest.email).toLowerCase());
-    notifyEmail(db, String(dest.email), 'Você foi mencionado em um comentário', `
-  <p style="font-size:14px;color:#555;margin:0 0 6px"><strong>Oportunidade:</strong> ${esc(nomeSol)}</p>
-  <blockquote style="margin:12px 0 0;padding:10px 14px;background:#F7F6F3;border-left:3px solid #00C9A7;border-radius:0 8px 8px 0;font-size:14px;color:#333">${esc(texto)}</blockquote>`);
+    notifyEmail(db, String(dest.email), 'Você foi mencionado em um comentário',
+      corpoDeMencao(nomeSol, texto), 'mencao',
+      { previa: texto, rodape: 'Você recebe este aviso porque foi citado no comentário.' });
   }
 }
 
@@ -2131,11 +2132,17 @@ async function notifyStageMentions(texto: string, oportunidadeId: string, db: Cl
     if (inscritos.length === 0) { console.log('[stage-notify] sem inscritos na etapa:', stageName); continue; }
 
     for (const dest of inscritos) {
-      notifyEmail(db, dest.email, `A etapa "${stageName}" foi mencionada em um comentário`, `
-  <p style="font-size:14px;color:#555;margin:0 0 6px"><strong>Oportunidade:</strong> ${esc(nomeSol)}</p>
-  <blockquote style="margin:12px 0 0;padding:10px 14px;background:#F7F6F3;border-left:3px solid #00C9A7;border-radius:0 8px 8px 0;font-size:14px;color:#333">${esc(texto)}</blockquote>`);
+      notifyEmail(db, dest.email, `A etapa "${stageName}" foi mencionada em um comentário`,
+        corpoDeMencao(nomeSol, texto), 'mencao',
+        { previa: texto, rodape: `Você recebe este aviso porque acompanha a etapa "${stageName}".` });
     }
   }
+}
+
+/** Os três avisos de menção dizem a mesma coisa - em que oportunidade, e o que
+ *  foi escrito -, e o que muda entre eles é só o assunto e a razão no rodapé. */
+function corpoDeMencao(oportunidade: string, texto: string): string {
+  return fichaEmail([['Oportunidade', oportunidade]]) + citacaoEmail(texto);
 }
 
 /** Escapa o que vai para dentro do HTML do e-mail. */
@@ -2175,15 +2182,133 @@ function remetenteEndereco(from: string): string {
   return (m ? m[1] : from).trim();
 }
 
-function layoutEmail(titulo: string, corpo: string): string {
-  return `<!DOCTYPE html><html><body style="font-family:Arial,Helvetica,sans-serif;color:#121316;background:#F7F6F3;padding:32px 0;margin:0">
-<div style="max-width:520px;margin:0 auto;background:#fff;border-radius:14px;padding:28px 28px 24px">
-  <div style="height:4px;width:34px;border-radius:2px;background:#00C9A7;margin-bottom:18px"></div>
-  <h1 style="font-size:18px;font-weight:800;margin:0 0 14px">${esc(titulo)}</h1>
-  ${corpo}
-  <p style="font-size:11px;color:#9A958A;margin:22px 0 0">Portal Sheep - você recebe este aviso porque está inscrito nesta notificação.</p>
-</div>
-</body></html>`;
+// ─── Os e-mails que o portal manda ──────────────────────────────────────────
+//
+//  Uma moldura só, e um punhado de peças. Cada aviso escrevia o próprio HTML
+//  inline, e o resultado era o mesmo assunto com três tipografias: a ficha de um
+//  tinha 14px, a do outro 13px, e a citação mudava de cor conforme quem tinha
+//  escrito por último. Aqui o corpo se monta com `fichaEmail`, `citacaoEmail`,
+//  `botaoEmail` e `notaEmail`, e nenhuma tela precisa lembrar de medida nenhuma.
+
+/** A tipografia da casa, com a escada de reserva. A Manrope chega por `@import`
+ *  e só alguns leitores a carregam - Apple Mail e Outlook do Mac sim, Gmail
+ *  não. Por isso a lista continua: sem ela, quem não baixa a fonte cai no
+ *  serifado do sistema, que não se parece com nada nosso. */
+const FONTE_EMAIL = "'Manrope','Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+
+/** Uma linha da ficha: rótulo em negrito, valor ao lado. É o formato de "quem,
+ *  onde, quanto" de todo aviso. */
+function fichaEmail(itens: [string, string][]): string {
+  const linhas = itens
+    .filter(([, valor]) => valor !== '' && valor != null)
+    .map(([rotulo, valor]) => `
+      <tr>
+        <td style="padding:0 0 6px;font-size:13px;line-height:1.5;color:#5B5B57">
+          <strong style="color:#121316;font-weight:700">${esc(rotulo)}:</strong> ${esc(valor)}
+        </td>
+      </tr>`).join('');
+  if (!linhas) return '';
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 14px">${linhas}</table>`;
+}
+
+/** O que a pessoa escreveu, com a barra de acento na esquerda. Preserva a
+ *  quebra de linha: comentário sem parágrafo vira um bloco ilegível. */
+function citacaoEmail(texto: string): string {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 4px">
+    <tr>
+      <td style="padding:12px 16px;background:#F7F6F3;border-left:3px solid #00C9A7;border-radius:0 10px 10px 0;
+                 font-size:14px;line-height:1.6;color:#2E2E2B;white-space:pre-wrap">${esc(texto)}</td>
+    </tr>
+  </table>`;
+}
+
+/** A ação principal, em pílula preta. Um por e-mail: dois botões do mesmo peso
+ *  é a mesma coisa que nenhum. */
+function botaoEmail(rotulo: string, link: string): string {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0 6px">
+    <tr>
+      <td style="border-radius:100px;background:#121316">
+        <a href="${esc(link)}" style="display:inline-block;padding:13px 26px;font-family:${FONTE_EMAIL};
+           font-size:14px;font-weight:800;color:#FFFFFF;text-decoration:none">${esc(rotulo)}</a>
+      </td>
+    </tr>
+  </table>`;
+}
+
+/** Parágrafo comum do corpo. */
+function textoEmail(texto: string): string {
+  return `<p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#3C3C39">${esc(texto)}</p>`;
+}
+
+/** Letra miúda: prazo do link, de onde veio o pedido, o que fazer se algo não
+ *  abrir. Vem depois do que importa, e não antes. */
+function notaEmail(texto: string): string {
+  return `<p style="margin:14px 0 0;font-size:12px;line-height:1.55;color:#8B887F">${texto}</p>`;
+}
+
+/**
+ * Moldura única dos e-mails, com a marca no alto.
+ *
+ * A logo é buscada por endereço absoluto, e não embutida: cliente de e-mail
+ * ignora `data:` em imagem, e anexo com `cid` faz a mensagem chegar com clipe de
+ * anexo mesmo sem ter nenhum. Sai do mesmo endereço que já monta o link do
+ * convite de senha, então segue o ambiente e não o que o pedido diz.
+ *
+ * O `previa` é o trecho que a caixa de entrada mostra ao lado do assunto. Sem
+ * ele o cliente pega a primeira linha visível - que aqui seria "Sheep
+ * Technology Services", igual em todos.
+ */
+function layoutEmail(titulo: string, corpo: string, opcoes?: { previa?: string; rodape?: string }): string {
+  const portal = enderecoDoPortal();
+  const rodape = opcoes?.rodape
+    ?? 'Você recebe este aviso porque está inscrito nesta notificação.';
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light only">
+<title>${esc(titulo)}</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
+</style>
+</head>
+<body style="margin:0;padding:0;background:#F1F0EC;font-family:${FONTE_EMAIL};-webkit-font-smoothing:antialiased">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${esc(opcoes?.previa ?? '')}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F1F0EC;padding:32px 12px">
+  <tr>
+    <td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+        style="max-width:560px;background:#FFFFFF;border:1px solid #E8E7E2;border-radius:16px">
+        <tr>
+          <td style="padding:26px 30px 0">
+            <a href="${esc(portal)}" style="text-decoration:none">
+              <img src="${esc(portal)}/logo-lockup.png" width="128" alt="Sheep Technology Services"
+                style="display:block;width:128px;height:auto;border:0">
+            </a>
+          </td>
+        </tr>
+        <tr><td style="padding:20px 30px 0"><div style="height:3px;width:32px;border-radius:2px;background:#00C9A7"></div></td></tr>
+        <tr>
+          <td style="padding:14px 30px 0">
+            <h1 style="margin:0;font-family:${FONTE_EMAIL};font-size:19px;line-height:1.35;font-weight:800;color:#121316">${esc(titulo)}</h1>
+          </td>
+        </tr>
+        <tr><td style="padding:16px 30px 26px;font-family:${FONTE_EMAIL}">${corpo}</td></tr>
+        <tr>
+          <td style="padding:16px 30px 18px;border-top:1px solid #EFEEE9;background:#FBFAF8;border-radius:0 0 16px 16px">
+            <p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#5B5B57">
+              <a href="${esc(portal)}" style="color:#121316;text-decoration:none">Portal Sheep</a>
+            </p>
+            <p style="margin:0;font-size:11px;line-height:1.5;color:#9A968C">${esc(rodape)}</p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>`;
 }
 
 /**
@@ -2230,6 +2355,14 @@ export async function remetenteDeEmail(db: Client): Promise<RemetenteEmail | nul
  */
 async function notifyEmail(
   db: Client, to: string, assunto: string, corpo: string, tipo = 'aviso',
+  extras?: {
+    /** Anexos do Resend: `content` em base64 puro, sem o cabeçalho `data:`. */
+    anexos?: { filename: string; content: string }[];
+    /** O trecho que a caixa de entrada mostra ao lado do assunto. */
+    previa?: string;
+    /** Por que esta pessoa está recebendo. Cada aviso tem o seu. */
+    rodape?: string;
+  },
 ): Promise<{ ok: boolean; id?: string; erro?: string }> {
   if (!to) return { ok: false, erro: 'Sem destinatário.' };
   const registrar = (situacao: string, resendId: string | null, erro: string | null) =>
@@ -2253,7 +2386,8 @@ async function notifyEmail(
         to,
         ...(remetente.replyTo ? { reply_to: remetente.replyTo } : {}),
         subject: assunto,
-        html: layoutEmail(assunto, corpo),
+        html: layoutEmail(assunto, corpo, { previa: extras?.previa, rodape: extras?.rodape }),
+        ...(extras?.anexos?.length ? { attachments: extras.anexos } : {}),
       }),
     });
     const resposta: any = await r.json().catch(() => null);
@@ -3375,7 +3509,8 @@ async function despacharAdminData(
 
     // O que já saiu: a régua de comunicação vai crescer em cima disto, e por
     // enquanto ele responde "o e-mail chegou?" sem virar investigação.
-    if (action === 'emails_enviados') {
+        // O print de um relato, um por vez - ver o comentário da lista.
+        if (action === 'emails_enviados') {
       const r = await db.execute(`
         SELECT id, destino, assunto, tipo, situacao, erro, criado_em
         FROM emails_enviados
@@ -3441,8 +3576,6 @@ async function despacharAdminData(
       };
     }
 
-    // O endereço da gravação, na hora de assistir. Não fica guardado: a URL da
-    // CDN deles é assinada e expira em dias.
     // A transcrição inteira, na hora de baixar. Como a gravação, ela não fica
     // guardada: o que o portal mostra da reunião já está no `dados`, e o texto
     // todo se lê uma vez e se quer em arquivo.
@@ -3464,6 +3597,8 @@ async function despacharAdminData(
       };
     }
 
+    // O endereço da gravação, na hora de assistir. Não fica guardado: a URL da
+    // CDN deles é assinada e expira em dias.
     if (action === 'fireflies_gravacao') {
       const id = String(query.get('id') ?? '').trim();
       if (!id) return { status: 400, body: { error: 'id ausente.' } };
@@ -3787,13 +3922,14 @@ async function despacharAdminData(
     if (action === 'enviar_email_teste') {
       const destino = usuario?.email ?? '';
       if (!destino) return { status: 400, body: { error: 'Sua sessão está sem e-mail.' } };
-      const r = await notifyEmail(db, destino, 'Teste de envio do Portal Sheep', `
-  <p style="font-size:14px;color:#555;margin:0 0 6px">
-    Se você está lendo isto, a integração com o Resend está entregando.
-  </p>
-  <p style="font-size:13px;color:#777;margin:10px 0 0">
-    Enviado a pedido de ${esc(usuario?.nome ?? 'alguém')} pelo painel de Integrações.
-  </p>`, 'teste');
+      const r = await notifyEmail(db, destino, 'Teste de envio do Portal Sheep',
+        textoEmail('Se você está lendo isto, a integração com o Resend está entregando.')
+        + notaEmail(`Enviado a pedido de ${esc(usuario?.nome ?? 'alguém')} pelo painel de Integrações.`),
+        'teste',
+        {
+          previa: 'A integração com o Resend está entregando.',
+          rodape: 'Você recebe este aviso porque pediu um teste de envio no painel.',
+        });
       if (!r.ok) return { status: 400, body: { error: r.erro ?? 'O envio falhou.' } };
       return { status: 200, body: { ok: true, destino, id: r.id ?? null } };
     }
@@ -4218,11 +4354,18 @@ function faltaEmProjeto(p: any): string | null {
                 ? db.execute({ sql: 'SELECT nome FROM usuarios WHERE id = ?', args: [t.responsavel_id] })
                 : Promise.resolve({ rows: [] as Record<string, unknown>[] }),
             ]);
-            const corpo = `
-  <p style="font-size:14px;color:#555;margin:0 0 4px"><strong>Projeto:</strong> ${esc(String(projeto.rows[0]?.nome ?? '-'))}</p>
-  <p style="font-size:14px;color:#555;margin:0"><strong>Responsável:</strong> ${esc(String(resp.rows[0]?.nome ?? 'sem responsável'))}</p>`;
+            const corpo = fichaEmail([
+              ['Tarefa', titulo],
+              ['Projeto', String(projeto.rows[0]?.nome ?? '-')],
+              ['Responsável', String(resp.rows[0]?.nome ?? 'sem responsável')],
+              ['Etapa', statusPedido],
+            ]);
             for (const dest of inscritos) {
-              notifyEmail(db, dest.email, `Tarefa "${titulo}" chegou em "${statusPedido}"`, corpo, 'etapa_tarefa');
+              notifyEmail(db, dest.email, `Tarefa "${titulo}" chegou em "${statusPedido}"`, corpo, 'etapa_tarefa',
+                {
+                  previa: `${titulo} - ${statusPedido}`,
+                  rodape: `Você recebe este aviso porque acompanha a etapa "${statusPedido}" das tarefas.`,
+                });
             }
           }
         }
@@ -5021,23 +5164,16 @@ function faltaEmProjeto(p: any): string | null {
 
       const token = await criarTokenSenha(db, alvoId, usuario?.email ?? null);
       const link = `${enderecoDoPortal()}/senha/${token}`;
-      const envio = await notifyEmail(db, String(alvo.email), 'Crie sua senha do Portal Sheep', `
-  <p style="font-size:14px;color:#555;margin:0 0 16px">
-    Olá, ${esc(String(alvo.nome))}. Você tem acesso ao Portal Sheep. Crie sua senha por
-    este link:
-  </p>
-  <p style="margin:0 0 16px;text-align:center">
-    <a href="${esc(link)}" style="display:inline-block;background:#121316;color:#fff;text-decoration:none;font-size:14px;font-weight:700;padding:12px 22px;border-radius:100px">
-      Criar minha senha
-    </a>
-  </p>
-  <p style="font-size:12px;color:#777;margin:0 0 4px;word-break:break-all">
-    Se o botão não abrir, copie este endereço: ${esc(link)}
-  </p>
-  <p style="font-size:12px;color:#9A958A;margin:14px 0 0">
-    O link vale por 24 horas e só pode ser usado uma vez. Depois de criar a senha, entre
-    com <strong>${esc(String(alvo.email))}</strong> em "Entrar com e-mail e senha".
-  </p>`, 'convite_senha');
+      const envio = await notifyEmail(db, String(alvo.email), 'Crie sua senha do Portal Sheep',
+        textoEmail(`Olá, ${String(alvo.nome)}. Você tem acesso ao Portal Sheep. Crie sua senha por este link:`)
+        + botaoEmail('Criar minha senha', link)
+        + notaEmail(`Se o botão não abrir, copie este endereço:<br><span style="word-break:break-all;color:#5B5B57">${esc(link)}</span>`)
+        + notaEmail(`O link vale por 24 horas e só pode ser usado uma vez. Depois de criar a senha, entre com <strong>${esc(String(alvo.email))}</strong> em "Entrar com e-mail e senha".`),
+        'convite_senha',
+        {
+          previa: 'Crie sua senha para entrar no Portal Sheep.',
+          rodape: 'Você recebe este e-mail porque alguém da Sheep liberou seu acesso ao portal.',
+        });
 
       if (!envio.ok) {
         // O convite fica sem valor prático: ninguém o recebeu. Some daqui para
@@ -5128,11 +5264,19 @@ function faltaEmProjeto(p: any): string | null {
         const inscritos = await emailsDosInscritos(db, 'status_notificacoes', { coluna: 'status_id', valor: status_id });
         if (inscritos.length > 0) {
           const s = (await db.execute({ sql: 'SELECT nome_contratado, cnpj_contratado, valor FROM oportunidades WHERE id = ?', args: [oportunidade_id] })).rows[0];
-          const corpo = `
-  <p style="font-size:14px;color:#555;margin:0 0 4px"><strong>Contratado:</strong> ${esc(s?.nome_contratado ?? '-')} (${esc(s?.cnpj_contratado ?? '-')})</p>
-  <p style="font-size:14px;color:#555;margin:0"><strong>Valor:</strong> ${esc(s?.valor ?? '-')}</p>`;
+          const contratado = String(s?.nome_contratado ?? '-');
+          const cnpj = String(s?.cnpj_contratado ?? '');
+          const corpo = fichaEmail([
+            ['Contratado', cnpj ? `${contratado} (${cnpj})` : contratado],
+            ['Valor', String(s?.valor ?? '-')],
+            ['Etapa', nome],
+          ]);
           for (const dest of inscritos) {
-            notifyEmail(db, dest.email, `Oportunidade movida para "${nome}"`, corpo, 'etapa_oportunidade');
+            notifyEmail(db, dest.email, `Oportunidade movida para "${nome}"`, corpo, 'etapa_oportunidade',
+              {
+                previa: `${contratado} - ${nome}`,
+                rodape: `Você recebe este aviso porque acompanha a etapa "${nome}" do funil.`,
+              });
           }
         }
       }
@@ -5169,7 +5313,10 @@ function faltaEmProjeto(p: any): string | null {
     //  nova dentro do portal seria mais um lugar para esquecer de olhar. E o
     //  `emails_enviados` guarda o texto de toda tentativa, então nem o envio
     //  que falhar some sem deixar rastro.
-            if (action === 'delete_comment') {
+        // O andamento do relato. Só o dono do painel muda - a ação está marcada
+    // `SO_ADMIN` -, e é por isso que a fila mostra o status a todo mundo sem
+    // oferecer o campo a ninguém mais.
+        if (action === 'delete_comment') {
       // Delete replies first, then the comment itself
       await db.execute({ sql: `DELETE FROM oportunidade_eventos WHERE parent_id = ? AND tipo = 'comentario'`, args: [body.id] });
       await db.execute({ sql: `DELETE FROM oportunidade_eventos WHERE id = ? AND tipo = 'comentario'`, args: [body.id] });
