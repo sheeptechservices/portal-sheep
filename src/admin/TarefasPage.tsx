@@ -383,6 +383,25 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
       ? p : { ...p, tarefas: [...(p.tarefas ?? []), nova] })));
   }, []);
 
+  /** Muda a tarefa de projeto na tela: tira da coluna de onde ela estava e põe
+   *  na de destino, já com o que foi editado junto. O nome do projeto que o card
+   *  mostra vem do balde em que a tarefa está, e não de um campo dela - por isso
+   *  pintar por cima não bastava: o card continuava embaixo do projeto antigo. */
+  const moverTarefaDeProjeto = useCallback((id: number, destino: string, mudancas: Partial<Tarefa>) => {
+    mudancasRef.current++;
+    setProjetos(ps => {
+      const atual = ps.flatMap(p => p.tarefas ?? []).find(t => t.id === id);
+      if (!atual) return ps;
+      const movida = { ...atual, ...mudancas };
+      return ps.map(p => ({
+        ...p,
+        tarefas: p.id === destino
+          ? [...(p.tarefas ?? []).filter(t => t.id !== id), movida]
+          : (p.tarefas ?? []).filter(t => t.id !== id),
+      }));
+    });
+  }, []);
+
   const pintarTarefa = useCallback((id: number, mudancas: Partial<Tarefa>) => {
     mudancasRef.current++;
     setProjetos(ps => ps.map(p => ({
@@ -504,14 +523,19 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
     const antes = projetos;
     if (r.id) {
       const dono = pessoas.find(x => x.id === r.responsavel_id);
-      pintarTarefa(r.id, {
+      const campos = {
         titulo: r.titulo, descricao: r.descricao, status: r.status,
         prioridade: r.prioridade, prazo: r.prazo || null, etiquetas: r.etiquetas,
         entrega_id: r.entrega_id ? Number(r.entrega_id) : null,
         responsavel_id: r.responsavel_id || null,
         responsavel_nome: dono?.nome ?? null,
         responsavel_foto: dono?.foto_url ?? null,
-      });
+      };
+      // De onde a tarefa está sendo vista agora. Diferente do projeto do
+      // rascunho, ela mudou de projeto - e aí não é pintar, é mudar de coluna.
+      const daTela = projetos.find(p => (p.tarefas ?? []).some(t => t.id === r.id))?.id;
+      if (daTela && daTela !== r.projeto_id) moverTarefaDeProjeto(r.id, r.projeto_id, campos);
+      else pintarTarefa(r.id, campos);
     }
     setSalvando(true);
     // Rascunho sem id com uma criação em curso: espera o id e grava por cima,

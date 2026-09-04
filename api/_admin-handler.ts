@@ -4408,7 +4408,7 @@ function faltaEmProjeto(p: any): string | null {
 
       if (t.id) {
         const antes = await db.execute({
-          sql: `SELECT titulo, descricao, status, prioridade, responsavel_id, prazo,
+          sql: `SELECT projeto_id, titulo, descricao, status, prioridade, responsavel_id, prazo,
                        entrega_id, etiquetas, concluida_em
                 FROM projeto_tarefas WHERE id = ?`,
           args: [t.id],
@@ -4424,14 +4424,40 @@ function faltaEmProjeto(p: any): string | null {
               : concluida))
           : null;
         mudouDeEtapa = String(antes.rows[0].status) !== statusPedido;
+
+        // A tarefa pode ter trocado de projeto, e `projeto_id` ficava de fora do
+        // UPDATE: a tela mostrava o projeto novo, o banco guardava o antigo, e a
+        // primeira recarga devolvia o card para a coluna de onde ele tinha
+        // saído. Trocar de projeto é edição como qualquer outra, e grava aqui.
+        const mudouDeProjeto = String(antes.rows[0].projeto_id) !== String(t.projeto_id);
+        // A entrega é do projeto de origem: numa mudança de projeto ela só
+        // sobrevive se pertencer ao destino. Tarefa apontando para entrega de
+        // outro projeto suja o progresso de uma entrega que não é dela.
+        let entregaId: unknown = t.entrega_id || null;
+        if (mudouDeProjeto && entregaId != null) {
+          const daCasa = await db.execute({
+            sql: 'SELECT 1 FROM projeto_entregas WHERE id = ? AND projeto_id = ?',
+            args: [entregaId as never, t.projeto_id],
+          });
+          if (!daCasa.rows[0]) entregaId = null;
+        }
+        // No projeto novo ela entra no fim, como uma tarefa que acabasse de
+        // chegar: a ordem antiga é de outra lista e colidiria com quem já está lá.
+        const ordemNova = mudouDeProjeto
+          ? Number((await db.execute({
+            sql: 'SELECT COALESCE(MAX(ordem), -1) + 1 AS proxima FROM projeto_tarefas WHERE projeto_id = ?',
+            args: [t.projeto_id],
+          })).rows[0]?.proxima ?? 0)
+          : null;
+
         await db.execute({
           sql: `UPDATE projeto_tarefas
-                SET entrega_id=?, titulo=?, descricao=?, status=?, prioridade=?, responsavel_id=?,
-                    prazo=?, etiquetas=?, concluida_em=?
+                SET projeto_id=?, entrega_id=?, titulo=?, descricao=?, status=?, prioridade=?,
+                    responsavel_id=?, prazo=?, etiquetas=?, concluida_em=?${mudouDeProjeto ? ', ordem=?' : ''}
                 WHERE id=?`,
-          args: [t.entrega_id || null, titulo, t.descricao ?? null, statusPedido,
+          args: [t.projeto_id, entregaId as never, titulo, t.descricao ?? null, statusPedido,
             t.prioridade ?? 'Média', t.responsavel_id || null, t.prazo || null, etiquetas,
-            carimbo as never, t.id],
+            carimbo as never, ...(mudouDeProjeto ? [ordemNova as never] : []), t.id],
         });
         gravada = { concluida_em: (carimbo as string | null) ?? null };
         await registrarEventosDaTarefa(db, t.id, autorId, autorNome,
