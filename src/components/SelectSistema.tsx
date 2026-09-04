@@ -50,6 +50,10 @@ export function SelectSistema<T extends string>({
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
+  /** Para que lado a lista abriu. Decidido uma vez, na abertura: se a direção
+   *  fosse recalculada a cada letra, filtrar poderia jogar a lista de cima do
+   *  campo para baixo dele no meio da digitação. */
+  const paraCimaRef = useRef(false);
   const atual = opcoes.find(o => o.valor === valor);
 
   // Acima de sete itens a lista deixa de caber de uma olhada: entra a busca.
@@ -72,6 +76,7 @@ export function SelectSistema<T extends string>({
     const altura = Math.min(8 + opcoes.length * ALTURA_OPCAO + (buscando ? 36 : 0), 320);
     const espacoAbaixo = window.innerHeight - rect.bottom - 8;
     const paraCima = espacoAbaixo < altura && rect.top > altura;
+    paraCimaRef.current = paraCima;
     setPos({
       top: paraCima ? rect.top - altura - 4 : rect.bottom + 4,
       left: rect.left,
@@ -87,35 +92,31 @@ export function SelectSistema<T extends string>({
   // o nome da entrega ficaria cortado em toda linha. Só que crescendo para a
   // direita ela passa da borda da janela, e o painel de tarefa fica justamente
   // encostado nela: metade da lista sumia. A largura real só existe depois de
-  // montada, então é aqui que se corrige - passando da borda, a lista desliza
-  // para a esquerda em vez de ser cortada.
+  // montada, então é aqui que se corrige.
+  //
+  // E se corrige a cada busca, e não só na abertura: filtrar encolhe a lista, e
+  // uma posição calculada quando ela estava larga deixava a lista boiando longe
+  // do campo - quanto mais curto o resultado, mais deslocada ela parecia. A
+  // conta é sempre a mesma: encostada no gatilho, e só desliza para a esquerda
+  // (ou para cima) o quanto for preciso para caber.
   useLayoutEffect(() => {
     if (!aberto || !dropRef.current || !triggerRef.current) return;
     const MARGEM = 8;
     const r = dropRef.current.getBoundingClientRect();
     const g = triggerRef.current.getBoundingClientRect();
-    let left: number | null = null;
-    if (r.right > window.innerWidth - MARGEM) {
-      left = Math.max(MARGEM, window.innerWidth - MARGEM - r.width);
-    }
-    // A altura de antes de montar é uma estimativa - a opção com descrição tem
-    // duas linhas, e o quanto elas ocupam depende da fonte. Medida de verdade,
-    // a lista que abriu para cima é reencostada no gatilho.
-    //
-    // Reencostada sempre, e não só quando cobria o gatilho: a estimativa erra
-    // para os dois lados, e errando para mais ela deixava a lista boiando longe
-    // do campo que a abriu - que foi o que apareceu com a lista compacta do
-    // cartão de reportar. O que ancora é a base dela, que é a borda vizinha do
-    // gatilho quando se abre para cima.
-    let top: number | null = null;
-    const paraCima = r.top < g.top;
-    if (paraCima) top = Math.max(MARGEM, g.top - 4 - r.height);
-    else if (r.bottom > window.innerHeight - MARGEM) {
-      top = Math.max(MARGEM, window.innerHeight - MARGEM - r.height);
-    }
-    if (left == null && top == null) return;
-    setPos(p => ({ ...p, left: left ?? p.left, top: top ?? p.top }));
-  }, [aberto]);
+
+    const left = Math.max(MARGEM, Math.min(g.left, window.innerWidth - MARGEM - r.width));
+    // O lado é o que foi decidido na abertura; o que se refaz é a âncora. Aberta
+    // para cima, quem ancora é a base da lista, que é a borda vizinha do gatilho
+    // - e a base muda de lugar toda vez que a altura muda.
+    const top = paraCimaRef.current
+      ? Math.max(MARGEM, g.top - 4 - r.height)
+      : g.bottom + 4;
+
+    setPos(p => (Math.abs(p.left - left) < 1 && Math.abs(p.top - top) < 1
+      ? p
+      : { ...p, left, top }));
+  }, [aberto, busca, filtradas.length]);
 
   /** A altura vem da tabela óptica das marcas, reduzida para caber na linha:
    *  altura igual para todas deixaria assinatura larga minúscula ao lado de
