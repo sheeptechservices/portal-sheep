@@ -147,12 +147,15 @@ export function htmlParaTexto(raiz: HTMLElement): string {
 
 /** O campo. Guarda texto, mostra formatação. */
 export function EditorRico({
-  valor, onMudar, placeholder, autoFocus, onBlur, className, ariaLabel,
+  valor, onMudar, placeholder, autoFocus, onFoco, onBlur, className, ariaLabel,
 }: {
   valor: string;
   onMudar: (texto: string) => void;
   placeholder?: string;
   autoFocus?: boolean;
+  /** O campo ganhou o cursor. Quem o monta por condição precisa saber disso
+   *  para não desmontá-lo debaixo de quem está escrevendo. */
+  onFoco?: () => void;
   onBlur?: () => void;
   className?: string;
   ariaLabel?: string;
@@ -174,9 +177,13 @@ export function EditorRico({
 
   // O foco vai para o fim do que já está escrito, e não para o começo: quem
   // abre a descrição quase sempre vai continuar de onde parou.
+  //
+  // Só quando o campo ainda não tem o cursor: já focado, isto arrastaria para o
+  // fim o cursor de quem clicou no meio do texto.
   useEffect(() => {
     const el = caixa.current;
     if (!autoFocus || !el) return;
+    if (document.activeElement === el) return;
     el.focus();
     const sel = window.getSelection();
     const faixa = document.createRange();
@@ -336,6 +343,7 @@ export function EditorRico({
       onKeyDown={aoTeclar}
       onPaste={aoColar}
       onClick={aoClicar}
+      onFocus={onFoco}
       onBlur={onBlur}
     />
   );

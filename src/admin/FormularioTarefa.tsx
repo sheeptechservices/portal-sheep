@@ -847,6 +847,14 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
     };
   }, []);
 
+  /** Despacha agora o que estava esperando a pausa. Sair de um campo é o fim
+   *  de um pensamento, e o que ficou escrito não deveria depender de mais nada
+   *  acontecer depois. Gravar duas vezes não acontece: `gravar` marca o que
+   *  mandou antes de ir, e o fechar em seguida encontra tudo já gravado. */
+  function gravarPendente() {
+    if (podeGravar && impresso !== ultimoGravado.current) void gravar();
+  }
+
   /** Fechar com alteração ainda na pausa grava na hora: a pausa é uma
    *  conveniência para não gravar letra a letra, não uma licença para perder o
    *  que foi escrito. */
@@ -935,6 +943,12 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
                 marcação continua sendo texto puro no banco - é ela que sai em
                 exportação, relatório e prompt de IA sem ninguém ter de desmontar
                 HTML. */}
+            {/* `editandoDesc` entra no cálculo por causa do cursor, e não só
+                por causa do clique na caixa de leitura: sem isso, a descrição
+                que começa vazia mostrava o campo, e a primeira letra digitada
+                já a deixava "não vazia" - a condição virava falsa, o campo
+                sumia no meio da frase e o resto do que se escrevia caía fora
+                da tela. */}
             {!somenteLeitura && (editandoDesc || !rascunho.descricao.trim()) ? (
               /* Cresce com o texto até 260px. Altura fixa escondia o que já
                  estava escrito - quem abria uma tarefa de dez linhas via três, e
@@ -948,7 +962,8 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
                 ariaLabel="Descrição da tarefa"
                 placeholder="O que precisa ser feito"
                 onMudar={v => set('descricao', v)}
-                onBlur={() => setEditandoDesc(false)}
+                onFoco={() => setEditandoDesc(true)}
+                onBlur={() => { setEditandoDesc(false); gravarPendente(); }}
               />
             ) : (
               <div className="form-input texto-rico-caixa troca"
