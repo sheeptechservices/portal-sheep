@@ -15,6 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { IconCalendario, IconVisaoLista, IconVisaoQuadro } from './icons';
+import { dia } from '../lib/datas';
 
 /** A entrega achatada para o que estas duas visões precisam. Cada tela traduz
  *  o formato dela para este - no painel os responsáveis são ids que viram nome
@@ -47,11 +48,8 @@ const MESES = [
 
 const NEUTRO = '#8A8B84';
 
-const fmtData = (v: string | null) => {
-  if (!v) return null;
-  const [a, m, d] = v.slice(0, 10).split('-');
-  return d ? `${d}/${m}/${a}` : null;
-};
+// Quem chama testa a ausencia com `&&`, entao o vazio continua sendo falsy.
+const fmtData = (v: string | null) => dia(v, '');
 
 const iso = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

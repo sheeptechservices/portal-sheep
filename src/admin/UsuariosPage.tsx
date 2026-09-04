@@ -3,6 +3,12 @@ import { createPortal } from 'react-dom';
 import { iniciais, useAuth, useToast } from './AdminApp';
 import { IconAlert, IconCheck, IconChevronDown, IconSpinner } from '../components/icons';
 import { CampoSenha } from '../components/CampoSenha';
+import { Dialogo } from '../components/Dialogo';
+import { instante, tempoRelativo } from '../lib/datas';
+
+/** Sem acesso registrado a linha diz isso, e nao um travessao: e informacao,
+ *  nao ausencia de dado. */
+const formatarData = (iso: string | null) => instante(iso, 'Nunca entrou');
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
@@ -53,29 +59,6 @@ interface Resposta {
   usuario?: UsuarioLinha;
   admin_email?: string;
   error?: string;
-}
-
-function formatarData(iso: string | null): string {
-  if (!iso) return 'Nunca entrou';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '-';
-  return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
-/** "há 3 dias" - o contexto rápido ao lado da data cheia. */
-function tempoRelativo(iso: string | null): string {
-  if (!iso) return '';
-  const ms = Date.now() - new Date(iso).getTime();
-  if (Number.isNaN(ms) || ms < 0) return '';
-  const min = Math.floor(ms / 60000);
-  if (min < 1) return 'agora há pouco';
-  if (min < 60) return `há ${min} min`;
-  const horas = Math.floor(min / 60);
-  if (horas < 24) return `há ${horas}h`;
-  const dias = Math.floor(horas / 24);
-  if (dias < 30) return `há ${dias} ${dias === 1 ? 'dia' : 'dias'}`;
-  const meses = Math.floor(dias / 30);
-  return `há ${meses} ${meses === 1 ? 'mês' : 'meses'}`;
 }
 
 function Avatar({ nome, foto }: { nome: string; foto: string | null }) {
@@ -244,33 +227,21 @@ function EnviarSenhaAoConvidado({ pessoa, enviando, onEnviar, onFechar }: {
   onEnviar: () => void;
   onFechar: () => void;
 }) {
-  const { saindo, fechar } = useSaidaSuave(onFechar);
-  const fundo = useFecharNoFundo(fechar);
-
-  return createPortal(
-    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`}
-      style={{ zIndex: 1200, alignItems: 'center', justifyContent: 'center' }} {...fundo}>
-      <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-        <p className="delete-confirm-title">
-          {pessoa.tem_senha ? 'Mandar um convite novo?' : 'Mandar o convite de senha?'}
-        </p>
-        <p className="delete-confirm-desc">
-          <strong>{pessoa.email}</strong> recebe um link para criar a própria senha. Ele vale
-          24 horas e só pode ser usado uma vez. {pessoa.tem_senha
-            ? 'A senha atual continua valendo até ela criar a nova.'
-            : 'Depois disso, ela entra por e-mail e senha, além do Google.'}
-        </p>
-        <div className="delete-confirm-actions">
-          <button className="delete-confirm-cancel" onClick={fechar}>Cancelar</button>
-          <button className="delete-confirm-ok" disabled={enviando}
-            style={{ background: 'var(--yellow)', color: 'var(--on-yellow)' }}
-            onClick={onEnviar}>
-            {enviando ? 'Enviando…' : 'Enviar convite'}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
+  return (
+    <Dialogo
+      titulo={pessoa.tem_senha ? 'Mandar um convite novo?' : 'Mandar o convite de senha?'}
+      descricao={<>
+        <strong>{pessoa.email}</strong> recebe um link para criar a própria senha. Ele vale
+        24 horas e só pode ser usado uma vez. {pessoa.tem_senha
+          ? 'A senha atual continua valendo até ela criar a nova.'
+          : 'Depois disso, ela entra por e-mail e senha, além do Google.'}
+      </>}
+      rotuloOk="Enviar convite" perigo={false}
+      ocupado={enviando} ocupadoRotulo="Enviando…"
+      zIndex={1200}
+      onFechar={onFechar}
+      onConfirmar={onEnviar}
+    />
   );
 }
 

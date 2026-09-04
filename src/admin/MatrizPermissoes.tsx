@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth, useToast } from './AdminApp';
 import { IconAlert, IconChevronDown, IconSpinner } from '../components/icons';
 import { PAPEL_LABEL } from './papeis';
+import { instante as formatarData } from '../lib/datas';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Matriz de permissões do papel Membro: por página e por ação, marcando e
@@ -40,13 +41,6 @@ interface Resposta {
   atualizado_em?: string | null;
   atualizado_por_nome?: string | null;
   error?: string;
-}
-
-function formatarData(iso: string | null | undefined): string {
-  if (!iso) return '-';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '-';
-  return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 export default function MatrizPermissoes({ token }: { token: string }) {

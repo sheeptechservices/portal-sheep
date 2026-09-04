@@ -27,14 +27,15 @@ import { ReuniaoModal } from '../components/ReuniaoModal';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import { useLarguraPainel } from '../lib/painelLateral';
 import { PuxadorDoPainel } from '../components/PuxadorDoPainel';
-import { ICONE_PRIORIDADE, PRIORIDADES } from '../lib/prioridades';
+import { diaCurto as fmtDataCurta } from '../lib/datas';
+// Reexportada: ela morava aqui e as telas a importam deste arquivo. O desenho
+// saiu para os componentes quando as outras telas passaram a usar a mesma caixa.
+export { ConfirmarExclusao } from '../components/Dialogo';
+import { DESCRICAO_PRIORIDADE, ICONE_PRIORIDADE, PRIORIDADES } from '../lib/prioridades';
 import type { Projeto, Reuniao, Tarefa } from './ProjetosPage';
 
 /** A data da reunião no chip: dia e mês, que é o que cabe ali e o que basta
  *  para situar a conversa. */
-const fmtDataCurta = (v: string) =>
-  v ? new Date(`${v}T00:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
-
 // ── Etapas e etiquetas ────────────────────────────────────────────────────────
 
 /** Uma coluna do quadro. Nome, cor e ordem saem de Configurações > Etapas.
@@ -744,38 +745,6 @@ function PilulaEtapa({ valor, etapas, desabilitado, onChange }: {
   );
 }
 
-// ── Confirmação de exclusão ──────────────────────────────────────────────
-
-export function ConfirmarExclusao({ titulo, oQue = 'tarefa', onCancelar, onConfirmar }: {
-  /** O nome do que vai sumir, para a pessoa reconhecer o que confirmou. */
-  titulo: string;
-  /** A palavra que descreve: "tarefa", "reunião". Entra no título e na frase. */
-  oQue?: string;
-  onCancelar: () => void;
-  onConfirmar: () => void;
-}) {
-  // A saída é do gancho da casa: fechar sem animação é um corte, e o diálogo
-  // some antes de a pessoa registrar que clicou.
-  const { saindo, fechar } = useSaidaSuave(onCancelar);
-  const fundo = useFecharNoFundo(fechar);
-  return createPortal(
-    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`}
-      style={{ zIndex: 10001, alignItems: 'center', justifyContent: 'center' }} {...fundo}>
-      <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-        <p className="delete-confirm-title">Excluir {oQue}</p>
-        <p className="delete-confirm-desc">
-          Tem certeza que deseja excluir "<strong>{titulo}</strong>"? Esta ação não pode ser desfeita.
-        </p>
-        <div className="delete-confirm-actions">
-          <button type="button" className="delete-confirm-cancel" onClick={fechar}>Cancelar</button>
-          <button type="button" className="delete-confirm-ok" onClick={onConfirmar}>Excluir</button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
 // ── O formulário ──────────────────────────────────────────────────────────────
 
 export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etiquetaPorPapel,
@@ -1095,6 +1064,7 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
                   valor: x as string,
                   label: x,
                   icone: ICONE_PRIORIDADE[x]?.({ size: 15 }),
+                  descricao: DESCRICAO_PRIORIDADE[x],
                 }))} />
             </div>
             <div className="form-group" style={{ flex: '1 1 190px', minWidth: 0 }}>

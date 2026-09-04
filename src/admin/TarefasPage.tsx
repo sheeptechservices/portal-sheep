@@ -44,6 +44,7 @@ import {
   type Etapario, type EtiquetaTarefa, type Etiquetario, type Pessoa, type Rascunho,
 } from './FormularioTarefa';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
+import { dia as fmtData } from '../lib/datas';
 export { ETAPAS_PADRAO, etiquetasParaOPapel, type EtapaTarefa, type EtiquetaTarefa } from './FormularioTarefa';
 
 
@@ -169,12 +170,6 @@ function montarGrupos(
 }
 
 // ── Peças ───────────────────────────────────────────────────────────────────
-
-function fmtData(iso: string | null): string {
-  if (!iso) return '-';
-  const [a, m, d] = iso.slice(0, 10).split('-');
-  return `${d}/${m}/${a}`;
-}
 
 /** Dias até o prazo. Negativo é atraso. */
 function diasPara(iso: string | null): number | null {

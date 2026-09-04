@@ -15,6 +15,7 @@ import {
 } from './icons';
 import { COR_ENTREGA, ICONE_ENTREGA } from '../lib/etapasEntrega';
 import { DatePicker } from './DatePicker';
+import { dia as fmtData } from '../lib/datas';
 import { SeletorPessoas } from './SeletorPessoas';
 import { SeletorVinculo, Chip } from './VinculoReuniao';
 import {
@@ -36,9 +37,6 @@ export interface EntregaDaReuniao {
 /** Quem está na equipe do projeto, para aparecer primeiro na escolha de
  *  participantes. O lead não tem equipe, e por isso ela é opcional. */
 export interface MembroDaReuniao extends Pessoa { papel: string }
-
-const fmtData = (v: string | null) =>
-  v ? new Date(`${v}T00:00:00`).toLocaleDateString('pt-BR') : '-';
 
 export interface Reuniao {
   /** Id da reunião no Fireflies, quando ela veio de lá. Nulo é registro à mão. */

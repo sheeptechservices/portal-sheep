@@ -10,6 +10,7 @@ import {
   IconTrash, IconUser, IconX,
 } from '../components/icons';
 import { SegSwitch } from '../components/SegSwitch';
+import { Dialogo } from '../components/Dialogo';
 import { Abas, AbaPainel } from '../components/Abas';
 import { PAPEIS_EQUIPE } from '../lib/papeisDeEquipe';
 
@@ -830,31 +831,30 @@ function StatusRow({
       )}
 
       {/* Modal: excluir sem cards */}
-      {confirmDelete && createPortal(
-        <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }} onClick={() => setConfirmDelete(false)}>
-          <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-            <p className="delete-confirm-title">Excluir etapa?</p>
-            <p className="delete-confirm-desc">
-              <strong>{status.nome}</strong> será excluída permanentemente e não poderá ser recuperada.
-            </p>
-            <div className="delete-confirm-actions">
-              <button className="delete-confirm-cancel" onClick={() => setConfirmDelete(false)}>Cancelar</button>
-              <button className="delete-confirm-ok" onClick={handleDeleteConfirm} disabled={deleting}>{deleting ? 'Excluindo…' : 'Excluir'}</button>
-            </div>
-          </div>
-        </div>,
-        document.body
+      {confirmDelete && (
+        <Dialogo
+          titulo="Excluir etapa?"
+          descricao={<><strong>{status.nome}</strong> será excluída permanentemente e não poderá ser recuperada.</>}
+          rotuloOk="Excluir" ocupado={deleting} ocupadoRotulo="Excluindo…"
+          zIndex={1100}
+          onFechar={() => setConfirmDelete(false)}
+          onConfirmar={handleDeleteConfirm}
+        />
       )}
 
       {/* Modal: mover cards antes de excluir */}
-      {moveModal && createPortal(
-        <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }} onClick={() => setMoveModal(null)}>
-          <div className="delete-confirm-modal" onClick={e => e.stopPropagation()} style={{ width: 360 }}>
-            <p className="delete-confirm-title">Excluir etapa?</p>
-            <p className="delete-confirm-desc">
-              <strong>{status.nome}</strong> tem <strong>{moveModal.count}</strong> lead(ões). Para qual etapa deseja movê-las?
-            </p>
-
+      {moveModal && (
+        <Dialogo
+          titulo="Excluir etapa?"
+          descricao={<><strong>{status.nome}</strong> tem <strong>{moveModal.count}</strong> lead(ões). Para qual etapa deseja movê-las?</>}
+          rotuloOk="Mover e excluir"
+          ocupado={deleting || (!creatingNew && !moveTargetId) || (creatingNew && !newNome.trim())}
+          ocupadoRotulo={deleting ? 'Movendo…' : undefined}
+          zIndex={1100} largura={360}
+          onFechar={() => setMoveModal(null)}
+          onConfirmar={handleMoveAndDelete}
+        >
+          <div style={{ marginBottom: 20 }}>
             <MoveTargetSelect
               options={allStatuses.filter(s => s.id !== status.id)}
               value={creatingNew ? '__new__' : moveTargetId}
@@ -880,20 +880,8 @@ function StatusRow({
                 </div>
               </div>
             )}
-
-            <div className="delete-confirm-actions" style={{ marginTop: 20 }}>
-              <button className="delete-confirm-cancel" onClick={() => setMoveModal(null)}>Cancelar</button>
-              <button
-                className="delete-confirm-ok"
-                onClick={handleMoveAndDelete}
-                disabled={deleting || (!creatingNew && !moveTargetId) || (creatingNew && !newNome.trim())}
-              >
-                {deleting ? 'Movendo…' : 'Mover e excluir'}
-              </button>
-            </div>
           </div>
-        </div>,
-        document.body
+        </Dialogo>
       )}
     </div>
   );
@@ -2113,55 +2101,41 @@ function EtapaTarefaRow({
         document.body
       )}
 
-      {confirmar && createPortal(
-        <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }}
-          onClick={() => setConfirmar(false)}>
-          <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-            <p className="delete-confirm-title">Excluir etapa?</p>
-            <p className="delete-confirm-desc">
-              <strong>{etapa.nome}</strong> sai do quadro de tarefas. Nenhuma tarefa está nela.
-            </p>
-            <div className="delete-confirm-actions">
-              <button className="delete-confirm-cancel" onClick={() => setConfirmar(false)}>Cancelar</button>
-              <button className="delete-confirm-ok" disabled={excluindo} onClick={() => void excluir()}>
-                {excluindo ? 'Excluindo…' : 'Excluir'}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
+      {confirmar && (
+        <Dialogo
+          titulo="Excluir etapa?"
+          descricao={<><strong>{etapa.nome}</strong> sai do quadro de tarefas. Nenhuma tarefa está nela.</>}
+          rotuloOk="Excluir" ocupado={excluindo} ocupadoRotulo="Excluindo…"
+          zIndex={1100}
+          onFechar={() => setConfirmar(false)}
+          onConfirmar={() => void excluir()}
+        />
       )}
 
-      {mover && createPortal(
-        <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }}
-          onClick={() => setMover(null)}>
-          <div className="delete-confirm-modal" onClick={e => e.stopPropagation()} style={{ width: 360 }}>
-            <p className="delete-confirm-title">Excluir etapa?</p>
-            <p className="delete-confirm-desc">
-              <strong>{etapa.nome}</strong> tem <strong>{mover.count}</strong> tarefa(s).
-              Para qual etapa deseja movê-las?
-            </p>
-
-            {/* Sem "criar nova" aqui: a tarefa aponta a etapa pelo nome, e
-                inventar uma no meio da exclusão deixaria o quadro com uma coluna
-                que ninguém pediu. */}
+      {mover && (
+        <Dialogo
+          titulo="Excluir etapa?"
+          descricao={<>
+            <strong>{etapa.nome}</strong> tem <strong>{mover.count}</strong> tarefa(s).
+            Para qual etapa deseja movê-las?
+          </>}
+          rotuloOk="Mover e excluir" ocupado={excluindo || destino === ''} ocupadoRotulo={excluindo ? 'Movendo…' : undefined}
+          zIndex={1100} largura={360}
+          onFechar={() => setMover(null)}
+          onConfirmar={() => void excluir(destino as number)}
+        >
+          {/* Sem "criar nova" aqui: a tarefa aponta a etapa pelo nome, e
+              inventar uma no meio da exclusão deixaria o quadro com uma coluna
+              que ninguém pediu. */}
+          <div style={{ marginBottom: 16 }}>
             <MoveTargetSelect
               options={todas.filter(e => e.id !== etapa.id)}
               value={destino}
               onChange={v => { if (v !== '__new__') setDestino(v); }}
               allowNew={false}
             />
-
-            <div className="delete-confirm-actions" style={{ marginTop: 16 }}>
-              <button className="delete-confirm-cancel" onClick={() => setMover(null)}>Cancelar</button>
-              <button className="delete-confirm-ok" disabled={excluindo || destino === ''}
-                onClick={() => void excluir(destino as number)}>
-                {excluindo ? 'Movendo…' : 'Mover e excluir'}
-              </button>
-            </div>
           </div>
-        </div>,
-        document.body
+        </Dialogo>
       )}
     </div>
   );
@@ -2800,26 +2774,20 @@ function EtiquetaTarefaRow({
         document.body
       )}
 
-      {confirmar && createPortal(
-        <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }}
-          onClick={() => setConfirmar(false)}>
-          <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-            <p className="delete-confirm-title">Excluir etiqueta?</p>
-            <p className="delete-confirm-desc">
-              <strong>{etiqueta.nome}</strong>{' '}
-              {emUso > 0
-                ? `sai de ${emUso} tarefa(s). Elas continuam onde estão, só perdem esta etiqueta.`
-                : 'não está em nenhuma tarefa.'}
-            </p>
-            <div className="delete-confirm-actions">
-              <button className="delete-confirm-cancel" onClick={() => setConfirmar(false)}>Cancelar</button>
-              <button className="delete-confirm-ok" disabled={excluindo} onClick={() => void excluir()}>
-                {excluindo ? 'Excluindo…' : 'Excluir'}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
+      {confirmar && (
+        <Dialogo
+          titulo="Excluir etiqueta?"
+          descricao={<>
+            <strong>{etiqueta.nome}</strong>{' '}
+            {emUso > 0
+              ? `sai de ${emUso} tarefa(s). Elas continuam onde estão, só perdem esta etiqueta.`
+              : 'não está em nenhuma tarefa.'}
+          </>}
+          rotuloOk="Excluir" ocupado={excluindo} ocupadoRotulo="Excluindo…"
+          zIndex={1100}
+          onFechar={() => setConfirmar(false)}
+          onConfirmar={() => void excluir()}
+        />
       )}
     </div>
   );

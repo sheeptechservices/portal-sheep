@@ -26,6 +26,8 @@ import {
   ComNegrito, ReuniaoModal, lerAcoes, lerDados, lerTopicos, type TopicoReuniao,
 } from '../components/ReuniaoModal';
 import { EntregaModal } from '../components/EntregaModal';
+import { Dialogo } from '../components/Dialogo';
+import { dia as fmtData, diaCurto as fmtDataCurta, tamanho as fmtTamanho } from '../lib/datas';
 import { ancorar } from '../lib/ancorar';
 import {
   DIMENSOES, chavesDe, comparadorDe, marcaDaLinha as marcaFora, type Dimensao,
@@ -39,7 +41,7 @@ export {
 export { useFecharNoFundo } from '../lib/useFecharNoFundo';
 export type { Reuniao } from '../components/SecaoReunioes';
 import {
-  COR_PRIORIDADE, ICONE_PRIORIDADE, PRIORIDADES, PRIORIDADE_PADRAO,
+  COR_PRIORIDADE, DESCRICAO_PRIORIDADE, ICONE_PRIORIDADE, PRIORIDADES, PRIORIDADE_PADRAO,
 } from '../lib/prioridades';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
@@ -384,17 +386,6 @@ function rascunhoDePartida(usuarioId?: string): Rascunho {
     entregas: entregasDePartida(),
   };
 }
-
-const fmtData = (v: string | null) =>
-  v ? new Date(`${v}T00:00:00`).toLocaleDateString('pt-BR') : '-';
-
-/** A data no chip: dia e mês, que é o que cabe ali e o que basta para situar
- *  a conversa. */
-const fmtDataCurta = (v: string | null) =>
-  v ? new Date(`${v}T00:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
-
-const fmtTamanho = (b: number) =>
-  b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
 
 /** Dias até a entrega. Negativo é atraso. */
 function diasPara(v: string | null): number | null {
@@ -1027,7 +1018,19 @@ function CelulaPrioridade({ valor, onChange }: { valor: string; onChange: (v: st
           chave: p,
           ativo: p === valor,
           ao: () => onChange(p),
-          conteudo: <>{ICONE_PRIORIDADE[p]({ size: 14 })}<span>{p}</span></>,
+          // A mesma leitura do campo de prioridade: o nome, e embaixo o que
+          // ele quer dizer. A marca sobe para o topo, ao lado do nome.
+          conteudo: (
+            <>
+              <span style={{ display: 'inline-flex', marginTop: 1 }}>
+                {ICONE_PRIORIDADE[p]({ size: 14 })}
+              </span>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: 'block' }}>{p}</span>
+                <span className="select-opcao-descricao">{DESCRICAO_PRIORIDADE[p]}</span>
+              </span>
+            </>
+          ),
         }))} />
     </>
   );
@@ -1109,8 +1112,6 @@ function DialogoSaude({ projeto, inicial, salvando, onRegistrar, onFechar }: {
   const [estado, setEstado] = useState<string>(inicial ?? projeto.saude[0]?.estado ?? 'Saudável');
   const [descricao, setDescricao] = useState('');
   const [erro, setErro] = useState('');
-  const { saindo, fechar } = useSaidaSuave(onFechar);
-  const fundo = useFecharNoFundo(fechar);
 
   async function registrar() {
     if (!descricao.trim()) { setErro('Descreva a situação do projeto.'); return; }
@@ -1118,12 +1119,16 @@ function DialogoSaude({ projeto, inicial, salvando, onRegistrar, onFechar }: {
     onFechar();
   }
 
-  return createPortal(
-    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`} style={{ zIndex: 10001, alignItems: 'center', justifyContent: 'center' }}
-      {...fundo}>
-      <div className="delete-confirm-modal" style={{ width: 420 }} onClick={e => e.stopPropagation()}>
-        <p className="delete-confirm-title">Registrar leitura de saúde</p>
-        <p className="delete-confirm-desc">{projeto.nome}</p>
+  return (
+    <Dialogo
+      titulo="Registrar leitura de saúde"
+      descricao={projeto.nome}
+      rotuloOk="Registrar" ocupado={salvando} ocupadoRotulo="Registrando…"
+      corOk={COR_SAUDE[estado]} corTextoOk="var(--on-yellow)"
+      largura={420}
+      onFechar={onFechar}
+      onConfirmar={() => void registrar()}
+    >
 
         <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
           {SAUDES.map(e => {
@@ -1152,17 +1157,7 @@ function DialogoSaude({ projeto, inicial, salvando, onRegistrar, onFechar }: {
           placeholder="O que sustenta essa leitura" style={{ fontSize: 13 }} />
         {erro && <p className="form-error">{erro}</p>}
 
-        <div className="delete-confirm-actions" style={{ marginTop: 16 }}>
-          <button type="button" className="delete-confirm-cancel" onClick={onFechar}>Cancelar</button>
-          <button type="button" className="delete-confirm-ok" disabled={salvando}
-            style={{ background: COR_SAUDE[estado], color: 'var(--on-yellow)' }}
-            onClick={() => void registrar()}>
-            {salvando ? 'Registrando…' : 'Registrar'}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
+    </Dialogo>
   );
 }
 
@@ -1615,7 +1610,6 @@ function SecaoEntregas({
   const [concluindo, setConcluindo] = useState<{ entrega: Entrega; alvo: string } | null>(null);
   /** Excluir leva as evidências junto e não tem desfazer: confirma antes. */
   const [excluindoEntrega, setExcluindoEntrega] = useState<Entrega | null>(null);
-  const fundoEntrega = useFecharNoFundo(() => setExcluindoEntrega(null));
 
   /** Troca só o status, preservando o resto da entrega - `salvar_entrega`
    *  regrava a linha inteira. */
@@ -2258,32 +2252,23 @@ function SecaoEntregas({
         ))}
       </div>
 
-      {excluindoEntrega && createPortal(
-        <div className="admin-modal-overlay" style={{ zIndex: 10001, alignItems: 'center', justifyContent: 'center' }}
-          {...fundoEntrega}>
-          <div className="delete-confirm-modal" onClick={ev => ev.stopPropagation()}>
-            <p className="delete-confirm-title">Excluir entrega</p>
-            <p className="delete-confirm-desc">
-              Tem certeza que deseja excluir "<strong>{excluindoEntrega.titulo}</strong>"?
-              {excluindoEntrega.evidencias.length > 0 && (
-                <>
-                  {' '}As {excluindoEntrega.evidencias.length === 1
-                    ? 'evidência anexada vai junto'
-                    : `${excluindoEntrega.evidencias.length} evidências anexadas vão junto`}.
-                </>
-              )}
-            </p>
-            <div className="delete-confirm-actions">
-              <button type="button" className="delete-confirm-cancel"
-                onClick={() => setExcluindoEntrega(null)}>Cancelar</button>
-              <button type="button" className="delete-confirm-ok" disabled={salvando}
-                onClick={() => { const alvo = excluindoEntrega; setExcluindoEntrega(null); onExcluirEntrega(alvo); }}>
-                Excluir
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body,
+      {excluindoEntrega && (
+        <Dialogo
+          titulo="Excluir entrega"
+          descricao={<>
+            Tem certeza que deseja excluir "<strong>{excluindoEntrega.titulo}</strong>"?
+            {excluindoEntrega.evidencias.length > 0 && (
+              <>
+                {' '}As {excluindoEntrega.evidencias.length === 1
+                  ? 'evidência anexada vai junto'
+                  : `${excluindoEntrega.evidencias.length} evidências anexadas vão junto`}.
+              </>
+            )}
+          </>}
+          rotuloOk="Excluir" ocupado={salvando}
+          onFechar={() => setExcluindoEntrega(null)}
+          onConfirmar={() => { const alvo = excluindoEntrega; setExcluindoEntrega(null); onExcluirEntrega(alvo); }}
+        />
       )}
 
       {concluindo && (
@@ -2496,23 +2481,20 @@ function DialogoEvidencia({ entrega, alvo, salvando, onConcluir, onFechar }: {
   const [comentario, setComentario] = useState('');
   const input = useRef<HTMLInputElement>(null);
   const nomes = Array.from(escolhidos ?? []);
-  const { saindo, fechar } = useSaidaSuave(onFechar);
-  const fundo = useFecharNoFundo(fechar);
 
-  return createPortal(
-    // Mesmo molde da confirmação de exclusão: caixa centrada, título,
-    // descrição e as duas ações no rodapé.
-    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`} style={{ zIndex: 10001, alignItems: 'center', justifyContent: 'center' }}
-      {...fundo}>
-      <div className="delete-confirm-modal" style={{ width: 400 }} onClick={e => e.stopPropagation()}>
-        <p className="delete-confirm-title">
-          {alvo === ENTREGA_ENTREGUE ? 'Marcar como entregue' : 'Marcar como validada'}
-        </p>
-        <p className="delete-confirm-desc">
-          {alvo === ENTREGA_ENTREGUE
-            ? <>"<strong>{entrega.titulo}</strong>" só é dada como entregue com a prova do que foi enviado ao cliente.</>
-            : <>"<strong>{entrega.titulo}</strong>" só é dada como validada com o aceite do cliente anexado.</>}
-        </p>
+  return (
+    <Dialogo
+      titulo={alvo === ENTREGA_ENTREGUE ? 'Marcar como entregue' : 'Marcar como validada'}
+      descricao={alvo === ENTREGA_ENTREGUE
+        ? <>"<strong>{entrega.titulo}</strong>" só é dada como entregue com a prova do que foi enviado ao cliente.</>
+        : <>"<strong>{entrega.titulo}</strong>" só é dada como validada com o aceite do cliente anexado.</>}
+      rotuloOk={alvo === ENTREGA_ENTREGUE ? 'Anexar e entregar' : 'Anexar e validar'}
+      ocupado={!escolhidos?.length || salvando} ocupadoRotulo={salvando ? 'Salvando…' : undefined}
+      corOk={COR_ENTREGA[alvo]}
+      largura={400}
+      onFechar={onFechar}
+      onConfirmar={() => escolhidos && void onConcluir(escolhidos, comentario.trim())}
+    >
 
         <input ref={input} type="file" multiple hidden
           onChange={e => setEscolhidos(e.target.files)} />
@@ -2545,18 +2527,7 @@ function DialogoEvidencia({ entrega, alvo, salvando, onConcluir, onFechar }: {
             : 'Comentário: quem validou, e quando'}
           style={{ marginTop: 10, fontSize: 13 }} />
 
-        <div className="delete-confirm-actions" style={{ marginTop: 20 }}>
-          <button type="button" className="delete-confirm-cancel" onClick={onFechar}>Cancelar</button>
-          <button type="button" className="delete-confirm-ok"
-            style={{ background: COR_ENTREGA[alvo], color: '#fff' }}
-            disabled={!escolhidos?.length || salvando}
-            onClick={() => escolhidos && void onConcluir(escolhidos, comentario.trim())}>
-            {salvando ? 'Salvando…' : alvo === ENTREGA_ENTREGUE ? 'Anexar e entregar' : 'Anexar e validar'}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
+    </Dialogo>
   );
 }
 
@@ -4205,6 +4176,7 @@ function FormularioProjeto({
                       valor: x as string,
                       label: x,
                       icone: ICONE_PRIORIDADE[x]({ size: 15 }),
+                      descricao: DESCRICAO_PRIORIDADE[x],
                     }))}
                   />
                   {erros.prioridade && <p className="form-error">{erros.prioridade}</p>}
@@ -4493,7 +4465,6 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
   const [idNascido, setIdNascido] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [excluindo, setExcluindo] = useState<Projeto | null>(null);
-  const fundoProjeto = useFecharNoFundo(() => setExcluindo(null));
   /** Arquivo aberto em prévia, sem sair do portal. `fonte` diz de onde buscar
    *  o conteúdo: anexo do projeto e evidência de entrega vivem em tabelas
    *  diferentes, com ações próprias. */
@@ -5865,21 +5836,9 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
         />
       )}
 
-      {excluindo && createPortal(
-        <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }}
-          {...fundoProjeto}>
-          <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-            <p className="delete-confirm-title">Excluir projeto</p>
-            <p className="delete-confirm-desc">
-              Tem certeza que deseja excluir "<strong>{excluindo.nome}</strong>"?
-            </p>
-            <div className="delete-confirm-actions">
-              <button className="delete-confirm-cancel" onClick={() => setExcluindo(null)}>Cancelar</button>
-              <button className="delete-confirm-ok" onClick={() => void excluir(excluindo)}>Excluir</button>
-            </div>
-          </div>
-        </div>,
-        document.body,
+      {excluindo && (
+        <ConfirmarExclusao titulo={excluindo.nome} oQue="projeto" zIndex={1100}
+          onCancelar={() => setExcluindo(null)} onConfirmar={() => void excluir(excluindo)} />
       )}
     </div>
   );

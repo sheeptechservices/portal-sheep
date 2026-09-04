@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useToast, useAuth } from './AdminApp';
+import { ConfirmarExclusao, Dialogo } from '../components/Dialogo';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { Abas, AbaPainel } from '../components/Abas';
 import { IconDoc, IconZip, IconImage, IconCheck, IconSpinner, IconExternal } from '../components/icons';
@@ -1098,18 +1099,9 @@ function CedenteDocumentos({ cedenteId, token }: { cedenteId: string; token: str
         />
       )}
 
-      {deleteConfirmId !== null && createPortal(
-        <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }} onClick={() => setDeleteConfirmId(null)}>
-          <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-            <p className="delete-confirm-title">Excluir documento</p>
-            <p className="delete-confirm-desc">Tem certeza que deseja excluir "<strong>{deleteConfirmNome}</strong>"? Esta ação não pode ser desfeita.</p>
-            <div className="delete-confirm-actions">
-              <button className="delete-confirm-cancel" onClick={() => setDeleteConfirmId(null)}>Cancelar</button>
-              <button className="delete-confirm-ok" onClick={confirmDelete}>Excluir</button>
-            </div>
-          </div>
-        </div>,
-        document.body
+      {deleteConfirmId !== null && (
+        <ConfirmarExclusao titulo={deleteConfirmNome} oQue="documento" zIndex={1100}
+          onCancelar={() => setDeleteConfirmId(null)} onConfirmar={confirmDelete} />
       )}
     </>
   );
@@ -1831,27 +1823,15 @@ function CedentesTab({ token, newCedente }: { token: string; newCedente?: NewCed
         />
       )}
 
-      {/* Delete confirm */}
-      {deleteTarget && createPortal(
-        <div
-          className="admin-modal-overlay"
-          style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }}
-          onClick={() => setDeleteTarget(null)}
-        >
-          <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-            <p className="delete-confirm-title">Excluir cedente?</p>
-            <p className="delete-confirm-desc">
-              <strong>{deleteTarget.nome}</strong> será removido do sistema. Esta ação não pode ser desfeita.
-            </p>
-            <div className="delete-confirm-actions">
-              <button className="delete-confirm-cancel" onClick={() => setDeleteTarget(null)}>Cancelar</button>
-              <button className="delete-confirm-ok" onClick={handleDelete} disabled={deleting}>
-                {deleting ? 'Excluindo…' : 'Excluir'}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
+      {deleteTarget && (
+        <Dialogo
+          titulo="Excluir cedente?"
+          descricao={<><strong>{deleteTarget.nome}</strong> será removido do sistema. Esta ação não pode ser desfeita.</>}
+          rotuloOk="Excluir" ocupado={deleting} ocupadoRotulo="Excluindo…"
+          zIndex={1100}
+          onFechar={() => setDeleteTarget(null)}
+          onConfirmar={handleDelete}
+        />
       )}
     </>
   );
@@ -1994,22 +1974,15 @@ function SacadosTab({ token }: { token: string }) {
         </div>
       )}
 
-      {deleteTarget && createPortal(
-        <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }} onClick={() => setDeleteTarget(null)}>
-          <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-            <p className="delete-confirm-title">Remover sacado?</p>
-            <p className="delete-confirm-desc">
-              <strong>{deleteTarget.razao_social || maskCNPJCPF(deleteTarget.cnpj_cpf ?? '')}</strong> será removido da lista.
-            </p>
-            <div className="delete-confirm-actions">
-              <button className="delete-confirm-cancel" onClick={() => setDeleteTarget(null)}>Cancelar</button>
-              <button className="delete-confirm-ok" onClick={handleDelete} disabled={deleting}>
-                {deleting ? 'Removendo…' : 'Remover'}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
+      {deleteTarget && (
+        <Dialogo
+          titulo="Remover sacado?"
+          descricao={<><strong>{deleteTarget.razao_social || maskCNPJCPF(deleteTarget.cnpj_cpf ?? '')}</strong> será removido da lista.</>}
+          rotuloOk="Remover" ocupado={deleting} ocupadoRotulo="Removendo…"
+          zIndex={1100}
+          onFechar={() => setDeleteTarget(null)}
+          onConfirmar={handleDelete}
+        />
       )}
     </>
   );

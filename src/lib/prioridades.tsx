@@ -23,6 +23,21 @@ export const COR_PRIORIDADE: Record<string, string> = {
   'Baixa': '#6E6F69',
 };
 
+/** O que cada nível quer dizer, na hora de escolher.
+ *
+ *  A escala é de atenção, e não de data: o prazo mora no campo de prazo, e uma
+ *  tarefa pode ser urgente sem prazo nenhum. Por isso a frase de cada nível diz
+ *  onde ela entra na fila, que é o que a prioridade decide de fato - a ordem do
+ *  quadro agrupado por prioridade e a ordem das listas.
+ *
+ *  Vale para projeto e para tarefa, porque a escala é a mesma nos dois. */
+export const DESCRICAO_PRIORIDADE: Record<string, string> = {
+  'Urgente': 'Para agora, na frente do que já está aberto',
+  'Alta': 'Antes das outras, ainda nesta semana',
+  'Média': 'O curso normal, na ordem do prazo',
+  'Baixa': 'Quando abrir espaço, sem atropelar nada',
+};
+
 /** Barras que crescem com o nível; o topo da escala usa desenho próprio. */
 const DESENHO_PRIORIDADE: Record<string, (p: { size?: number }) => JSX.Element> = {
   'Urgente': IconPrioridadeMaxima,

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth, iniciais } from './AdminApp';
 import { IconAlert } from '../components/icons';
 import { rotuloPapel } from './papeis';
+import { instante as formatarData, tempoRelativo } from '../lib/datas';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Perfil - a conta de quem está logado, o histórico de acesso e o retrato do
@@ -65,29 +66,7 @@ function rotuloAcao(acao: string): string {
   return cru.charAt(0).toUpperCase() + cru.slice(1);
 }
 
-function formatarData(iso: string | null): string {
-  if (!iso) return '-';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '-';
-  return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
 /** "há 3 dias" - contexto rápido ao lado da data cheia. */
-function tempoRelativo(iso: string | null): string {
-  if (!iso) return '';
-  const ms = Date.now() - new Date(iso).getTime();
-  if (Number.isNaN(ms) || ms < 0) return '';
-  const min = Math.floor(ms / 60000);
-  if (min < 1) return 'agora há pouco';
-  if (min < 60) return `há ${min} min`;
-  const horas = Math.floor(min / 60);
-  if (horas < 24) return `há ${horas}h`;
-  const dias = Math.floor(horas / 24);
-  if (dias < 30) return `há ${dias} ${dias === 1 ? 'dia' : 'dias'}`;
-  const meses = Math.floor(dias / 30);
-  return `há ${meses} ${meses === 1 ? 'mês' : 'meses'}`;
-}
-
 function Estatistica({ label, valor, desc }: { label: string; valor: number; desc: string }) {
   return (
     <div className="admin-stat-card">

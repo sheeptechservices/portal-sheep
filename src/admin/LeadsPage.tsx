@@ -1,15 +1,15 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type {
   Submission, StatusConfig, SubmissionDetail, Evento, EtapaArquivo, FormArquivo,
   Pendencia, ReuniaoDoCard,
 } from './types';
-import { useToast, useAuth, iniciais, nomeCurto } from './AdminApp';
+import { useToast, useAuth } from './AdminApp';
 import { DatePicker } from '../components/DatePicker';
 import { ExecutionDateModal } from '../components/ExecutionDateModal';
 import {
   IconAlert, IconCalendario, IconCheck, IconChevronDown, IconClip, IconComentario, IconDoc,
-  IconDownload, IconEdit, IconEnviar, IconExternal, IconEye, IconImage, IconInbox, IconLink,
+  IconDownload, IconEdit, IconExternal, IconEye, IconImage, IconInbox, IconLink,
   IconPlus, IconRecolher, IconRefresh, IconSearch, IconSpinner, IconTrash, IconVisaoLista,
   IconVisaoQuadro, IconX, IconZip, IconChevronUp, IconChevronUpDown,
 } from '../components/icons';
@@ -23,6 +23,11 @@ import { PuxadorDoPainel } from '../components/PuxadorDoPainel';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import FilterDropdown from '../components/FilterDropdown';
 import { Abas } from '../components/Abas';
+import { Dialogo } from '../components/Dialogo';
+import { dia as fmtDataBR, diaCurto as fmtDataCurta } from '../lib/datas';
+import {
+  Atividade, type ComentarioAtividade, type EventoAtividade,
+} from '../components/Atividade';
 import { SecaoReunioes, type Reuniao } from '../components/SecaoReunioes';
 import { ChipReuniao } from '../components/VinculoReuniao';
 import { ReuniaoModal } from '../components/ReuniaoModal';
@@ -218,50 +223,29 @@ function MotivoPerdaModal({ statusName, inicial = '', onConfirm, onCancel }: {
   onCancel: () => void;
 }) {
   const [motivo, setMotivo] = useState(inicial);
-  // Confirmar e cancelar saem pela mesma animação: o gancho avisa quem monta
-  // só depois que ela termina, e este alvo diz qual dos dois foi.
-  const alvo = useRef<'cancelar' | 'confirmar'>('cancelar');
-  const texto = useRef(inicial);
-  const { saindo, fechar } = useSaidaSuave(() => {
-    if (alvo.current === 'confirmar') void onConfirm(texto.current.trim());
-    else onCancel();
-  });
-  const fundo = useFecharNoFundo(fechar);
+  // Confirmar e cancelar saem pela mesma animação, e quem cuida disso agora é o
+  // diálogo da casa.
 
-  function confirmar() {
-    if (!motivo.trim()) return;
-    alvo.current = 'confirmar';
-    texto.current = motivo;
-    fechar();
-  }
-
-  return createPortal(
-    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`}
-      style={{ zIndex: 1200, alignItems: 'center', justifyContent: 'center' }} {...fundo}>
-      <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-        <p className="delete-confirm-title">Por que este lead se perdeu?</p>
-        <p className="delete-confirm-desc">
-          Para mover para <strong>{statusName}</strong>, conte em uma linha o que
-          aconteceu: preço, prazo, concorrente, sumiu.
-        </p>
+  return (
+    <Dialogo
+      titulo="Por que este lead se perdeu?"
+      descricao={<>
+        Para mover para <strong>{statusName}</strong>, conte em uma linha o que
+        aconteceu: preço, prazo, concorrente, sumiu.
+      </>}
+      rotuloOk="Registrar perda" perigo={false} ocupado={!motivo.trim()}
+      zIndex={1200}
+      onFechar={onCancel}
+      onConfirmar={() => void onConfirm(motivo.trim())}
+    >
         <div className="form-group" style={{ margin: '16px 0 20px' }}>
           <textarea className="form-input" rows={3} value={motivo} autoFocus
             style={{ fontSize: 13, resize: 'none' }}
             placeholder="Achou caro e ficou com o fornecedor atual"
             onChange={e => setMotivo(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) confirmar(); }} />
+            onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && motivo.trim()) void onConfirm(motivo.trim()); }} />
         </div>
-        <div className="delete-confirm-actions">
-          <button className="delete-confirm-cancel" onClick={fechar}>Cancelar</button>
-          <button className="delete-confirm-ok" disabled={!motivo.trim()}
-            style={{ background: 'var(--yellow)', color: 'var(--on-yellow)' }}
-            onClick={confirmar}>
-            Registrar perda
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
+    </Dialogo>
   );
 }
 
@@ -283,19 +267,22 @@ export function PendenciaMoveModal({ statusName, saving, existentes, onConfirm, 
     setItens(prev => prev.map((x, idx) => idx === i ? { ...x, ...patch } : x));
   const enviar = () => onConfirm(itens.filter(x => x.descricao.trim()));
 
-  return createPortal(
-    <div className="admin-modal-overlay" style={{ zIndex: 1200, alignItems: 'center', justifyContent: 'center' }} onClick={onCancel}>
-      <div className="delete-confirm-modal" style={{ width: 'min(500px, 96vw)', textAlign: 'left' }} onClick={e => e.stopPropagation()}>
-        <p className="delete-confirm-title">Registrar pendências</p>
-        <p className="delete-confirm-desc">
-          {temExistentes ? (
-            <>Este card já tem <strong>{existentes!.length} pendência{existentes!.length > 1 ? 's' : ''}</strong> registrada{existentes!.length > 1 ? 's' : ''}.
-            Você pode seguir com {existentes!.length > 1 ? 'elas' : 'ela'}, editar ou adicionar novas antes de mover para <strong>{statusName}</strong>.</>
-          ) : (
-            <>Antes de mover para <strong>{statusName}</strong>, informe o que está pendente. Pelo menos uma é obrigatória.</>
-          )}
-        </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '14px 0' }}>
+  return (
+    <Dialogo
+      titulo="Registrar pendências"
+      descricao={temExistentes ? (
+        <>Este card já tem <strong>{existentes!.length} pendência{existentes!.length > 1 ? 's' : ''}</strong> registrada{existentes!.length > 1 ? 's' : ''}.
+        Você pode seguir com {existentes!.length > 1 ? 'elas' : 'ela'}, editar ou adicionar novas antes de mover para <strong>{statusName}</strong>.</>
+      ) : (
+        <>Antes de mover para <strong>{statusName}</strong>, informe o que está pendente. Pelo menos uma é obrigatória.</>
+      )}
+      rotuloOk="Confirmar e mover" perigo={false}
+      ocupado={!valid || saving} ocupadoRotulo={saving ? 'Movendo…' : undefined}
+      zIndex={1200} largura={Math.min(500, typeof window === 'undefined' ? 500 : window.innerWidth - 32)}
+      onFechar={onCancel}
+      onConfirmar={enviar}
+    >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '14px 0', textAlign: 'left' }}>
           {itens.map((it, i) => (
             <div key={it.id ?? `novo-${i}`} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <input className="form-input" style={{ flex: 1 }} placeholder="Descreva a pendência…" value={it.descricao}
@@ -310,16 +297,7 @@ export function PendenciaMoveModal({ statusName, saving, existentes, onConfirm, 
           <button type="button" className="btn btn-secondary" style={{ alignSelf: 'flex-start', fontSize: 12, padding: '5px 10px' }}
             onClick={() => setItens(prev => [...prev, { descricao: '', categoria: 'Documento' }])}>+ Adicionar pendência</button>
         </div>
-        <div className="delete-confirm-actions">
-          <button className="delete-confirm-cancel" onClick={onCancel} disabled={saving}>Cancelar</button>
-          <button className="delete-confirm-ok" style={{ background: 'var(--yellow)', borderColor: 'var(--yellow)', color: '#000' }}
-            disabled={!valid || saving} onClick={enviar}>
-            {saving ? 'Movendo…' : 'Confirmar e mover'}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
+    </Dialogo>
   );
 }
 
@@ -470,6 +448,53 @@ function ordenarReunioes(rs: Reuniao[]): Reuniao[] {
   return [...rs].sort((a, b) => (b.data ?? '').localeCompare(a.data ?? '') || b.id - a.id);
 }
 
+/** O diário do lead em português. O funil registra outra coisa que a tarefa -
+ *  aqui se move de etapa, se anexa arquivo e se edita a ficha -, e é por isso
+ *  que a frase é montada de cada lado e não dentro do componente. */
+function eventoDoLead(e: Evento): EventoAtividade {
+  const base = {
+    id: e.id,
+    usuario_nome: e.autor_nome ?? 'Alguém',
+    criado_em: e.criado_em,
+  };
+  if (e.tipo === 'status_change') {
+    return { ...base, texto: 'moveu', de: null, para: e.status_nome ?? 'outra etapa' };
+  }
+  if (e.tipo === 'arquivo') {
+    // O que o servidor grava é "Arquivo: contrato.pdf"; a frase fica melhor com
+    // o verbo na frente e o nome do arquivo destacado.
+    const nome = (e.descricao ?? '').replace(/^Arquivo:\s*/, '');
+    return { ...base, texto: 'anexou', alvo: nome || 'um arquivo', de: null, para: null };
+  }
+  if (e.tipo === 'edicao') {
+    return { ...base, texto: e.descricao === 'Dados editados' ? 'editou a ficha' : (e.descricao ?? 'editou o lead'), de: null, para: null };
+  }
+  return { ...base, texto: e.descricao ?? e.tipo, de: null, para: null };
+}
+
+/** Um comentário do funil no formato da conversa. As menções antigas viviam no
+ *  texto (`@apelido`) e continuam sendo lidas de lá; o comentário do lead não
+ *  leva anexo, e por isso a lista vem vazia. */
+function comentarioDoLead(e: Evento): ComentarioAtividade {
+  return {
+    id: e.id,
+    pai_id: e.parent_id,
+    usuario_id: e.autor_id,
+    usuario_nome: e.autor_nome ?? 'Alguém',
+    foto_url: e.autor_foto ?? null,
+    texto: e.descricao ?? '',
+    criado_em: e.criado_em,
+    editado_em: null,
+    mencoes: [],
+    anexos: [],
+  };
+}
+
+/** Os ids marcados pela caixa de escrita, no formato que ela grava. */
+const MARCA_NO_TEXTO = /@\[([^\]]+)\]\(([^)]+)\)/g;
+const idsMarcados = (texto: string) =>
+  [...new Set([...texto.matchAll(MARCA_NO_TEXTO)].map(m => m[2]))];
+
 function hojeISO(): string {
   const d = new Date();
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
@@ -484,19 +509,6 @@ function fmtValor(v: number | null | undefined): string {
 }
 
 /** `YYYY-MM-DD` em `dd/mm/aaaa`. */
-function fmtDataBR(iso: string | null | undefined): string {
-  if (!iso) return '-';
-  const [a, m, d] = String(iso).slice(0, 10).split('-');
-  return d && m && a ? `${d}/${m}/${a}` : '-';
-}
-
-/** A mesma data em `dd/mm`, para caber no rodapé do card. */
-function fmtDataCurta(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const [, m, d] = String(iso).slice(0, 10).split('-');
-  return d && m ? `${d}/${m}` : '';
-}
-
 /** De onde o lead veio. Lista curta e fechada: origem digitada à mão vira dez
  *  grafias da mesma coisa e o filtro deixa de somar. */
 export const ORIGENS_LEAD = [
@@ -604,366 +616,6 @@ export function useApi(token: string) {
     if (res.status === 401) { onSessionExpired(); return {}; }
     return res.json();
   }, [token, onSessionExpired]);
-}
-
-// ── Comment input box ────────────────────────────────
-function CommentInput({ placeholder, onSend, autoFocus, fetchMentions, statuses }: {
-  placeholder: string;
-  onSend: (text: string) => Promise<void>;
-  autoFocus?: boolean;
-  fetchMentions?: () => Promise<import('./types').UsuarioNotificavel[]>;
-  statuses?: Pick<StatusConfig, 'id' | 'nome' | 'cor'>[];
-}) {
-  const [text, setText] = useState('');
-  const [sending, setSending] = useState(false);
-  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
-  const [mentionStart, setMentionStart] = useState(0);
-  const [usuariosMencao, setUsuariosMencao] = useState<import('./types').UsuarioNotificavel[]>([]);
-  const [mentionIdx, setMentionIdx] = useState(0);
-  const [stageQuery, setStageQuery] = useState<string | null>(null);
-  const [stageStart, setStageStart] = useState(0);
-  const [stageIdx, setStageIdx] = useState(0);
-  const [dropPos, setDropPos] = useState({ bottom: 0, left: 0, width: 0 });
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // O @ escrito no comentário é a parte local do e-mail. É por ela que o
-  // servidor reencontra a pessoa em `notifyMentions`, então as duas pontas
-  // precisam usar exatamente o mesmo critério.
-  const apelido = (u: { email: string }) => u.email.split('@')[0];
-
-  const filtered = mentionQuery !== null
-    ? usuariosMencao.filter(u =>
-        !mentionQuery ||
-        u.nome.toLowerCase().includes(mentionQuery.toLowerCase()) ||
-        u.email.toLowerCase().includes(mentionQuery.toLowerCase())
-      ).slice(0, 6)
-    : [];
-
-  const filteredStages = stageQuery !== null && statuses
-    ? statuses.filter(s => !stageQuery || s.nome.toLowerCase().includes(stageQuery.toLowerCase())).slice(0, 6)
-    : [];
-
-  async function submit() {
-    if (!text.trim() || sending) return;
-    setSending(true);
-    await onSend(text);
-    setText('');
-    setSending(false);
-    setMentionQuery(null);
-    setStageQuery(null);
-  }
-
-  function selectMention(user: import('./types').UsuarioNotificavel) {
-    const before = text.slice(0, mentionStart);
-    const after = text.slice(mentionStart + 1 + (mentionQuery?.length ?? 0));
-    const newText = `${before}@${apelido(user)} ${after}`;
-    setText(newText);
-    setMentionQuery(null);
-    setTimeout(() => {
-      if (textareaRef.current) {
-        const pos = before.length + apelido(user).length + 2;
-        textareaRef.current.selectionStart = pos;
-        textareaRef.current.selectionEnd = pos;
-        textareaRef.current.focus();
-      }
-    }, 0);
-  }
-
-  function selectStage(stage: Pick<StatusConfig, 'id' | 'nome' | 'cor'>) {
-    const before = text.slice(0, stageStart);
-    const after = text.slice(stageStart + 1 + (stageQuery?.length ?? 0));
-    const newText = `${before}#[${stage.nome}] ${after}`;
-    setText(newText);
-    setStageQuery(null);
-    setTimeout(() => {
-      if (textareaRef.current) {
-        const pos = before.length + stage.nome.length + 4;
-        textareaRef.current.selectionStart = pos;
-        textareaRef.current.selectionEnd = pos;
-        textareaRef.current.focus();
-      }
-    }, 0);
-  }
-
-  function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    const val = e.target.value;
-    setText(val);
-    const cursor = e.target.selectionStart;
-    const before = val.slice(0, cursor);
-    const atMatch = fetchMentions ? before.match(/@([\w.]*)$/) : null;
-    const hashMatch = statuses ? before.match(/#(\w*)$/) : null;
-    if (atMatch) {
-      const start = cursor - atMatch[0].length;
-      setMentionStart(start);
-      setMentionQuery(atMatch[1]);
-      setMentionIdx(0);
-      setStageQuery(null);
-      if (usuariosMencao.length === 0) fetchMentions!().then(setUsuariosMencao);
-      const rect = textareaRef.current!.getBoundingClientRect();
-      setDropPos({ bottom: window.innerHeight - rect.top + 6, left: rect.left, width: rect.width });
-    } else if (hashMatch) {
-      const start = cursor - hashMatch[0].length;
-      setStageStart(start);
-      setStageQuery(hashMatch[1]);
-      setStageIdx(0);
-      setMentionQuery(null);
-      const rect = textareaRef.current!.getBoundingClientRect();
-      setDropPos({ bottom: window.innerHeight - rect.top + 6, left: rect.left, width: rect.width });
-    } else {
-      setMentionQuery(null);
-      setStageQuery(null);
-    }
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (mentionQuery !== null && filtered.length > 0) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); setMentionIdx(i => Math.min(i + 1, filtered.length - 1)); return; }
-      if (e.key === 'ArrowUp') { e.preventDefault(); setMentionIdx(i => Math.max(i - 1, 0)); return; }
-      if (e.key === 'Enter') { e.preventDefault(); selectMention(filtered[mentionIdx]); return; }
-      if (e.key === 'Escape') { setMentionQuery(null); return; }
-    }
-    if (stageQuery !== null && filteredStages.length > 0) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); setStageIdx(i => Math.min(i + 1, filteredStages.length - 1)); return; }
-      if (e.key === 'ArrowUp') { e.preventDefault(); setStageIdx(i => Math.max(i - 1, 0)); return; }
-      if (e.key === 'Enter') { e.preventDefault(); selectStage(filteredStages[stageIdx]); return; }
-      if (e.key === 'Escape') { setStageQuery(null); return; }
-    }
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
-  }
-
-  return (
-    <div className="comment-input-row">
-      <textarea
-        ref={textareaRef}
-        className="comment-textarea"
-        placeholder={placeholder}
-        value={text}
-        autoFocus={autoFocus}
-        rows={1}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-      />
-      <button className="comment-send-btn" onClick={submit} disabled={!text.trim() || sending}>
-        {sending ? '…' : (
-          <IconEnviar size={14} />
-        )}
-      </button>
-
-      {mentionQuery !== null && filtered.length > 0 && createPortal(
-        <div className="mention-dropdown" style={{ bottom: dropPos.bottom, left: dropPos.left, minWidth: dropPos.width }}>
-          {filtered.map((u, i) => (
-            <div
-              key={u.id}
-              className={`mention-option${i === mentionIdx ? ' active' : ''}`}
-              onMouseDown={e => { e.preventDefault(); selectMention(u); }}
-            >
-              {u.foto_url
-                ? <img src={u.foto_url} alt="" className="mention-avatar" referrerPolicy="no-referrer" />
-                : <div className="mention-avatar">{u.nome[0]}</div>
-              }
-              <div>
-                <p className="mention-name">{u.nome}</p>
-                <p className="mention-handle">@{apelido(u)}</p>
-              </div>
-            </div>
-          ))}
-        </div>,
-        document.body
-      )}
-
-      {stageQuery !== null && filteredStages.length > 0 && createPortal(
-        <div className="mention-dropdown" style={{ bottom: dropPos.bottom, left: dropPos.left, minWidth: dropPos.width }}>
-          {filteredStages.map((s, i) => (
-            <div
-              key={s.id}
-              className={`mention-option${i === stageIdx ? ' active' : ''}`}
-              onMouseDown={e => { e.preventDefault(); selectStage(s); }}
-            >
-              <div className="mention-avatar" style={{ background: `${s.cor}20`, border: `2px solid ${s.cor}`, width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: s.cor }} />
-              </div>
-              <p className="mention-name">{s.nome}</p>
-            </div>
-          ))}
-        </div>,
-        document.body
-      )}
-    </div>
-  );
-}
-
-// ── Render comment text with @user and #[stage] badges ──
-function renderCommentText(text: string, statuses?: Pick<StatusConfig, 'id' | 'nome' | 'cor'>[]) {
-  const regex = /@([\w.]+)|#\[([^\]]+)\]|(https?:\/\/[^\s]+)/g;
-  const parts: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  let key = 0;
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
-    if (match[1]) {
-      parts.push(<span key={key++} className="comment-at-mention">@{match[1]}</span>);
-    } else if (match[2]) {
-      const stage = statuses?.find(s => s.nome === match![2]);
-      // Hex, e não token: a cor é concatenada com a opacidade logo abaixo
-      // (`${color}18`), e um `var(...)` ali não formaria cor nenhuma.
-      const color = stage?.cor ?? '#AAAAAA';
-      parts.push(<span key={key++} className="comment-stage-mention" style={{ background: `${color}18`, color, borderColor: `${color}50` }}>#{match[2]}</span>);
-    } else if (match[3]) {
-      // Remove pontuação final acidental (ex.: "link." ou "link)")
-      let url = match[3];
-      let trailing = '';
-      const m = url.match(/[.,;:!?)\]]+$/);
-      if (m) { trailing = m[0]; url = url.slice(0, -trailing.length); }
-      parts.push(
-        <a key={key++} href={url} target="_blank" rel="noopener noreferrer" className="comment-link" onClick={e => e.stopPropagation()}>
-          {url}
-        </a>
-      );
-      if (trailing) parts.push(trailing);
-    }
-    lastIndex = match.index + match[0].length;
-  }
-  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
-  return parts.length > 0 ? parts : [text];
-}
-
-// ── Autoria de um evento ─────────────────────────────
-// Sem autor gravado (evento anterior ao login individual, ou gerado pela
-// própria plataforma) a linha vira "Sistema", em vez de sumir: o histórico fica
-// legível e fica claro que ninguém assinou aquilo.
-function Autoria({ nome, foto }: { nome: string | null; foto?: string | null }) {
-  const semPessoa = !nome;
-  const rotulo = nome ?? 'Sistema';
-  // A foto pode falhar ao carregar (URL do Google expira, rede caiu): nesse
-  // caso volta para as iniciais, que sempre existem.
-  const [semFoto, setSemFoto] = useState(false);
-  const mostraFoto = !!foto && !semPessoa && !semFoto;
-  return (
-    <span className="autoria" title={rotulo}>
-      <span className={`autoria-marca${semPessoa ? ' autoria-sistema' : ''}`} aria-hidden="true">
-        {mostraFoto
-          ? <img src={foto!} alt="" referrerPolicy="no-referrer" onError={() => setSemFoto(true)} />
-          : (semPessoa ? '-' : iniciais(rotulo))}
-      </span>
-      <span className="autoria-nome">{semPessoa ? rotulo : nomeCurto(rotulo)}</span>
-    </span>
-  );
-}
-
-// ── Single comment with replies ──────────────────────
-function CommentItem({ ev, replies, onReply, onDelete, fetchMentions, statuses }: {
-  ev: Evento;
-  replies: Evento[];
-  onReply: (parentId: number, text: string) => Promise<void>;
-  onDelete: (id: number) => void;
-  fetchMentions: () => Promise<import('./types').UsuarioNotificavel[]>;
-  statuses?: Pick<StatusConfig, 'id' | 'nome' | 'cor'>[];
-}) {
-  const [showReply, setShowReply] = useState(false);
-  const [showReplies, setShowReplies] = useState(false);
-
-  return (
-    <div className="comment-item">
-      <div className="comment-bubble">
-        <p className="comment-text">{renderCommentText(ev.descricao ?? '', statuses)}</p>
-        <div className="comment-meta">
-          <Autoria nome={ev.autor_nome} foto={ev.autor_foto} />
-          <span className="comment-time">{formatDate(ev.criado_em)}</span>
-          <button className="comment-reply-btn" onClick={() => setShowReply(v => !v)}>
-            {showReply ? 'Cancelar' : 'Responder'}
-          </button>
-          <button className="comment-delete-btn" title="Excluir comentário" onClick={() => onDelete(ev.id)}>
-            <IconTrash size={11} />
-          </button>
-          {replies.length > 0 && (
-            <button className="comment-replies-toggle" onClick={() => setShowReplies(v => !v)}>
-              {replies.length} {replies.length === 1 ? 'resposta' : 'respostas'}
-              <span style={{ display: 'inline-flex', transform: showReplies ? 'rotate(180deg)' : 'none', transition: 'transform var(--transition)' }}><IconChevronDown size={10} /></span>
-            </button>
-          )}
-        </div>
-
-        {replies.length > 0 && showReplies && (
-          <div className="comment-replies-inline">
-            {replies.map(r => (
-              <div key={r.id} className="comment-reply-bubble">
-                <p className="comment-text">{renderCommentText(r.descricao ?? '', statuses)}</p>
-                <div className="comment-meta" style={{ marginTop: 4 }}>
-                  <Autoria nome={r.autor_nome} foto={r.autor_foto} />
-                  <span className="comment-time">{formatDate(r.criado_em)}</span>
-                  <button className="comment-delete-btn" title="Excluir resposta" onClick={() => onDelete(r.id)}>
-                    <IconTrash size={11} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {showReply && (
-        <div className="comment-reply-input">
-          <CommentInput
-            placeholder="Escreva uma resposta…"
-            autoFocus
-            fetchMentions={fetchMentions}
-            statuses={statuses}
-            onSend={async (text) => { await onReply(ev.id, text); setShowReply(false); setShowReplies(true); }}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Comments section ─────────────────────────────────
-function CommentsSection({ eventos, onSend, onDelete, onFileUpload, fetchMentions, statuses }: {
-  eventos: Evento[];
-  onSend: (text: string, parentId?: number) => Promise<void>;
-  onDelete: (id: number) => void;
-  onFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  fetchMentions: () => Promise<import('./types').UsuarioNotificavel[]>;
-  statuses?: Pick<StatusConfig, 'id' | 'nome' | 'cor'>[];
-}) {
-  const comments = eventos.filter(e => e.tipo === 'comentario');
-  const roots = comments.filter(c => !c.parent_id);
-  const repliesOf = (id: number) => comments.filter(c => c.parent_id === id);
-
-  return (
-    <section className="comments-section">
-      <p className="admin-section-title">Comentários {comments.length > 0 && `(${comments.length})`}</p>
-
-      {roots.length === 0 && (
-        <p className="comments-empty">Nenhum comentário ainda.</p>
-      )}
-
-      <div className="comments-list">
-        {roots.map(ev => (
-          <CommentItem
-            key={ev.id}
-            ev={ev}
-            replies={repliesOf(ev.id)}
-            fetchMentions={fetchMentions}
-            statuses={statuses}
-            onReply={(parentId, text) => onSend(text, parentId)}
-            onDelete={onDelete}
-          />
-        ))}
-      </div>
-
-      <div className="comments-new">
-        <div className="comment-new-row">
-          <CommentInput
-            placeholder="Escreva um comentário… (@ para mencionar, # para etapa)"
-            fetchMentions={fetchMentions}
-            statuses={statuses}
-            onSend={text => onSend(text)}
-          />
-        </div>
-      </div>
-    </section>
-  );
 }
 
 // ── Currency helpers (edit form) ─────────────────────
@@ -1412,7 +1064,6 @@ export function DetailPanel({
   const [linkUrl, setLinkUrl] = useState('');
   const [linkNome, setLinkNome] = useState('');
   const [savingLink, setSavingLink] = useState(false);
-  const [deleteCommentId, setDeleteCommentId] = useState<number | null>(null);
   const [showEdit, setShowEdit] = useState(false);
   const [deleteSubmissionConfirm, setDeleteSubmissionConfirm] = useState(false);
   // Feedback visual do botão "copiar link de compartilhamento"
@@ -1432,8 +1083,16 @@ export function DetailPanel({
   const [pendingExecClear, setPendingExecClear] = useState<number | null>(null);
 
 
+  /** O mesmo `detail` do estado, guardado fora do render.
+   *
+   *  A atividade lê daqui: depois de enviar um comentário ela relê na hora, e o
+   *  estado ainda não foi recomposto nesse instante - lendo do estado, o balão
+   *  que acabou de subir sumiria e voltaria no quadro seguinte. */
+  const ultimoDetail = useRef<SubmissionDetail | null>(null);
+
   async function load() {
     const data = await api(`?action=detail&id=${id}`);
+    ultimoDetail.current = data;
     setDetail(data);
     setReunioes((data?.reunioes ?? []) as Reuniao[]);
   }
@@ -1458,6 +1117,38 @@ export function DetailPanel({
       toast('error', 'Não foi possível copiar o link', url);
     }
   }
+
+  /** O dono da atividade: de onde ler a conversa e o diário, e para onde
+   *  mandar o que se escreve. A versão é o tamanho do diário - mudou, a
+   *  atividade relê, e é assim que uma mudança de etapa aparece nela sem
+   *  ninguém ter clicado em nada. */
+  const donoDaAtividade = useMemo(() => ({
+    chave: `lead:${id}`,
+    versao: detail?.eventos.length ?? 0,
+    ler: async () => {
+      const eventos = ultimoDetail.current?.eventos ?? [];
+      return {
+        eventos: eventos.filter(e => e.tipo !== 'comentario').map(eventoDoLead),
+        comentarios: eventos.filter(e => e.tipo === 'comentario').map(comentarioDoLead),
+      };
+    },
+    enviar: async (texto: string, _anexos: unknown[], paiId: number | null) => {
+      const r = await api('', 'POST', {
+        action: 'comment', lead_id: id, texto, parent_id: paiId,
+        mencoes: idsMarcados(texto),
+      });
+      if (!r?.error) await load();
+      return r ?? {};
+    },
+    excluir: async (comentarioId: number) => {
+      const r = await api('', 'POST', { action: 'delete_comment', id: comentarioId });
+      if (!r?.error) await load();
+      return r ?? {};
+    },
+    // Sem `anexo`: o comentário do funil não leva arquivo - os anexos do lead
+    // têm seção própria, com categoria -, e por isso o clipe não aparece.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [api, id, detail?.eventos.length]);
 
   // ── Reuniões do lead ──────────────────────────────────────────────────
   //
@@ -1522,6 +1213,7 @@ export function DetailPanel({
   useEffect(() => {
     const cached = prefetchCache?.current?.get(id);
     if (cached) {
+      ultimoDetail.current = cached;
       setDetail(cached);
       setReunioes((cached.reunioes ?? []) as Reuniao[]);
       prefetchCache!.current!.delete(id);
@@ -1540,41 +1232,6 @@ export function DetailPanel({
     if (!detail) return;
     onEdited?.(id, { arquivo_count: anexoTotal, comentario_count: comentarioTotal, pendencia_aberta_count: pendAbertaTotal, pendencia_total_count: pendTotal });
   }, [anexoTotal, comentarioTotal, pendAbertaTotal, pendTotal]);
-
-  async function sendComment(texto: string, parentId?: number) {
-    const limpo = texto.trim();
-    if (!limpo) return;
-    // O balão sobe na hora, como na conversa da tarefa: gravar e depois reler o
-    // lead inteiro eram duas voltas ao servidor antes de aparecer qualquer
-    // coisa. Id negativo até a releitura trazer o de verdade.
-    const provisorio: Evento = {
-      id: -Date.now(), lead_id: id, tipo: 'comentario',
-      status_id: null, status_nome: null, status_cor: null,
-      descricao: limpo, parent_id: parentId ?? null,
-      criado_em: new Date().toISOString(),
-      autor_id: usuario?.id ?? null, autor_nome: usuario?.nome ?? null,
-      autor_foto: usuario?.foto_url ?? null,
-    };
-    setDetail(prev => (prev ? { ...prev, eventos: [...prev.eventos, provisorio] } : prev));
-    const r = await api('', 'POST', { action: 'comment', lead_id: id, texto: limpo, parent_id: parentId ?? null });
-    if (r?.error) {
-      setDetail(prev => (prev ? { ...prev, eventos: prev.eventos.filter(e => e.id !== provisorio.id) } : prev));
-      toast('error', 'Não foi possível comentar', r.error);
-      return;
-    }
-    void load();
-  }
-
-  async function deleteComment(commentId: number) {
-    setDeleteCommentId(null);
-    // Some da tela na hora; a releitura só confirma.
-    setDetail(prev => (prev
-      ? { ...prev, eventos: prev.eventos.filter(e => e.id !== commentId && e.parent_id !== commentId) }
-      : prev));
-    const r = await api('', 'POST', { action: 'delete_comment', id: commentId });
-    if (r?.error) toast('error', 'Não foi possível excluir', r.error);
-    void load();
-  }
 
   // Grava a data (otimista + backend), sem efeitos de status
   async function saveExecField(field: 'previsao_execucao' | 'data_execucao', value: string) {
@@ -2067,6 +1724,17 @@ export function DetailPanel({
                     ? <a className="lead-ficha-valor lead-ficha-link" href={`tel:${String(s!.contato_telefone).replace(/\D/g, '')}`}>{s!.contato_telefone}</a>
                     : <p className="lead-ficha-valor">-</p>}
                 </div>
+                {/* Cidade e estado numa linha só: é assim que se lê um lugar, e
+                    em dois campos separados a ficha ganharia um vão no meio de
+                    "Belo Horizonte" e "MG". O país fica embaixo, e some quando
+                    é o daqui - dizer "Brasil" em todo lead é ruído. */}
+                <div className="lead-ficha-item">
+                  <p className="admin-info-label">Onde fica</p>
+                  <p className="lead-ficha-valor">
+                    {[s!.cidade, s!.estado].filter(Boolean).join(' / ') || '-'}
+                  </p>
+                  {s!.pais && s!.pais !== 'Brasil' && <p className="lead-ficha-sub">{s!.pais}</p>}
+                </div>
               </div>
             </section>
 
@@ -2425,52 +2093,24 @@ export function DetailPanel({
               />
             )}
 
-            {deleteConfirmId !== null && createPortal(
-              <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }} onClick={() => setDeleteConfirmId(null)}>
-                <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-                  <p className="delete-confirm-title">Excluir anexo?</p>
-                  <p className="delete-confirm-desc">
-                    <strong>{deleteConfirmNome}</strong> será excluído permanentemente e não poderá ser recuperado.
-                  </p>
-                  <div className="delete-confirm-actions">
-                    <button className="delete-confirm-cancel" onClick={() => setDeleteConfirmId(null)}>Cancelar</button>
-                    <button className="delete-confirm-ok" onClick={() => deleteFile(deleteConfirmId)}>Excluir</button>
-                  </div>
-                </div>
-              </div>,
-              document.body
+            {deleteConfirmId !== null && (
+              <Dialogo
+                titulo="Excluir anexo?"
+                descricao={<><strong>{deleteConfirmNome}</strong> será excluído permanentemente e não poderá ser recuperado.</>}
+                rotuloOk="Excluir" zIndex={1100}
+                onFechar={() => setDeleteConfirmId(null)}
+                onConfirmar={() => deleteFile(deleteConfirmId)}
+              />
             )}
 
-            {deleteCommentId !== null && createPortal(
-              <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }} onClick={() => setDeleteCommentId(null)}>
-                <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-                  <p className="delete-confirm-title">Excluir comentário?</p>
-                  <p className="delete-confirm-desc">
-                    O comentário será excluído permanentemente. Respostas associadas também serão removidas.
-                  </p>
-                  <div className="delete-confirm-actions">
-                    <button className="delete-confirm-cancel" onClick={() => setDeleteCommentId(null)}>Cancelar</button>
-                    <button className="delete-confirm-ok" onClick={() => deleteComment(deleteCommentId)}>Excluir</button>
-                  </div>
-                </div>
-              </div>,
-              document.body
-            )}
-
-            {deleteSubmissionConfirm && createPortal(
-              <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }} onClick={() => setDeleteSubmissionConfirm(false)}>
-                <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-                  <p className="delete-confirm-title">Excluir lead?</p>
-                  <p className="delete-confirm-desc">
-                    <strong>{detail?.submission.empresa}</strong> será removida do sistema. Esta ação pode ser revertida pelo suporte, mas não pela interface.
-                  </p>
-                  <div className="delete-confirm-actions">
-                    <button className="delete-confirm-cancel" onClick={() => setDeleteSubmissionConfirm(false)}>Cancelar</button>
-                    <button className="delete-confirm-ok" onClick={handleDeleteSubmission}>Excluir</button>
-                  </div>
-                </div>
-              </div>,
-              document.body
+            {deleteSubmissionConfirm && (
+              <Dialogo
+                titulo="Excluir lead?"
+                descricao={<><strong>{detail?.submission.empresa}</strong> será removida do sistema. Esta ação pode ser revertida pelo suporte, mas não pela interface.</>}
+                rotuloOk="Excluir" zIndex={1100}
+                onFechar={() => setDeleteSubmissionConfirm(false)}
+                onConfirmar={handleDeleteSubmission}
+              />
             )}
 
 
@@ -2505,39 +2145,31 @@ export function DetailPanel({
             )}
 
             {/* Confirmar mover p/ conversão após registrar a data de execução direto */}
-            {pendingAutoConv !== null && createPortal(
-              <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }} onClick={() => setPendingAutoConv(null)}>
-                <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-                  <p className="delete-confirm-title">Mover para fechado?</p>
-                  <p className="delete-confirm-desc">
-                    A data do fechamento foi registrada. A etapa será alterada automaticamente para
-                    <strong> {statuses.find(st => Number(st.id) === Number(pendingAutoConv))?.nome}</strong>. Deseja continuar?
-                  </p>
-                  <div className="delete-confirm-actions">
-                    <button className="delete-confirm-cancel" onClick={() => setPendingAutoConv(null)}>Cancelar</button>
-                    <button className="delete-confirm-ok" style={{ background: 'var(--yellow)', color: 'var(--on-yellow)' }} onClick={confirmAutoConv}>Confirmar</button>
-                  </div>
-                </div>
-              </div>,
-              document.body
+            {pendingAutoConv !== null && (
+              <Dialogo
+                titulo="Mover para fechado?"
+                descricao={<>
+                  A data do fechamento foi registrada. A etapa será alterada automaticamente para
+                  <strong> {statuses.find(st => Number(st.id) === Number(pendingAutoConv))?.nome}</strong>. Deseja continuar?
+                </>}
+                perigo={false} zIndex={1100}
+                onFechar={() => setPendingAutoConv(null)}
+                onConfirmar={confirmAutoConv}
+              />
             )}
 
             {/* Confirmar sair da conversão (limpa a data de execução) */}
-            {pendingExecClear !== null && createPortal(
-              <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }} onClick={() => setPendingExecClear(null)}>
-                <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-                  <p className="delete-confirm-title">Limpar a data do fechamento?</p>
-                  <p className="delete-confirm-desc">
-                    Mover para <strong>{statuses.find(st => Number(st.id) === Number(pendingExecClear))?.nome}</strong> vai
-                    <strong> limpar a data do fechamento</strong> registrada, porque o negócio volta a estar em aberto. Deseja continuar?
-                  </p>
-                  <div className="delete-confirm-actions">
-                    <button className="delete-confirm-cancel" onClick={() => setPendingExecClear(null)}>Cancelar</button>
-                    <button className="delete-confirm-ok" onClick={confirmExecClear}>Confirmar</button>
-                  </div>
-                </div>
-              </div>,
-              document.body
+            {pendingExecClear !== null && (
+              <Dialogo
+                titulo="Limpar a data do fechamento?"
+                descricao={<>
+                  Mover para <strong>{statuses.find(st => Number(st.id) === Number(pendingExecClear))?.nome}</strong> vai
+                  <strong> limpar a data do fechamento</strong> registrada, porque o negócio volta a estar em aberto. Deseja continuar?
+                </>}
+                zIndex={1100}
+                onFechar={() => setPendingExecClear(null)}
+                onConfirmar={confirmExecClear}
+              />
             )}
 
             {showEdit && detail && (
@@ -2553,17 +2185,13 @@ export function DetailPanel({
               />
             )}
 
-            {/* Comentários */}
-            <CommentsSection
-              eventos={detail.eventos}
-              onSend={sendComment}
-              onDelete={setDeleteCommentId}
-              onFileUpload={handleFileUpload}
-              statuses={detail.statuses}
-              fetchMentions={async () => {
-                const data = await fetch('/api/admin-data?action=usuarios_notificaveis', { headers: { 'x-admin-session': token } }).then(r => r.json());
-                return data.users ?? [];
-              }}
+            {/* A conversa e o diário, na mesma peça da gaveta de tarefa. */}
+            <Atividade
+              dono={donoDaAtividade}
+              pessoas={pessoas}
+              etapas={detail.statuses.map(st => ({ id: Number(st.id), nome: st.nome, cor: st.cor }))}
+              usuarioId={usuario?.id}
+              podeComentar={pode('leads:comentar')}
             />
 
           </div>
@@ -2906,24 +2534,21 @@ function KanbanCard({
 
       {/* Excluir é o único gesto sem volta do card: pergunta no diálogo da
           casa, e não num balão só desta tela. */}
-      {confirmDel && createPortal(
-        <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }}
-          onClick={e => { e.stopPropagation(); setConfirmDel(false); }}>
-          <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-            <p className="delete-confirm-title">Excluir este lead?</p>
-            <p className="delete-confirm-desc">
+      {confirmDel && (
+        // O clique fica preso aqui: o card inteiro abre o lead, e sem isto
+        // confirmar a exclusão abriria o que se acabou de excluir.
+        <span onClick={e => e.stopPropagation()}>
+          <Dialogo
+            titulo="Excluir este lead?"
+            descricao={<>
               <strong>{sub.empresa ?? 'O lead'}</strong> sai do funil com a conversa e os
               anexos. O suporte consegue reverter; a tela, não.
-            </p>
-            <div className="delete-confirm-actions">
-              <button className="delete-confirm-cancel"
-                onClick={e => { e.stopPropagation(); setConfirmDel(false); }}>Cancelar</button>
-              <button className="delete-confirm-ok"
-                onClick={e => { e.stopPropagation(); setConfirmDel(false); onDelete?.(sub.id); }}>Excluir</button>
-            </div>
-          </div>
-        </div>,
-        document.body
+            </>}
+            rotuloOk="Excluir" zIndex={1100}
+            onFechar={() => setConfirmDel(false)}
+            onConfirmar={() => { setConfirmDel(false); onDelete?.(sub.id); }}
+          />
+        </span>
       )}
     </div>
   );
@@ -3841,21 +3466,17 @@ export default function LeadsPage({ token, openCard, onCardOpened }: {
         />
       )}
 
-      {pendingClearExec && createPortal(
-        <div className="admin-modal-overlay" style={{ zIndex: 1100, alignItems: 'center', justifyContent: 'center' }} onClick={() => setPendingClearExec(null)}>
-          <div className="delete-confirm-modal" onClick={e => e.stopPropagation()}>
-            <p className="delete-confirm-title">Limpar a data do fechamento?</p>
-            <p className="delete-confirm-desc">
-              Mover para <strong>{statuses.find(st => Number(st.id) === pendingClearExec.statusId)?.nome}</strong> vai
-              <strong> limpar a data do fechamento</strong> registrada. Deseja continuar?
-            </p>
-            <div className="delete-confirm-actions">
-              <button className="delete-confirm-cancel" onClick={() => setPendingClearExec(null)}>Cancelar</button>
-              <button className="delete-confirm-ok" onClick={confirmBoardClearExec}>Confirmar</button>
-            </div>
-          </div>
-        </div>,
-        document.body
+      {pendingClearExec && (
+        <Dialogo
+          titulo="Limpar a data do fechamento?"
+          descricao={<>
+            Mover para <strong>{statuses.find(st => Number(st.id) === pendingClearExec.statusId)?.nome}</strong> vai
+            <strong> limpar a data do fechamento</strong> registrada. Deseja continuar?
+          </>}
+          zIndex={1100}
+          onFechar={() => setPendingClearExec(null)}
+          onConfirmar={confirmBoardClearExec}
+        />
       )}
     </div>
   );

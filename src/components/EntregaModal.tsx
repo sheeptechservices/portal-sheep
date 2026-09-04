@@ -17,6 +17,7 @@ import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import { TextoRico } from './TextoRico';
 import { ChipReuniao } from './VinculoReuniao';
+import { dia } from '../lib/datas';
 
 /** O que este modal precisa saber de uma entrega. Estrutural de propósito: o
  *  `Entrega` da tela de Projetos serve sem conversão, e este arquivo não passa
@@ -50,8 +51,7 @@ export interface ReuniaoDaEntrega {
   fireflies: boolean;
 }
 
-const fmtData = (v: string | null) =>
-  v ? new Date(`${v}T00:00:00`).toLocaleDateString('pt-BR') : '';
+const fmtData = (v: string | null) => dia(v, '');
 
 export function EntregaModal({
   entrega, cor, icone, avatares, tarefas, reunioes, onAbrirReuniao, onAbrirTarefa, onFechar,

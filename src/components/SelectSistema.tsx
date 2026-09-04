@@ -17,6 +17,9 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
     logo?: { src: string; altura: number; escurecer?: boolean; cor?: string; corEscura?: string; proporcao?: number };
     /** Desenho ao lado do rótulo. Diferente de `logo`, que o substitui. */
     icone?: ReactNode;
+    /** Uma linha dizendo o que aquela opção quer dizer. Aparece só na lista:
+     *  no gatilho, que tem a altura de um campo, ela não caberia. */
+    descricao?: string;
   }[];
   minWidth?: number;
   /** Texto do gatilho enquanto nada foi escolhido. Fica fora da lista: é
@@ -33,6 +36,10 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
   // Acima de sete itens a lista deixa de caber de uma olhada: entra a busca.
   // Ela ignora acento porque ninguém digita "Bão" para achar Cheirin Bão.
   const BUSCA_A_PARTIR_DE = 7;
+  /** Com descrição a opção ocupa duas linhas, e é essa altura que decide se a
+   *  lista abre para cima. Medida errada, ela nascia por cima do rodapé. */
+  const comDescricao = opcoes.some(o => o.descricao);
+  const ALTURA_OPCAO = comDescricao ? 55 : 36;
   const semAcento = (t: string) =>
     t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLocaleLowerCase('pt-BR');
   const buscando = opcoes.length > BUSCA_A_PARTIR_DE;
@@ -43,7 +50,7 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
     const rect = triggerRef.current!.getBoundingClientRect();
     // O campo de busca ocupa uma linha a mais: sem contar com ele, o cálculo de
     // abrir para cima erra por 36px justo perto do rodapé.
-    const altura = Math.min(8 + (opcoes.length + (buscando ? 1 : 0)) * 36, 320);
+    const altura = Math.min(8 + opcoes.length * ALTURA_OPCAO + (buscando ? 36 : 0), 320);
     const espacoAbaixo = window.innerHeight - rect.bottom - 8;
     const paraCima = espacoAbaixo < altura && rect.top > altura;
     setPos({
@@ -64,11 +71,25 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
   // montada, então é aqui que se corrige - passando da borda, a lista desliza
   // para a esquerda em vez de ser cortada.
   useLayoutEffect(() => {
-    if (!aberto || !dropRef.current) return;
+    if (!aberto || !dropRef.current || !triggerRef.current) return;
     const MARGEM = 8;
     const r = dropRef.current.getBoundingClientRect();
-    if (r.right <= window.innerWidth - MARGEM) return;
-    setPos(p => ({ ...p, left: Math.max(MARGEM, window.innerWidth - MARGEM - r.width) }));
+    const g = triggerRef.current.getBoundingClientRect();
+    let left: number | null = null;
+    if (r.right > window.innerWidth - MARGEM) {
+      left = Math.max(MARGEM, window.innerWidth - MARGEM - r.width);
+    }
+    // A altura de antes de montar é uma estimativa - a opção com descrição tem
+    // duas linhas, e o quanto elas ocupam depende da fonte. Medida de verdade,
+    // a lista que abriu para cima é reencostada no gatilho em vez de cobri-lo.
+    let top: number | null = null;
+    const paraCima = r.top < g.top;
+    if (paraCima && r.bottom > g.top - 4) top = Math.max(MARGEM, g.top - 4 - r.height);
+    else if (!paraCima && r.bottom > window.innerHeight - MARGEM) {
+      top = Math.max(MARGEM, window.innerHeight - MARGEM - r.height);
+    }
+    if (left == null && top == null) return;
+    setPos(p => ({ ...p, left: left ?? p.left, top: top ?? p.top }));
   }, [aberto]);
 
   /** A altura vem da tabela óptica das marcas, reduzida para caber na linha:
@@ -78,7 +99,8 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
     label: string;
     logo?: { src: string; altura: number; escurecer?: boolean; cor?: string; corEscura?: string; proporcao?: number };
     icone?: ReactNode;
-  }) => {
+    descricao?: string;
+  }, naLista = false) => {
     if (o.logo) {
       const h = Math.min(24, Math.round(o.logo.altura * 0.52));
       // Logo de uma cor só é pintada, e não achatada: mostra a cor da marca em
@@ -99,10 +121,21 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
           style={{ height: h }} />
       );
     }
+    // Com descrição, o desenho fica no topo da linha: centrado ao lado de duas
+    // linhas ele cai no meio das duas, longe do nome a que se refere.
+    const duasLinhas = naLista && !!o.descricao;
     return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-        {o.icone}
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label}</span>
+      <span style={{
+        display: 'inline-flex', gap: 8, minWidth: 0,
+        alignItems: duasLinhas ? 'flex-start' : 'center',
+      }}>
+        <span style={{ display: 'inline-flex', marginTop: duasLinhas ? 1 : 0 }}>{o.icone}</span>
+        <span style={{ minWidth: 0 }}>
+          <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {o.label}
+          </span>
+          {duasLinhas && <span className="select-opcao-descricao">{o.descricao}</span>}
+        </span>
       </span>
     );
   };
@@ -164,7 +197,7 @@ export function SelectSistema<T extends string>({ valor, onChange, opcoes, minWi
               className={`status-select-option${valor === o.valor ? ' active' : ''}`}
               onClick={() => { onChange(o.valor); setAberto(false); }}
             >
-              {marca(o)}
+              {marca(o, true)}
               {valor === o.valor && (
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 'auto' }}>
                   <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />

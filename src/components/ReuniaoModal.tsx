@@ -15,6 +15,7 @@ import { createPortal } from 'react-dom';
 import { IconAlert, IconX } from './icons';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
+import { dia } from '../lib/datas';
 
 /** O que este modal precisa saber de uma reunião. Estrutural de propósito: o
  *  `Reuniao` da tela de Projetos serve sem conversão, e este arquivo não passa
@@ -132,8 +133,7 @@ export function ComNegrito({ texto }: { texto: string }) {
   );
 }
 
-const fmtData = (v: string | null) =>
-  v ? new Date(`${v}T00:00:00`).toLocaleDateString('pt-BR') : '';
+const fmtData = (v: string | null) => dia(v, '');
 
 /**
  * A reunião inteira num modal central: o vídeo em cima, o índice com a

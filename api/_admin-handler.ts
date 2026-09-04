@@ -2001,16 +2001,33 @@ export async function getNovaSubmissaoRecipients(db: Client): Promise<string[]> 
 }
 
 
-async function notifyMentions(texto: string, leadId: string, db: Client) {
+async function notifyMentions(texto: string, leadId: string, db: Client, ids: string[] = []) {
   // O ponto faz parte do apelido ("guilherme.zaidan"), então [\w.]+ e não \w+.
   const apelidos = [...new Set((texto.match(/@([\w.]+)/g) ?? []).map(m => m.slice(1)))];
-  if (apelidos.length === 0) return;
+  if (apelidos.length === 0 && ids.length === 0) return;
 
   const sol = await db.execute({
     sql: 'SELECT empresa FROM leads WHERE id = ?',
     args: [leadId],
   });
   const nomeSol = String(sol.rows[0]?.empresa ?? leadId);
+
+  // Quem a tela marcou pela lista: o id é o que segura a ligação quando alguém
+  // muda de nome, e não depende de o apelido casar com a parte local do e-mail.
+  const porId = ids.length > 0 ? await db.execute({
+    sql: `SELECT email, nome FROM usuarios WHERE ativo = 1
+          AND id IN (${ids.map(() => '?').join(',')})`,
+    args: ids,
+  }) : null;
+  const avisados = new Set<string>();
+  for (const linha of porId?.rows ?? []) {
+    const email = String(linha.email);
+    if (avisados.has(email.toLowerCase())) continue;
+    avisados.add(email.toLowerCase());
+    notifyEmail(db, email, 'Você foi mencionado em um comentário', `
+  <p style="font-size:14px;color:#555;margin:0 0 6px"><strong>Lead:</strong> ${esc(nomeSol)}</p>
+  <blockquote style="margin:12px 0 0;padding:10px 14px;background:#F7F6F3;border-left:3px solid #00C9A7;border-radius:0 8px 8px 0;font-size:14px;color:#333">${esc(texto)}</blockquote>`);
+  }
 
   for (const apelido of apelidos) {
     // O apelido casa com a parte local do e-mail: @guilherme.zaidan encontra
@@ -2021,6 +2038,9 @@ async function notifyMentions(texto: string, leadId: string, db: Client) {
     });
     const dest = u.rows[0];
     if (!dest) { console.warn('[mention-notify] sem usuário para o apelido:', apelido); continue; }
+    // Já avisado pelo id: o mesmo comentário não manda dois e-mails.
+    if (avisados.has(String(dest.email).toLowerCase())) continue;
+    avisados.add(String(dest.email).toLowerCase());
     notifyEmail(db, String(dest.email), 'Você foi mencionado em um comentário', `
   <p style="font-size:14px;color:#555;margin:0 0 6px"><strong>Lead:</strong> ${esc(nomeSol)}</p>
   <blockquote style="margin:12px 0 0;padding:10px 14px;background:#F7F6F3;border-left:3px solid #00C9A7;border-radius:0 8px 8px 0;font-size:14px;color:#333">${esc(texto)}</blockquote>`);
@@ -5039,7 +5059,13 @@ function faltaEmProjeto(p: any): string | null {
         args: [body.lead_id, body.texto, body.parent_id ?? null, now, autorId, autorNome],
       });
       if (body.texto) {
-        notifyMentions(body.texto, body.lead_id, db).catch(e => console.error('[mention-notify]', e));
+        // Os ids vêm da tela, que sabe quem foi escolhido na lista; o texto
+        // continua sendo lido para os comentários antigos, escritos com
+        // `@apelido` antes de a caixa passar a guardar o id.
+        const marcados: string[] = Array.isArray(body?.mencoes)
+          ? [...new Set<string>(body.mencoes.map((v: unknown) => String(v)))] : [];
+        notifyMentions(body.texto, body.lead_id, db, marcados)
+          .catch(e => console.error('[mention-notify]', e));
         notifyStageMentions(body.texto, body.lead_id, db).catch(e => console.error('[stage-notify]', e));
       }
       return {

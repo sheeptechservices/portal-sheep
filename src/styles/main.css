@@ -4319,6 +4319,21 @@ body.arrastando-painel {
 .status-select-option:hover {
   background: var(--bg);
 }
+/* A linha que diz o que a opcao quer dizer. Menor e em cinza: ela apoia o nome,
+   e no mesmo peso as duas competiriam pela leitura. */
+.select-opcao-descricao {
+  display: block;
+  margin-top: 1px;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--gray2);
+  white-space: normal;
+}
+/* Escolhida, a opcao inteira escurece; a descricao acompanha, senao ela fica
+   apagada dentro de uma linha realcada. */
+.status-select-option.active .select-opcao-descricao,
+.status-select-option:hover .select-opcao-descricao { color: var(--gray); }
 
 .status-select-option.active {
   background: var(--bg);
@@ -6359,6 +6374,28 @@ button.checklist-texto:focus-visible {
   background: var(--yd);
   border-radius: var(--radius-sm);
   padding: 0 4px;
+}
+/* A etapa marcada no comentario usa a cor dela, que e como ela se identifica no
+   funil inteiro. Sem cor conhecida - etapa renomeada depois do comentario - cai
+   no cinza, e continua legivel. */
+.ativ-marca-etapa {
+  color: var(--marca-cor, var(--gray));
+  background: color-mix(in srgb, var(--marca-cor, var(--gray2)) 14%, transparent);
+}
+/* Endereco escrito no meio da conversa: clicavel, e na cor de link da casa. */
+.ativ-endereco {
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-word;
+}
+/* O ponto da etapa na lista do `#`, no lugar do avatar de quem se marca. */
+.ativ-mencao-ponto {
+  width: 10px;
+  height: 10px;
+  margin: 0 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .ativ-link {
