@@ -390,6 +390,13 @@ async function migrarSchema(db: Client) {
     // Em que mercado a empresa atua. Diferente de `interesse`, que é o que ela
     // quer da gente.
     `ALTER TABLE oportunidades ADD COLUMN segmento TEXT`,
+    // O briefing: o entendimento inteiro do que essa oportunidade é. As outras
+    // colunas de texto respondem perguntas curtas - `interesse` é o que a
+    // empresa quer em uma linha, `observacoes` é o que foi conversado -, e
+    // nenhuma delas cabe a operação, o problema, o que se propôs e o que ficou
+    // de fora. Sem um lugar para isso, esse entendimento fica na cabeça de quem
+    // atendeu, e a proposta é escrita duas vezes.
+    `ALTER TABLE oportunidades ADD COLUMN briefing TEXT`,
   ]) {
     try { await ddl(col); } catch { /* já existe */ }
   }
@@ -6375,9 +6382,9 @@ function faltaEmProjeto(p: any): string | null {
               (id, created_at, empresa, cnpj, contato_nome, contato_cargo, contato_email,
                contato_telefone, origem, interesse, valor_estimado, responsavel_id,
                proxima_acao, proxima_acao_em, observacoes,
-               cidade, estado, pais, indicado_por, parceria, segmento,
+               cidade, estado, pais, indicado_por, parceria, segmento, briefing,
                criado_por_id, criado_por_nome)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         args: [
           id, now, empresa,
           texto(body?.cnpj), texto(body?.contato_nome), texto(body?.contato_cargo),
@@ -6387,6 +6394,7 @@ function faltaEmProjeto(p: any): string | null {
           texto(body?.proxima_acao), texto(body?.proxima_acao_em), texto(body?.observacoes),
           texto(body?.cidade), texto(body?.estado), texto(body?.pais),
           texto(body?.indicado_por), marca(body?.parceria), texto(body?.segmento),
+          texto(body?.briefing),
           autorId, autorNome,
         ],
       });
@@ -6429,6 +6437,7 @@ function faltaEmProjeto(p: any): string | null {
             indicado_por: texto(body?.indicado_por),
             parceria: marca(body?.parceria),
             segmento: texto(body?.segmento),
+            briefing: texto(body?.briefing),
             arquivo_count: 0,
             comentario_count: 0,
             pendencia_aberta_count: 0,
@@ -6469,6 +6478,7 @@ function faltaEmProjeto(p: any): string | null {
         indicado_por: texto,
         parceria: marca,
         segmento: texto,
+        briefing: texto,
       };
       const sets: string[] = [];
       const args: unknown[] = [];

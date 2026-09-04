@@ -14,6 +14,8 @@ import {
   IconVisaoQuadro, IconX, IconZip, IconChevronUp, IconChevronUpDown,
 } from '../components/icons';
 import { SegSwitch } from '../components/SegSwitch';
+import { EditorRico } from '../components/EditorRico';
+import { TextoRico } from '../components/TextoRico';
 import { CartaoKpi, CartoesKpiEsqueleto } from '../components/CartaoKpi';
 import { CategoriaTag, ANEXO_CATEGORIAS, normalizaCategoria } from '../components/CategoriaTag';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
@@ -676,6 +678,8 @@ export interface RascunhoOportunidade {
   /** O mercado em que a empresa atua, e não o que ela quer da gente. */
   segmento: string;
   interesse: string;
+  /** O entendimento inteiro: a operação, o problema, o que se propôs. */
+  briefing: string;
   /** Guardado com máscara enquanto se digita; vira número no envio. */
   valor_estimado: string;
   responsavel_id: string;
@@ -691,7 +695,7 @@ export const OPORTUNIDADE_VAZIA: RascunhoOportunidade = {
   // maioria preencher a mesma palavra toda vez.
   pais: 'Brasil',
   origem: '', indicado_por: '', parceria: false, segmento: '',
-  interesse: '', valor_estimado: '',
+  interesse: '', briefing: '', valor_estimado: '',
   responsavel_id: '', proxima_acao: '', proxima_acao_em: '', observacoes: '',
 };
 
@@ -714,6 +718,7 @@ export function corpoDaOportunidade(r: RascunhoOportunidade) {
     parceria: r.parceria ? 1 : 0,
     segmento: r.segmento || null,
     interesse: r.interesse || null,
+    briefing: r.briefing.trim() || null,
     valor_estimado: parseCurrencyBRL(r.valor_estimado) || null,
     responsavel_id: r.responsavel_id || null,
     proxima_acao: r.proxima_acao.trim() || null,
@@ -913,6 +918,20 @@ function CamposDaOportunidade({ r, set, token, pessoas }: {
         </div>
       </div>
 
+      {/* O briefing é o único campo longo da ficha, e por isso é o único com
+          editor: uma operação descrita sem lista e sem destaque vira parede de
+          texto, e parede de texto ninguém relê. */}
+      <div className="form-group">
+        <label className="form-label">Briefing</label>
+        <EditorRico
+          className="form-input"
+          valor={r.briefing}
+          onMudar={v => set('briefing', v)}
+          ariaLabel="Briefing da oportunidade"
+          placeholder="O que a empresa faz, que problema ela tem, o que a gente propôs e o que ficou de fora"
+        />
+      </div>
+
       <div className="form-group">
         <label className="form-label">Observações</label>
         <textarea className="form-input" rows={3} value={r.observacoes}
@@ -1048,6 +1067,7 @@ function EditModal({ detail, token, onClose, onSaved }: {
     parceria: Number(s.parceria) === 1,
     segmento: s.segmento ?? '',
     interesse: s.interesse ?? '',
+    briefing: s.briefing ?? '',
     // Formatado como moeda, e não passado pela máscara: ela lê o que recebe
     // como centavos, então uma oportunidade de R$ 50.000 abria a edição valendo
     // R$ 500,00 - e ao salvar era isso que ia para o banco.
@@ -1890,6 +1910,16 @@ export function DetailPanel({
                   {s!.proxima_acao ? 'Alterar' : 'Marcar'}
                 </button>
               </div>
+
+              {/* O briefing vem antes das observações porque é o que situa quem
+                  abriu a ficha sem ter participado da conversa. As observações
+                  são o que foi dito na última; o briefing é o assunto inteiro. */}
+              {s!.briefing && (
+                <div className="oportunidade-observacoes oportunidade-briefing">
+                  <p className="admin-info-label">Briefing</p>
+                  <TextoRico texto={String(s!.briefing)} />
+                </div>
+              )}
 
               {s!.observacoes && (
                 <div className="oportunidade-observacoes">

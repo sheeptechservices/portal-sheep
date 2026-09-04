@@ -97,6 +97,9 @@ export interface Submission {
   parceria?: number | null;
   /** O mercado em que a empresa atua, e não o que ela quer da gente. */
   segmento?: string | null;
+  /** O entendimento inteiro da oportunidade: a operação, o problema, o que se
+   *  propôs e o que ficou de fora. */
+  briefing?: string | null;
   pendencia_total_count?: number;
   /** As reuniões da oportunidade, no mínimo que o chip do card mostra. O resumo e os
    *  tópicos ficam no servidor: são parágrafos por reunião, e o quadro inteiro

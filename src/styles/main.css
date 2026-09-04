@@ -13748,6 +13748,10 @@ button.checklist-texto:focus-visible {
   color: var(--black);
   white-space: pre-wrap;
 }
+/* O briefing e o unico bloco de texto formatado da ficha: ele sai do
+   `TextoRico`, entao sao varios paragrafos e listas em vez de um `<p>` so - a
+   regra de cima, que mira o ultimo paragrafo, nao alcanca nada aqui. */
+.oportunidade-briefing .texto-rico { margin-top: 4px; color: var(--black); }
 .oportunidade-perda { border-color: color-mix(in srgb, var(--red) 35%, transparent); }
 
 @media (prefers-reduced-motion: reduce) {
