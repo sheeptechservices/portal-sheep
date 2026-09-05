@@ -14747,7 +14747,10 @@ button.checklist-texto:focus-visible {
    sistema para caber a frase inteira antes das reticencias. */
 .reportes-modal { width: min(1240px, calc(100vw - 48px)); }
 .reportes-corpo {
-  padding: 4px 20px 20px;
+  /* Sem folga no topo: o cabecalho gruda na borda de cima da area que rola, e
+     qualquer folga aqui virava uma fresta por onde a linha que sobe aparecia
+     acima dele. */
+  padding: 0 20px 20px;
   overflow: auto;
 }
 .reportes-vazio {
@@ -14765,7 +14768,9 @@ button.checklist-texto:focus-visible {
 .reportes-tabela th {
   position: sticky;
   top: 0;
-  padding: 8px 10px;
+  /* Os 4px que sairam do topo da area que rola voltam aqui, para o cabecalho
+     manter a mesma respiracao de antes. */
+  padding: 12px 10px 8px;
   border-bottom: 1px solid var(--gray4);
   background: var(--white);
   font-size: 10px;
