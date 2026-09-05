@@ -360,10 +360,12 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
         </div>
       </div>
 
-      {/* Mudar o andamento pergunta se quem reportou deve saber. Duas saídas, e
-          as duas mudam o status: a pergunta é sobre o e-mail, e não sobre a
-          mudança - essa já foi feita no gesto de escolher. Fechar pelo Escape ou
-          pelo fundo vale como "não avisar". */}
+      {/* Mudar o andamento pergunta se quem reportou deve saber. Três respostas:
+          avisar, mudar sem avisar, ou deixar como estava. O Cancelar existe
+          porque escolher o andamento errado na lista é fácil, e sem ele a única
+          saída era aplicar a mudança e voltar atrás depois.
+          Escape e clique no fundo valem por Cancelar: sair de uma caixa nunca
+          pode ser o mesmo que responder a ela. */}
       {confirmando && (
         <Dialogo
           titulo="Avisar quem reportou?"
@@ -377,11 +379,13 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
           }
           perigo={false}
           rotuloOk="Enviar"
-          rotuloCancelar="Não enviar"
+          rotuloMeio="Não enviar"
+          rotuloCancelar="Cancelar"
           zIndex={10070}
           largura={460}
           onConfirmar={() => { const c = confirmando, t = comentario; limparPergunta(); void trocar(c.id, c.status, true, t); }}
-          onFechar={() => { const c = confirmando, t = comentario; limparPergunta(); void trocar(c.id, c.status, false, t); }}
+          onMeio={() => { const c = confirmando, t = comentario; limparPergunta(); void trocar(c.id, c.status, false, t); }}
+          onFechar={limparPergunta}
         >
           {/* O recado é opcional, e fica gravado no chamado de qualquer jeito -
               inclusive saindo por "Não enviar". Ele é o motivo da mudança, e o

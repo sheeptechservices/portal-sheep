@@ -20,6 +20,7 @@ import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 
 export function Dialogo({
   titulo, descricao, rotuloOk = 'Confirmar', rotuloCancelar = 'Cancelar',
+  rotuloMeio, onMeio,
   perigo = true, corOk, corTextoOk, ocupado, ocupadoRotulo, zIndex = 10001, largura,
   onFechar, onConfirmar, children,
 }: {
@@ -29,6 +30,10 @@ export function Dialogo({
   descricao?: ReactNode;
   rotuloOk?: string;
   rotuloCancelar?: string;
+  /** Uma terceira resposta, entre sair e confirmar - "mudar sem avisar", ao
+   *  lado de "avisar" e "deixar como está". Só aparece com o `onMeio`. */
+  rotuloMeio?: string;
+  onMeio?: () => void;
   /** Vermelho no botão de confirmar. Verdadeiro por padrão: a caixa nasceu para
    *  perguntas sem volta, e é para elas que ela é usada na maior parte. */
   perigo?: boolean;
@@ -58,6 +63,7 @@ export function Dialogo({
   const { saindo, fechar } = useSaidaSuave(() => aoTerminar.current());
   const sair = () => { aoTerminar.current = onFechar; fechar(); };
   const confirmar = () => { aoTerminar.current = onConfirmar; fechar(); };
+  const meio = () => { aoTerminar.current = onMeio ?? onFechar; fechar(); };
   const fundo = useFecharNoFundo(sair);
 
   // Escape fecha, como em toda caixa da casa. No `document` porque o foco pode
@@ -78,9 +84,19 @@ export function Dialogo({
         {descricao && <p className="delete-confirm-desc">{descricao}</p>}
         {children}
         <div className="delete-confirm-actions">
-          <button type="button" className="delete-confirm-cancel" onClick={sair}>
+          <button type="button" className="delete-confirm-cancel delete-confirm-sair" onClick={sair}>
             {rotuloCancelar}
           </button>
+          {/* A terceira saída, quando a pergunta tem três respostas de verdade.
+              Fica no meio porque é uma ação, como a de confirmar, e não o jeito
+              de sair - esse é o primeiro botão, e por isso o único sem moldura:
+              três botões com o mesmo peso obrigam a ler os três para achar a
+              porta. */}
+          {onMeio && rotuloMeio && (
+            <button type="button" className="delete-confirm-cancel" onClick={meio}>
+              {rotuloMeio}
+            </button>
+          )}
           <button type="button" className="delete-confirm-ok" disabled={ocupado}
             style={corOk
               ? { background: corOk, color: corTextoOk ?? '#fff' }

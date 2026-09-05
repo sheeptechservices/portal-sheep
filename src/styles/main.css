@@ -9885,6 +9885,20 @@ button.checklist-texto:focus-visible {
   gap: 8px;
   justify-content: flex-end;
 }
+/* A saida da caixa, quando ela tem tres respostas: sem moldura, um degrau
+   abaixo da acao secundaria. Tres botoes com o mesmo peso obrigam a ler os
+   tres para achar a porta. Sozinho na caixa de duas saidas, o Cancelar
+   continua com a moldura - a classe so entra quando ha um terceiro. */
+.delete-confirm-sair:has(~ .delete-confirm-cancel) {
+  border-color: transparent;
+  background: transparent;
+  color: var(--gray2);
+}
+.delete-confirm-sair:has(~ .delete-confirm-cancel):hover {
+  border-color: transparent;
+  background: var(--gray4);
+  color: var(--black);
+}
 .delete-confirm-cancel {
   padding: 7px 16px;
   border-radius: var(--radius-md);
