@@ -14801,6 +14801,28 @@ button.checklist-texto:focus-visible {
    os dois lerem como um bloco so. */
 .reportes-linha.aberta { background: var(--card-hover-bg); }
 .reportes-linha.aberta > td { border-bottom-color: transparent; }
+/* Chamado resolvido: riscado e apagado, como item feito numa lista de tarefas.
+   Ele fica na fila - e ela que mostra que aquilo ja foi tratado, e por onde se
+   desfaz -, mas para de disputar a leitura com o que ainda esta aberto.
+
+   O apagamento vai na cor de cada parte, e nao num `opacity` na linha: opacidade
+   na `tr` cai sobre a subarvore inteira e nao se desfaz em filho nenhum, e o
+   campo de status ficaria ilegivel logo no lugar de onde se reverte a decisao. */
+.reportes-linha.resolvida > td { color: var(--gray2); }
+.reportes-linha.resolvida .reportes-urgencia,
+.reportes-linha.resolvida .reportes-quem,
+.reportes-linha.resolvida .reportes-print,
+.reportes-linha.resolvida .reportes-sem { opacity: .5; }
+/* Riscado so o resumo da linha, que e o item da lista. O relato inteiro, no
+   detalhe, continua limpo: quem abre esta ali para le-lo, e quatro linhas
+   cortadas ao meio se leem mal. */
+.reportes-linha.resolvida .reportes-texto {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-decoration-color: var(--gray2);
+}
+.reportes-detalhe.resolvida .reportes-detalhe-texto { color: var(--gray2); }
+
 /* A urgencia nao quebra linha: ela e a coluna que se le de relance para achar
    onde a fila muda de degrau. O `flex` fica no `span`, e nao na celula: celula
    com `display: flex` deixa de ser celula de tabela, e a borda de baixo dela

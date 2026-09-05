@@ -190,9 +190,14 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
                   {lista.map(r => {
                     const Icone = ICONE_PRIORIDADE[r.urgencia];
                     const abertaAqui = aberta === r.id;
+                    // Resolvido sai do caminho sem sair da lista: fica riscado e
+                    // apagado, do jeito que um item feito fica numa lista de
+                    // tarefas. Some da fila ele nao pode - a fila tambem serve
+                    // para ver que aquilo ja foi tratado, e para desfazer.
+                    const resolvido = r.status === 'resolvido';
                     return (
                       <Fragment key={r.id}>
-                      <tr className={`reportes-linha${abertaAqui ? ' aberta' : ''}`}
+                      <tr className={`reportes-linha${abertaAqui ? ' aberta' : ''}${resolvido ? ' resolvida' : ''}`}
                         role="button" tabIndex={0} aria-expanded={abertaAqui}
                         onClick={() => alternar(r.id)}
                         onKeyDown={e => {
@@ -281,7 +286,7 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
                           veio. Fica montado depois da primeira abertura - montado
                           só enquanto aberto, o bloco animaria de nada para nada. */}
                       {jaAbertas.has(r.id) && (
-                        <tr className="reportes-detalhe">
+                        <tr className={`reportes-detalhe${resolvido ? ' resolvida' : ''}`}>
                           <td colSpan={6}>
                             <div className={`revelar${abertaAqui ? ' aberto' : ''}`}>
                               <div>
