@@ -14931,6 +14931,59 @@ button.checklist-texto:focus-visible {
 }
 .reportes-detalhe-meta strong { color: var(--gray); font-weight: 700; }
 
+/* As notas do chamado, dentro do detalhe. Cada uma e um bloco com o recado e,
+   embaixo, quem escreveu, com que andamento e quando - o andamento vai junto
+   porque a frase so se entende ao lado dele. */
+.reportes-notas {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--gray4);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.reportes-nota {
+  padding: 8px 12px;
+  border-left: 2px solid var(--gray3);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--white);
+}
+.reportes-nota-texto {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--black);
+  white-space: pre-wrap;
+}
+.reportes-nota-quem {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--gray2);
+}
+/* O campo do recado, dentro da pergunta do e-mail. */
+.reportes-nota-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 14px;
+  text-align: left;
+}
+.reportes-nota-campo > span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.reportes-nota-campo textarea {
+  min-height: 68px;
+  padding: 10px 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+
 .reportes-quem {
   display: flex;
   align-items: center;

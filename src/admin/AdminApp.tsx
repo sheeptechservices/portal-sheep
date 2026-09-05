@@ -575,7 +575,7 @@ function Sidebar({
   onReportar: (relato: Relato) => Promise<{ error?: string; aviso?: string | null } | null>;
   onListarReportes: () => Promise<{ reportes?: ReporteNaLista[]; error?: string }>;
   onPrintDoReporte: (id: number) => Promise<{ nome: string; tipo: string; base64: string } | null>;
-  onMudarStatusDoReporte: (id: number, status: string, avisar: boolean) => Promise<{ error?: string; aviso?: string | null } | null>;
+  onMudarStatusDoReporte: (id: number, status: string, avisar: boolean, comentario: string) => Promise<{ error?: string; aviso?: string | null } | null>;
 }) {
   // Só o que depende de estar preso ou solto, e de estar aberto ou fechado: a
   // aparência - folha, fio da borda e sombra - mora na folha de estilo, com o
@@ -1113,12 +1113,12 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
       return { error: 'Erro de conexão. Tente de novo.' };
     }
   }, [lerAdmin]);
-  const mudarStatusDoReporte = useCallback(async (id: number, status: string, avisar: boolean) => {
+  const mudarStatusDoReporte = useCallback(async (id: number, status: string, avisar: boolean, comentario: string) => {
     try {
       const r = await fetch('/api/admin-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-admin-session': token },
-        body: JSON.stringify({ action: 'set_reporte_status', id, status, avisar }),
+        body: JSON.stringify({ action: 'set_reporte_status', id, status, avisar, comentario }),
       });
       return await r.json().catch(() => ({ error: 'Não foi possível mudar o status.' }));
     } catch {

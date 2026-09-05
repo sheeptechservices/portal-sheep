@@ -40,6 +40,15 @@ export const STATUS_DO_RELATO = [
 const ROTULO_STATUS: Record<string, { label: string; cor: string }> =
   Object.fromEntries(STATUS_DO_RELATO.map(s => [s.valor, s]));
 
+/** Uma nota do chamado: o recado que acompanhou uma mudanca de andamento. */
+export interface NotaDoRelato {
+  texto: string;
+  /** O andamento que a nota acompanhou. */
+  status: string | null;
+  autor_nome: string;
+  criado_em: string;
+}
+
 export interface ReporteNaLista {
   id: number;
   texto: string;
@@ -53,13 +62,15 @@ export interface ReporteNaLista {
   tem_print: boolean;
   status: string;
   criado_em: string;
+  /** As notas ja escritas, da mais antiga para a mais nova. */
+  notas?: NotaDoRelato[];
 }
 
 export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarStatus, onFechar }: {
   carregar: () => Promise<{ reportes?: ReporteNaLista[]; error?: string }>;
   /** O conteúdo do print vem um por vez: na lista ele não viaja. */
   carregarPrint: (id: number) => Promise<{ nome: string; tipo: string; base64: string } | null>;
-  mudarStatus?: (id: number, status: string, avisar: boolean) => Promise<{ error?: string; aviso?: string | null } | null>;
+  mudarStatus?: (id: number, status: string, avisar: boolean, comentario: string) => Promise<{ error?: string; aviso?: string | null } | null>;
   /**
    * Só o dono do painel muda o andamento. Esconder aqui é não oferecer um
    * caminho que voltaria 403 - a trava de verdade é o servidor, onde a ação
@@ -76,6 +87,10 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
    *  acontece depois: perguntar depois de aplicar deixaria a pergunta sem efeito
    *  sobre o que já tinha acontecido. */
   const [confirmando, setConfirmando] = useState<{ id: number; status: string } | null>(null);
+  /** O recado que acompanha a mudança. Opcional, e some junto com a pergunta. */
+  const [comentario, setComentario] = useState('');
+  const campoNota = useRef<HTMLTextAreaElement>(null);
+  const limparPergunta = () => { setConfirmando(null); setComentario(''); };
   /** Uma linha aberta por vez: a fila é para varrer, e três detalhes abertos
    *  juntos empurram o resto para fora da tela. */
   const [aberta, setAberta] = useState<number | null>(null);
@@ -110,12 +125,21 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
 
   /** Pinta primeiro e desfaz no erro: ninguém espera a ida e a volta para ver o
    *  próprio gesto. */
-  async function trocar(id: number, status: string, avisar: boolean) {
+  async function trocar(id: number, status: string, avisar: boolean, texto = '') {
     if (!mudarStatus) return;
     const antes = lista;
+    const recado = texto.trim();
     setErroStatus('');
-    setLista(l => l?.map(x => (x.id === id ? { ...x, status } : x)) ?? l);
-    const r = await mudarStatus(id, status, avisar);
+    // A nota entra na hora com o que a pessoa acabou de escrever; do servidor
+    // só viria o carimbo de data, e esperá-lo para ver o próprio texto seria
+    // esperar a ida e a volta por nada.
+    const provisoria: NotaDoRelato | null = recado
+      ? { texto: recado, status, autor_nome: 'Você', criado_em: new Date().toISOString() }
+      : null;
+    setLista(l => l?.map(x => (x.id === id
+      ? { ...x, status, notas: provisoria ? [...(x.notas ?? []), provisoria] : x.notas }
+      : x)) ?? l);
+    const r = await mudarStatus(id, status, avisar, recado);
     if (r?.error) {
       setLista(antes);
       setErroStatus(r.error);
@@ -129,6 +153,11 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
   /** Quem o e-mail iria avisar, para a pergunta dizer o nome em vez de "a
    *  pessoa". */
   const alvoDoAviso = confirmando ? lista?.find(x => x.id === confirmando.id) : null;
+
+  // O cursor já no comentário quando a pergunta abre: escrever é o que se faz
+  // ali, e as duas saídas estão a um Tab. Por efeito, e não por `autoFocus` -
+  // o campo vive dentro de uma caixa que entra animada.
+  useEffect(() => { if (confirmando) campoNota.current?.focus(); }, [confirmando]);
 
   function alternar(id: number) {
     if (aberta === id) { setAberta(null); return; }
@@ -297,6 +326,24 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
                                     {r.pagina && r.autor_email ? ' · ' : ''}
                                     {r.autor_email}
                                   </p>
+                                  {/* O que foi dito ao mudar o andamento, da nota
+                                      mais antiga para a mais nova - é a história
+                                      do chamado, e ela se lê na ordem em que
+                                      aconteceu. */}
+                                  {!!r.notas?.length && (
+                                    <ul className="reportes-notas">
+                                      {r.notas.map((n, i) => (
+                                        <li key={i} className="reportes-nota">
+                                          <p className="reportes-nota-texto">{n.texto}</p>
+                                          <p className="reportes-nota-quem">
+                                            {n.autor_nome}
+                                            {n.status && <> · {ROTULO_STATUS[n.status]?.label ?? n.status}</>}
+                                            {' · '}{instante(n.criado_em)}
+                                          </p>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -332,9 +379,27 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
           rotuloOk="Enviar"
           rotuloCancelar="Não enviar"
           zIndex={10070}
-          onConfirmar={() => { const c = confirmando; setConfirmando(null); void trocar(c.id, c.status, true); }}
-          onFechar={() => { const c = confirmando; setConfirmando(null); void trocar(c.id, c.status, false); }}
-        />
+          largura={460}
+          onConfirmar={() => { const c = confirmando, t = comentario; limparPergunta(); void trocar(c.id, c.status, true, t); }}
+          onFechar={() => { const c = confirmando, t = comentario; limparPergunta(); void trocar(c.id, c.status, false, t); }}
+        >
+          {/* O recado é opcional, e fica gravado no chamado de qualquer jeito -
+              inclusive saindo por "Não enviar". Ele é o motivo da mudança, e o
+              motivo continua valendo quando se decide não escrever para
+              ninguém. */}
+          <label className="reportes-nota-campo">
+            <span>Comentário (opcional)</span>
+            <textarea
+              ref={campoNota}
+              className="form-input"
+              rows={3}
+              value={comentario}
+              onChange={e => setComentario(e.target.value)}
+              placeholder="O que aconteceu com esse chamado"
+              maxLength={2000}
+            />
+          </label>
+        </Dialogo>
       )}
 
       {/* A prévia é a mesma janela de todo anexo do sistema: imagem abre dentro

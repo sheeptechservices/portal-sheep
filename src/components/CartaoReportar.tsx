@@ -86,7 +86,7 @@ export function CartaoReportar({
    *  mantém o cartão montável fora do painel. */
   listar?: () => Promise<{ reportes?: ReporteNaLista[]; error?: string }>;
   carregarPrint?: (id: number) => Promise<{ nome: string; tipo: string; base64: string } | null>;
-  mudarStatus?: (id: number, status: string, avisar: boolean) => Promise<{ error?: string; aviso?: string | null } | null>;
+  mudarStatus?: (id: number, status: string, avisar: boolean, comentario: string) => Promise<{ error?: string; aviso?: string | null } | null>;
   /** Só o dono do painel muda o andamento; o resto do time só lê. */
   podeMudarStatus?: boolean;
 }) {

@@ -724,6 +724,28 @@ async function migrarSchema(db: Client) {
   `);
   await ddl(`CREATE INDEX IF NOT EXISTS idx_reportes_data ON reportes (criado_em DESC)`);
 
+  // As notas do chamado: o que quem cuidou escreveu ao mudar o andamento.
+  //
+  // Tabela, e não uma coluna `comentario` no próprio relato: um chamado passa
+  // por mais de uma mão e mais de um andamento, e coluna única faria a nota
+  // seguinte apagar a anterior - some justamente o histórico que a fila existe
+  // para guardar. O andamento vai gravado junto porque a nota só se entende ao
+  // lado dele: "já existe na versão nova" ao lado de Descartado é uma frase;
+  // sozinha, é outra.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS reporte_notas (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      reporte_id INTEGER NOT NULL,
+      texto      TEXT NOT NULL,
+      /** O andamento que a nota acompanhou. */
+      status     TEXT,
+      autor_id   TEXT,
+      autor_nome TEXT NOT NULL,
+      criado_em  TEXT NOT NULL
+    )
+  `);
+  await ddl(`CREATE INDEX IF NOT EXISTS idx_reporte_notas_relato ON reporte_notas (reporte_id, criado_em)`);
+
   await ensurePermissoesSchema(ddl);
 
   // Trilha de auditoria: uma linha por ação que grava algo, com quem fez. É o
@@ -3649,6 +3671,10 @@ async function despacharAdminData(
     // O `print_base64` fica de fora: é ele que pesa, e uma lista de cinquenta
     // linhas traria dezenas de megabytes para mostrar miniatura nenhuma. O que
     // vai é o aviso de que existe print, e quem quiser ver busca aquele.
+    // Uma nota do chamado, como a fila a lê. O tipo mora aqui perto de quem o
+    // devolve; o cliente tem o dele.
+    type ReporteNota = { texto: string; status: string | null; autor_nome: string; criado_em: string };
+
     if (action === 'reportes') {
       // A foto sai de `usuarios` no momento da leitura, e não de cópia gravada
       // junto do relato: quem troca a foto troca em toda a fila, inclusive no
@@ -3669,6 +3695,31 @@ async function despacharAdminData(
                  r.criado_em DESC
         LIMIT 200
       `);
+      // As notas dos relatos que a página vai mostrar, numa consulta só. Uma
+      // por relato seria uma ida por linha da fila, e a fila tem duzentas.
+      const ids = r.rows.map(x => Number(x.id));
+      const notasPorRelato = new Map<number, ReporteNota[]>();
+      if (ids.length) {
+        const n = await db.execute({
+          sql: `SELECT reporte_id, texto, status, autor_nome, criado_em
+                FROM reporte_notas
+                WHERE reporte_id IN (${ids.map(() => '?').join(',')})
+                ORDER BY criado_em`,
+          args: ids,
+        });
+        for (const x of n.rows) {
+          const dono = Number(x.reporte_id);
+          const nota: ReporteNota = {
+            texto: String(x.texto),
+            status: x.status != null ? String(x.status) : null,
+            autor_nome: String(x.autor_nome),
+            criado_em: String(x.criado_em),
+          };
+          const jaTem = notasPorRelato.get(dono);
+          if (jaTem) jaTem.push(nota);
+          else notasPorRelato.set(dono, [nota]);
+        }
+      }
       return {
         status: 200,
         body: {
@@ -3684,6 +3735,7 @@ async function despacharAdminData(
             tem_print: Number(x.tem_print) === 1,
             status: String(x.status ?? 'aberto'),
             criado_em: String(x.criado_em),
+            notas: notasPorRelato.get(Number(x.id)) ?? [],
           })),
         },
       };
@@ -5632,10 +5684,23 @@ function faltaEmProjeto(p: any): string | null {
       });
       if (!r.rowsAffected) return { status: 404, body: { error: 'Relato não encontrado.' } };
 
+      // A nota é gravada mesmo quando o e-mail não vai. Ela é registro do
+      // chamado, e não texto do aviso: decidir não avisar agora não apaga o
+      // motivo da mudança, que é o que alguém vai procurar daqui a um mês.
+      const comentario = String(body?.comentario ?? '').trim().slice(0, 2000);
+      const agoraNota = new Date().toISOString();
+      if (comentario) {
+        await db.execute({
+          sql: `INSERT INTO reporte_notas (reporte_id, texto, status, autor_id, autor_nome, criado_em)
+                VALUES (?, ?, ?, ?, ?, ?)`,
+          args: [body?.id, comentario, status, autorId ?? null, autorNome ?? 'alguém do time', agoraNota],
+        });
+      }
+
       // Avisar quem reportou é escolha de quem mexeu no status, e vem no corpo:
       // nem toda mudança merece um e-mail - passar de Aberto para Em análise no
       // meio da triagem não é notícia, e resolver é.
-      if (!body?.avisar) return { status: 200, body: { ok: true } };
+      if (!body?.avisar) return { status: 200, body: { ok: true, nota: comentario ? { texto: comentario, status, autor_nome: autorNome ?? 'alguém do time', criado_em: agoraNota } : null } };
 
       const linha = (await db.execute({
         sql: 'SELECT texto, urgencia, pagina, autor_nome, autor_email FROM reportes WHERE id = ?',
@@ -5644,8 +5709,11 @@ function faltaEmProjeto(p: any): string | null {
       const para = String(linha?.autor_email ?? '').trim();
       // Sem e-mail não há para quem mandar - e o status já mudou, então isso é
       // aviso, e não erro.
+      const notaGravada = comentario
+        ? { texto: comentario, status, autor_nome: autorNome ?? 'alguém do time', criado_em: agoraNota }
+        : null;
       if (!para) {
-        return { status: 200, body: { ok: true, aviso: 'O status mudou, mas o relato não tem o e-mail de quem reportou.' } };
+        return { status: 200, body: { ok: true, nota: notaGravada, aviso: 'O status mudou, mas o relato não tem o e-mail de quem reportou.' } };
       }
 
       const rotulo = ROTULO_DO_STATUS[status] ?? status;
@@ -5659,16 +5727,26 @@ function faltaEmProjeto(p: any): string | null {
           ['Onde', String(linha?.pagina ?? '')],
         ])
         + citacaoEmail(texto)
+        // O recado de quem mexeu, quando houver. Vem depois do relato, e com
+        // rótulo: sem ele as duas citações seriam duas caixas iguais, e quem lê
+        // não saberia qual é a própria frase e qual é a resposta.
+        + (comentario
+          ? textoEmail(`${autorNome ?? 'Quem cuidou'} escreveu:`) + citacaoEmail(comentario)
+          : '')
         + notaEmail(`Quem mudou: ${esc(autorNome ?? 'alguém do time')}.`),
         'reporte_status',
         {
-          previa: `Agora está ${rotulo.toLowerCase()}.`,
+          previa: comentario || `Agora está ${rotulo.toLowerCase()}.`,
           rodape: 'Você recebe este aviso porque foi você quem reportou isso.',
         },
       );
       return {
         status: 200,
-        body: { ok: true, aviso: envio.ok ? null : `O status mudou, mas o e-mail não saiu: ${envio.erro}` },
+        body: {
+          ok: true,
+          nota: notaGravada,
+          aviso: envio.ok ? null : `O status mudou, mas o e-mail não saiu: ${envio.erro}`,
+        },
       };
     }
 
