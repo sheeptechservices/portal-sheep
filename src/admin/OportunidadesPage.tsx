@@ -15,6 +15,7 @@ import {
   IconVisaoQuadro, IconX, IconZip, IconChevronUp, IconChevronUpDown,
 } from '../components/icons';
 import { SegSwitch } from '../components/SegSwitch';
+import { SelectSistema } from '../components/SelectSistema';
 import { EditorRico } from '../components/EditorRico';
 import { TextoRico } from '../components/TextoRico';
 import { CartaoKpi, CartoesKpiEsqueleto } from '../components/CartaoKpi';
@@ -940,8 +941,19 @@ function CamposDaOportunidade({ r, set, token, pessoas }: {
         </div>
         <div className="form-group" style={{ flex: '0 1 110px' }}>
           <label className="form-label">Estado</label>
-          <FormSelect value={r.estado} onChange={v => set('estado', v)}
-            options={ESTADOS_BR.map(o => ({ value: o, label: o }))} />
+          {/* Aqui o campo é o `SelectSistema`, e não o `FormSelect` do resto da
+              ficha: são 27 siglas, e acima de sete opções ele abre já com a
+              busca em foco - digitar "mg" deixa uma linha só, e o Enter
+              escolhe. O vazio é um traço: "- Não definido -" quebrava em duas
+              linhas na coluna de 110px e inchava a linha inteira. O traço
+              também é a primeira opção, que é por onde se limpa a escolha. */}
+          <SelectSistema valor={r.estado} onChange={v => set('estado', v)}
+            placeholder="-"
+            // A altura vem do texto e da folga, como nos campos ao lado: a
+            // métrica fixa do gatilho é 4px mais alta que a desta ficha, e um
+            // campo mais alto que os dois vizinhos se nota na linha.
+            estiloGatilho={{ height: 'auto', padding: '10px 14px' }}
+            opcoes={[{ valor: '', label: '-' }, ...ESTADOS_BR.map(o => ({ valor: o, label: o }))]} />
         </div>
         <div className="form-group" style={{ flex: '0 1 150px' }}>
           <label className="form-label">País</label>

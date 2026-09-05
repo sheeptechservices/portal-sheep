@@ -8785,12 +8785,20 @@ button.checklist-texto:focus-visible {
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: border-color .15s, box-shadow .15s;
+  transition: border-color var(--transition), box-shadow var(--transition-spring);
 }
 
 .liquidez-trigger:hover {
   border-color: var(--gray2);
-  box-shadow: 0 0 0 3px rgba(0,0,0,0.05);
+  box-shadow: 0 0 0 3px var(--gray4);
+}
+/* Foco: o mesmo realce do campo de texto - borda cinza e halo cinza. Sem esta
+   regra o Chrome desenhava o anel azul dele em volta do gatilho, que e cor de
+   fora do sistema e nao acompanha o tema. */
+.liquidez-trigger:focus-visible {
+  outline: none;
+  border-color: var(--gray2);
+  box-shadow: 0 0 0 3px var(--gray4);
 }
 
 /* ── Decision cards ─────────────────────────────────── */
