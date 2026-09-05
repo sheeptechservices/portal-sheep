@@ -68,19 +68,6 @@ export const CATALOGO: PermGrupo[] = [
     ],
   },
   {
-    chave: 'cadastros',
-    label: 'Cadastros',
-    page: 'cadastros',
-    nota: 'Dados-mestre de cedentes e sacados.',
-    acoes: [
-      { chave: 'cadastros:ver', label: 'Ver cedentes e sacados', acesso: true },
-      { chave: 'cadastros:criar', label: 'Criar cedente ou sacado' },
-      { chave: 'cadastros:editar', label: 'Editar cedente ou sacado' },
-      { chave: 'cadastros:excluir', label: 'Desativar cedente ou sacado' },
-      { chave: 'cadastros:importar', label: 'Importar cedentes em lote' },
-    ],
-  },
-  {
     chave: 'dashboard',
     label: 'Dashboard',
     page: 'dashboard',
@@ -287,7 +274,7 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   pendencias_by_oportunidade: 'oportunidades:ver',
   reuniao_oportunidade: 'oportunidades:ver',
   deps_by_oportunidade: 'oportunidades:ver',
-  status_configs: ['oportunidades:ver', 'cadastros:ver', 'configuracoes:ver'],
+  status_configs: ['oportunidades:ver', 'configuracoes:ver'],
   create_submission: 'oportunidades:criar',
   update_submission: 'oportunidades:editar',
   patch_submission: 'oportunidades:editar',
@@ -308,39 +295,10 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   save_oportunidade_deps: ['oportunidades:deps'],
   delete_submission: 'oportunidades:excluir',
 
-  // ── Onboarding ────────────────────────────────────────────────────────────
-  cadastros_board: 'cadastros:ver',
-  cadastro_detail: 'cadastros:ver',
-  upload_cedente_arquivo: 'cadastros:editar',
-  rename_cedente_arquivo: 'cadastros:editar',
-  update_cedente_arquivo_categoria: 'cadastros:editar',
-  delete_cedente_arquivo: 'cadastros:editar',
-  add_cedente_pendencias: 'cadastros:editar',
-  toggle_cedente_pendencia: 'cadastros:editar',
-  update_cedente_pendencia: 'cadastros:editar',
-  delete_cedente_pendencia: 'cadastros:editar',
-  list_cedente_arquivos: ['cadastros:ver', 'cadastros:ver'],
-  get_cedente_arquivo_base64: ['cadastros:ver', 'cadastros:ver'],
-
-  // ── Cadastros ─────────────────────────────────────────────────────────────
-  // Os seletores de cedente/sacado aparecem em quase toda tela, então a leitura
-  // da lista basta ter acesso a uma delas.
-  list_cedentes: ['cadastros:ver', 'oportunidades:ver', 'gerador:ver'],
-  list_sacados: ['cadastros:ver', 'oportunidades:ver', 'gerador:ver'],
-  list_sacados_by_cedente: ['cadastros:ver', 'oportunidades:ver', 'gerador:ver'],
-  create_cedente: 'cadastros:criar',
-  create_sacado: 'cadastros:criar',
-  update_cedente: 'cadastros:editar',
-  update_sacado: 'cadastros:editar',
-  add_cedente_option: 'cadastros:editar',
-  delete_cedente: 'cadastros:excluir',
-  delete_sacado: 'cadastros:excluir',
-  import_cedentes: 'cadastros:importar',
-
   // ── Aceites & Anuências ───────────────────────────────────────────────────
 
   // ── Análise de Crédito ────────────────────────────────────────────────────
-  taxa_sugerida: 'cadastros:editar',
+  taxa_sugerida: 'gerador:ver',
   deps_config: ['oportunidades:ver', 'configuracoes:integracoes'],
 
   // ── Configurações ─────────────────────────────────────────────────────────

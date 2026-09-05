@@ -16,7 +16,6 @@ const OportunidadesPage = lazy(() => import('./OportunidadesPage'));
 const ProjetosPage = lazy(() => import('./ProjetosPage'));
 const TarefasPage = lazy(() => import('./TarefasPage'));
 const ConfiguracoesPage = lazy(() => import('./ConfiguracoesPage'));
-const CadastrosPage = lazy(() => import('./CadastrosPage'));
 const FerramentasPage = lazy(() => import('./FerramentasPage'));
 const GeradorDocumentosPage = lazy(() => import('./GeradorDocumentosPage'));
 const PerfilPage = lazy(() => import('./PerfilPage'));
@@ -247,17 +246,6 @@ const NAV_SECTIONS: { section: string; items: NavLeaf[] }[] = [
   {
     section: 'SISTEMA',
     items: [
-      {
-        page: 'cadastros',
-        label: 'Cadastros',
-        icon: (
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-            <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        ),
-      },
       {
         page: 'configuracoes',
         label: 'Configurações',
@@ -1071,12 +1059,10 @@ function LoginArte() {
 }
 
 // ── Main shell ────────────────────────────────────────────────────────────────
-interface NewCedente { cnpj: string; razao_social: string; natureza_juridica?: string }
-
-function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLogout: () => void; saindo: boolean; newCedente?: NewCedente }) {
+function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => void; saindo: boolean }) {
   // A tela abre no Dashboard: a primeira pergunta de quem chega é como está a
   // casa, e não o que fazer agora - para isso existem os quadros, a um clique.
-  const [page, setPage] = useState<Page>(newCedente ? 'cadastros' : 'dashboard');
+  const [page, setPage] = useState<Page>('dashboard');
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -1412,7 +1398,6 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
             )}
             {page === 'dashboard'     && <DashboardPage     token={token} />}
             {page === 'oportunidades'  && <OportunidadesPage  token={token} openCard={openCard?.page === 'oportunidades' ? openCard : undefined} onCardOpened={() => setOpenCard(null)} />}
-            {page === 'cadastros'     && <CadastrosPage     token={token} newCedente={newCedente} />}
             {page === 'configuracoes' && <ConfiguracoesPage token={token} />}
             {page === 'ferramentas'   && <FerramentasPage onNavigate={p => setPage(p as Page)} />}
             {page === 'gerador-documentos' && <GeradorDocumentosPage token={token} />}
@@ -1440,16 +1425,12 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
 const _urlState = (() => {
   const p = new URLSearchParams(window.location.search);
   const urlToken = p.get('session');
-  const cnpj = p.get('cnpj') ?? '';
-  const nc = p.get('new_cedente') === '1' && cnpj
-    ? { cnpj, razao_social: decodeURIComponent(p.get('razao') ?? ''), natureza_juridica: decodeURIComponent(p.get('nj') ?? '') || undefined }
-    : undefined;
-  if (urlToken || nc) {
+  if (urlToken) {
     const clean = new URL(window.location.href);
-    ['session', 'new_cedente', 'cnpj', 'razao', 'nj'].forEach(k => clean.searchParams.delete(k));
+    clean.searchParams.delete('session');
     history.replaceState(null, '', clean.toString());
   }
-  return { urlToken, newCedente: nc };
+  return { urlToken };
 })();
 
 /** Duração da saída de tela. Espelhada em .tela-sai, no main.css. */
@@ -1463,7 +1444,6 @@ export default function AdminApp() {
     }
     return localStorage.getItem(SESSION_KEY);
   });
-  const [newCedente] = useState<NewCedente | undefined>(() => _urlState.newCedente);
 
   // Troca de tela em duas etapas: quem sai roda a animação de saída e só então
   // a outra monta, com a sua de entrada. Sem isso o corte é seco.
@@ -1500,5 +1480,5 @@ export default function AdminApp() {
   }
 
   if (!token) return <LoginScreen onLogin={t => trocarTela(() => setToken(t))} saindo={saindo} />;
-  return <MainApp token={token} onLogout={logout} saindo={saindo} newCedente={newCedente} />;
+  return <MainApp token={token} onLogout={logout} saindo={saindo} />;
 }

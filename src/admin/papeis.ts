@@ -49,7 +49,6 @@ export type Permissoes = '*' | string[];
 export const PERMISSAO_DA_PAGINA: Record<string, string> = {
   'dashboard': 'dashboard:ver',
   'oportunidades': 'oportunidades:ver',
-  'cadastros': 'cadastros:ver',
   'projetos': 'projetos:ver',
   'tarefas': 'tarefas:ver',
   'ferramentas': 'ferramentas:ver',

@@ -63,121 +63,42 @@ interface Parte {
   avulso?: boolean;
 }
 
-function SeletorParte({
-  label, itens, valor, onChange, carregando, placeholder,
-}: {
+/**
+ * A parte do documento: nome e documento, digitados.
+ *
+ * Era um seletor que buscava no cadastro de cedentes e sacados. O cadastro
+ * saiu com a esteira antiga, e um seletor sem lista nao tem saida nenhuma -
+ * entao a parte volta a ser o que ela ja era em todo caso que nao estava
+ * cadastrado: o nome e o CNPJ que vao impressos no documento.
+ *
+ * Continua saindo pronta quando a proposta e montada a partir de uma
+ * oportunidade ou da leitura de um documento; estes campos sao para quando nao
+ * ha de onde puxar.
+ */
+function CampoParte({ label, valor, onChange }: {
   label: string;
-  itens: Parte[];
   valor: Parte | null;
   onChange: (p: Parte | null) => void;
-  carregando: boolean;
-  placeholder: string;
 }) {
-  const [aberto, setAberto] = useState(false);
-  const [busca, setBusca] = useState('');
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!aberto) return;
-    function fora(e: MouseEvent) {
-      if (!wrapRef.current?.contains(e.target as Node)) setAberto(false);
-    }
-    document.addEventListener('mousedown', fora);
-    return () => document.removeEventListener('mousedown', fora);
-  }, [aberto]);
-
-  const digitos = busca.replace(/\D/g, '');
-  const filtrados = busca.trim()
-    ? itens.filter(i =>
-        i.nome.toLowerCase().includes(busca.toLowerCase())
-        || (digitos.length > 0 && i.documento.replace(/\D/g, '').includes(digitos)))
-    : itens;
-
+  const trocar = (nome: string, documento: string) =>
+    onChange(nome.trim() || documento.trim() ? { nome: nome || '-', documento, avulso: true } : null);
   return (
     <div>
       <label className="form-label" style={{ display: 'block', marginBottom: 6 }}>{label}</label>
-      <div ref={wrapRef} style={{ position: 'relative' }}>
-        {valor ? (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 10, minHeight: 38, padding: '6px 11px',
-            borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--yellow)',
-            background: 'var(--white)', boxShadow: '0 0 0 3px var(--yd)',
-          }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--black)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {valor.nome}
-              </p>
-              <p style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                {valor.documento && fmtDocumento(valor.documento)}
-                {valor.avulso && (
-                  <span
-                    title="Lido do documento; não consta no cadastro da esteira"
-                    style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase',
-                      color: '#B45309', background: 'rgba(180,83,9,0.12)', padding: '1px 6px', borderRadius: 'var(--radius-pill)' }}
-                  >fora do cadastro</span>
-                )}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onChange(null)}
-              style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--gray2)', fontSize: 18, lineHeight: 1 }}
-            >×</button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => { setAberto(a => !a); setTimeout(() => inputRef.current?.focus(), 0); }}
-            style={{
-              width: '100%', height: 38, padding: '0 11px', textAlign: 'left',
-              borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--gray3)',
-              background: 'var(--white)', color: 'var(--gray2)', fontSize: 13.5,
-              fontFamily: 'inherit', cursor: 'pointer',
-            }}
-          >{placeholder}</button>
-        )}
-
-        {aberto && (
-          <div style={{
-            position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 40,
-            background: 'var(--white)', border: '1.5px solid var(--gray3)',
-            borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-card-hover)',
-            maxHeight: 280, overflowY: 'auto',
-          }}>
-            <div style={{ padding: 8, borderBottom: '1px solid var(--gray3)', position: 'sticky', top: 0, background: 'var(--white)' }}>
-              <input
-                ref={inputRef}
-                className="form-input"
-                style={{ height: 34, fontSize: 13 }}
-                placeholder="Buscar por nome ou CNPJ…"
-                value={busca}
-                onChange={e => setBusca(e.target.value)}
-              />
-            </div>
-            {carregando && <div className="dux-spinner-row" style={{ padding: '12px' }}><span className="dux-spinner sm" /></div>}
-            {!carregando && filtrados.length === 0 && (
-              <p style={{ padding: 12, fontSize: 12, color: 'var(--gray2)' }}>Nenhum resultado.</p>
-            )}
-            {filtrados.slice(0, 80).map((i, idx) => (
-              <button
-                key={`${i.id ?? idx}`}
-                type="button"
-                onClick={() => { onChange(i); setAberto(false); setBusca(''); }}
-                style={{
-                  display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px',
-                  border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'var(--gray4, var(--bg))'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
-              >
-                <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--black)' }}>{i.nome}</span>
-                {i.documento && <span style={{ display: 'block', fontSize: 11, color: 'var(--gray2)' }}>{fmtDocumento(i.documento)}</span>}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      <input
+        className="form-input"
+        placeholder="Razão social"
+        value={valor?.nome && valor.nome !== '-' ? valor.nome : ''}
+        onChange={e => trocar(e.target.value, valor?.documento ?? '')}
+      />
+      <input
+        className="form-input"
+        style={{ marginTop: 8 }}
+        placeholder="CNPJ ou CPF"
+        inputMode="numeric"
+        value={valor?.documento ?? ''}
+        onChange={e => trocar(valor?.nome ?? '', e.target.value)}
+      />
     </div>
   );
 }
@@ -536,9 +457,6 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
 
   const [modulo, setModulo] = useState<Modulo>('propostas');
 
-  // Cadastro da esteira
-  const [cedentes, setCedentes] = useState<Parte[]>([]);
-  const [sacados, setSacados] = useState<Parte[]>([]);
   const [carregando, setCarregando] = useState(true);
 
   // Documento
@@ -605,11 +523,7 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
     let vivo = true;
     (async () => {
       try {
-        const [c, s, board] = await Promise.all([
-          api('?action=list_cedentes'),
-          api('?action=list_sacados'),
-          api('?action=board'),
-        ]);
+        const board = await api('?action=board');
         if (!vivo) return;
         const etapasPorId = new Map<number, { nome: string; cor: string; fora: boolean }>(
           (board?.statuses ?? []).map((e: any) => [Number(e.id), {
@@ -635,22 +549,10 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
               etapaCor: et?.cor ?? '#AAAAAA',
             } as OportunidadeOpt;
           }));
-        setCedentes((c?.cedentes ?? []).map((x: any) => ({
-          id: x.id,
-          nome: x.razao_social || x.nome || '-',
-          documento: x.cnpj_cpf ?? '',
-          extra: x,
-        })));
-        setSacados((s?.sacados ?? []).map((x: any) => ({
-          id: x.id,
-          nome: x.razao_social || '-',
-          documento: x.cnpj_cpf ?? '',
-          extra: x,
-        })));
       } catch (e) {
-        // sem cadastro carregado dá para seguir digitando as partes à mão
-        console.error('[gerador] cadastro', e);
-        if (vivo) toast('error', 'Não foi possível carregar o cadastro', 'Cedentes e sacados podem não aparecer na lista.');
+        // sem o quadro carregado dá para seguir digitando as partes à mão
+        console.error('[gerador] oportunidades', e);
+        if (vivo) toast('error', 'Não foi possível carregar as oportunidades', 'A lista para escolher pode não aparecer.');
       } finally {
         if (vivo) setCarregando(false);
       }
@@ -752,12 +654,11 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
   }
 
   /** Acha a parte no cadastro pelo CNPJ; se não achar, usa o que veio do documento. */
-  function resolverParte(lista: Parte[], razao?: string, doc?: string): Parte | null {
+  /** A parte do documento, montada com o que veio dele. Consultava o cadastro de
+   *  cedentes e sacados antes; sem ele, o nome e o documento do proprio papel
+   *  bastam - era isso que ja acontecia com toda parte que nao estava la. */
+  function resolverParte(razao?: string, doc?: string): Parte | null {
     const digitos = soDigitos(doc ?? '');
-    if (digitos) {
-      const achada = lista.find(p => soDigitos(p.documento) === digitos);
-      if (achada) return achada;
-    }
     if (!razao && !digitos) return null;
     return { nome: razao ?? '-', documento: doc ?? '', avulso: true };
   }
@@ -783,9 +684,9 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
   function aplicarExtracao(d: DadosNf): number {
     let aplicados = 0;
 
-    const ced = resolverParte(cedentes, d.cliente_razao, d.cliente_cnpj);
+    const ced = resolverParte(d.cliente_razao, d.cliente_cnpj);
     if (ced) { setCedente(ced); aplicados++; }
-    const sac = resolverParte(sacados, d.sacado_razao, d.sacado_cnpj);
+    const sac = resolverParte(d.sacado_razao, d.sacado_cnpj);
     if (sac) { setSacado(sac); aplicados++; }
 
     if (d.valor_total) {
@@ -865,9 +766,9 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
       if (!sub) throw new Error('Oportunidade não encontrada.');
 
       // Partes: o detalhe já resolve razão social e CNPJ pelo cadastro
-      const ced = resolverParte(cedentes, sub.nome_contratado, sub.cnpj_contratado);
+      const ced = resolverParte(sub.nome_contratado, sub.cnpj_contratado);
       if (ced) setCedente(ced);
-      const sac = resolverParte(sacados, sub.nome_sacado, sub.cnpj_sacado);
+      const sac = resolverParte(sub.nome_sacado, sub.cnpj_sacado);
       if (sac) setSacado(sac);
 
       // Valor e parcelas como foram registrados na oportunidade
@@ -1677,22 +1578,8 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
             <div className="gd-card">
               <p className="admin-section-title">Partes</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14, marginTop: 12 }}>
-                <SeletorParte
-                  label="Cedente"
-                  itens={cedentes}
-                  valor={cedente}
-                  onChange={setCedente}
-                  carregando={carregando}
-                  placeholder="Selecione o cedente…"
-                />
-                <SeletorParte
-                  label="Sacado"
-                  itens={sacados}
-                  valor={sacado}
-                  onChange={setSacado}
-                  carregando={carregando}
-                  placeholder="Selecione o sacado…"
-                />
+                <CampoParte label="Cedente" valor={cedente} onChange={setCedente} />
+                <CampoParte label="Sacado" valor={sacado} onChange={setSacado} />
               </div>
             </div>
 

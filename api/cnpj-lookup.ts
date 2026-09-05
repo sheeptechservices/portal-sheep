@@ -102,9 +102,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const sessao = await getAdminSession(db, token).catch(() => null);
   if (!sessao) return res.status(401).json({ error: 'Unauthorized' });
 
-  // Quem consulta CNPJ são as telas de Cadastros e do Funil; qualquer uma das
-  // duas permissões basta.
-  const recusa = await exigir(db, sessao.usuario, ['cadastros:ver', 'oportunidades:ver']);
+  // Quem consulta CNPJ é a tela do Funil.
+  const recusa = await exigir(db, sessao.usuario, ['oportunidades:ver']);
   if (recusa) return res.status(recusa.status).json(recusa.body);
 
   const digits = String(getQuery(req).get('cnpj') ?? '').replace(/\D/g, '');

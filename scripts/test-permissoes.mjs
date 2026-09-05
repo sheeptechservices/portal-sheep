@@ -71,7 +71,7 @@ async function rodar(P) {
   titulo('3. Configurado: vale só o que está marcado');
   await P.salvarMatrizPapel(db, 'membro', [
     'oportunidades:ver', 'oportunidades:comentar', 'oportunidades:mover',
-    'onboarding:ver', 'cadastros:ver',
+    'onboarding:ver',
   ], admin);
   P.invalidarCachePermissoes();
   perm = await P.permissoesDoUsuario(db, membro);

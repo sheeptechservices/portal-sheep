@@ -24,7 +24,6 @@ interface Resumo {
   comentarios: number;
   eventos: number;
   oportunidades: number;
-  cedentes: number;
   pendencias: number;
   acoes: number;
 }
@@ -50,7 +49,6 @@ const ACAO_LABEL: Record<string, string> = {
   create_cedente: 'Criou cedente',
   update_cedente: 'Editou cedente',
   delete_cedente: 'Desativou cedente',
-  import_cedentes: 'Importou cedentes',
   create_sacado: 'Criou sacado',
   update_sacado: 'Editou sacado',
   add_pendencias: 'Registrou pendências',
@@ -179,7 +177,6 @@ export default function PerfilPage({ token }: { token: string }) {
           <Estatistica label="Comentários" valor={resumo.comentarios} desc="escritos por você" />
           <Estatistica label="Movimentações" valor={resumo.eventos} desc="eventos no histórico" />
           <Estatistica label="Oportunidades" valor={resumo.oportunidades} desc="criadas por você" />
-          <Estatistica label="Cedentes" valor={resumo.cedentes} desc="cadastrados por você" />
           <Estatistica label="Ações" valor={resumo.acoes} desc="registradas na auditoria" />
         </div>
       </div>

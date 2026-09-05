@@ -471,122 +471,6 @@ async function migrarSchema(db: Client) {
   } catch (_) { /* already exists */ }
 
   await ddl(`
-    CREATE TABLE IF NOT EXISTS cedentes (
-      id        TEXT PRIMARY KEY,
-      nome      TEXT NOT NULL,
-      ativo     INTEGER NOT NULL DEFAULT 1,
-      criado_em TEXT NOT NULL
-    )
-  `);
-
-  await ddl(`
-    CREATE TABLE IF NOT EXISTS sacados (
-      id          TEXT PRIMARY KEY,
-      cnpj_cpf    TEXT,
-      razao_social TEXT,
-      criado_em   TEXT NOT NULL
-    )
-  `);
-
-  // Cedentes: migrate all new columns (safe - each is a no-op if already exists)
-  const cedenteMigrations = [
-    `ALTER TABLE cedentes ADD COLUMN cnpj_cpf TEXT`,
-    `ALTER TABLE cedentes ADD COLUMN razao_social TEXT`,
-    `ALTER TABLE cedentes ADD COLUMN status TEXT DEFAULT 'Ativo'`,
-    `ALTER TABLE cedentes ADD COLUMN flags TEXT DEFAULT 'Regular'`,
-    `ALTER TABLE cedentes ADD COLUMN origem TEXT`,
-    `ALTER TABLE cedentes ADD COLUMN segmento TEXT`,
-    `ALTER TABLE cedentes ADD COLUMN sub_segmento TEXT`,
-    `ALTER TABLE cedentes ADD COLUMN origem_comercial TEXT`,
-    `ALTER TABLE cedentes ADD COLUMN canal_aquisicao TEXT`,
-    `ALTER TABLE cedentes ADD COLUMN parceiro INTEGER DEFAULT 0`,
-    `ALTER TABLE cedentes ADD COLUMN natureza_juridica TEXT`,
-    `ALTER TABLE cedentes ADD COLUMN valores_em_aberto REAL`,
-    `ALTER TABLE cedentes ADD COLUMN limite_operacao REAL`,
-    `ALTER TABLE cedentes ADD COLUMN rating REAL`,
-    `ALTER TABLE cedentes ADD COLUMN obs TEXT`,
-    `ALTER TABLE cedentes ADD COLUMN email TEXT`,
-    `ALTER TABLE cedentes ADD COLUMN endereco_pj TEXT`,
-    `ALTER TABLE cedentes ADD COLUMN nome_responsavel TEXT`,
-    `ALTER TABLE cedentes ADD COLUMN email_responsavel TEXT`,
-    `ALTER TABLE cedentes ADD COLUMN endereco_responsavel TEXT`,
-    `ALTER TABLE cedentes ADD COLUMN cpf_responsavel TEXT`,
-    `ALTER TABLE cedentes ADD COLUMN possui_escrow INTEGER DEFAULT 0`,
-    `ALTER TABLE cedentes ADD COLUMN wpp_contato TEXT`,
-    `ALTER TABLE cedentes ADD COLUMN conta_escrow TEXT`,
-    `ALTER TABLE cedentes ADD COLUMN link_drive TEXT`,
-    `ALTER TABLE oportunidades ADD COLUMN cedente_id INTEGER`,
-    `ALTER TABLE oportunidades ADD COLUMN sacado_id INTEGER`,
-    `ALTER TABLE sacados ADD COLUMN ativo INTEGER NOT NULL DEFAULT 1`,
-    // `cidade_estado` saiu daqui: a lista tinha o ADD e o DROP da mesma coluna,
-    // então toda partida recriava e derrubava a coluna de novo, sem fim. A
-    // coluna não deve existir, e não existe - nada a migrar.
-    `ALTER TABLE oportunidades ADD COLUMN liquidez TEXT`,
-    // Auto-cadastro (onboarding self-service) - pipeline de aprovação.
-    // ADD COLUMN com DEFAULT 'aprovado' marca todos os cedentes já existentes como aprovados.
-    `ALTER TABLE cedentes ADD COLUMN aprovacao_status TEXT DEFAULT 'aprovado'`,
-    `ALTER TABLE cedentes ADD COLUMN cadastro_extra TEXT`,
-    `ALTER TABLE cedentes ADD COLUMN cadastro_movido_em TEXT`,
-  ];
-  for (const sql of cedenteMigrations) {
-    try { await ddl(sql); } catch (_) {}
-  }
-
-  await ddl(`
-    CREATE TABLE IF NOT EXISTS cedente_arquivos (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      cedente_id TEXT NOT NULL,
-      nome       TEXT NOT NULL,
-      tipo       TEXT NOT NULL,
-      tamanho    INTEGER NOT NULL,
-      base64     TEXT NOT NULL,
-      criado_em  TEXT NOT NULL
-    )
-  `);
-  // Categoria estruturada do documento do cedente (onboarding)
-  try { await ddl(`ALTER TABLE cedente_arquivos ADD COLUMN categoria TEXT`); } catch {}
-
-  // Pendências (checklist) do cadastro do cedente (onboarding)
-  await ddl(`
-    CREATE TABLE IF NOT EXISTS cedente_pendencias (
-      id           INTEGER PRIMARY KEY AUTOINCREMENT,
-      cedente_id   TEXT NOT NULL,
-      descricao    TEXT NOT NULL,
-      categoria    TEXT,
-      resolvida    INTEGER NOT NULL DEFAULT 0,
-      criado_em    TEXT NOT NULL,
-      resolvido_em TEXT
-    )
-  `);
-
-  // Manageable option lists
-  await ddl(`CREATE TABLE IF NOT EXISTS cedente_segmentos (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL UNIQUE)`);
-  await ddl(`CREATE TABLE IF NOT EXISTS cedente_sub_segmentos (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL UNIQUE)`);
-  await ddl(`CREATE TABLE IF NOT EXISTS cedente_origens_comerciais (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL UNIQUE)`);
-  await ddl(`CREATE TABLE IF NOT EXISTS cedente_canais_aquisicao (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL UNIQUE)`);
-
-  // Seed option lists (no-op if already present due to UNIQUE constraint)
-  const seedData: Array<[string, string[]]> = [
-    ['cedente_segmentos', ['Consultoria','Eventos','Gamer','Logística','Marketing & Publicidade','Produção Audiovisual']],
-    ['cedente_sub_segmentos', ['Agência','Agência de Atores','Autônomo','Consultoria Estratégica','Criador Individual','E-sports','Imprensa/PR','Infra de Eventos','Logística','Organização de Eventos','Produção Audiovisual','Produção Cultural','Produção de Eventos','Veículo de Mídia']],
-    ['cedente_origens_comerciais', ['Indicação','Campanha']],
-    ['cedente_canais_aquisicao', ['Instagram','WhatsApp','Site','E-mail','Parceiro']],
-  ];
-  // Uma consulta diz quais dessas listas ainda estão vazias; só elas são
-  // semeadas. Antes eram 26 INSERT por partida, cada um contando com o UNIQUE
-  // para falhar em silêncio - 26 idas ao banco para, no caso normal, não fazer
-  // nada.
-  const vazias = await db.execute(
-    `SELECT ${seedData.map(([t]) => `(SELECT COUNT(*) FROM ${t}) AS ${t}`).join(', ')}`
-  );
-  for (const [table, values] of seedData) {
-    if (Number((vazias.rows[0] as Record<string, any>)[table]) > 0) continue;
-    for (const nome of values) {
-      try { await db.execute({ sql: `INSERT INTO ${table} (nome) VALUES (?)`, args: [nome] }); } catch (_) {}
-    }
-  }
-
-  await ddl(`
     CREATE TABLE IF NOT EXISTS oportunidade_etapa_arquivos (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
       oportunidade_id TEXT NOT NULL,
@@ -860,9 +744,11 @@ async function migrarSchema(db: Client) {
   // e alimentar o parecer da IA sem uma nova consulta paga.
   try { await ddl(`ALTER TABLE oportunidade_deps ADD COLUMN raw_json TEXT`); } catch {}
 
-  // Data migration: strip hyphens from conta_escrow (idempotent)
-  await db.execute(`UPDATE cedentes SET conta_escrow = REPLACE(conta_escrow, '-', '') WHERE conta_escrow IS NOT NULL AND conta_escrow LIKE '%-%'`);
-
+  // A origem de liquidez da oportunidade. A coluna vinha na lista de migrações
+  // do cadastro antigo, e saiu junto com ela - mas ela é do funil, não do
+  // legado: sem esta linha, base nova nasceria sem a coluna e a correção abaixo
+  // quebraria na primeira partida.
+  try { await ddl(`ALTER TABLE oportunidades ADD COLUMN liquidez TEXT`); } catch {}
   // Data migration: corrige "FIDIC" → "FIDC" na origem de liquidez (idempotente) - DUX-327
   await db.execute(`UPDATE oportunidades SET liquidez = 'FIDC' WHERE liquidez = 'FIDIC'`);
 
@@ -875,14 +761,6 @@ async function migrarSchema(db: Client) {
     await db.execute(`INSERT INTO status_configs (nome, cor, ordem) VALUES ('Cancelado', '#D93025', 4)`);
   }
 
-  // Notificações do pipeline de auto-cadastro de cedentes (mesma lógica das oportunidades).
-  // Por etapa fixa (pendente/em_analise/aprovado/rejeitado):
-  // No momento da submissão do formulário de cadastro:
-  // Etapas configuráveis do pipeline de onboarding (auto-cadastro).
-  // `chave` é o valor persistido em cedentes.aprovacao_status. As chaves
-  // 'aprovado' e 'rejeitado' são âncoras semânticas protegidas (controlam o
-  // acesso ao formulário público) - podem ser renomeadas/recoloridas/reordenadas,
-  // mas não excluídas. Demais etapas são livres e contam como "em análise".
   // Cofre de credenciais de integração (chaves de API criptografadas em repouso).
   await ddl(`
     CREATE TABLE IF NOT EXISTS integration_credentials (
@@ -901,8 +779,6 @@ async function migrarSchema(db: Client) {
   const colunasAutoria: Array<[string, string[]]> = [
     ['oportunidade_eventos',    ['autor_id TEXT', 'autor_nome TEXT']],
     ['oportunidades',           ['criado_por_id TEXT', 'criado_por_nome TEXT', 'atualizado_por_id TEXT', 'atualizado_por_nome TEXT', 'atualizado_em TEXT']],
-    ['cedentes',               ['criado_por_id TEXT', 'criado_por_nome TEXT', 'atualizado_por_id TEXT', 'atualizado_por_nome TEXT', 'atualizado_em TEXT']],
-    ['sacados',                ['criado_por_id TEXT', 'criado_por_nome TEXT', 'atualizado_por_id TEXT', 'atualizado_por_nome TEXT', 'atualizado_em TEXT']],
     ['oportunidade_pendencias', ['criado_por_id TEXT', 'criado_por_nome TEXT', 'resolvido_por_id TEXT', 'resolvido_por_nome TEXT']],
   ];
   for (const [tabela, colunas] of colunasAutoria) {
@@ -1475,8 +1351,6 @@ async function migrarSchema(db: Client) {
     `CREATE INDEX IF NOT EXISTS idx_tarefa_etiqueta_ordem ON tarefa_etiquetas (ordem)`,
     `CREATE INDEX IF NOT EXISTS idx_tarefa_entrega ON projeto_tarefas (entrega_id)`,
     `CREATE INDEX IF NOT EXISTS idx_evidencia_entrega ON entrega_evidencias (entrega_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_ced_arq_ced ON cedente_arquivos (cedente_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_ced_pend_ced ON cedente_pendencias (cedente_id)`,
     // Autoria. A tela de Perfil filtra por pessoa (`autor_id`, `criado_por_id`,
     // `usuario_id`) e nenhum dos índices acima começa por essas colunas, então
     // cada contagem varria a tabela inteira. Índice por coluna consultada, e
@@ -1486,7 +1360,6 @@ async function migrarSchema(db: Client) {
     // usa as duas colunas, a de eventos usa só o prefixo.
     `CREATE INDEX IF NOT EXISTS idx_eventos_autor ON oportunidade_eventos (autor_id, tipo)`,
     `CREATE INDEX IF NOT EXISTS idx_oport_autor ON oportunidades (criado_por_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_ced_autor ON cedentes (criado_por_id)`,
     `CREATE INDEX IF NOT EXISTS idx_pend_autor ON oportunidade_pendencias (criado_por_id)`,
     // `(usuario_id, id DESC)` cobre a contagem e as últimas 15 ações no mesmo
     // índice - o ORDER BY sai de graça, sem passo de ordenação.
@@ -1540,7 +1413,7 @@ export const AUTOR_PORTAL = 'Portal de aceite';
 
 /** Tabelas que guardam "quem mexeu por último". União de literais de propósito:
  *  o nome da tabela entra na SQL por interpolação e nunca pode vir de fora. */
-export type TabelaComEdicao = 'oportunidades' | 'cedentes' | 'sacados';
+export type TabelaComEdicao = 'oportunidades';
 
 /**
  * Carimba "quem mexeu por último". Nunca derruba a ação que a chamou - autoria
@@ -2562,11 +2435,11 @@ function foldTerm(s: string): string {
  * Numa criação o id ainda não existe no pedido, então vem da resposta.
  */
 function alvoDaAcao(body: any, resposta: any): string | null {
-  const alvo = body?.id ?? body?.oportunidade_id ?? body?.cedente_id ?? body?.analise_id ??
-               body?.status_id ?? body?.sacado_id ?? body?.chave ??
+  const alvo = body?.id ?? body?.oportunidade_id ?? body?.analise_id ??
+               body?.status_id ?? body?.chave ??
                body?.usuario_id ?? body?.papel ??
-               resposta?.id ?? resposta?.submission?.id ?? resposta?.cedente?.id ??
-               resposta?.sacado?.id ?? resposta?.operacao?.id ?? resposta?.status?.id;
+               resposta?.id ?? resposta?.submission?.id ??
+               resposta?.operacao?.id ?? resposta?.status?.id;
   return alvo != null && alvo !== '' ? String(alvo) : null;
 }
 
@@ -2776,7 +2649,7 @@ async function despacharAdminData(
           usuario: linha.rows[0] ?? null,
           resumo: {
             comentarios: n(comentarios), eventos: n(eventos), oportunidades: n(oportunidades),
-            cedentes: n(cedentes), pendencias: n(pendencias), acoes: n(acoes),
+            pendencias: n(pendencias), acoes: n(acoes),
           },
           ultimas_acoes: ultimas.rows,
         },
@@ -3912,29 +3785,6 @@ async function despacharAdminData(
       return { status: 200, body: { reunioes: r.reunioes } };
     }
 
-    if (action === 'list_cedentes') {
-      const [rows, seg, sub, oc, ca] = await Promise.all([
-        // Pendentes/rejeitados vivem só na pipeline de aprovação; o cadastro principal lista aprovados
-        db.execute(`SELECT * FROM cedentes WHERE ativo = 1 AND (aprovacao_status IS NULL OR aprovacao_status = 'aprovado') ORDER BY nome ASC`),
-        db.execute('SELECT nome FROM cedente_segmentos ORDER BY nome'),
-        db.execute('SELECT nome FROM cedente_sub_segmentos ORDER BY nome'),
-        db.execute('SELECT nome FROM cedente_origens_comerciais ORDER BY nome'),
-        db.execute('SELECT nome FROM cedente_canais_aquisicao ORDER BY nome'),
-      ]);
-      return {
-        status: 200,
-        body: {
-          cedentes: rows.rows,
-          options: {
-            segmentos: seg.rows.map(r => String(r.nome)),
-            sub_segmentos: sub.rows.map(r => String(r.nome)),
-            origens_comerciais: oc.rows.map(r => String(r.nome)),
-            canais_aquisicao: ca.rows.map(r => String(r.nome)),
-          },
-        },
-      };
-    }
-
     // Última taxa usada com este cedente (sugestão do Gerador de Documentos)
     if (action === 'taxa_sugerida') {
       const cnpj = (query.get('cnpj') ?? '').replace(/\D/g, '');
@@ -3947,67 +3797,6 @@ async function despacharAdminData(
       return { status: 200, body: { taxa: taxa == null ? null : Number(taxa) } };
     }
 
-    if (action === 'list_sacados') {
-      const r = await db.execute('SELECT * FROM sacados WHERE ativo = 1 ORDER BY criado_em DESC');
-      return { status: 200, body: { sacados: r.rows } };
-    }
-
-    // Pipeline de aprovação de auto-cadastros (cedentes com origem = 'Auto-cadastro')
-    if (action === 'cadastros_board') {
-      const rows = await db.execute(`
-        SELECT c.id, c.nome, c.cnpj_cpf, c.razao_social, c.natureza_juridica,
-               c.email, c.nome_responsavel, c.email_responsavel, c.cpf_responsavel,
-               c.wpp_contato, c.endereco_pj, c.endereco_responsavel, c.cadastro_extra,
-               c.aprovacao_status, c.criado_em, c.cadastro_movido_em,
-               (SELECT COUNT(*) FROM cedente_arquivos a WHERE a.cedente_id = c.id) AS arquivo_count
-        FROM cedentes c
-        WHERE c.ativo = 1 AND c.origem = 'Auto-cadastro'
-        ORDER BY c.criado_em DESC
-      `);
-      return { status: 200, body: { cadastros: rows.rows } };
-    }
-
-    // Etapas do onboarding para o board público/admin (colunas dinâmicas)
-    if (action === 'cadastro_detail') {
-      const id = query.get('id');
-      if (!id) return { status: 400, body: { error: 'id required' } };
-      const c = await db.execute({ sql: 'SELECT * FROM cedentes WHERE id = ?', args: [id] });
-      if (!c.rows[0]) return { status: 404, body: { error: 'Not found' } };
-      const arquivos = await db.execute({
-        sql: 'SELECT id, nome, tipo, tamanho, categoria, criado_em FROM cedente_arquivos WHERE cedente_id = ? ORDER BY criado_em ASC',
-        args: [id],
-      });
-      const pendencias = await db.execute({
-        sql: 'SELECT id, descricao, categoria, resolvida, criado_em, resolvido_em FROM cedente_pendencias WHERE cedente_id = ? ORDER BY resolvida ASC, criado_em ASC',
-        args: [id],
-      });
-      return { status: 200, body: { cedente: c.rows[0], arquivos: arquivos.rows, pendencias: pendencias.rows } };
-    }
-
-    if (action === 'list_sacados_by_cedente') {
-      const cedenteCnpj = (query.get('cnpj') ?? '').replace(/\D/g, '');
-      if (!cedenteCnpj) return { status: 400, body: { error: 'cnpj required' } };
-      // Sacados que já operaram com esse cedente (via oportunidades)
-      const linked = await db.execute({
-        sql: `SELECT DISTINCT s.id, s.cnpj_cpf, s.razao_social FROM sacados s
-              WHERE s.ativo = 1
-              AND s.cnpj_cpf IN (
-                SELECT DISTINCT REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(sol.cnpj_sacado,'.',''),'/',''),'-',''),' ',''),'_','')
-                FROM oportunidades sol
-                WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(sol.cnpj_contratado,'.',''),'/',''),'-',''),' ',''),'_','') = ?
-                AND sol.cnpj_sacado IS NOT NULL AND sol.cnpj_sacado != ''
-              )
-              ORDER BY s.razao_social ASC`,
-        args: [cedenteCnpj],
-      });
-      // Se não achou sacados relacionados, retorna todos
-      if (linked.rows.length === 0) {
-        const all = await db.execute('SELECT id, cnpj_cpf, razao_social FROM sacados WHERE ativo = 1 ORDER BY razao_social ASC');
-        return { status: 200, body: { sacados: all.rows, filtered: false } };
-      }
-      return { status: 200, body: { sacados: linked.rows, filtered: true } };
-    }
-
     if (action === 'get_oportunidade_files') {
       const id = query.get('id');
       if (!id) return { status: 400, body: { error: 'id required' } };
@@ -4018,24 +3807,6 @@ async function despacharAdminData(
         args: [id, id],
       });
       return { status: 200, body: { arquivos: rows.rows } };
-    }
-
-    if (action === 'list_cedente_arquivos') {
-      const cedente_id = query.get('cedente_id');
-      if (!cedente_id) return { status: 400, body: { error: 'cedente_id required' } };
-      const rows = await db.execute({
-        sql: 'SELECT id, nome, tipo, tamanho, categoria, criado_em FROM cedente_arquivos WHERE cedente_id = ? ORDER BY criado_em ASC',
-        args: [cedente_id],
-      });
-      return { status: 200, body: { arquivos: rows.rows } };
-    }
-
-    if (action === 'get_cedente_arquivo_base64') {
-      const id = query.get('id');
-      if (!id) return { status: 400, body: { error: 'id required' } };
-      const row = await db.execute({ sql: 'SELECT base64 FROM cedente_arquivos WHERE id = ?', args: [id] });
-      if (!row.rows[0]) return { status: 404, body: { error: 'Not found' } };
-      return { status: 200, body: { base64: row.rows[0].base64 } };
     }
 
     if (action === 'nova_oportunidade_notifs') {
@@ -4058,27 +3829,6 @@ async function despacharAdminData(
         const r = await db.execute({ sql: 'SELECT nome, foto_url FROM usuarios WHERE id = ?', args: [submission.responsavel_id] });
         submission.responsavel_nome = (r.rows[0] as any)?.nome ?? null;
         submission.responsavel_foto = (r.rows[0] as any)?.foto_url ?? null;
-      }
-      if (submission.cedente_id) {
-        const ced = await db.execute({ sql: 'SELECT link_drive, razao_social, nome, cnpj_cpf FROM cedentes WHERE id = ?', args: [submission.cedente_id] });
-        const c = ced.rows[0] as Record<string, any> | undefined;
-        submission.cedente_link_drive = c?.link_drive ?? null;
-        // Cadastro é a fonte da verdade: razão social/CNPJ vêm do cedente cadastrado
-        if (c) {
-          submission.nome_contratado = c.razao_social ?? c.nome ?? submission.nome_contratado;
-          submission.cnpj_contratado = c.cnpj_cpf ?? submission.cnpj_contratado;
-        }
-      } else {
-        submission.cedente_link_drive = null;
-      }
-      // Sacado: idem - prioriza o cadastro (sacados) via sacado_id
-      if (submission.sacado_id) {
-        const sacR = await db.execute({ sql: 'SELECT razao_social, cnpj_cpf FROM sacados WHERE id = ?', args: [submission.sacado_id] });
-        const sacRow = sacR.rows[0] as Record<string, any> | undefined;
-        if (sacRow) {
-          if (sacRow.razao_social) submission.nome_sacado = sacRow.razao_social;
-          if (sacRow.cnpj_cpf) submission.cnpj_sacado = sacRow.cnpj_cpf;
-        }
       }
 
       const eventos = await db.execute({
@@ -6258,208 +6008,6 @@ function faltaEmProjeto(p: any): string | null {
       return { status: 200, body: { ok: true, moved: cards.rows.length } };
     }
 
-    // Cedentes CRUD
-    if (action === 'create_cedente') {
-      const id = randomUUID();
-      const now = new Date().toISOString();
-      const c = body;
-      // aprovacao_status:
-      //  - explícito no body → respeita
-      //  - onboarding (origem 'Auto-cadastro') → entra na 1ª etapa do pipeline (para aprovação)
-      //  - registro direto de cedente ("+ Novo cedente") → já entra APROVADO (default da coluna)
-      // Sem pipeline de aprovação, todo cedente registrado já nasce aprovado.
-      const aprovacaoStatus = c.aprovacao_status ?? 'aprovado';
-      await db.execute({
-        sql: `INSERT INTO cedentes (
-                id, nome, cnpj_cpf, razao_social, status, flags, origem, segmento, sub_segmento,
-                origem_comercial, canal_aquisicao, parceiro, natureza_juridica,
-                valores_em_aberto, limite_operacao, rating, obs, email, endereco_pj,
-                nome_responsavel, email_responsavel, endereco_responsavel, cpf_responsavel,
-                possui_escrow, wpp_contato, conta_escrow, link_drive, cadastro_extra, aprovacao_status, cadastro_movido_em, ativo, criado_em,
-                criado_por_id, criado_por_nome
-              ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
-        args: [
-          id, c.nome, c.cnpj_cpf??null, c.razao_social??null, c.status??'Ativo', c.flags??'Regular',
-          c.origem??null, c.segmento??null, c.sub_segmento??null, c.origem_comercial??null,
-          c.canal_aquisicao??null, c.parceiro??0, c.natureza_juridica??null,
-          c.valores_em_aberto??null, c.limite_operacao??null, c.rating??null, c.obs??null,
-          c.email??null, c.endereco_pj??null, c.nome_responsavel??null, c.email_responsavel??null,
-          c.endereco_responsavel??null, c.cpf_responsavel??null, c.possui_escrow??0,
-          c.wpp_contato??null, c.conta_escrow??null, c.link_drive??null, c.cadastro_extra??null, aprovacaoStatus, now, now,
-          autorId, autorNome,
-        ],
-      });
-      return { status: 200, body: { cedente: { id, ...c, aprovacao_status: aprovacaoStatus, ativo: 1, criado_em: now } } };
-    }
-
-    if (action === 'update_cedente') {
-      const c = body;
-      await db.execute({
-        sql: `UPDATE cedentes SET
-                nome=?, cnpj_cpf=?, razao_social=?, status=?, flags=?, origem=?, segmento=?,
-                sub_segmento=?, origem_comercial=?, canal_aquisicao=?, parceiro=?,
-                natureza_juridica=?, valores_em_aberto=?, limite_operacao=?, rating=?, obs=?,
-                email=?, endereco_pj=?, nome_responsavel=?, email_responsavel=?,
-                endereco_responsavel=?, cpf_responsavel=?, possui_escrow=?, wpp_contato=?, conta_escrow=?,
-                link_drive=?, cadastro_extra=COALESCE(?, cadastro_extra),
-                atualizado_por_id=?, atualizado_por_nome=?, atualizado_em=?
-              WHERE id=?`,
-        args: [
-          c.nome, c.cnpj_cpf??null, c.razao_social??null, c.status??'Ativo', c.flags??'Regular',
-          c.origem??null, c.segmento??null, c.sub_segmento??null, c.origem_comercial??null,
-          c.canal_aquisicao??null, c.parceiro??0, c.natureza_juridica??null,
-          c.valores_em_aberto??null, c.limite_operacao??null, c.rating??null, c.obs??null,
-          c.email??null, c.endereco_pj??null, c.nome_responsavel??null, c.email_responsavel??null,
-          c.endereco_responsavel??null, c.cpf_responsavel??null, c.possui_escrow??0,
-          c.wpp_contato??null, c.conta_escrow??null, c.link_drive??null, c.cadastro_extra??null,
-          autorId, autorNome, new Date().toISOString(), c.id,
-        ],
-      });
-      return { status: 200, body: { ok: true } };
-    }
-
-    if (action === 'delete_cedente') {
-      await db.execute({ sql: 'UPDATE cedentes SET ativo = 0 WHERE id = ?', args: [body.id] });
-      await marcarEdicao(db, 'cedentes', String(body.id), autorId, autorNome, new Date().toISOString());
-      return { status: 200, body: { ok: true } };
-    }
-
-    // Pipeline de aprovação: muda o estágio do auto-cadastro.
-    // 'aprovado' libera o CNPJ no formulário público; demais estágios mantêm bloqueado.
-    // ── Etapas do onboarding: CRUD / reorder ───────────────────────────────────
-    if (action === 'upload_cedente_arquivo') {
-      const now = new Date().toISOString();
-      await db.execute({
-        sql: 'INSERT INTO cedente_arquivos (cedente_id, nome, tipo, tamanho, base64, categoria, criado_em) VALUES (?,?,?,?,?,?,?)',
-        args: [body.cedente_id, body.nome, body.tipo??'', body.tamanho??0, body.base64, body.categoria??null, now],
-      });
-      return { status: 200, body: { ok: true } };
-    }
-
-    if (action === 'rename_cedente_arquivo') {
-      await db.execute({ sql: 'UPDATE cedente_arquivos SET nome = ? WHERE id = ?', args: [body.nome, body.id] });
-      return { status: 200, body: { ok: true } };
-    }
-
-    if (action === 'update_cedente_arquivo_categoria') {
-      await db.execute({ sql: 'UPDATE cedente_arquivos SET categoria = ? WHERE id = ?', args: [body.categoria??null, body.id] });
-      return { status: 200, body: { ok: true } };
-    }
-
-    // Pendências do cedente (onboarding)
-    if (action === 'add_cedente_pendencias') {
-      const { cedente_id, itens } = body;
-      const now = new Date().toISOString();
-      const lista = (Array.isArray(itens) ? itens : [])
-        .map((it: any) => ({ descricao: String(it?.descricao ?? '').trim(), categoria: it?.categoria ?? null }))
-        .filter((it: any) => it.descricao);
-      for (const it of lista) {
-        await db.execute({
-          sql: `INSERT INTO cedente_pendencias (cedente_id, descricao, categoria, resolvida, criado_em) VALUES (?, ?, ?, 0, ?)`,
-          args: [cedente_id, it.descricao, it.categoria, now],
-        });
-      }
-      return { status: 200, body: { ok: true, count: lista.length } };
-    }
-
-    if (action === 'toggle_cedente_pendencia') {
-      const resolvida = body.resolvida ? 1 : 0;
-      await db.execute({
-        sql: `UPDATE cedente_pendencias SET resolvida = ?, resolvido_em = ? WHERE id = ?`,
-        args: [resolvida, resolvida ? new Date().toISOString() : null, body.id],
-      });
-      return { status: 200, body: { ok: true } };
-    }
-
-    if (action === 'update_cedente_pendencia') {
-      await db.execute({
-        sql: `UPDATE cedente_pendencias SET descricao = COALESCE(?, descricao), categoria = ? WHERE id = ?`,
-        args: [body.descricao != null ? String(body.descricao).trim() : null, body.categoria ?? null, body.id],
-      });
-      return { status: 200, body: { ok: true } };
-    }
-
-    if (action === 'delete_cedente_pendencia') {
-      await db.execute({ sql: 'DELETE FROM cedente_pendencias WHERE id = ?', args: [body.id] });
-      return { status: 200, body: { ok: true } };
-    }
-
-    if (action === 'delete_cedente_arquivo') {
-      await db.execute({ sql: 'DELETE FROM cedente_arquivos WHERE id = ?', args: [body.id] });
-      return { status: 200, body: { ok: true } };
-    }
-
-    if (action === 'add_cedente_option') {
-      const tableMap: Record<string, string> = {
-        segmentos: 'cedente_segmentos',
-        sub_segmentos: 'cedente_sub_segmentos',
-        origens_comerciais: 'cedente_origens_comerciais',
-        canais_aquisicao: 'cedente_canais_aquisicao',
-      };
-      const table = tableMap[body.list];
-      if (!table) return { status: 400, body: { error: 'Invalid list' } };
-      try {
-        await db.execute({ sql: `INSERT INTO ${table} (nome) VALUES (?)`, args: [body.nome] });
-        return { status: 200, body: { ok: true } };
-      } catch {
-        return { status: 409, body: { error: 'Option already exists' } };
-      }
-    }
-
-    if (action === 'import_cedentes') {
-      const items: any[] = body.cedentes ?? [];
-      let count = 0;
-      for (const c of items) {
-        try {
-          await db.execute({
-            sql: `INSERT INTO cedentes (
-                    nome, cnpj_cpf, razao_social, status, flags, origem, segmento, sub_segmento,
-                    origem_comercial, canal_aquisicao, parceiro, natureza_juridica,
-                    valores_em_aberto, limite_operacao, rating, obs, email, endereco_pj,
-                    nome_responsavel, email_responsavel, endereco_responsavel, cpf_responsavel,
-                    possui_escrow, wpp_contato, conta_escrow, ativo, criado_em, criado_por_id, criado_por_nome
-                  ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
-            args: [
-              c.nome, c.cnpj_cpf??null, c.razao_social??null, c.status??'Ativo', c.flags??'Regular',
-              c.origem??null, c.segmento??null, c.sub_segmento??null, c.origem_comercial??null,
-              c.canal_aquisicao??null, c.parceiro??0, c.natureza_juridica??null,
-              c.valores_em_aberto??null, c.limite_operacao??null, c.rating??null, c.obs??null,
-              c.email??null, c.endereco_pj??null, c.nome_responsavel??null, c.email_responsavel??null,
-              c.endereco_responsavel??null, c.cpf_responsavel??null, c.possui_escrow??0,
-              c.wpp_contato??null, c.conta_escrow??null, c.criado_em??new Date().toISOString(),
-              autorId, autorNome,
-            ],
-          });
-          count++;
-        } catch {}
-      }
-      return { status: 200, body: { ok: true, count } };
-    }
-
-    // Sacados CRUD
-    if (action === 'create_sacado') {
-      const id = randomUUID();
-      const now = new Date().toISOString();
-      await db.execute({
-        sql: 'INSERT INTO sacados (id, cnpj_cpf, razao_social, criado_em, criado_por_id, criado_por_nome) VALUES (?, ?, ?, ?, ?, ?)',
-        args: [id, (body.cnpj_cpf ?? '').replace(/\D/g, '') || null, body.razao_social ?? null, now, autorId, autorNome],
-      });
-      return { status: 200, body: { sacado: { id, cnpj_cpf: body.cnpj_cpf ?? null, razao_social: body.razao_social ?? null, criado_em: now } } };
-    }
-
-    if (action === 'update_sacado') {
-      await db.execute({ sql: 'UPDATE sacados SET cnpj_cpf = ?, razao_social = ? WHERE id = ?', args: [(body.cnpj_cpf ?? '').replace(/\D/g, '') || null, body.razao_social ?? null, body.id] });
-      await marcarEdicao(db, 'sacados', String(body.id), autorId, autorNome, new Date().toISOString());
-      return { status: 200, body: { ok: true } };
-    }
-
-    if (action === 'delete_sacado') {
-      // Desativar é edição, não exclusão: a linha fica e precisa dizer quem a tirou de circulação.
-      await db.execute({ sql: 'UPDATE sacados SET ativo = 0 WHERE id = ?', args: [body.id] });
-      await marcarEdicao(db, 'sacados', String(body.id), autorId, autorNome, new Date().toISOString());
-      return { status: 200, body: { ok: true } };
-    }
-
     if (action === 'set_conversion_status') {
       const { id } = body; // id = null clears the flag from all
       await db.execute('UPDATE status_configs SET is_conversion = 0');
@@ -6607,31 +6155,6 @@ function faltaEmProjeto(p: any): string | null {
       });
       await marcarEdicao(db, 'oportunidades', String(body.id), autorId, autorNome, new Date().toISOString());
       return { status: 200, body: { ok: true } };
-    }
-
-    if (action === 'create_sacado') {
-      // Localiza (ou cria) um sacado pelo CNPJ. A razão social vem da Receita
-      // (consultada no front) e fica salva no cadastro - fonte da verdade daqui pra frente.
-      const cnpj = String(body?.cnpj ?? '').replace(/\D/g, '');
-      const razao = String(body?.razao_social ?? '').trim();
-      if (cnpj.length !== 14 && cnpj.length !== 11) return { status: 400, body: { error: 'CNPJ/CPF inválido.' } };
-      const existing = await db.execute({ sql: 'SELECT id, razao_social, cnpj_cpf FROM sacados WHERE cnpj_cpf = ? LIMIT 1', args: [cnpj] });
-      if (existing.rows[0]) {
-        const row = existing.rows[0] as Record<string, any>;
-        // Atualiza a razão social se veio uma nova e a antiga estava vazia
-        if (razao && !String(row.razao_social ?? '').trim()) {
-          await db.execute({ sql: 'UPDATE sacados SET razao_social = ? WHERE id = ?', args: [razao, row.id] });
-          await marcarEdicao(db, 'sacados', String(row.id), autorId, autorNome, new Date().toISOString());
-          row.razao_social = razao;
-        }
-        return { status: 200, body: { sacado: { id: row.id, razao_social: row.razao_social, cnpj_cpf: row.cnpj_cpf } } };
-      }
-      const newId = randomUUID();
-      await db.execute({
-        sql: 'INSERT INTO sacados (id, cnpj_cpf, razao_social, criado_em, criado_por_id, criado_por_nome) VALUES (?, ?, ?, ?, ?, ?)',
-        args: [newId, cnpj, razao || null, new Date().toISOString(), autorId, autorNome],
-      });
-      return { status: 200, body: { sacado: { id: newId, razao_social: razao || null, cnpj_cpf: cnpj } } };
     }
 
     if (action === 'create_submission') {
