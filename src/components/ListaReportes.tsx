@@ -10,7 +10,7 @@
 //  ordenada por chegada ela devolveria a caixa de entrada. Quem ordena é o
 //  servidor; aqui só se desenha o que veio.
 // ─────────────────────────────────────────────────────────────────────────────
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { IconAlert, IconChevronRight, IconImage, IconImagemSem, IconX } from './icons';
 import { Dialogo } from './Dialogo';
@@ -82,6 +82,10 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
   /** Os ids já abertos alguma vez. O detalhe deles fica montado daí em diante:
    *  montado só enquanto aberto, o bloco animaria de nada para nada. */
   const [jaAbertas, setJaAbertas] = useState<Set<number>>(new Set());
+  /** O quadro agendado para abrir uma linha recém-montada. Guardado para ser
+   *  cancelado se a janela fechar antes de ele chegar. */
+  const quadro = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(quadro.current), []);
   const { saindo, fechar } = useSaidaSuave(onFechar);
   const fundo = useFecharNoFundo(fechar);
 
@@ -127,8 +131,19 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
   const alvoDoAviso = confirmando ? lista?.find(x => x.id === confirmando.id) : null;
 
   function alternar(id: number) {
-    setJaAbertas(s => (s.has(id) ? s : new Set(s).add(id)));
-    setAberta(a => (a === id ? null : id));
+    if (aberta === id) { setAberta(null); return; }
+    if (jaAbertas.has(id)) { setAberta(id); return; }
+    // Primeira vez desta linha. Montar o detalhe e pôr a classe `aberto` no
+    // mesmo quadro faz o bloco nascer já com a altura final: não há estado
+    // anterior para interpolar, e a primeira abertura de cada linha saía seca.
+    // Aqui o detalhe entra fechado e a classe vem depois - dois quadros, um
+    // para o conteúdo existir e outro para o navegador ter de onde animar, que
+    // é o mesmo que o `useRevelar` faz.
+    setAberta(null);
+    setJaAbertas(s => new Set(s).add(id));
+    quadro.current = requestAnimationFrame(() => {
+      quadro.current = requestAnimationFrame(() => setAberta(id));
+    });
   }
 
   return createPortal(

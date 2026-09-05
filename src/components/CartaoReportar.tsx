@@ -224,7 +224,10 @@ export function CartaoReportar({
     <div className="reportar-cartao" onPaste={aoColar}>
       {/* Duas camadas de luz, atrás de tudo e sem capturar clique. */}
       <span className="reportar-luz" aria-hidden="true" />
-      <OndasCartao />
+      {/* Com a fila aberta, a janela cobre a tela inteira com desfoque, e o
+          desfoque e refeito a cada quadro que as ondas pintam por baixo dela -
+          era isso que engasgava a rolagem da lista. Elas voltam ao fechar. */}
+      <OndasCartao parado={vendoFila} />
       <span className="reportar-veu" aria-hidden="true" />
       <div className="reportar-conteudo">
         {/* O agradecimento e o convite trocam de lugar pelos dois lados: um
@@ -403,7 +406,7 @@ export function CartaoReportar({
  * Se o WebGL não subir ou cair depois, o canvas sai e ficam os dois focos em CSS
  * que já estavam atrás dele. O cartão nunca fica preto e parado.
  */
-function OndasCartao() {
+function OndasCartao({ parado }: { parado?: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [caiu, setCaiu] = useState(false);
 
@@ -423,7 +426,7 @@ function OndasCartao() {
       ondas = null;
     };
     const rever = () => {
-      const deveRodar = aVista && !document.hidden;
+      const deveRodar = aVista && !document.hidden && !parado;
       if (deveRodar && !ondas) {
         ondas = iniciarOndas(el, { camadas: 4, fps: 30 });
         if (!ondas) { setCaiu(true); return; }
@@ -447,7 +450,7 @@ function OndasCartao() {
       document.removeEventListener('visibilitychange', rever);
       desligar();
     };
-  }, [caiu]);
+  }, [caiu, parado]);
 
   if (caiu) return null;
   return <canvas ref={canvas} className="reportar-ondas" aria-hidden="true" />;

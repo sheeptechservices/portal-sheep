@@ -499,7 +499,11 @@ export function Avatar({ nome, foto, size = 22 }: { nome: string; foto?: string 
   const [falhou, setFalhou] = useState(false);
   if (foto && !falhou) {
     return (
-      <img src={foto} alt="" referrerPolicy="no-referrer" onError={() => setFalhou(true)} title={nome}
+      // `lazy` e `async`: numa lista longa - a fila de chamados, o quadro de
+      // tarefas - sao dezenas de fotos remotas, e busca-las e decodifica-las
+      // todas de uma vez trava a rolagem enquanto elas chegam.
+      <img src={foto} alt="" referrerPolicy="no-referrer" loading="lazy" decoding="async"
+        onError={() => setFalhou(true)} title={nome}
         style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
     );
   }

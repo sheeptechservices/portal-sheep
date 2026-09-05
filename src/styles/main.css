@@ -14752,6 +14752,9 @@ button.checklist-texto:focus-visible {
      acima dele. */
   padding: 0 20px 20px;
   overflow: auto;
+  /* A rolagem para na fila. Sem isto, ao chegar no fim da lista a roda passava
+     a rolar a pagina atras da janela, e o gesto parecia nao responder. */
+  overscroll-behavior: contain;
 }
 .reportes-vazio {
   margin: 0;
