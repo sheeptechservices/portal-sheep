@@ -184,9 +184,8 @@ function ToastContainer({ items, onDismiss }: { items: ToastItem[]; onDismiss: (
  *  mundo, inclusive para quem teve o acesso desmarcado. */
 type NavLeaf = { page?: Page; perm?: string; label: string; icon: JSX.Element; disabled?: boolean };
 const NAV_SECTIONS: { section: string; items: NavLeaf[] }[] = [
-  // Grupo sem título: fica solto no topo, antes das seções nomeadas.
   {
-    section: '',
+    section: 'GERAL',
     items: [
       {
         page: 'dashboard',
@@ -194,10 +193,6 @@ const NAV_SECTIONS: { section: string; items: NavLeaf[] }[] = [
         perm: 'dashboard:ver',
         icon: <IconDashboard size={15} />,
       },
-      // Onboarding, Oportunidades e Operações ficavam sob o título "Esteira de
-      // Crédito". O título saiu e os itens vieram para cá, e não para um grupo
-      // próprio sem rótulo: a lista é montada com `key={group.section}`, então
-      // dois grupos de título vazio colidiriam na mesma chave.
       {
         page: 'oportunidades',
         label: 'Funil',
@@ -230,7 +225,7 @@ const NAV_SECTIONS: { section: string; items: NavLeaf[] }[] = [
     ],
   },
   {
-    section: 'GERAL',
+    section: 'SISTEMA',
     items: [
       {
         page: 'ferramentas',
@@ -241,11 +236,6 @@ const NAV_SECTIONS: { section: string; items: NavLeaf[] }[] = [
           </svg>
         ),
       },
-    ],
-  },
-  {
-    section: 'SISTEMA',
-    items: [
       {
         page: 'configuracoes',
         label: 'Configurações',
