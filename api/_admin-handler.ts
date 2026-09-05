@@ -3616,12 +3616,14 @@ async function despacharAdminData(
       // zero era preso no mínimo de três - a página pedia doze e recebia três.
       const bruto = query.get('meses');
       const pedido = bruto ? Number(bruto) : 12;
-      const MESES = Math.min(36, Math.max(3, Number.isFinite(pedido) ? Math.trunc(pedido) : 12));
+      // Ate 60 meses: o filtro do painel oferece "desde 2023", que ja passa dos
+      // 36 que o teto antigo permitia.
+      const MESES = Math.min(60, Math.max(3, Number.isFinite(pedido) ? Math.trunc(pedido) : 12));
       const hoje = new Date();
-      const serie: { mes: string; fechados: number; valor: number }[] = [];
+      const serie: { mes: string; fechados: number; valor: number; projetos: ProjetoFechado[] }[] = [];
       for (let i = MESES - 1; i >= 0; i--) {
         const d = new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth() - i, 1));
-        serie.push({ mes: d.toISOString().slice(0, 7), fechados: 0, valor: 0 });
+        serie.push({ mes: d.toISOString().slice(0, 7), fechados: 0, valor: 0, projetos: [] });
       }
       const desde = `${serie[0].mes}-01`;
 
@@ -3645,6 +3647,36 @@ async function despacharAdminData(
         ponto.fechados = Number(achado.fechados ?? 0);
         ponto.valor = Number(achado.valor ?? 0);
       }
+
+      // Os projetos de cada mês, para o clique na coluna poder mostrar quais
+      // foram. Vêm junto com a série, e não numa ação por mês: são os mesmos
+      // registros que a consulta acima já contou, e uma ida ao servidor a cada
+      // clique poria espera num gesto que hoje é instantâneo. O teto de 400 é
+      // rede de segurança - com um ano assim, a lista deixaria de caber numa
+      // dica e o painel precisaria de outra tela.
+      const fechadas = await db.execute({
+        sql: `SELECT id, substr(data_execucao, 1, 7) AS mes, empresa, interesse,
+                     COALESCE(valor_estimado, 0) AS valor
+              FROM oportunidades
+              WHERE data_execucao IS NOT NULL AND data_execucao <> '' AND data_execucao >= ?
+              ORDER BY valor DESC, empresa
+              LIMIT 400`,
+        args: [desde],
+      });
+      const projetosPorMes = new Map<string, ProjetoFechado[]>();
+      for (const x of fechadas.rows) {
+        const mes = String(x.mes);
+        const item: ProjetoFechado = {
+          id: String(x.id),
+          empresa: x.empresa != null ? String(x.empresa) : 'Sem nome',
+          interesse: x.interesse != null ? String(x.interesse) : null,
+          valor: Number(x.valor ?? 0),
+        };
+        const jaTem = projetosPorMes.get(mes);
+        if (jaTem) jaTem.push(item);
+        else projetosPorMes.set(mes, [item]);
+      }
+      for (const ponto of serie) ponto.projetos = projetosPorMes.get(ponto.mes) ?? [];
 
       // O que está em aberto agora não tem mês: é a foto de hoje, e serve de
       // contexto para o que a série mostra.
@@ -3678,6 +3710,9 @@ async function despacharAdminData(
     // Uma nota do chamado, como a fila a lê. O tipo mora aqui perto de quem o
     // devolve; o cliente tem o dele.
     type ReporteNota = { texto: string; status: string | null; autor_nome: string; criado_em: string };
+
+    /** Um projeto fechado, como o painel comercial o mostra ao abrir um mês. */
+    type ProjetoFechado = { id: string; empresa: string; interesse: string | null; valor: number };
 
     if (action === 'reportes') {
       // A foto sai de `usuarios` no momento da leitura, e não de cópia gravada

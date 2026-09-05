@@ -73,6 +73,11 @@
   --logo-fundo: transparent;  /* chapa atrás da logo de cliente */
   --logo-respiro: 0;
   --card-hover-bg: #FCFCFB;  /* elevação do card no hover */
+  /* A faixa do periodo no grafico comercial: lavada, porque ela passa por tras
+     do desenho e o degrade da area e quase transparente no pe. A forte marca o
+     mes escolhido, um degrau acima do que so esta sob o ponteiro. */
+  --grafico-faixa: color-mix(in srgb, var(--gray4) 45%, transparent);
+  --grafico-faixa-forte: color-mix(in srgb, var(--gray4) 80%, transparent);
 
   color-scheme: light;
   background-color: var(--bg);
@@ -93,6 +98,11 @@
   --logo-fundo: #F4F4F2;
   --logo-respiro: 3px;
   --card-hover-bg: #1E1F24; /* elevação do card no hover (mais claro que a superfície) */
+  /* No escuro o `--gray4` quase encosta na superficie do painel, e a faixa lavada
+     sumia. Aqui ela usa os degraus que o tema ja tem para "sob o ponteiro" e para
+     "em relevo". */
+  --grafico-faixa: var(--card-hover-bg);
+  --grafico-faixa-forte: var(--gray3);
   --yd:     rgba(0, 201, 167, 0.16);
   --yb:     rgba(0, 201, 167, 0.45);
   --shadow-card: 0 2px 10px rgba(0,0,0,0.55);
@@ -14209,6 +14219,14 @@ button.checklist-texto:focus-visible {
   background: var(--white);
   box-shadow: var(--shadow-card);
 }
+/* Os dois filtros do painel andam juntos: o que se mede e em que periodo. Numa
+   tela estreita eles quebram para a linha de baixo em vez de espremer o titulo. */
+.painel-filtros {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .painel-topo {
   display: flex;
   align-items: flex-start;
@@ -14260,6 +14278,13 @@ button.checklist-texto:focus-visible {
    Sem vao entre as colunas: as fatias da area se encostam, e um vao ali abriria
    um corte branco no meio da linha a cada mes. */
 .grafico-area {
+  /* A altura da faixa do desenho e a do eixo embaixo dela. Sao duas medidas que
+     precisam bater entre a celula de cada mes e o desenho que passa por cima de
+     todas, entao ficam escritas uma vez so. O eixo e o nome do mes mais o vao
+     que o separa da faixa. */
+  --grafico-altura: 150px;
+  --grafico-eixo: 21px;
+  position: relative;
   display: flex;
   align-items: flex-end;
   gap: 0;
@@ -14275,9 +14300,22 @@ button.checklist-texto:focus-visible {
   gap: 6px;
 }
 .grafico-coluna:focus-visible { outline: none; }
-/* O foco marca a coluna inteira, e nao so a celula: na area a celula nao tem
-   moldura propria. */
-.grafico-coluna:focus-visible { background: var(--gray4); border-radius: var(--radius-sm); }
+/* A faixa do periodo. Debaixo do ponteiro, a coluna inteira ganha fundo: o mes
+   e uma fatia vertical do quadro, e sem a faixa o alvo do clique era so o ponto.
+   Vale para o foco pela mesma razao - na area a celula nao tem moldura propria -
+   e para o mes aberto, que continua marcado depois do ponteiro sair. */
+.grafico-coluna:hover,
+.grafico-coluna:focus-visible,
+.grafico-coluna.aberta {
+  /* Bem lavado, e translucido: a faixa passa por tras do desenho, e o degrade
+   * da area e quase transparente no pe. Num cinza cheio ela tingia a propria
+   * serie e passava a ler como uma chapa por cima do grafico. */
+  background: var(--grafico-faixa);
+  border-radius: var(--radius-sm);
+}
+/* Escolhido, o mes marca um degrau acima do que so esta sob o ponteiro: um e
+   passagem, o outro e decisao. */
+.grafico-coluna.aberta { background: var(--grafico-faixa-forte); }
 
 /* A dica: a mesma pilula escura do donut, ancorada acima da coluna. Aparece no
    hover e no foco, e nao captura clique - ela cobre a barra vizinha enquanto
@@ -14324,7 +14362,7 @@ button.checklist-texto:focus-visible {
 .grafico-dica-podio {
   margin-top: 3px;
   padding-top: 4px;
-  border-top: 1px solid rgba(255, 255, 255, .16);
+  border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
   font-size: 10.5px;
   font-weight: 700;
   opacity: .8;
@@ -14353,35 +14391,51 @@ button.checklist-texto:focus-visible {
 /* Mes sem nenhum fechamento: o zero fica, e apagado. Tirar o numero faria a
    coluna vazia parecer falha de carregamento em vez de mes parado. */
 .grafico-valor.zero { color: var(--gray3); font-weight: 600; }
-/* A celula do desenho: ocupa a largura inteira da coluna, porque a area
-   atravessa de ponta a ponta. O `position: relative` e o que ancora o ponto. */
+/* A celula de cada mes. Nao desenha mais nada - o tracado e um so, por cima de
+   todas -, mas continua sendo ela que ancora o ponto, o numero e a dica. A
+   altura sai de variavel porque o desenho, que e irmao das colunas, precisa da
+   mesma medida para cair exatamente em cima da faixa. */
 .grafico-trilho {
   position: relative;
   width: 100%;
-  height: 150px;
+  height: var(--grafico-altura);
 }
-.grafico-fatia {
+/* O desenho da serie: um SVG so, esticado sobre a faixa das celulas. Fica atras
+   das colunas, entao a faixa cinza do mes, o ponto e a dica continuam por cima
+   dele. Ancorado pela base, e nao pelo topo: a area pode ser mais alta que as
+   colunas, que se alinham embaixo. */
+.grafico-desenho {
   position: absolute;
-  inset: 0;
+  left: 0;
+  /* Largura escrita, e nao deduzida de `left` com `right`: `<svg>` e elemento
+     substituido, e em `auto` ele cai na medida intrinseca dele - 150px - em vez
+     de esticar entre as bordas. */
   width: 100%;
-  height: 100%;
+  bottom: var(--grafico-eixo);
+  height: var(--grafico-altura);
   display: block;
   overflow: visible;
+  pointer-events: none;
 }
 /* O degrade da area: forte junto da linha, dissolvendo ate a base. E o que
    separa a serie do fundo sem fechar um bloco solido de cor debaixo dela. */
 .grafico-tinta-topo { stop-color: color-mix(in srgb, var(--yellow) 34%, transparent); }
 .grafico-tinta-base { stop-color: color-mix(in srgb, var(--yellow) 2%, transparent); }
-.grafico-fatia-tinta { fill: url(#grafico-area-tinta); }
-.grafico-fatia-linha {
+.grafico-linha {
   fill: none;
   stroke: var(--yellow);
   stroke-width: 2;
   stroke-linecap: round;
-  stroke-linejoin: round;
+  /* `miter` no joelho: a virada de um mes para o outro e uma quina, e arredonda-la
+     devolveria por tras o alisamento que saiu do calculo. */
+  stroke-linejoin: miter;
 }
+/* Com um mes aberto o tracado inteiro recua, e a copia recortada dele - a faixa
+   daquela coluna - fica acesa por cima. */
+.grafico-area.tem-aberto .grafico-base { opacity: .3; }
+.grafico-base { transition: opacity var(--transition-spring); }
 /* O ponto do mes. Fica em cima da linha, centrado na coluna, e sobe pelo
-   `bottom` - a mesma conta que a barra usava para a altura. */
+   `bottom` - a mesma conta que da a altura no desenho. */
 .grafico-ponto {
   position: absolute;
   left: 50%;
@@ -14393,27 +14447,109 @@ button.checklist-texto:focus-visible {
   box-shadow: 0 0 0 2px var(--white);
   transition: transform var(--transition-spring), background var(--transition);
 }
-/* Mes sem fechamento tambem tem ponto, e apagado: a linha passa pela base ali,
-   e um ponto ausente faria o mes parecer nao medido em vez de zerado. */
-/* `--gray2`, o cinza de texto apagado, e nao `--gray3`, que e cor de borda: no
-   tema escuro o `--gray3` e quase a propria superficie e o ponto sumia - o
-   mesmo motivo do icone de "sem print". */
+/* Mes sem nada tambem tem ponto, e apagado: a linha passa pela base ali, e um
+   ponto ausente faria o mes parecer nao medido em vez de zerado. `--gray2`, o
+   cinza de texto, e nao `--gray3`, que e cor de borda: no tema escuro o
+   `--gray3` e quase a propria superficie e o ponto sumia. */
 .grafico-ponto.zero { background: var(--gray2); }
-/* A area entra crescendo do chao na primeira pintura: a serie aparecendo pronta
-   e um corte, e o que se quer mostrar aqui e justamente a variacao. */
-.grafico-fatia { animation: grafico-sobe .5s var(--curva-anti) both; transform-origin: bottom; }
 /* Sob o cursor, o ponto cresce e escurece: e o unico realce que a area aceita
    sem sujar o desenho, ja que a fatia e continua com as vizinhas. */
 .grafico-coluna:hover .grafico-ponto,
-.grafico-coluna:focus-visible .grafico-ponto {
+.grafico-coluna:focus-visible .grafico-ponto,
+.grafico-coluna.aberta .grafico-ponto {
   transform: scale(1.5);
   background: color-mix(in srgb, var(--yellow) 72%, var(--black));
 }
+/* O grafico cresce do chao - na primeira pintura e a cada troca de leitura, que
+   e quando a `key` refaz as colunas.
+ *
+ * Sao duas animacoes de mesma duracao e mesma curva, e e isso que as mantem
+ * coladas: a area sobe por escala, e o ponto e o numero de cada mes sobem pelo
+ * proprio `bottom`, de zero ate onde eles ficam. Escalar tambem o ponto e o
+ * numero seria mais simples e estaria errado - eles sao texto e circulo, e
+ * apareceriam achatados durante o caminho. Foi por isso que a versao anterior,
+ * que so escalava o desenho, deixava os pontos parados no ar enquanto a area
+ * subia por baixo deles. */
+.grafico-desenho { animation: grafico-sobe .34s var(--curva-anti) both; transform-origin: bottom; }
+.grafico-ponto,
+.grafico-valor { animation: grafico-sobe-do-chao .34s var(--curva-anti) both; }
 @keyframes grafico-sobe {
   from { transform: scaleY(0); }
   to   { transform: scaleY(1); }
 }
+/* So o `from`: o quadro final e o valor que o elemento ja tem, que e diferente
+   em cada mes e vem escrito no `style`. */
+@keyframes grafico-sobe-do-chao {
+  from { bottom: 0; }
+}
+/* Um mes aberto: os outros recuam para o fundo e ele fica com a leitura. A
+   serie continua desenhada - e dela que vem a escala -, so perde o contraste.
+   Vai no `--transition-spring`, e nao no `--transition`: e troca de cena, e um
+   decimo de segundo aqui le como piscada. */
+.grafico-coluna { transition: opacity var(--transition-spring), background var(--transition); }
+.grafico-area.tem-aberto .grafico-coluna:not(.aberta) { opacity: .3; }
+/* Mes com fechamento e clicavel; mes zerado nao, porque nao ha o que listar. */
+.grafico-coluna.abrivel { cursor: pointer; }
+/* Aberta, a dica para de depender do ponteiro e aceita o mouse: e uma lista
+   para ler, e nao um balao de passagem.
+
+   E ela desce em vez de subir. Ancorada acima da coluna, como a de passagem,
+   a lista de um mes forte saia pelo topo do painel e cobria o cabecalho dele.
+   Presa ao alto da area, ela cresce para dentro do desenho - que e justamente
+   o que esta apagado enquanto um mes esta aberto. */
+.grafico-coluna.aberta .grafico-dica {
+  display: flex;
+  top: 0;
+  bottom: auto;
+  /* E sai pelo lado, nao por cima: ancorada sobre a coluna, a lista cobria
+     justamente a barra que se acabou de escolher. Nos meses da metade direita
+     ela abre para a esquerda - do outro lado encostaria fora do painel. */
+  left: 100%;
+  right: auto;
+  transform: none;
+  margin-left: 10px;
+  pointer-events: auto;
+  /* Cabe a lista de cinco sem barra de rolagem, e ainda sobra folga ate a base
+     do painel. O `overflow` fica de rede para o caso extremo. */
+  max-height: 200px;
+  overflow-y: auto;
+}
+.grafico-coluna.aberta.abre-esquerda .grafico-dica {
+  left: auto;
+  right: 100%;
+  margin: 0 10px 0 0;
+}
+/* Dentro da dica, o bloco que expande nao pode encolher na horizontal. O filho
+   do .revelar carrega overflow: hidden, e com ele a largura minima do conteudo
+   passa a ser zero: a pilula parava de crescer para caber a lista e os nomes
+   sairam todos em reticencias. */
+.grafico-dica .revelar > * { min-width: max-content; }
+.grafico-dica-projetos {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+}
+.grafico-dica-projeto {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11.5px;
+}
+.grafico-dica-empresa {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 210px;
+}
+.grafico-dica-cifra { font-weight: 800; flex-shrink: 0; }
+.grafico-dica-resto { margin-top: 2px; font-size: 10.5px; opacity: .6; }
+/* Altura escrita: e ela que fecha a conta do `--grafico-eixo`. */
 .grafico-mes {
+  height: 15px;
+  line-height: 15px;
   font-size: 11px;
   font-weight: 600;
   color: var(--gray2);
@@ -14421,9 +14557,13 @@ button.checklist-texto:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .grafico-fatia { animation: none; }
   .grafico-ponto { transition: none; }
+  .grafico-desenho,
+  .grafico-ponto,
+  .grafico-valor { animation: none; }
+  .grafico-base { transition: none; }
   .grafico-dica { animation: none; }
+  .grafico-coluna { transition: none; }
 }
 
 /* ─── O convite a reportar, no pe do menu ────────────────────────────────
