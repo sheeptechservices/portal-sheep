@@ -84,6 +84,15 @@ const IconProposta = (
   </svg>
 );
 
+/** Pessoas - o banco de talentos */
+const IconTalentos = (
+  <svg {...svgProps}>
+    <path d="M16.4 20.6v-1.8a3.6 3.6 0 0 0-3.6-3.6H6.4a3.6 3.6 0 0 0-3.6 3.6v1.8" />
+    <circle cx="9.6" cy="7.4" r="3.6" />
+    <path d="M17.2 11.4l1.5 1.5 3-3" />
+  </svg>
+);
+
 /** Gota - controle de liquidez */
 const IconLiquidez = (
   <svg {...svgProps}>
@@ -101,6 +110,15 @@ const FERRAMENTAS: (Ferramenta & { page?: string })[] = [
     descricao: 'Monte contratos, termos e aditivos a partir de modelos, já preenchidos com os dados do cedente, do sacado e da operação.',
     icon: IconGerador,
     cor: '#D97706',
+  },
+  {
+    id: 'banco-talentos',
+    page: 'talentos',
+    area: 'comercial',
+    nome: 'Banco de Talentos',
+    descricao: 'Quem já é da casa e quem quer ser, com a avaliação de competências de cada um em um só lugar.',
+    icon: IconTalentos,
+    cor: '#7C3AED',
   },
   {
     id: 'gerador-propostas',

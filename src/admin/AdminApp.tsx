@@ -18,6 +18,7 @@ const TarefasPage = lazy(() => import('./TarefasPage'));
 const ConfiguracoesPage = lazy(() => import('./ConfiguracoesPage'));
 const FerramentasPage = lazy(() => import('./FerramentasPage'));
 const GeradorDocumentosPage = lazy(() => import('./GeradorDocumentosPage'));
+const TalentosPage = lazy(() => import('./TalentosPage'));
 const PerfilPage = lazy(() => import('./PerfilPage'));
 const UsuariosPage = lazy(() => import('./UsuariosPage'));
 const QuickSearch = lazy(() => import('./QuickSearch'));
@@ -27,6 +28,7 @@ import { CartaoReportar, type Relato } from '../components/CartaoReportar';
 import type { ReporteNaLista } from '../components/ListaReportes';
 import { iniciarOndas } from '../lib/ondas';
 import { ToastContext, type ToastItem } from '../lib/toast';
+import { TrilhaContext, type DegrauTrilha } from '../lib/trilha';
 
 // ── Toast system ─────────────────────────────────────────────────────────────
 // O contrato e o gancho moram em `lib/toast`; aqui fica quem monta o provedor e
@@ -1056,6 +1058,9 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  /** O degrau que a ferramenta aberta publica - ver `lib/trilha`. */
+  const [degrau, setDegrau] = useState<DegrauTrilha | null>(null);
+  const definirDegrau = useCallback((d: DegrauTrilha | null) => setDegrau(d), []);
   const [quickOpen, setQuickOpen] = useState(false);
   // Card a abrir na página destino. O nonce força o efeito a rodar de novo quando
   // o mesmo card é escolhido duas vezes; a página zera o pedido ao consumi-lo, para
@@ -1283,6 +1288,7 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
   return (
     <AuthContext.Provider value={{ onSessionExpired: onLogout, usuario, pode }}>
     <ToastContext.Provider value={{ toast }}>
+    <TrilhaContext.Provider value={{ degrau, definir: definirDegrau }}>
       <div className={`admin-casca${saindo ? ' tela-sai' : ''}`} style={{
         display: 'grid',
         gridTemplateColumns: pinned ? (open ? '220px 1fr' : '0px 1fr') : '1fr',
@@ -1339,20 +1345,26 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
           minHeight: 0,
         }}>
           {TOOL_PAGES.includes(page) && (
-            <nav aria-label="breadcrumb" style={{ padding: '18px 28px 0', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600 }}>
-              <button
-                onClick={() => setPage('ferramentas')}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--gray)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, padding: 0, transition: 'color .15s' }}
-                onMouseEnter={e => { e.currentTarget.style.color = 'var(--black)'; }}
-                onMouseLeave={e => { e.currentTarget.style.color = 'var(--gray)'; }}
-              >
+            <nav aria-label="breadcrumb" className="trilha">
+              <button className="trilha-degrau" onClick={() => setPage('ferramentas')}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
                   <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
                 Ferramentas
               </button>
-              <span style={{ color: 'var(--gray2)' }}>/</span>
-              <span style={{ color: 'var(--black)' }}>{TOOL_LABELS[page]}</span>
+              <span className="trilha-barra">/</span>
+              {/* Com um terceiro degrau, o nome da ferramenta deixa de ser texto
+                  e vira o caminho de volta - é ele que fecha o que a página
+                  abriu por dentro. */}
+              {degrau ? (
+                <>
+                  <button className="trilha-degrau" onClick={degrau.onVoltar}>{TOOL_LABELS[page]}</button>
+                  <span className="trilha-barra">/</span>
+                  <span className="trilha-aqui">{degrau.label}</span>
+                </>
+              ) : (
+                <span className="trilha-aqui">{TOOL_LABELS[page]}</span>
+              )}
             </nav>
           )}
           {/* Última porta antes do conteúdo. O redirecionamento acima já tira a
@@ -1391,6 +1403,7 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
             {page === 'configuracoes' && <ConfiguracoesPage token={token} />}
             {page === 'ferramentas'   && <FerramentasPage onNavigate={p => setPage(p as Page)} />}
             {page === 'gerador-documentos' && <GeradorDocumentosPage token={token} />}
+            {page === 'talentos'      && <TalentosPage      token={token} />}
             {page === 'perfil'        && <PerfilPage token={token} />}
             {page === 'usuarios'      && <UsuariosPage   token={token} />}
           </Suspense>
@@ -1405,6 +1418,7 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
       )}
 
       <ToastContainer items={toasts} onDismiss={dismiss} />
+    </TrilhaContext.Provider>
     </ToastContext.Provider>
     </AuthContext.Provider>
   );

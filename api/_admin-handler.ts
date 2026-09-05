@@ -534,6 +534,75 @@ async function migrarSchema(db: Client) {
     )
   `);
 
+
+  // ── Banco de talentos ───────────────────────────────────────────────────────
+  // Quem trabalha na casa mora em `usuarios`; aqui ficam duas coisas que aquela
+  // tabela nao tem: quem ainda nao trabalha, e a avaliacao de qualquer um dos
+  // dois.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS talentos_externos (
+      id            TEXT PRIMARY KEY,
+      nome          TEXT NOT NULL,
+      email         TEXT,
+      telefone      TEXT,
+      foto_url      TEXT,
+      /** O que a pessoa quer fazer aqui. */
+      interesse     TEXT,
+      /** De onde ela veio: indicacao, LinkedIn, site, evento. */
+      origem        TEXT,
+      /** 'novo' | 'conversando' | 'contratado' | 'descartado'. */
+      situacao      TEXT NOT NULL DEFAULT 'novo',
+      observacoes   TEXT,
+      criado_em     TEXT NOT NULL,
+      criado_por_id   TEXT,
+      criado_por_nome TEXT
+    )
+  `);
+
+  // As competencias avaliadas. Lista, e nao colunas: renomear ou acrescentar uma
+  // competencia nao pode pedir migracao de tabela.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS talento_competencias (
+      id    INTEGER PRIMARY KEY AUTOINCREMENT,
+      nome  TEXT NOT NULL UNIQUE,
+      ordem INTEGER NOT NULL DEFAULT 0,
+      ativa INTEGER NOT NULL DEFAULT 1
+    )
+  `);
+
+  // A nota de uma pessoa numa competencia. `tipo` diz de qual cadastro ela vem -
+  // 'interno' aponta para `usuarios`, 'externo' para `talentos_externos` -, e o
+  // par com `pessoa_id` e unico por competencia: a nota e uma so, e cada
+  // gravacao carimba quem a deu e quando.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS talento_notas (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      tipo           TEXT NOT NULL,
+      pessoa_id      TEXT NOT NULL,
+      competencia_id INTEGER NOT NULL,
+      nota           INTEGER NOT NULL,
+      atualizado_em  TEXT NOT NULL,
+      atualizado_por_id   TEXT,
+      atualizado_por_nome TEXT,
+      UNIQUE (tipo, pessoa_id, competencia_id)
+    )
+  `);
+  await ddl(`CREATE INDEX IF NOT EXISTS idx_talento_notas_pessoa ON talento_notas (tipo, pessoa_id)`);
+
+  // Semeia as competencias na primeira partida. Sao um ponto de partida para a
+  // casa renomear, nao uma escala fechada.
+  const temComp = await db.execute('SELECT COUNT(*) c FROM talento_competencias');
+  if (Number(temComp.rows[0].c) === 0) {
+    const padrao = ['Comunicação', 'Colaboração', 'Autonomia', 'Resolução de problemas',
+      'Aprendizado', 'Domínio técnico', 'Organização', 'Iniciativa'];
+    for (let i = 0; i < padrao.length; i++) {
+      await db.execute({
+        sql: 'INSERT INTO talento_competencias (nome, ordem) VALUES (?, ?)',
+        args: [padrao[i], i],
+      });
+    }
+  }
+
   // Convite para criar a própria senha. O que vai no e-mail é um link de uso
   // único, e não a senha: senha no corpo da mensagem fica na caixa de quem
   // recebe e no painel de quem envia, e continua valendo depois de vazar. Um
@@ -2627,15 +2696,93 @@ async function despacharAdminData(
     // Página de Perfil: os dados do usuário da sessão mais o retrato do que ele
     // já fez. Cada um só enxerga a si mesmo - não é tela de administração de
     // usuários, e o id vem da sessão, nunca da query.
+    // ── Banco de talentos ─────────────────────────────────────────────────────
+    // As duas abas numa consulta só: o painel abre nas duas, e trocar de aba não
+    // pode ir ao servidor de novo.
+    if (action === 'talentos') {
+      const [comps, internos, externos, notas] = await Promise.all([
+        db.execute('SELECT id, nome FROM talento_competencias WHERE ativa = 1 ORDER BY ordem, id'),
+        db.execute(`SELECT id, nome, email, foto_url, papel, criado_em
+                    FROM usuarios WHERE ativo = 1 ORDER BY nome`),
+        db.execute(`SELECT id, nome, email, telefone, foto_url, interesse, origem, situacao, criado_em
+                    FROM talentos_externos ORDER BY criado_em DESC`),
+        db.execute('SELECT tipo, pessoa_id, nota FROM talento_notas'),
+      ]);
+      // A média resume a avaliação numa linha da tabela. Quem não tem nota
+      // nenhuma vem sem média, e não com zero: zero é uma nota ruim, e o que
+      // existe ali é a ausência dela.
+      const soma = new Map<string, { total: number; quantas: number }>();
+      for (const n of notas.rows) {
+        const chave = `${n.tipo}:${n.pessoa_id}`;
+        const atual = soma.get(chave) ?? { total: 0, quantas: 0 };
+        atual.total += Number(n.nota ?? 0);
+        atual.quantas += 1;
+        soma.set(chave, atual);
+      }
+      const media = (tipo: string, id: unknown) => {
+        const a = soma.get(`${tipo}:${String(id)}`);
+        return a && a.quantas ? Math.round(a.total / a.quantas) : null;
+      };
+      return {
+        status: 200,
+        body: {
+          competencias: comps.rows.map(c => ({ id: Number(c.id), nome: String(c.nome) })),
+          internos: internos.rows.map(u => ({
+            id: String(u.id),
+            nome: String(u.nome),
+            email: String(u.email ?? ''),
+            foto_url: u.foto_url != null ? String(u.foto_url) : null,
+            papel: String(u.papel ?? 'membro'),
+            desde: String(u.criado_em ?? ''),
+            media: media('interno', u.id),
+          })),
+          externos: externos.rows.map(t => ({
+            id: String(t.id),
+            nome: String(t.nome),
+            email: t.email != null ? String(t.email) : '',
+            telefone: t.telefone != null ? String(t.telefone) : '',
+            foto_url: t.foto_url != null ? String(t.foto_url) : null,
+            interesse: t.interesse != null ? String(t.interesse) : '',
+            origem: t.origem != null ? String(t.origem) : '',
+            situacao: String(t.situacao ?? 'novo'),
+            desde: String(t.criado_em ?? ''),
+            media: media('externo', t.id),
+          })),
+        },
+      };
+    }
+
+    // As notas de uma pessoa, para a tela de visão geral.
+    if (action === 'talento_notas') {
+      const tipo = query.get('tipo') === 'externo' ? 'externo' : 'interno';
+      const pessoa = query.get('id');
+      if (!pessoa) return { status: 400, body: { error: 'id required' } };
+      const r = await db.execute({
+        sql: `SELECT competencia_id, nota, atualizado_em, atualizado_por_nome
+              FROM talento_notas WHERE tipo = ? AND pessoa_id = ?`,
+        args: [tipo, pessoa],
+      });
+      return {
+        status: 200,
+        body: {
+          notas: r.rows.map(n => ({
+            competencia_id: Number(n.competencia_id),
+            nota: Number(n.nota),
+            atualizado_em: String(n.atualizado_em ?? ''),
+            atualizado_por_nome: n.atualizado_por_nome != null ? String(n.atualizado_por_nome) : null,
+          })),
+        },
+      };
+    }
+
     if (action === 'perfil') {
       if (!usuario) return { status: 200, body: { usuario: null } };
       const conta = (sql: string) => db.execute({ sql, args: [usuario.id] });
-      const [linha, comentarios, eventos, oportunidades, cedentes, pendencias, acoes, ultimas] = await Promise.all([
+      const [linha, comentarios, eventos, oportunidades, pendencias, acoes, ultimas] = await Promise.all([
         conta('SELECT id, email, nome, foto_url, papel, criado_em, ultimo_acesso FROM usuarios WHERE id = ?'),
         conta("SELECT COUNT(*) c FROM oportunidade_eventos WHERE autor_id = ? AND tipo = 'comentario'"),
         conta('SELECT COUNT(*) c FROM oportunidade_eventos WHERE autor_id = ?'),
         conta('SELECT COUNT(*) c FROM oportunidades WHERE criado_por_id = ?'),
-        conta('SELECT COUNT(*) c FROM cedentes WHERE criado_por_id = ?'),
         // Só conta o que foi aberto depois que a coluna passou a ser gravada:
         // pendência anterior a isso tem o nome, mas não o id.
         conta('SELECT COUNT(*) c FROM oportunidade_pendencias WHERE criado_por_id = ?'),
@@ -5462,6 +5609,77 @@ function faltaEmProjeto(p: any): string | null {
     // O andamento do relato. Só o dono do painel muda - a ação está marcada
     // `SO_ADMIN` -, e é por isso que a fila mostra o status a todo mundo sem
     // oferecer o campo a ninguém mais.
+    // ── Banco de talentos ─────────────────────────────────────────────────────
+    if (action === 'create_talento_externo') {
+      const nome = String(body?.nome ?? '').trim();
+      if (!nome) return { status: 400, body: { error: 'O nome é obrigatório.' } };
+      const id = randomUUID();
+      const agora = new Date().toISOString();
+      await db.execute({
+        sql: `INSERT INTO talentos_externos
+              (id, nome, email, telefone, foto_url, interesse, origem, situacao, observacoes,
+               criado_em, criado_por_id, criado_por_nome)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+        args: [id, nome, texto(body?.email), texto(body?.telefone), texto(body?.foto_url),
+          texto(body?.interesse), texto(body?.origem), String(body?.situacao ?? 'novo'),
+          texto(body?.observacoes), agora, autorId ?? null, autorNome ?? null],
+      });
+      return { status: 200, body: { ok: true, id, criado_em: agora } };
+    }
+
+    if (action === 'update_talento_externo') {
+      // Lista fechada de campos: nome de coluna vindo do corpo é porta aberta.
+      const campos = ['nome', 'email', 'telefone', 'foto_url', 'interesse', 'origem', 'situacao', 'observacoes'];
+      const mudar = campos.filter(c => c in (body ?? {}));
+      if (!body?.id || mudar.length === 0) return { status: 400, body: { error: 'Nada a gravar.' } };
+      await db.execute({
+        sql: `UPDATE talentos_externos SET ${mudar.map(c => `${c} = ?`).join(', ')} WHERE id = ?`,
+        args: [...mudar.map(c => texto(body[c])), body.id],
+      });
+      return { status: 200, body: { ok: true } };
+    }
+
+    if (action === 'delete_talento_externo') {
+      // As notas vão junto: sem a pessoa elas não têm de quem falar.
+      await db.execute({ sql: 'DELETE FROM talento_notas WHERE tipo = ? AND pessoa_id = ?', args: ['externo', String(body?.id)] });
+      await db.execute({ sql: 'DELETE FROM talentos_externos WHERE id = ?', args: [body?.id] });
+      return { status: 200, body: { ok: true } };
+    }
+
+    // Uma nota. Grava por cima da anterior: a avaliação é o retrato de agora, e
+    // o que interessa guardar é quem deu a última e quando.
+    if (action === 'salvar_talento_nota') {
+      const tipo = body?.tipo === 'externo' ? 'externo' : 'interno';
+      const pessoa = String(body?.pessoa_id ?? '');
+      const comp = Number(body?.competencia_id);
+      // `Number(null)` é zero, e `Number('')` também: nota ausente viraria nota
+      // zero, que é uma avaliação péssima em vez de avaliação nenhuma. Só número
+      // ou texto com número passam daqui.
+      const cru = body?.nota;
+      const bruta = typeof cru === 'number'
+        ? cru
+        : (typeof cru === 'string' && cru.trim() !== '' ? Number(cru) : NaN);
+      if (!pessoa || !Number.isFinite(comp)) return { status: 400, body: { error: 'Pessoa ou competência ausente.' } };
+      // Nota fora da escala é erro de quem chamou, e não valor a guardar.
+      if (!Number.isFinite(bruta) || bruta < 0 || bruta > 100) {
+        return { status: 400, body: { error: 'A nota vai de 0 a 100.' } };
+      }
+      const nota = Math.round(bruta);
+      const agora = new Date().toISOString();
+      await db.execute({
+        sql: `INSERT INTO talento_notas
+              (tipo, pessoa_id, competencia_id, nota, atualizado_em, atualizado_por_id, atualizado_por_nome)
+              VALUES (?,?,?,?,?,?,?)
+              ON CONFLICT (tipo, pessoa_id, competencia_id)
+              DO UPDATE SET nota = excluded.nota,
+                            atualizado_em = excluded.atualizado_em,
+                            atualizado_por_id = excluded.atualizado_por_id,
+                            atualizado_por_nome = excluded.atualizado_por_nome`,
+        args: [tipo, pessoa, comp, nota, agora, autorId ?? null, autorNome ?? null],
+      });
+      return { status: 200, body: { ok: true, nota, atualizado_em: agora, atualizado_por_nome: autorNome ?? null } };
+    }
+
     if (action === 'set_reporte_status') {
       const status = String(body?.status ?? '');
       if (!STATUS_DO_RELATO.includes(status)) {

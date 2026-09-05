@@ -15186,3 +15186,286 @@ button.checklist-texto:focus-visible {
   .reportar-print-tirar { transition: none; }
   .reportar-botao:hover:not(:disabled) { transform: none; }
 }
+
+/* ─── O caminho de pao das ferramentas ───────────────────────────
+   "Ferramentas / Nome da ferramenta", e um terceiro degrau quando a propria
+   ferramenta abre algo por dentro - ver `lib/trilha`. Cada degrau que ainda
+   leva a algum lugar e botao; o ultimo e so texto. */
+.trilha {
+  padding: 18px 28px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.trilha-degrau {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--gray);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.trilha-degrau:hover { color: var(--black); }
+.trilha-barra { color: var(--gray2); }
+.trilha-aqui { color: var(--black); }
+
+/* ─── Banco de talentos ──────────────────────────────────────────────────────
+   Duas listas e uma visao geral. A tabela e a mesma dos chamados no espirito:
+   linha inteira clicavel, sem quebra de linha, e o alvo do clique e a pessoa
+   que se estava lendo. */
+.talentos-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+/* A lupa mora dentro do campo, e nao ao lado: ao lado ela vira um icone solto
+   competindo com o proprio campo. */
+.talentos-busca {
+  position: relative;
+  display: flex;
+  align-items: center;
+  color: var(--gray2);
+}
+.talentos-busca svg {
+  position: absolute;
+  left: 12px;
+  pointer-events: none;
+}
+.talentos-busca .form-input {
+  width: 280px;
+  max-width: 100%;
+  padding-left: 34px;
+}
+.talentos-quadro {
+  border: 1px solid var(--gray4);
+  border-radius: var(--radius-lg);
+  background: var(--white);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.talentos-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.talentos-tabela th {
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--gray4);
+  background: var(--white);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--gray2);
+  white-space: nowrap;
+}
+.talentos-tabela td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--gray4);
+  vertical-align: middle;
+  color: var(--black);
+  white-space: nowrap;
+}
+.talentos-tabela tbody tr:last-child td { border-bottom: none; }
+.talentos-linha { cursor: pointer; transition: background var(--transition); }
+.talentos-linha:hover { background: var(--card-hover-bg); }
+.talentos-linha:focus-visible { outline: 2px solid var(--gray2); outline-offset: -2px; }
+.talentos-linha:hover .talentos-seta { color: var(--black); }
+.talentos-seta { width: 1%; color: var(--gray3); transition: color var(--transition); }
+/* A pessoa: foto e nome andam juntos, com o e-mail abaixo em corpo menor - e o
+   par que identifica, e o e-mail sozinho numa coluna propria comeria a largura
+   que o resto precisa. */
+.talentos-pessoa {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.talentos-pessoa-texto {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.talentos-nome { font-weight: 700; }
+.talentos-email { font-size: 11.5px; color: var(--gray2); }
+.talentos-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.talentos-ponto {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.talentos-media {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-variant-numeric: tabular-nums;
+}
+.talentos-media-trilho {
+  display: block;
+  width: 110px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--gray4);
+  overflow: hidden;
+}
+.talentos-media-tinta {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--yellow);
+  transition: width var(--transition-spring);
+}
+/* Sem nota e uma frase, e nao uma barra vazia: barra no zero le como nota zero,
+   e o que existe ali e a ausencia da nota. */
+.talentos-sem-nota { font-size: 12px; color: var(--gray2); font-style: italic; }
+.talentos-vazio {
+  margin: 0;
+  padding: 36px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--gray2);
+}
+
+/* ── A visao geral ─────────────────────────────────────────────────────────
+   Tres blocos: quem e, o radar, e a regua. Em tela larga eles dividem a linha;
+   estreitando, empilham na ordem em que se leem. */
+.talentos-visao {
+  display: grid;
+  grid-template-columns: 280px minmax(320px, 1fr) minmax(280px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .talentos-visao { grid-template-columns: 1fr; }
+}
+.talentos-ficha {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.talentos-ficha-nome {
+  margin-top: 14px;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--black);
+}
+.talentos-ficha-papel {
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--gray2);
+}
+/* Rotulo e valor em duas colunas: a lista de dados se le de relance quando os
+   valores comecam todos na mesma vertical. */
+.talentos-ficha-dados {
+  width: 100%;
+  margin: 18px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--gray4);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 7px 14px;
+  text-align: left;
+  font-size: 12.5px;
+}
+.talentos-ficha-dados dt { color: var(--gray2); white-space: nowrap; }
+.talentos-ficha-dados dd {
+  margin: 0;
+  color: var(--black);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.talentos-ficha-situacao {
+  width: 100%;
+  margin-top: 16px;
+  text-align: left;
+}
+.talentos-ficha-situacao .form-label { display: block; margin-bottom: 6px; }
+
+.talentos-radar-painel { display: flex; flex-direction: column; }
+.talentos-radar {
+  width: 100%;
+  height: auto;
+  display: block;
+  margin-top: 6px;
+}
+.talentos-radar-teia { fill: none; stroke: var(--gray4); stroke-width: 1; }
+.talentos-radar-eixo { stroke: var(--gray4); stroke-width: 1; }
+.talentos-radar-area {
+  fill: color-mix(in srgb, var(--yellow) 22%, transparent);
+  stroke: var(--yellow);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.talentos-radar-ponto { fill: var(--yellow); }
+.talentos-radar-rotulo {
+  fill: var(--gray2);
+  font-size: 10.5px;
+  font-weight: 700;
+  font-family: 'Manrope', sans-serif;
+}
+
+.talentos-lista-notas {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.talentos-nota-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.talentos-nota-nome { font-size: 13px; font-weight: 700; color: var(--black); }
+.talentos-nota-valor { font-size: 13px; font-variant-numeric: tabular-nums; }
+/* Campo curto: sao dois digitos, e um campo largo convidaria a escrever outra
+   coisa ali. */
+.talentos-nota-campo {
+  width: 68px;
+  height: 30px;
+  padding: 0 8px;
+  text-align: right;
+  font-size: 12.5px;
+}
+.talentos-nota-quem {
+  display: block;
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--gray2);
+}
+
+.talentos-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 4px 0 14px;
+  text-align: left;
+}
+.talentos-form label { display: block; }
+.talentos-form .form-label { display: block; margin-bottom: 5px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .talentos-linha,
+  .talentos-seta,
+  .talentos-media-tinta { transition: none; }
+}

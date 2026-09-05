@@ -125,6 +125,18 @@ export const CATALOGO: PermGrupo[] = [
     ],
   },
   {
+    chave: 'talentos',
+    dentroDe: 'ferramentas',
+    label: 'Banco de Talentos',
+    page: 'talentos',
+    nota: 'Quem já é da casa e quem quer ser, com a avaliação de cada um.',
+    acoes: [
+      { chave: 'talentos:ver', label: 'Abrir o banco de talentos', acesso: true },
+      { chave: 'talentos:avaliar', label: 'Dar nota de competência' },
+      { chave: 'talentos:editar', label: 'Cadastrar e editar interessados' },
+    ],
+  },
+  {
     chave: 'configuracoes',
     label: 'Configurações',
     page: 'configuracoes',
@@ -296,6 +308,14 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   delete_submission: 'oportunidades:excluir',
 
   // ── Aceites & Anuências ───────────────────────────────────────────────────
+
+  // ── Banco de talentos ─────────────────────────────────────────────────────
+  talentos: 'talentos:ver',
+  talento_notas: 'talentos:ver',
+  salvar_talento_nota: 'talentos:avaliar',
+  create_talento_externo: 'talentos:editar',
+  update_talento_externo: 'talentos:editar',
+  delete_talento_externo: 'talentos:editar',
 
   // ── Análise de Crédito ────────────────────────────────────────────────────
   taxa_sugerida: 'gerador:ver',

@@ -53,6 +53,7 @@ export const PERMISSAO_DA_PAGINA: Record<string, string> = {
   'tarefas': 'tarefas:ver',
   'ferramentas': 'ferramentas:ver',
   'gerador-documentos': 'gerador:ver',
+  'talentos': 'talentos:ver',
   'configuracoes': 'configuracoes:ver',
 };
 

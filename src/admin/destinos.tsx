@@ -5,7 +5,7 @@
 export type Page =
   | 'dashboard'
   | 'projetos' | 'tarefas' | 'oportunidades' | 'configuracoes'
-  | 'ferramentas' | 'gerador-documentos' | 'perfil'
+  | 'ferramentas' | 'gerador-documentos' | 'talentos' | 'perfil'
   | 'usuarios';
 
 export type GrupoDestino = 'Páginas' | 'Ferramentas';
@@ -154,6 +154,22 @@ export const DESTINOS: Destino[] = [
         <rect x="8.4" y="8.4" width="13.2" height="13.2" rx="2.2" />
         <path d="M4.6 15.6a2.2 2.2 0 0 1-2.2-2.2V4.6a2.2 2.2 0 0 1 2.2-2.2h8.8a2.2 2.2 0 0 1 2.2 2.2" />
         <path d="M11.6 13.2h6.8M11.6 16.8h4.4" />
+      </svg>
+    ),
+  },
+  {
+    page: 'talentos',
+    titulo: 'Banco de Talentos',
+    descricao: 'Quem já é da casa e quem quer ser, com a avaliação de cada um',
+    grupo: 'Ferramentas',
+    termos: ['talento', 'talentos', 'pessoas', 'time', 'candidato', 'candidatos',
+      'curriculo', 'currículo', 'contratacao', 'contratação', 'rh', 'competencia',
+      'competência', 'avaliacao', 'avaliação'],
+    icon: (
+      <svg {...ic}>
+        <path d="M16.4 20.6v-1.8a3.6 3.6 0 0 0-3.6-3.6H6.4a3.6 3.6 0 0 0-3.6 3.6v1.8" />
+        <circle cx="9.6" cy="7.4" r="3.6" />
+        <path d="M17.2 11.4l1.5 1.5 3-3" />
       </svg>
     ),
   },
