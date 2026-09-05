@@ -1105,8 +1105,10 @@ function usePessoasDoPortal(token: string): Pessoa[] {
   return pessoas;
 }
 
-function CreateModal({ statuses, token, onClose, onCreated }: {
+function CreateModal({ statuses, etapaInicial, token, onClose, onCreated }: {
   statuses: StatusConfig[];
+  /** A etapa de onde o cadastro foi aberto. Sem ela, vale a etapa de entrada. */
+  etapaInicial?: number;
   token: string;
   onClose: () => void;
   onCreated: (sub: Submission) => void;
@@ -1117,9 +1119,10 @@ function CreateModal({ statuses, token, onClose, onCreated }: {
   const [r, setR] = useState<RascunhoOportunidade>(OPORTUNIDADE_VAZIA);
   const set = <K extends keyof RascunhoOportunidade>(k: K, v: RascunhoOportunidade[K]) =>
     setR(p => ({ ...p, [k]: v }));
-  // Etapa de entrada configurada em Configurações; sem marcação, a primeira.
+  // A etapa de onde o `+` foi clicado manda; sem ela, a etapa de entrada
+  // configurada em Configurações e, sem marcação, a primeira.
   const [statusId, setStatusId] = useState<number | ''>(
-    statuses.find(s => s.is_entrada)?.id ?? statuses[0]?.id ?? ''
+    etapaInicial ?? statuses.find(s => s.is_entrada)?.id ?? statuses[0]?.id ?? ''
   );
   const [saving, setSaving] = useState(false);
   const { saindo, fechar } = useSaidaSuave(onClose);
@@ -2863,7 +2866,7 @@ const COLLAPSED_STICKY_MS = 2000;
 const COLLAPSED_HOVER_INTENT_MS = 200;
 
 function KanbanColumn({
-  status, cards, onDragStart, onDrop, onClick, dragOver, setDragOver, onPrefetch, onCancelPrefetch, onDelete, isDragging, onToggleCollapsed,
+  status, cards, onDragStart, onDrop, onClick, dragOver, setDragOver, onPrefetch, onCancelPrefetch, onDelete, isDragging, onToggleCollapsed, onCriarNaEtapa,
 }: {
   status: StatusConfig;
   cards: Submission[];
@@ -2879,6 +2882,8 @@ function KanbanColumn({
   isDragging?: boolean;
   /** Marca/desmarca a etapa como pontual - fica recolhida no board mesmo com cards. */
   onToggleCollapsed?: (id: number, next: boolean) => void;
+  /** Abre o cadastro já nesta etapa. */
+  onCriarNaEtapa?: (statusId: number) => void;
 }) {
   const isOver = dragOver === status.id;
 
@@ -2966,29 +2971,43 @@ function KanbanColumn({
         </div>
       )}
       <div className="kanban-column-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        {/* O mesmo desenho do quadro de Tarefas: nome, contagem colada nele, e
+            os dois botoes no canto. Dois quadros lado a lado no mesmo sistema
+            com cabecalhos diferentes fazem a pessoa reaprender a mesma coisa. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <div className="kanban-column-title">
             <span className="kanban-dot" style={{ background: status.cor }} />
             {status.nome}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            {onToggleCollapsed && (
-              <button
-                className={`kanban-collapse-btn${status.always_collapsed ? ' is-on' : ''}`}
-                onClick={toggleCollapsed}
-                title={status.always_collapsed
-                  ? 'Etapa pontual: fica recolhida no board. Clique para mantê-la sempre aberta.'
-                  : 'Manter esta etapa recolhida no board, mesmo com cards dentro'}
-              >
-                {status.always_collapsed ? (
-                  <IconRecolher size={13} />
-                ) : (
-                  <IconRecolher size={13} aberta />
-                )}
-              </button>
-            )}
-            <span className="kanban-count">{cards.length}</span>
-          </div>
+          <span className="kanban-conta-bolha">{cards.length}</span>
+          {onToggleCollapsed && (
+            <button
+              type="button"
+              className="kanban-column-fixar"
+              aria-pressed={!!status.always_collapsed}
+              onClick={toggleCollapsed}
+              title={status.always_collapsed
+                ? 'Etapa pontual: fica recolhida no board. Clique para mantê-la sempre aberta.'
+                : 'Manter esta etapa recolhida no board, mesmo com cards dentro'}
+              aria-label={status.always_collapsed ? 'Manter a etapa aberta' : 'Manter a etapa recolhida'}
+            >
+              <IconRecolher size={12} aberta={!status.always_collapsed} />
+            </button>
+          )}
+          {/* Criar ja na coluna: o quadro e onde se decide em que ponto do funil
+              a oportunidade entra, e abrir o painel para corrigir a etapa logo
+              depois de cadastrar era um passo a mais em todo cadastro. */}
+          {onCriarNaEtapa && (
+            <button
+              type="button"
+              className="kanban-column-fixar"
+              title={`Nova oportunidade em "${status.nome}"`}
+              aria-label={`Nova oportunidade em ${status.nome}`}
+              onClick={e => { e.stopPropagation(); onCriarNaEtapa(Number(status.id)); }}
+            >
+              <IconPlus size={12} />
+            </button>
+          )}
         </div>
         {colTotal > 0 && (
           <div style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--gray)', letterSpacing: '-0.01em' }}>
@@ -3146,7 +3165,9 @@ export default function OportunidadesPage({ token, openCard, onCardOpened }: {
   const [sortCol, setSortCol] = useState<string>('created_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
+  // Cadastro aberto, e de que etapa ele veio: pelo `+` da coluna, a etapa
+  // chega junto; pelo botão do topo, o cadastro usa a etapa de entrada.
+  const [showCreate, setShowCreate] = useState<{ etapa?: number } | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<number | null>(null);
   // Conversão pendente via drag-and-drop: exige registrar a data de execução
@@ -3487,7 +3508,7 @@ export default function OportunidadesPage({ token, openCard, onCardOpened }: {
               <IconRefresh size={13} />
             </span>
           </button>
-          <button onClick={() => setShowCreate(true)} className="btn btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13, flexShrink: 0 }}>
+          <button onClick={() => setShowCreate({})} className="btn btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13, flexShrink: 0 }}>
             + Nova oportunidade
           </button>
         </div>
@@ -3598,6 +3619,7 @@ export default function OportunidadesPage({ token, openCard, onCardOpened }: {
               onDelete={handleQuickDelete}
               isDragging={draggedId !== null}
               onToggleCollapsed={toggleAlwaysCollapsed}
+              onCriarNaEtapa={etapa => setShowCreate({ etapa })}
             />
           ))}
           {/* Unassigned column */}
@@ -3729,11 +3751,12 @@ export default function OportunidadesPage({ token, openCard, onCardOpened }: {
       {showCreate && (
         <CreateModal
           statuses={statuses}
+          etapaInicial={showCreate.etapa}
           token={token}
-          onClose={() => setShowCreate(false)}
+          onClose={() => setShowCreate(null)}
           onCreated={sub => {
             setSubmissions(prev => [sub, ...prev]);
-            setShowCreate(false);
+            setShowCreate(null);
             setSelectedId(sub.id);
           }}
         />
