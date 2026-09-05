@@ -35,7 +35,7 @@ import {
 import { SecaoReunioes, type Reuniao } from '../components/SecaoReunioes';
 import { ChipReuniao } from '../components/VinculoReuniao';
 import { ReuniaoModal } from '../components/ReuniaoModal';
-import type { Pessoa } from './FormularioTarefa';
+import { Avatar, type Pessoa } from './FormularioTarefa';
 
 import { definirImagemArrasto } from '../lib/dragImage';
 // ── FormSelect ───────────────────────────────────────
@@ -2787,11 +2787,21 @@ function KanbanCard({
       )}
       <div className="kanban-card-meta">
         <span className="kanban-card-value">{fmtValor(sub.valor_estimado)}</span>
-        {!hideAging && days > 0 && (
-          <span className={`kanban-card-days${days >= 7 ? ' late' : ''}`}>
-            {days}d
-          </span>
-        )}
+        {/* Idade e dono no fim da linha, juntos: os dois são sinais da mesma
+            leitura de relance - há quanto tempo isto está parado, e com quem.
+            A foto vem sem o nome, como no quadro de tarefas: numa coluna de
+            cards estreitos o rosto reconhece mais rápido, e o nome fica no
+            `title` para quem entrou ontem e ainda não sabe de quem é a cara. */}
+        <span className="kanban-card-meta-fim">
+          {!hideAging && days > 0 && (
+            <span className={`kanban-card-days${days >= 7 ? ' late' : ''}`}>
+              {days}d
+            </span>
+          )}
+          {sub.responsavel_nome && (
+            <Avatar nome={sub.responsavel_nome} foto={sub.responsavel_foto} size={20} />
+          )}
+        </span>
       </div>
       {sub.proxima_acao && (
         <p className={`oportunidade-proxima${acaoAtrasada ? ' atrasada' : ''}`}

@@ -3995,6 +3995,13 @@ body.arrastando-painel {
   margin-top: 10px;
 }
 
+/* O fim da linha de meta: idade e dono. Ficam colados, e nao espalhados pela
+   largura, para o valor continuar sozinho na esquerda. */
+.kanban-card-meta-fim {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
 .kanban-card-value {
   font-size: 12px;
   font-weight: 700;
