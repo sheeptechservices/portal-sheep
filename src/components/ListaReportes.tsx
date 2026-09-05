@@ -21,6 +21,7 @@ import { ICONE_PRIORIDADE } from '../lib/prioridades';
 import { instante, tempoRelativo } from '../lib/datas';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
+import { useToast } from '../lib/toast';
 
 /**
  * Andamento do relato. Quatro estados e nada de "reaberto": se voltou, volta
@@ -101,6 +102,7 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
    *  cancelado se a janela fechar antes de ele chegar. */
   const quadro = useRef(0);
   useEffect(() => () => cancelAnimationFrame(quadro.current), []);
+  const { toast } = useToast();
   const { saindo, fechar } = useSaidaSuave(onFechar);
   const fundo = useFecharNoFundo(fechar);
 
@@ -146,8 +148,22 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
       return;
     }
     // Gravou, mas o e-mail não saiu: não é erro - o andamento mudou -, e mesmo
-    // assim precisa ser dito, senão quem clicou acha que avisou alguém.
-    if (r?.aviso) setErroStatus(r.aviso);
+    // assim precisa ser dito, senão quem clicou acha que avisou alguém. Fica na
+    // linha de aviso, e não no balão: isso é ressalva a resolver, e ressalva que
+    // some sozinha em quatro segundos é ressalva perdida.
+    if (r?.aviso) { setErroStatus(r.aviso); return; }
+    // Deu tudo certo: o balão confirma o que aconteceu, inclusive quando a
+    // escolha foi não avisar ninguém. Sem ele, "Não enviar" fechava a caixa e
+    // não acontecia nada visível fora a cor do chip mudando lá na linha.
+    const quem = antes?.find(x => x.id === id)?.autor_nome;
+    const rotulo = ROTULO_STATUS[status]?.label ?? status;
+    toast(
+      'success',
+      `Chamado marcado como ${rotulo.toLowerCase()}`,
+      avisar
+        ? `${quem ?? 'Quem reportou'} recebeu o aviso por e-mail.`
+        : 'Ninguém foi avisado por e-mail.',
+    );
   }
 
   /** Quem o e-mail iria avisar, para a pergunta dizer o nome em vez de "a

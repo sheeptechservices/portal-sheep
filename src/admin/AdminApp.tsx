@@ -27,12 +27,13 @@ import { DESTINOS, TOOL_PAGES, TOOL_LABELS, type Page } from './destinos';
 import { CartaoReportar, type Relato } from '../components/CartaoReportar';
 import type { ReporteNaLista } from '../components/ListaReportes';
 import { iniciarOndas } from '../lib/ondas';
+import { ToastContext, type ToastItem } from '../lib/toast';
 
 // ── Toast system ─────────────────────────────────────────────────────────────
-interface ToastItem { id: string; type: 'success' | 'error' | 'info'; title: string; message?: string }
-interface ToastCtx { toast: (type: ToastItem['type'], title: string, message?: string) => void }
-const ToastContext = createContext<ToastCtx>({ toast: () => {} });
-export function useToast() { return useContext(ToastContext); }
+// O contrato e o gancho moram em `lib/toast`; aqui fica quem monta o provedor e
+// desenha os balões. Reexportado para as páginas continuarem pedindo o gancho
+// de onde sempre pediram.
+export { useToast } from '../lib/toast';
 
 // ── Auth context ──────────────────────────────────────────────────────────────
 /** Quem está logado. Nulo quando a sessão veio da senha compartilhada. */
