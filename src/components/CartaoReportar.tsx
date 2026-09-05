@@ -106,6 +106,11 @@ export function CartaoReportar({
   const [arrastando, setArrastando] = useState(false);
   const campo = useRef<HTMLTextAreaElement>(null);
   const seletor = useRef<HTMLInputElement>(null);
+  /** O cartão inteiro, para saber se a colagem tem dono aqui dentro. */
+  const raiz = useRef<HTMLDivElement>(null);
+  /** A área de soltar. O foco volta para ela quando o print sai: quem tinha o
+   *  foco era o botão da lixeira, e ele desaparece no próprio clique. */
+  const solta = useRef<HTMLButtonElement>(null);
 
   // O foco vai para o campo quando ele abre, e não na montagem: `autoFocus`
   // dispararia com o menu, roubando o cursor de quem nem clicou aqui.
@@ -139,28 +144,48 @@ export function CartaoReportar({
   function tirarPrint() {
     setPrint(p => { if (p) URL.revokeObjectURL(p.url); return null; });
     if (seletor.current) seletor.current.value = '';
+    // O foco vai para a área de soltar, que nasce no lugar da prévia: sem isso
+    // ele cai no `body` junto com o botão que acabou de sumir, e quem navega
+    // por teclado recomeça a ordem do zero.
+    requestAnimationFrame(() => solta.current?.focus());
   }
 
   /**
-   * Colar direto. O `paste` é ouvido no cartão inteiro, e não no campo de
-   * texto: o Ctrl+V mais provável acontece com o cursor na descrição, mas quem
-   * acabou de recortar a tela às vezes cola sem clicar em nada.
+   * Colar direto, enquanto o cartão está aberto.
+   *
+   * No documento, e não no cartão: o `paste` nativo só nasce no elemento que
+   * tem o foco. Preso ao cartão, ele funcionava até a primeira remoção - o
+   * botão da lixeira some no mesmo clique que o aciona, o foco cai no `body`, e
+   * dali o evento nunca subia até o cartão. O Ctrl+V então parecia ter
+   * quebrado, e só voltava depois de clicar em alguma coisa lá dentro.
+   *
+   * O preço de ouvir no documento é poder roubar um Ctrl+V de outra tela; por
+   * isso a colagem que tem dono - um campo, uma área de texto, um editor - só
+   * é assumida quando esse dono está dentro do cartão.
    *
    * `clipboardData.files` cobre o print do Windows (Win+Shift+S) e do macOS;
    * `items` é a rede de segurança para navegador que não preenche `files`.
    */
-  function aoColar(e: React.ClipboardEvent) {
+  useEffect(() => {
     if (!aberto) return;
-    const dados = e.clipboardData;
-    const arquivo = dados.files?.[0]
-      ?? [...(dados.items ?? [])].find(i => i.kind === 'file' && i.type.startsWith('image/'))?.getAsFile();
-    if (arquivo?.type.startsWith('image/')) {
-      // Só engole o evento quando havia imagem: colar texto na descrição
-      // continua sendo colar texto.
-      e.preventDefault();
-      receber(arquivo);
-    }
-  }
+    const aoColar = (e: ClipboardEvent) => {
+      const alvo = e.target as HTMLElement | null;
+      const dono = alvo?.closest?.('input, textarea, [contenteditable="true"]');
+      if (dono && !raiz.current?.contains(dono)) return;
+      const dados = e.clipboardData;
+      if (!dados) return;
+      const arquivo = dados.files?.[0]
+        ?? [...(dados.items ?? [])].find(i => i.kind === 'file' && i.type.startsWith('image/'))?.getAsFile();
+      if (arquivo?.type.startsWith('image/')) {
+        // Só engole o evento quando havia imagem: colar texto na descrição
+        // continua sendo colar texto.
+        e.preventDefault();
+        receber(arquivo);
+      }
+    };
+    document.addEventListener('paste', aoColar);
+    return () => document.removeEventListener('paste', aoColar);
+  }, [aberto]);
 
   const completo = !!texto.trim() && !!urgencia;
 
@@ -221,7 +246,7 @@ export function CartaoReportar({
   }
 
   return (
-    <div className="reportar-cartao" onPaste={aoColar}>
+    <div className="reportar-cartao" ref={raiz}>
       {/* Duas camadas de luz, atrás de tudo e sem capturar clique. */}
       <span className="reportar-luz" aria-hidden="true" />
       {/* Com a fila aberta, a janela cobre a tela inteira com desfoque, e o
@@ -324,6 +349,7 @@ export function CartaoReportar({
               // mesma imagem, porque cada pessoa recorta a tela do seu jeito.
               <button
                 type="button"
+                ref={solta}
                 className={`reportar-solta${arrastando ? ' sobre' : ''}`}
                 onClick={() => seletor.current?.click()}
                 onDragOver={e => { e.preventDefault(); setArrastando(true); }}
