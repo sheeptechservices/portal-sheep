@@ -37,6 +37,20 @@
   --link: #0B63CE;
   --green-soft: rgba(30, 138, 62, 0.10);
 
+  /* Os tres metais da medalha do mes campeao. Cada um tem tres degraus, porque
+     medalha e uma peca com luz e sombra: o claro e a face que pega a luz, o
+     base e a cor propria do metal e o escuro fecha o aro. Sao as unicas cores
+     do sistema que nao mudam entre os temas - ouro escuro no fundo escuro
+     deixaria de ser ouro. */
+  --medalha-ouro-claro:   #FFE7A0;
+  --medalha-ouro-base:    #E3AC33;
+  --medalha-ouro-escuro:  #9C6A15;
+  --medalha-prata-claro:  #FDFEFF;
+  --medalha-prata-base:   #AEBBC9;
+  --medalha-prata-escuro: #63717E;
+  --medalha-bronze-claro: #F2C69A;
+  --medalha-bronze-base:  #C4803F;
+  --medalha-bronze-escuro:#7F4A1E;
 
   --radius-sm:   8px;
   --radius-md:   12px;
@@ -14276,6 +14290,16 @@ button.checklist-texto:focus-visible {
 .grafico-dica-linha strong { font-weight: 800; }
 .grafico-dica-valor { opacity: .65; }
 .grafico-dica-valor::before { content: ' · '; }
+/* A linha do podio: separada por um fio, porque nao e mais um dado do mes e sim
+   a posicao dele entre os outros. */
+.grafico-dica-podio {
+  margin-top: 3px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, .16);
+  font-size: 10.5px;
+  font-weight: 700;
+  opacity: .8;
+}
 /* O numero do mes anda junto com o proprio ponto: o `bottom` em porcentagem e a
    mesma conta que posiciona o ponto, e a margem o levanta os poucos pixels que
    o tiram de cima dele. Fora do fluxo, entao o alto do quadro nao guarda mais
@@ -14284,6 +14308,10 @@ button.checklist-texto:focus-visible {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
+  /* A medalha e o numero andam colados, e o par e que fica centrado no ponto. */
+  display: flex;
+  align-items: center;
+  gap: 3px;
   margin-bottom: 10px;
   z-index: 2;
   font-size: 12px;

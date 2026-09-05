@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import type { ReactNode } from 'react';
 
 // Ícones padrão do sistema (contorno, herdam a cor via currentColor).
@@ -580,6 +581,66 @@ export function IconGoogle({ size = 18 }: { size?: number }) {
       <path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9.1h12.4c-.5 2.9-2.2 5.3-4.6 7l7.7 6c4.5-4.2 7-10.3 7-17.5z" />
       <path fill="#FBBC05" d="M10.5 28.6c-.5-1.4-.8-2.9-.8-4.6s.3-3.2.8-4.6l-7.9-6.2C1 16.5 0 20.1 0 24s1 7.5 2.6 10.8l7.9-6.2z" />
       <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.7-6c-2.1 1.4-4.9 2.3-8.2 2.3-6.3 0-11.6-4.2-13.5-9.9l-7.9 6.2C6.5 42.6 14.6 48 24 48z" />
+    </svg>
+  );
+}
+
+// Medalha do mês campeão, em cristal. É a segunda exceção deste arquivo à regra
+// de traço com currentColor - e por outro motivo que o logotipo do Google: uma
+// medalha só se lê como medalha se tiver metal, e metal é luz e sombra na mesma
+// peça, coisa que um contorno de uma cor não desenha. As cores saem de token
+// (`--medalha-*`), então continuam num lugar só e continuam mudando com o tema.
+// O gradiente recebe sufixo do `useId` porque dois gráficos na mesma página
+// dariam ids repetidos, e o navegador fica com o primeiro que achar.
+export function IconMedalha({ lugar, size = 14 }: { lugar: 1 | 2 | 3; size?: number }) {
+  const metal = lugar === 1 ? 'ouro' : lugar === 2 ? 'prata' : 'bronze';
+  const uid = useId().replace(/:/g, '');
+  const aro = `medalha-aro-${uid}`;
+  const face = `medalha-face-${uid}`;
+  const tom = (t: string) => `var(--medalha-${metal}-${t})`;
+  // A face é um octógono: os oito gomos que saem do centro é que dão o corte de
+  // cristal, cada um pegando a luz de um jeito. O vértice `k` está no ângulo
+  // 22,5 + 45k, num raio de 7,2.
+  const face8 = 'M18.65,9.25 L14.76,5.35 L9.24,5.35 L5.35,9.25 L5.35,14.75'
+    + ' L9.24,18.65 L14.76,18.65 L18.65,14.75 Z';
+  // Os gomos, do topo em sentido horário. Positivo é brilho, negativo é sombra:
+  // a luz vem de cima e da esquerda, como em todo o resto do sistema.
+  const gomos: [string, number][] = [
+    ['14.76,5.35 9.24,5.35', 0.52],
+    ['18.65,9.25 14.76,5.35', 0.2],
+    ['18.65,14.75 18.65,9.25', -0.07],
+    ['14.76,18.65 18.65,14.75', -0.18],
+    ['9.24,18.65 14.76,18.65', -0.22],
+    ['5.35,14.75 9.24,18.65', -0.1],
+    ['5.35,9.25 5.35,14.75', 0.18],
+    ['9.24,5.35 5.35,9.25', 0.4],
+  ];
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <defs>
+        <linearGradient id={aro} x1="4" y1="3" x2="20" y2="21" gradientUnits="userSpaceOnUse">
+          <stop offset="0" style={{ stopColor: tom('claro') }} />
+          <stop offset="0.55" style={{ stopColor: tom('base') }} />
+          <stop offset="1" style={{ stopColor: tom('escuro') }} />
+        </linearGradient>
+        <linearGradient id={face} x1="6" y1="5" x2="18" y2="19" gradientUnits="userSpaceOnUse">
+          <stop offset="0" style={{ stopColor: tom('claro') }} />
+          <stop offset="1" style={{ stopColor: tom('base') }} />
+        </linearGradient>
+      </defs>
+      {/* O aro, e a linha escura por fora dele: sem essa linha a medalha some
+          contra o branco do painel. */}
+      <circle cx="12" cy="12" r="9.6" fill={`url(#${aro})`} />
+      <circle cx="12" cy="12" r="9.6" fill="none" stroke={tom('escuro')} strokeOpacity="0.45" strokeWidth="0.9" />
+      <path d={face8} fill={`url(#${face})`} />
+      {gomos.map(([resto, luz]) => (
+        <path key={resto} d={`M12,12 L${resto} Z`}
+          fill={luz > 0 ? '#fff' : '#000'} fillOpacity={Math.abs(luz)} />
+      ))}
+      {/* O brilho: a lasca de luz que atravessa o canto de cima, e é ela que faz
+          a peça parecer vidro em vez de moeda chapada. */}
+      <path d="M8.1,5.9 L12.5,5.9 L7.4,12.6 L5.6,9.9 Z" fill="#fff" fillOpacity="0.42" />
+      <path d={face8} fill="none" stroke="#fff" strokeOpacity="0.5" strokeWidth="0.7" />
     </svg>
   );
 }

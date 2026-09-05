@@ -11,7 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from './AdminApp';
-import { IconAlert } from '../components/icons';
+import { IconAlert, IconMedalha } from '../components/icons';
 import { Skeleton } from '../components/Skeleton';
 
 /** Um mês da série, como o servidor devolve - inclusive os vazios. */
@@ -136,6 +136,28 @@ function GraficoFechados({ serie }: { serie: MesFechado[] }) {
   const anos = useMemo(() => new Set(serie.map(m => m.mes.slice(0, 4))), [serie]);
   const mostrarAno = anos.size > 1;
 
+  /**
+   * O pódio do período: ouro, prata e bronze para os três meses que mais
+   * fecharam. Mês sem fechamento nenhum fica fora - medalha de zero seria
+   * troféu de participação -, e por isso um período magro pode premiar dois ou
+   * um só.
+   *
+   * No empate por quantidade decide o dinheiro: dois meses de cinco vendas não
+   * são o mesmo mês, e o que trouxe mais é o melhor. Persistindo o empate,
+   * decide o mais antigo, que chegou lá primeiro.
+   */
+  const medalhas = useMemo(() => {
+    const podio = new Map<string, 1 | 2 | 3>();
+    serie
+      .filter(m => m.fechados > 0)
+      .slice()
+      .sort((a, b) => b.fechados - a.fechados || b.valor - a.valor || a.mes.localeCompare(b.mes))
+      .slice(0, 3)
+      .forEach((m, i) => podio.set(m.mes, (i + 1) as 1 | 2 | 3));
+    return podio;
+  }, [serie]);
+  const LUGAR_POR_EXTENSO = ['melhor mês do período', 'segundo melhor mês', 'terceiro melhor mês'];
+
   if (total === 0) {
     return (
       <p className="painel-vazio">
@@ -214,6 +236,7 @@ function GraficoFechados({ serie }: { serie: MesFechado[] }) {
           const y = alturaY(m.fechados);
           const entra = metades(i - 1);
           const sai = metades(i);
+          const lugar = medalhas.get(m.mes);
           // A fatia: chega pela curva do mês anterior, passa pelo ponto e sai
           // pela curva do próximo.
           const curva = `M 0,${entra.meio}`
@@ -224,7 +247,8 @@ function GraficoFechados({ serie }: { serie: MesFechado[] }) {
             // hover e no foco, e sem isso ela seria só do mouse.
             <div key={m.mes} className="grafico-coluna" tabIndex={0}
               aria-label={`${mesPorExtenso(m.mes)}: ${m.fechados} fechada${m.fechados === 1 ? '' : 's'}`
-                + (m.valor > 0 ? `, ${dinheiro(m.valor)}` : '')}>
+                + (m.valor > 0 ? `, ${dinheiro(m.valor)}` : '')
+                + (lugar ? `, ${LUGAR_POR_EXTENSO[lugar - 1]}` : '')}>
               {/* A dica da casa - a mesma pílula escura do donut -, ancorada na
                   coluna em vez de seguir o ponteiro: aqui o alvo é fixo, e uma
                   dica que persegue o mouse sobre doze colunas vizinhas pisca
@@ -235,6 +259,9 @@ function GraficoFechados({ serie }: { serie: MesFechado[] }) {
                   <strong>{m.fechados}</strong> fechada{m.fechados === 1 ? '' : 's'}
                   {m.valor > 0 && <span className="grafico-dica-valor">{dinheiro(m.valor)}</span>}
                 </span>
+                {/* A dica diz por extenso o que a medalha diz por desenho: sobre
+                    a coluna cabe o metal, mas não o lugar que ele representa. */}
+                {lugar && <span className="grafico-dica-podio">{LUGAR_POR_EXTENSO[lugar - 1]}</span>}
               </span>
               <div className="grafico-trilho">
                 <svg className="grafico-fatia" viewBox="0 0 100 100"
@@ -253,7 +280,10 @@ function GraficoFechados({ serie }: { serie: MesFechado[] }) {
                     colunas para saber de que mês era cada valor. Mesma conta do
                     ponto; o afastamento acima dele fica no CSS. */}
                 <span className={`grafico-valor${m.fechados === 0 ? ' zero' : ''}`}
-                  style={{ bottom: `${(m.fechados / teto) * 100}%` }}>{m.fechados}</span>
+                  style={{ bottom: `${(m.fechados / teto) * 100}%` }}>
+                  {lugar && <IconMedalha lugar={lugar} size={15} />}
+                  {m.fechados}
+                </span>
               </div>
               <span className="grafico-mes">{rotuloDoMes(m.mes, mostrarAno)}</span>
             </div>
