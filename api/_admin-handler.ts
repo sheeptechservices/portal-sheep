@@ -3625,10 +3625,14 @@ async function despacharAdminData(
       }
       const desde = `${serie[0].mes}-01`;
 
+      // `valor_estimado`, e nao `valor_numerico`: a segunda e coluna da era de
+      // credito desta tabela, que o funil nunca escreve - o painel somava um
+      // campo vazio. Quem carrega o dinheiro do negocio e o "Valor estimado" da
+      // ficha, que e o que se ve no card.
       const r = await db.execute({
         sql: `SELECT substr(data_execucao, 1, 7) AS mes,
                      COUNT(*) AS fechados,
-                     COALESCE(SUM(valor_numerico), 0) AS valor
+                     COALESCE(SUM(valor_estimado), 0) AS valor
               FROM oportunidades
               WHERE data_execucao IS NOT NULL AND data_execucao <> '' AND data_execucao >= ?
               GROUP BY mes`,
@@ -3645,7 +3649,7 @@ async function despacharAdminData(
       // O que está em aberto agora não tem mês: é a foto de hoje, e serve de
       // contexto para o que a série mostra.
       const abertas = await db.execute(`
-        SELECT COUNT(*) AS n, COALESCE(SUM(valor_numerico), 0) AS valor
+        SELECT COUNT(*) AS n, COALESCE(SUM(valor_estimado), 0) AS valor
         FROM oportunidades
         WHERE (data_execucao IS NULL OR data_execucao = '') AND (motivo_perda IS NULL OR motivo_perda = '')
       `);
