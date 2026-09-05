@@ -37,6 +37,7 @@
   --link: #0B63CE;
   --green-soft: rgba(30, 138, 62, 0.10);
 
+
   --radius-sm:   8px;
   --radius-md:   12px;
   --radius-lg:   16px;
@@ -14153,6 +14154,219 @@ button.checklist-texto:focus-visible {
   .estilo-alvo { transition: none; }
   .estilo-alvo.t-mola:hover,
   .estilo-alvo.t-anti:hover { transform: none; }
+}
+
+/* ─── Painel do Dashboard ────────────────────────────────────────────────
+   A moldura de cada assunto: um titulo, uma frase que diz o recorte, e o que
+   for do assunto embaixo. Os proximos paineis entram na mesma caixa. */
+.painel {
+  padding: 18px 20px 16px;
+  border: 1px solid var(--gray4);
+  border-radius: var(--radius-lg);
+  background: var(--white);
+  box-shadow: var(--shadow-card);
+}
+.painel-topo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.painel-titulo {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -.01em;
+  color: var(--black);
+}
+.painel-apoio {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--gray2);
+}
+.painel-contexto {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--gray);
+  white-space: nowrap;
+}
+.painel-contexto strong { color: var(--black); font-weight: 800; }
+.painel-vazio {
+  margin: 0;
+  padding: 34px 0;
+  max-width: 46ch;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--gray2);
+}
+.painel-rodape {
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--gray4);
+  font-size: 12.5px;
+  color: var(--gray);
+}
+.painel-rodape strong { color: var(--black); font-weight: 800; }
+
+/* A serie mensal, em area. Cada coluna tem o numero em cima, a celula do
+   desenho no meio - que e quem tem altura fixa e faz o ponto subir em
+   porcentagem - e o mes embaixo.
+
+   Sem vao entre as colunas: as fatias da area se encostam, e um vao ali abriria
+   um corte branco no meio da linha a cada mes. */
+.grafico-area {
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  min-height: 208px;
+}
+.grafico-coluna {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.grafico-coluna:focus-visible { outline: none; }
+/* O foco marca a coluna inteira, e nao so a celula: na area a celula nao tem
+   moldura propria. */
+.grafico-coluna:focus-visible { background: var(--gray4); border-radius: var(--radius-sm); }
+
+/* A dica: a mesma pilula escura do donut, ancorada acima da coluna. Aparece no
+   hover e no foco, e nao captura clique - ela cobre a barra vizinha enquanto
+   esta na tela. */
+.grafico-dica {
+  position: absolute;
+  bottom: calc(100% - 14px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--black);
+  color: var(--white);
+  font-size: 11.5px;
+  line-height: 1.35;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .18);
+  animation: fadeIn .1s ease both;
+}
+.grafico-coluna:hover .grafico-dica,
+.grafico-coluna:focus-visible .grafico-dica { display: flex; }
+/* Nas pontas a dica sairia do painel: ali ela para de ser centrada e encosta na
+   propria borda da coluna. */
+.grafico-coluna:first-child .grafico-dica { left: 0; transform: none; }
+.grafico-coluna:last-child .grafico-dica { left: auto; right: 0; transform: none; }
+.grafico-dica-mes {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  opacity: .6;
+}
+.grafico-dica-linha { font-weight: 600; }
+.grafico-dica-linha strong { font-weight: 800; }
+.grafico-dica-valor { opacity: .65; }
+.grafico-dica-valor::before { content: ' · '; }
+/* O numero do mes anda junto com o proprio ponto: o `bottom` em porcentagem e a
+   mesma conta que posiciona o ponto, e a margem o levanta os poucos pixels que
+   o tiram de cima dele. Fora do fluxo, entao o alto do quadro nao guarda mais
+   uma fileira de numeros soltos do desenho. */
+.grafico-valor {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 10px;
+  z-index: 2;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--black);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* Mes sem nenhum fechamento: o zero fica, e apagado. Tirar o numero faria a
+   coluna vazia parecer falha de carregamento em vez de mes parado. */
+.grafico-valor.zero { color: var(--gray3); font-weight: 600; }
+/* A celula do desenho: ocupa a largura inteira da coluna, porque a area
+   atravessa de ponta a ponta. O `position: relative` e o que ancora o ponto. */
+.grafico-trilho {
+  position: relative;
+  width: 100%;
+  height: 150px;
+}
+.grafico-fatia {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+/* O degrade da area: forte junto da linha, dissolvendo ate a base. E o que
+   separa a serie do fundo sem fechar um bloco solido de cor debaixo dela. */
+.grafico-tinta-topo { stop-color: color-mix(in srgb, var(--yellow) 34%, transparent); }
+.grafico-tinta-base { stop-color: color-mix(in srgb, var(--yellow) 2%, transparent); }
+.grafico-fatia-tinta { fill: url(#grafico-area-tinta); }
+.grafico-fatia-linha {
+  fill: none;
+  stroke: var(--yellow);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* O ponto do mes. Fica em cima da linha, centrado na coluna, e sobe pelo
+   `bottom` - a mesma conta que a barra usava para a altura. */
+.grafico-ponto {
+  position: absolute;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  margin: 0 0 -3.5px -3.5px;
+  border-radius: 50%;
+  background: var(--yellow);
+  box-shadow: 0 0 0 2px var(--white);
+  transition: transform var(--transition-spring), background var(--transition);
+}
+/* Mes sem fechamento tambem tem ponto, e apagado: a linha passa pela base ali,
+   e um ponto ausente faria o mes parecer nao medido em vez de zerado. */
+/* `--gray2`, o cinza de texto apagado, e nao `--gray3`, que e cor de borda: no
+   tema escuro o `--gray3` e quase a propria superficie e o ponto sumia - o
+   mesmo motivo do icone de "sem print". */
+.grafico-ponto.zero { background: var(--gray2); }
+/* A area entra crescendo do chao na primeira pintura: a serie aparecendo pronta
+   e um corte, e o que se quer mostrar aqui e justamente a variacao. */
+.grafico-fatia { animation: grafico-sobe .5s var(--curva-anti) both; transform-origin: bottom; }
+/* Sob o cursor, o ponto cresce e escurece: e o unico realce que a area aceita
+   sem sujar o desenho, ja que a fatia e continua com as vizinhas. */
+.grafico-coluna:hover .grafico-ponto,
+.grafico-coluna:focus-visible .grafico-ponto {
+  transform: scale(1.5);
+  background: color-mix(in srgb, var(--yellow) 72%, var(--black));
+}
+@keyframes grafico-sobe {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+.grafico-mes {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray2);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grafico-fatia { animation: none; }
+  .grafico-ponto { transition: none; }
+  .grafico-dica { animation: none; }
 }
 
 /* ─── O convite a reportar, no pe do menu ────────────────────────────────

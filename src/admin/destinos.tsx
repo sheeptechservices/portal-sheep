@@ -3,6 +3,7 @@
 // por ⌘K (QuickSearch), que casa por título, descrição e apelidos de cada destino.
 
 export type Page =
+  | 'dashboard'
   | 'projetos' | 'tarefas' | 'oportunidades' | 'cadastros' | 'configuracoes'
   | 'ferramentas' | 'gerador-documentos' | 'perfil'
   | 'usuarios';
@@ -26,6 +27,20 @@ const ic = {
 };
 
 export const DESTINOS: Destino[] = [
+  {
+    page: 'dashboard',
+    titulo: 'Dashboard',
+    descricao: 'Os números da casa, por assunto - hoje, o comercial',
+    grupo: 'Páginas',
+    termos: ['painel', 'indicadores', 'kpi', 'grafico', 'gráfico', 'numeros', 'números',
+      'comercial', 'fechados', 'fechamento'],
+    icon: (
+      <svg {...ic}>
+        <path d="M3 3v16.5A1.5 1.5 0 0 0 4.5 21H21" />
+        <path d="M7 15.5l3.8-4.2 3 2.6L20 7" />
+      </svg>
+    ),
+  },
   {
     page: 'oportunidades',
     titulo: 'Oportunidades',

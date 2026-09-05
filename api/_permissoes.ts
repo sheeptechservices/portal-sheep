@@ -83,9 +83,8 @@ export const CATALOGO: PermGrupo[] = [
   {
     chave: 'dashboard',
     label: 'Dashboard',
-    // Sem `page` ainda: a tela não existe. A chave entra agora para o acesso já
-    // poder ser desenhado por papel, e ganha a rota quando a página nascer.
-    nota: 'Painel de indicadores da casa. Em construção.',
+    page: 'dashboard',
+    nota: 'Painel de indicadores da casa. Hoje, o comercial.',
     acoes: [
       { chave: 'dashboard:ver', label: 'Ver o painel', acesso: true },
     ],
@@ -267,6 +266,10 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   // ── Oportunidades ──────────────────────────────────────────────────────────
   // Reportar é de qualquer sessão: quem usa o portal pode contar o que achou,
   // e uma permissão aqui só serviria para calar alguém.
+  // O painel comercial lê o funil, mas a permissão é a do painel: quem tem
+  // acesso ao Dashboard vê os números dele, e quem não tem não os vê nem
+  // sabendo o nome da ação.
+  painel_comercial: 'dashboard:ver',
   reportar: LIVRE,
   // A fila e os prints também: quem pode contar o que achou pode ver o que já
   // foi contado - inclusive para não reportar duas vezes a mesma coisa.

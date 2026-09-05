@@ -11,6 +11,7 @@ import { MARCAS } from '../lib/marcas';
 import { SkeletonPagina } from '../components/Skeleton';
 import { GOOGLE_CLIENT_ID, GOOGLE_DOMINIO, carregarGis } from '../lib/google';
 // Cada página é carregada sob demanda (code-splitting) - só entra no bundle quando aberta
+const DashboardPage = lazy(() => import('./DashboardPage'));
 const OportunidadesPage = lazy(() => import('./OportunidadesPage'));
 const ProjetosPage = lazy(() => import('./ProjetosPage'));
 const TarefasPage = lazy(() => import('./TarefasPage'));
@@ -188,9 +189,9 @@ const NAV_SECTIONS: { section: string; items: NavLeaf[] }[] = [
     section: '',
     items: [
       {
+        page: 'dashboard',
         label: 'Dashboard',
         perm: 'dashboard:ver',
-        disabled: true,
         icon: <IconDashboard size={15} />,
       },
       // Onboarding, Oportunidades e Operações ficavam sob o título "Esteira de
@@ -1072,7 +1073,9 @@ function LoginArte() {
 interface NewCedente { cnpj: string; razao_social: string; natureza_juridica?: string }
 
 function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLogout: () => void; saindo: boolean; newCedente?: NewCedente }) {
-  const [page, setPage] = useState<Page>(newCedente ? 'cadastros' : 'oportunidades');
+  // A tela abre no Dashboard: a primeira pergunta de quem chega é como está a
+  // casa, e não o que fazer agora - para isso existem os quadros, a um clique.
+  const [page, setPage] = useState<Page>(newCedente ? 'cadastros' : 'dashboard');
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -1209,9 +1212,9 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
     [pode, admin],
   );
 
-  // A tela abre em Oportunidades, que é o certo para quase todo mundo. Quando as
-  // permissões chegam e a página aberta não é alcançável, vai para a primeira que
-  // é - em vez de deixar a pessoa parada num "sem acesso" que ela não escolheu.
+  // Quando as permissões chegam e a página aberta não é alcançável, vai para a
+  // primeira que é - em vez de deixar a pessoa parada num "sem acesso" que ela
+  // não escolheu. É o que cobre quem não tem o Dashboard, onde a tela abre.
   useEffect(() => {
     if (permissoes === null) return;
     if (paginaLiberada(page)) return;
@@ -1406,6 +1409,7 @@ function MainApp({ token, onLogout, saindo, newCedente }: { token: string; onLog
                 onFiltroAplicado={() => setTarefasDaEntrega(null)}
               />
             )}
+            {page === 'dashboard'     && <DashboardPage     token={token} />}
             {page === 'oportunidades'  && <OportunidadesPage  token={token} openCard={openCard?.page === 'oportunidades' ? openCard : undefined} onCardOpened={() => setOpenCard(null)} />}
             {page === 'cadastros'     && <CadastrosPage     token={token} newCedente={newCedente} />}
             {page === 'configuracoes' && <ConfiguracoesPage token={token} />}

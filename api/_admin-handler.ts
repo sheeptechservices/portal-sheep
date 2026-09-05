@@ -3576,6 +3576,69 @@ async function despacharAdminData(
 
     // O que já saiu: a régua de comunicação vai crescer em cima disto, e por
     // enquanto ele responde "o e-mail chegou?" sem virar investigação.
+    // O painel comercial: quantas oportunidades fecharam em cada mês.
+    //
+    // O que marca o fechamento é `data_execucao` - o "Fechado em" da ficha, que
+    // só existe depois que o negócio fecha de fato. A previsão fica de fora de
+    // propósito: ela é aposta do comercial, e um gráfico que mistura o que
+    // aconteceu com o que se espera não responde nem uma coisa nem outra.
+    //
+    // Os meses vazios vêm na série, com zero. Sem eles o gráfico encosta um mês
+    // movimentado no outro e some com o intervalo entre os dois - que é
+    // justamente a variação que ele existe para mostrar.
+    if (action === 'painel_comercial') {
+      // Janela em meses. Valor que não é número cai no padrão, e não em `NaN`:
+      // com `NaN` o laço abaixo não roda uma vez sequer, e a série sai vazia -
+      // a página quebrava ao ler o primeiro mês dela.
+      // Ausente, vazio ou não numérico: doze meses. `Number(null)` é zero, e o
+      // zero era preso no mínimo de três - a página pedia doze e recebia três.
+      const bruto = query.get('meses');
+      const pedido = bruto ? Number(bruto) : 12;
+      const MESES = Math.min(36, Math.max(3, Number.isFinite(pedido) ? Math.trunc(pedido) : 12));
+      const hoje = new Date();
+      const serie: { mes: string; fechados: number; valor: number }[] = [];
+      for (let i = MESES - 1; i >= 0; i--) {
+        const d = new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth() - i, 1));
+        serie.push({ mes: d.toISOString().slice(0, 7), fechados: 0, valor: 0 });
+      }
+      const desde = `${serie[0].mes}-01`;
+
+      const r = await db.execute({
+        sql: `SELECT substr(data_execucao, 1, 7) AS mes,
+                     COUNT(*) AS fechados,
+                     COALESCE(SUM(valor_numerico), 0) AS valor
+              FROM oportunidades
+              WHERE data_execucao IS NOT NULL AND data_execucao <> '' AND data_execucao >= ?
+              GROUP BY mes`,
+        args: [desde],
+      });
+      const porMes = new Map(r.rows.map(x => [String(x.mes), x]));
+      for (const ponto of serie) {
+        const achado = porMes.get(ponto.mes);
+        if (!achado) continue;
+        ponto.fechados = Number(achado.fechados ?? 0);
+        ponto.valor = Number(achado.valor ?? 0);
+      }
+
+      // O que está em aberto agora não tem mês: é a foto de hoje, e serve de
+      // contexto para o que a série mostra.
+      const abertas = await db.execute(`
+        SELECT COUNT(*) AS n, COALESCE(SUM(valor_numerico), 0) AS valor
+        FROM oportunidades
+        WHERE (data_execucao IS NULL OR data_execucao = '') AND (motivo_perda IS NULL OR motivo_perda = '')
+      `);
+      return {
+        status: 200,
+        body: {
+          serie,
+          emAberto: {
+            quantas: Number(abertas.rows[0]?.n ?? 0),
+            valor: Number(abertas.rows[0]?.valor ?? 0),
+          },
+        },
+      };
+    }
+
     // A fila de relatos, para o cartão do menu.
     //
     // A ordem é fixa e é por urgência, não por data: a fila existe para dizer o
