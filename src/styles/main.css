@@ -3379,6 +3379,22 @@ body.arrastando-painel {
   margin-right: 2px;
 }
 
+/* "Limpar" da barra de filtros: texto, e nao botao - ele desfaz uma escolha,
+   nao propoe uma. O mesmo desenho estava repetido em estilo inline nas telas
+   de Tarefas, Projetos e Funil. */
+.admin-toolbar-limpar {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.admin-toolbar-limpar:hover { color: var(--black); }
+
 .admin-search {
   min-width: 180px;
   max-width: 260px;
@@ -15311,6 +15327,10 @@ button.checklist-texto:focus-visible {
   max-width: 100%;
   padding-left: 34px;
 }
+/* A barra de filtros da aba Todos. O respiro embaixo mora aqui, e nao no
+   `.revelar`: dentro do bloco que abre, ele encolhe junto com o resto. */
+.talentos-filtros { margin-bottom: 14px; }
+
 .talentos-quadro {
   border: 1px solid var(--gray4);
   border-radius: var(--radius-lg);
