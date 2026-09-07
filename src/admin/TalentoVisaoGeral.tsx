@@ -163,6 +163,18 @@ export function Radar({ competencias, notas }: { competencias: Competencia[]; no
   );
 }
 
+/**
+ * O e-mail quebra depois do arroba, e nao no meio do dominio.
+ *
+ * O `<wbr>` e uma oportunidade de quebra, nao um caractere: a linha pode
+ * partir ali, e quem copia continua levando o endereco inteiro.
+ */
+function EmailQuebravel({ valor }: { valor: string }) {
+  const arroba = valor.indexOf('@');
+  if (arroba < 0) return <>{valor}</>;
+  return <>{valor.slice(0, arroba + 1)}<wbr />{valor.slice(arroba + 1)}</>;
+}
+
 export function VisaoGeral({
   tipo, pessoa, competencias, podeAvaliar, podeEditar, api, gravar,
   onNotas, onMudar, onExcluir,
@@ -255,7 +267,8 @@ export function VisaoGeral({
           </p>
 
           <dl className="talentos-ficha-dados">
-            <dt>E-mail</dt><dd>{pessoa.email || '-'}</dd>
+            <dt>E-mail</dt>
+            <dd>{pessoa.email ? <EmailQuebravel valor={pessoa.email} /> : '-'}</dd>
             {externo && <><dt>Telefone</dt><dd>{externo.telefone || '-'}</dd></>}
             {externo && <><dt>Origem</dt><dd>{externo.origem || '-'}</dd></>}
             <dt>{externo ? 'Cadastrado em' : 'No time desde'}</dt>

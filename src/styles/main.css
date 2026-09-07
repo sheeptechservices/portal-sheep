@@ -6499,7 +6499,12 @@ button.checklist-texto:focus-visible {
   line-height: 1.5;
   color: var(--black);
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  /* `break-word`, e nao `anywhere`: com `anywhere` a quebra e gulosa e parte a
+     palavra onde a linha encheu - o e-mail virava "...she / eptechnology". Com
+     `break-word` a linha respeita as oportunidades de quebra que o texto
+     oferece (o `<wbr>` depois do arroba) e so parte no meio da palavra se ela
+     sozinha nao couber. */
+  overflow-wrap: break-word;
 }
 .ativ-marca {
   font-weight: 700;
