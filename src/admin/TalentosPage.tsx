@@ -17,13 +17,14 @@ import { useAuth, useToast } from './AdminApp';
 import { Avatar } from './FormularioTarefa';
 import { Abas } from '../components/Abas';
 import FilterDropdown from '../components/FilterDropdown';
+import { FAMILIAS, OUTRAS, familiaDe } from '../lib/habilidades';
 import { Skeleton } from '../components/Skeleton';
-import { IconAlert, IconChevronRight, IconPlus, IconSearch } from '../components/icons';
+import { IconAlert, IconChevronRight, IconSearch } from '../components/icons';
 import { dia as fmtDataBR } from '../lib/datas';
 import { useDegrauTrilha } from '../lib/trilha';
 import { useTrocaDeNivel } from '../lib/useTrocaDeNivel';
 import {
-  BarraMedia, ChipSituacao, NovoInteressado, PAPEIS, SITUACOES, VisaoGeral,
+  BarraMedia, PAPEIS, VisaoGeral,
   type Competencia, type Nota, type TalentoExterno, type TalentoInterno,
 } from './TalentoVisaoGeral';
 
@@ -34,7 +35,7 @@ type Aba = 'todos' | 'time' | 'interessados';
 const CABECALHOS: Record<Aba, string[]> = {
   todos: ['Vínculo', 'Papel ou interesse'],
   time: ['Papel', 'No time desde'],
-  interessados: ['Interesse', 'Senioridade', 'Experiência', 'Onde mora', 'Situação'],
+  interessados: ['Interesse', 'Senioridade', 'Experiência', 'Onde mora'],
 };
 type Aberto = { tipo: 'interno' | 'externo'; id: string } | null;
 
@@ -53,10 +54,13 @@ interface LinhaUnificada {
   meio: string;
   media: number | null;
   papel: string | null;
-  situacao: string | null;
   /** Só quem veio de candidatura tem: quem é da casa não respondeu a isto. */
   senioridade: string;
+  experiencia: string;
   ingles: string;
+  /** As famílias das habilidades declaradas - é por elas que se filtra. */
+  familias: string[];
+  habilidades: string[];
 }
 
 const VINCULOS = [
@@ -67,6 +71,10 @@ const AVALIACOES = [
   { value: 'com', label: 'Já avaliados' },
   { value: 'sem', label: 'Sem avaliação' },
 ];
+
+/** As famílias das habilidades de uma pessoa, sem repetir. */
+const familiasDe = (habilidades: string[]) =>
+  [...new Set(habilidades.map(h => familiaDe(h).chave))];
 
 /** O nome sem acento e em minúsculas, para a busca casar "Joao" com "João". */
 const dobrar = (v: string) =>
@@ -83,13 +91,13 @@ export default function TalentosPage({ token }: { token: string }) {
   const [aba, setAba] = useState<Aba>('todos');
   const [fVinculo, setFVinculo] = useState<string[]>([]);
   const [fPapel, setFPapel] = useState<string[]>([]);
-  const [fSituacao, setFSituacao] = useState<string[]>([]);
   const [fAvaliacao, setFAvaliacao] = useState<string[]>([]);
   const [fSenioridade, setFSenioridade] = useState<string[]>([]);
   const [fIngles, setFIngles] = useState<string[]>([]);
+  const [fExperiencia, setFExperiencia] = useState<string[]>([]);
+  const [fFamilia, setFFamilia] = useState<string[]>([]);
   const [busca, setBusca] = useState('');
   const [aberto, setAberto] = useState<Aberto>(null);
-  const [criando, setCriando] = useState(false);
 
   const podeAvaliar = pode('talentos:avaliar');
   const podeEditar = pode('talentos:editar');
@@ -144,58 +152,72 @@ export default function TalentosPage({ token }: { token: string }) {
   const todos = useMemo<LinhaUnificada[]>(() => [
     ...internos.map(t => ({
       tipo: 'interno' as const, id: t.id, nome: t.nome, email: t.email, foto: t.foto_url,
-      meio: PAPEIS[t.papel] ?? t.papel, media: t.media, papel: t.papel, situacao: null,
-      senioridade: '', ingles: '',
+      meio: PAPEIS[t.papel] ?? t.papel, media: t.media, papel: t.papel,
+      senioridade: '', experiencia: '', ingles: '',
+      familias: familiasDe(t.habilidades), habilidades: t.habilidades,
     })),
     ...externos.map(t => ({
       tipo: 'externo' as const, id: t.id, nome: t.nome, email: t.email, foto: t.foto_url,
-      meio: t.interesse || '-', media: t.media, papel: null, situacao: t.situacao,
-      senioridade: t.senioridade, ingles: t.nivel_ingles,
+      meio: t.interesse || '-', media: t.media, papel: null,
+      senioridade: t.senioridade, experiencia: t.tempo_experiencia, ingles: t.nivel_ingles,
+      familias: familiasDe(t.habilidades), habilidades: t.habilidades,
     })),
   ].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')), [internos, externos]);
 
   /** Só o que existe na tela vira opção: oferecer "Contratado" sem nenhum
    *  contratado é oferecer uma lista vazia. */
   const opcoes = useMemo(() => {
-    const distintos = (campo: 'senioridade' | 'nivel_ingles') =>
+    const distintos = (campo: 'senioridade' | 'nivel_ingles' | 'tempo_experiencia') =>
       [...new Set(externos.map(t => t[campo]).filter(Boolean))].sort()
         .map(v => ({ value: v, label: v }));
+    // A família entra na ordem da taxonomia, e não na ordem em que apareceu:
+    // uma lista que muda de ordem a cada carga não se decora.
+    const familiasPresentes = new Set(todos.flatMap(t => t.familias));
     return {
       papel: [...new Set(internos.map(t => t.papel))]
         .map(p => ({ value: p, label: PAPEIS[p] ?? p })),
-      situacao: SITUACOES.filter(s => externos.some(t => t.situacao === s.valor))
-        .map(s => ({ value: s.valor, label: s.label })),
       senioridade: distintos('senioridade'),
+      experiencia: distintos('tempo_experiencia'),
       ingles: distintos('nivel_ingles'),
+      familia: [...FAMILIAS, OUTRAS].filter(f => familiasPresentes.has(f.chave))
+        .map(f => ({ value: f.chave, label: f.label })),
     };
-  }, [internos, externos]);
+  }, [internos, externos, todos]);
 
-  const temFiltro = fVinculo.length > 0 || fPapel.length > 0 || fSituacao.length > 0
-    || fAvaliacao.length > 0 || fSenioridade.length > 0 || fIngles.length > 0;
+  const temFiltro = fVinculo.length > 0 || fPapel.length > 0 || fAvaliacao.length > 0
+    || fSenioridade.length > 0 || fIngles.length > 0 || fExperiencia.length > 0
+    || fFamilia.length > 0;
   const limparFiltros = () => {
-    setFVinculo([]); setFPapel([]); setFSituacao([]); setFAvaliacao([]);
-    setFSenioridade([]); setFIngles([]);
+    setFVinculo([]); setFPapel([]); setFAvaliacao([]);
+    setFSenioridade([]); setFIngles([]); setFExperiencia([]); setFFamilia([]);
   };
 
   const filtrados = useMemo(() => {
     const q = dobrar(busca.trim());
     const casa = (campos: string[]) => !q || campos.some(c => dobrar(c).includes(q));
+    // Um teste só, para as três abas: assim um filtro escolhido em Todos
+    // continua valendo ao trocar para Interessados, em vez de a mesma pergunta
+    // ter três respostas diferentes. Filtro vazio não filtra nada.
+    const passa = (t: LinhaUnificada) =>
+      casa([t.nome, t.email, t.meio, ...t.habilidades])
+      && (!fVinculo.length || fVinculo.includes(t.tipo))
+      && (!fPapel.length || (t.papel != null && fPapel.includes(t.papel)))
+      && (!fAvaliacao.length || fAvaliacao.includes(t.media == null ? 'sem' : 'com'))
+      && (!fSenioridade.length || fSenioridade.includes(t.senioridade))
+      && (!fExperiencia.length || fExperiencia.includes(t.experiencia))
+      && (!fIngles.length || fIngles.includes(t.ingles))
+      // A família é "alguma": quem escolhe Dados e Front-end quer quem tem uma
+      // das duas, e não quem tem as duas.
+      && (!fFamilia.length || t.familias.some(f => fFamilia.includes(f)));
+
+    const aprovados = new Set(todos.filter(passa).map(t => t.tipo + t.id));
     return {
-      internos: internos.filter(t => casa([t.nome, t.email, PAPEIS[t.papel] ?? t.papel])),
-      externos: externos.filter(t => casa([t.nome, t.email, t.interesse, t.origem])),
-      // Filtro vazio não filtra nada: cada grupo só recorta quando alguém
-      // escolheu alguma coisa nele.
-      todos: todos.filter(t =>
-        casa([t.nome, t.email, t.meio])
-        && (!fVinculo.length || fVinculo.includes(t.tipo))
-        && (!fPapel.length || (t.papel != null && fPapel.includes(t.papel)))
-        && (!fSituacao.length || (t.situacao != null && fSituacao.includes(t.situacao)))
-        && (!fAvaliacao.length || fAvaliacao.includes(t.media == null ? 'sem' : 'com'))
-        && (!fSenioridade.length || fSenioridade.includes(t.senioridade))
-        && (!fIngles.length || fIngles.includes(t.ingles))),
+      internos: internos.filter(t => aprovados.has('interno' + t.id)),
+      externos: externos.filter(t => aprovados.has('externo' + t.id)),
+      todos: todos.filter(t => aprovados.has(t.tipo + t.id)),
     };
-  }, [busca, internos, externos, todos, fVinculo, fPapel, fSituacao, fAvaliacao,
-    fSenioridade, fIngles]);
+  }, [busca, internos, externos, todos, fVinculo, fPapel, fAvaliacao,
+    fSenioridade, fExperiencia, fIngles, fFamilia]);
 
   /** A média entra na lista sem esperar o servidor: ela é conta do que já está
    *  na tela, e recalculá-la no servidor pediria outra ida. */
@@ -223,7 +245,6 @@ export default function TalentosPage({ token }: { token: string }) {
         api={api}
         gravar={gravar}
         onNotas={notas => atualizarMedia(naTela.tipo, naTela.id, notas)}
-        onMudar={campos => setExternos(l => l.map(t => (t.id === naTela.id ? { ...t, ...campos } : t)))}
         onExcluir={() => {
           setExternos(l => l.filter(t => t.id !== naTela.id));
           setAberto(null);
@@ -241,12 +262,6 @@ export default function TalentosPage({ token }: { token: string }) {
           <h1 className="admin-page-title">Banco de Talentos</h1>
           <p className="admin-page-desc">Quem já é da casa e quem quer ser.</p>
         </div>
-        {podeEditar && aba === 'interessados' && (
-          <button className="btn btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13 }}
-            onClick={() => setCriando(true)}>
-            <IconPlus size={13} /> Novo interessado
-          </button>
-        )}
       </div>
 
       <div className="talentos-topo">
@@ -261,40 +276,45 @@ export default function TalentosPage({ token }: { token: string }) {
         />
         <label className="talentos-busca">
           <IconSearch size={13} />
-          <input className="form-input" placeholder="Buscar por nome, e-mail ou interesse"
+          <input className="form-input" placeholder="Buscar por nome, e-mail, interesse ou habilidade"
             value={busca} onChange={e => setBusca(e.target.value)} />
         </label>
       </div>
 
-      {/* A barra é da aba Todos: nas outras duas o vínculo já está escolhido, e
-          o recorte que sobraria (papel, ou situação) cabe na busca. Ela fica
-          montada o tempo todo para o `.revelar` ter altura de onde sair, e
-          empurra a tabela para baixo em vez de aparecer de estalo. */}
-      <div className={`revelar${aba === 'todos' ? ' aberto' : ''}`}>
-        <div>
-          <div className="admin-toolbar talentos-filtros">
-            <span className="admin-toolbar-label">Filtrar</span>
-            <FilterDropdown label="Vínculo" values={fVinculo} options={VINCULOS} onChange={setFVinculo} />
-            {/* Sem gente de um lado, o filtro daquele lado nao abre menu nenhum -
-                controle que abre vazio e um beco. */}
-            {opcoes.papel.length > 0 && (
-              <FilterDropdown label="Papel" values={fPapel} options={opcoes.papel} onChange={setFPapel} />
-            )}
-            {opcoes.situacao.length > 0 && (
-              <FilterDropdown label="Situação" values={fSituacao} options={opcoes.situacao} onChange={setFSituacao} />
-            )}
-            {opcoes.senioridade.length > 0 && (
-              <FilterDropdown label="Senioridade" values={fSenioridade} options={opcoes.senioridade} onChange={setFSenioridade} />
-            )}
-            {opcoes.ingles.length > 0 && (
-              <FilterDropdown label="Inglês" values={fIngles} options={opcoes.ingles} onChange={setFIngles} />
-            )}
-            <FilterDropdown label="Avaliação" values={fAvaliacao} options={AVALIACOES} onChange={setFAvaliacao} />
-            {temFiltro && (
-              <button className="admin-toolbar-limpar surge" onClick={limparFiltros}>Limpar</button>
-            )}
-          </div>
-        </div>
+      {/* A barra vale nas três abas, com o recorte que cada uma comporta: o
+          vínculo só faz sentido onde os dois convivem, o papel é de quem é da
+          casa, e o que a candidatura respondeu é de quem veio de fora. O que
+          está escolhido continua valendo ao trocar de aba - a mesma pergunta
+          não pode ter três respostas.
+
+          A barra troca de conteúdo sem mudar de lugar, então entra em
+          `.troca`, com a `key` da aba para a animação tocar a cada troca. E
+          filtro sem opção nenhuma não aparece: controle que abre menu vazio é
+          um beco. */}
+      <div className="admin-toolbar talentos-filtros troca" key={aba}>
+        <span className="admin-toolbar-label">Filtrar</span>
+        {aba === 'todos' && (
+          <FilterDropdown label="Vínculo" values={fVinculo} options={VINCULOS} onChange={setFVinculo} />
+        )}
+        {aba !== 'interessados' && opcoes.papel.length > 0 && (
+          <FilterDropdown label="Papel" values={fPapel} options={opcoes.papel} onChange={setFPapel} />
+        )}
+        {opcoes.familia.length > 0 && (
+          <FilterDropdown label="Habilidade" values={fFamilia} options={opcoes.familia} onChange={setFFamilia} />
+        )}
+        {aba !== 'time' && opcoes.senioridade.length > 0 && (
+          <FilterDropdown label="Senioridade" values={fSenioridade} options={opcoes.senioridade} onChange={setFSenioridade} />
+        )}
+        {aba === 'interessados' && opcoes.experiencia.length > 0 && (
+          <FilterDropdown label="Experiência" values={fExperiencia} options={opcoes.experiencia} onChange={setFExperiencia} />
+        )}
+        {aba !== 'time' && opcoes.ingles.length > 0 && (
+          <FilterDropdown label="Inglês" values={fIngles} options={opcoes.ingles} onChange={setFIngles} />
+        )}
+        <FilterDropdown label="Avaliação" values={fAvaliacao} options={AVALIACOES} onChange={setFAvaliacao} />
+        {temFiltro && (
+          <button className="admin-toolbar-limpar surge" onClick={limparFiltros}>Limpar</button>
+        )}
       </div>
 
       {erro ? (
@@ -342,7 +362,6 @@ export default function TalentosPage({ token }: { token: string }) {
                     t.senioridade || '-',
                     t.tempo_experiencia || '-',
                     [t.cidade, t.uf].filter(Boolean).join(' - ') || '-',
-                    <ChipSituacao situacao={t.situacao} />,
                   ]}
                   onAbrir={() => setAberto({ tipo: 'externo', id: t.id })} />
               ))}
@@ -352,7 +371,7 @@ export default function TalentosPage({ token }: { token: string }) {
             || (aba === 'time' && filtrados.internos.length === 0)
             || (aba === 'interessados' && filtrados.externos.length === 0)) && (
             <p className="talentos-vazio">
-              {busca.trim() || (aba === 'todos' && temFiltro)
+              {busca.trim() || temFiltro
                 ? 'Ninguém com esse recorte por aqui.'
                 : aba === 'interessados'
                   ? 'Nenhum interessado cadastrado. O botão acima abre o cadastro.'
@@ -362,13 +381,6 @@ export default function TalentosPage({ token }: { token: string }) {
         </div>
       )}
 
-      {criando && (
-        <NovoInteressado
-          gravar={gravar}
-          onFechar={() => setCriando(false)}
-          onCriado={t => { setExternos(l => [t, ...l]); setCriando(false); }}
-        />
-      )}
     </div>
     </div>
   );

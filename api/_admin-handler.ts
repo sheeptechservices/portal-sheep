@@ -2758,7 +2758,7 @@ async function despacharAdminData(
     // As duas abas numa consulta só: o painel abre nas duas, e trocar de aba não
     // pode ir ao servidor de novo.
     if (action === 'talentos') {
-      const [comps, internos, externos, notas] = await Promise.all([
+      const [comps, internos, externos, notas, habilidades] = await Promise.all([
         db.execute('SELECT id, nome FROM talento_competencias WHERE ativa = 1 ORDER BY ordem, id'),
         db.execute(`SELECT id, nome, email, foto_url, papel, criado_em
                     FROM usuarios WHERE ativo = 1 ORDER BY nome`),
@@ -2767,6 +2767,10 @@ async function despacharAdminData(
                            indicado_por
                     FROM talentos_externos ORDER BY criado_em DESC`),
         db.execute('SELECT tipo, pessoa_id, nota FROM talento_notas'),
+        // As habilidades vêm com a lista, e não só com a ficha: é por elas que
+        // a tela filtra ("quem sabe Dados & BI") e busca. São noventa linhas de
+        // texto curto - menos do que uma foto.
+        db.execute('SELECT tipo, pessoa_id, nome FROM talento_habilidades'),
       ]);
       // A média resume a avaliação numa linha da tabela. Quem não tem nota
       // nenhuma vem sem média, e não com zero: zero é uma nota ruim, e o que
@@ -2785,6 +2789,13 @@ async function despacharAdminData(
         const a = soma.get(`${tipo}:${String(id)}`);
         return a && a.quantas ? Math.round((a.total / a.quantas) * 10) / 10 : null;
       };
+      const porPessoa = new Map<string, string[]>();
+      for (const h of habilidades.rows) {
+        const chave = `${h.tipo}:${h.pessoa_id}`;
+        porPessoa.set(chave, [...(porPessoa.get(chave) ?? []), String(h.nome)]);
+      }
+      const listaDeHabilidades = (tipo: string, id: unknown) =>
+        porPessoa.get(`${tipo}:${String(id)}`) ?? [];
       return {
         status: 200,
         body: {
@@ -2797,6 +2808,7 @@ async function despacharAdminData(
             papel: String(u.papel ?? 'membro'),
             desde: String(u.criado_em ?? ''),
             media: media('interno', u.id),
+            habilidades: listaDeHabilidades('interno', u.id),
           })),
           externos: externos.rows.map(t => ({
             id: String(t.id),
@@ -2818,6 +2830,7 @@ async function despacharAdminData(
             nivel_ingles: t.nivel_ingles != null ? String(t.nivel_ingles) : '',
             possui_cnpj: t.possui_cnpj == null ? null : Number(t.possui_cnpj) === 1,
             indicado_por: t.indicado_por != null ? String(t.indicado_por) : '',
+            habilidades: listaDeHabilidades('externo', t.id),
           })),
         },
       };
@@ -3875,7 +3888,8 @@ async function despacharAdminData(
       // A foto sai de `usuarios` no momento da leitura, e não de cópia gravada
       // junto do relato: quem troca a foto troca em toda a fila, inclusive no
       // que reportou no mês passado.
-      const r = await db.execute(`
+      const r = await db.execute({
+        sql: `
         SELECT r.id, r.texto, r.urgencia, r.pagina, r.autor_nome, r.autor_email,
                r.print_nome, r.print_base64 IS NOT NULL AS tem_print, r.status,
                r.criado_em, u.foto_url AS autor_foto
@@ -3940,7 +3954,9 @@ async function despacharAdminData(
       };
     }
 
-    // O print de um relato, um por vez - ver o comentário da lista.
+    // O print de um relato, um por vez - ver o comentário da lista. O mesmo
+    // recorte da fila vale aqui: sem ele, quem não vê o relato ainda poderia
+    // pedir a imagem dele pelo id.
     if (action === 'reporte_print') {
       const r = await db.execute({
         sql: `SELECT print_nome, print_tipo, print_base64, autor_id, autor_email
@@ -5756,23 +5772,6 @@ function faltaEmProjeto(p: any): string | null {
     // `SO_ADMIN` -, e é por isso que a fila mostra o status a todo mundo sem
     // oferecer o campo a ninguém mais.
     // ── Banco de talentos ─────────────────────────────────────────────────────
-    if (action === 'create_talento_externo') {
-      const nome = String(body?.nome ?? '').trim();
-      if (!nome) return { status: 400, body: { error: 'O nome é obrigatório.' } };
-      const id = randomUUID();
-      const agora = new Date().toISOString();
-      await db.execute({
-        sql: `INSERT INTO talentos_externos
-              (id, nome, email, telefone, foto_url, interesse, origem, situacao, observacoes,
-               criado_em, criado_por_id, criado_por_nome)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-        args: [id, nome, texto(body?.email), texto(body?.telefone), texto(body?.foto_url),
-          texto(body?.interesse), texto(body?.origem), String(body?.situacao ?? 'novo'),
-          texto(body?.observacoes), agora, autorId ?? null, autorNome ?? null],
-      });
-      return { status: 200, body: { ok: true, id, criado_em: agora } };
-    }
-
     if (action === 'update_talento_externo') {
       // Lista fechada de campos: nome de coluna vindo do corpo é porta aberta.
       const campos = ['nome', 'email', 'telefone', 'foto_url', 'interesse', 'origem', 'situacao', 'observacoes'];

@@ -70,6 +70,13 @@
   --icon-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 12.5l5 5 10-11'/%3E%3C/svg%3E");
 
   --gray4: #F0F0EE;          /* superfície neutra sutil (chips/triggers) */
+
+  /* Os dois radares da ficha. O da casa e o verde da marca; o das habilidades
+     declaradas e outro tom de proposito - sao dois desenhos iguais na mesma
+     tela, e a cor e o que diz de quem e cada leitura. */
+  --radar-casa:      var(--yellow);
+  --radar-declarado: #6C4FD1;
+
   --logo-fundo: transparent;  /* chapa atrás da logo de cliente */
   --logo-respiro: 0;
   --card-hover-bg: #FCFCFB;  /* elevação do card no hover */
@@ -93,6 +100,10 @@
   --gray2:  #74756F;
   --gray3:  #2A2B30;   /* bordas/divisores */
   --gray4:  #1C1D21;   /* superfície neutra sutil (chips/triggers) */
+
+  --radar-casa:      var(--yellow);
+  --radar-declarado: #9481E6;
+
   /* Quase toda logo é escura sobre transparente e sumiria no fundo quase preto.
      Uma chapa clara devolve a elas o fundo para que foram desenhadas. */
   --logo-fundo: #F4F4F2;
@@ -1907,80 +1918,153 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
    sistemas / Especialista em seguranca cibernetica" nao cabe em 280px. */
 .talento-capa {
   display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  margin-bottom: 16px;
+}
+.talento-capa-texto { flex: 1; min-width: 0; }
+.talento-capa-nome {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -.02em;
+  color: var(--black);
+}
+.talento-capa-papel {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--gray);
+}
+/* Campo e valor, em colunas que se acomodam na largura da capa. Rotulo em
+   cima, valor embaixo: em duas colunas (rotulo a esquerda) uma capa larga
+   deixaria um corredor branco entre os dois. */
+.talento-dados-capa {
+  margin: 14px 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px 18px;
+}
+.talento-campo { min-width: 0; }
+.talento-campo dt {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.talento-campo dd {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--black);
+  overflow-wrap: break-word;
+}
+/* A senioridade e a primeira coisa que se procura numa ficha. */
+.talento-campo.forte dd { font-size: 14px; font-weight: 800; }
+/* Duas colunas, para o e-mail caber inteiro numa linha so. O `<wbr>` depois do
+   arroba continua la para a tela estreita, onde nem duas colunas bastam. */
+.talento-campo.largo { grid-column: span 2; }
+.talento-contato {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  font-size: 12.5px;
+  color: var(--gray);
+}
+.talento-capa-acoes {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+}
+/* O resumo vem antes das colunas, na largura inteira. */
+.talento-resumo { margin-bottom: 16px; }
+
+/* Os dois radares dividem a linha em partes iguais e esticam ate a mesma
+   altura: sao a mesma peca lida duas vezes, e tamanhos diferentes fariam uma
+   parecer mais importante que a outra. */
+.talento-grade {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+.talento-grade.sozinha { grid-template-columns: minmax(0, 1fr); }
+.talento-coluna {
+  display: flex;
   flex-direction: column;
   gap: 16px;
   min-width: 0;
 }
-/* Texto que a pessoa escreveu: medida de leitura, e nao a largura do painel. */
+/* O painel dentro da coluna cresce ate o fim dela - e o que iguala a altura
+   dos dois. */
+.talento-coluna > .painel { flex: 1; }
+.talento-case { margin-top: 16px; }
+@media (max-width: 1100px) {
+  .talento-grade { grid-template-columns: 1fr; }
+  .talento-capa { flex-wrap: wrap; }
+  .talento-capa-acoes { align-items: flex-start; }
+}
+
+/* -- As habilidades declaradas: radar de areas + a regua ---------------
+   Mesmo desenho e mesma regua da avaliacao da casa, de proposito: duas
+   leituras que se comparam nao podem ter gramaticas diferentes. O que muda e
+   a escala (5 em vez de 10), a cor, e quem deu a nota. */
+.habilidades-areas { margin-top: 18px; }
+/* A tinta desta regua e a cor do radar declarado - as duas leituras da ficha
+   tem cor propria, e a barra segue o desenho a que pertence. */
+.habilidades .talentos-media-tinta { background: var(--radar-declarado); }
+/* Area sem nada declarado continua na lista, esmaecida: a ausencia e resposta,
+   e area que some faria perguntar se ela existe. */
+.habilidades-areas .talentos-nota-linha.vazia { opacity: .5; }
+/* As habilidades que sustentam o pico da area. */
+.habilidades-itens {
+  list-style: none;
+  margin: 6px 0 0 16px;
+  padding: 0;
+}
+.habilidades-itens li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 2px 0;
+  font-size: 12px;
+  color: var(--gray);
+}
+.habilidades-item-nome {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+.habilidades-tempo {
+  font-size: 11px;
+  color: var(--gray2);
+  white-space: nowrap;
+}
+.habilidades-nivel {
+  font-weight: 700;
+  color: var(--black);
+  white-space: nowrap;
+}
+
+/* -- A candidatura, embaixo da visao geral ------------------------------
+   Duas colunas: a esquerda e leitura corrida (resumo e case), a direita e
+   consulta (habilidades e de onde a ficha veio). */
+/* Texto que a pessoa escreveu, de ponta a ponta do painel. Sem teto de medida:
+   o painel e a medida, e o teto deixava uma faixa branca a direita que so
+   dizia "aqui acabou o paragrafo antes de acabar o cartao". */
 .talentos-texto {
   margin: 0;
-  max-width: 78ch;
   font-size: 13px;
   line-height: 1.65;
   color: var(--gray);
   white-space: pre-line;
 }
-.talentos-texto + .talentos-dados { margin-top: 16px; }
-.talentos-dados {
-  margin: 0;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 7px 14px;
-  font-size: 12.5px;
-}
-.talentos-dados dt { color: var(--gray2); white-space: nowrap; }
-.talentos-dados dd {
-  margin: 0;
-  color: var(--black);
-  font-weight: 600;
-  overflow-wrap: break-word;
-}
-
 /* Habilidade: nome, ha quanto tempo, e o nivel em cinco pontos. */
-.talentos-habilidades {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-}
-.talentos-habilidades li {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 0;
-  border-bottom: 1px solid var(--gray4);
-}
-.talentos-habilidades li:last-child { border-bottom: none; }
-.talentos-hab-nome {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--black);
-  overflow-wrap: break-word;
-}
-.talentos-hab-tempo {
-  font-size: 11.5px;
-  color: var(--gray2);
-  white-space: nowrap;
-}
-.talentos-hab-nivel { display: inline-flex; gap: 3px; }
-.talentos-hab-ponto {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--gray4);
-}
-.talentos-hab-ponto.cheio { background: var(--green-light); }
-
 /* Os enderecos da pessoa, no pe da ficha. */
-.talentos-ficha-links {
-  width: 100%;
-  margin-top: 14px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
 .talentos-link {
   display: inline-flex;
   align-items: center;
@@ -15505,9 +15589,13 @@ button.checklist-texto:focus-visible {
   max-width: 100%;
   padding-left: 34px;
 }
-/* A barra de filtros da aba Todos. O respiro embaixo mora aqui, e nao no
-   `.revelar`: dentro do bloco que abre, ele encolhe junto com o resto. */
-.talentos-filtros { margin-bottom: 14px; }
+/* A barra de filtros das tres abas. Altura minima porque o conjunto de
+   filtros muda de aba para aba: sem ela, a tabela subiria e desceria alguns
+   pixels quando uma linha de filtros vira duas. */
+.talentos-filtros {
+  min-height: 34px;
+  margin-bottom: 14px;
+}
 
 .talentos-quadro {
   /* Nao encolhe: o quadro e item de um flex em coluna, e como todo item ele
@@ -15612,82 +15700,75 @@ button.checklist-texto:focus-visible {
 }
 
 /* ── A visao geral ─────────────────────────────────────────────────────────
-   Tres blocos: quem e, o radar, e a regua. Em tela larga eles dividem a linha;
-   estreitando, empilham na ordem em que se leem. */
-.talentos-visao {
-  display: grid;
-  grid-template-columns: 280px minmax(320px, 1fr) minmax(280px, 1fr);
-  gap: 16px;
-  align-items: start;
-}
-@media (max-width: 1100px) {
-  .talentos-visao { grid-template-columns: 1fr; }
-}
-.talentos-ficha {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-}
-.talentos-ficha-nome {
-  margin-top: 14px;
-  font-size: 17px;
-  font-weight: 800;
-  color: var(--black);
-}
-.talentos-ficha-papel {
-  margin-top: 2px;
-  font-size: 12.5px;
-  color: var(--gray2);
-}
-/* Rotulo e valor em duas colunas: a lista de dados se le de relance quando os
-   valores comecam todos na mesma vertical. */
-.talentos-ficha-dados {
-  width: 100%;
-  margin: 18px 0 0;
-  padding-top: 14px;
-  border-top: 1px solid var(--gray4);
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 7px 14px;
-  text-align: left;
-  font-size: 12.5px;
-}
-.talentos-ficha-dados dt { color: var(--gray2); white-space: nowrap; }
-.talentos-ficha-dados dd {
-  margin: 0;
-  color: var(--black);
-  font-weight: 600;
-  /* `break-word`, e nao `anywhere`: com `anywhere` a quebra e gulosa e parte a
-     palavra onde a linha encheu - o e-mail virava "...she / eptechnology". Com
-     `break-word` a linha respeita as oportunidades de quebra que o texto
-     oferece (o `<wbr>` depois do arroba) e so parte no meio da palavra se ela
-     sozinha nao couber. */
-  overflow-wrap: break-word;
-}
-.talentos-ficha-situacao {
-  width: 100%;
-  margin-top: 16px;
-  text-align: left;
-}
-.talentos-ficha-situacao .form-label { display: block; margin-bottom: 6px; }
-
-.talentos-radar-painel { display: flex; flex-direction: column; }
+   Capa em cima, e embaixo duas colunas: a esquerda o que a pessoa trouxe, a
+   direita o que a casa diz dela. Em tela estreita empilham na ordem em que se
+   leem. As pecas da capa e da grade ficam no bloco "A ficha do talento". */
 .talentos-radar {
   width: 100%;
+  /* Teto de largura: o radar e um SVG com viewBox, entao sem limite ele cresce
+     com a coluna e vira um poster de mil pixels quando a ficha ocupa a tela
+     inteira. */
+  max-width: 420px;
   height: auto;
   display: block;
-  margin-top: 6px;
+  margin: 6px auto 0;
 }
 .talentos-radar-teia { fill: none; stroke: var(--gray4); stroke-width: 1; }
-.talentos-radar-eixo { stroke: var(--gray4); stroke-width: 1; }
+/* ── O radar responde ao ponteiro ───────────────────────────────────────
+   O eixo sob o ponteiro acende, o resto do desenho recua, e a regua embaixo
+   acende a mesma competencia. Sem isso e preciso contar vertices para saber
+   qual linha do radar e qual nota. */
+.talentos-radar-eixo {
+  stroke: var(--gray4);
+  stroke-width: 1;
+  transition: stroke var(--transition), stroke-width var(--transition);
+}
+.talentos-radar-eixo.aceso { stroke: var(--gray2); stroke-width: 1.5; }
+
+/* A area de toque: o eixo inteiro, da ponta ao rotulo. Invisivel, larga o
+   bastante para nao pedir pontaria. */
+.talentos-radar-eixo-grupo { cursor: default; outline: none; }
+.talentos-radar-alvo {
+  stroke: transparent;
+  stroke-width: 26;
+  fill: none;
+}
+.talentos-radar-eixo-grupo:focus-visible .talentos-radar-alvo {
+  stroke: var(--gray4);
+}
+.talentos-radar-eixo-grupo .talentos-radar-rotulo {
+  transition: fill var(--transition);
+}
+.talentos-radar-eixo-grupo.aceso .talentos-radar-rotulo { fill: var(--black); }
+
+/* O balao do valor, so no foco. */
+.talentos-radar-balao rect {
+  fill: var(--black);
+  opacity: .92;
+}
+.talentos-radar-balao text {
+  fill: var(--white);
+  font-size: 12px;
+  font-weight: 800;
+  font-family: 'Manrope', sans-serif;
+}
+/* O desenho inteiro recua um degrau enquanto um eixo esta em foco. */
+.talentos-radar.com-foco .talentos-radar-area { opacity: .45; }
+/* A cor do desenho vem do tom, e nao de um valor fixo: o mesmo componente
+   pinta a avaliacao da casa e as habilidades declaradas. */
+.talentos-radar { --radar-cor: var(--radar-casa); }
+.talentos-radar.tom-declarado { --radar-cor: var(--radar-declarado); }
 .talentos-radar-area {
-  fill: color-mix(in srgb, var(--yellow) 22%, transparent);
-  stroke: var(--yellow);
+  fill: color-mix(in srgb, var(--radar-cor) 22%, transparent);
+  stroke: var(--radar-cor);
   stroke-width: 2;
   stroke-linejoin: round;
 }
-.talentos-radar-ponto { fill: var(--yellow); }
+.talentos-radar-ponto {
+  fill: var(--radar-cor);
+  transition: r var(--transition), fill var(--transition);
+}
+.talentos-radar-ponto.aceso { r: 6; }
 .talentos-radar-rotulo {
   fill: var(--gray2);
   font-size: 10.5px;
@@ -15703,6 +15784,16 @@ button.checklist-texto:focus-visible {
   flex-direction: column;
   gap: 14px;
 }
+/* A linha acesa e a mesma competencia que o radar esta mostrando. O respiro
+   negativo mantem a lista no lugar: sem ele, o realce empurraria as vizinhas
+   14px para os lados a cada passada do ponteiro. */
+.talentos-nota-linha {
+  margin: -6px -10px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition);
+}
+.talentos-nota-linha.aceso { background: var(--gray4); }
 .talentos-nota-topo {
   display: flex;
   align-items: center;
@@ -15710,7 +15801,13 @@ button.checklist-texto:focus-visible {
   gap: 12px;
   margin-bottom: 6px;
 }
-.talentos-nota-nome { font-size: 13px; font-weight: 700; color: var(--black); }
+.talentos-nota-nome {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--black);
+}
 .talentos-nota-valor { font-size: 13px; font-variant-numeric: tabular-nums; }
 /* Campo curto: sao dois digitos, e um campo largo convidaria a escrever outra
    coisa ali. */

@@ -7,14 +7,14 @@
 //  data de entrada, o interessado traz interesse, origem e situação, e estes são
 //  editáveis.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useToast } from './AdminApp';
 import { Avatar } from './FormularioTarefa';
 import { Dialogo } from '../components/Dialogo';
-import { SelectSistema } from '../components/SelectSistema';
 import { Skeleton } from '../components/Skeleton';
 import { IconLink, IconTrash } from '../components/icons';
 import { dia as fmtDataBR } from '../lib/datas';
+import { RadarHabilidades } from './RadarHabilidades';
 
 export interface Competencia { id: number; nome: string }
 
@@ -26,6 +26,9 @@ export interface TalentoInterno {
   papel: string;
   desde: string;
   media: number | null;
+  /** Os nomes do que a pessoa declarou saber. Vêm na listagem porque a tabela
+   *  filtra e busca por eles. */
+  habilidades: string[];
 }
 
 export interface TalentoExterno {
@@ -47,6 +50,7 @@ export interface TalentoExterno {
   nivel_ingles: string;
   possui_cnpj: boolean | null;
   indicado_por: string;
+  habilidades: string[];
 }
 
 /** Uma habilidade declarada pela própria pessoa. */
@@ -95,48 +99,29 @@ export interface Nota {
   atualizado_por_nome: string | null;
 }
 
-/** Onde o interessado está na conversa. A cor sai de token, como todo chip. */
-export const SITUACOES = [
-  { valor: 'novo', label: 'Novo', cor: 'var(--gray2)' },
-  { valor: 'conversando', label: 'Conversando', cor: 'var(--amber)' },
-  { valor: 'contratado', label: 'Contratado', cor: 'var(--green-light)' },
-  { valor: 'descartado', label: 'Descartado', cor: 'var(--red)' },
-];
-const ROTULO_SITUACAO: Record<string, { label: string; cor: string }> =
-  Object.fromEntries(SITUACOES.map(s => [s.valor, s]));
-
 export const PAPEIS: Record<string, string> = {
   admin: 'Administrador',
   gestor: 'Gestor',
   membro: 'Membro',
 };
 
-export function ChipSituacao({ situacao }: { situacao: string }) {
-  const s = ROTULO_SITUACAO[situacao] ?? { label: situacao, cor: 'var(--gray2)' };
+/** Um campo da capa: rótulo em cima, valor embaixo. Campo vazio não vira campo
+ *  com traço - a capa ficaria mais cheia de ausências do que de respostas. O
+ *  forte é a senioridade, que é a primeira coisa que se procura. */
+function Campo({ rotulo, valor, forte, largo, dica }: {
+  rotulo: string;
+  valor: ReactNode;
+  forte?: boolean;
+  /** Ocupa duas colunas da grade - para o valor que não cabe em uma. */
+  largo?: boolean;
+  dica?: string;
+}) {
+  if (valor == null || valor === '') return null;
   return (
-    <span className="talentos-chip" style={{ color: s.cor }}>
-      <span className="talentos-ponto" style={{ background: s.cor }} /> {s.label}
-    </span>
-  );
-}
-
-/** Uma linha de dado da ficha. Campo vazio não vira linha com traço: a lista
- *  ficaria mais cheia de ausências do que de respostas. */
-function Dado({ rotulo, valor }: { rotulo: string; valor: string | null }) {
-  if (!valor) return null;
-  return <><dt>{rotulo}</dt><dd>{valor}</dd></>;
-}
-
-/** O nível de 1 a 5, em bolinhas: é escala curta, e cinco pontos se contam de
- *  relance melhor do que "4/5" se lê. */
-function Nivel({ valor }: { valor: number | null }) {
-  if (valor == null) return <span className="talentos-hab-nivel" />;
-  return (
-    <span className="talentos-hab-nivel" title={`Nível ${valor} de 5`}>
-      {[1, 2, 3, 4, 5].map(i => (
-        <span key={i} className={`talentos-hab-ponto${i <= valor ? ' cheio' : ''}`} />
-      ))}
-    </span>
+    <div className={`talento-campo${forte ? ' forte' : ''}${largo ? ' largo' : ''}`} title={dica}>
+      <dt>{rotulo}</dt>
+      <dd>{valor}</dd>
+    </div>
   );
 }
 
@@ -183,7 +168,19 @@ export function BarraMedia({ media }: { media: number | null }) {
  * Sem nota, o eixo vale zero e o polígono encosta no centro - e é isso mesmo que
  * se quer ver: o que ainda não foi avaliado aparece como o buraco que é.
  */
-export function Radar({ competencias, notas }: { competencias: Competencia[]; notas: Map<number, number> }) {
+export function Radar({ competencias, notas, foco, onFoco, max = 10, tom = 'casa' }: {
+  competencias: Competencia[];
+  notas: Map<number, number>;
+  /** A competência em foco - a mesma que a régua embaixo acende. */
+  foco?: number | null;
+  onFoco?: (id: number | null) => void;
+  /** O topo da escala: 10 na avaliação da casa, 5 nas habilidades declaradas.
+   *  O desenho é o mesmo; o que muda é o que cada anel vale. */
+  max?: number;
+  /** Quem deu a nota. São dois desenhos iguais na mesma tela, e a cor é o que
+   *  diz num relance qual é a leitura da casa e qual é a da própria pessoa. */
+  tom?: 'casa' | 'declarado';
+}) {
   const n = competencias.length;
   if (n < 3) {
     return <p className="talentos-vazio">O radar precisa de pelo menos três competências.</p>;
@@ -194,11 +191,11 @@ export function Radar({ competencias, notas }: { competencias: Competencia[]; no
   const ALTURA = 320;
   const centro = { x: LARGURA / 2, y: ALTURA / 2 };
   const raio = ALTURA / 2 - 62;
-  const MAX = 10;
+  const MAX = max;
   const ponto = (i: number, valor: number) => {
     // Começa no topo e gira no sentido do relógio, como todo mostrador.
     const angulo = (Math.PI * 2 * i) / n - Math.PI / 2;
-    const r = (Math.max(0, Math.min(130, valor)) / 100) * raio;
+    const r = (Math.max(0, Math.min(MAX * 1.3, valor)) / MAX) * raio;
     return [centro.x + Math.cos(angulo) * r, centro.y + Math.sin(angulo) * r] as const;
   };
   /** Nome comprido vira duas linhas. Numa linha so ele saia do quadro - e
@@ -214,36 +211,69 @@ export function Radar({ competencias, notas }: { competencias: Competencia[]; no
     competencias.map((_, i) => ponto(i, valor(i)).join(',')).join(' ');
 
   return (
-    <svg className="talentos-radar" viewBox={`0 0 ${LARGURA} ${ALTURA}`} role="img"
-      aria-label={`Radar de ${n} competências`}>
+    <svg className={`talentos-radar tom-${tom}${foco != null ? ' com-foco' : ''}`}
+      viewBox={`0 0 ${LARGURA} ${ALTURA}`} role="img"
+      aria-label={`Radar de ${n} competências`}
+      onMouseLeave={() => onFoco?.(null)}>
       {/* A teia: quatro anéis de 25 em 25, para a leitura ter régua. */}
-      {[25, 50, 75, 100].map(v => (
+      {/* Quatro anéis, sempre: a régua do desenho não muda de densidade só
+          porque a escala vai a 5 em vez de 10. */}
+      {[0.25, 0.5, 0.75, 1].map(f => f * MAX).map(v => (
         <polygon key={v} className="talentos-radar-teia" points={poligono(() => v)} />
       ))}
-      {competencias.map((_, i) => {
-        const [x, y] = ponto(i, 100);
-        return <line key={i} className="talentos-radar-eixo" x1={centro.x} y1={centro.y} x2={x} y2={y} />;
+      {competencias.map((c, i) => {
+        const [x, y] = ponto(i, MAX);
+        return (
+          <line key={i} x1={centro.x} y1={centro.y} x2={x} y2={y}
+            className={`talentos-radar-eixo${foco === c.id ? ' aceso' : ''}`} />
+        );
       })}
       <polygon className="talentos-radar-area" points={poligono(i => notas.get(competencias[i].id) ?? 0)} />
       {competencias.map((c, i) => {
         const [x, y] = ponto(i, notas.get(c.id) ?? 0);
-        return <circle key={c.id} className="talentos-radar-ponto" cx={x} cy={y} r="3.5" />;
+        return (
+          <circle key={c.id} cx={x} cy={y} r="3.5"
+            className={`talentos-radar-ponto${foco === c.id ? ' aceso' : ''}`} />
+        );
       })}
       {competencias.map((c, i) => {
-        const [x, y] = ponto(i, 120);
+        const [x, y] = ponto(i, MAX * 1.2);
         // O rótulo se alinha pelo lado em que está: à direita do desenho ele
         // começa no eixo, à esquerda termina nele, e em cima e embaixo fica
         // centrado. Alinhado sempre ao centro, os de lado invadiam o polígono.
         const meio = Math.abs(x - centro.x) < 6;
         const linhas = emLinhas(c.nome);
+        const nota = notas.get(c.id);
+        // A área de toque cobre o eixo inteiro, da ponta ao rótulo: mirar num
+        // ponto de 3,5px de raio é pedir pontaria, e o eixo é o que a pessoa
+        // está lendo. Invisível, mas clicável.
+        const [tx, ty] = ponto(i, MAX * 0.6);
         return (
-          <text key={c.id} className="talentos-radar-rotulo" x={x} y={y}
-            textAnchor={meio ? 'middle' : x > centro.x ? 'start' : 'end'}
-            dominantBaseline={y < centro.y - 6 ? 'auto' : y > centro.y + 6 ? 'hanging' : 'middle'}>
-            {linhas.map((linha, k) => (
-              <tspan key={k} x={x} dy={k === 0 ? 0 : 12}>{linha}</tspan>
-            ))}
-          </text>
+          <g key={c.id} className={`talentos-radar-eixo-grupo${foco === c.id ? ' aceso' : ''}`}
+            role="button" tabIndex={0}
+            aria-label={`${c.nome}: ${nota != null ? nota : 'sem nota'}`}
+            onMouseEnter={() => onFoco?.(c.id)}
+            onFocus={() => onFoco?.(c.id)}
+            onBlur={() => onFoco?.(null)}>
+            <line className="talentos-radar-alvo" x1={centro.x} y1={centro.y} x2={x} y2={y} />
+            <text className="talentos-radar-rotulo" x={x} y={y}
+              textAnchor={meio ? 'middle' : x > centro.x ? 'start' : 'end'}
+              dominantBaseline={y < centro.y - 6 ? 'auto' : y > centro.y + 6 ? 'hanging' : 'middle'}>
+              {linhas.map((linha, k) => (
+                <tspan key={k} x={x} dy={k === 0 ? 0 : 12}>{linha}</tspan>
+              ))}
+            </text>
+            {/* O valor só aparece no foco: oito números soltos no desenho o
+                tempo todo virariam mancha, e a régua embaixo já os tem. */}
+            {foco === c.id && (
+              <g className="talentos-radar-balao" aria-hidden="true">
+                <rect x={tx - 20} y={ty - 12} width={40} height={22} rx={6} />
+                <text x={tx} y={ty} textAnchor="middle" dominantBaseline="central">
+                  {nota != null ? nota : '-'}
+                </text>
+              </g>
+            )}
+          </g>
         );
       })}
     </svg>
@@ -264,7 +294,7 @@ function EmailQuebravel({ valor }: { valor: string }) {
 
 export function VisaoGeral({
   tipo, pessoa, competencias, podeAvaliar, podeEditar, api, gravar,
-  onNotas, onMudar, onExcluir,
+  onNotas, onExcluir,
 }: {
   tipo: 'interno' | 'externo';
   pessoa: TalentoInterno | TalentoExterno;
@@ -274,7 +304,6 @@ export function VisaoGeral({
   api: (busca: string) => Promise<any>;
   gravar: (corpo: Record<string, unknown>) => Promise<any>;
   onNotas: (notas: Nota[]) => void;
-  onMudar: (campos: Partial<TalentoExterno>) => void;
   onExcluir: () => void;
 }) {
   const { toast } = useToast();
@@ -283,6 +312,10 @@ export function VisaoGeral({
   const [ficha, setFicha] = useState<FichaCandidato | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [confirmando, setConfirmando] = useState(false);
+  /** A competência sob o ponteiro, no radar ou na régua. As duas peças mostram
+   *  o mesmo número, e uma acende a outra - senão é preciso contar os vértices
+   *  para saber qual linha é qual. */
+  const [focoComp, setFocoComp] = useState<number | null>(null);
   const externo = tipo === 'externo' ? (pessoa as TalentoExterno) : null;
 
   useEffect(() => {
@@ -297,6 +330,10 @@ export function VisaoGeral({
       .finally(() => { if (vivo) setCarregando(false); });
     return () => { vivo = false; };
   }, [api, tipo, pessoa.id]);
+
+  /** A coluna da esquerda é o radar de habilidades. Sem habilidade declarada -
+   *  o caso de quem é da casa -, a avaliação ocupa a linha inteira. */
+  const temEsquerda = habilidades.length > 0;
 
   const porCompetencia = useMemo(
     () => new Map(notas.map(n => [n.competencia_id, n.nota])),
@@ -327,239 +364,181 @@ export function VisaoGeral({
     }
   }
 
-  async function mudarCampo(campo: 'situacao', valor: string) {
-    if (!externo) return;
-    const antes = externo[campo];
-    onMudar({ [campo]: valor } as Partial<TalentoExterno>);
-    const r = await gravar({ action: 'update_talento_externo', id: pessoa.id, [campo]: valor });
-    if (r?.error) {
-      onMudar({ [campo]: antes } as Partial<TalentoExterno>);
-      toast('error', 'Não foi possível gravar', r.error);
-    }
-  }
-
   return (
     <div className="admin-content-wrap">
-      <div className="admin-page-header">
-        <h1 className="admin-page-title">{pessoa.nome}</h1>
-        {externo && podeEditar && (
-          <button className="btn btn-secondary" onClick={() => setConfirmando(true)}>
-            <IconTrash size={13} /> Excluir
-          </button>
-        )}
-      </div>
-
-      <div className="talentos-visao">
-        {/* Quem é a pessoa. */}
-        <section className="painel talentos-ficha">
-          <Avatar nome={pessoa.nome} foto={pessoa.foto_url} size={92} />
-          <p className="talentos-ficha-nome">{pessoa.nome}</p>
-          <p className="talentos-ficha-papel">
+      {/* A capa: quem é a pessoa, em uma faixa. Antes isso era uma coluna
+          estreita ao lado do radar, e a identidade - nome, papel, senioridade,
+          onde mora - ficava espremida em 280px enquanto o resto da tela
+          sobrava. */}
+      <header className="painel talento-capa">
+        <Avatar nome={pessoa.nome} foto={pessoa.foto_url} size={76} />
+        <div className="talento-capa-texto">
+          <h1 className="talento-capa-nome">{pessoa.nome}</h1>
+          <p className="talento-capa-papel">
             {externo
               ? (externo.interesse || 'Sem interesse declarado')
               : (PAPEIS[(pessoa as TalentoInterno).papel] ?? '-')}
           </p>
-
-          <dl className="talentos-ficha-dados">
-            <dt>E-mail</dt>
-            <dd>{pessoa.email ? <EmailQuebravel valor={pessoa.email} /> : '-'}</dd>
-            {externo && <><dt>Telefone</dt><dd>{externo.telefone || '-'}</dd></>}
-            {ficha?.cidade && (
-              <><dt>Onde mora</dt><dd>{[ficha.cidade, ficha.uf].filter(Boolean).join(' - ')}</dd></>
-            )}
-            {ficha?.nascimento && (
-              <><dt>Nascimento</dt><dd>{fmtDataBR(ficha.nascimento.slice(0, 10))}{idade(ficha.nascimento) != null ? ` (${idade(ficha.nascimento)} anos)` : ''}</dd></>
-            )}
-            {ficha?.sexo && <><dt>Sexo</dt><dd>{ficha.sexo}</dd></>}
-            {externo && <><dt>Origem</dt><dd>{externo.origem || '-'}</dd></>}
-            <dt>{externo ? 'Cadastrado em' : 'No time desde'}</dt>
-            <dd>{pessoa.desde ? fmtDataBR(pessoa.desde.slice(0, 10)) : '-'}</dd>
+          {/* Campo e valor, e não fileira de chips: chip serve para uma etiqueta
+              que se lê sozinha ("Pleno"), e aqui metade dos valores não diz o que
+              é sem o rótulo - "Remoto", "MEI", "Masculino". */}
+          <dl className="talento-dados-capa">
+            <Campo rotulo="Senioridade" valor={ficha?.senioridade ?? null} forte />
+            <Campo rotulo="Experiência" valor={ficha?.tempo_experiencia ?? null} />
+            <Campo rotulo="Inglês" valor={ficha?.nivel_ingles ?? null} />
+            <Campo rotulo="Outro idioma" valor={ficha?.outro_idioma ?? null} />
+            <Campo rotulo="Onde mora" valor={ficha?.cidade ? [ficha.cidade, ficha.uf].filter(Boolean).join(' - ') : null} />
+            <Campo rotulo="Modelo" valor={ficha?.modelo_trabalho ?? null} />
+            <Campo rotulo="Contratação" valor={ficha?.contratacao ?? null} />
+            <Campo rotulo="CNPJ" valor={ficha?.possui_cnpj == null ? null
+              : ficha.possui_cnpj ? `Sim${ficha.regime_fiscal ? ` (${ficha.regime_fiscal})` : ''}` : 'Não'} />
+            <Campo rotulo="Idade"
+              valor={ficha?.nascimento && idade(ficha.nascimento) != null ? `${idade(ficha.nascimento)} anos` : null}
+              dica={ficha?.nascimento ? `Nascimento: ${fmtDataBR(ficha.nascimento.slice(0, 10))}` : undefined} />
+            <Campo rotulo="Sexo" valor={ficha?.sexo ?? null} />
+            {/* O e-mail ocupa duas colunas: numa só ele quebrava no meio, e
+                endereço partido não se lê nem se copia com o olho. */}
+            <Campo rotulo="E-mail" largo
+              valor={pessoa.email ? <EmailQuebravel valor={pessoa.email} /> : null} />
+            <Campo rotulo="Telefone" valor={externo?.telefone || null} />
+            <Campo rotulo="Candidatura"
+              valor={ficha?.candidatura_em ? fmtDataBR(ficha.candidatura_em.slice(0, 10)) : null} />
+            <Campo rotulo={externo ? 'Cadastrado em' : 'No time desde'}
+              valor={!externo || !ficha ? (pessoa.desde ? fmtDataBR(pessoa.desde.slice(0, 10)) : null) : null} />
           </dl>
+          <div className="talento-contato">
+            {ficha?.linkedin && (
+              <a className="talentos-link" href={ficha.linkedin} target="_blank" rel="noreferrer noopener">
+                <IconLink size={13} /> LinkedIn
+              </a>
+            )}
+            {ficha?.github && (
+              <a className="talentos-link" href={ficha.github} target="_blank" rel="noreferrer noopener">
+                <IconLink size={13} /> GitHub
+              </a>
+            )}
+          </div>
+        </div>
 
-          {(ficha?.linkedin || ficha?.github) && (
-            <div className="talentos-ficha-links">
-              {ficha.linkedin && (
-                <a className="talentos-link" href={ficha.linkedin} target="_blank" rel="noreferrer noopener">
-                  <IconLink size={13} /> LinkedIn
-                </a>
-              )}
-              {ficha.github && (
-                <a className="talentos-link" href={ficha.github} target="_blank" rel="noreferrer noopener">
-                  <IconLink size={13} /> GitHub
-                </a>
-              )}
-            </div>
+        <div className="talento-capa-acoes">
+          {externo && podeEditar && (
+            <button className="btn btn-secondary" onClick={() => setConfirmando(true)}>
+              <IconTrash size={13} /> Excluir
+            </button>
           )}
+        </div>
+      </header>
 
-          {externo && (
-            <div className="talentos-ficha-situacao">
-              <span className="form-label">Situação</span>
-              {podeEditar ? (
-                <SelectSistema
-                  valor={externo.situacao}
-                  onChange={v => mudarCampo('situacao', v)}
-                  opcoes={SITUACOES.map(s => ({
-                    valor: s.valor,
-                    label: s.label,
-                    icone: <span className="talentos-ponto" style={{ background: s.cor }} />,
-                  }))}
-                  estiloGatilho={{ height: 'auto', padding: '9px 14px' }}
-                />
-              ) : (
-                <ChipSituacao situacao={externo.situacao} />
-              )}
-            </div>
-          )}
-        </section>
-
-        {/* O que ela sabe fazer. */}
-        <section className="painel talentos-radar-painel">
+      {/* Antes das duas colunas: é a apresentação da pessoa, em texto corrido, e
+          quem chega na ficha lê isto primeiro. Dentro de uma coluna ele ficava
+          embaixo da árvore, que é consulta, não leitura. */}
+      {ficha?.resumo && (
+        <section className="painel talento-resumo">
           <div className="painel-topo">
             <div>
-              <p className="painel-titulo">Competências</p>
-              <p className="painel-apoio">
-                {notas.length
-                  ? `${notas.length} de ${competencias.length} avaliadas`
-                  : 'Ainda sem avaliação'}
-              </p>
+              <p className="painel-titulo">Resumo profissional</p>
+              <p className="painel-apoio">Como ela se descreveu</p>
             </div>
           </div>
-          {carregando
-            ? <Skeleton h={320} radius="var(--radius-md)" />
-            : <Radar competencias={competencias} notas={porCompetencia} />}
+          <p className="talentos-texto">{ficha.resumo}</p>
         </section>
+      )}
 
-        {/* A régua, competência a competência. */}
-        <section className="painel talentos-notas">
-          <div className="painel-topo">
-            <div>
-              <p className="painel-titulo">Avaliação</p>
-              <p className="painel-apoio">
-                {podeAvaliar ? 'De 0 a 100, por competência' : 'Somente leitura'}
-              </p>
-            </div>
-          </div>
-          <ul className="talentos-lista-notas">
-            {competencias.map(c => {
-              const n = notas.find(x => x.competencia_id === c.id);
-              return (
-                <li key={c.id} className="talentos-nota-linha">
-                  <div className="talentos-nota-topo">
-                    <span className="talentos-nota-nome">{c.nome}</span>
-                    {podeAvaliar ? (
-                      <input
-                        className="form-input talentos-nota-campo"
-                        type="number" min={0} max={100}
-                        value={n ? String(n.nota) : ''}
-                        placeholder="-"
-                        onChange={e => {
-                          const v = Number(e.target.value);
-                          if (e.target.value === '' || !Number.isFinite(v)) return;
-                          void darNota(c.id, Math.max(0, Math.min(100, v)));
-                        }}
-                      />
-                    ) : (
-                      <strong className="talentos-nota-valor">{n ? n.nota : '-'}</strong>
-                    )}
-                  </div>
-                  <span className="talentos-media-trilho">
-                    <span className="talentos-media-tinta" style={{ width: `${n?.nota ?? 0}%` }} />
-                  </span>
-                  {n?.atualizado_por_nome && (
-                    <span className="talentos-nota-quem">
-                      {n.atualizado_por_nome} · {fmtDataBR(n.atualizado_em.slice(0, 10))}
-                    </span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      </div>
-
-      {/* A candidatura, como ela chegou. Só existe para quem veio de fora e
-          respondeu ao formulário - interessado cadastrado à mão não tem nada
-          disto, e o bloco inteiro não aparece em vez de aparecer vazio. */}
-      {ficha && (temFicha(ficha) || habilidades.length > 0) && (
-        <div className="talentos-candidatura surge">
-          <div className="talentos-candidatura-col">
-            {(ficha.resumo || ficha.senioridade) && (
-              <section className="painel">
-                <div className="painel-topo">
-                  <div>
-                    <p className="painel-titulo">Perfil profissional</p>
-                    <p className="painel-apoio">Como a pessoa se descreveu</p>
-                  </div>
-                </div>
-                {ficha.resumo && <p className="talentos-texto">{ficha.resumo}</p>}
-                <dl className="talentos-dados">
-                  <Dado rotulo="Senioridade" valor={ficha.senioridade} />
-                  <Dado rotulo="Experiência" valor={ficha.tempo_experiencia} />
-                  <Dado rotulo="Inglês" valor={ficha.nivel_ingles} />
-                  <Dado rotulo="Outro idioma" valor={ficha.outro_idioma} />
-                  <Dado rotulo="Modelo" valor={ficha.modelo_trabalho} />
-                  <Dado rotulo="Contratação" valor={ficha.contratacao} />
-                  <Dado rotulo="CNPJ" valor={ficha.possui_cnpj == null ? null
-                    : ficha.possui_cnpj ? `Sim${ficha.regime_fiscal ? ` (${ficha.regime_fiscal})` : ''}` : 'Não'} />
-                </dl>
-              </section>
-            )}
-
-            {ficha.case_sucesso && (
-              <section className="painel">
-                <div className="painel-topo">
-                  <div>
-                    <p className="painel-titulo">Case de sucesso</p>
-                    <p className="painel-apoio">O que ela contou ter feito</p>
-                  </div>
-                </div>
-                <p className="talentos-texto">{ficha.case_sucesso}</p>
-              </section>
-            )}
-          </div>
-
-          <div className="talentos-candidatura-col">
-            {habilidades.length > 0 && (
-              <section className="painel">
-                <div className="painel-topo">
-                  <div>
-                    <p className="painel-titulo">Habilidades declaradas</p>
-                    <p className="painel-apoio">
-                      {habilidades.length} {habilidades.length === 1 ? 'habilidade' : 'habilidades'}, com o nível que ela mesma se deu
-                    </p>
-                  </div>
-                </div>
-                <ul className="talentos-habilidades">
-                  {habilidades.map(h => (
-                    <li key={h.nome}>
-                      <span className="talentos-hab-nome">{h.nome}</span>
-                      <span className="talentos-hab-tempo">{h.tempo ?? ''}</span>
-                      <Nivel valor={h.nivel} />
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-
+      {/* Duas colunas: à esquerda o que a pessoa trouxe - a árvore, o que ela
+          escreveu -, à direita o que a casa diz dela e de onde ela veio. Sem
+          nada do lado esquerdo (o caso de quem é da casa), a avaliação ocupa a
+          largura inteira em vez de deixar meia tela vazia. */}
+      <div className={`talento-grade${temEsquerda ? '' : ' sozinha'}`}>
+        <div className="talento-coluna">
+          {habilidades.length > 0 && (
             <section className="painel">
               <div className="painel-topo">
                 <div>
-                  <p className="painel-titulo">Candidatura</p>
-                  <p className="painel-apoio">De onde esta ficha veio</p>
+                  <p className="painel-titulo">Habilidades declaradas</p>
+                  <p className="painel-apoio">
+                    {habilidades.length} {habilidades.length === 1 ? 'habilidade' : 'habilidades'}, de 1 a 5, no nível que a própria pessoa se deu
+                  </p>
                 </div>
               </div>
-              <dl className="talentos-dados">
-                <Dado rotulo="Vaga" valor={ficha.vaga} />
-                <Dado rotulo="Indicado por" valor={ficha.indicado_por} />
-                <Dado rotulo="Contato de quem indicou" valor={ficha.indicado_por_email} />
-                <Dado rotulo="Status na origem" valor={ficha.status_origem} />
-                <Dado rotulo="Candidatou-se em" valor={ficha.candidatura_em ? fmtDataBR(ficha.candidatura_em.slice(0, 10)) : null} />
-                <Dado rotulo="Atualizada em" valor={ficha.atualizado_origem_em ? fmtDataBR(ficha.atualizado_origem_em.slice(0, 10)) : null} />
-                <Dado rotulo="Ficha nº" valor={ficha.id_origem ? `#${ficha.id_origem}` : null} />
-              </dl>
+              <RadarHabilidades habilidades={habilidades} />
             </section>
-          </div>
+          )}
+
         </div>
+
+        <div className="talento-coluna">
+          {/* Radar e régua no mesmo painel: são a mesma pergunta - o quanto a
+              casa conhece esta pessoa - e separados obrigavam a olhar duas
+              vezes para o mesmo número. */}
+          <section className="painel">
+            <div className="painel-topo">
+              <div>
+                <p className="painel-titulo">Avaliação da casa</p>
+                <p className="painel-apoio">
+                  {notas.length
+                    ? `${notas.length} de ${competencias.length} competências avaliadas${podeAvaliar ? ', de 1 a 10' : ''}`
+                    : podeAvaliar ? 'Ainda sem avaliação - dê a primeira nota abaixo, de 1 a 10' : 'Ainda sem avaliação'}
+                </p>
+              </div>
+            </div>
+            {carregando
+              ? <Skeleton h={300} radius="var(--radius-md)" />
+              : <Radar competencias={competencias} notas={porCompetencia}
+                  foco={focoComp} onFoco={setFocoComp} />}
+            <ul className="talentos-lista-notas">
+              {competencias.map(c => {
+                const n = notas.find(x => x.competencia_id === c.id);
+                return (
+                  <li key={c.id}
+                    className={`talentos-nota-linha${focoComp === c.id ? ' aceso' : ''}`}
+                    onMouseEnter={() => setFocoComp(c.id)}
+                    onMouseLeave={() => setFocoComp(null)}>
+                    <div className="talentos-nota-topo">
+                      <span className="talentos-nota-nome">{c.nome}</span>
+                      {podeAvaliar ? (
+                        <input
+                          className="form-input talentos-nota-campo"
+                          type="number" min={1} max={10} step={1}
+                          value={n ? String(n.nota) : ''}
+                          placeholder="-"
+                          onChange={e => {
+                            const v = Number(e.target.value);
+                            if (e.target.value === '' || !Number.isFinite(v)) return;
+                            void darNota(c.id, Math.max(1, Math.min(10, Math.round(v))));
+                          }}
+                        />
+                      ) : (
+                        <strong className="talentos-nota-valor">{n ? n.nota : '-'}</strong>
+                      )}
+                    </div>
+                    <span className="talentos-media-trilho">
+                      <span className="talentos-media-tinta" style={{ width: `${(n?.nota ?? 0) * 10}%` }} />
+                    </span>
+                    {n?.atualizado_por_nome && (
+                      <span className="talentos-nota-quem">
+                        {n.atualizado_por_nome} · {fmtDataBR(n.atualizado_em.slice(0, 10))}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        </div>
+      </div>
+
+      {/* Embaixo dos dois radares, na largura inteira: é leitura corrida, e
+          leitura corrida não divide espaço com desenho. */}
+      {ficha?.case_sucesso && (
+        <section className="painel talento-case">
+          <div className="painel-topo">
+            <div>
+              <p className="painel-titulo">Case de sucesso</p>
+              <p className="painel-apoio">O que ela contou ter feito</p>
+            </div>
+          </div>
+          <p className="talentos-texto">{ficha.case_sucesso}</p>
+        </section>
       )}
 
       {confirmando && (
@@ -577,73 +556,5 @@ export function VisaoGeral({
         />
       )}
     </div>
-  );
-}
-
-/** O cadastro de quem ainda não é da casa. Só o nome é obrigatório: o resto se
- *  descobre conversando, e exigir tudo na primeira tela faz a pessoa não ser
- *  cadastrada. */
-export function NovoInteressado({ gravar, onFechar, onCriado }: {
-  gravar: (corpo: Record<string, unknown>) => Promise<any>;
-  onFechar: () => void;
-  onCriado: (t: TalentoExterno) => void;
-}) {
-  const { toast } = useToast();
-  const [r, setR] = useState({ nome: '', email: '', telefone: '', interesse: '', origem: '' });
-  const set = (k: keyof typeof r, v: string) => setR(p => ({ ...p, [k]: v }));
-
-  return (
-    <Dialogo
-      titulo="Novo interessado"
-      descricao="Alguém que quer trabalhar na Sheep e ainda não trabalha."
-      rotuloOk="Cadastrar"
-      perigo={false}
-      largura={460}
-      onFechar={onFechar}
-      onConfirmar={async () => {
-        const nome = r.nome.trim();
-        if (!nome) { toast('error', 'Falta o nome', 'É o único campo obrigatório.'); return; }
-        const resposta = await gravar({ action: 'create_talento_externo', ...r, nome });
-        if (!resposta || resposta.error) {
-          toast('error', 'Não foi possível cadastrar', resposta?.error ?? 'Tente de novo.');
-          return;
-        }
-        onCriado({
-          id: resposta.id,
-          nome,
-          email: r.email,
-          telefone: r.telefone,
-          foto_url: null,
-          interesse: r.interesse,
-          origem: r.origem,
-          situacao: 'novo',
-          // Cadastro à mão nasce sem a ficha da candidatura: quem preenche o
-          // resto é a conversa, não este formulário.
-          cidade: '', uf: '', senioridade: '', tempo_experiencia: '',
-          nivel_ingles: '', possui_cnpj: null, indicado_por: '',
-          desde: resposta.criado_em,
-          media: null,
-        });
-        toast('success', 'Interessado cadastrado', `${nome} entrou no banco de talentos.`);
-      }}
-    >
-      <div className="talentos-form">
-        <label><span className="form-label">Nome</span>
-          <input className="form-input" value={r.nome} onChange={e => set('nome', e.target.value)}
-            placeholder="Como a pessoa se apresenta" /></label>
-        <label><span className="form-label">E-mail</span>
-          <input className="form-input" value={r.email} onChange={e => set('email', e.target.value)}
-            placeholder="Para onde escrever" /></label>
-        <label><span className="form-label">Telefone</span>
-          <input className="form-input" value={r.telefone} onChange={e => set('telefone', e.target.value)}
-            placeholder="(00) 00000-0000" /></label>
-        <label><span className="form-label">Interesse</span>
-          <input className="form-input" value={r.interesse} onChange={e => set('interesse', e.target.value)}
-            placeholder="O que quer fazer aqui" /></label>
-        <label><span className="form-label">Origem</span>
-          <input className="form-input" value={r.origem} onChange={e => set('origem', e.target.value)}
-            placeholder="Indicação, LinkedIn, evento…" /></label>
-      </div>
-    </Dialogo>
   );
 }

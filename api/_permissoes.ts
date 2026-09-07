@@ -133,7 +133,7 @@ export const CATALOGO: PermGrupo[] = [
     acoes: [
       { chave: 'talentos:ver', label: 'Abrir o banco de talentos', acesso: true },
       { chave: 'talentos:avaliar', label: 'Dar nota de competência' },
-      { chave: 'talentos:editar', label: 'Cadastrar e editar interessados' },
+      { chave: 'talentos:editar', label: 'Editar e excluir interessados' },
     ],
   },
   {
@@ -277,8 +277,8 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   // perguntar, não o que a resposta contém.
   reportes: LIVRE,
   reporte_print: LIVRE,
-  // Mudar o andamento é do dono do painel. Ver, é de todo mundo: quem reportou
-  // precisa saber se aquilo virou alguma coisa.
+  // Mudar o andamento é do dono do painel. Ver o próprio andamento é de quem
+  // reportou: sem isso, quem escreveu não saberia se aquilo virou alguma coisa.
   set_reporte_status: SO_ADMIN,
   board: 'oportunidades:ver',
   detail: 'oportunidades:ver',
@@ -316,7 +316,6 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   talentos: 'talentos:ver',
   talento_notas: 'talentos:ver',
   salvar_talento_nota: 'talentos:avaliar',
-  create_talento_externo: 'talentos:editar',
   update_talento_externo: 'talentos:editar',
   delete_talento_externo: 'talentos:editar',
 
