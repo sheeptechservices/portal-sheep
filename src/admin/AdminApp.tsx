@@ -29,6 +29,7 @@ import type { ReporteNaLista } from '../components/ListaReportes';
 import { iniciarOndas } from '../lib/ondas';
 import { ToastContext, type ToastItem } from '../lib/toast';
 import { TrilhaContext, type DegrauTrilha } from '../lib/trilha';
+import { useTrocaDeNivel } from '../lib/useTrocaDeNivel';
 
 // ── Toast system ─────────────────────────────────────────────────────────────
 // O contrato e o gancho moram em `lib/toast`; aqui fica quem monta o provedor e
@@ -185,6 +186,16 @@ function ToastContainer({ items, onDismiss }: { items: ToastItem[]; onDismiss: (
  *  e sem `page` o filtro por `podeAbrirPagina` deixava ele passar para todo
  *  mundo, inclusive para quem teve o acesso desmarcado. */
 type NavLeaf = { page?: Page; perm?: string; label: string; icon: JSX.Element; disabled?: boolean };
+
+/** Quão fundo a página está. As do menu ficam todas no mesmo andar - trocar
+ *  entre elas é trocar de assunto, não descer -, e Ferramentas abre dois
+ *  degraus abaixo: o hub e a ferramenta. É essa distância que a animação lê
+ *  para saber se a página entra pela direita, pela esquerda ou sem sair do
+ *  lugar. */
+function profundidadeDaPagina(p: Page): number {
+  if (p === 'ferramentas') return 1;
+  return TOOL_PAGES.includes(p) ? 2 : 0;
+}
 const NAV_SECTIONS: { section: string; items: NavLeaf[] }[] = [
   {
     section: 'GERAL',
@@ -1061,6 +1072,11 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
   /** O degrau que a ferramenta aberta publica - ver `lib/trilha`. */
   const [degrau, setDegrau] = useState<DegrauTrilha | null>(null);
   const definirDegrau = useCallback((d: DegrauTrilha | null) => setDegrau(d), []);
+  // O conteúdo segue o nível que está na tela, e não o pedido: enquanto a
+  // saída roda, quem sai continua montado. O menu não espera - o item clicado
+  // acende na hora.
+  const nivel = useTrocaDeNivel(page, profundidadeDaPagina);
+  const paginaNaTela = nivel.mostrado;
   const [quickOpen, setQuickOpen] = useState(false);
   // Card a abrir na página destino. O nonce força o efeito a rodar de novo quando
   // o mesmo card é escolhido duas vezes; a página zera o pedido ao consumi-lo, para
@@ -1344,8 +1360,13 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
           background: 'var(--bg)',
           minHeight: 0,
         }}>
-          {TOOL_PAGES.includes(page) && (
-            <nav aria-label="breadcrumb" className="trilha">
+          {TOOL_PAGES.includes(paginaNaTela) && (
+            // A trilha troca junto com o conteúdo, e não com o clique: ela é o
+            // rótulo do que está na tela. Como a mesma área muda de texto sem
+            // mudar de lugar, ela entra em opacidade - `.troca`, com a chave do
+            // caminho para a animação tocar de novo a cada mudança.
+            <nav aria-label="breadcrumb" className="trilha troca"
+              key={`${paginaNaTela}/${degrau?.label ?? ''}`}>
               <button className="trilha-degrau" onClick={() => setPage('ferramentas')}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
                   <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -1358,12 +1379,12 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
                   abriu por dentro. */}
               {degrau ? (
                 <>
-                  <button className="trilha-degrau" onClick={degrau.onVoltar}>{TOOL_LABELS[page]}</button>
+                  <button className="trilha-degrau" onClick={degrau.onVoltar}>{TOOL_LABELS[paginaNaTela]}</button>
                   <span className="trilha-barra">/</span>
                   <span className="trilha-aqui">{degrau.label}</span>
                 </>
               ) : (
-                <span className="trilha-aqui">{TOOL_LABELS[page]}</span>
+                <span className="trilha-aqui">{TOOL_LABELS[paginaNaTela]}</span>
               )}
             </nav>
           )}
@@ -1374,15 +1395,18 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
           {/* Enquanto as permissões não chegam, esqueleto - e não a página.
               É o que substitui o antigo "na dúvida pode": a tela não pisca cheia
               e também não oferece nada que o servidor vá recusar. */}
+          {/* A chave é o nível: é ela que remonta o bloco e faz a entrada
+              tocar. Sem ela a classe mudaria e a animação não rodaria de novo. */}
+          <div className={`nivel ${nivel.classe}`} key={paginaNaTela}>
           {permissoes === null ? (
             <SkeletonPagina />
-          ) : !paginaLiberada(page) ? (
+          ) : !paginaLiberada(paginaNaTela) ? (
             <SemAcesso />
           ) : (
           // Esqueleto, e não giro: ele já ocupa o formato da página que vem,
           // então a troca de tela não pisca de vazio para cheio.
           <Suspense fallback={<SkeletonPagina />}>
-            {page === 'projetos'      && (
+            {paginaNaTela === 'projetos'      && (
               <ProjetosPage
                 token={token}
                 onVerTarefasDaEntrega={(projeto: string, entrega: number) => {
@@ -1391,23 +1415,24 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
                 }}
               />
             )}
-            {page === 'tarefas'       && (
+            {paginaNaTela === 'tarefas'       && (
               <TarefasPage
                 token={token}
                 filtroInicial={tarefasDaEntrega ?? undefined}
                 onFiltroAplicado={() => setTarefasDaEntrega(null)}
               />
             )}
-            {page === 'dashboard'     && <DashboardPage     token={token} />}
-            {page === 'oportunidades'  && <OportunidadesPage  token={token} openCard={openCard?.page === 'oportunidades' ? openCard : undefined} onCardOpened={() => setOpenCard(null)} />}
-            {page === 'configuracoes' && <ConfiguracoesPage token={token} />}
-            {page === 'ferramentas'   && <FerramentasPage onNavigate={p => setPage(p as Page)} />}
-            {page === 'gerador-documentos' && <GeradorDocumentosPage token={token} />}
-            {page === 'talentos'      && <TalentosPage      token={token} />}
-            {page === 'perfil'        && <PerfilPage token={token} />}
-            {page === 'usuarios'      && <UsuariosPage   token={token} />}
+            {paginaNaTela === 'dashboard'     && <DashboardPage     token={token} />}
+            {paginaNaTela === 'oportunidades'  && <OportunidadesPage  token={token} openCard={openCard?.page === 'oportunidades' ? openCard : undefined} onCardOpened={() => setOpenCard(null)} />}
+            {paginaNaTela === 'configuracoes' && <ConfiguracoesPage token={token} />}
+            {paginaNaTela === 'ferramentas'   && <FerramentasPage onNavigate={p => setPage(p as Page)} />}
+            {paginaNaTela === 'gerador-documentos' && <GeradorDocumentosPage token={token} />}
+            {paginaNaTela === 'talentos'      && <TalentosPage      token={token} />}
+            {paginaNaTela === 'perfil'        && <PerfilPage token={token} />}
+            {paginaNaTela === 'usuarios'      && <UsuariosPage   token={token} />}
           </Suspense>
           )}
+          </div>
         </main>
       </div>
 

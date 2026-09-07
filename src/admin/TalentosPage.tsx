@@ -20,6 +20,7 @@ import { Skeleton } from '../components/Skeleton';
 import { IconAlert, IconChevronRight, IconPlus, IconSearch } from '../components/icons';
 import { dia as fmtDataBR } from '../lib/datas';
 import { useDegrauTrilha } from '../lib/trilha';
+import { useTrocaDeNivel } from '../lib/useTrocaDeNivel';
 import {
   BarraMedia, ChipSituacao, NovoInteressado, PAPEIS, VisaoGeral,
   type Competencia, type Nota, type TalentoExterno, type TalentoInterno,
@@ -27,6 +28,9 @@ import {
 
 type Aba = 'time' | 'interessados';
 type Aberto = { tipo: 'interno' | 'externo'; id: string } | null;
+
+/** A ficha de um talento e um nivel abaixo da lista. */
+const fundura = (a: Aberto) => (a ? 2 : 1);
 
 /** O nome sem acento e em minúsculas, para a busca casar "Joao" com "João". */
 const dobrar = (v: string) =>
@@ -79,13 +83,19 @@ export default function TalentosPage({ token }: { token: string }) {
     return () => { vivo = false; };
   }, [api]);
 
+  // A ficha sai e a lista entra em dois tempos, como a troca de ferramenta na
+  // casca. Tudo aqui embaixo lê `naTela`, e não `aberto`: durante a saída a
+  // ficha continua na tela, e ela precisa da pessoa que estava aberta.
+  const nivel = useTrocaDeNivel(aberto, fundura);
+  const naTela = nivel.mostrado;
+
   /** A pessoa aberta, buscada na lista de onde ela veio. */
   const pessoa = useMemo(() => {
-    if (!aberto) return null;
-    return aberto.tipo === 'interno'
-      ? internos.find(t => t.id === aberto.id) ?? null
-      : externos.find(t => t.id === aberto.id) ?? null;
-  }, [aberto, internos, externos]);
+    if (!naTela) return null;
+    return naTela.tipo === 'interno'
+      ? internos.find(t => t.id === naTela.id) ?? null
+      : externos.find(t => t.id === naTela.id) ?? null;
+  }, [naTela, internos, externos]);
 
   const filtrados = useMemo(() => {
     const q = dobrar(busca.trim());
@@ -110,27 +120,30 @@ export default function TalentosPage({ token }: { token: string }) {
     else setExternos(l => l.map(t => (t.id === id ? { ...t, media } : t)));
   };
 
-  if (aberto && pessoa) {
+  if (naTela && pessoa) {
     return (
+      <div className={`nivel ${nivel.classe}`}>
       <VisaoGeral
-        tipo={aberto.tipo}
+        tipo={naTela.tipo}
         pessoa={pessoa}
         competencias={competencias}
         podeAvaliar={podeAvaliar}
         podeEditar={podeEditar}
         api={api}
         gravar={gravar}
-        onNotas={notas => atualizarMedia(aberto.tipo, aberto.id, notas)}
-        onMudar={campos => setExternos(l => l.map(t => (t.id === aberto.id ? { ...t, ...campos } : t)))}
+        onNotas={notas => atualizarMedia(naTela.tipo, naTela.id, notas)}
+        onMudar={campos => setExternos(l => l.map(t => (t.id === naTela.id ? { ...t, ...campos } : t)))}
         onExcluir={() => {
-          setExternos(l => l.filter(t => t.id !== aberto.id));
+          setExternos(l => l.filter(t => t.id !== naTela.id));
           setAberto(null);
         }}
       />
+      </div>
     );
   }
 
   return (
+    <div className={`nivel ${nivel.classe}`}>
     <div className="admin-content-wrap">
       <div className="admin-page-header">
         <div>
@@ -219,6 +232,7 @@ export default function TalentosPage({ token }: { token: string }) {
           onCriado={t => { setExternos(l => [t, ...l]); setCriando(false); }}
         />
       )}
+    </div>
     </div>
   );
 }

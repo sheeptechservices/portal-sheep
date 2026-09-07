@@ -1817,6 +1817,67 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   .tela-sai { opacity: 0; transition: opacity .2s linear; }
 }
 
+/* -- Troca de nivel: hub, ferramenta, e o que a ferramenta abre ----------
+   Mesmo dois-tempos da troca acima, com sentido: descer um nivel manda a peca
+   para a esquerda e traz a seguinte da direita; voltar faz o contrario. A
+   saida e mais curta que a entrada porque quem sai ja foi decidido - quem
+   chega e que precisa assentar. Os 130ms da saida estao espelhados em
+   `useTrocaDeNivel`.
+
+   `backwards` na entrada, e nao `both`, pelo mesmo motivo da casca: transform
+   que fica cria bloco de contencao para position: fixed. */
+@keyframes nivel-sai-fundo {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(-14px); }
+}
+@keyframes nivel-entra-fundo {
+  from { opacity: 0; transform: translateX(22px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes nivel-sai-volta {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(14px); }
+}
+@keyframes nivel-entra-volta {
+  from { opacity: 0; transform: translateX(-22px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Trocar de pagina pelo menu nao e descer nem voltar: as duas estao no mesmo
+   nivel, entao a passagem nao vem de canto nenhum. E a mesma escala minima da
+   troca entre login e painel, so que curta - o deslocamento ali leria como se
+   a pagina tivesse vindo de algum lugar, e ela nao veio. */
+@keyframes nivel-sai-lado {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(.994); }
+}
+@keyframes nivel-entra-lado {
+  from { opacity: 0; transform: scale(1.006); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* O conteiner ocupa o lugar da pagina que ele embrulha: sem isto o
+   `.admin-content-wrap` la dentro perde o `flex: 1` e para de rolar. */
+.nivel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.nivel-sai-fundo { animation: nivel-sai-fundo .13s cubic-bezier(.4, 0, 1, 1) both; }
+.nivel-sai-volta { animation: nivel-sai-volta .13s cubic-bezier(.4, 0, 1, 1) both; }
+.nivel-sai-lado  { animation: nivel-sai-lado .13s cubic-bezier(.4, 0, 1, 1) both; }
+.nivel-sai-fundo, .nivel-sai-volta, .nivel-sai-lado { pointer-events: none; }
+.nivel-entra-fundo { animation: nivel-entra-fundo .24s var(--curva-anti) backwards; }
+.nivel-entra-volta { animation: nivel-entra-volta .24s var(--curva-anti) backwards; }
+.nivel-entra-lado  { animation: nivel-entra-lado .2s var(--curva-anti) backwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nivel-sai-fundo, .nivel-sai-volta, .nivel-sai-lado,
+  .nivel-entra-fundo, .nivel-entra-volta, .nivel-entra-lado { animation: none; }
+}
+
+
 /* ── Login ────────────────────────────────────────────────────────────────
    Porte do template "Tela de login com ondas animadas": coluna de acesso à
    esquerda, palco com as ondas em WebGL à direita.
