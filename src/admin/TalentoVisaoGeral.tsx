@@ -165,9 +165,9 @@ export function BarraMedia({ media }: { media: number | null }) {
   return (
     <span className="talentos-media">
       <span className="talentos-media-trilho">
-        <span className="talentos-media-tinta" style={{ width: `${media}%` }} />
+        <span className="talentos-media-tinta" style={{ width: `${Math.min(100, media * 10)}%` }} />
       </span>
-      <strong>{media}</strong>
+      <strong>{media.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}</strong>
     </span>
   );
 }
@@ -194,6 +194,7 @@ export function Radar({ competencias, notas }: { competencias: Competencia[]; no
   const ALTURA = 320;
   const centro = { x: LARGURA / 2, y: ALTURA / 2 };
   const raio = ALTURA / 2 - 62;
+  const MAX = 10;
   const ponto = (i: number, valor: number) => {
     // Começa no topo e gira no sentido do relógio, como todo mostrador.
     const angulo = (Math.PI * 2 * i) / n - Math.PI / 2;

@@ -636,6 +636,17 @@ async function migrarSchema(db: Client) {
   `);
   await ddl(`CREATE INDEX IF NOT EXISTS idx_talento_hab_pessoa ON talento_habilidades (tipo, pessoa_id)`);
 
+  // A avaliacao nasceu numa escala de 0 a 100 e passou a ser de 1 a 10 - dez
+  // degraus e o que alguem consegue distinguir ao dar nota, e "56" fingia uma
+  // precisao que ninguem tem. As notas ja dadas descem de escala aqui, uma vez:
+  // depois disto nenhuma passa de 10 nem e zero, entao rodar de novo nao mexe em
+  // nada. O piso e 1 porque zero, na escala nova, nao existe.
+  await db.execute(
+    `UPDATE talento_notas
+        SET nota = MAX(1, CAST(ROUND(nota / 10.0) AS INTEGER))
+      WHERE nota > 10 OR nota < 1`,
+  );
+
   // Semeia as competencias na primeira partida. Sao um ponto de partida para a
   // casa renomear, nao uma escala fechada.
   const temComp = await db.execute('SELECT COUNT(*) c FROM talento_competencias');
@@ -2768,9 +2779,11 @@ async function despacharAdminData(
         atual.quantas += 1;
         soma.set(chave, atual);
       }
+      // Uma casa decimal: numa escala de dez degraus, arredondar para inteiro
+      // apagaria a diferença entre quem tem 6,4 e quem tem 6,6.
       const media = (tipo: string, id: unknown) => {
         const a = soma.get(`${tipo}:${String(id)}`);
-        return a && a.quantas ? Math.round(a.total / a.quantas) : null;
+        return a && a.quantas ? Math.round((a.total / a.quantas) * 10) / 10 : null;
       };
       return {
         status: 200,
@@ -5796,8 +5809,8 @@ function faltaEmProjeto(p: any): string | null {
         : (typeof cru === 'string' && cru.trim() !== '' ? Number(cru) : NaN);
       if (!pessoa || !Number.isFinite(comp)) return { status: 400, body: { error: 'Pessoa ou competência ausente.' } };
       // Nota fora da escala é erro de quem chamou, e não valor a guardar.
-      if (!Number.isFinite(bruta) || bruta < 0 || bruta > 100) {
-        return { status: 400, body: { error: 'A nota vai de 0 a 100.' } };
+      if (!Number.isFinite(bruta) || bruta < 1 || bruta > 10) {
+        return { status: 400, body: { error: 'A nota vai de 1 a 10.' } };
       }
       const nota = Math.round(bruta);
       const agora = new Date().toISOString();
