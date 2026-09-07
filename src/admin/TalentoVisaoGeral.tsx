@@ -13,7 +13,7 @@ import { Avatar } from './FormularioTarefa';
 import { Dialogo } from '../components/Dialogo';
 import { SelectSistema } from '../components/SelectSistema';
 import { Skeleton } from '../components/Skeleton';
-import { IconTrash } from '../components/icons';
+import { IconLink, IconTrash } from '../components/icons';
 import { dia as fmtDataBR } from '../lib/datas';
 
 export interface Competencia { id: number; nome: string }
@@ -39,6 +39,53 @@ export interface TalentoExterno {
   situacao: string;
   desde: string;
   media: number | null;
+  // O que a tabela mostra e filtra da candidatura. O resto vem na ficha.
+  cidade: string;
+  uf: string;
+  senioridade: string;
+  tempo_experiencia: string;
+  nivel_ingles: string;
+  possui_cnpj: boolean | null;
+  indicado_por: string;
+}
+
+/** Uma habilidade declarada pela própria pessoa. */
+export interface Habilidade {
+  nome: string;
+  /** Como veio escrito: "3 anos", "6 meses". */
+  tempo: string | null;
+  /** De 1 a 5, como ela se avaliou. */
+  nivel: number | null;
+}
+
+/** A candidatura inteira, como ela chegou. Tudo opcional: interessado
+ *  cadastrado à mão no portal tem quase nada disto. */
+export interface FichaCandidato {
+  nascimento: string | null;
+  sexo: string | null;
+  cidade: string | null;
+  estado: string | null;
+  uf: string | null;
+  linkedin: string | null;
+  github: string | null;
+  vaga: string | null;
+  modelo_trabalho: string | null;
+  contratacao: string | null;
+  resumo: string | null;
+  senioridade: string | null;
+  tempo_experiencia: string | null;
+  nivel_ingles: string | null;
+  outro_idioma: string | null;
+  possui_cnpj: boolean | null;
+  regime_fiscal: string | null;
+  case_sucesso: string | null;
+  indicado_por: string | null;
+  indicado_por_email: string | null;
+  id_origem: string | null;
+  status_origem: string | null;
+  candidatura_em: string | null;
+  atualizado_origem_em: string | null;
+  observacoes: string | null;
 }
 
 export interface Nota {
@@ -71,6 +118,45 @@ export function ChipSituacao({ situacao }: { situacao: string }) {
       <span className="talentos-ponto" style={{ background: s.cor }} /> {s.label}
     </span>
   );
+}
+
+/** Uma linha de dado da ficha. Campo vazio não vira linha com traço: a lista
+ *  ficaria mais cheia de ausências do que de respostas. */
+function Dado({ rotulo, valor }: { rotulo: string; valor: string | null }) {
+  if (!valor) return null;
+  return <><dt>{rotulo}</dt><dd>{valor}</dd></>;
+}
+
+/** O nível de 1 a 5, em bolinhas: é escala curta, e cinco pontos se contam de
+ *  relance melhor do que "4/5" se lê. */
+function Nivel({ valor }: { valor: number | null }) {
+  if (valor == null) return <span className="talentos-hab-nivel" />;
+  return (
+    <span className="talentos-hab-nivel" title={`Nível ${valor} de 5`}>
+      {[1, 2, 3, 4, 5].map(i => (
+        <span key={i} className={`talentos-hab-ponto${i <= valor ? ' cheio' : ''}`} />
+      ))}
+    </span>
+  );
+}
+
+/** A ficha tem alguma resposta, ou só as colunas vazias? */
+function temFicha(f: FichaCandidato) {
+  return Boolean(f.resumo || f.case_sucesso || f.senioridade || f.vaga
+    || f.nivel_ingles || f.indicado_por || f.id_origem);
+}
+
+/** Os anos completos até hoje. Sem data, nada - idade calculada de nada seria
+ *  um número inventado. */
+function idade(nascimentoIso: string | null): number | null {
+  if (!nascimentoIso) return null;
+  const d = new Date(nascimentoIso.slice(0, 10));
+  if (Number.isNaN(d.getTime())) return null;
+  const hoje = new Date();
+  let anos = hoje.getFullYear() - d.getFullYear();
+  const mes = hoje.getMonth() - d.getMonth();
+  if (mes < 0 || (mes === 0 && hoje.getDate() < d.getDate())) anos--;
+  return anos >= 0 && anos < 120 ? anos : null;
 }
 
 /** A média em barra. Sem nota, uma frase: barra vazia leria como nota zero. */
@@ -192,6 +278,8 @@ export function VisaoGeral({
 }) {
   const { toast } = useToast();
   const [notas, setNotas] = useState<Nota[]>([]);
+  const [habilidades, setHabilidades] = useState<Habilidade[]>([]);
+  const [ficha, setFicha] = useState<FichaCandidato | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [confirmando, setConfirmando] = useState(false);
   const externo = tipo === 'externo' ? (pessoa as TalentoExterno) : null;
@@ -199,7 +287,12 @@ export function VisaoGeral({
   useEffect(() => {
     let vivo = true;
     api(`action=talento_notas&tipo=${tipo}&id=${encodeURIComponent(pessoa.id)}`)
-      .then((d: any) => { if (vivo && d?.notas) setNotas(d.notas); })
+      .then((d: any) => {
+        if (!vivo) return;
+        if (d?.notas) setNotas(d.notas);
+        setHabilidades(d?.habilidades ?? []);
+        setFicha(d?.ficha ?? null);
+      })
       .finally(() => { if (vivo) setCarregando(false); });
     return () => { vivo = false; };
   }, [api, tipo, pessoa.id]);
@@ -270,10 +363,32 @@ export function VisaoGeral({
             <dt>E-mail</dt>
             <dd>{pessoa.email ? <EmailQuebravel valor={pessoa.email} /> : '-'}</dd>
             {externo && <><dt>Telefone</dt><dd>{externo.telefone || '-'}</dd></>}
+            {ficha?.cidade && (
+              <><dt>Onde mora</dt><dd>{[ficha.cidade, ficha.uf].filter(Boolean).join(' - ')}</dd></>
+            )}
+            {ficha?.nascimento && (
+              <><dt>Nascimento</dt><dd>{fmtDataBR(ficha.nascimento.slice(0, 10))}{idade(ficha.nascimento) != null ? ` (${idade(ficha.nascimento)} anos)` : ''}</dd></>
+            )}
+            {ficha?.sexo && <><dt>Sexo</dt><dd>{ficha.sexo}</dd></>}
             {externo && <><dt>Origem</dt><dd>{externo.origem || '-'}</dd></>}
             <dt>{externo ? 'Cadastrado em' : 'No time desde'}</dt>
             <dd>{pessoa.desde ? fmtDataBR(pessoa.desde.slice(0, 10)) : '-'}</dd>
           </dl>
+
+          {(ficha?.linkedin || ficha?.github) && (
+            <div className="talentos-ficha-links">
+              {ficha.linkedin && (
+                <a className="talentos-link" href={ficha.linkedin} target="_blank" rel="noreferrer noopener">
+                  <IconLink size={13} /> LinkedIn
+                </a>
+              )}
+              {ficha.github && (
+                <a className="talentos-link" href={ficha.github} target="_blank" rel="noreferrer noopener">
+                  <IconLink size={13} /> GitHub
+                </a>
+              )}
+            </div>
+          )}
 
           {externo && (
             <div className="talentos-ficha-situacao">
@@ -361,6 +476,91 @@ export function VisaoGeral({
         </section>
       </div>
 
+      {/* A candidatura, como ela chegou. Só existe para quem veio de fora e
+          respondeu ao formulário - interessado cadastrado à mão não tem nada
+          disto, e o bloco inteiro não aparece em vez de aparecer vazio. */}
+      {ficha && (temFicha(ficha) || habilidades.length > 0) && (
+        <div className="talentos-candidatura surge">
+          <div className="talentos-candidatura-col">
+            {(ficha.resumo || ficha.senioridade) && (
+              <section className="painel">
+                <div className="painel-topo">
+                  <div>
+                    <p className="painel-titulo">Perfil profissional</p>
+                    <p className="painel-apoio">Como a pessoa se descreveu</p>
+                  </div>
+                </div>
+                {ficha.resumo && <p className="talentos-texto">{ficha.resumo}</p>}
+                <dl className="talentos-dados">
+                  <Dado rotulo="Senioridade" valor={ficha.senioridade} />
+                  <Dado rotulo="Experiência" valor={ficha.tempo_experiencia} />
+                  <Dado rotulo="Inglês" valor={ficha.nivel_ingles} />
+                  <Dado rotulo="Outro idioma" valor={ficha.outro_idioma} />
+                  <Dado rotulo="Modelo" valor={ficha.modelo_trabalho} />
+                  <Dado rotulo="Contratação" valor={ficha.contratacao} />
+                  <Dado rotulo="CNPJ" valor={ficha.possui_cnpj == null ? null
+                    : ficha.possui_cnpj ? `Sim${ficha.regime_fiscal ? ` (${ficha.regime_fiscal})` : ''}` : 'Não'} />
+                </dl>
+              </section>
+            )}
+
+            {ficha.case_sucesso && (
+              <section className="painel">
+                <div className="painel-topo">
+                  <div>
+                    <p className="painel-titulo">Case de sucesso</p>
+                    <p className="painel-apoio">O que ela contou ter feito</p>
+                  </div>
+                </div>
+                <p className="talentos-texto">{ficha.case_sucesso}</p>
+              </section>
+            )}
+          </div>
+
+          <div className="talentos-candidatura-col">
+            {habilidades.length > 0 && (
+              <section className="painel">
+                <div className="painel-topo">
+                  <div>
+                    <p className="painel-titulo">Habilidades declaradas</p>
+                    <p className="painel-apoio">
+                      {habilidades.length} {habilidades.length === 1 ? 'habilidade' : 'habilidades'}, com o nível que ela mesma se deu
+                    </p>
+                  </div>
+                </div>
+                <ul className="talentos-habilidades">
+                  {habilidades.map(h => (
+                    <li key={h.nome}>
+                      <span className="talentos-hab-nome">{h.nome}</span>
+                      <span className="talentos-hab-tempo">{h.tempo ?? ''}</span>
+                      <Nivel valor={h.nivel} />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            <section className="painel">
+              <div className="painel-topo">
+                <div>
+                  <p className="painel-titulo">Candidatura</p>
+                  <p className="painel-apoio">De onde esta ficha veio</p>
+                </div>
+              </div>
+              <dl className="talentos-dados">
+                <Dado rotulo="Vaga" valor={ficha.vaga} />
+                <Dado rotulo="Indicado por" valor={ficha.indicado_por} />
+                <Dado rotulo="Contato de quem indicou" valor={ficha.indicado_por_email} />
+                <Dado rotulo="Status na origem" valor={ficha.status_origem} />
+                <Dado rotulo="Candidatou-se em" valor={ficha.candidatura_em ? fmtDataBR(ficha.candidatura_em.slice(0, 10)) : null} />
+                <Dado rotulo="Atualizada em" valor={ficha.atualizado_origem_em ? fmtDataBR(ficha.atualizado_origem_em.slice(0, 10)) : null} />
+                <Dado rotulo="Ficha nº" valor={ficha.id_origem ? `#${ficha.id_origem}` : null} />
+              </dl>
+            </section>
+          </div>
+        </div>
+      )}
+
       {confirmando && (
         <Dialogo
           titulo="Excluir interessado"
@@ -416,6 +616,10 @@ export function NovoInteressado({ gravar, onFechar, onCriado }: {
           interesse: r.interesse,
           origem: r.origem,
           situacao: 'novo',
+          // Cadastro à mão nasce sem a ficha da candidatura: quem preenche o
+          // resto é a conversa, não este formulário.
+          cidade: '', uf: '', senioridade: '', tempo_experiencia: '',
+          nivel_ingles: '', possui_cnpj: null, indicado_por: '',
           desde: resposta.criado_em,
           media: null,
         });

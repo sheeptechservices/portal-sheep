@@ -34,7 +34,7 @@ type Aba = 'todos' | 'time' | 'interessados';
 const CABECALHOS: Record<Aba, string[]> = {
   todos: ['Vínculo', 'Papel ou interesse'],
   time: ['Papel', 'No time desde'],
-  interessados: ['Interesse', 'Situação'],
+  interessados: ['Interesse', 'Senioridade', 'Experiência', 'Onde mora', 'Situação'],
 };
 type Aberto = { tipo: 'interno' | 'externo'; id: string } | null;
 
@@ -54,6 +54,9 @@ interface LinhaUnificada {
   media: number | null;
   papel: string | null;
   situacao: string | null;
+  /** Só quem veio de candidatura tem: quem é da casa não respondeu a isto. */
+  senioridade: string;
+  ingles: string;
 }
 
 const VINCULOS = [
@@ -82,6 +85,8 @@ export default function TalentosPage({ token }: { token: string }) {
   const [fPapel, setFPapel] = useState<string[]>([]);
   const [fSituacao, setFSituacao] = useState<string[]>([]);
   const [fAvaliacao, setFAvaliacao] = useState<string[]>([]);
+  const [fSenioridade, setFSenioridade] = useState<string[]>([]);
+  const [fIngles, setFIngles] = useState<string[]>([]);
   const [busca, setBusca] = useState('');
   const [aberto, setAberto] = useState<Aberto>(null);
   const [criando, setCriando] = useState(false);
@@ -140,26 +145,36 @@ export default function TalentosPage({ token }: { token: string }) {
     ...internos.map(t => ({
       tipo: 'interno' as const, id: t.id, nome: t.nome, email: t.email, foto: t.foto_url,
       meio: PAPEIS[t.papel] ?? t.papel, media: t.media, papel: t.papel, situacao: null,
+      senioridade: '', ingles: '',
     })),
     ...externos.map(t => ({
       tipo: 'externo' as const, id: t.id, nome: t.nome, email: t.email, foto: t.foto_url,
       meio: t.interesse || '-', media: t.media, papel: null, situacao: t.situacao,
+      senioridade: t.senioridade, ingles: t.nivel_ingles,
     })),
   ].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')), [internos, externos]);
 
   /** Só o que existe na tela vira opção: oferecer "Contratado" sem nenhum
    *  contratado é oferecer uma lista vazia. */
-  const opcoes = useMemo(() => ({
-    papel: [...new Set(internos.map(t => t.papel))]
-      .map(p => ({ value: p, label: PAPEIS[p] ?? p })),
-    situacao: SITUACOES.filter(s => externos.some(t => t.situacao === s.valor))
-      .map(s => ({ value: s.valor, label: s.label })),
-  }), [internos, externos]);
+  const opcoes = useMemo(() => {
+    const distintos = (campo: 'senioridade' | 'nivel_ingles') =>
+      [...new Set(externos.map(t => t[campo]).filter(Boolean))].sort()
+        .map(v => ({ value: v, label: v }));
+    return {
+      papel: [...new Set(internos.map(t => t.papel))]
+        .map(p => ({ value: p, label: PAPEIS[p] ?? p })),
+      situacao: SITUACOES.filter(s => externos.some(t => t.situacao === s.valor))
+        .map(s => ({ value: s.valor, label: s.label })),
+      senioridade: distintos('senioridade'),
+      ingles: distintos('nivel_ingles'),
+    };
+  }, [internos, externos]);
 
-  const temFiltro = fVinculo.length > 0 || fPapel.length > 0
-    || fSituacao.length > 0 || fAvaliacao.length > 0;
+  const temFiltro = fVinculo.length > 0 || fPapel.length > 0 || fSituacao.length > 0
+    || fAvaliacao.length > 0 || fSenioridade.length > 0 || fIngles.length > 0;
   const limparFiltros = () => {
     setFVinculo([]); setFPapel([]); setFSituacao([]); setFAvaliacao([]);
+    setFSenioridade([]); setFIngles([]);
   };
 
   const filtrados = useMemo(() => {
@@ -175,9 +190,12 @@ export default function TalentosPage({ token }: { token: string }) {
         && (!fVinculo.length || fVinculo.includes(t.tipo))
         && (!fPapel.length || (t.papel != null && fPapel.includes(t.papel)))
         && (!fSituacao.length || (t.situacao != null && fSituacao.includes(t.situacao)))
-        && (!fAvaliacao.length || fAvaliacao.includes(t.media == null ? 'sem' : 'com'))),
+        && (!fAvaliacao.length || fAvaliacao.includes(t.media == null ? 'sem' : 'com'))
+        && (!fSenioridade.length || fSenioridade.includes(t.senioridade))
+        && (!fIngles.length || fIngles.includes(t.ingles))),
     };
-  }, [busca, internos, externos, todos, fVinculo, fPapel, fSituacao, fAvaliacao]);
+  }, [busca, internos, externos, todos, fVinculo, fPapel, fSituacao, fAvaliacao,
+    fSenioridade, fIngles]);
 
   /** A média entra na lista sem esperar o servidor: ela é conta do que já está
    *  na tela, e recalculá-la no servidor pediria outra ida. */
@@ -265,6 +283,12 @@ export default function TalentosPage({ token }: { token: string }) {
             {opcoes.situacao.length > 0 && (
               <FilterDropdown label="Situação" values={fSituacao} options={opcoes.situacao} onChange={setFSituacao} />
             )}
+            {opcoes.senioridade.length > 0 && (
+              <FilterDropdown label="Senioridade" values={fSenioridade} options={opcoes.senioridade} onChange={setFSenioridade} />
+            )}
+            {opcoes.ingles.length > 0 && (
+              <FilterDropdown label="Inglês" values={fIngles} options={opcoes.ingles} onChange={setFIngles} />
+            )}
             <FilterDropdown label="Avaliação" values={fAvaliacao} options={AVALIACOES} onChange={setFAvaliacao} />
             {temFiltro && (
               <button className="admin-toolbar-limpar surge" onClick={limparFiltros}>Limpar</button>
@@ -313,7 +337,13 @@ export default function TalentosPage({ token }: { token: string }) {
               ))}
               {aba === 'interessados' && filtrados.externos.map(t => (
                 <Linha key={t.id} nome={t.nome} email={t.email} foto={t.foto_url} media={t.media}
-                  colunas={[t.interesse || '-', <ChipSituacao situacao={t.situacao} />]}
+                  colunas={[
+                    t.interesse || '-',
+                    t.senioridade || '-',
+                    t.tempo_experiencia || '-',
+                    [t.cidade, t.uf].filter(Boolean).join(' - ') || '-',
+                    <ChipSituacao situacao={t.situacao} />,
+                  ]}
                   onAbrir={() => setAberto({ tipo: 'externo', id: t.id })} />
               ))}
             </tbody>

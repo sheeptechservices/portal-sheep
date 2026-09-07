@@ -559,6 +559,34 @@ async function migrarSchema(db: Client) {
     )
   `);
 
+  // A ficha do candidato. Estas colunas nasceram da importacao das candidaturas
+  // do sistema antigo: o formulario de la perguntava tudo isto, e jogar fora o
+  // que ja foi respondido seria pedir de novo. Todas opcionais - interessado
+  // cadastrado a mao no portal continua sendo so nome, e-mail e interesse.
+  const colunasDoCandidato = [
+    // Quem e
+    'nascimento TEXT', 'sexo TEXT', 'cidade TEXT', 'estado TEXT', 'uf TEXT',
+    'linkedin TEXT', 'github TEXT',
+    // A que se candidatou, e como quer trabalhar
+    'vaga TEXT', 'modelo_trabalho TEXT', 'contratacao TEXT',
+    // Perfil profissional
+    'resumo TEXT', 'senioridade TEXT', 'tempo_experiencia TEXT',
+    'nivel_ingles TEXT', 'outro_idioma TEXT',
+    // Situacao fiscal
+    'possui_cnpj INTEGER', 'regime_fiscal TEXT',
+    // A prova de trabalho que a pessoa contou
+    'case_sucesso TEXT',
+    // Quem apresentou a pessoa a casa
+    'indicado_por TEXT', 'indicado_por_email TEXT',
+    // De onde a linha veio, para nao importar duas vezes e para nao perder o
+    // que o sistema antigo ja sabia
+    'id_origem TEXT', 'status_origem TEXT', 'candidatura_em TEXT',
+    'atualizado_origem_em TEXT',
+  ];
+  for (const coluna of colunasDoCandidato) {
+    try { await ddl(`ALTER TABLE talentos_externos ADD COLUMN ${coluna}`); } catch {}
+  }
+
   // As competencias avaliadas. Lista, e nao colunas: renomear ou acrescentar uma
   // competencia nao pode pedir migracao de tabela.
   await ddl(`
@@ -588,6 +616,25 @@ async function migrarSchema(db: Client) {
     )
   `);
   await ddl(`CREATE INDEX IF NOT EXISTS idx_talento_notas_pessoa ON talento_notas (tipo, pessoa_id)`);
+
+  // As habilidades que a propria pessoa declarou, com quanto tempo de uso e que
+  // nivel se da. Tabela, e nao coluna JSON: assim uma habilidade e uma linha
+  // procuravel, e nao um texto que so a tela sabe abrir. Mesma convencao de
+  // `tipo` das notas, para o dia em que alguem da casa declarar as suas.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS talento_habilidades (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      tipo      TEXT NOT NULL,
+      pessoa_id TEXT NOT NULL,
+      nome      TEXT NOT NULL,
+      /** Como veio escrito: "3 anos", "6 meses". */
+      tempo     TEXT,
+      /** De 1 a 5, como a pessoa se avaliou. */
+      nivel     INTEGER,
+      UNIQUE (tipo, pessoa_id, nome)
+    )
+  `);
+  await ddl(`CREATE INDEX IF NOT EXISTS idx_talento_hab_pessoa ON talento_habilidades (tipo, pessoa_id)`);
 
   // Semeia as competencias na primeira partida. Sao um ponto de partida para a
   // casa renomear, nao uma escala fechada.
@@ -2704,7 +2751,9 @@ async function despacharAdminData(
         db.execute('SELECT id, nome FROM talento_competencias WHERE ativa = 1 ORDER BY ordem, id'),
         db.execute(`SELECT id, nome, email, foto_url, papel, criado_em
                     FROM usuarios WHERE ativo = 1 ORDER BY nome`),
-        db.execute(`SELECT id, nome, email, telefone, foto_url, interesse, origem, situacao, criado_em
+        db.execute(`SELECT id, nome, email, telefone, foto_url, interesse, origem, situacao, criado_em,
+                           cidade, uf, senioridade, tempo_experiencia, nivel_ingles, possui_cnpj,
+                           indicado_por
                     FROM talentos_externos ORDER BY criado_em DESC`),
         db.execute('SELECT tipo, pessoa_id, nota FROM talento_notas'),
       ]);
@@ -2747,24 +2796,89 @@ async function despacharAdminData(
             situacao: String(t.situacao ?? 'novo'),
             desde: String(t.criado_em ?? ''),
             media: media('externo', t.id),
+            // O que a tabela mostra e filtra. O resto da ficha vem em
+            // `talento_detalhe`, quando alguem abre a pessoa.
+            cidade: t.cidade != null ? String(t.cidade) : '',
+            uf: t.uf != null ? String(t.uf) : '',
+            senioridade: t.senioridade != null ? String(t.senioridade) : '',
+            tempo_experiencia: t.tempo_experiencia != null ? String(t.tempo_experiencia) : '',
+            nivel_ingles: t.nivel_ingles != null ? String(t.nivel_ingles) : '',
+            possui_cnpj: t.possui_cnpj == null ? null : Number(t.possui_cnpj) === 1,
+            indicado_por: t.indicado_por != null ? String(t.indicado_por) : '',
           })),
         },
       };
     }
 
-    // As notas de uma pessoa, para a tela de visão geral.
+    // As notas de uma pessoa, mais o que só a ficha dela precisa: as
+    // habilidades declaradas e, para quem veio de fora, a candidatura inteira.
+    // Numa ida só - a visão geral abre com as três coisas.
     if (action === 'talento_notas') {
       const tipo = query.get('tipo') === 'externo' ? 'externo' : 'interno';
       const pessoa = query.get('id');
       if (!pessoa) return { status: 400, body: { error: 'id required' } };
-      const r = await db.execute({
-        sql: `SELECT competencia_id, nota, atualizado_em, atualizado_por_nome
-              FROM talento_notas WHERE tipo = ? AND pessoa_id = ?`,
-        args: [tipo, pessoa],
-      });
+      const [r, hab, ficha] = await Promise.all([
+        db.execute({
+          sql: `SELECT competencia_id, nota, atualizado_em, atualizado_por_nome
+                FROM talento_notas WHERE tipo = ? AND pessoa_id = ?`,
+          args: [tipo, pessoa],
+        }),
+        db.execute({
+          sql: `SELECT nome, tempo, nivel FROM talento_habilidades
+                WHERE tipo = ? AND pessoa_id = ?
+                ORDER BY nivel DESC, nome`,
+          args: [tipo, pessoa],
+        }),
+        tipo === 'externo'
+          ? db.execute({
+            sql: `SELECT nascimento, sexo, cidade, estado, uf, linkedin, github,
+                         vaga, modelo_trabalho, contratacao, resumo, senioridade,
+                         tempo_experiencia, nivel_ingles, outro_idioma, possui_cnpj,
+                         regime_fiscal, case_sucesso, indicado_por, indicado_por_email,
+                         id_origem, status_origem, candidatura_em, atualizado_origem_em,
+                         observacoes
+                  FROM talentos_externos WHERE id = ?`,
+            args: [pessoa],
+          })
+          : Promise.resolve({ rows: [] as any[] }),
+      ]);
+      const f = ficha.rows[0] as Record<string, any> | undefined;
+      const texto = (v: unknown) => (v != null && String(v) !== '' ? String(v) : null);
       return {
         status: 200,
         body: {
+          habilidades: hab.rows.map(h => ({
+            nome: String(h.nome),
+            tempo: texto(h.tempo),
+            nivel: h.nivel == null ? null : Number(h.nivel),
+          })),
+          ficha: f ? {
+            nascimento: texto(f.nascimento),
+            sexo: texto(f.sexo),
+            cidade: texto(f.cidade),
+            estado: texto(f.estado),
+            uf: texto(f.uf),
+            linkedin: texto(f.linkedin),
+            github: texto(f.github),
+            vaga: texto(f.vaga),
+            modelo_trabalho: texto(f.modelo_trabalho),
+            contratacao: texto(f.contratacao),
+            resumo: texto(f.resumo),
+            senioridade: texto(f.senioridade),
+            tempo_experiencia: texto(f.tempo_experiencia),
+            nivel_ingles: texto(f.nivel_ingles),
+            outro_idioma: texto(f.outro_idioma),
+            possui_cnpj: f.possui_cnpj == null ? null : Number(f.possui_cnpj) === 1,
+            regime_fiscal: texto(f.regime_fiscal),
+            case_sucesso: texto(f.case_sucesso),
+            indicado_por: texto(f.indicado_por),
+            indicado_por_email: texto(f.indicado_por_email),
+            id_origem: texto(f.id_origem),
+            status_origem: texto(f.status_origem),
+            candidatura_em: texto(f.candidatura_em),
+            atualizado_origem_em: texto(f.atualizado_origem_em),
+            observacoes: texto(f.observacoes),
+          } : null,
           notas: r.rows.map(n => ({
             competencia_id: Number(n.competencia_id),
             nota: Number(n.nota),
@@ -5640,8 +5754,10 @@ function faltaEmProjeto(p: any): string | null {
     }
 
     if (action === 'delete_talento_externo') {
-      // As notas vão junto: sem a pessoa elas não têm de quem falar.
+      // As notas e as habilidades vão junto: sem a pessoa elas não têm de quem
+      // falar, e ficariam apontando para um id que não existe mais.
       await db.execute({ sql: 'DELETE FROM talento_notas WHERE tipo = ? AND pessoa_id = ?', args: ['externo', String(body?.id)] });
+      await db.execute({ sql: 'DELETE FROM talento_habilidades WHERE tipo = ? AND pessoa_id = ?', args: ['externo', String(body?.id)] });
       await db.execute({ sql: 'DELETE FROM talentos_externos WHERE id = ?', args: [body?.id] });
       return { status: 200, body: { ok: true } };
     }

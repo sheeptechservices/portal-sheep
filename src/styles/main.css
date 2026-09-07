@@ -1817,6 +1817,114 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   .tela-sai { opacity: 0; transition: opacity .2s linear; }
 }
 
+/* -- A candidatura, embaixo da visao geral ------------------------------
+   Duas colunas: a esquerda e leitura corrida (resumo e case), a direita e
+   consulta (habilidades e de onde a ficha veio). */
+.talentos-candidatura {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  gap: 16px;
+  margin-top: 16px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .talentos-candidatura { grid-template-columns: 1fr; }
+}
+.talentos-candidatura-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+/* Texto que a pessoa escreveu: medida de leitura, e nao a largura do painel. */
+.talentos-texto {
+  margin: 0;
+  max-width: 78ch;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--gray);
+  white-space: pre-line;
+}
+.talentos-texto + .talentos-dados { margin-top: 16px; }
+.talentos-dados {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 7px 14px;
+  font-size: 12.5px;
+}
+.talentos-dados dt { color: var(--gray2); white-space: nowrap; }
+.talentos-dados dd {
+  margin: 0;
+  color: var(--black);
+  font-weight: 600;
+  overflow-wrap: break-word;
+}
+
+/* Habilidade: nome, ha quanto tempo, e o nivel em cinco pontos. */
+.talentos-habilidades {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.talentos-habilidades li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--gray4);
+}
+.talentos-habilidades li:last-child { border-bottom: none; }
+.talentos-hab-nome {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--black);
+  overflow-wrap: break-word;
+}
+.talentos-hab-tempo {
+  font-size: 11.5px;
+  color: var(--gray2);
+  white-space: nowrap;
+}
+.talentos-hab-nivel { display: inline-flex; gap: 3px; }
+.talentos-hab-ponto {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gray4);
+}
+.talentos-hab-ponto.cheio { background: var(--green-light); }
+
+/* Os enderecos da pessoa, no pe da ficha. */
+.talentos-ficha-links {
+  width: 100%;
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.talentos-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border: 1px solid var(--gray4);
+  border-radius: var(--radius-pill);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--gray);
+  text-decoration: none;
+  transition: color var(--transition), border-color var(--transition), background var(--transition);
+}
+.talentos-link:hover {
+  color: var(--black);
+  border-color: var(--gray2);
+  background: var(--card-hover-bg);
+}
+
 /* -- Troca de nivel: hub, ferramenta, e o que a ferramenta abre ----------
    Mesmo dois-tempos da troca acima, com sentido: descer um nivel manda a peca
    para a esquerda e traz a seguinte da direita; voltar faz o contrario. A
@@ -6515,12 +6623,7 @@ button.checklist-texto:focus-visible {
   line-height: 1.5;
   color: var(--black);
   white-space: pre-wrap;
-  /* `break-word`, e nao `anywhere`: com `anywhere` a quebra e gulosa e parte a
-     palavra onde a linha encheu - o e-mail virava "...she / eptechnology". Com
-     `break-word` a linha respeita as oportunidades de quebra que o texto
-     oferece (o `<wbr>` depois do arroba) e so parte no meio da palavra se ela
-     sozinha nao couber. */
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 .ativ-marca {
   font-weight: 700;
@@ -15475,7 +15578,12 @@ button.checklist-texto:focus-visible {
   margin: 0;
   color: var(--black);
   font-weight: 600;
-  overflow-wrap: anywhere;
+  /* `break-word`, e nao `anywhere`: com `anywhere` a quebra e gulosa e parte a
+     palavra onde a linha encheu - o e-mail virava "...she / eptechnology". Com
+     `break-word` a linha respeita as oportunidades de quebra que o texto
+     oferece (o `<wbr>` depois do arroba) e so parte no meio da palavra se ela
+     sozinha nao couber. */
+  overflow-wrap: break-word;
 }
 .talentos-ficha-situacao {
   width: 100%;
