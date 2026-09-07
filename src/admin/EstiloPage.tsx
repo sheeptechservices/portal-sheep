@@ -22,6 +22,7 @@ import {
 } from '../components/icons';
 import { Abas } from '../components/Abas';
 import { SegSwitch } from '../components/SegSwitch';
+import { Chave } from '../components/Chave';
 import { SelectSistema } from '../components/SelectSistema';
 import { DatePicker } from '../components/DatePicker';
 import { ConfirmarExclusao, Dialogo } from '../components/Dialogo';
@@ -84,6 +85,7 @@ const CORES: { token: string; nota: string }[] = [
 export default function EstiloPage() {
   const [aba, setAba] = useState<'a' | 'b'>('a');
   const [seg, setSeg] = useState<'sim' | 'nao'>('nao');
+  const [chave, setChave] = useState(true);
   const [sel, setSel] = useState<string>('Média');
   const [data, setData] = useState('');
   const [caixa, setCaixa] = useState<null | 'dialogo' | 'exclusao'>(null);
@@ -192,6 +194,9 @@ export default function EstiloPage() {
         </Peca>
         <Peca nome="DatePicker" largo>
           <DatePicker value={data} onChange={setData} compact allowPast />
+        </Peca>
+        <Peca nome="Chave" nota="liga e desliga: uma das respostas é o normal, e a outra é a exceção">
+          <Chave ligada={chave} onChange={setChave} rotulo="Mostrar resolvidos" />
         </Peca>
         <Peca nome="SegSwitch" nota="pergunta fechada, com as duas respostas à vista">
           <SegSwitch

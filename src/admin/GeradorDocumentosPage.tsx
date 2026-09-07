@@ -8,6 +8,7 @@ import { createPortal } from 'react-dom';
 import { DatePicker } from '../components/DatePicker';
 import { PreviaDocx } from '../components/PreviaDocx';
 import { SegSwitch as Segmentado } from '../components/SegSwitch';
+import { Chave } from '../components/Chave';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { ajustarBannerDocx, fixarRodapeImpressao } from '../lib/docxBanner';
 import { useAuth, useToast } from './AdminApp';
@@ -1562,15 +1563,10 @@ export default function GeradorDocumentosPage({ token }: { token: string }) {
                     <SelectSistema valor={tipoDoc} onChange={setTipoDoc} opcoes={TIPOS_DOC} />
                   </div>
                 </Campo>
-                <label className="form-checkbox-label" style={{ paddingTop: 0, paddingBottom: 10 }}>
-                  <input
-                    type="checkbox"
-                    className="form-checkbox"
-                    checked={ocultarTaxa}
-                    onChange={e => setOcultarTaxa(e.target.checked)}
-                  />
-                  Ocultar taxa no documento
-                </label>
+                <div style={{ paddingBottom: 10 }}>
+                  <Chave ligada={ocultarTaxa} onChange={setOcultarTaxa}
+                    rotulo="Ocultar taxa no documento" />
+                </div>
               </div>
             </div>
 

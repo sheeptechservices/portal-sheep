@@ -11,6 +11,7 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { SelectSistema } from '../components/SelectSistema';
+import { Chave } from '../components/Chave';
 import { zipSync } from 'fflate';
 import {
   IconArrowRight, IconDownload, IconEye, IconPlus, IconRefresh,
@@ -655,11 +656,10 @@ export default function GeradorLotePropostas({ token }: { token: string }) {
               <SelectSistema valor={tipoDoc} onChange={setTipoDoc} opcoes={TIPOS_DOC} />
             </div>
           </CampoLote>
-          <label className="form-checkbox-label" style={{ paddingTop: 0, paddingBottom: 10 }}>
-            <input type="checkbox" className="form-checkbox" checked={ocultarTaxa}
-              onChange={e => setOcultarTaxa(e.target.checked)} />
-            Ocultar taxa no documento
-          </label>
+          <div style={{ paddingBottom: 10 }}>
+            <Chave ligada={ocultarTaxa} onChange={setOcultarTaxa}
+              rotulo="Ocultar taxa no documento" />
+          </div>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14, marginTop: 16 }}>
@@ -682,11 +682,10 @@ export default function GeradorLotePropostas({ token }: { token: string }) {
         </div>
 
         {gruposUsados.length > 0 && (
-          <label className="form-checkbox-label" style={{ marginTop: 14 }}>
-            <input type="checkbox" className="form-checkbox" checked={somarMesmaData}
-              onChange={e => setSomarMesmaData(e.target.checked)} />
-            Nos grupos, somar as notas que vencem no mesmo dia numa parcela só
-          </label>
+          <div style={{ marginTop: 14 }}>
+            <Chave ligada={somarMesmaData} onChange={setSomarMesmaData}
+              rotulo="Nos grupos, somar as notas que vencem no mesmo dia numa parcela só" />
+          </div>
         )}
       </div>
 

@@ -17,6 +17,7 @@ import { Dialogo } from './Dialogo';
 import { PreviaArquivo } from './PreviaArquivo';
 import { SelectSistema } from './SelectSistema';
 import { Avatar } from '../admin/FormularioTarefa';
+import { Chave } from './Chave';
 import { ICONE_PRIORIDADE } from '../lib/prioridades';
 import { instante, tempoRelativo } from '../lib/datas';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
@@ -97,10 +98,20 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
   const limparPergunta = () => { setConfirmando(null); setComentario(''); };
   /** Uma linha aberta por vez: a fila é para varrer, e três detalhes abertos
    *  juntos empurram o resto para fora da tela. */
+  /** Resolvido sai da fila por padrão: o que se abre a lista para ver é o que
+   *  ainda não aconteceu. A chave traz de volta quem quer conferir o histórico,
+   *  e vale para todo mundo - não é ajuste de administrador. */
+  const [verResolvidos, setVerResolvidos] = useState(false);
   const [aberta, setAberta] = useState<number | null>(null);
   /** Os ids já abertos alguma vez. O detalhe deles fica montado daí em diante:
    *  montado só enquanto aberto, o bloco animaria de nada para nada. */
   const [jaAbertas, setJaAbertas] = useState<Set<number>>(new Set());
+
+  /** Quantos estão fora da fila agora - o número que a chave mostra. */
+  const resolvidos = (lista ?? []).filter(r => r.status === 'resolvido').length;
+  /** O que a tabela desenha. Filtrar aqui, e não esconder por CSS: linha
+   *  escondida continua no caminho do teclado e da leitura de tela. */
+  const visiveis = (lista ?? []).filter(r => verResolvidos || r.status !== 'resolvido');
   /** O quadro agendado para abrir uma linha recém-montada. Guardado para ser
    *  cancelado se a janela fechar antes de ele chegar. */
   const quadro = useRef(0);
@@ -207,9 +218,17 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
                   : 'O que você reportou, do mais urgente para o menos'}
               </span>
             </p>
-            <button type="button" className="admin-modal-close" onClick={fechar} aria-label="Fechar">
-              <IconX size={16} />
-            </button>
+            <div className="reportes-acoes">
+              <Chave
+                ligada={verResolvidos}
+                onChange={setVerResolvidos}
+                rotulo={`Mostrar resolvidos${resolvidos ? ` (${resolvidos})` : ''}`}
+                dica="Chamados resolvidos ficam fora da fila por padrão"
+              />
+              <button type="button" className="admin-modal-close" onClick={fechar} aria-label="Fechar">
+                <IconX size={16} />
+              </button>
+            </div>
           </div>
 
           <div className="reportes-corpo">
@@ -220,9 +239,11 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
               <p className="ff-vazio ff-erro"><IconAlert size={13} /> {erro}</p>
             ) : !lista ? (
               <div className="dux-spinner-row" style={{ padding: 48 }}><span className="dux-spinner" /></div>
-            ) : lista.length === 0 ? (
+            ) : visiveis.length === 0 ? (
               <p className="reportes-vazio">
-                Nada reportado ainda. O que for enviado pelo cartão do menu aparece aqui.
+                {lista.length === 0
+                  ? 'Nada reportado ainda. O que for enviado pelo cartão do menu aparece aqui.'
+                  : `Nada em aberto. ${resolvidos === 1 ? 'Há um chamado resolvido' : `Há ${resolvidos} chamados resolvidos`} - ligue a chave acima para vê-${resolvidos === 1 ? 'lo' : 'los'}.`}
               </p>
             ) : (
               <table className="reportes-tabela">
@@ -238,8 +259,13 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
                     <th>Quando</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {lista.map(r => {
+                {/* A chave remonta o corpo da tabela, e é a troca da chave que
+                    faz a entrada das linhas tocar - o padrão da casa para lista
+                    que responde a filtro. A chave é `verResolvidos`, e não a
+                    assinatura das linhas: assim resolver um chamado não
+                    reanima a fila inteira, só a troca da chave anima. */}
+                <tbody className="lista-anima" key={String(verResolvidos)}>
+                  {visiveis.map(r => {
                     const Icone = ICONE_PRIORIDADE[r.urgencia];
                     const abertaAqui = aberta === r.id;
                     // Resolvido sai do caminho sem sair da lista: fica riscado e

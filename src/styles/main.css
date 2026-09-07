@@ -1817,20 +1817,95 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   .tela-sai { opacity: 0; transition: opacity .2s linear; }
 }
 
-/* -- A candidatura, embaixo da visao geral ------------------------------
-   Duas colunas: a esquerda e leitura corrida (resumo e case), a direita e
-   consulta (habilidades e de onde a ficha veio). */
-.talentos-candidatura {
-  display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
-  gap: 16px;
-  margin-top: 16px;
-  align-items: start;
+/* As acoes do cabecalho dos chamados: a chave dos resolvidos e o fechar. */
+.reportes-acoes {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
 }
-@media (max-width: 1100px) {
-  .talentos-candidatura { grid-template-columns: 1fr; }
+
+/* -- A chave de liga e desliga -----------------------------------------
+   A anatomia e a da referencia da casa: o pino e um circulo MAIOR que o
+   trilho, e transborda para fora dele em cima, embaixo e na ponta. Nao e o
+   interruptor de celular, em que o pino cabe dentro do trilho - aqui o pino e
+   a peca principal e o trilho e o caminho por onde ele corre.
+
+   Desligada, os dois sao neutros; ligada, os dois sao o verde da casa - o pino
+   cheio, o trilho lavado. */
+.chave {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray);
+  cursor: pointer;
+  transition: color var(--transition);
 }
-.talentos-candidatura-col {
+.chave:hover { color: var(--black); }
+/* A caixa tem a altura do pino, e nao a do trilho: e o pino que define o
+   espaco que a peca ocupa. */
+.chave-trilho {
+  position: relative;
+  width: 34px;
+  height: 18px;
+  flex-shrink: 0;
+}
+/* O trilho vai de ponta a ponta da caixa, e nao recuado a esquerda: recuado,
+   o pino transbordava por fora dele quando desligada e a peca inteira ficava
+   7px mais larga do que quando ligada - a chave mudava de tamanho ao mudar de
+   estado. O pino transborda so na vertical, que e o que da a silhueta. */
+.chave-trilho::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 4px;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--gray3);
+  transition: background var(--transition);
+}
+/* O pino tem o mesmo diametro ligada e desligada - o que muda e a cor e onde
+   ele esta. Tamanho que cresce ao ligar faria a peca pular de lugar. */
+.chave-pino {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--gray2);
+  /* Movimento vai na curva de movimento; cor, na de realce. */
+  transition: transform var(--transition-spring), background var(--transition);
+}
+.chave.ligada .chave-trilho::before {
+  background: color-mix(in srgb, var(--yellow) 38%, transparent);
+}
+.chave.ligada .chave-pino {
+  transform: translateX(16px);
+  background: var(--yellow);
+}
+.chave:focus-visible { outline: none; }
+.chave:focus-visible .chave-pino {
+  box-shadow: 0 0 0 3px var(--gray4);
+}
+.chave-rotulo { white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .chave-pino { transition: none; }
+}
+
+/* -- A ficha do talento: capa e duas colunas ---------------------------
+   A capa e uma faixa: foto, nome, papel e os selos do que se le de relance.
+   A identidade vivia numa coluna de 280px ao lado do radar, e "Analista de
+   sistemas / Especialista em seguranca cibernetica" nao cabe em 280px. */
+.talento-capa {
   display: flex;
   flex-direction: column;
   gap: 16px;

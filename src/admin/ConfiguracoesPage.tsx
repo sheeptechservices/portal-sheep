@@ -10,6 +10,7 @@ import {
   IconTrash, IconUser, IconX,
 } from '../components/icons';
 import { SegSwitch } from '../components/SegSwitch';
+import { Chave } from '../components/Chave';
 import { Dialogo } from '../components/Dialogo';
 import { Abas, AbaPainel } from '../components/Abas';
 import EstiloPage from './EstiloPage';
@@ -2900,22 +2901,11 @@ function EtiquetasTarefaTab({ token, adicionando, onFecharNova }: {
             Etiqueta já aplicada não sai da tarefa.
           </p>
         </div>
-        <button type="button" role="switch" aria-checked={porPapel}
-          onClick={() => void alternarRegra()}
-          aria-label="Mostrar etiquetas conforme o papel na equipe"
-          style={{
-            flexShrink: 0, width: 42, height: 24, padding: 3, borderRadius: 'var(--radius-pill)',
-            border: '1px solid var(--gray3)', cursor: 'pointer',
-            background: porPapel ? 'var(--yellow)' : 'var(--gray3)',
-            transition: 'background var(--transition-spring)',
-          }}>
-          <span style={{
-            display: 'block', width: 16, height: 16, borderRadius: '50%',
-            background: 'var(--white)', boxShadow: '0 1px 2px rgba(0,0,0,.2)',
-            transform: porPapel ? 'translateX(18px)' : 'none',
-            transition: 'transform var(--transition-spring)',
-          }} />
-        </button>
+        <Chave
+          ligada={porPapel}
+          onChange={() => void alternarRegra()}
+          nome="Mostrar etiquetas conforme o papel na equipe"
+        />
       </div>
 
       {adicionando && (
