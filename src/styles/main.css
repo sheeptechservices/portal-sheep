@@ -15510,6 +15510,11 @@ button.checklist-texto:focus-visible {
 .talentos-filtros { margin-bottom: 14px; }
 
 .talentos-quadro {
+  /* Nao encolhe: o quadro e item de um flex em coluna, e como todo item ele
+     encolheria ate caber na tela. Com `overflow: hidden` em cima disso, as
+     linhas que sobravam eram recortadas e ninguem chegava nelas - a lista
+     parava de rolar depois de crescer. Quem rola e o `.admin-content-wrap`. */
+  flex: none;
   border: 1px solid var(--gray4);
   border-radius: var(--radius-lg);
   background: var(--white);
