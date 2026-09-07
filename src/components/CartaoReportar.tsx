@@ -76,7 +76,7 @@ function lerComoDataUrl(file: File): Promise<string> {
 }
 
 export function CartaoReportar({
-  pagina, enviar, listar, carregarPrint, mudarStatus, podeMudarStatus,
+  pagina, enviar, listar, carregarPrint, mudarStatus, admin,
 }: {
   /** Em que tela a pessoa estava. Vai no e-mail para quem lê não precisar
    *  perguntar "em qual?". */
@@ -88,7 +88,8 @@ export function CartaoReportar({
   carregarPrint?: (id: number) => Promise<{ nome: string; tipo: string; base64: string } | null>;
   mudarStatus?: (id: number, status: string, avisar: boolean, comentario: string) => Promise<{ error?: string; aviso?: string | null } | null>;
   /** Só o dono do painel muda o andamento; o resto do time só lê. */
-  podeMudarStatus?: boolean;
+  /** O dono do painel - ver `ListaReportes`. */
+  admin?: boolean;
 }) {
   const [aberto, setAberto] = useState(false);
   const [texto, setTexto] = useState('');
@@ -408,7 +409,7 @@ export function CartaoReportar({
           carregar={listar}
           carregarPrint={carregarPrint}
           mudarStatus={mudarStatus}
-          podeMudarStatus={podeMudarStatus}
+          admin={admin}
           onFechar={() => setVendoFila(false)}
         />
       )}

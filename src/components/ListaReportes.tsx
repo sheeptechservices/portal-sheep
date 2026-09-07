@@ -67,17 +67,20 @@ export interface ReporteNaLista {
   notas?: NotaDoRelato[];
 }
 
-export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarStatus, onFechar }: {
+export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onFechar }: {
   carregar: () => Promise<{ reportes?: ReporteNaLista[]; error?: string }>;
   /** O conteúdo do print vem um por vez: na lista ele não viaja. */
   carregarPrint: (id: number) => Promise<{ nome: string; tipo: string; base64: string } | null>;
   mudarStatus?: (id: number, status: string, avisar: boolean, comentario: string) => Promise<{ error?: string; aviso?: string | null } | null>;
   /**
-   * Só o dono do painel muda o andamento. Esconder aqui é não oferecer um
-   * caminho que voltaria 403 - a trava de verdade é o servidor, onde a ação
-   * está marcada `SO_ADMIN`.
+   * O dono do painel: vê a fila inteira e muda o andamento. Quem não é vê só o
+   * que escreveu, e sem o campo de status.
+   *
+   * Aqui isto muda o que a tela oferece; a trava de verdade é o servidor - a
+   * ação de status está marcada `SO_ADMIN`, e a consulta da fila já devolve só
+   * os relatos de quem pergunta.
    */
-  podeMudarStatus?: boolean;
+  admin?: boolean;
   onFechar: () => void;
 }) {
   const [lista, setLista] = useState<ReporteNaLista[] | null>(null);
@@ -199,7 +202,9 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
             <p className="gravacao-titulo">
               <span className="gravacao-nome">Chamados</span>
               <span className="gravacao-meta">
-                O que o time reportou, do mais urgente para o menos
+                {admin
+                  ? 'O que o time reportou, do mais urgente para o menos'
+                  : 'O que você reportou, do mais urgente para o menos'}
               </span>
             </p>
             <button type="button" className="admin-modal-close" onClick={fechar} aria-label="Fechar">
@@ -227,7 +232,9 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
                     <th>Relato</th>
                     <th>Print</th>
                     <th>Status</th>
-                    <th>Solicitado por</th>
+                    {/* Quem só vê os próprios chamados não precisa da coluna:
+                        ela diria o nome dele em toda linha. */}
+                    {admin && <th>Solicitado por</th>}
                     <th>Quando</th>
                   </tr>
                 </thead>
@@ -290,8 +297,8 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
                             para escolher um status não abrir o detalhe junto.
                             Para quem só lê, a célula é um chip, e o clique volta
                             a ser da linha - expandir é de todo mundo. */}
-                        <td onClick={podeMudarStatus && mudarStatus ? (e => e.stopPropagation()) : undefined}>
-                          {podeMudarStatus && mudarStatus ? (
+                        <td onClick={admin && mudarStatus ? (e => e.stopPropagation()) : undefined}>
+                          {admin && mudarStatus ? (
                             <div style={{ width: 138 }}>
                               <SelectSistema
                                 valor={r.status}
@@ -313,15 +320,17 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, podeMudarS
                             <ChipStatus status={r.status} />
                           )}
                         </td>
-                        <td>
-                          {/* O nome fica: a foto reconhece de relance, mas
-                              quem entrou ontem ainda não sabe de quem é a
-                              cara. O e-mail vai no `title`. */}
-                          <span className="reportes-quem" title={r.autor_email ?? undefined}>
-                            <Avatar nome={r.autor_nome} foto={r.autor_foto} size={22} />
-                            {r.autor_nome}
-                          </span>
-                        </td>
+                        {admin && (
+                          <td>
+                            {/* O nome fica: a foto reconhece de relance, mas
+                                quem entrou ontem ainda não sabe de quem é a
+                                cara. O e-mail vai no `title`. */}
+                            <span className="reportes-quem" title={r.autor_email ?? undefined}>
+                              <Avatar nome={r.autor_nome} foto={r.autor_foto} size={22} />
+                              {r.autor_nome}
+                            </span>
+                          </td>
+                        )}
                         <td className="reportes-quando">
                           {instante(r.criado_em)}
                           <span className="reportes-relativo">{tempoRelativo(r.criado_em)}</span>

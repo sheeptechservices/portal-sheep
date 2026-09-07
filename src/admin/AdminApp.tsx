@@ -671,7 +671,7 @@ function Sidebar({
         listar={onListarReportes}
         carregarPrint={onPrintDoReporte}
         mudarStatus={onMudarStatusDoReporte}
-        podeMudarStatus={admin}
+        admin={admin}
       />
 
       <div className="app-menu-rodape">

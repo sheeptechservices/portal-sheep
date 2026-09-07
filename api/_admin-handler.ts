@@ -3849,6 +3849,16 @@ async function despacharAdminData(
     type ProjetoFechado = { id: string; empresa: string; interesse: string | null; valor: number };
 
     if (action === 'reportes') {
+      // Cada um vê o que escreveu; o dono do painel vê a fila inteira. O
+      // recorte é na consulta, e não na tela: esconder na tela deixaria a
+      // resposta aberta a quem souber chamar a ação direto.
+      //
+      // Sessão sem identidade - a da senha compartilhada - não tem o que
+      // reivindicar como seu, e recebe fila vazia. O `OR` do e-mail cobre o
+      // relato gravado antes de o id do autor existir.
+      const filaInteira = podeGerenciarUsuarios(usuario);
+      const meus = `WHERE (r.autor_id IS NOT NULL AND r.autor_id = ?)
+                       OR (r.autor_email IS NOT NULL AND r.autor_email = ?)`;
       // A foto sai de `usuarios` no momento da leitura, e não de cópia gravada
       // junto do relato: quem troca a foto troca em toda a fila, inclusive no
       // que reportou no mês passado.
@@ -3858,6 +3868,7 @@ async function despacharAdminData(
                r.criado_em, u.foto_url AS autor_foto
         FROM reportes r
         LEFT JOIN usuarios u ON u.id = r.autor_id
+        ${filaInteira ? '' : meus}
         ORDER BY CASE r.urgencia
                    WHEN 'Urgente' THEN 0
                    WHEN 'Alta'    THEN 1
@@ -3867,7 +3878,9 @@ async function despacharAdminData(
                  END,
                  r.criado_em DESC
         LIMIT 200
-      `);
+      `,
+        args: filaInteira ? [] : [usuario?.id ?? '', usuario?.email ?? ''],
+      });
       // As notas dos relatos que a página vai mostrar, numa consulta só. Uma
       // por relato seria uma ida por linha da fila, e a fila tem duzentas.
       const ids = r.rows.map(x => Number(x.id));
@@ -3917,10 +3930,16 @@ async function despacharAdminData(
     // O print de um relato, um por vez - ver o comentário da lista.
     if (action === 'reporte_print') {
       const r = await db.execute({
-        sql: 'SELECT print_nome, print_tipo, print_base64 FROM reportes WHERE id = ?',
+        sql: `SELECT print_nome, print_tipo, print_base64, autor_id, autor_email
+              FROM reportes WHERE id = ?`,
         args: [query.get('id')],
       });
       const linha = r.rows[0];
+      if (linha && !podeGerenciarUsuarios(usuario)) {
+        const meu = (linha.autor_id != null && String(linha.autor_id) === (usuario?.id ?? ''))
+          || (linha.autor_email != null && String(linha.autor_email) === (usuario?.email ?? ''));
+        if (!meu) return { status: 404, body: { error: 'Sem print.' } };
+      }
       if (!linha?.print_base64) return { status: 404, body: { error: 'Sem print.' } };
       return {
         status: 200,

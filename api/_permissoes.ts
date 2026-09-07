@@ -270,8 +270,11 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   // sabendo o nome da ação.
   painel_comercial: 'dashboard:ver',
   reportar: LIVRE,
-  // A fila e os prints também: quem pode contar o que achou pode ver o que já
-  // foi contado - inclusive para não reportar duas vezes a mesma coisa.
+  // A fila e os prints também são livres de chamar, mas o que elas devolvem
+  // não é o mesmo para todo mundo: cada um recebe os relatos que escreveu, e
+  // só o dono do painel recebe a fila inteira. O recorte é dentro da consulta
+  // (ver `action === 'reportes'`), e não aqui - permissão diz quem pode
+  // perguntar, não o que a resposta contém.
   reportes: LIVRE,
   reporte_print: LIVRE,
   // Mudar o andamento é do dono do painel. Ver, é de todo mundo: quem reportou
