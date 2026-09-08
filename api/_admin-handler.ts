@@ -636,6 +636,53 @@ async function migrarSchema(db: Client) {
   `);
   await ddl(`CREATE INDEX IF NOT EXISTS idx_talento_hab_pessoa ON talento_habilidades (tipo, pessoa_id)`);
 
+  // O historico das analises de vaga. Cada consulta fica gravada inteira: o que
+  // foi perguntado, o que a IA entendeu e a ordem que ela deu. Nao e cache - a
+  // base muda, e a mesma vaga daqui a um mes da outra resposta -, e sim
+  // registro: uma leitura que custou dinheiro e dois minutos merece poder ser
+  // reaberta, e uma decisao de alocacao merece poder ser conferida depois.
+  //
+  // O relatorio vai como veio, em JSON, e nao em colunas: ele e o retrato de uma
+  // leitura, e retrato nao se edita. As colunas soltas ao lado existem so para a
+  // lista nao precisar abrir trinta JSONs para se desenhar.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS analises_vaga (
+      id             TEXT PRIMARY KEY,
+      criado_em      TEXT NOT NULL,
+      criado_por_id   TEXT,
+      criado_por_nome TEXT,
+      /** O que foi digitado. E a entrada, e e o que permite refazer. */
+      texto          TEXT,
+      /** O relatorio inteiro, como a tela o recebeu. */
+      relatorio      TEXT NOT NULL,
+      titulo         TEXT,
+      modelo         TEXT,
+      pessoas        INTEGER,
+      /** A resposta bateu no teto de tamanho e foi remendada. */
+      cortado        INTEGER NOT NULL DEFAULT 0,
+      topo_nome      TEXT,
+      topo_nota      INTEGER,
+      /** De qual analise esta foi refeita, quando foi. */
+      refeita_de     TEXT
+    )
+  `);
+  await ddl(`CREATE INDEX IF NOT EXISTS idx_analises_vaga_data ON analises_vaga (criado_em DESC)`);
+
+  // Os anexos ficam a parte porque sao pesados e quase nunca sao lidos: a lista
+  // e a leitura do relatorio nao os tocam, e eles so voltam quando alguem manda
+  // refazer a analise.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS analise_vaga_anexos (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      analise_id TEXT NOT NULL,
+      nome       TEXT,
+      tipo       TEXT,
+      tamanho    INTEGER,
+      base64     TEXT
+    )
+  `);
+  await ddl(`CREATE INDEX IF NOT EXISTS idx_analise_anexos ON analise_vaga_anexos (analise_id)`);
+
   // A avaliacao nasceu numa escala de 0 a 100 e passou a ser de 1 a 10 - dez
   // degraus e o que alguem consegue distinguir ao dar nota, e "56" fingia uma
   // precisao que ninguem tem. As notas ja dadas descem de escala aqui, uma vez:
@@ -2839,6 +2886,75 @@ async function despacharAdminData(
     // As notas de uma pessoa, mais o que só a ficha dela precisa: as
     // habilidades declaradas e, para quem veio de fora, a candidatura inteira.
     // Numa ida só - a visão geral abre com as três coisas.
+    // O historico das analises de vaga: a lista, sem os relatorios.
+    if (action === 'analises_vaga') {
+      const r = await db.execute(`
+        SELECT a.id, a.criado_em, a.criado_por_nome, a.titulo, a.modelo, a.pessoas,
+               a.cortado, a.topo_nome, a.topo_nota, a.refeita_de,
+               (SELECT COUNT(*) FROM analise_vaga_anexos x WHERE x.analise_id = a.id) AS anexos
+        FROM analises_vaga a
+        ORDER BY a.criado_em DESC
+        LIMIT 200
+      `);
+      return {
+        status: 200,
+        body: {
+          analises: r.rows.map(a => ({
+            id: String(a.id),
+            criado_em: String(a.criado_em),
+            autor: a.criado_por_nome != null ? String(a.criado_por_nome) : null,
+            titulo: a.titulo != null ? String(a.titulo) : 'Vaga sem título',
+            modelo: a.modelo != null ? String(a.modelo) : null,
+            pessoas: Number(a.pessoas ?? 0),
+            cortado: Number(a.cortado ?? 0) === 1,
+            topo_nome: a.topo_nome != null ? String(a.topo_nome) : null,
+            topo_nota: a.topo_nota == null ? null : Number(a.topo_nota),
+            refeita: a.refeita_de != null,
+            anexos: Number(a.anexos ?? 0),
+          })),
+        },
+      };
+    }
+
+    // Uma analise guardada, inteira. O relatorio volta como foi gravado - ele e
+    // o retrato daquele dia, e nao um calculo refeito agora.
+    if (action === 'analise_vaga') {
+      const id = String(query.get('id') ?? '');
+      if (!id) return { status: 400, body: { error: 'id required' } };
+      const [r, anexos] = await Promise.all([
+        db.execute({
+          sql: `SELECT id, criado_em, criado_por_nome, texto, relatorio, refeita_de
+                FROM analises_vaga WHERE id = ?`,
+          args: [id],
+        }),
+        db.execute({
+          sql: 'SELECT nome, tipo, tamanho FROM analise_vaga_anexos WHERE analise_id = ?',
+          args: [id],
+        }),
+      ]);
+      const a = r.rows[0];
+      if (!a) return { status: 404, body: { error: 'Análise não encontrada.' } };
+      let relatorio: any = null;
+      try { relatorio = JSON.parse(String(a.relatorio)); } catch { /* gravacao antiga ou torta */ }
+      if (!relatorio) return { status: 500, body: { error: 'O relatório guardado não pôde ser lido.' } };
+      return {
+        status: 200,
+        body: {
+          id: String(a.id),
+          criado_em: String(a.criado_em),
+          autor: a.criado_por_nome != null ? String(a.criado_por_nome) : null,
+          texto: a.texto != null ? String(a.texto) : '',
+          refeita: a.refeita_de != null,
+          anexos: anexos.rows.map(x => ({
+            nome: String(x.nome ?? 'anexo'),
+            tipo: String(x.tipo ?? ''),
+            tamanho: Number(x.tamanho ?? 0),
+          })),
+          relatorio,
+        },
+      };
+    }
+
     if (action === 'talento_notas') {
       const tipo = query.get('tipo') === 'externo' ? 'externo' : 'interno';
       const pessoa = query.get('id');

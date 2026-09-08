@@ -12,17 +12,22 @@
 //  tabela é a média das notas dadas, e quem não tem nota nenhuma aparece sem
 //  média - zero seria uma nota ruim, e o que existe ali é a ausência dela.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAuth, useToast } from './AdminApp';
 import { Avatar } from './FormularioTarefa';
 import { Abas } from '../components/Abas';
 import FilterDropdown from '../components/FilterDropdown';
 import { FAMILIAS, OUTRAS, familiaDe } from '../lib/habilidades';
 import { Skeleton } from '../components/Skeleton';
-import { IconAlert, IconChevronRight, IconSearch } from '../components/icons';
+import { IconAlert, IconChevronRight, IconSearch, IconSparkles } from '../components/icons';
 import { dia as fmtDataBR } from '../lib/datas';
 import { useDegrauTrilha } from '../lib/trilha';
 import { useTrocaDeNivel } from '../lib/useTrocaDeNivel';
+import { lerEventos } from '../lib/sse';
+import { useAtividades, type Trabalho } from '../lib/atividades';
+import {
+  PainelAnaliseVaga, type AnaliseFeita, type AndamentoDaAnalise, type AnexoDaVaga,
+} from './PainelAnaliseVaga';
 import {
   BarraMedia, PAPEIS, VisaoGeral,
   type Competencia, type Nota, type TalentoExterno, type TalentoInterno,
@@ -83,6 +88,7 @@ const dobrar = (v: string) =>
 export default function TalentosPage({ token }: { token: string }) {
   const { onSessionExpired, pode } = useAuth();
   const { toast } = useToast();
+  const { iniciar } = useAtividades();
   const [competencias, setCompetencias] = useState<Competencia[]>([]);
   const [internos, setInternos] = useState<TalentoInterno[]>([]);
   const [externos, setExternos] = useState<TalentoExterno[]>([]);
@@ -98,6 +104,27 @@ export default function TalentosPage({ token }: { token: string }) {
   const [fFamilia, setFFamilia] = useState<string[]>([]);
   const [busca, setBusca] = useState('');
   const [aberto, setAberto] = useState<Aberto>(null);
+
+  // A analise de vaga. O rascunho e o resultado moram aqui, e nao na gaveta:
+  // fechar a gaveta no meio de uma analise jogaria fora uma chamada que ja foi
+  // paga, e o que a pessoa digitou junto com ela.
+  const [analiseAberta, setAnaliseAberta] = useState(false);
+  const [textoDaVaga, setTextoDaVaga] = useState('');
+  const [anexosDaVaga, setAnexosDaVaga] = useState<AnexoDaVaga[]>([]);
+  const [analise, setAnalise] = useState<AnaliseFeita | null>(null);
+  const [analisando, setAnalisando] = useState(false);
+  const [andamento, setAndamento] = useState<AndamentoDaAnalise | null>(null);
+  const [erroDaAnalise, setErroDaAnalise] = useState<string | null>(null);
+  // Para saber, quando a resposta chega, se ainda ha alguem olhando a gaveta:
+  // dentro da funcao assincrona o estado seria o de quando ela comecou.
+  const gavetaAberta = useRef(false);
+  gavetaAberta.current = analiseAberta;
+
+  // A analise em curso, como atividade do sistema. Enquanto a gaveta esta
+  // aberta ela mostra o andamento por conta propria e o balao do canto fica
+  // calado; fechou a gaveta, o balao assume - e e por ele que se cancela.
+  const trabalho = useRef<Trabalho | null>(null);
+  useEffect(() => { trabalho.current?.mostrarBalao(!analiseAberta); }, [analiseAberta]);
 
   const podeAvaliar = pode('talentos:avaliar');
   const podeEditar = pode('talentos:editar');
@@ -225,6 +252,105 @@ export default function TalentosPage({ token }: { token: string }) {
   // Talentos" vira o degrau que volta para a lista.
   useDegrauTrilha(pessoa ? pessoa.nome : null, () => setAberto(null));
 
+  /**
+   * A análise, acompanhada de perto.
+   *
+   * Endpoint próprio, e não o `admin-data`: a resposta vem em fluxo, contando o
+   * que já foi feito - o dossiê montado, a vaga entendida, cada pessoa avaliada.
+   * A gaveta mostra isso enquanto espera, porque um minuto de silêncio numa ação
+   * que custa dinheiro faz qualquer um clicar de novo.
+   *
+   * Não há repetição automática em erro nenhum: cada tentativa é uma conta paga,
+   * e quem decide gastar de novo é quem clicou.
+   */
+  const analisar = async (baseId?: string) => {
+    setAnalisando(true);
+    setErroDaAnalise(null);
+    setAndamento({ fase: 'preparando', total: 0, feitas: 0, nome: null, titulo: null, letras: 0 });
+    // A partir daqui quem manda no pedido e o sistema, e nao esta tela: fechar
+    // a gaveta, trocar de pagina ou ir para outra aba do navegador nao para
+    // nada. So o botao de cancelar do balao para.
+    const t = iniciar({
+      titulo: 'Analisando a vaga',
+      onde: 'Banco de talentos',
+      pagina: 'talentos',
+      abrir: () => setAnaliseAberta(true),
+      aviso: 'A leitura em curso se perde. Se o servidor chegar a terminar, ela ainda assim aparece no histórico.',
+    });
+    trabalho.current = t;
+    t.mostrarBalao(!gavetaAberta.current);
+    try {
+      const r = await fetch('/api/analise-vaga', {
+        method: 'POST',
+        signal: t.sinal,
+        headers: { 'Content-Type': 'application/json', 'x-admin-session': token },
+        // Refazer manda só o id: o texto e os anexos originais estão guardados,
+        // e reenviá-los daqui seria confiar na cópia da tela em vez do registro.
+        body: JSON.stringify(baseId ? { base_id: baseId } : {
+          texto: textoDaVaga,
+          anexos: anexosDaVaga.map(a => ({ nome: a.nome, tipo: a.tipo, base64: a.base64 })),
+        }),
+      });
+      if (r.status === 401) { onSessionExpired(); return; }
+      if (!r.ok || !r.body) {
+        const d = await r.json().catch(() => null);
+        const recado = d?.error ?? 'Não foi possível analisar.';
+        setErroDaAnalise(recado);
+        t.falhar('A análise da vaga não saiu', recado);
+        return;
+      }
+      await lerEventos(r.body, e => {
+        // O balao conta a mesma historia da gaveta, em uma linha.
+        if (e.tipo === 'dossie') {
+          setAndamento(a => ({ ...(a as AndamentoDaAnalise), fase: 'lendo', total: e.total }));
+          t.andar(null, `dossiê de ${e.total} pessoas`);
+        }
+        else if (e.tipo === 'pensando') {
+          setAndamento(a => ({ ...(a as AndamentoDaAnalise), fase: 'pensando' }));
+          t.andar(null, 'lendo e pesando as pessoas');
+        }
+        else if (e.tipo === 'vaga') {
+          setAndamento(a => ({ ...(a as AndamentoDaAnalise), fase: 'comparando', titulo: e.titulo }));
+          t.andar(null, e.titulo);
+        }
+        else if (e.tipo === 'pessoa') {
+          setAndamento(a => ({
+            ...(a as AndamentoDaAnalise), fase: 'comparando', feitas: e.feitas, total: e.total, nome: e.nome,
+          }));
+          t.andar(e.feitas / e.total, `${e.feitas} de ${e.total} pessoas`);
+        }
+        else if (e.tipo === 'escrevendo') setAndamento(a => ({ ...(a as AndamentoDaAnalise), letras: e.letras }));
+        else if (e.tipo === 'fechando') {
+          setAndamento(a => ({ ...(a as AndamentoDaAnalise), fase: 'fechando' }));
+          t.andar(1, 'escrevendo o recado final');
+        }
+        else if (e.tipo === 'erro') {
+          setErroDaAnalise(e.error);
+          t.falhar('A análise da vaga não saiu', e.error);
+        }
+        else if (e.tipo === 'pronto') {
+          setAnalise(e.analise as AnaliseFeita);
+          t.concluir('A análise da vaga ficou pronta', gavetaAberta.current
+            ? 'O ranking está no painel.'
+            : 'Abra o painel para ver o ranking, ou procure no histórico.');
+        }
+      });
+    } catch {
+      // Cancelada por quem clicou nao e erro: o balao ja saiu, e um recado
+      // vermelho depois disso seria o sistema reclamando de uma decisao dela.
+      if (t.foiCancelada()) {
+        setErroDaAnalise('Análise cancelada. Nada foi perdido: o que o servidor chegou a gravar está no histórico.');
+      } else {
+        setErroDaAnalise('A conexão caiu no meio da análise. Tente de novo.');
+        t.falhar('A análise da vaga não saiu', 'A conexão caiu no meio.');
+      }
+    } finally {
+      trabalho.current = null;
+      setAnalisando(false);
+      setAndamento(null);
+    }
+  };
+
   const atualizarMedia = (tipo: 'interno' | 'externo', id: string, notas: Nota[]) => {
     const media = notas.length
       ? Math.round(notas.reduce((s, n) => s + n.nota, 0) / notas.length)
@@ -262,7 +388,39 @@ export default function TalentosPage({ token }: { token: string }) {
           <h1 className="admin-page-title">Banco de Talentos</h1>
           <p className="admin-page-desc">Quem já é da casa e quem quer ser.</p>
         </div>
+        {pode('talentos:analisar') && (
+          <button className="btn btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13 }}
+            onClick={() => setAnaliseAberta(true)}>
+            <IconSparkles size={13} /> Analisar vaga
+          </button>
+        )}
       </div>
+
+      {analiseAberta && (
+        <PainelAnaliseVaga
+          onFechar={() => setAnaliseAberta(false)}
+          texto={textoDaVaga}
+          onTexto={setTextoDaVaga}
+          anexos={anexosDaVaga}
+          onAnexos={setAnexosDaVaga}
+          resultado={analise}
+          carregando={analisando}
+          erro={erroDaAnalise}
+          onAnalisar={() => void analisar()}
+          onLimpar={() => {
+            setAnalise(null);
+            setErroDaAnalise(null);
+            setTextoDaVaga('');
+            setAnexosDaVaga([]);
+          }}
+          // Abrir a ficha de alguem do ranking fecha a gaveta: a ficha e uma
+          // tela inteira, e ela nasce atras de um painel que cobre meia janela.
+          onAbrirPessoa={(tipo, id) => { setAberto({ tipo, id }); setAnaliseAberta(false); }}
+          andamento={andamento}
+          api={api}
+          onRefazer={id => void analisar(id)}
+        />
+      )}
 
       <div className="talentos-topo">
         <Abas

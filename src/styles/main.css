@@ -4786,6 +4786,13 @@ body.arrastando-painel {
   color: var(--gray);
 }
 
+/* O corpo da gaveta lateral.
+   Nasce SEM folga em cima porque quem comeca com <section> ja recebe os 18px do
+   padding dela. Gaveta que comeca com um campo - e nao com uma secao - precisa
+   pagar essa folga, senao o primeiro rotulo encosta no divisor do cabecalho.
+   O padrao da casa e `padding-top: 18px` no corpo, como fazem `.form-oportunidade`
+   e `.analise-corpo`; o painel de tarefa usa 20px por ter o cabecalho mais alto.
+   Gaveta nova que comeca com formulario: ponha a folga, nao a esqueca. */
 .admin-modal-body {
   flex: 1;
   overflow-y: auto;
@@ -15839,6 +15846,694 @@ button.checklist-texto:focus-visible {
   .talentos-linha,
   .talentos-seta,
   .talentos-media-tinta { transition: none; }
+}
+
+/* ── Gaveta da análise de vaga ──────────────────────────────────────────────
+   Uma leitura de máquina sobre gente da casa: o desenho é o da ficha - régua,
+   trilho e barra são os mesmos do banco de talentos -, e o que muda é a cor da
+   barra, que aqui responde ao veredito e não à nota. */
+.painel-analise .painel-titulo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.analise-sobretitulo {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.analise-corpo {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* Nada aqui dentro encolhe. O corpo rola, e num flex em coluna com rolagem o
+     filho de altura fixa e o primeiro a ser espremido quando o relatorio nasce
+     embaixo: o botao de analisar virava um risco de 20px. */
+  /* A mesma folga de `.form-oportunidade`: esta gaveta comeca com um campo, e
+     nao com uma <section> que traria o proprio ar. */
+  padding-top: 18px;
+}
+.analise-corpo > * { flex-shrink: 0; }
+.analise-texto {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  line-height: 1.5;
+  font-family: inherit;
+}
+
+/* Soltar, clicar ou colar - o mesmo alvo para os três gestos. */
+.analise-solta {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px dashed var(--gray3);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  font-family: inherit;
+  text-align: left;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition), color var(--transition);
+}
+.analise-solta span { flex: 1; min-width: 0; }
+.analise-solta b { display: block; font-size: 12px; font-weight: 700; color: var(--black); }
+.analise-solta small { display: block; font-size: 11px; color: var(--gray2); }
+.analise-solta:hover,
+.analise-solta.sobre {
+  border-color: var(--yellow);
+  background: var(--card-hover-bg);
+  color: var(--black);
+}
+.analise-solta:focus-visible { outline: none; border-color: var(--gray2); }
+
+.analise-anexos {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.analise-anexo {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px;
+  border: 1px solid var(--gray4);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+}
+.analise-anexo-previa {
+  width: 34px;
+  height: 26px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.analise-anexo-icone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 26px;
+  border-radius: 4px;
+  background: var(--gray4);
+  color: var(--gray2);
+  flex-shrink: 0;
+}
+.analise-anexo-nome {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.analise-anexo-peso {
+  font-size: 11px;
+  color: var(--gray2);
+  font-variant-numeric: tabular-nums;
+}
+.analise-anexo-tirar {
+  display: inline-flex;
+  padding: 5px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.analise-anexo-tirar:hover { background: var(--gray4); color: var(--red); }
+
+/* `min-height`, e nao `height`: com `height` o botao continua espremivel - o
+   `.btn` tem `overflow: hidden`, e isso zera o minimo automatico do item de
+   flex, entao ele era o unico filho do corpo que a rolagem conseguia achatar.
+   Os 42px dao a ele um pouco mais de presenca que um botao comum, que e o que
+   se espera de uma acao que ocupa a largura inteira. */
+.analise-botao {
+  width: 100%;
+  min-height: 42px;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 2px;
+}
+/* O andamento da analise. A barra anda por pessoa avaliada, e nao por relogio:
+   o que ela mostra e o que o servidor ja contou. */
+.analise-andamento {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+.analise-andamento-fase {
+  display: flex;
+  /* Alinhado pelo topo: com a frase em duas linhas, o girinho centralizado
+     ficava no meio do paragrafo, longe da linha que ele acompanha. */
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--gray);
+}
+.analise-andamento .analise-trilho { margin-top: 0; }
+.analise-andamento-fase svg { margin-top: 2px; flex-shrink: 0; }
+.analise-andamento-conta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--gray2);
+  font-variant-numeric: tabular-nums;
+}
+.analise-andamento-conta strong {
+  font-weight: 700;
+  color: var(--black);
+  font-variant-numeric: normal;
+  text-align: right;
+}
+.analise-erro {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--red);
+}
+
+/* ── O relatório ──────────────────────────────────────────────────────────── */
+.analise-resultado {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 6px;
+  padding-top: 16px;
+  border-top: 1px solid var(--gray4);
+}
+.analise-secao {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.analise-contagem {
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+/* As caixas de leitura da analise sao <section>, e a regra generica
+   `.admin-modal-body section` - 18px em cima, ZERO nas laterais e uma linha
+   embaixo - vencia estas aqui por especificidade: o texto encostava nas duas
+   bordas e sobrava um risco atravessado no meio do relatorio. Por isso o
+   recuo delas vem qualificado pelo corpo da gaveta. */
+.analise-corpo .analise-leitura {
+  padding: 15px 17px;
+  border-radius: var(--radius-md);
+  border-bottom: none;
+  background: var(--bg);
+}
+.analise-vaga-titulo {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--black);
+}
+.analise-vaga-resumo {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--gray);
+}
+.analise-requisitos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.analise-requisitos li {
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--white);
+  border: 1px solid var(--gray4);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray);
+}
+.analise-faltou {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--gray2);
+}
+
+.analise-ranking {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* O cartao de cada pessoa no ranking, no desenho das entregas: linha fechada
+   com o essencial, detalhe atras de um clique. Nasce em `.admin-file-item`, e o
+   que muda aqui e a direcao - a entrega empilha, e esta tambem. */
+.analise-pessoa {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 8px 12px 10px;
+  border-color: var(--gray4);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  transition: border-color var(--transition), background var(--transition);
+}
+.analise-pessoa:hover { border-color: var(--gray3); }
+.analise-pessoa.aberta { border-color: var(--gray3); background: var(--card-hover-bg); }
+/* A linha fechada. O `.entrega-linha` da entrega monta o flex por estilo
+   inline la na pagina de projetos; aqui ele vem do CSS, que e onde ele devia
+   estar. */
+.analise-pessoa-linha {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+}
+
+/* O gatilho que abre. Ocupa o vao entre a foto e os numeros da direita, entao
+   a area de clique e grande sem roubar o botao da ficha. */
+.analise-pessoa-abre {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Quantos requisitos da vaga a pessoa cumpre. Na linha fechada e o resumo do
+   checklist inteiro: um numero que se compara de cima a baixo da lista. */
+.analise-check-conta {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border: 1px solid var(--gray4);
+  border-radius: var(--radius-pill);
+  background: var(--bg);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gray);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A ficha da pessoa, num botao proprio: a linha abre o detalhe, e trocar de
+   tela precisa de um alvo que diga que troca de tela. */
+.analise-ficha {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.analise-ficha:hover { background: var(--gray4); color: var(--black); }
+
+.analise-detalhe {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--gray4);
+}
+/* O parecer respira antes do checklist: sao duas leituras diferentes, e coladas
+   elas viram um paragrafo so. */
+.analise-detalhe .analise-justificativa { margin: 0 0 11px; }
+
+/* ── O checklist da vaga, respondido para esta pessoa ────────────────────────
+   A lista e a mesma para todo mundo, na mesma ordem: e isso que faz duas
+   pessoas se compararem linha a linha. */
+.analise-check {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.analise-check li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.analise-check-icone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--gray4);
+  color: var(--gray2);
+}
+.check-atende .analise-check-icone { background: var(--green-soft); color: var(--green); }
+.check-parcial .analise-check-icone { background: var(--gray4); color: var(--amber); }
+.check-nao .analise-check-icone { background: var(--red-soft); color: var(--red); }
+.analise-check-texto { min-width: 0; }
+.analise-check-texto strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--black);
+  line-height: 1.35;
+}
+.analise-check-texto small {
+  display: block;
+  margin-top: 1px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--gray2);
+}
+/* O que nao foi atendido fala em vermelho, e nao so com um icone vermelho: e a
+   informacao que muda uma decisao de alocacao. */
+.check-nao .analise-check-texto small { color: var(--red); }
+.check-parcial .analise-check-texto small { color: var(--amber); }
+.analise-posicao {
+  width: 20px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--gray3);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.analise-pessoa-quem { flex: 1; min-width: 0; }
+.analise-pessoa-quem strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--black);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.analise-pessoa-quem small {
+  display: block;
+  margin-top: 1px;
+  font-size: 11px;
+  color: var(--gray2);
+}
+.analise-aderencia {
+  display: flex;
+  align-items: baseline;
+  gap: 1px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.analise-aderencia strong { font-size: 17px; font-weight: 800; }
+.analise-aderencia small { font-size: 11px; color: var(--gray2); }
+.analise-aderencia em { font-size: 11px; color: var(--gray2); font-style: italic; }
+.analise-trilho { width: 100%; margin-top: 9px; }
+.veredito-forte .analise-tinta { background: var(--green); }
+.veredito-possivel .analise-tinta { background: var(--yellow); }
+.veredito-fraco .analise-tinta { background: var(--gray3); }
+.veredito-forte .analise-aderencia strong { color: var(--green); }
+.analise-justificativa {
+  margin: 9px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--gray);
+}
+.analise-pontos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 9px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.analise-pontos li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+}
+.analise-pontos .ponto-forte { background: var(--green-soft); color: var(--green); }
+.analise-pontos .ponto-lacuna { background: var(--bg); color: var(--gray2); }
+
+/* Os descartados ficam atrás de um clique: são a maioria da lista, e a lista
+   existe para responder quem serve. */
+.analise-mais {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 2px;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.analise-mais:hover { color: var(--black); }
+.analise-ranking-fraco { padding-top: 4px; }
+.analise-ninguem {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed var(--gray3);
+  border-radius: var(--radius-md);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--gray2);
+}
+.analise-corpo .analise-observacoes { padding: 0; border-bottom: none; }
+.analise-observacoes p:last-child {
+  margin: 0;
+  padding: 15px 17px;
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--gray);
+}
+.analise-rodape {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 4px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--gray2);
+}
+.analise-limpar {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border: 1px solid var(--gray4);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--gray);
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+.analise-limpar:hover { border-color: var(--gray2); color: var(--black); }
+
+/* ── Historico das analises ─────────────────────────────────────────────────
+   Cada linha e uma consulta guardada. O que ela precisa responder antes de ser
+   aberta: que vaga era, quando, quem pediu, e quem ficou em primeiro. */
+.analise-hist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.analise-hist-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid var(--gray4);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  font-family: inherit;
+  text-align: left;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: box-shadow var(--transition-spring), transform var(--transition-spring),
+    border-color var(--transition);
+}
+.analise-hist-item:hover {
+  transform: translateY(-2px);
+  border-color: var(--gray3);
+  box-shadow: var(--shadow-card-hover);
+}
+.analise-hist-texto { flex: 1; min-width: 0; }
+.analise-hist-texto strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--black);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.analise-hist-texto small {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--gray2);
+  /* Numa linha so, com reticencias: a meta e um resumo, e resumo que quebra em
+     duas linhas faz as linhas da lista ficarem de alturas diferentes. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.analise-hist-texto small svg { flex-shrink: 0; }
+.analise-hist-topo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  max-width: 40%;
+}
+.analise-hist-topo strong {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--green);
+  font-variant-numeric: tabular-nums;
+}
+.analise-hist-topo small {
+  max-width: 100%;
+  font-size: 10.5px;
+  color: var(--gray2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.analise-esperando-hist {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--gray2);
+}
+
+/* ── Uma analise guardada, aberta ──────────────────────────────────────────── */
+.analise-guardada {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.analise-guardada-cabeca {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.analise-voltar,
+.analise-refazer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
+}
+.analise-voltar {
+  border: none;
+  background: none;
+  color: var(--gray2);
+  padding-left: 2px;
+}
+.analise-voltar:hover { color: var(--black); }
+.analise-refazer {
+  border: 1px solid var(--gray4);
+  background: var(--white);
+  color: var(--gray);
+}
+.analise-refazer:hover:not(:disabled) { border-color: var(--yellow); color: var(--black); }
+.analise-refazer:disabled { opacity: .5; cursor: default; }
+
+/* O que foi perguntado, em caixa de leitura: analise guardada nao se edita, e um
+   campo ali convidaria a tentar. */
+.analise-corpo .analise-guardada-pergunta {
+  padding: 15px 17px;
+  border-radius: var(--radius-md);
+  border-bottom: none;
+  background: var(--bg);
+}
+.analise-guardada-texto {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--gray);
+  white-space: pre-wrap;
+}
+.analise-guardada-pergunta .analise-anexos { margin-top: 10px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .analise-hist-item,
+  .analise-voltar,
+  .analise-refazer { transition: none; }
+  .analise-hist-item:hover { transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .analise-solta,
+  .analise-mais { transition: none; }
+  .analise-pessoa:hover { transform: none; }
 }
 
 /* ── O balao das atividades em segundo plano ────────────────────────────────

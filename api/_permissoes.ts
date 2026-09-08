@@ -134,6 +134,7 @@ export const CATALOGO: PermGrupo[] = [
       { chave: 'talentos:ver', label: 'Abrir o banco de talentos', acesso: true },
       { chave: 'talentos:avaliar', label: 'Dar nota de competência' },
       { chave: 'talentos:editar', label: 'Editar e excluir interessados' },
+      { chave: 'talentos:analisar', label: 'Analisar vaga com IA' },
     ],
   },
   {
@@ -318,6 +319,11 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   salvar_talento_nota: 'talentos:avaliar',
   update_talento_externo: 'talentos:editar',
   delete_talento_externo: 'talentos:editar',
+  // Ler o historico e ler o banco de talentos por outro caminho: mesma chave.
+  // Quem gasta com uma analise nova precisa de `talentos:analisar`, que e a
+  // permissao que tranca o endpoint proprio da analise.
+  analises_vaga: 'talentos:ver',
+  analise_vaga: 'talentos:ver',
 
   // ── Análise de Crédito ────────────────────────────────────────────────────
   taxa_sugerida: 'gerador:ver',

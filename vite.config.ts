@@ -371,6 +371,58 @@ export default defineConfig(({ mode }) => {
             })
           })
 
+          // /api/analise-vaga - a analise de vaga do banco de talentos.
+          //
+          // Ao contrario dos outros atalhos daqui, este NAO monta um `res` de
+          // mentira que junta tudo e responde no fim: o endpoint responde em
+          // fluxo, e um `res` que acumula devolveria em dev justamente a espera
+          // muda que ele existe para acabar. Entao o que vai para o handler e o
+          // `res` de verdade, com `status`/`json` por cima para o caminho de
+          // erro, que acontece antes do primeiro byte.
+          server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
+            const url = new URL(req.url ?? '/', `http://localhost`)
+            if (!url.pathname.startsWith('/api/analise-vaga')) return next()
+
+            let body = ''
+            req.on('data', (chunk: Buffer) => { body += chunk.toString() })
+            req.on('end', async () => {
+              try {
+                // O cofre de credenciais so abre com a chave-mestra, e e de la
+                // que sai a chave da Anthropic.
+                process.env.APP_ENCRYPTION_KEY = process.env.APP_ENCRYPTION_KEY ?? env.APP_ENCRYPTION_KEY
+                process.env.ANTHROPIC_API_KEY  = process.env.ANTHROPIC_API_KEY  ?? env.ANTHROPIC_API_KEY
+                const { default: handler } = await import('./api/analise-vaga')
+                let status = 200
+                const falso = {
+                  setHeader: (k: string, v: string) => { res.setHeader(k, v); return falso },
+                  status: (s: number) => { status = s; return falso },
+                  json: (b: unknown) => {
+                    res.statusCode = status
+                    res.setHeader('Content-Type', 'application/json')
+                    res.end(JSON.stringify(b))
+                    return falso
+                  },
+                  writeHead: (s: number, h: Record<string, string>) => { res.writeHead(s, h); return falso },
+                  write: (c: string) => res.write(c),
+                  end: () => res.end(),
+                }
+                await handler(
+                  { method: req.method, headers: req.headers, query: Object.fromEntries(url.searchParams), body: body ? JSON.parse(body) : {} } as never,
+                  falso as never,
+                )
+              } catch (err) {
+                console.error('[api/analise-vaga]', err)
+                if (!res.headersSent) {
+                  res.statusCode = 500
+                  res.setHeader('Content-Type', 'application/json')
+                  res.end(JSON.stringify({ error: 'Internal error' }))
+                } else {
+                  res.end()
+                }
+              }
+            })
+          })
+
           // /api/gerar-documento - gera .docx (proposta/contrato) a partir dos templates
           server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
             const url = new URL(req.url ?? '/', `http://localhost`)
