@@ -7,15 +7,17 @@
 //  acontecendo, o outro o que acabou de acontecer, e misturar os dois cantos
 //  faria um empurrar o outro.
 //
-//  Ao concluir, o balão sai e o toast entra. É a mesma notícia em dois tempos:
-//  enquanto corre, ela mora no canto de cima; quando termina, vira confirmação.
+//  Ao concluir, o toast confirma na hora e o balão FICA - com outra cara, sem
+//  girinho, e com o x que agora só fecha. Some sozinho, ele obrigaria a pessoa a
+//  estar olhando no segundo certo; ficando, quem estava em outra aba encontra o
+//  resultado esperando, e ainda tem por onde voltar ao lugar da ação.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AtividadesContext, type Atividade, type Trabalho } from '../lib/atividades';
 import { useToast } from '../lib/toast';
 import { Dialogo } from './Dialogo';
-import { IconSpinner, IconX } from './icons';
+import { IconAlert, IconCheck, IconSpinner, IconX } from './icons';
 
 /** O tempo que o balão fica na lista depois de mandado embora. É maior que a
  *  transição de saída (240ms) de propósito: tirá-lo da lista antes do fim
@@ -63,14 +65,26 @@ export function ProvedorAtividades({ children, navegar }: {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const controle = new AbortController();
     controles.current.set(id, controle);
-    setAtividades(l => [...l, { id, titulo, onde, pagina, abrir, aviso, detalhe: null, progresso: null }]);
+    setAtividades(l => [...l, {
+      id, titulo, onde, pagina, abrir, aviso, detalhe: null, progresso: null, estado: 'rodando',
+    }]);
 
     const encerrar = (tipo: 'success' | 'error', t: string, m?: string) => {
       // Cancelada por quem clicou não vira aviso nenhum: a pessoa acabou de
       // ver o balão sumir, e um toast depois disso seria o sistema dando
       // notícia de uma decisão dela.
       if (canceladas.current.has(id)) { canceladas.current.delete(id); return; }
-      tirar(id);
+      setAtividades(l => l.map(a => (a.id === id ? {
+        ...a,
+        estado: tipo === 'success' ? 'pronta' : 'falhou',
+        titulo: t,
+        detalhe: m ?? null,
+        progresso: 1,
+        // Terminou à vista de ninguém - a gaveta que a começou estava aberta, ou
+        // a pessoa mudou de página: o resultado se mostra de qualquer jeito.
+        oculta: false,
+      } : a)));
+      controles.current.delete(id);
       toast(tipo, t, m);
     };
 
@@ -87,13 +101,16 @@ export function ProvedorAtividades({ children, navegar }: {
     };
   }, [tirar, toast]);
 
-  const valor = useMemo(() => ({ atividades, iniciar, cancelar }), [atividades, iniciar, cancelar]);
+  const valor = useMemo(
+    () => ({ atividades, iniciar, cancelar, fechar: tirar }),
+    [atividades, iniciar, cancelar, tirar],
+  );
 
   return (
     <AtividadesContext.Provider value={valor}>
       {children}
       <BalaoAtividades atividades={atividades} onAbrir={abrirOrigem}
-        onPedirCancelamento={setPerguntando} />
+        onPedirCancelamento={setPerguntando} onFechar={tirar} />
 
       {/* Cancelar é sem volta: o que já foi feito do outro lado fica feito, e o
           que estava em curso se perde. Por isso a pergunta antes. */}
@@ -113,10 +130,11 @@ export function ProvedorAtividades({ children, navegar }: {
   );
 }
 
-function BalaoAtividades({ atividades, onAbrir, onPedirCancelamento }: {
+function BalaoAtividades({ atividades, onAbrir, onPedirCancelamento, onFechar }: {
   atividades: Atividade[];
   onAbrir: (a: Atividade) => void;
   onPedirCancelamento: (a: Atividade) => void;
+  onFechar: (id: string) => void;
 }) {
   if (!atividades.length) return null;
   // Todas entram na árvore, inclusive as escondidas e as que estão saindo: quem
@@ -125,17 +143,19 @@ function BalaoAtividades({ atividades, onAbrir, onPedirCancelamento }: {
   return createPortal(
     <div className="atividades-cais">
       {atividades.map(a => (
-        <Balao key={a.id} atividade={a} onAbrir={onAbrir} onPedirCancelamento={onPedirCancelamento} />
+        <Balao key={a.id} atividade={a} onAbrir={onAbrir}
+          onPedirCancelamento={onPedirCancelamento} onFechar={onFechar} />
       ))}
     </div>,
     document.body,
   );
 }
 
-function Balao({ atividade: a, onAbrir, onPedirCancelamento }: {
+function Balao({ atividade: a, onAbrir, onPedirCancelamento, onFechar }: {
   atividade: Atividade;
   onAbrir: (a: Atividade) => void;
   onPedirCancelamento: (a: Atividade) => void;
+  onFechar: (id: string) => void;
 }) {
   // O balão fica montado enquanto a atividade existir, e o que entra e sai é a
   // classe: assim esconder e mostrar de novo - fechar e reabrir a gaveta - é uma
@@ -161,13 +181,18 @@ function Balao({ atividade: a, onAbrir, onPedirCancelamento }: {
     };
   }, [visivel]);
 
+  const rodando = (a.estado ?? 'rodando') === 'rodando';
   return (
-    <div className={`atividade-balao${dentro ? ' aberta' : ''}`} aria-hidden={!dentro}>
+    <div className={`atividade-balao ${a.estado ?? 'rodando'}${dentro ? ' aberta' : ''}`}
+      aria-hidden={!dentro}>
       {/* O balão inteiro é o caminho de volta: clicar leva ao lugar onde a
-          ação está acontecendo. */}
+          ação aconteceu - vale correndo e vale depois de pronta. */}
       <button type="button" className="atividade-abre" onClick={() => onAbrir(a)}
         title="Ir para onde isto está acontecendo">
-        <span className="atividade-girinho"><IconSpinner size={13} /></span>
+        <span className="atividade-girinho">
+          {rodando ? <IconSpinner size={13} />
+            : a.estado === 'pronta' ? <IconCheck size={13} /> : <IconAlert size={13} />}
+        </span>
         <span className="atividade-texto">
           <strong>{a.titulo}</strong>
           <small className="troca" key={a.detalhe ?? a.onde ?? ''}>
@@ -175,14 +200,21 @@ function Balao({ atividade: a, onAbrir, onPedirCancelamento }: {
           </small>
           {/* Sem fração conhecida, a barra anda sozinha: ela diz "estou viva",
               que é verdade, em vez de uma porcentagem inventada. */}
-          <span className={`atividade-trilho${a.progresso == null ? ' indefinida' : ''}`}>
-            <span className="atividade-tinta"
-              style={a.progresso == null ? undefined : { width: `${Math.round(a.progresso * 100)}%` }} />
-          </span>
+          {/* Terminada, a barra sai: ela media o caminho, e o caminho acabou. */}
+          {rodando && (
+            <span className={`atividade-trilho${a.progresso == null ? ' indefinida' : ''}`}>
+              <span className="atividade-tinta"
+                style={a.progresso == null ? undefined : { width: `${Math.round(a.progresso * 100)}%` }} />
+            </span>
+          )}
         </span>
       </button>
-      <button type="button" className="atividade-cancelar" onClick={() => onPedirCancelamento(a)}
-        aria-label={`Cancelar: ${a.titulo}`} title="Cancelar">
+      {/* Correndo, o x cancela - e pergunta antes. Terminada, ele só fecha: não
+          há mais nada para interromper. */}
+      <button type="button" className="atividade-cancelar"
+        onClick={() => (rodando ? onPedirCancelamento(a) : onFechar(a.id))}
+        aria-label={rodando ? `Cancelar: ${a.titulo}` : `Fechar: ${a.titulo}`}
+        title={rodando ? 'Cancelar' : 'Fechar'}>
         <IconX size={11} />
       </button>
     </div>

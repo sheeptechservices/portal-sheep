@@ -16601,6 +16601,14 @@ button.checklist-texto:focus-visible {
   flex-shrink: 0;
   color: var(--yellow);
 }
+/* Terminada, o balao troca de cara: o girinho vira visto (ou aviso), a barra
+   sai, e a borda diz de longe como acabou. Ele fica ate alguem fechar - some
+   sozinho, obrigaria a pessoa a estar olhando no segundo certo. */
+.atividade-balao.pronta { border-color: var(--green); }
+.atividade-balao.pronta .atividade-girinho { color: var(--green); }
+.atividade-balao.falhou { border-color: var(--red); }
+.atividade-balao.falhou .atividade-girinho { color: var(--red); }
+.atividade-balao.falhou .atividade-texto small { color: var(--red); }
 .atividade-texto { flex: 1; min-width: 0; }
 .atividade-texto strong {
   display: block;

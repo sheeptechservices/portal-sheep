@@ -33,6 +33,11 @@ export interface Atividade {
   /** De 0 a 1. `null` é a ação que não tem como se medir - a barra então anda
    *  sozinha, dizendo "estou viva" em vez de fingir uma fração. */
   progresso: number | null;
+  /** Onde ela está: correndo, terminada ou falhada. Terminada, ela NÃO sai
+   *  sozinha - fica no canto até alguém fechar. O que corre se anuncia; o que
+   *  terminou é resultado, e resultado que some sozinho obriga a pessoa a estar
+   *  olhando na hora certa. */
+  estado?: 'rodando' | 'pronta' | 'falhou';
   /** Marcada para sair: dá tempo de a animação de saída rodar. */
   saindo?: boolean;
   /** A tela que começou a ação está à vista e já mostra o andamento dela. O
@@ -59,14 +64,17 @@ export interface Trabalho {
   /** Liga e desliga o balão. Quem chamou é quem sabe se a própria tela ainda
    *  está mostrando o andamento. */
   mostrarBalao: (v: boolean) => void;
-  /** Tira o balão e confirma no toast. */
+  /** Encerra em pé: o balão troca de cara, fica no canto até alguém fechar, e o
+   *  toast confirma na hora. */
   concluir: (titulo: string, mensagem?: string) => void;
-  /** Tira o balão e explica no toast. */
+  /** O mesmo, com a cara de quem não deu certo. */
   falhar: (titulo: string, mensagem?: string) => void;
 }
 
 export interface AtividadesCtx {
   atividades: Atividade[];
+  /** Tira do canto o que já terminou. Não cancela nada - o trabalho acabou. */
+  fechar: (id: string) => void;
   iniciar: (dados: {
     titulo: string;
     onde?: string;
@@ -101,6 +109,7 @@ export const AtividadesContext = createContext<AtividadesCtx>({
   atividades: [],
   iniciar: () => trabalhoSolto(),
   cancelar: () => {},
+  fechar: () => {},
 });
 
 export function useAtividades() { return useContext(AtividadesContext); }
