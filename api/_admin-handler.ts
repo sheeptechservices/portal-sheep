@@ -5,7 +5,7 @@ import {
   getIntegrationCredential, saveIntegrationCredential,
   RESEND_KEY, validateResendKey,
   updateIntegrationMeta, removeIntegrationCredential, validateAnthropicKey,
-  validateFirefliesKey, listarReunioesFireflies, obterReuniaoFireflies,
+  validateFirefliesKey, listarModelosAnthropic, listarReunioesFireflies, obterReuniaoFireflies,
   obterTranscricaoFireflies,
   obterGravacaoFireflies,
 } from './_credentials.js';
@@ -3688,6 +3688,19 @@ async function despacharAdminData(
           model: cred.meta?.model || DEFAULT_ANTHROPIC_MODEL,
           updated_at: cred.updatedAt ?? null,
         },
+      };
+    }
+
+    // Os modelos que a conta da Anthropic enxerga hoje. Sem chave salva, lista
+    // vazia e sem erro: a tela cai na relacao conhecida, que e o que ela precisa
+    // mostrar justamente enquanto ninguem conectou nada ainda.
+    if (action === 'anthropic_modelos') {
+      const cred = await getIntegrationCredential(db, ANTHROPIC_KEY);
+      if (!cred?.value) return { status: 200, body: { modelos: [] } };
+      const r = await listarModelosAnthropic(cred.value);
+      return {
+        status: 200,
+        body: r.ok ? { modelos: r.modelos } : { modelos: [], error: r.error },
       };
     }
 

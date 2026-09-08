@@ -133,6 +133,40 @@ export async function validateAnthropicKey(apiKey: string): Promise<{ ok: boolea
   }
 }
 
+/**
+ * Todos os modelos que ESTA conta enxerga hoje, com o nome de exibição que a
+ * própria Anthropic dá a cada um.
+ *
+ * A lista fixa no código envelhece: modelo novo sai e ninguém lembra de
+ * acrescentá-lo, e modelo aposentado continua ali para ser escolhido e falhar
+ * na hora da chamada. Aqui a fonte é a conta, e não a nossa memória - o mesmo
+ * endereço que já serve para validar a chave, e que não consome token nenhum.
+ */
+export async function listarModelosAnthropic(apiKey: string): Promise<
+  { ok: true; modelos: { id: string; nome: string }[] } | { ok: false; error: string }
+> {
+  if (!apiKey?.trim()) return { ok: false, error: 'Chave ausente.' };
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/models?limit=100', {
+      headers: { 'x-api-key': apiKey.trim(), 'anthropic-version': '2023-06-01' },
+    });
+    const corpo: any = await res.json().catch(() => null);
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) return { ok: false, error: 'Chave inválida ou revogada.' };
+      return { ok: false, error: corpo?.error?.message ?? `Falha ao listar os modelos (HTTP ${res.status}).` };
+    }
+    const linhas: any[] = Array.isArray(corpo?.data) ? corpo.data : [];
+    return {
+      ok: true,
+      modelos: linhas
+        .filter(m => m?.id)
+        .map(m => ({ id: String(m.id), nome: String(m.display_name ?? m.id) })),
+    };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Sem conexão com a Anthropic.' };
+  }
+}
+
 /** A chave do Fireflies vale contra a API GraphQL deles: a consulta mais barata
  *  que existe e o proprio usuario dono da chave, e ela ja devolve nome e e-mail
  *  para a tela dizer de qual conta a integracao e - "conectado" sem dizer a

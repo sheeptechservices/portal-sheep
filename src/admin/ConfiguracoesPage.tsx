@@ -893,14 +893,42 @@ function StatusRow({
 const ANTHROPIC_COLOR = '#CC785C';
 const CLAUDE_ORANGE = '#D97757';
 
-const ANTHROPIC_MODELS: { id: string; label: string; desc: string; tier: string }[] = [
+interface ModeloDaLista { id: string; label: string; desc: string; tier: string }
+
+/** Os modelos que a casa conhece pelo nome, com o que se sabe de cada um. É o
+ *  que a tela mostra antes de haver chave salva - depois disso quem manda é a
+ *  conta, e esta relação vira só a fonte da descrição. */
+const ANTHROPIC_MODELS: ModeloDaLista[] = [
   { id: 'claude-opus-5',              label: 'Opus 5',     desc: 'Melhor leitura de documentos e raciocínio - mesmo preço do 4.8',        tier: 'Recomendado' },
   { id: 'claude-opus-4-8',            label: 'Opus 4.8',   desc: 'Geração anterior do Opus - ainda excelente em análises complexas',      tier: 'Alternativa' },
   { id: 'claude-sonnet-5',            label: 'Sonnet 5',   desc: 'Equilíbrio entre qualidade e custo (~40% do preço do Opus)',            tier: 'Equilibrado' },
   { id: 'claude-sonnet-4-6',          label: 'Sonnet 4.6', desc: 'Geração anterior do Sonnet - sem schema garantido na extração',         tier: 'Legado' },
   { id: 'claude-haiku-4-5-20251001',  label: 'Haiku 4.5',  desc: 'Mais rápido e econômico - para volume, não para análise crítica',       tier: 'Econômico' },
-  { id: 'claude-fable-5',             label: 'Fable 5',    desc: 'O mais capaz da Claude, porém ~2× o custo do Opus 5',                   tier: 'Máximo' },
+  { id: 'claude-fable-5-1',           label: 'Fable 5.1',  desc: 'O mais capaz da Claude, porém ~2× o custo do Opus 5',                   tier: 'Máximo' },
+  { id: 'claude-fable-5',             label: 'Fable 5',    desc: 'Geração anterior do Fable',                                             tier: 'Legado' },
 ];
+
+/**
+ * A lista que o seletor mostra: tudo o que a conta enxerga hoje.
+ *
+ * Relação escrita no código envelhece nos dois sentidos - modelo novo demora a
+ * aparecer, e modelo aposentado continua ali para ser escolhido e falhar só na
+ * hora da análise. Então, havendo chave salva, a verdade é a da conta: os que a
+ * casa conhece vêm primeiro, na ordem daqui e com a descrição daqui, e o resto
+ * vem depois com o nome que a própria Anthropic dá. Sem chave, ou com a
+ * listagem recusada, fica a relação conhecida - lista vazia não deixaria
+ * ninguém escolher nada.
+ */
+function juntarModelos(daConta: { id: string; nome: string }[]): ModeloDaLista[] {
+  if (!daConta.length) return ANTHROPIC_MODELS;
+  const conhecidos = new Map(ANTHROPIC_MODELS.map(m => [m.id, m]));
+  const naConta = new Set(daConta.map(m => m.id));
+  return [
+    ...ANTHROPIC_MODELS.filter(m => naConta.has(m.id)),
+    ...daConta.filter(m => !conhecidos.has(m.id))
+      .map(m => ({ id: m.id, label: m.nome, desc: m.id, tier: 'Na sua conta' })),
+  ];
+}
 
 /** A marca da Claude, do arquivo oficial. Era um desenho recriado em SVG: doze
  *  raios de comprimento alternado, parecido de longe e diferente de perto. Logo
@@ -911,7 +939,9 @@ function ClaudeLogo({ size = 20 }: { size?: number }) {
 }
 
 // Dropdown de modelo - customizado no padrão do sistema (substitui o <select> nativo)
-function ModelSelect({ value, onChange, color = ANTHROPIC_COLOR }: { value: string; onChange: (v: string) => void; color?: string }) {
+function ModelSelect({ value, onChange, color = ANTHROPIC_COLOR, modelos = ANTHROPIC_MODELS }: {
+  value: string; onChange: (v: string) => void; color?: string; modelos?: ModeloDaLista[];
+}) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -927,7 +957,11 @@ function ModelSelect({ value, onChange, color = ANTHROPIC_COLOR }: { value: stri
     return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey); };
   }, [open]);
 
-  const sel = ANTHROPIC_MODELS.find(m => m.id === value) ?? ANTHROPIC_MODELS[0];
+  // Modelo salvo que não está na lista aparece como ele é, e não trocado pelo
+  // primeiro da relação: o seletor tem de dizer a verdade sobre o que está
+  // gravado, mesmo que a conta não ofereça mais aquilo.
+  const sel = modelos.find(m => m.id === value)
+    ?? { id: value, label: value, desc: 'Modelo salvo nesta integração', tier: '' };
   const rect = btnRef.current?.getBoundingClientRect();
 
   // Posicionamento: abre para baixo, mas vira para cima se não couber na viewport
@@ -954,7 +988,7 @@ function ModelSelect({ value, onChange, color = ANTHROPIC_COLOR }: { value: stri
           <strong>{sel.label}</strong>
           <span className="model-select-sub">{sel.desc}</span>
         </span>
-        <span className="model-tier">{sel.tier}</span>
+        {sel.tier && <span className="model-tier">{sel.tier}</span>}
         <svg className="model-select-chevron" width="12" height="8" viewBox="0 0 10 6" fill="none"
           style={{ transform: open ? 'rotate(180deg)' : 'none' }}>
           <path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
@@ -962,13 +996,13 @@ function ModelSelect({ value, onChange, color = ANTHROPIC_COLOR }: { value: stri
       </button>
       {open && createPortal(
         <div ref={dropRef} className="model-select-pop" style={popStyle}>
-          {ANTHROPIC_MODELS.map(m => {
+          {modelos.map(m => {
             const active = m.id === value;
             return (
               <div key={m.id} className={`model-opt${active ? ' active' : ''}`} onClick={() => { onChange(m.id); setOpen(false); }}>
                 <span className="model-opt-logo"><ClaudeLogo size={20} /></span>
                 <div className="model-opt-text">
-                  <div className="model-opt-name">{m.label}<span className="model-tier">{m.tier}</span></div>
+                  <div className="model-opt-name">{m.label}{m.tier && <span className="model-tier">{m.tier}</span>}</div>
                   <div className="model-opt-desc">{m.desc}</div>
                 </div>
                 {active && (
@@ -987,7 +1021,7 @@ function ModelSelect({ value, onChange, color = ANTHROPIC_COLOR }: { value: stri
 }
 
 // Integração com a Anthropic (Claude). A chave da API é salva criptografada no
-// banco (não no .env) e usada na análise de crédito assistida por IA.
+// banco (não no .env) e usada na análise de vaga do banco de talentos.
 function AnthropicIntegrationCard({ api, inicial, onEstado }: {
   api: ReturnType<typeof useApi>;
   /** O que a tabela já descobriu, para não repetir a validação da chave. */
@@ -1006,6 +1040,8 @@ function AnthropicIntegrationCard({ api, inicial, onEstado }: {
   const [removing, setRemoving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState(false);
+  const [modelos, setModelos] = useState<ModeloDaLista[]>(ANTHROPIC_MODELS);
+  const [daConta, setDaConta] = useState(false);
 
   useEffect(() => {
     api('?action=anthropic_config').then(d => {
@@ -1016,6 +1052,20 @@ function AnthropicIntegrationCard({ api, inicial, onEstado }: {
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
+
+  // Os modelos vêm da conta assim que existe chave salva, e de novo depois de
+  // trocar a chave: conta diferente enxerga catálogo diferente.
+  useEffect(() => {
+    if (!hasKey) { setModelos(ANTHROPIC_MODELS); setDaConta(false); return; }
+    let vivo = true;
+    api('?action=anthropic_modelos').then(d => {
+      if (!vivo) return;
+      const lista: { id: string; nome: string }[] = d?.modelos ?? [];
+      setModelos(juntarModelos(lista));
+      setDaConta(lista.length > 0);
+    }).catch(() => { /* fica a relação conhecida */ });
+    return () => { vivo = false; };
+  }, [hasKey, connected]);
 
   async function save() {
     // Permite salvar só a chave, só o modelo, ou ambos (chave em branco = mantém a atual)
@@ -1039,7 +1089,7 @@ function AnthropicIntegrationCard({ api, inicial, onEstado }: {
   }
 
   async function remove() {
-    if (!confirm('Remover a integração com a Anthropic? A análise de crédito por IA deixará de funcionar.')) return;
+    if (!confirm('Remover a integração com a Anthropic? A análise de vaga do banco de talentos deixará de funcionar.')) return;
     setRemoving(true);
     await api('', 'POST', { action: 'remove_anthropic_key' });
     setHasKey(false);
@@ -1096,7 +1146,12 @@ function AnthropicIntegrationCard({ api, inicial, onEstado }: {
 
           <div className="integration-form-group">
             <label className="integration-label">Modelo</label>
-            <ModelSelect value={model} onChange={setModel} color={ANTHROPIC_COLOR} />
+            <ModelSelect value={model} onChange={setModel} color={ANTHROPIC_COLOR} modelos={modelos} />
+            <p className="integration-hint">
+              {daConta
+                ? modelos.length + ' modelos, direto da sua conta na Anthropic.'
+                : 'Os modelos da sua conta aparecem aqui depois que a chave for salva.'}
+            </p>
           </div>
 
           <div className="integration-form-actions">
@@ -1717,7 +1772,7 @@ function IntegracoesTab({ token: sessionToken }: { token: string }) {
           <LinhaIntegracao
             nome="Anthropic (Claude)"
             categoria="Inteligência artificial"
-            descricao="Lê os relatórios e sugere um parecer na análise de crédito."
+            descricao="Lê a vaga e ordena o banco de talentos por encaixe."
             logo={<span className="integracao-logo" style={{ background: `${CLAUDE_ORANGE}14`, border: `1px solid ${CLAUDE_ORANGE}30` }}><ClaudeLogo size={18} /></span>}
             estado={estadoDe('anthropic')}
             aberta={aberta === 'anthropic'}

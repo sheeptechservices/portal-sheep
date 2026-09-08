@@ -340,6 +340,7 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   remove_nova_oportunidade_notif: 'configuracoes:notificacoes',
   nova_oportunidade_notifs: 'configuracoes:notificacoes',
   anthropic_config: 'configuracoes:integracoes',
+  anthropic_modelos: 'configuracoes:integracoes',
   fireflies_config: 'configuracoes:integracoes',
   save_fireflies_key: 'configuracoes:integracoes',
   resend_config: 'configuracoes:integracoes',
