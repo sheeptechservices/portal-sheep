@@ -1,7 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  Acompanhamento do projeto, para o cliente.
 //
-//  Página de leitura, e só. Não há formulário, não há botão que grave nada, e
+//  Página de leitura, com uma única exceção: o cartão de pedido no fim, que é o
+//  caminho de volta do cliente para o time. Fora dele, nada aqui grava nada, e
 //  não há caminho daqui para o portal interno - nem link de entrada, nem menção
 //  a ele. O que chega aqui é o que a rota pública devolve, que é um punhado de
 //  campos escolhidos a dedo.
@@ -28,6 +29,7 @@ import {
   CalendarioEntregas, QuadroEntregas, SwitcherVisao, type ItemVisao,
 } from '../components/VisoesEntregas';
 import { porNivelDeContato } from '../lib/papeisDeEquipe';
+import { PedidoDoCliente } from './PedidoDoCliente';
 
 interface Evidencia {
   id: number;
@@ -1007,6 +1009,11 @@ export default function ProjetoPublico({ token }: { token: string }) {
           ) : <Fragment key="sem-secao">{gruposDaSecao}</Fragment>;
         })}
       </section>
+
+      {/* O caminho de volta: quem acompanha vê um problema, lembra de um
+          ajuste, tem uma ideia. Fica no fim porque é o que se faz depois de
+          olhar as entregas, e não antes. */}
+      <PedidoDoCliente token={token} />
 
       {previa && (
         <Previa evidencia={previa} token={token} onFechar={() => setPrevia(null)} />

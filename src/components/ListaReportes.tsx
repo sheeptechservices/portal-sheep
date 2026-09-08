@@ -64,9 +64,24 @@ export interface ReporteNaLista {
   tem_print: boolean;
   status: string;
   criado_em: string;
+  /** 'interno' | 'cliente'. O que vem do cliente entra pela pagina publica do
+   *  projeto dele, e nao tem autor de dentro. */
+  origem?: string;
+  /** O que o cliente disse que e: 'problema' | 'ajuste' | 'ideia' | 'duvida'. */
+  tipo?: string | null;
+  /** De qual projeto veio o pedido do cliente. */
+  projeto_nome?: string | null;
   /** As notas ja escritas, da mais antiga para a mais nova. */
   notas?: NotaDoRelato[];
 }
+
+/** O que o cliente escolheu no formulario, em uma palavra. */
+const TIPO_DO_PEDIDO: Record<string, string> = {
+  problema: 'Problema',
+  ajuste: 'Ajuste',
+  ideia: 'Nova ideia',
+  duvida: 'Dúvida',
+};
 
 export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onFechar }: {
   carregar: () => Promise<{ reportes?: ReporteNaLista[]; error?: string }>;
@@ -354,6 +369,15 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
                             <span className="reportes-quem" title={r.autor_email ?? undefined}>
                               <Avatar nome={r.autor_nome} foto={r.autor_foto} size={22} />
                               {r.autor_nome}
+                              {/* Quem vem de fora se identifica: o mesmo nome
+                                  numa fila que mistura time e cliente nao diz
+                                  com quem se esta falando. */}
+                              {r.origem === 'cliente' && (
+                                <span className="reportes-cliente"
+                                  title={[r.projeto_nome, TIPO_DO_PEDIDO[r.tipo ?? '']].filter(Boolean).join(' | ')}>
+                                  Cliente
+                                </span>
+                              )}
                             </span>
                           </td>
                         )}

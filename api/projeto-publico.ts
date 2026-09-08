@@ -14,6 +14,10 @@
 //     ou removido, a resposta é a mesma: 404, sem dizer qual dos casos é.
 //  3. Nada daqui abre porta para o portal interno. Este arquivo não cria
 //     sessão, não lê cabeçalho de sessão e não fala com `_admin-handler`.
+//  4. O POST escreve UMA linha, em UMA tabela - a fila de chamados -, com os
+//     campos conferidos um a um logo abaixo, e sempre amarrada ao projeto
+//     daquele token. Ele não lê nada de volta: a resposta é "recebido" e o
+//     número do chamado, e nada do que já está na fila desce por aqui.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@libsql/client';
@@ -71,6 +75,40 @@ function passouDoTeto(ip: string): boolean {
   return recentes.length > TETO;
 }
 
+// ── Quanto se pode mandar ───────────────────────────────────────────────────
+//
+//  Escrever tem teto próprio, e bem mais apertado que o de ler: ler é a página
+//  se atualizando sozinha, escrever é gente digitando. Cinco pedidos em dez
+//  minutos cobre com folga quem tem muito a dizer, e corta o robô que descobriu
+//  o link.
+const JANELA_ENVIO_MS = 10 * 60_000;
+const TETO_ENVIO = 5;
+const envios = new Map<string, number[]>();
+
+function passouDoTetoDeEnvio(ip: string): boolean {
+  const agora = Date.now();
+  const desde = agora - JANELA_ENVIO_MS;
+  const recentes = (envios.get(ip) ?? []).filter(t => t > desde);
+  recentes.push(agora);
+  envios.set(ip, recentes);
+  if (envios.size > 5_000) {
+    for (const [chave, quando] of envios) {
+      if (!quando.some(t => t > desde)) envios.delete(chave);
+    }
+  }
+  return recentes.length > TETO_ENVIO;
+}
+
+/** O que o cliente diz que está mandando. Fechada de propósito: o tipo vira
+ *  etiqueta na fila de dentro, e etiqueta que qualquer texto cria não etiqueta
+ *  nada. */
+const TIPOS_DE_PEDIDO = ['problema', 'ajuste', 'ideia', 'duvida'];
+
+/** Anexo: um só, imagem ou PDF, cinco megas. É print de tela e página de
+ *  documento, que é o que se manda junto de um pedido. */
+const TIPOS_DE_ANEXO = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf'];
+const LIMITE_ANEXO = 5 * 1024 * 1024;
+
 /** Estados de entrega que o cliente vê. O nome é o mesmo de dentro: inventar um
  *  vocabulário só para fora produziria duas verdades sobre a mesma entrega. */
 const ORDEM_STATUS = [
@@ -78,7 +116,9 @@ const ORDEM_STATUS = [
 ];
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
 
   const token = String(req.query.token ?? '').trim();
   // Um mesmo endereço serve a página e entrega o conteúdo da evidência. Duas
@@ -113,6 +153,86 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
     const p = projeto.rows[0];
     if (!p) return res.status(404).json({ error: 'Página não encontrada.' });
+
+    // ── O pedido do cliente ────────────────────────────────────────────────
+    //
+    //  Cai na mesma fila de chamados do time, marcado como vindo do cliente e
+    //  amarrado a este projeto. Mesma fila de propósito: pedido de cliente é
+    //  trabalho como outro qualquer, e uma segunda caixa de entrada seria mais
+    //  uma coisa para alguém lembrar de olhar.
+    if (req.method === 'POST') {
+      if (passouDoTetoDeEnvio(ipDe(req))) {
+        res.setHeader('Retry-After', String(Math.ceil(JANELA_ENVIO_MS / 1000)));
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(429).json({ error: 'Muitos envios seguidos. Tente de novo em alguns minutos.' });
+      }
+
+      const corpo = (req.body ?? {}) as Record<string, unknown>;
+      const texto = (v: unknown, max: number) => String(v ?? '').trim().slice(0, max);
+
+      const tipo = texto(corpo.tipo, 20);
+      if (!TIPOS_DE_PEDIDO.includes(tipo)) {
+        return res.status(400).json({ error: 'Escolha o tipo do pedido.' });
+      }
+      const assunto = texto(corpo.assunto, 120);
+      if (assunto.length < 3) return res.status(400).json({ error: 'Escreva um assunto.' });
+      const mensagem = texto(corpo.mensagem, 4000);
+      if (mensagem.length < 5) return res.status(400).json({ error: 'Conte o que você precisa.' });
+      const nome = texto(corpo.nome, 80);
+      if (nome.length < 2) return res.status(400).json({ error: 'Diga o seu nome.' });
+      const email = texto(corpo.email, 120);
+      // E-mail é opcional - o cliente pode preferir falar pelo canal de sempre -,
+      // mas escrito torto é recusado: sem ele não há como responder, e um
+      // endereço quebrado dá a impressão de que há.
+      if (email && !/^[^@\s]+@[^@\s.]+\.[^@\s]{2,}$/.test(email)) {
+        return res.status(400).json({ error: 'Confira o e-mail.' });
+      }
+
+      const anexo = corpo.anexo as { nome?: string; tipo?: string; base64?: string } | undefined;
+      let anexoNome: string | null = null;
+      let anexoTipo: string | null = null;
+      let anexoDados: string | null = null;
+      if (anexo?.base64) {
+        anexoTipo = String(anexo.tipo ?? '');
+        if (!TIPOS_DE_ANEXO.includes(anexoTipo)) {
+          return res.status(400).json({ error: 'O anexo precisa ser uma imagem ou um PDF.' });
+        }
+        anexoDados = String(anexo.base64).split(',').pop() ?? '';
+        // Cada 4 letras de base64 são 3 bytes: dá para conferir o tamanho sem
+        // decodificar o arquivo inteiro na memória da função.
+        if (anexoDados.length * 0.75 > LIMITE_ANEXO) {
+          return res.status(400).json({ error: 'O anexo passa de 5 MB.' });
+        }
+        anexoNome = String(anexo.nome ?? 'anexo').slice(0, 80);
+      }
+
+      const gravado = await db.execute({
+        sql: `INSERT INTO reportes
+              (texto, urgencia, pagina, autor_id, autor_nome, autor_email,
+               print_nome, print_tipo, print_base64, status, criado_em,
+               origem, projeto_id, tipo)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        args: [
+          `${assunto}\n\n${mensagem}`,
+          // A prioridade é da casa, e quem a define é a casa: cliente nenhum
+          // escolhe a própria posição na fila.
+          'Média',
+          `Portal do cliente | ${String(p.nome)}`,
+          null,
+          nome,
+          email || null,
+          anexoNome, anexoTipo, anexoDados,
+          'aberto',
+          new Date().toISOString(),
+          'cliente',
+          String(p.id),
+          tipo,
+        ],
+      });
+
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(201).json({ ok: true, numero: Number(gravado.lastInsertRowid ?? 0) });
+    }
 
     // Conteúdo de uma evidência, para a prévia. Só desce o arquivo que pende de
     // uma entrega deste projeto.

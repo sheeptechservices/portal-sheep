@@ -782,6 +782,25 @@ async function migrarSchema(db: Client) {
   `);
   await ddl(`CREATE INDEX IF NOT EXISTS idx_reportes_data ON reportes (criado_em DESC)`);
 
+  // A fila de chamados passou a receber tambem o que o cliente manda pela pagina
+  // publica do projeto dele. E a mesma fila de proposito: um pedido de ajuste do
+  // cliente e um chamado como outro qualquer, e uma segunda tela so para ele
+  // seria uma segunda fila para alguem lembrar de olhar.
+  //
+  // Colunas acrescentadas, e nao tabela nova: o que muda entre um e outro e de
+  // onde veio, de que projeto e que tipo de pedido e - o resto (texto, anexo,
+  // andamento, notas) e igual.
+  for (const coluna of [
+    // 'interno' | 'cliente'. Sem valor, e interno: a fila antiga nasceu assim.
+    `origem TEXT NOT NULL DEFAULT 'interno'`,
+    // De qual projeto veio o pedido do cliente.
+    'projeto_id TEXT',
+    // O que o cliente disse que e: 'problema' | 'ajuste' | 'ideia' | 'duvida'.
+    'tipo TEXT',
+  ]) {
+    try { await ddl(`ALTER TABLE reportes ADD COLUMN ${coluna}`); } catch {}
+  }
+
   // As notas do chamado: o que quem cuidou escreveu ao mudar o andamento.
   //
   // Tabela, e não uma coluna `comentario` no próprio relato: um chamado passa
@@ -4021,9 +4040,11 @@ async function despacharAdminData(
         sql: `
         SELECT r.id, r.texto, r.urgencia, r.pagina, r.autor_nome, r.autor_email,
                r.print_nome, r.print_base64 IS NOT NULL AS tem_print, r.status,
-               r.criado_em, u.foto_url AS autor_foto
+               r.criado_em, u.foto_url AS autor_foto,
+               r.origem, r.tipo, p.nome AS projeto_nome
         FROM reportes r
         LEFT JOIN usuarios u ON u.id = r.autor_id
+        LEFT JOIN projetos p ON p.id = r.projeto_id
         ${filaInteira ? '' : meus}
         ORDER BY CASE r.urgencia
                    WHEN 'Urgente' THEN 0
@@ -4077,6 +4098,11 @@ async function despacharAdminData(
             tem_print: Number(x.tem_print) === 1,
             status: String(x.status ?? 'aberto'),
             criado_em: String(x.criado_em),
+            // De onde veio: a fila e a mesma para o time e para o cliente, e e
+            // a origem que diz quem esta falando.
+            origem: String(x.origem ?? 'interno'),
+            tipo: x.tipo != null ? String(x.tipo) : null,
+            projeto_nome: x.projeto_nome != null ? String(x.projeto_nome) : null,
             notas: notasPorRelato.get(Number(x.id)) ?? [],
           })),
         },

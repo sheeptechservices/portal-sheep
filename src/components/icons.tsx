@@ -489,6 +489,10 @@ export function IconCalendario({ size = 14 }: { size?: number }) {
 export function IconRelogio({ size = 14 }: { size?: number }) {
   return <Ico size={size}><circle cx="12" cy="12" r="9" /><path d="M12 7.2V12l3.2 1.9" /></Ico>;
 }
+// Falar com alguem - o balao de conversa.
+export function IconBalao({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><path d="M21 11.5a8.4 8.4 0 01-9 8.4 9.5 9.5 0 01-2.9-.4L3 21l1.6-4.6A8.2 8.2 0 013.2 12 8.4 8.4 0 0112 3.5a8.4 8.4 0 019 8z" /></Ico>;
+}
 // Estado vazio - nada por aqui.
 export function IconInbox({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M21.5 12.5h-5.4l-1.8 3H9.7l-1.8-3H2.5" /><path d="M5.9 5.1L2.5 12.5V18a2 2 0 002 2h15a2 2 0 002-2v-5.5l-3.4-7.4A2 2 0 0016.3 4H7.7a2 2 0 00-1.8 1.1z" /></Ico>;

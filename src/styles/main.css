@@ -16672,3 +16672,453 @@ button.checklist-texto:focus-visible {
      movimento nao quer um vaivem eterno no canto da tela. */
   .atividade-trilho.indefinida .atividade-tinta { width: 100%; opacity: .45; animation: none; }
 }
+
+/* ── O cartao de pedido do cliente ──────────────────────────────────────────
+   A unica peca desta pagina que escreve. Usa o mesmo material das outras - o
+   cristal do topo e das entregas -, porque ela e parte da pagina e nao um
+   formulario colado no fim dela. */
+.pub-pedido-cartao {
+  padding: 24px;
+  border: 1px solid var(--cristal-borda);
+  border-radius: var(--radius-lg);
+  background: var(--cristal);
+  box-shadow: inset 0 1px 0 var(--cristal-luz),
+    inset 0 -1px 0 var(--cristal-base),
+    var(--cristal-sombra);
+}
+.pub-pedido-intro {
+  margin: 0 0 18px;
+  max-width: 62ch;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--gray);
+}
+
+/* ── O tipo do pedido, em cartoes ─────────────────────────────────────────── */
+.pub-pedido-tipos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+  gap: 10px;
+}
+.pub-pedido-tipo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 14px;
+  border: 1px solid var(--cristal-borda);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform var(--transition-spring), box-shadow var(--transition-spring),
+    border-color var(--transition), background var(--transition);
+}
+.pub-pedido-tipo:hover {
+  transform: translateY(-2px);
+  border-color: var(--cristal-borda-forte);
+  box-shadow: var(--shadow-card-hover);
+}
+.pub-pedido-tipo-icone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin-bottom: 6px;
+  border-radius: 50%;
+  background: var(--gray4);
+  color: var(--gray2);
+  transition: background var(--transition), color var(--transition);
+}
+.pub-pedido-tipo strong { font-size: 13px; font-weight: 700; color: var(--black); }
+.pub-pedido-tipo small { font-size: 11.5px; line-height: 1.35; color: var(--gray2); }
+/* Escolhido: a cor da casa entra na borda, no fundo e no icone de uma vez. Um
+   contorno sozinho some numa grade de quatro. */
+.pub-pedido-tipo.escolhido {
+  border-color: var(--yellow);
+  background: var(--yd);
+}
+.pub-pedido-tipo.escolhido .pub-pedido-tipo-icone {
+  background: var(--yellow);
+  color: var(--on-yellow);
+}
+
+/* ── Os campos ────────────────────────────────────────────────────────────── */
+.pub-pedido-campos {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 18px;
+}
+.pub-campo { display: block; }
+.pub-campo > span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: .03em;
+  color: var(--gray);
+}
+.pub-campo > span em { font-style: normal; font-weight: 500; color: var(--gray2); }
+.pub-campo input,
+.pub-campo textarea {
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid var(--cristal-borda);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--black);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.pub-campo textarea { resize: vertical; min-height: 110px; line-height: 1.55; }
+.pub-campo input::placeholder,
+.pub-campo textarea::placeholder { color: var(--gray2); }
+/* O foco da casa: borda firme e halo discreto, sem anel colorido. */
+.pub-campo input:focus,
+.pub-campo textarea:focus {
+  outline: none;
+  border-color: var(--gray2);
+  box-shadow: 0 0 0 3px var(--gray4);
+}
+.pub-pedido-dupla {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+/* ── O anexo ──────────────────────────────────────────────────────────────── */
+.pub-pedido-solta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 13px;
+  border: 1px dashed var(--cristal-borda-forte);
+  border-radius: var(--radius-md);
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition), color var(--transition);
+}
+.pub-pedido-solta span { flex: 1; min-width: 0; }
+.pub-pedido-solta b { display: block; font-size: 12.5px; font-weight: 700; color: var(--black); }
+.pub-pedido-solta small { display: block; font-size: 11px; color: var(--gray2); }
+.pub-pedido-solta:hover,
+.pub-pedido-solta.sobre { border-color: var(--yellow); background: var(--yd); color: var(--black); }
+.pub-pedido-anexo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--cristal-borda);
+  border-radius: var(--radius-md);
+  background: var(--white);
+}
+.pub-pedido-anexo img {
+  width: 38px;
+  height: 28px;
+  border-radius: 5px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.pub-pedido-anexo-icone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 28px;
+  border-radius: 5px;
+  background: var(--gray4);
+  color: var(--gray2);
+  flex-shrink: 0;
+}
+.pub-pedido-anexo-nome {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--black);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pub-pedido-anexo-peso { font-size: 11px; color: var(--gray2); }
+.pub-pedido-anexo button {
+  display: inline-flex;
+  padding: 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.pub-pedido-anexo button:hover { background: var(--gray4); color: var(--red); }
+
+.pub-pedido-erro {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--red);
+}
+
+/* ── O pe ─────────────────────────────────────────────────────────────────── */
+.pub-pedido-pe {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding-top: 4px;
+}
+.pub-pedido-nota { font-size: 11.5px; color: var(--gray2); }
+.pub-pedido-enviar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 22px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--yellow);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--on-yellow);
+  cursor: pointer;
+  transition: transform var(--transition-spring), box-shadow var(--transition-spring),
+    opacity var(--transition);
+}
+.pub-pedido-enviar:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-yellow);
+}
+.pub-pedido-enviar:disabled { opacity: .45; cursor: default; }
+
+/* ── Enviado ──────────────────────────────────────────────────────────────── */
+.pub-pedido-feito {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  padding: 34px 24px;
+}
+.pub-pedido-selo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--green-soft);
+  color: var(--green);
+}
+.pub-pedido-feito h3 { margin: 4px 0 0; font-size: 16px; font-weight: 800; color: var(--black); }
+.pub-pedido-feito p {
+  margin: 0;
+  max-width: 46ch;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--gray);
+}
+.pub-pedido-outro {
+  margin-top: 8px;
+  padding: 9px 18px;
+  border: 1px solid var(--cristal-borda-forte);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--gray);
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+.pub-pedido-outro:hover { border-color: var(--black); color: var(--black); }
+
+@media (max-width: 640px) {
+  .pub-pedido-cartao { padding: 18px; }
+  .pub-pedido-dupla { grid-template-columns: 1fr; }
+  .pub-pedido-pe { flex-direction: column; align-items: stretch; }
+  .pub-pedido-enviar { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pub-pedido-tipo,
+  .pub-pedido-enviar { transition: none; }
+  .pub-pedido-tipo:hover,
+  .pub-pedido-enviar:hover:not(:disabled) { transform: none; }
+}
+
+/* Quem escreveu de fora, na fila de chamados: o pedido do cliente entra na mesma
+   fila do time, e a etiqueta e o que diz com quem se esta falando. */
+.reportes-cliente {
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--yd);
+  border: 1px solid var(--yb);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: var(--black);
+  white-space: nowrap;
+}
+
+/* ── O balao do canto, na pagina do cliente ─────────────────────────────────
+   O pedido nao acontece no fim da leitura: acontece no meio dela, quando a
+   pessoa esta olhando uma entrega e percebe o que quer dizer. Por isso o alvo
+   fica fixo no canto, e nao numa secao la embaixo. */
+.pub-balao {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 900;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  height: 50px;
+  padding: 0 20px 0 16px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--yellow);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--on-yellow);
+  cursor: pointer;
+  box-shadow: 0 10px 30px -8px rgba(0, 201, 167, .55), 0 2px 6px rgba(20, 22, 30, .12);
+  transition: transform var(--transition-spring), box-shadow var(--transition-spring),
+    opacity .18s var(--curva-anti);
+}
+.pub-balao:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 38px -8px rgba(0, 201, 167, .65), 0 4px 10px rgba(20, 22, 30, .14);
+}
+.pub-balao:active { transform: translateY(-1px); }
+.pub-balao-icone { display: inline-flex; }
+/* Com o painel aberto ele sai de cena: dois alvos para a mesma coisa, um em
+   cima do outro, e so confusao. */
+.pub-balao.escondido {
+  opacity: 0;
+  transform: translateY(8px) scale(.9);
+  pointer-events: none;
+}
+
+/* ── O painel ─────────────────────────────────────────────────────────────── */
+.pub-balao-painel {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 901;
+  display: flex;
+  flex-direction: column;
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  max-height: min(82vh, 720px);
+  border: 1px solid var(--cristal-borda);
+  border-radius: var(--radius-lg);
+  background: var(--white);
+  box-shadow: 0 24px 60px -18px rgba(20, 22, 30, .35), 0 4px 12px rgba(20, 22, 30, .10);
+  overflow: hidden;
+  /* Nasce do canto de onde saiu: o balao vira o painel, em vez de o painel
+     aparecer de lugar nenhum. */
+  transform-origin: 100% 100%;
+  animation: painelDoBalaoEntra .22s var(--curva-anti) both;
+}
+.pub-balao-painel.saindo { animation: painelDoBalaoSai .18s ease both; }
+@keyframes painelDoBalaoEntra {
+  from { opacity: 0; transform: translateY(14px) scale(.94); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes painelDoBalaoSai {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateY(14px) scale(.94); }
+}
+
+.pub-balao-cabeca {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 16px 14px 18px;
+  border-bottom: 1px solid var(--gray4);
+  background: var(--bg);
+}
+.pub-balao-cabeca strong { display: block; font-size: 14px; font-weight: 800; color: var(--black); }
+.pub-balao-cabeca small { display: block; margin-top: 2px; font-size: 11.5px; color: var(--gray2); }
+.pub-balao-fechar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: var(--gray4);
+  color: var(--gray);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.pub-balao-fechar:hover { background: var(--gray3); color: var(--black); }
+
+/* O corpo rola por dentro: o painel tem teto, e o formulario cresce quando o
+   tipo e escolhido. */
+.pub-balao-corpo {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* A rolagem para aqui: sem isto, ao chegar no fim a roda passaria a rolar a
+     pagina atras do painel. */
+  overscroll-behavior: contain;
+  padding: 16px;
+}
+/* Dentro do painel o cartao perde a moldura - a moldura agora e o painel. */
+.pub-balao-corpo .pub-pedido-cartao {
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+}
+.pub-balao-corpo .pub-pedido-intro { font-size: 12.5px; margin-bottom: 14px; }
+/* Dois por linha: em 420px, quatro cartoes lado a lado virariam quatro tiras. */
+.pub-balao-corpo .pub-pedido-tipos { grid-template-columns: 1fr 1fr; gap: 8px; }
+.pub-balao-corpo .pub-pedido-tipo { padding: 11px; }
+.pub-balao-corpo .pub-pedido-tipo-icone { width: 26px; height: 26px; margin-bottom: 4px; }
+.pub-balao-corpo .pub-pedido-tipo strong { font-size: 12.5px; }
+.pub-balao-corpo .pub-pedido-tipo small { font-size: 11px; }
+.pub-balao-corpo .pub-pedido-dupla { grid-template-columns: 1fr; }
+.pub-balao-corpo .pub-pedido-campos { gap: 12px; padding-top: 14px; }
+.pub-balao-corpo .pub-campo textarea { min-height: 92px; }
+.pub-balao-corpo .pub-pedido-pe { flex-direction: column; align-items: stretch; gap: 10px; }
+.pub-balao-corpo .pub-pedido-enviar { width: 100%; }
+.pub-balao-corpo .pub-pedido-nota { text-align: center; }
+.pub-balao-corpo .pub-pedido-feito { padding: 20px 4px; }
+
+@media (max-width: 640px) {
+  .pub-balao { right: 14px; bottom: 14px; height: 46px; padding: 0 16px 0 14px; }
+  .pub-balao-painel {
+    right: 10px;
+    left: 10px;
+    bottom: 10px;
+    width: auto;
+    max-width: none;
+    max-height: 86vh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pub-balao,
+  .pub-balao-painel,
+  .pub-balao-painel.saindo { transition: none; animation: none; }
+  .pub-balao:hover { transform: none; }
+}

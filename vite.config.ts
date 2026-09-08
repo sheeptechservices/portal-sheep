@@ -158,6 +158,11 @@ export default defineConfig(({ mode }) => {
           server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
             const url = new URL(req.url ?? '/', `http://localhost`)
             if (!url.pathname.startsWith('/api/projeto-publico')) return next()
+            // O corpo e lido aqui porque a pagina do cliente passou a mandar
+            // pedido por POST; na Vercel ele ja chega desmontado em `req.body`.
+            let corpo = ''
+            req.on('data', (pedaco: Buffer) => { corpo += pedaco.toString() })
+            req.on('end', () => {
             ;(async () => {
               const { default: handler } = await import('./api/projeto-publico')
               let status = 200
@@ -180,6 +185,7 @@ export default defineConfig(({ mode }) => {
                   // - justamente o que este atalho promete evitar.
                   headers: req.headers,
                   socket: req.socket,
+                  body: corpo ? JSON.parse(corpo) : {},
                 } as never,
                 falso as never,
               )
@@ -188,6 +194,7 @@ export default defineConfig(({ mode }) => {
               res.statusCode = 500
               res.setHeader('Content-Type', 'application/json')
               res.end(JSON.stringify({ error: 'Internal error' }))
+            })
             })
           })
 
