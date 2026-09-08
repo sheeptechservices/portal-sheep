@@ -18,10 +18,17 @@
 //     com os campos conferidos um a um logo abaixo e sempre amarrado ao projeto
 //     daquele token. Ele não lê nada de volta: a resposta é "recebido" e o
 //     número do chamado, e nada do que já está na fila desce por aqui.
+//  5. O aviso por e-mail sai por `_email`, que é um módulo de envio e nada mais.
+//     A regra 3 continua de pé: quem não pode ser importado daqui é o handler do
+//     portal, com sessão, permissão e ações - e nada disso mora lá.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@libsql/client';
 import { etapasDeTarefa, progressoDaEntrega, statusDeduzido } from './_entregas.js';
+import { citacaoEmail, fichaEmail, notaEmail, notifyEmail } from './_email.js';
+// Só o endereço do dono do painel: é o mesmo que o aviso de chamado do time usa,
+// e repetir a regra aqui abriria a chance de os dois divergirem.
+import { emailAdmin } from './_papeis.js';
 
 // ── Limite de taxa ──────────────────────────────────────────────────────────
 //
@@ -103,6 +110,14 @@ function passouDoTetoDeEnvio(ip: string): boolean {
  *  etiqueta na fila de dentro, e etiqueta que qualquer texto cria não etiqueta
  *  nada. */
 const TIPOS_DE_PEDIDO = ['problema', 'ajuste', 'ideia', 'duvida'];
+
+/** O mesmo tipo, escrito como gente lê - é assim que ele vai no e-mail. */
+const ROTULO_DO_TIPO: Record<string, string> = {
+  problema: 'Problema',
+  ajuste: 'Ajuste',
+  ideia: 'Nova ideia',
+  duvida: 'Dúvida',
+};
 
 /** Anexos: até cinco, imagem ou PDF, cinco megas cada. Um pedido raramente tem
  *  um print só - tem o da tela, o do erro e o PDF que veio por e-mail. */
@@ -243,6 +258,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               VALUES (?,?,?,?,?,?)`,
         args: [numero, a.nome, a.tipo, Math.round(a.base64.length * 0.75), a.base64, agora],
       })));
+
+      // O aviso vai DEPOIS da gravação, e o que ele responder não muda o que o
+      // cliente vê: o pedido já está na fila. Se o e-mail falhar, o time perde o
+      // toque no ombro, não o chamado - e a falha fica registrada em
+      // `emails_enviados`, que é onde se procura por ela.
+      const paraOTime = emailAdmin();
+      if (paraOTime) {
+        await notifyEmail(
+          db, paraOTime,
+          // O projeto vai no assunto: quem recebe triagem pela caixa de entrada,
+          // e "um cliente pediu alguma coisa" não diz de qual conversa se trata.
+          `Portal: ${nome} mandou um pedido em ${String(p.nome)}`,
+          fichaEmail([
+            ['Projeto', String(p.nome)],
+            ['Quem', email ? `${nome} (${email})` : nome],
+            ['Tipo', ROTULO_DO_TIPO[tipo] ?? tipo],
+            ['Assunto', assunto],
+          ])
+          + citacaoEmail(mensagem)
+          + (arquivos.length ? notaEmail(arquivos.length === 1
+            ? 'Um anexo veio junto, e está no chamado.'
+            : `${arquivos.length} anexos vieram juntos, e estão no chamado.`) : ''),
+          'pedido-cliente',
+          {
+            previa: assunto,
+            rodape: 'Você recebe este aviso porque é quem cuida do portal.',
+          },
+        ).catch(() => { /* o aviso e apoio: o chamado ja esta gravado */ });
+      }
 
       res.setHeader('Cache-Control', 'no-store');
       return res.status(201).json({ ok: true, numero });
