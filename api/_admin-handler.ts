@@ -10,8 +10,8 @@ import {
   obterGravacaoFireflies,
 } from './_credentials.js';
 import {
-  citacaoEmail, enderecoDoPortal, esc, fichaEmail, layoutEmail, notaEmail, notifyEmail,
-  remetenteDeEmail, remetenteEndereco,
+  botaoEmail, citacaoEmail, enderecoDoPortal, esc, fichaEmail, layoutEmail, notaEmail,
+  notifyEmail, remetenteDeEmail, remetenteEndereco, textoEmail,
 } from './_email.js';
 import { obterDdl } from './_schema.js';
 import {
@@ -36,6 +36,64 @@ import {
 // o primeiro terminar de verdade. Falha limpa o cache, para a próxima tentar de
 // novo em vez de herdar um schema pela metade.
 let _schemaPromessa: Promise<void> | null = null;
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  O relato (chamado): o que a fila aceita e como cada estado se chama.
+//
+//  Mora aqui, e não no `_email`, porque é regra da fila e não de envio. Esteve
+//  lá por engano entre 05/09 e 08/09/2026, quando o bloco de e-mail foi extraído
+//  e levou estas linhas junto - e como `api/` não era conferido pelo TypeScript,
+//  a referência quebrada só apareceu em produção.
+// ─────────────────────────────────────────────────────────────────────────────
+/** O que a fila de chamados aceita como anexo, e quanto. Imagem cobre o print
+ *  de tela; PDF cobre o documento que o cliente encaminhou. Cinco arquivos de
+ *  5 MB e o teto - acima disso o corpo da requisicao nao passaria mesmo. */
+const TIPOS_DE_ANEXO_DO_RELATO = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf'];
+const MAX_ANEXOS_DO_RELATO = 5;
+
+function conferirAnexosDoRelato(crus: unknown):
+  { ok: true; anexos: { nome: string; tipo: string; base64: string }[] } | { ok: false; error: string } {
+  if (!Array.isArray(crus)) return { ok: true, anexos: [] };
+  if (crus.length > MAX_ANEXOS_DO_RELATO) {
+    return { ok: false, error: `São no máximo ${MAX_ANEXOS_DO_RELATO} anexos.` };
+  }
+  const limpos: { nome: string; tipo: string; base64: string }[] = [];
+  for (const cru of crus) {
+    const item = cru as { nome?: string; tipo?: string; base64?: string };
+    if (!item?.base64) continue;
+    const nome = String(item.nome ?? 'anexo').slice(0, 80);
+    const tipo = String(item.tipo ?? '');
+    if (!TIPOS_DE_ANEXO_DO_RELATO.includes(tipo)) {
+      return { ok: false, error: `"${nome}" precisa ser uma imagem ou um PDF.` };
+    }
+    const conteudo = String(item.base64).split(',').pop() ?? '';
+    // Cada 4 letras de base64 sao 3 bytes: da para conferir o tamanho sem
+    // decodificar o arquivo inteiro na memoria da funcao.
+    if (conteudo.length * 0.75 > 5 * 1024 * 1024) {
+      return { ok: false, error: `"${nome}" passa de 5 MB.` };
+    }
+    if (conteudo) limpos.push({ nome, tipo, base64: conteudo });
+  }
+  return { ok: true, anexos: limpos };
+}
+
+/** A escala de urgência do relato: as mesmas quatro palavras que o portal já
+ *  usa em projeto e em tarefa (ver `src/lib/prioridades.tsx`). */
+const URGENCIAS_DO_RELATO = ['Urgente', 'Alta', 'Média', 'Baixa'];
+
+/** Andamento do relato. Quatro estados e nada de "reaberto": se voltou, volta
+ *  para `aberto`, e a auditoria conta a história. Estado a mais numa fila
+ *  pequena só cria dúvida sobre qual usar. */
+const STATUS_DO_RELATO = ['aberto', 'em_analise', 'resolvido', 'descartado'];
+
+/** Como cada estado se escreve para quem lê. A chave é de banco; o e-mail que
+ *  chega em quem reportou não pode dizer "em_analise". */
+const ROTULO_DO_STATUS: Record<string, string> = {
+  aberto: 'Aberto',
+  em_analise: 'Em análise',
+  resolvido: 'Resolvido',
+  descartado: 'Descartado',
+};
 
 const FORA_DA_EQUIPE = {
   status: 403,
