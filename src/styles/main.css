@@ -16967,19 +16967,6 @@ button.checklist-texto:focus-visible {
   .pub-pedido-enviar:hover:not(:disabled) { transform: none; }
 }
 
-/* Quem escreveu de fora, na fila de chamados: o pedido do cliente entra na mesma
-   fila do time, e a etiqueta e o que diz com quem se esta falando. */
-.reportes-cliente {
-  padding: 1px 7px;
-  border-radius: var(--radius-pill);
-  background: var(--yd);
-  border: 1px solid var(--yb);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: .02em;
-  color: var(--black);
-  white-space: nowrap;
-}
 
 /* ── O balao do canto, na pagina do cliente ─────────────────────────────────
    O pedido nao acontece no fim da leitura: acontece no meio dela, quando a
