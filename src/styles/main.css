@@ -17209,3 +17209,42 @@ button.checklist-texto:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .reportes-anexo { transition: none; }
 }
+
+/* O folheador da previa: setas e posicao, no cabecalho, so quando ha mais de um
+   arquivo para ver. */
+.file-preview-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 4px;
+  padding: 2px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-pill);
+  background: var(--bg);
+}
+.file-preview-nav button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--gray);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.file-preview-nav button:hover { background: var(--gray4); color: var(--black); }
+.file-preview-conta {
+  padding: 0 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--gray2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .file-preview-nav button { transition: none; }
+}

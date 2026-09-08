@@ -104,10 +104,9 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
 }) {
   const [lista, setLista] = useState<ReporteNaLista[] | null>(null);
   const [erro, setErro] = useState('');
-  /** O chamado aberto no visualizador, e qual dos anexos dele. */
-  const [vendo, setVendo] = useState<
-    { reporte: ReporteNaLista; anexo: { id: number | null; nome: string; tipo: string; tamanho: number } } | null
-  >(null);
+  /** O chamado aberto no visualizador, e em qual dos anexos dele se está. A
+   *  posição, e não o arquivo: é por ela que se folheia. */
+  const [vendo, setVendo] = useState<{ reporte: ReporteNaLista; indice: number } | null>(null);
   const [erroStatus, setErroStatus] = useState('');
   /** O andamento escolhido, esperando a resposta sobre o e-mail. A troca só
    *  acontece depois: perguntar depois de aplicar deixaria a pergunta sem efeito
@@ -331,7 +330,7 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
                         <td onClick={(r.anexos?.length ?? 0) > 0 ? (e => e.stopPropagation()) : undefined}>
                           {r.anexos?.length ? (
                             <button type="button" className="reportes-print"
-                              onClick={() => setVendo({ reporte: r, anexo: r.anexos![0] })}
+                              onClick={() => setVendo({ reporte: r, indice: 0 })}
                               title={r.anexos.map(a => a.nome).join(', ')}>
                               <IconImage size={13} /> Ver
                               {r.anexos.length > 1 && <span className="reportes-print-conta">{r.anexos.length}</span>}
@@ -417,7 +416,7 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
                                       {r.anexos.map((a, i) => (
                                         <li key={a.id ?? `antigo-${i}`}>
                                           <button type="button" className="reportes-anexo"
-                                            onClick={() => setVendo({ reporte: r, anexo: a })}>
+                                            onClick={() => setVendo({ reporte: r, indice: i })}>
                                             {a.tipo === 'application/pdf'
                                               ? <IconDoc size={12} /> : <IconImage size={12} />}
                                             <span>{a.nome}</span>
@@ -508,12 +507,33 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
 
       {/* A prévia é a mesma janela de todo anexo do sistema: imagem abre dentro
           dela, e o download sai de lá. */}
-      {vendo && (
+      {vendo && vendo.reporte.anexos?.[vendo.indice] && (
         <PreviaArquivo
-          arquivo={{ nome: vendo.anexo.nome }}
-          onCarregar={() => carregarPrint(vendo.reporte.id, vendo.anexo.id ?? undefined)}
-          onBaixar={() => { void baixarPrint(vendo.reporte, carregarPrint, vendo.anexo.id ?? undefined); }}
+          arquivo={{
+            nome: vendo.reporte.anexos[vendo.indice].nome,
+            // A chave e o id do anexo, e nao o nome: dois prints chamados
+            // `image.png` no mesmo chamado nao trocariam de conteudo ao folhear.
+            chave: vendo.reporte.anexos[vendo.indice].id ?? `antigo-${vendo.reporte.id}`,
+          }}
+          onCarregar={() => carregarPrint(vendo.reporte.id, vendo.reporte.anexos![vendo.indice].id ?? undefined)}
+          onBaixar={() => {
+            void baixarPrint(vendo.reporte, carregarPrint, vendo.reporte.anexos![vendo.indice].id ?? undefined);
+          }}
           onFechar={() => setVendo(null)}
+          // Anda em roda: do ultimo volta ao primeiro. Numa lista de tres, tanto
+          // faz o caminho - o que incomoda e a seta que morre na ponta.
+          navegacao={{
+            posicao: vendo.indice + 1,
+            total: vendo.reporte.anexos.length,
+            onAnterior: () => setVendo(v => (v ? {
+              ...v,
+              indice: (v.indice - 1 + (v.reporte.anexos?.length ?? 1)) % (v.reporte.anexos?.length ?? 1),
+            } : v)),
+            onProximo: () => setVendo(v => (v ? {
+              ...v,
+              indice: (v.indice + 1) % (v.reporte.anexos?.length ?? 1),
+            } : v)),
+          }}
           // Acima da própria janela, que abre em 10040: a prévia foi aberta de
           // dentro dela, e nascer atrás seria abrir e não ver nada.
           camada={10060}

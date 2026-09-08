@@ -12,14 +12,20 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { IconDownload, IconX } from './icons';
+import { IconArrowLeft, IconArrowRight, IconDownload, IconX } from './icons';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 
 /** Serve a qualquer anexo do sistema: todos são arquivo com id, e o que muda é
  *  só de onde o conteúdo vem. */
-export function PreviaArquivo({ arquivo, onCarregar, onBaixar, onFechar, camada }: {
-  arquivo: { nome: string; comentario?: string | null };
+export function PreviaArquivo({ arquivo, onCarregar, onBaixar, onFechar, camada, navegacao }: {
+  arquivo: {
+    nome: string;
+    comentario?: string | null;
+    /** O que identifica ESTE arquivo. Sem ela vale o nome, e dois anexos com o
+     *  mesmo nome nao trocariam de conteudo ao navegar. */
+    chave?: string | number;
+  };
   /** O buscador vem da página: o `api` carrega o token da sessão. */
   onCarregar: () => Promise<{ tipo: string; base64: string } | null>;
   onBaixar: () => void;
@@ -30,6 +36,16 @@ export function PreviaArquivo({ arquivo, onCarregar, onBaixar, onFechar, camada 
    * é sempre o que está por cima, e não o que fica atrás de quem a abriu.
    */
   camada?: number;
+  /** Quando o arquivo faz parte de um conjunto - os anexos de um chamado, por
+   *  exemplo -, a previa vira um folheador: setas no cabecalho, a posicao ao
+   *  lado do nome e as setas do teclado. Sem isto ela continua sendo uma janela
+   *  de um arquivo so. */
+  navegacao?: {
+    posicao: number;
+    total: number;
+    onAnterior: () => void;
+    onProximo: () => void;
+  };
 }) {
   const [conteudo, setConteudo] = useState<{ tipo: string; url: string } | null>(null);
   const [erro, setErro] = useState('');
@@ -54,14 +70,21 @@ export function PreviaArquivo({ arquivo, onCarregar, onBaixar, onFechar, camada 
     // A URL do blob segura o arquivo em memória enquanto existir: soltá-la ao
     // fechar evita acumular cópias a cada prévia aberta.
     return () => { vivo = false; if (criada) URL.revokeObjectURL(criada); };
-  }, [arquivo.nome]);
+  }, [arquivo.chave ?? arquivo.nome]);
 
   // Modal em portal não recebe tecla por si: o Esc é escutado na janela.
   useEffect(() => {
-    const sair = (e: KeyboardEvent) => { if (e.key === 'Escape') onFechar(); };
-    window.addEventListener('keydown', sair);
-    return () => window.removeEventListener('keydown', sair);
-  }, [onFechar]);
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onFechar(); return; }
+      // As setas so mandam quando ha para onde ir: numa previa de arquivo unico
+      // elas continuam pertencendo a pagina atras.
+      if (!navegacao || navegacao.total < 2) return;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); navegacao.onAnterior(); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); navegacao.onProximo(); }
+    };
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, [onFechar, navegacao]);
 
   const imagem = conteudo?.tipo.startsWith('image/');
   const pdf = conteudo?.tipo === 'application/pdf';
@@ -73,6 +96,23 @@ export function PreviaArquivo({ arquivo, onCarregar, onBaixar, onFechar, camada 
         <div className="file-preview-header">
           <span className="file-preview-name">{arquivo.nome}</span>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {/* O folheador so aparece quando ha mais de um: uma seta que nao
+                leva a lugar nenhum e um botao morto no cabecalho. */}
+            {navegacao && navegacao.total > 1 && (
+              <span className="file-preview-nav">
+                <button type="button" aria-label="Anexo anterior" title="Anterior (seta esquerda)"
+                  onClick={navegacao.onAnterior}>
+                  <IconArrowLeft size={13} />
+                </button>
+                <span className="file-preview-conta">
+                  {navegacao.posicao} de {navegacao.total}
+                </span>
+                <button type="button" aria-label="Próximo anexo" title="Próximo (seta direita)"
+                  onClick={navegacao.onProximo}>
+                  <IconArrowRight size={13} />
+                </button>
+              </span>
+            )}
             <button type="button" className="file-preview-action" onClick={() => onBaixar()}>
               <IconDownload size={13} />
               Baixar
