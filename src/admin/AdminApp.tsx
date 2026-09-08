@@ -698,10 +698,16 @@ const SESSION_KEY = 'dux_admin_token';
  * própria primeira entrada, sem segundo clique (o botão do Perfil continua ali
  * para quem quiser trocar a foto depois).
  *
- * `prompt: ''` é o que torna isso indolor: a tela de autorização do Google
- * aparece quando é necessária, na prática só no primeiro acesso, e as entradas
- * seguintes passam direto. Foi a ausência dele - o padrão reapresenta a tela
- * toda vez - que fez a foto sair do login numa versão anterior.
+ * `prompt: 'select_account'` pede a escolha da conta, e só ela. Com `''` o
+ * Google reaproveitava em silêncio a conta que já estivesse aberta no navegador,
+ * e quem tem uma conta pessoal logada batia num "Acesso bloqueado: o app só pode
+ * ser usado dentro da organização" sem nenhum caminho para trocar - a tela de
+ * erro do Google não oferece o seletor. Escolher a conta é um clique a mais e é
+ * o único jeito de a pessoa dizer com qual entra.
+ *
+ * Note que não é `consent`: a tela de autorização continua aparecendo só quando
+ * é necessária, na prática no primeiro acesso. Foi ela - e não o seletor de
+ * conta - que fez a foto sair do login numa versão antiga.
  *
  * O desenho é botão nosso, e agora de verdade: o fluxo de código não tem
  * `renderButton`, então não há iframe do Google por cima para receber o clique.
@@ -731,10 +737,10 @@ function BotaoGoogle({ onCodigo, entrando }: { onCodigo: (c: string) => void; en
           // People API. Mesmo conjunto que a ação de foto do Perfil usa.
           scope: 'openid email profile',
           ux_mode: 'popup',
-          // Sem isto o Google reapresenta a confirmação a cada entrada, que foi o
-          // motivo de a foto ter saído do login um dia. Com `''`, a tela aparece
-          // no primeiro acesso e as entradas seguintes passam direto.
-          prompt: '',
+          // Sempre perguntar COM QUAL conta, nunca reaproveitar a que estiver
+          // aberta: numa máquina com conta pessoal logada, o app - que é
+          // interno da organização - respondia 403 sem oferecer troca.
+          prompt: 'select_account',
           callback: r => { if (r.code) cb.current(r.code); },
           // Fechar o popup é desistência, não erro: o botão volta ao normal.
           error_callback: () => {},

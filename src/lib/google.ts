@@ -62,9 +62,10 @@ export interface GoogleGis {
         client_id: string;
         scope: string;
         ux_mode?: 'popup' | 'redirect';
-        /** `''` pede confirmação só quando ela é necessária - na prática, no
-         *  primeiro acesso. O padrão do Google (`select_account consent`)
-         *  reapresentaria a tela a cada entrada. */
+        /** `'select_account'` pergunta com qual conta se entra, sem repetir a
+         *  autorização; `''` reaproveita em silêncio a conta aberta no
+         *  navegador, e `'consent'` reapresenta a tela de permissões a cada
+         *  entrada. */
         prompt?: '' | 'none' | 'consent' | 'select_account';
         callback: (r: { code?: string; error?: string }) => void;
         error_callback?: (e: { type?: string }) => void;
