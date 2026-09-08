@@ -1124,9 +1124,14 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
       return { error: 'Erro de conexão. Tente de novo.' };
     }
   }, [token]);
-  const printDoReporte = useCallback(async (id: number) => {
+  const printDoReporte = useCallback(async (id: number, anexo?: number) => {
     try {
-      const d = await lerAdmin(`action=reporte_print&id=${id}`);
+      // Sem `anexo`, e o print antigo da propria linha; com ele, e um dos
+      // arquivos da tabela de anexos. Quem pode ver ja foi decidido no servidor,
+      // pelo dono do chamado.
+      const d = await lerAdmin(
+        `action=reporte_print&id=${id}${anexo ? `&anexo=${anexo}` : ''}`,
+      );
       return d?.base64 ? d : null;
     } catch {
       return null;

@@ -12,7 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { IconAlert, IconChevronRight, IconImage, IconImagemSem, IconX } from './icons';
+import { IconAlert, IconChevronRight, IconDoc, IconImage, IconImagemSem, IconX } from './icons';
 import { Dialogo } from './Dialogo';
 import { PreviaArquivo } from './PreviaArquivo';
 import { SelectSistema } from './SelectSistema';
@@ -62,6 +62,9 @@ export interface ReporteNaLista {
   autor_foto: string | null;
   print_nome: string | null;
   tem_print: boolean;
+  /** Os arquivos do chamado. O print antigo entra aqui com `id` nulo - e e por
+   *  isso que a tela nao precisa saber que existiram dois formatos. */
+  anexos?: { id: number | null; nome: string; tipo: string; tamanho: number }[];
   status: string;
   criado_em: string;
   /** 'interno' | 'cliente'. O que vem do cliente entra pela pagina publica do
@@ -86,7 +89,7 @@ const TIPO_DO_PEDIDO: Record<string, string> = {
 export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onFechar }: {
   carregar: () => Promise<{ reportes?: ReporteNaLista[]; error?: string }>;
   /** O conteúdo do print vem um por vez: na lista ele não viaja. */
-  carregarPrint: (id: number) => Promise<{ nome: string; tipo: string; base64: string } | null>;
+  carregarPrint: (id: number, anexo?: number) => Promise<{ nome: string; tipo: string; base64: string } | null>;
   mudarStatus?: (id: number, status: string, avisar: boolean, comentario: string) => Promise<{ error?: string; aviso?: string | null } | null>;
   /**
    * O dono do painel: vê a fila inteira e muda o andamento. Quem não é vê só o
@@ -101,7 +104,10 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
 }) {
   const [lista, setLista] = useState<ReporteNaLista[] | null>(null);
   const [erro, setErro] = useState('');
-  const [vendo, setVendo] = useState<ReporteNaLista | null>(null);
+  /** O chamado aberto no visualizador, e qual dos anexos dele. */
+  const [vendo, setVendo] = useState<
+    { reporte: ReporteNaLista; anexo: { id: number | null; nome: string; tipo: string; tamanho: number } } | null
+  >(null);
   const [erroStatus, setErroStatus] = useState('');
   /** O andamento escolhido, esperando a resposta sobre o e-mail. A troca só
    *  acontece depois: perguntar depois de aplicar deixaria a pergunta sem efeito
@@ -322,14 +328,16 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
                             volta a ser parte da linha - engolir o clique de uma
                             célula vazia deixa um pedaço morto no meio da fila, e
                             quem clicasse ali acharia que a linha não abre. */}
-                        <td onClick={r.tem_print ? (e => e.stopPropagation()) : undefined}>
-                          {r.tem_print ? (
-                            <button type="button" className="reportes-print" onClick={() => setVendo(r)}
-                              title={r.print_nome ?? 'Ver o print'}>
+                        <td onClick={(r.anexos?.length ?? 0) > 0 ? (e => e.stopPropagation()) : undefined}>
+                          {r.anexos?.length ? (
+                            <button type="button" className="reportes-print"
+                              onClick={() => setVendo({ reporte: r, anexo: r.anexos![0] })}
+                              title={r.anexos.map(a => a.nome).join(', ')}>
                               <IconImage size={13} /> Ver
+                              {r.anexos.length > 1 && <span className="reportes-print-conta">{r.anexos.length}</span>}
                             </button>
                           ) : (
-                            <span className="reportes-sem" title="Sem print">
+                            <span className="reportes-sem" title="Sem anexo">
                               <IconImagemSem size={14} />
                             </span>
                           )}
@@ -401,6 +409,23 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
                                     {r.pagina && r.autor_email ? ' · ' : ''}
                                     {r.autor_email}
                                   </p>
+                                  {/* Todos os anexos, um a um: a célula da fila
+                                      abre o primeiro, e o resto se alcança aqui,
+                                      que é onde o chamado se lê inteiro. */}
+                                  {!!r.anexos?.length && (
+                                    <ul className="reportes-anexos">
+                                      {r.anexos.map((a, i) => (
+                                        <li key={a.id ?? `antigo-${i}`}>
+                                          <button type="button" className="reportes-anexo"
+                                            onClick={() => setVendo({ reporte: r, anexo: a })}>
+                                            {a.tipo === 'application/pdf'
+                                              ? <IconDoc size={12} /> : <IconImage size={12} />}
+                                            <span>{a.nome}</span>
+                                          </button>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
                                   {/* O que foi dito ao mudar o andamento, da nota
                                       mais antiga para a mais nova - é a história
                                       do chamado, e ela se lê na ordem em que
@@ -485,9 +510,9 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
           dela, e o download sai de lá. */}
       {vendo && (
         <PreviaArquivo
-          arquivo={{ nome: vendo.print_nome ?? 'print.png' }}
-          onCarregar={() => carregarPrint(vendo.id)}
-          onBaixar={() => { void baixarPrint(vendo, carregarPrint); }}
+          arquivo={{ nome: vendo.anexo.nome }}
+          onCarregar={() => carregarPrint(vendo.reporte.id, vendo.anexo.id ?? undefined)}
+          onBaixar={() => { void baixarPrint(vendo.reporte, carregarPrint, vendo.anexo.id ?? undefined); }}
           onFechar={() => setVendo(null)}
           // Acima da própria janela, que abre em 10040: a prévia foi aberta de
           // dentro dela, e nascer atrás seria abrir e não ver nada.
@@ -520,9 +545,10 @@ function ChipStatus({ status }: { status: string }) {
  *  do teto de endereço de dados do navegador. */
 async function baixarPrint(
   r: ReporteNaLista,
-  carregarPrint: (id: number) => Promise<{ nome: string; tipo: string; base64: string } | null>,
+  carregarPrint: (id: number, anexo?: number) => Promise<{ nome: string; tipo: string; base64: string } | null>,
+  anexo?: number,
 ) {
-  const dados = await carregarPrint(r.id);
+  const dados = await carregarPrint(r.id, anexo);
   if (!dados?.base64) return;
   const bytes = Uint8Array.from(atob(dados.base64), c => c.charCodeAt(0));
   const url = URL.createObjectURL(new Blob([bytes], { type: dados.tipo }));

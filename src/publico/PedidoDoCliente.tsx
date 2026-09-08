@@ -38,6 +38,9 @@ const TIPOS: { valor: Tipo; label: string; dica: string; icone: (p: { size?: num
 
 const TIPOS_DE_ANEXO = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf'];
 const LIMITE = 5 * 1024 * 1024;
+/** Um pedido raramente tem um print so: tem o da tela, o do erro e o PDF que
+ *  veio por e-mail. */
+const MAX_ANEXOS = 5;
 
 const peso = (bytes: number) =>
   bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -50,7 +53,7 @@ export function PedidoDoCliente({ token }: { token: string }) {
   const [mensagem, setMensagem] = useState('');
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
-  const [anexo, setAnexo] = useState<Anexo | null>(null);
+  const [anexos, setAnexos] = useState<Anexo[]>([]);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [numero, setNumero] = useState<number | null>(null);
@@ -92,23 +95,60 @@ export function PedidoDoCliente({ token }: { token: string }) {
   const pronto = !!tipo && assunto.trim().length >= 3 && mensagem.trim().length >= 5
     && nome.trim().length >= 2 && !enviando;
 
-  async function receber(arquivo: File | null | undefined) {
-    if (!arquivo) return;
+  async function receber(entrada: FileList | File[] | null | undefined) {
+    const arquivos = [...(entrada ?? [])];
+    if (!arquivos.length) return;
     setErro(null);
-    if (!TIPOS_DE_ANEXO.includes(arquivo.type)) {
-      setErro('O anexo precisa ser uma imagem ou um PDF.');
-      return;
+    const cabem = MAX_ANEXOS - anexos.length;
+    if (cabem <= 0) { setErro(`São no máximo ${MAX_ANEXOS} anexos.`); return; }
+    const novos: Anexo[] = [];
+    for (const arquivo of arquivos.slice(0, cabem)) {
+      if (!TIPOS_DE_ANEXO.includes(arquivo.type)) {
+        setErro(`"${arquivo.name}" precisa ser uma imagem ou um PDF.`);
+        continue;
+      }
+      if (arquivo.size > LIMITE) { setErro(`"${arquivo.name}" passa de 5 MB.`); continue; }
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(String(fr.result));
+        fr.onerror = () => reject(new Error('leitura'));
+        fr.readAsDataURL(arquivo);
+      }).catch(() => null);
+      if (!base64) { setErro(`Não foi possível ler "${arquivo.name}".`); continue; }
+      novos.push({ nome: arquivo.name || 'anexo', tipo: arquivo.type, tamanho: arquivo.size, base64 });
     }
-    if (arquivo.size > LIMITE) { setErro('O anexo passa de 5 MB.'); return; }
-    const base64 = await new Promise<string>((resolve, reject) => {
-      const fr = new FileReader();
-      fr.onload = () => resolve(String(fr.result));
-      fr.onerror = () => reject(new Error('leitura'));
-      fr.readAsDataURL(arquivo);
-    }).catch(() => null);
-    if (!base64) { setErro('Não foi possível ler o arquivo.'); return; }
-    setAnexo({ nome: arquivo.name || 'anexo', tipo: arquivo.type, tamanho: arquivo.size, base64 });
+    if (novos.length) setAnexos(a => [...a, ...novos]);
   }
+
+  /* Colar com Ctrl+V, enquanto o painel esta aberto. O ouvinte fica no
+     documento porque o `paste` so nasce em quem tem o foco, e a colagem que tem
+     dono - um campo, uma area de texto - so e assumida quando esse dono esta
+     aqui dentro. E o jeito mais comum de um print chegar: recortar a tela e
+     colar, sem passar por seletor de arquivo nenhum. */
+  useEffect(() => {
+    if (!aberto) return;
+    const aoColar = (e: ClipboardEvent) => {
+      const alvo = e.target as HTMLElement | null;
+      const dono = alvo?.closest?.('input, textarea, [contenteditable="true"]');
+      if (dono && !painel.current?.contains(dono)) return;
+      const dados = e.clipboardData;
+      if (!dados) return;
+      const daArea = [...(dados.files ?? [])];
+      const dosItens = [...(dados.items ?? [])]
+        .filter(i => i.kind === 'file')
+        .map(i => i.getAsFile())
+        .filter(Boolean) as File[];
+      const colados = daArea.length ? daArea : dosItens;
+      if (colados.length) {
+        // So engole o evento quando havia arquivo: colar texto num campo
+        // continua sendo colar texto.
+        e.preventDefault();
+        void receber(colados);
+      }
+    };
+    document.addEventListener('paste', aoColar);
+    return () => document.removeEventListener('paste', aoColar);
+  });
 
   async function enviar() {
     if (!pronto) return;
@@ -121,7 +161,7 @@ export function PedidoDoCliente({ token }: { token: string }) {
         body: JSON.stringify({
           tipo, assunto: assunto.trim(), mensagem: mensagem.trim(),
           nome: nome.trim(), email: email.trim(),
-          anexo: anexo ? { nome: anexo.nome, tipo: anexo.tipo, base64: anexo.base64 } : undefined,
+          anexos: anexos.map(a => ({ nome: a.nome, tipo: a.tipo, base64: a.base64 })),
         }),
       });
       const d = await r.json().catch(() => null);
@@ -145,7 +185,7 @@ export function PedidoDoCliente({ token }: { token: string }) {
     setTipo(null);
     setAssunto('');
     setMensagem('');
-    setAnexo(null);
+    setAnexos([]);
     setErro(null);
   }
 
@@ -262,34 +302,41 @@ export function PedidoDoCliente({ token }: { token: string }) {
                   </label>
                 </div>
 
-                <input ref={seletor} type="file" accept="image/*,application/pdf"
+                <input ref={seletor} type="file" multiple accept="image/*,application/pdf"
                   style={{ display: 'none' }}
-                  onChange={e => { void receber(e.target.files?.[0]); e.target.value = ''; }} />
+                  onChange={e => { void receber(e.target.files); e.target.value = ''; }} />
 
-                {anexo ? (
-                  <div className="pub-pedido-anexo">
-                    {anexo.tipo === 'application/pdf'
-                      ? <span className="pub-pedido-anexo-icone"><IconDoc size={14} /></span>
-                      : <img src={anexo.base64} alt="" />}
-                    <span className="pub-pedido-anexo-nome" title={anexo.nome}>{anexo.nome}</span>
-                    <span className="pub-pedido-anexo-peso">{peso(anexo.tamanho)}</span>
-                    <button type="button" aria-label="Remover o anexo" onClick={() => setAnexo(null)}>
-                      <IconTrash size={12} />
-                    </button>
-                  </div>
-                ) : (
+                {anexos.length > 0 && (
+                  <ul className="pub-pedido-anexos">
+                    {anexos.map((a, i) => (
+                      <li key={`${a.nome}-${i}`} className="pub-pedido-anexo">
+                        {a.tipo === 'application/pdf'
+                          ? <span className="pub-pedido-anexo-icone"><IconDoc size={14} /></span>
+                          : <img src={a.base64} alt="" />}
+                        <span className="pub-pedido-anexo-nome" title={a.nome}>{a.nome}</span>
+                        <span className="pub-pedido-anexo-peso">{peso(a.tamanho)}</span>
+                        <button type="button" aria-label={`Remover ${a.nome}`}
+                          onClick={() => setAnexos(l => l.filter((_, j) => j !== i))}>
+                          <IconTrash size={12} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {anexos.length < MAX_ANEXOS && (
                   <button
                     type="button"
                     className={`pub-pedido-solta${arrastando ? ' sobre' : ''}`}
                     onClick={() => seletor.current?.click()}
                     onDragOver={e => { e.preventDefault(); setArrastando(true); }}
                     onDragLeave={() => setArrastando(false)}
-                    onDrop={e => { e.preventDefault(); setArrastando(false); void receber(e.dataTransfer.files?.[0]); }}
+                    onDrop={e => { e.preventDefault(); setArrastando(false); void receber(e.dataTransfer.files); }}
                   >
                     <IconImage size={14} />
                     <span>
-                      <b>Anexe um print ou um PDF</b>
-                      <small>opcional - solte aqui ou clique</small>
+                      <b>{anexos.length ? 'Anexe mais um print ou PDF' : 'Anexe prints ou PDFs'}</b>
+                      <small>opcional - solte aqui, clique ou cole com Ctrl+V</small>
                     </span>
                     <IconUpload size={13} />
                   </button>

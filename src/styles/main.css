@@ -17122,3 +17122,82 @@ button.checklist-texto:focus-visible {
   .pub-balao-painel.saindo { transition: none; animation: none; }
   .pub-balao:hover { transform: none; }
 }
+
+/* Varios anexos, empilhados. */
+.pub-pedido-anexos {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ── Anexos do chamado ──────────────────────────────────────────────────────
+   Um chamado tem tantos arquivos quanto o problema pedir; a celula da fila abre
+   o primeiro e diz quantos sao, e a lista inteira mora no detalhe. */
+.reportes-print-conta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  margin-left: 5px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--gray4);
+  font-size: 9.5px;
+  font-weight: 800;
+  color: var(--gray);
+  font-variant-numeric: tabular-nums;
+}
+.reportes-anexos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.reportes-anexo {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 240px;
+  padding: 4px 9px;
+  border: 1px solid var(--gray4);
+  border-radius: var(--radius-pill);
+  background: var(--white);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray);
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+.reportes-anexo span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reportes-anexo:hover { border-color: var(--gray2); color: var(--black); }
+
+/* O anexo em PDF no cartao de reportar: sem miniatura, um icone no lugar dela. */
+.reportar-print-doc {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 26px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, .10);
+  color: rgba(245, 243, 238, .7);
+  flex-shrink: 0;
+}
+/* Varios anexos empilhados no cartao. */
+.reportar-print + .reportar-print { margin-top: 6px; }
+.reportar-print + .reportar-solta { margin-top: 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .reportes-anexo { transition: none; }
+}

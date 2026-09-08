@@ -782,6 +782,26 @@ async function migrarSchema(db: Client) {
   `);
   await ddl(`CREATE INDEX IF NOT EXISTS idx_reportes_data ON reportes (criado_em DESC)`);
 
+  // Os anexos do chamado. Tabela, e nao as colunas `print_*`: um chamado tem um
+  // print, mas tambem tem "o print da tela, o print do console e o PDF que o
+  // cliente mandou". Coluna unica obrigava a escolher qual dos tres contar.
+  //
+  // As colunas antigas ficam onde estao e continuam sendo lidas: chamado gravado
+  // antes disto tem o print la, e reescrever historico para caber num formato
+  // novo e pior do que ler os dois.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS reporte_anexos (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      reporte_id INTEGER NOT NULL,
+      nome       TEXT NOT NULL,
+      tipo       TEXT NOT NULL,
+      tamanho    INTEGER NOT NULL,
+      base64     TEXT NOT NULL,
+      criado_em  TEXT NOT NULL
+    )
+  `);
+  await ddl(`CREATE INDEX IF NOT EXISTS idx_reporte_anexos ON reporte_anexos (reporte_id)`);
+
   // A fila de chamados passou a receber tambem o que o cliente manda pela pagina
   // publica do projeto dele. E a mesma fila de proposito: um pedido de ajuste do
   // cliente e um chamado como outro qualquer, e uma segunda tela so para ele
@@ -2484,6 +2504,38 @@ export async function remetenteDeEmail(db: Client): Promise<RemetenteEmail | nul
 
 /** A escala de urgência do relato: as mesmas quatro palavras que o portal já
  *  usa em projeto e em tarefa (ver `src/lib/prioridades.tsx`). */
+/** O que a fila de chamados aceita como anexo, e quanto. Imagem cobre o print
+ *  de tela; PDF cobre o documento que o cliente encaminhou. Cinco arquivos de
+ *  5 MB e o teto - acima disso o corpo da requisicao nao passaria mesmo. */
+const TIPOS_DE_ANEXO_DO_RELATO = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf'];
+const MAX_ANEXOS_DO_RELATO = 5;
+
+export function conferirAnexosDoRelato(crus: unknown):
+  { ok: true; anexos: { nome: string; tipo: string; base64: string }[] } | { ok: false; error: string } {
+  if (!Array.isArray(crus)) return { ok: true, anexos: [] };
+  if (crus.length > MAX_ANEXOS_DO_RELATO) {
+    return { ok: false, error: `São no máximo ${MAX_ANEXOS_DO_RELATO} anexos.` };
+  }
+  const limpos: { nome: string; tipo: string; base64: string }[] = [];
+  for (const cru of crus) {
+    const item = cru as { nome?: string; tipo?: string; base64?: string };
+    if (!item?.base64) continue;
+    const nome = String(item.nome ?? 'anexo').slice(0, 80);
+    const tipo = String(item.tipo ?? '');
+    if (!TIPOS_DE_ANEXO_DO_RELATO.includes(tipo)) {
+      return { ok: false, error: `"${nome}" precisa ser uma imagem ou um PDF.` };
+    }
+    const conteudo = String(item.base64).split(',').pop() ?? '';
+    // Cada 4 letras de base64 sao 3 bytes: da para conferir o tamanho sem
+    // decodificar o arquivo inteiro na memoria da funcao.
+    if (conteudo.length * 0.75 > 5 * 1024 * 1024) {
+      return { ok: false, error: `"${nome}" passa de 5 MB.` };
+    }
+    if (conteudo) limpos.push({ nome, tipo, base64: conteudo });
+  }
+  return { ok: true, anexos: limpos };
+}
+
 const URGENCIAS_DO_RELATO = ['Urgente', 'Alta', 'Média', 'Baixa'];
 
 /** Andamento do relato. Quatro estados e nada de "reaberto": se voltou, volta
@@ -4058,9 +4110,31 @@ async function despacharAdminData(
       `,
         args: filaInteira ? [] : [usuario?.id ?? '', usuario?.email ?? ''],
       });
-      // As notas dos relatos que a página vai mostrar, numa consulta só. Uma
-      // por relato seria uma ida por linha da fila, e a fila tem duzentas.
+      // As notas e os anexos dos relatos que a página vai mostrar, numa consulta
+      // cada. Uma por relato seria uma ida por linha da fila, e a fila tem
+      // duzentas.
       const ids = r.rows.map(x => Number(x.id));
+      const anexosPorRelato = new Map<number, { id: number; nome: string; tipo: string; tamanho: number }[]>();
+      if (ids.length) {
+        // Sem o `base64`: a lista descreve os arquivos, e o conteúdo só desce
+        // quando alguém abre um. Uma fila de duzentos chamados não pode custar
+        // duzentas imagens só por ter carregado.
+        const a = await db.execute({
+          sql: `SELECT id, reporte_id, nome, tipo, tamanho FROM reporte_anexos
+                WHERE reporte_id IN (${ids.map(() => '?').join(',')})
+                ORDER BY id`,
+          args: ids,
+        });
+        for (const x of a.rows) {
+          const chave = Number(x.reporte_id);
+          anexosPorRelato.set(chave, [...(anexosPorRelato.get(chave) ?? []), {
+            id: Number(x.id),
+            nome: String(x.nome),
+            tipo: String(x.tipo),
+            tamanho: Number(x.tamanho ?? 0),
+          }]);
+        }
+      }
       const notasPorRelato = new Map<number, ReporteNota[]>();
       if (ids.length) {
         const n = await db.execute({
@@ -4096,6 +4170,15 @@ async function despacharAdminData(
             autor_foto: x.autor_foto != null ? String(x.autor_foto) : null,
             print_nome: x.print_nome != null ? String(x.print_nome) : null,
             tem_print: Number(x.tem_print) === 1,
+            // O print antigo entra na lista de anexos com id nulo - é ele que a
+            // ação serve quando não vem `anexo`. Assim a tela tem uma lista só,
+            // e não dois caminhos para a mesma coisa.
+            anexos: [
+              ...(Number(x.tem_print) === 1
+                ? [{ id: null, nome: x.print_nome != null ? String(x.print_nome) : 'print.png', tipo: 'image/png', tamanho: 0 }]
+                : []),
+              ...(anexosPorRelato.get(Number(x.id)) ?? []),
+            ],
             status: String(x.status ?? 'aberto'),
             criado_em: String(x.criado_em),
             // De onde veio: a fila e a mesma para o time e para o cliente, e e
@@ -4123,6 +4206,22 @@ async function despacharAdminData(
         const meu = (linha.autor_id != null && String(linha.autor_id) === (usuario?.id ?? ''))
           || (linha.autor_email != null && String(linha.autor_email) === (usuario?.email ?? ''));
         if (!meu) return { status: 404, body: { error: 'Sem print.' } };
+      }
+      // Com `anexo`, é um dos arquivos da tabela nova; sem, é o print antigo da
+      // própria linha. O recorte de quem pode ver já foi feito acima, no dono do
+      // chamado - o id do anexo sozinho não abre nada.
+      const anexoId = Number(query.get('anexo') ?? 0);
+      if (anexoId > 0) {
+        const a = await db.execute({
+          sql: 'SELECT nome, tipo, base64 FROM reporte_anexos WHERE id = ? AND reporte_id = ?',
+          args: [anexoId, query.get('id')],
+        });
+        const arquivo = a.rows[0];
+        if (!arquivo) return { status: 404, body: { error: 'Anexo não encontrado.' } };
+        return {
+          status: 200,
+          body: { nome: String(arquivo.nome), tipo: String(arquivo.tipo), base64: String(arquivo.base64) },
+        };
       }
       if (!linha?.print_base64) return { status: 404, body: { error: 'Sem print.' } };
       return {
@@ -5854,25 +5953,18 @@ function faltaEmProjeto(p: any): string | null {
       if (!URGENCIAS_DO_RELATO.includes(urgencia)) {
         return { status: 400, body: { error: 'Escolha a urgência.' } };
       }
-      // O print é opcional, e só imagem: o campo abre um seletor de imagem, mas
-      // quem chama a ação direto não passa por ele.
-      const print = body?.print as { nome?: string; tipo?: string; base64?: string } | undefined;
-      let anexos: { filename: string; content: string }[] | undefined;
-      if (print?.base64) {
-        const tipo = String(print.tipo ?? '');
-        if (!tipo.startsWith('image/')) {
-          return { status: 400, body: { error: 'O anexo precisa ser uma imagem.' } };
-        }
-        const conteudo = String(print.base64).split(',').pop() ?? '';
-        // Cada 4 letras de base64 são 3 bytes: dá para conferir o tamanho sem
-        // decodificar a imagem inteira na memória da função.
-        if (conteudo.length * 0.75 > 5 * 1024 * 1024) {
-          return { status: 400, body: { error: 'A imagem passa de 5 MB.' } };
-        }
-        if (conteudo) {
-          anexos = [{ filename: String(print.nome || 'print.png').slice(0, 80), content: conteudo }];
-        }
-      }
+      // Os anexos são opcionais e vão até cinco. `print` continua aceito como um
+      // anexo só: é o formato que o cartão mandava antes, e recusá-lo quebraria
+      // uma aba aberta desde antes do deploy.
+      const crus = Array.isArray(body?.anexos) ? body.anexos
+        : (body?.print ? [body.print] : []);
+      const conferidos = conferirAnexosDoRelato(crus);
+      if (!conferidos.ok) return { status: 400, body: { error: conferidos.error } };
+      const arquivos = conferidos.anexos;
+      // Os mesmos arquivos, no formato que o e-mail pede.
+      const anexos = arquivos.length
+        ? arquivos.map(a => ({ filename: a.nome, content: a.base64 }))
+        : undefined;
       // De onde veio, para quem lê não precisar perguntar "em que tela?".
       const de = String(body?.pagina ?? '').trim().slice(0, 80);
       const quem = autorNome ?? usuario?.email ?? 'Alguém';
@@ -5883,18 +5975,17 @@ function faltaEmProjeto(p: any): string | null {
       // uma recusa apagaria o que a pessoa escreveu.
       const gravado = await db.execute({
         sql: `INSERT INTO reportes
-                (texto, urgencia, pagina, autor_id, autor_nome, autor_email,
-                 print_nome, print_tipo, print_base64, criado_em)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        args: [
-          texto, urgencia, de || null, autorId, quem, usuario?.email ?? null,
-          anexos ? anexos[0].filename : null,
-          anexos ? String(print?.tipo ?? '') : null,
-          anexos ? anexos[0].content : null,
-          agora,
-        ],
+                (texto, urgencia, pagina, autor_id, autor_nome, autor_email, criado_em)
+              VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        args: [texto, urgencia, de || null, autorId, quem, usuario?.email ?? null, agora],
       });
       const id = Number(gravado.lastInsertRowid ?? 0);
+      // Três anexos são três gravações ao mesmo tempo, e não uma fila.
+      await Promise.all(arquivos.map(a => db.execute({
+        sql: `INSERT INTO reporte_anexos (reporte_id, nome, tipo, tamanho, base64, criado_em)
+              VALUES (?,?,?,?,?,?)`,
+        args: [id, a.nome, a.tipo, Math.round(a.base64.length * 0.75), a.base64, agora],
+      })));
 
       const r = await notifyEmail(
         db, emailAdmin(),
@@ -5907,7 +5998,9 @@ function faltaEmProjeto(p: any): string | null {
           ['Urgência', urgencia],
         ])
         + citacaoEmail(texto)
-        + (anexos ? notaEmail('O print vai anexado.') : ''),
+        + (anexos ? notaEmail(anexos.length === 1
+          ? 'O anexo vai junto.'
+          : `Os ${anexos.length} anexos vão juntos.`) : ''),
         'reporte',
         {
           anexos,

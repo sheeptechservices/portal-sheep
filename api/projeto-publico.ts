@@ -14,8 +14,8 @@
 //     ou removido, a resposta é a mesma: 404, sem dizer qual dos casos é.
 //  3. Nada daqui abre porta para o portal interno. Este arquivo não cria
 //     sessão, não lê cabeçalho de sessão e não fala com `_admin-handler`.
-//  4. O POST escreve UMA linha, em UMA tabela - a fila de chamados -, com os
-//     campos conferidos um a um logo abaixo, e sempre amarrada ao projeto
+//  4. O POST escreve UM chamado e os anexos dele, em duas tabelas e nada mais,
+//     com os campos conferidos um a um logo abaixo e sempre amarrado ao projeto
 //     daquele token. Ele não lê nada de volta: a resposta é "recebido" e o
 //     número do chamado, e nada do que já está na fila desce por aqui.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -104,10 +104,11 @@ function passouDoTetoDeEnvio(ip: string): boolean {
  *  nada. */
 const TIPOS_DE_PEDIDO = ['problema', 'ajuste', 'ideia', 'duvida'];
 
-/** Anexo: um só, imagem ou PDF, cinco megas. É print de tela e página de
- *  documento, que é o que se manda junto de um pedido. */
+/** Anexos: até cinco, imagem ou PDF, cinco megas cada. Um pedido raramente tem
+ *  um print só - tem o da tela, o do erro e o PDF que veio por e-mail. */
 const TIPOS_DE_ANEXO = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf'];
 const LIMITE_ANEXO = 5 * 1024 * 1024;
+const MAX_ANEXOS = 5;
 
 /** Estados de entrega que o cliente vê. O nome é o mesmo de dentro: inventar um
  *  vocabulário só para fora produziria duas verdades sobre a mesma entrega. */
@@ -188,30 +189,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'Confira o e-mail.' });
       }
 
-      const anexo = corpo.anexo as { nome?: string; tipo?: string; base64?: string } | undefined;
-      let anexoNome: string | null = null;
-      let anexoTipo: string | null = null;
-      let anexoDados: string | null = null;
-      if (anexo?.base64) {
-        anexoTipo = String(anexo.tipo ?? '');
-        if (!TIPOS_DE_ANEXO.includes(anexoTipo)) {
-          return res.status(400).json({ error: 'O anexo precisa ser uma imagem ou um PDF.' });
+      // `anexo` no singular continua aceito: é o formato que a página mandava
+      // antes de aceitar vários, e uma aba aberta desde então não pode quebrar.
+      const crus = Array.isArray(corpo.anexos) ? corpo.anexos
+        : (corpo.anexo ? [corpo.anexo] : []);
+      if (crus.length > MAX_ANEXOS) {
+        return res.status(400).json({ error: `São no máximo ${MAX_ANEXOS} anexos.` });
+      }
+      const arquivos: { nome: string; tipo: string; base64: string }[] = [];
+      for (const cru of crus) {
+        const item = cru as { nome?: string; tipo?: string; base64?: string };
+        if (!item?.base64) continue;
+        const nomeDoArquivo = texto(item.nome ?? 'anexo', 80);
+        const tipoDoArquivo = String(item.tipo ?? '');
+        if (!TIPOS_DE_ANEXO.includes(tipoDoArquivo)) {
+          return res.status(400).json({ error: `"${nomeDoArquivo}" precisa ser uma imagem ou um PDF.` });
         }
-        anexoDados = String(anexo.base64).split(',').pop() ?? '';
+        const dados = String(item.base64).split(',').pop() ?? '';
         // Cada 4 letras de base64 são 3 bytes: dá para conferir o tamanho sem
         // decodificar o arquivo inteiro na memória da função.
-        if (anexoDados.length * 0.75 > LIMITE_ANEXO) {
-          return res.status(400).json({ error: 'O anexo passa de 5 MB.' });
+        if (dados.length * 0.75 > LIMITE_ANEXO) {
+          return res.status(400).json({ error: `"${nomeDoArquivo}" passa de 5 MB.` });
         }
-        anexoNome = String(anexo.nome ?? 'anexo').slice(0, 80);
+        if (dados) arquivos.push({ nome: nomeDoArquivo, tipo: tipoDoArquivo, base64: dados });
       }
 
+      const agora = new Date().toISOString();
       const gravado = await db.execute({
         sql: `INSERT INTO reportes
               (texto, urgencia, pagina, autor_id, autor_nome, autor_email,
-               print_nome, print_tipo, print_base64, status, criado_em,
-               origem, projeto_id, tipo)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+               status, criado_em, origem, projeto_id, tipo)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
         args: [
           `${assunto}\n\n${mensagem}`,
           // A prioridade é da casa, e quem a define é a casa: cliente nenhum
@@ -221,17 +229,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           null,
           nome,
           email || null,
-          anexoNome, anexoTipo, anexoDados,
           'aberto',
-          new Date().toISOString(),
+          agora,
           'cliente',
           String(p.id),
           tipo,
         ],
       });
+      const numero = Number(gravado.lastInsertRowid ?? 0);
+      // Três anexos são três gravações ao mesmo tempo, e não uma fila.
+      await Promise.all(arquivos.map(a => db.execute({
+        sql: `INSERT INTO reporte_anexos (reporte_id, nome, tipo, tamanho, base64, criado_em)
+              VALUES (?,?,?,?,?,?)`,
+        args: [numero, a.nome, a.tipo, Math.round(a.base64.length * 0.75), a.base64, agora],
+      })));
 
       res.setHeader('Cache-Control', 'no-store');
-      return res.status(201).json({ ok: true, numero: Number(gravado.lastInsertRowid ?? 0) });
+      return res.status(201).json({ ok: true, numero });
     }
 
     // Conteúdo de uma evidência, para a prévia. Só desce o arquivo que pende de

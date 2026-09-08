@@ -17,7 +17,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useRef, useState } from 'react';
 import {
-  IconAlert, IconCheck, IconImage, IconInbox, IconMegafone, IconSpinner, IconTrash, IconUpload,
+  IconAlert, IconCheck, IconDoc, IconImage, IconInbox, IconMegafone, IconSpinner, IconTrash,
+  IconUpload,
 } from './icons';
 import { ListaReportes, type ReporteNaLista } from './ListaReportes';
 import { SelectSistema } from './SelectSistema';
@@ -37,7 +38,7 @@ export interface Relato {
   texto: string;
   pagina: string;
   urgencia: string;
-  print?: PrintDoRelato;
+  anexos?: PrintDoRelato[];
 }
 
 /**
@@ -56,9 +57,16 @@ const REGUA: Record<string, string> = {
   'Baixa': 'Quando der',
 };
 
-/** Teto do print. Menor que os 8 MB dos anexos do sistema de propósito: este
- *  aqui viaja dentro de um e-mail, e não para o banco. */
+/** Teto de cada anexo. Menor que os 8 MB dos anexos do sistema de propósito:
+ *  estes aqui viajam dentro de um e-mail, além de ir para o banco. */
 const LIMITE_PRINT = 5 * 1024 * 1024;
+
+/** Quantos cabem num relato. Um problema raramente se explica com um print só -
+ *  tem o da tela, o do console e o PDF que o cliente mandou. */
+const MAX_ANEXOS = 5;
+
+/** O que se pode anexar: imagem, para o print, e PDF, para o documento. */
+const TIPOS_ACEITOS = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf'];
 
 /** Nunca zero: um arquivo minúsculo arredondado para `0 KB` lê como anexo
  *  vazio, e o que se quer dizer ali é só que ele é leve. */
@@ -96,7 +104,7 @@ export function CartaoReportar({
   // Sem valor inicial: obrigatório é obrigatório. Um padrão aqui seria uma
   // resposta que ninguém deu - e "Média" em tudo é o mesmo que urgência nenhuma.
   const [urgencia, setUrgencia] = useState('');
-  const [print, setPrint] = useState<{ file: File; url: string } | null>(null);
+  const [prints, setPrints] = useState<{ file: File; url: string }[]>([]);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [pronto, setPronto] = useState(false);
@@ -127,28 +135,52 @@ export function CartaoReportar({
     return () => clearTimeout(t);
   }, [pronto]);
 
-  // A prévia é um blob: sem revogar, cada print escolhido deixa um objeto vivo
-  // até a aba fechar.
-  useEffect(() => () => { if (print) URL.revokeObjectURL(print.url); }, [print]);
+  // A prévia é um blob: sem revogar, cada arquivo escolhido deixa um objeto vivo
+  // até a aba fechar. Só na saída do cartão - revogar a cada mudança da lista
+  // apagaria a prévia dos que continuam nela.
+  const vivos = useRef<string[]>([]);
+  vivos.current = prints.map(p => p.url);
+  useEffect(() => () => { vivos.current.forEach(u => URL.revokeObjectURL(u)); }, []);
 
-  function receber(file: File | null | undefined) {
-    if (!file) return;
-    if (!file.type.startsWith('image/')) { setErro('O anexo precisa ser uma imagem.'); return; }
-    if (file.size > LIMITE_PRINT) { setErro(`A imagem passa de ${LIMITE_PRINT / 1024 / 1024} MB.`); return; }
+  function receber(entrada: FileList | File[] | null | undefined) {
+    const arquivos = [...(entrada ?? [])];
+    if (!arquivos.length) return;
     setErro(null);
-    setPrint(p => {
-      if (p) URL.revokeObjectURL(p.url);
-      return { file, url: URL.createObjectURL(file) };
+    setPrints(atuais => {
+      const cabem = MAX_ANEXOS - atuais.length;
+      if (cabem <= 0) { setErro(`São no máximo ${MAX_ANEXOS} anexos.`); return atuais; }
+      const novos: { file: File; url: string }[] = [];
+      for (const file of arquivos.slice(0, cabem)) {
+        if (!TIPOS_ACEITOS.includes(file.type)) {
+          setErro(`"${file.name}" precisa ser uma imagem ou um PDF.`);
+          continue;
+        }
+        if (file.size > LIMITE_PRINT) {
+          setErro(`"${file.name}" passa de ${LIMITE_PRINT / 1024 / 1024} MB.`);
+          continue;
+        }
+        novos.push({ file, url: URL.createObjectURL(file) });
+      }
+      return novos.length ? [...atuais, ...novos] : atuais;
     });
   }
 
-  function tirarPrint() {
-    setPrint(p => { if (p) URL.revokeObjectURL(p.url); return null; });
+  function tirarPrint(i: number) {
+    setPrints(atuais => {
+      const fora = atuais[i];
+      if (fora) URL.revokeObjectURL(fora.url);
+      return atuais.filter((_, j) => j !== i);
+    });
     if (seletor.current) seletor.current.value = '';
-    // O foco vai para a área de soltar, que nasce no lugar da prévia: sem isso
-    // ele cai no `body` junto com o botão que acabou de sumir, e quem navega
-    // por teclado recomeça a ordem do zero.
+    // O foco vai para a área de soltar, que continua ali embaixo: sem isso ele
+    // cai no `body` junto com o botão que acabou de sumir, e quem navega por
+    // teclado recomeça a ordem do zero.
     requestAnimationFrame(() => solta.current?.focus());
+  }
+
+  function tirarTodos() {
+    setPrints(atuais => { atuais.forEach(p => URL.revokeObjectURL(p.url)); return []; });
+    if (seletor.current) seletor.current.value = '';
   }
 
   /**
@@ -175,13 +207,17 @@ export function CartaoReportar({
       if (dono && !raiz.current?.contains(dono)) return;
       const dados = e.clipboardData;
       if (!dados) return;
-      const arquivo = dados.files?.[0]
-        ?? [...(dados.items ?? [])].find(i => i.kind === 'file' && i.type.startsWith('image/'))?.getAsFile();
-      if (arquivo?.type.startsWith('image/')) {
-        // Só engole o evento quando havia imagem: colar texto na descrição
+      const daArea = [...(dados.files ?? [])];
+      const dosItens = [...(dados.items ?? [])]
+        .filter(i => i.kind === 'file')
+        .map(i => i.getAsFile())
+        .filter(Boolean) as File[];
+      const colados = daArea.length ? daArea : dosItens;
+      if (colados.length) {
+        // Só engole o evento quando havia arquivo: colar texto na descrição
         // continua sendo colar texto.
         e.preventDefault();
-        receber(arquivo);
+        receber(colados);
       }
     };
     document.addEventListener('paste', aoColar);
@@ -198,29 +234,29 @@ export function CartaoReportar({
     if (!urgencia) { setErro('Escolha a urgência.'); return; }
     setEnviando(true);
     setErro(null);
-    let anexo: PrintDoRelato | undefined;
-    if (print) {
-      try {
-        anexo = {
-          nome: print.file.name || 'print.png',
-          tipo: print.file.type,
-          tamanho: print.file.size,
-          base64: await lerComoDataUrl(print.file),
-        };
-      } catch {
-        setEnviando(false);
-        setErro('Não foi possível ler a imagem.');
-        return;
-      }
+    let anexos: PrintDoRelato[] = [];
+    try {
+      // Os arquivos são lidos em paralelo: três anexos são três leituras ao
+      // mesmo tempo, e não três esperas em fila.
+      anexos = await Promise.all(prints.map(async p => ({
+        nome: p.file.name || 'anexo',
+        tipo: p.file.type,
+        tamanho: p.file.size,
+        base64: await lerComoDataUrl(p.file),
+      })));
+    } catch {
+      setEnviando(false);
+      setErro('Não foi possível ler um dos anexos.');
+      return;
     }
-    const r = await enviar({ texto: limpo, pagina, urgencia, print: anexo });
+    const r = await enviar({ texto: limpo, pagina, urgencia, anexos });
     setEnviando(false);
     if (r?.error) { setErro(r.error); return; }
     // O relato sai da tela junto com o painel: guardá-lo faria o próximo nascer
     // com o anterior dentro.
     setTexto('');
     setUrgencia('');
-    tirarPrint();
+    tirarTodos();
     setAberto(false);
     setPronto(true);
     setAviso(r?.aviso ?? null);
@@ -242,7 +278,7 @@ export function CartaoReportar({
     setAberto(false);
     setTexto('');
     setUrgencia('');
-    tirarPrint();
+    tirarTodos();
     setErro(null);
   }
 
@@ -325,29 +361,37 @@ export function CartaoReportar({
               }))}
             />
 
-            <span className="reportar-rotulo">Print</span>
+            <span className="reportar-rotulo">
+              Anexos{prints.length > 0 ? ` (${prints.length} de ${MAX_ANEXOS})` : ''}
+            </span>
             <input
               ref={seletor}
               type="file"
-              accept="image/*"
+              multiple
+              accept="image/*,application/pdf"
               style={{ display: 'none' }}
-              onChange={e => { receber(e.target.files?.[0]); }}
+              onChange={e => { receber(e.target.files); }}
             />
-            {print ? (
-              <div className="reportar-print">
-                <img src={print.url} alt="Prévia do print" />
+
+            {prints.map((p, i) => (
+              <div className="reportar-print" key={`${p.file.name}-${i}`}>
+                {p.file.type === 'application/pdf'
+                  ? <span className="reportar-print-doc"><IconDoc size={14} /></span>
+                  : <img src={p.url} alt={`Prévia de ${p.file.name}`} />}
                 <div className="reportar-print-info">
-                  <p className="reportar-print-nome">{print.file.name || 'imagem colada'}</p>
-                  <p className="reportar-print-peso">{peso(print.file.size)}</p>
+                  <p className="reportar-print-nome">{p.file.name || 'imagem colada'}</p>
+                  <p className="reportar-print-peso">{peso(p.file.size)}</p>
                 </div>
-                <button type="button" className="reportar-print-tirar" onClick={tirarPrint}
-                  aria-label="Remover o print">
+                <button type="button" className="reportar-print-tirar" onClick={() => tirarPrint(i)}
+                  aria-label={`Remover ${p.file.name || 'o anexo'}`}>
                   <IconTrash size={12} />
                 </button>
               </div>
-            ) : (
-              // Área de soltar E botão E alvo do colar: três formas de chegar na
-              // mesma imagem, porque cada pessoa recorta a tela do seu jeito.
+            ))}
+
+            {prints.length < MAX_ANEXOS && (
+              // Área de soltar E botão E alvo do colar: três formas de chegar no
+              // mesmo arquivo, porque cada pessoa recorta a tela do seu jeito.
               <button
                 type="button"
                 ref={solta}
@@ -355,12 +399,12 @@ export function CartaoReportar({
                 onClick={() => seletor.current?.click()}
                 onDragOver={e => { e.preventDefault(); setArrastando(true); }}
                 onDragLeave={() => setArrastando(false)}
-                onDrop={e => { e.preventDefault(); setArrastando(false); receber(e.dataTransfer.files?.[0]); }}
+                onDrop={e => { e.preventDefault(); setArrastando(false); receber(e.dataTransfer.files); }}
               >
                 <IconImage size={14} />
                 <span>
                   <b>Cole com Ctrl+V</b>
-                  <small>ou clique aqui</small>
+                  <small>{prints.length ? 'ou solte mais aqui' : 'ou clique - vale imagem e PDF'}</small>
                 </span>
                 <IconUpload size={13} />
               </button>
