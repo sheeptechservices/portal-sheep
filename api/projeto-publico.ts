@@ -14,10 +14,10 @@
 //     ou removido, a resposta é a mesma: 404, sem dizer qual dos casos é.
 //  3. Nada daqui abre porta para o portal interno. Este arquivo não cria
 //     sessão, não lê cabeçalho de sessão e não fala com `_admin-handler`.
-//  4. O POST escreve UM chamado e os anexos dele, em duas tabelas e nada mais,
-//     com os campos conferidos um a um logo abaixo e sempre amarrado ao projeto
-//     daquele token. Ele não lê nada de volta: a resposta é "recebido" e o
-//     número do chamado, e nada do que já está na fila desce por aqui.
+//  4. O POST cria UMA tarefa no projeto daquele token - e os anexos dela -, com
+//     os campos conferidos um a um logo abaixo. Ele não lê nada de volta: a
+//     resposta é "recebido" e o número da tarefa, e nada do que já está no
+//     quadro desce por aqui.
 //  5. O aviso por e-mail sai por `_email`, que é um módulo de envio e nada mais.
 //     A regra 3 continua de pé: quem não pode ser importado daqui é o handler do
 //     portal, com sessão, permissão e ações - e nada disso mora lá.
@@ -230,43 +230,90 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const agora = new Date().toISOString();
+
+      // A etapa de entrada do quadro de tarefas - a que a casa configurou como
+      // porta - e o gestor do projeto, que e quem analisa antes de passar
+      // adiante. Nenhuma das duas coisas vem do cliente: ele diz o que precisa,
+      // e onde isso entra e de quem e a primeira leitura sao decisao da casa.
+      const [entrada, gestor, posicao] = await Promise.all([
+        db.execute(`SELECT nome FROM tarefa_status_configs
+                    WHERE ativo = 1 AND is_entrada = 1
+                    ORDER BY ordem, id LIMIT 1`),
+        db.execute({
+          sql: `SELECT u.id, u.nome, u.email FROM projeto_equipe e
+                JOIN usuarios u ON u.id = e.usuario_id
+                WHERE e.projeto_id = ? AND u.ativo = 1 AND LOWER(e.papel) = 'gestor'
+                ORDER BY u.nome LIMIT 1`,
+          args: [String(p.id)],
+        }),
+        db.execute({
+          sql: 'SELECT COALESCE(MAX(ordem), -1) + 1 AS proxima FROM projeto_tarefas WHERE projeto_id = ?',
+          args: [String(p.id)],
+        }),
+      ]);
+      // Sem etapa de entrada configurada, vale o padrao da propria tabela: e
+      // melhor a tarefa nascer em "A fazer" do que nao nascer.
+      const etapa = entrada.rows[0]?.nome != null ? String(entrada.rows[0].nome) : 'A fazer';
+      const responsavel = gestor.rows[0];
+
       const gravado = await db.execute({
-        sql: `INSERT INTO reportes
-              (texto, urgencia, pagina, autor_id, autor_nome, autor_email,
-               status, criado_em, origem, projeto_id, tipo)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        sql: `INSERT INTO projeto_tarefas
+              (projeto_id, entrega_id, titulo, descricao, status, prioridade, responsavel_id,
+               prazo, etiquetas, ordem, concluida_em, criado_em, criado_por_id, criado_por_nome)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         args: [
-          `${assunto}\n\n${mensagem}`,
-          // A prioridade é da casa, e quem a define é a casa: cliente nenhum
-          // escolhe a própria posição na fila.
+          String(p.id), null, assunto,
+          // Quem pediu vai no corpo da tarefa, e nao so no autor: o autor e um
+          // nome, e quem le a tarefa daqui a duas semanas precisa do contato.
+          `${mensagem}\n\n---\nPedido de ${nome}${email ? ` (${email})` : ''} pela pagina do projeto.`,
+          etapa,
+          // A prioridade e da casa, e quem a define e a casa: cliente nenhum
+          // escolhe a propria posicao na fila.
           'Média',
-          `Portal do cliente | ${String(p.nome)}`,
+          responsavel?.id != null ? String(responsavel.id) : null,
           null,
-          nome,
-          email || null,
-          'aberto',
+          JSON.stringify(['Cliente', ROTULO_DO_TIPO[tipo] ?? tipo]),
+          Number(posicao.rows[0]?.proxima ?? 0),
+          null,
           agora,
-          'cliente',
-          String(p.id),
-          tipo,
+          null,
+          `${nome} (cliente)`,
         ],
       });
       const numero = Number(gravado.lastInsertRowid ?? 0);
-      // Três anexos são três gravações ao mesmo tempo, e não uma fila.
-      await Promise.all(arquivos.map(a => db.execute({
-        sql: `INSERT INTO reporte_anexos (reporte_id, nome, tipo, tamanho, base64, criado_em)
-              VALUES (?,?,?,?,?,?)`,
-        args: [numero, a.nome, a.tipo, Math.round(a.base64.length * 0.75), a.base64, agora],
-      })));
+
+      // Os anexos entram como o primeiro comentario da tarefa: e onde os
+      // arquivos de uma tarefa moram, e assim eles ficam no mesmo lugar que os
+      // que o time anexar depois.
+      if (arquivos.length) {
+        const comentario = await db.execute({
+          sql: `INSERT INTO tarefa_comentarios (tarefa_id, pai_id, usuario_id, usuario_nome, texto, criado_em)
+                VALUES (?,?,?,?,?,?)`,
+          args: [numero, null, null, `${nome} (cliente)`,
+            arquivos.length === 1 ? 'Anexo enviado junto do pedido.' : 'Anexos enviados junto do pedido.',
+            agora],
+        });
+        const comentarioId = Number(comentario.lastInsertRowid ?? 0);
+        // Tres anexos sao tres gravacoes ao mesmo tempo, e nao uma fila.
+        await Promise.all(arquivos.map(a => db.execute({
+          sql: `INSERT INTO tarefa_comentario_anexos (comentario_id, nome, tipo, tamanho, base64, criado_em)
+                VALUES (?,?,?,?,?,?)`,
+          args: [comentarioId, a.nome, a.tipo, Math.round(a.base64.length * 0.75), a.base64, agora],
+        })));
+      }
 
       // O aviso vai DEPOIS da gravação, e o que ele responder não muda o que o
-      // cliente vê: o pedido já está na fila. Se o e-mail falhar, o time perde o
-      // toque no ombro, não o chamado - e a falha fica registrada em
+      // cliente vê: a tarefa já está no quadro. Se o e-mail falhar, o time perde
+      // o toque no ombro, não o pedido - e a falha fica registrada em
       // `emails_enviados`, que é onde se procura por ela.
-      const paraOTime = emailAdmin();
-      if (paraOTime) {
+      //
+      // Vai para o gestor do projeto, que é quem a tarefa espera; sem gestor na
+      // equipe, vai para quem cuida do portal, para o pedido não ficar sem dono
+      // nem sem aviso.
+      const paraQuem = responsavel?.email != null ? String(responsavel.email) : emailAdmin();
+      if (paraQuem) {
         await notifyEmail(
-          db, paraOTime,
+          db, paraQuem,
           // O projeto vai no assunto: quem recebe triagem pela caixa de entrada,
           // e "um cliente pediu alguma coisa" não diz de qual conversa se trata.
           `Portal: ${nome} mandou um pedido em ${String(p.nome)}`,
@@ -274,18 +321,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             ['Projeto', String(p.nome)],
             ['Quem', email ? `${nome} (${email})` : nome],
             ['Tipo', ROTULO_DO_TIPO[tipo] ?? tipo],
-            ['Assunto', assunto],
+            ['Tarefa', `#${numero} - ${assunto}`],
+            ['Etapa', etapa],
+            ['Responsável', responsavel?.nome != null ? String(responsavel.nome) : 'sem gestor na equipe'],
           ])
           + citacaoEmail(mensagem)
           + (arquivos.length ? notaEmail(arquivos.length === 1
-            ? 'Um anexo veio junto, e está no chamado.'
-            : `${arquivos.length} anexos vieram juntos, e estão no chamado.`) : ''),
+            ? 'Um anexo veio junto, e está no primeiro comentário da tarefa.'
+            : `${arquivos.length} anexos vieram juntos, e estão no primeiro comentário da tarefa.`) : ''),
           'pedido-cliente',
           {
             previa: assunto,
-            rodape: 'Você recebe este aviso porque é quem cuida do portal.',
+            rodape: responsavel?.email != null
+              ? 'Você recebe este aviso porque é o gestor deste projeto.'
+              : 'Você recebe este aviso porque é quem cuida do portal.',
           },
-        ).catch(() => { /* o aviso e apoio: o chamado ja esta gravado */ });
+        ).catch(() => { /* o aviso e apoio: a tarefa ja esta gravada */ });
       }
 
       res.setHeader('Cache-Control', 'no-store');

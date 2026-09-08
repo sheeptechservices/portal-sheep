@@ -223,8 +223,8 @@ export function PedidoDoCliente({ token }: { token: string }) {
           <span className="pub-pedido-selo"><IconCheck size={20} /></span>
           <h3>Recebemos o seu pedido</h3>
           <p>
-            Ele entrou na fila do time com o número <strong>#{numero}</strong>, com o nome deste
-            projeto junto.{email.trim() ? ` O retorno vai para ${email.trim()}.` : ''}
+            Ele virou a tarefa <strong>#{numero}</strong> no quadro deste projeto, e o gestor
+            recebe o aviso agora.{email.trim() ? ` O retorno vai para ${email.trim()}.` : ''}
           </p>
           <button type="button" className="pub-pedido-outro" onClick={outro}>
             Enviar outro pedido
