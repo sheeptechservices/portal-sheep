@@ -23,11 +23,12 @@ import { analisarVaga, conferirAnexos, type EventoDaAnalise } from './_analise-v
 //  depois disso o cabeçalho já foi, e o jeito de contar é dentro do fluxo.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Cinco anexos de 5 MB chegam como uns 33 MB de base64, e o teto de 20 MB que o
+// `/api/admin-data` declara recusaria justamente o caso que a tela promete
+// aceitar. Na Vercel o limite de corpo hoje e bem maior que isso; este `config`
+// existe para o atalho de dev, que le o mesmo formato.
 export const config = {
   api: {
-    // Cinco anexos de 5 MB chegam como uns 33 MB de base64. O teto do
-    // `/api/admin-data` (20 MB) recusaria justamente o caso que a tela promete
-    // aceitar.
     bodyParser: { sizeLimit: '40mb' },
   },
 };

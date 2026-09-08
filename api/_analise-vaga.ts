@@ -24,7 +24,7 @@
 //  env var. Sem chave, a ação diz isso em uma frase e não tenta nada.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { Client } from '@libsql/client';
-import { getAnthropicCredential } from './_credentials';
+import { getAnthropicCredential } from './_credentials.js';
 
 /** Um anexo que a pessoa colou ou soltou na gaveta. `base64` pode vir como
  *  data URL (é o que o navegador entrega); o prefixo sai aqui. */
