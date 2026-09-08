@@ -102,8 +102,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const sessao = await getAdminSession(db, token).catch(() => null);
   if (!sessao) return res.status(401).json({ error: 'Unauthorized' });
 
-  // Quem consulta CNPJ é a tela do Funil.
-  const recusa = await exigir(db, sessao.usuario, ['oportunidades:ver']);
+  // Quem consulta CNPJ é a tela do Funil e o gerador de contratos - lá para
+  // qualificar um lead, aqui para preencher a contratada sem redigitar o cartão.
+  // O que volta é cadastro público da Receita, e não dado interno da casa.
+  const recusa = await exigir(db, sessao.usuario, ['oportunidades:ver', 'gerador:ver']);
   if (recusa) return res.status(recusa.status).json(recusa.body);
 
   const digits = String(getQuery(req).get('cnpj') ?? '').replace(/\D/g, '');

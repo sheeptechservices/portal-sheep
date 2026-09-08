@@ -146,9 +146,9 @@ export const DESTINOS: Destino[] = [
   {
     page: 'gerador-documentos',
     titulo: 'Gerador de Contratos',
-    descricao: 'Contratos, termos e aditivos a partir de modelos',
+    descricao: 'Contrato de serviço com cliente e de colaborador',
     grupo: 'Ferramentas',
-    termos: ['documento', 'contrato', 'aditivo', 'modelo', 'template', 'docx', 'minuta'],
+    termos: ['contrato', 'cliente', 'colaborador', 'modelo', 'template', 'docx', 'minuta'],
     icon: (
       <svg {...ic}>
         <rect x="8.4" y="8.4" width="13.2" height="13.2" rx="2.2" />

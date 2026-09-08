@@ -107,7 +107,7 @@ const FERRAMENTAS: (Ferramenta & { page?: string })[] = [
     page: 'gerador-documentos',
     area: 'juridico',
     nome: 'Gerador de Contratos',
-    descricao: 'Monte contratos, termos e aditivos a partir de modelos, já preenchidos com os dados do cedente, do sacado e da operação.',
+    descricao: 'Gere o contrato de serviço com o cliente ou o de colaborador a partir do modelo da casa: o texto fixo fica, o resto você preenche.',
     icon: IconGerador,
     cor: '#D97706',
   },

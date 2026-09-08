@@ -17,7 +17,7 @@ const ProjetosPage = lazy(() => import('./ProjetosPage'));
 const TarefasPage = lazy(() => import('./TarefasPage'));
 const ConfiguracoesPage = lazy(() => import('./ConfiguracoesPage'));
 const FerramentasPage = lazy(() => import('./FerramentasPage'));
-const GeradorDocumentosPage = lazy(() => import('./GeradorDocumentosPage'));
+const GeradorContratos = lazy(() => import('./GeradorContratos'));
 const TalentosPage = lazy(() => import('./TalentosPage'));
 const PerfilPage = lazy(() => import('./PerfilPage'));
 const UsuariosPage = lazy(() => import('./UsuariosPage'));
@@ -1442,7 +1442,7 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
             {paginaNaTela === 'oportunidades'  && <OportunidadesPage  token={token} openCard={openCard?.page === 'oportunidades' ? openCard : undefined} onCardOpened={() => setOpenCard(null)} />}
             {paginaNaTela === 'configuracoes' && <ConfiguracoesPage token={token} />}
             {paginaNaTela === 'ferramentas'   && <FerramentasPage onNavigate={p => setPage(p as Page)} />}
-            {paginaNaTela === 'gerador-documentos' && <GeradorDocumentosPage token={token} />}
+            {paginaNaTela === 'gerador-documentos' && <GeradorContratos token={token} />}
             {paginaNaTela === 'talentos'      && <TalentosPage      token={token} />}
             {paginaNaTela === 'perfil'        && <PerfilPage token={token} />}
             {paginaNaTela === 'usuarios'      && <UsuariosPage   token={token} />}
