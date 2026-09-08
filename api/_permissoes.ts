@@ -116,12 +116,14 @@ export const CATALOGO: PermGrupo[] = [
   {
     chave: 'gerador',
     dentroDe: 'ferramentas',
-    label: 'Gerador de Documentos',
+    label: 'Gerador de Contratos',
     page: 'gerador-documentos',
-    nota: 'Contratos, termos e aditivos a partir dos modelos.',
+    nota: 'Contratos a partir dos modelos da casa.',
+    // `gerador:gerar` saiu junto com o gerador de propostas: sem endpoint de
+    // geração, ela seria um checkbox que não tranca nada. Volta quando o
+    // primeiro modelo de contrato virar documento.
     acoes: [
       { chave: 'gerador:ver', label: 'Abrir o gerador', acesso: true },
-      { chave: 'gerador:gerar', label: 'Gerar documento' },
     ],
   },
   {
@@ -326,7 +328,6 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   analise_vaga: 'talentos:ver',
 
   // ── Análise de Crédito ────────────────────────────────────────────────────
-  taxa_sugerida: 'gerador:ver',
   deps_config: ['oportunidades:ver', 'configuracoes:integracoes'],
 
   // ── Configurações ─────────────────────────────────────────────────────────

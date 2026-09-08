@@ -430,43 +430,6 @@ export default defineConfig(({ mode }) => {
             })
           })
 
-          // /api/gerar-documento - gera .docx (proposta/contrato) a partir dos templates
-          server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
-            const url = new URL(req.url ?? '/', `http://localhost`)
-            if (!url.pathname.startsWith('/api/gerar-documento')) return next()
-            if (req.method !== 'POST') {
-              res.statusCode = 405; res.setHeader('Content-Type', 'application/json')
-              res.end(JSON.stringify({ error: 'Method not allowed' })); return
-            }
-            let body = ''
-            req.on('data', (chunk: Buffer) => { body += chunk.toString() })
-            req.on('end', async () => {
-              res.setHeader('Content-Type', 'application/json')
-              try {
-                if (env.TURSO_DATABASE_URL) process.env.TURSO_DATABASE_URL = env.TURSO_DATABASE_URL
-                if (env.TURSO_AUTH_TOKEN)   process.env.TURSO_AUTH_TOKEN   = env.TURSO_AUTH_TOKEN
-                const { default: handler } = await import('./api/gerar-documento')
-                const query = Object.fromEntries(url.searchParams)
-                const fakeReq = { method: 'POST', headers: req.headers, query, body: body ? JSON.parse(body) : {} } as any
-                let statusCode = 200
-                let responseBody = ''
-                const fakeRes = {
-                  setHeader: () => {},
-                  status(code: number) { statusCode = code; return this },
-                  json(obj: unknown) { responseBody = JSON.stringify(obj); return this },
-                  end() {},
-                } as any
-                await handler(fakeReq, fakeRes)
-                res.statusCode = statusCode
-                res.end(responseBody)
-              } catch (err) {
-                console.error('[api/gerar-documento dev]', err)
-                res.statusCode = 500
-                res.end(JSON.stringify({ error: String(err) }))
-              }
-            })
-          })
-
           // /api/deps-consulta - integração DEPS (login + consulta Mix)
           server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
             const url = new URL(req.url ?? '/', `http://localhost`)

@@ -940,17 +940,6 @@ async function migrarSchema(db: Client) {
     await ddl(`ALTER TABLE status_configs ADD COLUMN is_entrada INTEGER NOT NULL DEFAULT 0`);
   } catch (_) { /* already exists */ }
 
-  // Última taxa mensal usada por cedente - o Gerador de Documentos pré-preenche a
-  // taxa da próxima proposta do mesmo cedente. Chaveado só pelo cedente, como no
-  // "DUX Gerador de Propostas" (lá era o taxa_historico.json).
-  await ddl(`
-    CREATE TABLE IF NOT EXISTS taxa_historico (
-      cedente_cnpj  TEXT PRIMARY KEY,
-      taxa_mensal   REAL NOT NULL,
-      atualizado_em TEXT NOT NULL
-    )
-  `);
-
   // Convidado: quem entra sem ser do domínio da casa. A linha nasce no painel de
   // Usuários, antes da primeira entrada, e é ela que autoriza o login com Google
   // de um e-mail de fora. Sem a marca, e-mail de fora continua sem acesso.
@@ -4070,18 +4059,6 @@ async function despacharAdminData(
       const r = await listarReunioesFireflies(cred.value, String(query.get('busca') ?? ''));
       if (!r.ok) return { status: 400, body: { error: r.error } };
       return { status: 200, body: { reunioes: r.reunioes } };
-    }
-
-    // Última taxa usada com este cedente (sugestão do Gerador de Documentos)
-    if (action === 'taxa_sugerida') {
-      const cnpj = (query.get('cnpj') ?? '').replace(/\D/g, '');
-      if (!cnpj) return { status: 200, body: { taxa: null } };
-      const r = await db.execute({
-        sql: 'SELECT taxa_mensal FROM taxa_historico WHERE cedente_cnpj = ?',
-        args: [cnpj],
-      });
-      const taxa = r.rows[0]?.taxa_mensal;
-      return { status: 200, body: { taxa: taxa == null ? null : Number(taxa) } };
     }
 
     if (action === 'get_oportunidade_files') {
