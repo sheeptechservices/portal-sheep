@@ -35,6 +35,7 @@ import { useTrocaDeNivel } from '../lib/useTrocaDeNivel';
 // O contrato e o gancho moram em `lib/toast`; aqui fica quem monta o provedor e
 // desenha os balões. Reexportado para as páginas continuarem pedindo o gancho
 // de onde sempre pediram.
+import { ProvedorAtividades } from '../components/ProvedorAtividades';
 export { useToast } from '../lib/toast';
 
 // ── Auth context ──────────────────────────────────────────────────────────────
@@ -1304,6 +1305,10 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
   return (
     <AuthContext.Provider value={{ onSessionExpired: onLogout, usuario, pode }}>
     <ToastContext.Provider value={{ toast }}>
+    {/* Dentro do provedor de toast, porque e ele quem confirma o fim de cada
+        atividade; e por fora das paginas, porque o trabalho tem de sobreviver a
+        fechar a gaveta que o comecou e a trocar de pagina. */}
+    <ProvedorAtividades navegar={p => setPage(p as Page)}>
     <TrilhaContext.Provider value={{ degrau, definir: definirDegrau }}>
       <div className={`admin-casca${saindo ? ' tela-sai' : ''}`} style={{
         display: 'grid',
@@ -1444,6 +1449,7 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
 
       <ToastContainer items={toasts} onDismiss={dismiss} />
     </TrilhaContext.Provider>
+    </ProvedorAtividades>
     </ToastContext.Provider>
     </AuthContext.Provider>
   );
