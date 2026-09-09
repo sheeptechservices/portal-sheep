@@ -128,7 +128,7 @@ const MAX_ANEXOS = 5;
 /** Estados de entrega que o cliente vê. O nome é o mesmo de dentro: inventar um
  *  vocabulário só para fora produziria duas verdades sobre a mesma entrega. */
 const ORDEM_STATUS = [
-  'Planejada', 'Em andamento', 'Bloqueada', 'Entregue', 'Validada', 'Cancelada',
+  'Triagem', 'Planejada', 'Em andamento', 'Bloqueada', 'Entregue', 'Validada', 'Cancelada',
 ];
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -476,7 +476,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // casos quem manda são as tarefas. É exatamente o que o painel faz, e
         // é o que faltava aqui: o cliente via "Planejada" numa entrega que lá
         // dentro já estava em andamento.
-        const status = ['Planejada', 'Entregue', 'Validada', 'Cancelada'].includes(String(e.status))
+        const status = ['Planejada', 'Triagem', 'Entregue', 'Validada', 'Cancelada'].includes(String(e.status))
           && String(e.status) !== 'Planejada'
           ? String(e.status)
           : statusDeduzido(suas, etapas);

@@ -370,6 +370,12 @@ export function IconMarcoPlanejado({ size = 14 }: { size?: number }) {
 export function IconMarcoAndamento({ size = 14 }: { size?: number }) {
   return <Ico size={size}><circle cx="12" cy="12" r="8.6" /><path d="M12 7.8V12l3 1.8" /></Ico>;
 }
+// Triagem: o funil, que e como separar o que entra do que espera se desenha em
+// toda parte. Dentro do mesmo circulo dos outros marcos, para a familia se ler
+// junta.
+export function IconMarcoTriagem({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><circle cx="12" cy="12" r="8.6" /><path d="M8.8 9.3h6.4l-2.5 3v3.4l-1.4-1v-2.4z" /></Ico>;
+}
 // Bloqueada: o corte.
 export function IconMarcoBloqueado({ size = 14 }: { size?: number }) {
   return <Ico size={size}><circle cx="12" cy="12" r="8.6" /><path d="M9.1 14.9l5.8-5.8" /></Ico>;

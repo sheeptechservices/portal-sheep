@@ -242,6 +242,11 @@ async function registrarEventosDaTarefa(
 
 /** "Entregue" é o que saiu da nossa mão; "Validada" é o que o cliente aceitou.
  *  Os dois falam do mundo fora do sistema, então os dois pedem prova. */
+/** Antes do plano: a entrega chegou e alguém ainda vai decidir o que fazer com
+ *  ela. Escolhida à mão como as resoluções, e como elas não se desfaz sozinha
+ *  quando uma tarefa começa a andar - é isso que a torna uma etapa, e não um
+ *  estado deduzido. Não pede prova: não é resolução de nada. */
+const ENTREGA_TRIAGEM = 'Triagem';
 const ENTREGA_ENTREGUE = 'Entregue';
 const ENTREGA_VALIDADA = 'Validada';
 const ENTREGA_CANCELADA = 'Cancelada';
@@ -258,7 +263,9 @@ const EXIGEM_PROVA = Object.keys(PROVA_DA_ETAPA);
 /** Os únicos estados que uma pessoa escolhe. "Planejada" é o de partida e o
  *  destino de quem reabre; "Em andamento" e "Bloqueada" serão deduzidos das
  *  tarefas da entrega, e por isso ninguém os digita. */
-const STATUS_MANUAL = ['Planejada', ENTREGA_ENTREGUE, ENTREGA_VALIDADA, ENTREGA_CANCELADA];
+const STATUS_MANUAL = [
+  'Planejada', ENTREGA_TRIAGEM, ENTREGA_ENTREGUE, ENTREGA_VALIDADA, ENTREGA_CANCELADA,
+];
 
 /** Chave da preferência que liga a regra. Guardada como texto por causa do
  *  formato do `app_config`. */

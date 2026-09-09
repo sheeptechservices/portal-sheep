@@ -104,8 +104,12 @@ const ORDENS_ENTREGA = [
 /** Estados possíveis de uma entrega, para exibição. Só dois são escolhidos por
  *  alguém: ver `RESOLUCAO_ENTREGA`. */
 export const STATUS_ENTREGA = [
-  'Planejada', 'Em andamento', 'Bloqueada', 'Entregue', 'Validada', 'Cancelada',
+  'Triagem', 'Planejada', 'Em andamento', 'Bloqueada', 'Entregue', 'Validada', 'Cancelada',
 ] as const;
+/** Antes de virar plano: a entrega chegou e alguém ainda vai decidir o que
+ *  fazer com ela. É escolhida à mão, como as resoluções, e por isso não se
+ *  desfaz sozinha quando uma tarefa começa a andar. */
+export const ENTREGA_TRIAGEM = 'Triagem';
 /** Saiu da nossa mão. Ainda não é o fim: o cliente pode pedir ajuste. */
 export const ENTREGA_ENTREGUE = 'Entregue';
 /** O cliente deu o aceite. É este que conta como pronto. */
@@ -124,6 +128,9 @@ export const PROVA_DA_ETAPA: Record<string, string> = {
  *  destino de quem reabre uma entrega resolvida. */
 export const RESOLUCAO_ENTREGA = [ENTREGA_ENTREGUE, ENTREGA_VALIDADA, ENTREGA_CANCELADA] as const;
 export const ENTREGA_PLANEJADA = 'Planejada';
+/** O que uma pessoa consegue escolher no marco: a triagem, que vem antes do
+ *  plano, e as três resoluções. */
+export const ESCOLHAS_DO_MARCO = [ENTREGA_TRIAGEM, ...RESOLUCAO_ENTREGA] as const;
 
 /** Leitura semanal de saúde: semáforo mais o porquê. É histórico, não estado,
  *  então a saúde atual é sempre a leitura mais recente. */
@@ -2453,11 +2460,12 @@ function MarcoEntrega({ status, onEscolher }: {
   const dropRef = useRef<HTMLDivElement>(null);
   const Icone = ICONE_ENTREGA[status] ?? IconMarcoPlanejado;
 
-  // Resolvida ganha uma linha a mais, para desfazer.
-  const resolvida = RESOLUCAO_ENTREGA.includes(status as typeof RESOLUCAO_ENTREGA[number]);
-  const opcoes: string[] = resolvida
-    ? [...RESOLUCAO_ENTREGA, ENTREGA_PLANEJADA]
-    : [...RESOLUCAO_ENTREGA];
+  // Estado escolhido a mão ganha uma linha a mais, para desfazer: sem ela, quem
+  // pôs a entrega em triagem não teria como devolvê-la ao automático.
+  const naMao = ESCOLHAS_DO_MARCO.includes(status as typeof ESCOLHAS_DO_MARCO[number]);
+  const opcoes: string[] = naMao
+    ? [...ESCOLHAS_DO_MARCO, ENTREGA_PLANEJADA]
+    : [...ESCOLHAS_DO_MARCO];
 
   function abrir() {
     setPos(ancorar(triggerRef.current!, opcoes.length, 200));
@@ -2477,7 +2485,7 @@ function MarcoEntrega({ status, onEscolher }: {
           style={{ top: pos.top, left: pos.left, width: pos.width, zIndex: 10000 }}>
           {opcoes.map(st => {
             const Desenho = ICONE_ENTREGA[st];
-            const reabrir = resolvida && st === ENTREGA_PLANEJADA;
+            const reabrir = naMao && st === ENTREGA_PLANEJADA;
             return (
               <div key={st} className={`status-select-option${st === status ? ' active' : ''}`}
                 onClick={() => { setAberto(false); onEscolher(st); }}>

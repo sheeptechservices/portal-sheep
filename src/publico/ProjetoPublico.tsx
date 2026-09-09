@@ -20,7 +20,7 @@ import { logoDoCliente } from '../lib/marcas';
 import FilterDropdown from '../components/FilterDropdown';
 import {
   IconAgrupar, IconCheck, IconChevronRight, IconExternal, IconMarcoAndamento, IconMarcoBloqueado,
-  IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado, IconMarcoValidado,
+  IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado, IconMarcoTriagem, IconMarcoValidado,
   IconOrdenar, IconSearch, IconX,
 } from '../components/icons';
 // O quadro e o calendário são os mesmos do painel do projeto: uma implementação
@@ -74,6 +74,7 @@ interface Dados {
  *  linha da entrega. Repetir o ícone do painel evita que o cliente e a equipe
  *  falem de "aquela bolinha" com desenhos diferentes na cabeça. */
 const ICONE: Record<string, (p: { size?: number }) => JSX.Element> = {
+  'Triagem': IconMarcoTriagem,
   'Planejada': IconMarcoPlanejado,
   'Em andamento': IconMarcoAndamento,
   'Bloqueada': IconMarcoBloqueado,
@@ -95,7 +96,7 @@ const ORDENS = [
  *  olhar, depois o que está em curso, e por último o que já se resolveu ou nem
  *  começou. Situação que não estiver nesta lista cai no fim. */
 const ORDEM_GRUPOS = [
-  'Bloqueada', 'Entregue', 'Em andamento', 'Validada', 'Planejada', 'Cancelada',
+  'Bloqueada', 'Entregue', 'Em andamento', 'Validada', 'Triagem', 'Planejada', 'Cancelada',
 ];
 
 /** No quadro a ordem é outra, e de propósito: colunas lado a lado leem como um
@@ -103,17 +104,18 @@ const ORDEM_GRUPOS = [
  *  Na lista, que se lê de cima para baixo, o que importa é a urgência - por
  *  isso lá o bloqueado vem primeiro. */
 const ORDEM_QUADRO = [
-  'Planejada', 'Em andamento', 'Bloqueada', 'Entregue', 'Validada', 'Cancelada',
+  'Triagem', 'Planejada', 'Em andamento', 'Bloqueada', 'Entregue', 'Validada', 'Cancelada',
 ];
 
 /** As mesmas cores de dentro: a entrega bloqueada é vermelha nos dois lados. */
 const COR: Record<string, string> = {
+  'Triagem': '#D9730D',
   'Planejada': '#8A8B84',
   'Em andamento': '#B58300',
   'Bloqueada': '#D93025',
   'Entregue': '#7C3AED',
   'Validada': '#23A455',
-  'Cancelada': '#D9730D',
+  'Cancelada': '#B42318',
 };
 
 /** Onde a situação entra na ordem dos grupos. Desconhecida vai para o fim. */
