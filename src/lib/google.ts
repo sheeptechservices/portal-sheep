@@ -62,11 +62,13 @@ export interface GoogleGis {
         client_id: string;
         scope: string;
         ux_mode?: 'popup' | 'redirect';
-        /** `'select_account'` pergunta com qual conta se entra, sem repetir a
-         *  autorização; `''` reaproveita em silêncio a conta aberta no
-         *  navegador, e `'consent'` reapresenta a tela de permissões a cada
-         *  entrada. */
-        prompt?: '' | 'none' | 'consent' | 'select_account';
+        /** Pergunta com qual conta se entra, sem repetir a autorização. Sem
+         *  ele, o Google reaproveita em silêncio a conta aberta no navegador.
+         *
+         *  Aqui é `select_account`, e não `prompt`: `prompt` é do cliente de
+         *  *token* (`initTokenClient`), e o cliente de *código* o ignora calado
+         *  - nem erro, nem aviso, e a entrada segue reaproveitando a conta. */
+        select_account?: boolean;
         callback: (r: { code?: string; error?: string }) => void;
         error_callback?: (e: { type?: string }) => void;
       }): { requestCode(): void };
