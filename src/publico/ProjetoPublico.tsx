@@ -48,7 +48,6 @@ interface Entrega {
   submarcador: string | null;
   status: string;
   prazo: string | null;
-  progresso: number;
   responsaveis: { nome: string; foto_url: string | null }[];
   evidencias: Evidencia[];
 }
@@ -59,7 +58,6 @@ interface Dados {
     descricao: string | null;
     status: string;
     previsao_entrega: string | null;
-    progresso: number;
     /** Endereço do que foi entregue. Nulo quando ainda não há o que acessar. */
     link: string | null;
     publicado_em: string | null;
@@ -87,7 +85,6 @@ const ORDENS = [
   { valor: 'padrao', label: 'Ordem do projeto' },
   { valor: 'prazo', label: 'Prazo mais próximo' },
   { valor: 'titulo', label: 'Título (A a Z)' },
-  { valor: 'progresso', label: 'Mais avançadas' },
 ] as const;
 
 /** A ordem em que os grupos de situação aparecem para o cliente. Não é a ordem
@@ -409,9 +406,6 @@ function LinhaEntrega({ e, marca, aberta, realcada, onAlternar, onAbrirPrevia }:
             ))}
           </span>
         )}
-        <span className="pub-pct" style={{ color: feita ? cor : undefined }}>
-          {e.progresso}%
-        </span>
       </span>
       </button>
 
@@ -722,7 +716,6 @@ export default function ProjetoPublico({ token }: { token: string }) {
     if (ordem === 'titulo') return a.titulo.localeCompare(b.titulo, 'pt-BR');
     // Sem prazo vai para o fim: nada é mais distante que uma data que não existe.
     if (ordem === 'prazo') return (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999');
-    if (ordem === 'progresso') return b.progresso - a.progresso;
     return ordem_status.indexOf(a.status) - ordem_status.indexOf(b.status);
   });
 
@@ -739,7 +732,6 @@ export default function ProjetoPublico({ token }: { token: string }) {
     submarcador: e.submarcador,
     status: e.status,
     prazo: e.prazo,
-    progresso: e.progresso,
     donos: e.responsaveis.map(p => ({ nome: p.nome, foto: p.foto_url })),
   }));
 

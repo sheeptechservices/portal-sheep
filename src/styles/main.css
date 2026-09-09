@@ -12824,12 +12824,7 @@ button.checklist-texto:focus-visible {
 .pub-donos .pub-avatar-vazio { font-size: 9px; }
 
 .pub-prazo { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.pub-pct {
-  font-weight: 700;
-  min-width: 34px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
+
 
 /* ── Barra de ferramentas ─────────────────────────── */
 /* ── Indicadores do cliente ───────────────────────────
@@ -13899,7 +13894,6 @@ button.checklist-texto:focus-visible {
   font-size: 11px;
   color: var(--gray2);
 }
-.visao-cartao-pe .pub-pct { margin-left: auto; }
 
 /* ── Calendario ───────────────────────────────────── */
 .visao-cal-topo {

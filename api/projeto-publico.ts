@@ -24,7 +24,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@libsql/client';
-import { etapasDeTarefa, progressoDaEntrega, statusDeduzido } from './_entregas.js';
+import { etapasDeTarefa, statusDeduzido } from './_entregas.js';
 import { citacaoEmail, fichaEmail, notaEmail, notifyEmail } from './_email.js';
 // Só o endereço do dono do painel: é o mesmo que o aviso de chamado do time usa,
 // e repetir a regra aqui abriria a chance de os dois divergirem.
@@ -160,7 +160,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const projeto = await db.execute({
-      sql: `SELECT p.id, p.nome, p.descricao, p.status, p.previsao_entrega, p.progresso,
+      sql: `SELECT p.id, p.nome, p.descricao, p.status, p.previsao_entrega,
                    p.link_portal, p.publicado_em, c.nome AS cliente_nome
             FROM projetos p
             LEFT JOIN clientes c ON c.id = p.cliente_id
@@ -458,7 +458,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         descricao: p.descricao,
         status: p.status,
         previsao_entrega: p.previsao_entrega,
-        progresso: Number(p.progresso ?? 0),
         // O endereço do que foi entregue. Sai daqui de propósito, e é o único
         // link do projeto que sai: `repositorio` e `drive` são de dentro.
         link: p.link_portal != null ? String(p.link_portal) : null,
@@ -488,10 +487,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           submarcador: e.submarcador != null ? String(e.submarcador) : null,
           status,
           prazo: e.prazo != null ? String(e.prazo) : null,
-          // `progresso` não é coluna: sai das tarefas, como no painel de dentro.
           // Validada vale 100 mesmo com tarefa em aberto - o aceite do cliente
           // é o que encerra a entrega.
-          progresso: status === 'Validada' ? 100 : progressoDaEntrega(suas, etapas),
           evidencias: evidencias.rows
             .filter(v => Number(v.entrega_id) === Number(e.id))
             .map(v => ({

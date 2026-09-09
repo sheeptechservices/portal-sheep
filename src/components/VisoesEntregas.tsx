@@ -29,7 +29,9 @@ export interface ItemVisao {
   submarcador: string | null;
   status: string;
   prazo: string | null;
-  progresso: number;
+  /** Opcional porque a página do cliente não mostra percentual de conclusão:
+   *  lá o campo simplesmente não vem, e o cartão não desenha o que não tem. */
+  progresso?: number;
   donos: { nome: string; foto: string | null }[];
 }
 
@@ -149,7 +151,7 @@ function CartaoVisao({ e, cor, icone: Icone, onAbrir }: {
             ))}
           </span>
         )}
-        <span className="visao-pct">{e.progresso}%</span>
+        {e.progresso != null && <span className="visao-pct">{e.progresso}%</span>}
       </span>
     </button>
   );
