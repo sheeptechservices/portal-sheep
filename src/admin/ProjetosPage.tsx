@@ -1299,6 +1299,13 @@ function ColunaDaEntrega({ etapa, tarefas, podeEditar, arrastando, onAbrir, onCr
               opacity: arrastando === x.id ? 0.45 : 1 }}>
             <p className="kanban-card-title">{x.titulo}</p>
             <div className="entrega-kanban-pe">
+              {/* O ícone de prioridade explica a ordem da coluna, que de outro
+                  modo pareceria arbitrária. Mesma marca do índice de projetos. */}
+              <span className="entrega-kanban-prio"
+                style={{ color: COR_PRIORIDADE[x.prioridade ?? PRIORIDADE_PADRAO] ?? 'var(--gray2)' }}
+                title={`Prioridade: ${x.prioridade ?? PRIORIDADE_PADRAO}`}>
+                {ICONE_PRIORIDADE[x.prioridade ?? PRIORIDADE_PADRAO]?.({ size: 12 })}
+              </span>
               {x.prazo && <span>{fmtData(x.prazo)}</span>}
               {x.responsavel_nome && (
                 <span title={x.responsavel_nome} style={{ marginLeft: 'auto' }}>
@@ -1332,7 +1339,12 @@ function ColunaDaEntrega({ etapa, tarefas, podeEditar, arrastando, onAbrir, onCr
  *  próprio bloco, e nunca empurra a largura do painel.
  *
  *  Quem abre o quadro é a seção de tarefas, que nasce fechada: a entrega aberta
- *  responde primeiro sobre ela mesma. */
+ *  responde primeiro sobre ela mesma.
+ *
+ *  Dentro da coluna manda a urgência: a coluna já diz em que ponto do fluxo a
+ *  tarefa está, e a prioridade diz por qual começar. No empate fica a ordem que
+ *  já vinha, que é a de criação - ninguém reordena tarefa à mão, então não há
+ *  decisão de pessoa para esta ordenação atropelar. */
 function KanbanDaEntrega({ tarefas, etapas, podeEditar, onAbrir, onCriar, onExcluir,
   onMover, onFixarRecolhida }: {
   tarefas: Tarefa[];
@@ -1347,12 +1359,24 @@ function KanbanDaEntrega({ tarefas, etapas, podeEditar, onAbrir, onCriar, onExcl
 }) {
   const [arrastando, setArrastando] = useState<number | null>(null);
 
+  // Urgente, Alta, Média, Baixa - a posição na escala, e não o nome: em ordem
+  // alfabética "Baixa" viria antes de "Urgente". Prioridade que o catálogo não
+  // conhece vai para o fim, em vez de para a frente por acaso.
+  const urgencia = (t: Tarefa) => {
+    const i = PRIORIDADES.indexOf((t.prioridade ?? PRIORIDADE_PADRAO) as typeof PRIORIDADES[number]);
+    return i < 0 ? PRIORIDADES.length : i;
+  };
+  // `sort` é estável, então tarefas de mesma prioridade continuam na ordem em
+  // que já estavam.
+  const daColuna = (nome: string) =>
+    tarefas.filter(x => x.status === nome).sort((a, b) => urgencia(a) - urgencia(b));
+
   return (
     <div className="kanban-board entrega-kanban">
       {etapas.map(et => (
         <ColunaDaEntrega key={et.id}
           etapa={et}
-          tarefas={tarefas.filter(x => x.status === et.nome)}
+          tarefas={daColuna(et.nome)}
           podeEditar={podeEditar}
           arrastando={arrastando}
           onAbrir={onAbrir}

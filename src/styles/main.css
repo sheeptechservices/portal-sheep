@@ -3133,6 +3133,12 @@ body.arrastando-painel {
   font-size: 10.5px;
   color: var(--gray2);
 }
+/* O icone ja sai na cor do nivel; aqui so o alinhamento com o resto do pe. */
+.entrega-kanban-prio {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
 .entrega-kanban-pe .kanban-card-acao {
   opacity: 0;
   transition: opacity var(--transition), background var(--transition),
