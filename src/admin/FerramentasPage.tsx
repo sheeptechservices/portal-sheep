@@ -21,8 +21,8 @@ interface Ferramenta {
 // Ordem das colunas no hub. A área sem ferramenta ainda aparece, reservando o
 // lugar dela no hub.
 const AREAS: { id: AreaId; nome: string; descricao: string }[] = [
-  { id: 'juridico', nome: 'Jurídico', descricao: 'Formalização, análise e documentos das operações' },
-  { id: 'comercial', nome: 'Comercial', descricao: 'Apoio à negociação com o cedente' },
+  { id: 'juridico', nome: 'Jurídico', descricao: 'Contratos e documentos da casa' },
+  { id: 'comercial', nome: 'Comercial', descricao: 'Quem trabalha com a gente, e quem pode vir a trabalhar' },
 ];
 
 // Ícones em traço, herdando a cor do card via currentColor. Mesmo peso de linha
