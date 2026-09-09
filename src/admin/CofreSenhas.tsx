@@ -556,8 +556,7 @@ function GavetaDoSegredo({
 
         <div className="admin-modal-header">
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 600,
-              textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            <p className="painel-rotulo">
               {segredo ? 'Segredo' : 'Novo segredo'}
             </p>
             <input className="painel-titulo painel-titulo-campo" value={titulo} disabled={somenteLeitura}

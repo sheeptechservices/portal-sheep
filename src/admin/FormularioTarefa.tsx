@@ -931,8 +931,7 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
               um input (~20 caracteres) e o título corta muito antes da borda,
               deixando um vão até os botões. */}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 600,
-              textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            <p className="painel-rotulo">
               {rascunho.id ? 'Tarefa' : 'Nova tarefa'}
             </p>
             {/* O título é editado onde ele é lido, e não num campo lá embaixo.

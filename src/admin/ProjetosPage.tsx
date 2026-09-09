@@ -4031,7 +4031,7 @@ function FormularioProjeto({
             {/* `flex: 1` porque sem ele o bloco encolhe para o tamanho natural
                 de um input e o nome corta muito antes da borda. */}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              <p className="painel-rotulo">
                 {editando ? `Projeto ${editando.codigo ?? ''}`.trim() : 'Novo projeto'}
               </p>
               {/* O nome é editado onde ele é lido. Ligado ao rascunho, e não ao

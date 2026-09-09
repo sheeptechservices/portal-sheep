@@ -3385,6 +3385,17 @@ body.arrastando-painel {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* O rotulo acima do titulo da gaveta: que ficha e esta. Vira classe porque as
+   quatro gavetas repetiam o mesmo estilo em linha, e a quinta ia repetir de
+   novo com um digito diferente. */
+.painel-rotulo {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
 .painel-titulo-campo {
   display: block;
   width: 100%;

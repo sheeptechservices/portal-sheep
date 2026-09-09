@@ -1881,7 +1881,7 @@ export function DetailPanel({
           {/* Row 1: label + actions + close */}
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ minWidth: 0 }}>
-              <p style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              <p className="painel-rotulo">
                 Oportunidade
               </p>
               <h3 style={{ fontSize: 16, fontWeight: 800 }}>{s?.empresa ?? '…'}</h3>
