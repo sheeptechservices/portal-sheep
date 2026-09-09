@@ -10,6 +10,29 @@
  *  janela. Na vertical: sem espaço embaixo e com espaço em cima, abre para
  *  cima. Na horizontal: gatilho estreito e encostado na direita empurraria a
  *  lista para fora, então o canto é preso dentro da janela. */
+/** Onde uma caixa de tamanho conhecido deve nascer, ancorada num gatilho.
+ *
+ *  A `ancorar` acima serve a lista, cuja altura sai da conta de itens. Esta
+ *  serve ao que tem tamanho proprio - a paleta de cores, que e uma grade fixa.
+ *  A regra e a mesma nos dois: sem espaco embaixo e com espaco em cima, abre
+ *  para cima; e o canto fica preso dentro da janela nos dois eixos. */
+export function ancorarCaixa(el: HTMLElement, largura: number, altura: number) {
+  const r = el.getBoundingClientRect();
+  const MARGEM = 8;
+  const VAO = 6;
+  const cabeAbaixo = window.innerHeight - r.bottom - MARGEM >= altura + VAO;
+  // Nao cabendo em lugar nenhum - janela baixa, caixa alta -, ela desce mesmo
+  // assim e o topo e preso na margem: melhor cortada embaixo, onde o proprio
+  // `max-height` do CSS a faz rolar, do que colada no topo cobrindo o gatilho.
+  const top = cabeAbaixo || r.top < altura + VAO
+    ? Math.min(r.bottom + VAO, window.innerHeight - MARGEM - altura)
+    : r.top - altura - VAO;
+  return {
+    top: Math.max(MARGEM, top),
+    left: Math.max(MARGEM, Math.min(r.left - VAO, window.innerWidth - largura - MARGEM)),
+  };
+}
+
 export function ancorar(el: HTMLElement, itens: number, larguraMin = 150) {
   const r = el.getBoundingClientRect();
   const MARGEM = 8;

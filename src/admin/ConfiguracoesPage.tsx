@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import type { StatusConfig, UsuarioNotificavel, Notificacao, NovaNotificacao } from './types';
 import { useToast, useAuth } from './AdminApp';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
+import { ancorarCaixa } from '../lib/ancorar';
 import {
   IconAlert, IconAlertOctagon, IconArrastar, IconCheck, IconChevronDown, IconChevronRight, IconFluxo,
   IconClipboard, IconEntrada, IconEstrela, IconEye, IconEyeOff, IconPlus, IconProibido,
@@ -101,6 +102,23 @@ const COLORS = [
   '#F97316','#EAB308','#22C55E','#10B981','#14B8A6',
   '#06B6D4','#3B82F6','#0EA5E9',
 ];
+
+/* A caixa da paleta, nas medidas que o CSS de `.status-color-picker-popover`
+   lhe da: 188px de largura, aro de 1.5px, 12px de folga em volta, e amostras de
+   24px separadas por 8px. O aro de 2.5px da amostra nao entra na conta porque o
+   reset da casa poe `box-sizing: border-box` em tudo: os 24px ja o incluem.
+   Sobram 164px uteis por fileira, onde cabem cinco (5 x 24 + 4 x 8 = 152). */
+const PALETA_LARGURA = 188;
+const PALETA_POR_FILEIRA = 5;
+const PALETA_FILEIRAS = Math.ceil(COLORS.length / PALETA_POR_FILEIRA);
+const PALETA_ALTURA = 1.5 * 2 + 12 * 2
+  + PALETA_FILEIRAS * 24 + (PALETA_FILEIRAS - 1) * 8;
+
+/** Onde a paleta nasce. Ela abria sempre para baixo, e etiqueta no fim de uma
+ *  lista comprida deixava a paleta cortada pela borda de baixo da janela. */
+function ancorarPaleta(el: HTMLElement) {
+  return ancorarCaixa(el, PALETA_LARGURA, PALETA_ALTURA);
+}
 
 function useApi(token: string) {
   const { onSessionExpired } = useAuth();
@@ -445,8 +463,7 @@ function StatusRow({
   function openColorPicker(e: React.MouseEvent) {
     e.stopPropagation();
     if (colorPickerPos) { setColorPickerPos(null); return; }
-    const rect = colorDotRef.current!.getBoundingClientRect();
-    setColorPickerPos({ top: rect.bottom + 6, left: rect.left });
+    setColorPickerPos(ancorarPaleta(colorDotRef.current!));
   }
 
   async function handleColorClick(c: string) {
@@ -2007,8 +2024,7 @@ function EtapaTarefaRow({
             title="Alterar cor"
             aria-label={`Alterar a cor de ${etapa.nome}`}
             onClick={() => {
-              const r = corDotRef.current!.getBoundingClientRect();
-              setPaletaPos({ top: r.bottom + 6, left: Math.max(8, r.left - 6) });
+              setPaletaPos(ancorarPaleta(corDotRef.current!));
             }}
           >
             <span className="kanban-dot" style={{ background: cor, width: 12, height: 12 }} />
@@ -2732,8 +2748,7 @@ function EtiquetaTarefaRow({
           <button ref={corDotRef} className="status-color-dot-btn" title="Alterar cor"
             aria-label={`Alterar a cor de ${etiqueta.nome}`}
             onClick={() => {
-              const r = corDotRef.current!.getBoundingClientRect();
-              setPaletaPos({ top: r.bottom + 6, left: Math.max(8, r.left - 6) });
+              setPaletaPos(ancorarPaleta(corDotRef.current!));
             }}>
             <span className="kanban-dot" style={{ background: cor, width: 12, height: 12 }} />
           </button>
