@@ -29,6 +29,7 @@ import {
   IconCheck, IconClipboard, IconEye, IconEyeOff, IconSearch, IconSpinner, IconTrash, IconX,
 } from '../components/icons';
 import FilterDropdown from '../components/FilterDropdown';
+import { SelectSistema } from '../components/SelectSistema';
 import { useAuth, useToast } from './AdminApp';
 import { useApi } from './OportunidadesPage';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
@@ -63,7 +64,10 @@ const CONTEUDO_VAZIO: Conteudo = { usuario: '', senha: '', url: '', notas: '' };
  *  diz que é ali que se escreve. */
 const TITULO_PADRAO = 'Sem título';
 
-/** Categorias sugeridas. Lista aberta: quem tiver um caso novo escreve. */
+/** As categorias do cofre, e são só estas. Lista fechada porque categoria
+ *  digitada à mão vira "Servidor", "servidor" e "Servidores" na mesma
+ *  prateleira, e o filtro de cima passa a listar as três como se fossem
+ *  coisas diferentes. `Outro` é a saída para o caso que não se encaixa. */
 const CATEGORIAS = ['Ferramenta', 'GitHub', 'Servidor', 'Banco de dados', 'E-mail', 'Financeiro', 'Outro'];
 
 /** Uma senha forte, para quem não quer inventar. Alfabeto sem os pares que se
@@ -553,6 +557,17 @@ function GavetaDoSegredo({
 
   const somenteLeitura = !podeEditar;
 
+  /** A lista fechada, mais a categoria que este segredo já tem caso ela não
+   *  esteja nela - segredo gravado antes de a lista fechar. Sem essa emenda o
+   *  gatilho não acharia o valor e mostraria o convite a escolher, como se o
+   *  campo estivesse vazio, e gravar de novo apagaria o que estava lá. */
+  const opcoesDeCategoria = useMemo(() => {
+    const nomes = CATEGORIAS.includes(categoria) || !categoria
+      ? CATEGORIAS
+      : [...CATEGORIAS, categoria];
+    return nomes.map(x => ({ valor: x, label: x }));
+  }, [categoria]);
+
   return createPortal(
     <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`}
       style={{ zIndex: 10040 }} {...fundo}>
@@ -584,16 +599,9 @@ function GavetaDoSegredo({
         <div className="admin-modal-body">
           <div className="form-group">
             <label className="form-label">Categoria</label>
-            <input className="form-input" value={categoria} list="cofre-categorias"
-              disabled={somenteLeitura} placeholder="Ferramenta"
-              onChange={e => setCategoria(e.target.value)} />
-            <datalist id="cofre-categorias">
-              {CATEGORIAS.map(x => <option key={x} value={x} />)}
-            </datalist>
-            <p className="cofre-dica" style={{ marginTop: 4 }}>
-              Título e categoria ficam legíveis na lista mesmo com o cofre trancado. É o que a
-              busca alcança, então não escreva a senha aí.
-            </p>
+            <SelectSistema valor={categoria} onChange={setCategoria}
+              opcoes={opcoesDeCategoria} placeholder="Escolher categoria"
+              desabilitado={somenteLeitura} />
           </div>
 
           {/* Segredo que já existe e cofre trancado: a ficha fica fechada, e a
