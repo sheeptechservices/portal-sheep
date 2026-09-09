@@ -820,10 +820,18 @@ function CampoEndereco({ rotulo, valor, placeholder, dica, somenteLeitura, onCha
       <label className="form-label">{rotulo}</label>
       <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         {somenteLeitura ? (
-          <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: limpo ? 'var(--gray)' : 'var(--gray2)',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={limpo || undefined}>
-            {limpo || 'Não informado'}
-          </span>
+          // Em leitura o endereço é o próprio link: quem vê uma URL na tela
+          // tenta clicar nela, e não no botão ao lado.
+          limpo ? (
+            <a className="campo-endereco-link" href={limpo}
+              target="_blank" rel="noopener noreferrer" title={limpo}>
+              {limpo}
+            </a>
+          ) : (
+            <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: 'var(--gray2)' }}>
+              Não informado
+            </span>
+          )
         ) : (
           <input className="form-input" style={{ flex: 1, minWidth: 0 }} value={valor}
             onChange={e => onChange(e.target.value)} placeholder={placeholder} />

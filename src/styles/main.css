@@ -3133,6 +3133,25 @@ body.arrastando-painel {
   font-size: 10.5px;
   color: var(--gray2);
 }
+/* Endereco em modo de leitura: e o proprio link. Sem sublinhado em repouso,
+   como o link da ficha da oportunidade, e o traco aparece no hover. */
+.campo-endereco-link {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  color: var(--gray);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color var(--transition), border-color var(--transition);
+}
+.campo-endereco-link:hover {
+  color: var(--black);
+  border-bottom-color: var(--gray2);
+}
+
 /* O icone ja sai na cor do nivel; aqui so o alinhamento com o resto do pe. */
 .entrega-kanban-prio {
   display: inline-flex;
