@@ -148,6 +148,26 @@ const CAMPOS_NO_DIARIO = [
 
 type FotoDaTarefa = Record<string, string>;
 
+/** Os responsáveis de uma linha de tarefa, venha ela do banco (JSON em texto)
+ *  ou do corpo da requisição (lista pronta).
+ *
+ *  Cai no `responsavel_id` quando a lista não existe: é o formato de antes de
+ *  a tarefa aceitar mais de um dono, e linha antiga que ainda não passou pela
+ *  migração continua legível. */
+function donosDaTarefa(r: Record<string, any> | null | undefined): string[] {
+  if (!r) return [];
+  const bruto = r.responsaveis;
+  const lista = Array.isArray(bruto)
+    ? bruto
+    : (() => {
+      try { const v = JSON.parse(String(bruto ?? 'null')); return Array.isArray(v) ? v : null; }
+      catch { return null; }
+    })();
+  if (lista) return lista.map(String).map(s => s.trim()).filter(Boolean);
+  const um = String(r.responsavel_id ?? '').trim();
+  return um ? [um] : [];
+}
+
 /** O estado da tarefa reduzido a texto, para comparar antes com depois. */
 function fotoDaTarefa(r: Record<string, any> | null | undefined): FotoDaTarefa | null {
   if (!r) return null;
@@ -160,7 +180,7 @@ function fotoDaTarefa(r: Record<string, any> | null | undefined): FotoDaTarefa |
     descricao: String(r.descricao ?? ''),
     status: String(r.status ?? ''),
     prioridade: String(r.prioridade ?? ''),
-    responsavel: String(r.responsavel_id ?? ''),
+    responsavel: donosDaTarefa(r).join(', '),
     prazo: String(r.prazo ?? '').slice(0, 10),
     entrega: String(r.entrega_id ?? ''),
     etiquetas,
@@ -1292,6 +1312,22 @@ async function migrarSchema(db: Client) {
       criado_por_nome TEXT
     )
   `);
+
+  // A tarefa passou a aceitar mais de um responsável. JSON numa coluna, como as
+  // entregas já fazem: é lista curta, lida inteira e nunca cruzada em SQL.
+  //
+  // `responsavel_id` fica onde está, e continua sendo gravado com o primeiro da
+  // lista. Não é fonte de verdade - é o que faz uma volta atrás no código não
+  // perder o dono das tarefas, e apagar coluna em produção é risco sem prêmio.
+  try { await ddl(`ALTER TABLE projeto_tarefas ADD COLUMN responsaveis TEXT`); } catch {}
+  // A conversão das tarefas que já existem. `WHERE responsaveis IS NULL` faz
+  // disto uma coisa só: depois da primeira vez não há linha para tocar.
+  try {
+    await db.execute(`UPDATE projeto_tarefas
+                      SET responsaveis = '["' || responsavel_id || '"]'
+                      WHERE responsaveis IS NULL AND responsavel_id IS NOT NULL AND responsavel_id <> ''`);
+    await db.execute(`UPDATE projeto_tarefas SET responsaveis = '[]' WHERE responsaveis IS NULL`);
+  } catch { /* a coluna acabou de nascer numa base sem tarefas */ }
 
   await ddl(`
     -- Diário da tarefa: quem mexeu, quando e no quê. Uma linha por campo
@@ -2908,9 +2944,9 @@ async function despacharAdminData(
                   SELECT projeto_id FROM projeto_equipe WHERE usuario_id = ?
                 )
               )
-              OR u.id IN (
-                SELECT t.responsavel_id FROM projeto_tarefas t
-                WHERE t.responsavel_id IS NOT NULL AND t.projeto_id IN (
+              OR EXISTS (
+                SELECT 1 FROM projeto_tarefas t, json_each(COALESCE(t.responsaveis, '[]')) d
+                WHERE d.value = u.id AND t.projeto_id IN (
                   SELECT projeto_id FROM projeto_equipe WHERE usuario_id = ?
                 )
               )
@@ -3322,7 +3358,8 @@ async function despacharAdminData(
         `),
         db.execute(`
           SELECT t.id, t.projeto_id, t.entrega_id, t.titulo, t.descricao, t.status, t.prioridade,
-                 t.responsavel_id, t.prazo, t.etiquetas, t.ordem, t.concluida_em, t.criado_em,
+                 t.responsavel_id, t.responsaveis, t.prazo, t.etiquetas, t.ordem, t.concluida_em,
+                 t.criado_em,
                  u.nome AS responsavel_nome, u.email AS responsavel_email, u.foto_url AS responsavel_foto
           FROM projeto_tarefas t
           LEFT JOIN usuarios u ON u.id = t.responsavel_id
@@ -3374,6 +3411,8 @@ async function despacharAdminData(
         tarefas: tarefas.rows.filter(t => t.projeto_id === p.id).map(t => ({
           ...t,
           etiquetas: JSON.parse(String(t.etiquetas ?? '[]')) as string[],
+          // O banco guarda JSON; a tela quer a lista pronta, como nas entregas.
+          responsaveis: donosDaTarefa(t),
           // Só os números: o conteúdo da conversa desce quando o card abre.
           comentarios: nComentarios.get(Number(t.id)) ?? 0,
           anexos: nAnexos.get(Number(t.id)) ?? 0,
@@ -4558,10 +4597,19 @@ function faltaEmProjeto(p: any): string | null {
 
       // Mover e atribuir: a última etiqueta posta vence, porque foi o gesto mais
       // recente de quem estava editando.
+      // A lista de donos, resolvida uma vez e usada em tudo o que vem depois.
+      let donos = donosDaTarefa(t);
       for (const r of regras) {
         if (r.mover_para) t.status = String(r.mover_para);
-        if (r.atribuir_para) t.responsavel_id = String(r.atribuir_para);
+        // "Atribuir para" troca o dono, não acrescenta: é o mesmo gesto de
+        // antes, quando havia um só, e somar caladamente deixaria a tarefa com
+        // gente que ninguém pôs ali.
+        if (r.atribuir_para) donos = [String(r.atribuir_para)];
       }
+      const responsaveis = JSON.stringify(donos);
+      // O primeiro da lista continua indo para a coluna antiga. Ver a nota da
+      // migração: é rede para uma volta atrás do código, não fonte de verdade.
+      const donoPrincipal = donos[0] ?? null;
 
       // A data de conclusão é carimbada pelo servidor: é ela que responde
       // "quando isso ficou pronto", e deixar a tela mandar abriria espaço para
@@ -4586,7 +4634,7 @@ function faltaEmProjeto(p: any): string | null {
       // A foto do que a gravação está pedindo, para o diário comparar.
       const depois = fotoDaTarefa({
         titulo, descricao: t.descricao, status: statusPedido, prioridade: t.prioridade ?? 'Média',
-        responsavel_id: t.responsavel_id, prazo: t.prazo, entrega_id: t.entrega_id, etiquetas,
+        responsaveis: donos, prazo: t.prazo, entrega_id: t.entrega_id, etiquetas,
       })!;
 
       // O que a tela precisa saber do que foi gravado: o id da nova e os campos
@@ -4642,10 +4690,11 @@ function faltaEmProjeto(p: any): string | null {
         await db.execute({
           sql: `UPDATE projeto_tarefas
                 SET projeto_id=?, entrega_id=?, titulo=?, descricao=?, status=?, prioridade=?,
-                    responsavel_id=?, prazo=?, etiquetas=?, concluida_em=?${mudouDeProjeto ? ', ordem=?' : ''}
+                    responsavel_id=?, responsaveis=?, prazo=?, etiquetas=?,
+                    concluida_em=?${mudouDeProjeto ? ', ordem=?' : ''}
                 WHERE id=?`,
           args: [t.projeto_id, entregaId as never, titulo, t.descricao ?? null, statusPedido,
-            t.prioridade ?? 'Média', t.responsavel_id || null, t.prazo || null, etiquetas,
+            t.prioridade ?? 'Média', donoPrincipal, responsaveis, t.prazo || null, etiquetas,
             carimbo as never, ...(mudouDeProjeto ? [ordemNova as never] : []), t.id],
         });
         gravada = { concluida_em: (carimbo as string | null) ?? null };
@@ -4661,10 +4710,11 @@ function faltaEmProjeto(p: any): string | null {
         const inserida = await db.execute({
           sql: `INSERT INTO projeto_tarefas
                   (projeto_id, entrega_id, titulo, descricao, status, prioridade, responsavel_id,
-                   prazo, etiquetas, ordem, concluida_em, criado_em, criado_por_id, criado_por_nome)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                   responsaveis, prazo, etiquetas, ordem, concluida_em, criado_em,
+                   criado_por_id, criado_por_nome)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
           args: [t.projeto_id, t.entrega_id || null, titulo, t.descricao ?? null,
-            statusPedido, t.prioridade ?? 'Média', t.responsavel_id || null,
+            statusPedido, t.prioridade ?? 'Média', donoPrincipal, responsaveis,
             t.prazo || null, etiquetas, Number(ordem.rows[0].proxima), concluida,
             criadaEm, autorId, autorNome],
         });
@@ -4689,15 +4739,19 @@ function faltaEmProjeto(p: any): string | null {
           if (inscritos.length > 0) {
             const [projeto, resp] = await Promise.all([
               db.execute({ sql: 'SELECT nome FROM projetos WHERE id = ?', args: [t.projeto_id] }),
-              // O nome do responsável não vem no corpo: a tela manda o id.
-              t.responsavel_id
-                ? db.execute({ sql: 'SELECT nome FROM usuarios WHERE id = ?', args: [t.responsavel_id] })
+              // Os nomes não vêm no corpo: a tela manda os ids.
+              donos.length
+                ? db.execute({
+                  sql: `SELECT nome FROM usuarios WHERE id IN (${donos.map(() => '?').join(',')}) ORDER BY nome`,
+                  args: donos,
+                })
                 : Promise.resolve({ rows: [] as Record<string, unknown>[] }),
             ]);
             const corpo = fichaEmail([
               ['Tarefa', titulo],
               ['Projeto', String(projeto.rows[0]?.nome ?? '-')],
-              ['Responsável', String(resp.rows[0]?.nome ?? 'sem responsável')],
+              [donos.length > 1 ? 'Responsáveis' : 'Responsável',
+                resp.rows.map(x => String(x.nome)).join(', ') || 'sem responsável'],
               ['Etapa', statusPedido],
             ]);
             for (const dest of inscritos) {
@@ -4748,7 +4802,9 @@ function faltaEmProjeto(p: any): string | null {
         status: 200,
         body: {
           ok: true, id: novaId ?? t.id, status: statusPedido,
-          responsavel_id: t.responsavel_id || null, ...gravada,
+          // A lista volta porque a regra da etiqueta pode tê-la trocado sem que
+          // a tela soubesse.
+          responsaveis: donos, responsavel_id: donoPrincipal, ...gravada,
         },
       };
     }

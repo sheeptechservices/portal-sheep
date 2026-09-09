@@ -65,6 +65,7 @@ import { PreviaArquivo } from '../components/PreviaArquivo';
 import { SelectSistema } from '../components/SelectSistema';
 import { DatePicker } from '../components/DatePicker';
 import { COR_ENTREGA, ICONE_ENTREGA } from '../lib/etapasEntrega';
+import { DonosDaTarefa } from '../components/DonosDaTarefa';
 import { SeletorPessoas } from '../components/SeletorPessoas';
 import {
   SecaoReunioes, type Reuniao, type ReuniaoFF,
@@ -242,6 +243,11 @@ export interface Tarefa {
   descricao: string | null;
   status: string;
   prioridade: string;
+  /** Quem cuida da tarefa. Lista, porque trabalho a quatro mãos é o normal e
+   *  não a exceção - e é o mesmo formato que a entrega já usa. */
+  responsaveis: string[];
+  /** O primeiro da lista, espelhado pelo servidor na coluna antiga. Fica de pé
+   *  para uma volta atrás do código não perder o dono; a lista é quem manda. */
   responsavel_id: string | null;
   responsavel_nome: string | null;
   responsavel_email: string | null;
@@ -1193,10 +1199,11 @@ const INTENCAO_MS = 200;
  *  é um traço com a bolinha da cor e a contagem; abre parando o ponteiro em
  *  cima, e na hora quando um card está sendo arrastado, porque aí a coluna
  *  precisa estar pronta para receber. */
-function ColunaDaEntrega({ etapa, tarefas, podeEditar, arrastando, onAbrir, onCriar,
+function ColunaDaEntrega({ etapa, tarefas, pessoas, podeEditar, arrastando, onAbrir, onCriar,
   onExcluir, onSoltarAqui, onArrastar, onFimDoArraste, onFixarRecolhida }: {
   etapa: EtapaTarefa;
   tarefas: Tarefa[];
+  pessoas: Pessoa[];
   podeEditar: boolean;
   arrastando: number | null;
   onAbrir: (t: Tarefa) => void;
@@ -1325,9 +1332,9 @@ function ColunaDaEntrega({ etapa, tarefas, podeEditar, arrastando, onAbrir, onCr
                 {ICONE_PRIORIDADE[x.prioridade ?? PRIORIDADE_PADRAO]?.({ size: 12 })}
               </span>
               {x.prazo && <span>{fmtData(x.prazo)}</span>}
-              {x.responsavel_nome && (
-                <span title={x.responsavel_nome} style={{ marginLeft: 'auto' }}>
-                  <Avatar nome={x.responsavel_nome} foto={x.responsavel_foto} size={16} />
+              {x.responsaveis?.length > 0 && (
+                <span style={{ marginLeft: 'auto' }}>
+                  <DonosDaTarefa ids={x.responsaveis} pessoas={pessoas} size={16} />
                 </span>
               )}
               {podeEditar && (
@@ -1363,10 +1370,11 @@ function ColunaDaEntrega({ etapa, tarefas, podeEditar, arrastando, onAbrir, onCr
  *  tarefa está, e a prioridade diz por qual começar. No empate fica a ordem que
  *  já vinha, que é a de criação - ninguém reordena tarefa à mão, então não há
  *  decisão de pessoa para esta ordenação atropelar. */
-function KanbanDaEntrega({ tarefas, etapas, podeEditar, onAbrir, onCriar, onExcluir,
+function KanbanDaEntrega({ tarefas, etapas, pessoas, podeEditar, onAbrir, onCriar, onExcluir,
   onMover, onFixarRecolhida }: {
   tarefas: Tarefa[];
   etapas: EtapaTarefa[];
+  pessoas: Pessoa[];
   podeEditar: boolean;
   onAbrir: (t: Tarefa) => void;
   /** Nasce já na coluna em que foi pedida. */
@@ -1395,6 +1403,7 @@ function KanbanDaEntrega({ tarefas, etapas, podeEditar, onAbrir, onCriar, onExcl
         <ColunaDaEntrega key={et.id}
           etapa={et}
           tarefas={daColuna(et.nome)}
+          pessoas={pessoas}
           podeEditar={podeEditar}
           arrastando={arrastando}
           onAbrir={onAbrir}
@@ -2205,6 +2214,7 @@ function SecaoEntregas({
                           <KanbanDaEntrega
                             tarefas={daEntrega}
                             etapas={etapasTarefa}
+                            pessoas={pessoas}
                             podeEditar={!somenteLeitura && podeEditarTarefa}
                             onAbrir={onAbrirTarefa}
                             onCriar={status => onCriarTarefa(e.id, status)}
@@ -2919,7 +2929,7 @@ function pontosDeAtencao(p: Projeto): { texto: string; grave: boolean }[] {
     pontos.push({ texto: `Última leitura de saúde há ${idadeLeitura} dias`, grave: false });
   }
 
-  const semDono = (p.tarefas ?? []).filter(t => !t.responsavel_id && !t.concluida_em);
+  const semDono = (p.tarefas ?? []).filter(t => !(t.responsaveis ?? []).length && !t.concluida_em);
   if (semDono.length) {
     pontos.push({ texto: `${semDono.length} tarefa(s) aberta(s) sem responsável`, grave: false });
   }
@@ -3189,9 +3199,14 @@ function CardDaSemana({ tarefa: t, equipe, feita, podeArrastar, podeMarcar, arra
           <p>{t.titulo}</p>
         </button>
       </div>
-      {t.responsavel_nome && (
+      {(t.responsaveis ?? []).length > 0 && (
         <span className="nt-card-pe">
-          <PessoaFoto nome={t.responsavel_nome} id={t.responsavel_id} equipe={equipe} tamanho={16} />
+          {t.responsaveis.map(id => {
+            const m = equipe.find(x => x.id === id);
+            return (
+              <PessoaFoto key={id} nome={m?.nome ?? null} id={id} equipe={equipe} tamanho={16} />
+            );
+          })}
         </span>
       )}
     </div>
@@ -3408,7 +3423,7 @@ function Capitulo({ projeto: p, numero, registrar, pessoas, onAbrir, onRegistrar
         nome: t.titulo,
         estado: `Atrasada ${Math.abs(diasPara(t.prazo)!)}d`,
         cor: AMARELO,
-        dono: p.equipe.find(m => m.id === t.responsavel_id) ?? null,
+        dono: (t.responsaveis ?? []).map(id => p.equipe.find(m => m.id === id)).filter(Boolean)[0] ?? null,
       })),
   ];
 
@@ -4734,7 +4749,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     const base: RascunhoTarefa = {
       projeto_id: p.id, entrega_id: String(entregaId), titulo: TITULO_PADRAO,
       descricao: '', status: status || etapaDeEntrada, prioridade: PRIORIDADE_PADRAO,
-      responsavel_id: usuario?.id ?? '', prazo: '', etiquetas: [],
+      responsaveis: usuario?.id ? [usuario.id] : [], prazo: '', etiquetas: [],
     };
     setRascunhoTarefa(base);
     criandoTarefa.current = api('', 'POST', {
@@ -4754,7 +4769,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
   const abrirTarefa = useCallback((t: Tarefa) => setRascunhoTarefa({
     id: t.id, projeto_id: t.projeto_id, entrega_id: t.entrega_id ? String(t.entrega_id) : '',
     titulo: t.titulo, descricao: t.descricao ?? '', status: t.status,
-    prioridade: t.prioridade ?? PRIORIDADE_PADRAO, responsavel_id: t.responsavel_id ?? '',
+    prioridade: t.prioridade ?? PRIORIDADE_PADRAO, responsaveis: t.responsaveis ?? [],
     prazo: t.prazo ?? '', etiquetas: t.etiquetas,
   }), []);
 
@@ -4773,12 +4788,13 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     // servidor recusar, ela volta ao que era.
     const antes = projetos;
     if (r.id) {
-      const dono = pessoas.find(x => x.id === r.responsavel_id);
+      const dono = pessoas.find(x => x.id === r.responsaveis[0]);
       pintarTarefa(r.id, {
         titulo: r.titulo, descricao: r.descricao, status: r.status,
         prioridade: r.prioridade, prazo: r.prazo || null, etiquetas: r.etiquetas,
         entrega_id: r.entrega_id ? Number(r.entrega_id) : null,
-        responsavel_id: r.responsavel_id || null,
+        responsaveis: r.responsaveis,
+        responsavel_id: r.responsaveis[0] ?? null,
         responsavel_nome: dono?.nome ?? null,
         responsavel_foto: dono?.foto_url ?? null,
       });

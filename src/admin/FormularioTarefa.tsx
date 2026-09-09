@@ -16,6 +16,7 @@ import {
   IconAlert, IconCheck, IconChevronDown, IconDuplicar, IconPlus, IconTrash, IconUser, IconX,
 } from '../components/icons';
 import { SelectSistema } from '../components/SelectSistema';
+import { SeletorPessoas } from '../components/SeletorPessoas';
 import { DatePicker } from '../components/DatePicker';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { ancorar } from '../lib/ancorar';
@@ -189,7 +190,7 @@ export interface Rascunho {
   descricao: string;
   status: string;
   prioridade: string;
-  responsavel_id: string;
+  responsaveis: string[];
   prazo: string;
   etiquetas: string[];
 }
@@ -202,14 +203,14 @@ export function tarefaGravada(
   r: Rascunho,
   resposta: {
     id?: number; ordem?: number; criado_em?: string; concluida_em?: string | null;
-    status?: string; responsavel_id?: string | null;
+    status?: string; responsaveis?: string[]; responsavel_id?: string | null;
   },
   pessoas: Pessoa[],
 ): Tarefa {
-  // O responsável que voltou vence o do rascunho: a regra de uma etiqueta pode
-  // ter trocado o dono na própria gravação.
-  const donoId = resposta.responsavel_id ?? r.responsavel_id;
-  const dono = pessoas.find(p => p.id === donoId);
+  // A lista que voltou vence a do rascunho: a regra de uma etiqueta pode ter
+  // trocado o dono na própria gravação.
+  const donos = resposta.responsaveis ?? r.responsaveis;
+  const dono = pessoas.find(p => p.id === donos[0]);
   return {
     id: Number(resposta.id),
     projeto_id: r.projeto_id,
@@ -218,7 +219,8 @@ export function tarefaGravada(
     descricao: r.descricao || null,
     status: resposta.status ?? r.status,
     prioridade: r.prioridade,
-    responsavel_id: donoId || null,
+    responsaveis: donos,
+    responsavel_id: donos[0] ?? null,
     // O nome e a foto a tela já tem: o servidor recebe só o id de quem cuida.
     responsavel_nome: dono?.nome ?? null,
     responsavel_email: dono?.email ?? null,
@@ -1072,19 +1074,17 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
                 }))} />
             </div>
             <div className="form-group" style={{ flex: '1 1 190px', minWidth: 0 }}>
-              <label className="form-label">Responsável</label>
-              <SelectSistema
-                valor={rascunho.responsavel_id}
-                onChange={v => set('responsavel_id', v)}
-                opcoes={[
-                  { valor: '', label: 'Sem responsável', icone: <AvatarVazio /> },
-                  ...pessoas.map(p => ({
-                    valor: p.id,
-                    label: p.nome,
-                    icone: <Avatar nome={p.nome} foto={p.foto_url} size={20} />,
-                  })),
-                ]}
-              />
+              <label className="form-label">
+                {rascunho.responsaveis.length > 1 ? 'Responsáveis' : 'Responsável'}
+              </label>
+              {/* O mesmo seletor das entregas: uma tarefa pode ser de mais de
+                  uma pessoa, e escolher um por vez obrigava a inventar um dono
+                  "principal" que ninguém tinha combinado. */}
+              <SeletorPessoas
+                pessoas={pessoas}
+                valor={rascunho.responsaveis}
+                onChange={v => set('responsaveis', v)}
+                vazio="Sem responsável" />
             </div>
             <div className="form-group" style={{ flex: '1 1 190px', minWidth: 0 }}>
               <label className="form-label">Prazo</label>

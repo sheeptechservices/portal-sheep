@@ -43,6 +43,8 @@ import {
   etiquetasParaOPapel, indexar, indexarEtiquetas, tarefaGravada, TITULO_PADRAO, type EtapaTarefa,
   type Etapario, type EtiquetaTarefa, type Etiquetario, type Pessoa, type Rascunho,
 } from './FormularioTarefa';
+import { DonosDaTarefa } from '../components/DonosDaTarefa';
+import { nomesDosDonos } from '../lib/donosDaTarefa';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import { dia as fmtData } from '../lib/datas';
 export { ETAPAS_PADRAO, etiquetasParaOPapel, type EtapaTarefa, type EtiquetaTarefa } from './FormularioTarefa';
@@ -53,7 +55,7 @@ type TarefaComProjeto = Tarefa & { projeto: Projeto };
 
 const VAZIO: Omit<Rascunho, 'status'> = {
   projeto_id: '', entrega_id: '', titulo: '', descricao: '',
-  prioridade: PRIORIDADE_PADRAO, responsavel_id: '', prazo: '', etiquetas: [],
+  prioridade: PRIORIDADE_PADRAO, responsaveis: [], prazo: '', etiquetas: [],
 };
 
 /** Os quatro formatos, na ordem em que se usa: planilha, planilha de verdade,
@@ -441,7 +443,9 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
     const lista = tarefas.filter(t =>
       (fProjeto.length === 0 || fProjeto.includes(t.projeto.nome)) &&
       (fStatus.length === 0 || fStatus.includes(t.status)) &&
-      (fResponsavel.length === 0 || fResponsavel.includes(t.responsavel_nome ?? '')) &&
+      // Basta um dos donos casar: quem filtra por uma pessoa quer as tarefas
+      // dela, inclusive as que ela divide com outra.
+      (fResponsavel.length === 0 || nomesDosDonos(t, pessoas).some(n => fResponsavel.includes(n))) &&
       (fEtiqueta.length === 0 || t.etiquetas.some(e => fEtiqueta.includes(e))) &&
       (fEntrega.length === 0 || fEntrega.includes(String(t.entrega_id))) &&
       (!q || semAcento(t.titulo).includes(q) || semAcento(t.descricao ?? '').includes(q)
@@ -497,7 +501,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
     return {
       projeto: uniq(tarefas.map(t => t.projeto.nome)).map(v => ({ value: v, label: v })),
       status: uniq(tarefas.map(t => t.status)).map(v => ({ value: v, label: v })),
-      responsavel: uniq(tarefas.map(t => t.responsavel_nome)).map(v => ({ value: v, label: v })),
+      responsavel: uniq(tarefas.flatMap(t => nomesDosDonos(t, pessoas))).map(v => ({ value: v, label: v })),
       etiqueta: uniq(tarefas.flatMap(t => t.etiquetas)).map(v => ({ value: v, label: v })),
       // A opção guarda o id e mostra o título: nomes se repetem entre projetos.
       entrega: [...new Map(tarefas
@@ -529,12 +533,13 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
     // se o servidor recusar, ela volta ao que era.
     const antes = projetos;
     if (r.id) {
-      const dono = pessoas.find(x => x.id === r.responsavel_id);
+      const dono = pessoas.find(x => x.id === r.responsaveis[0]);
       const campos = {
         titulo: r.titulo, descricao: r.descricao, status: r.status,
         prioridade: r.prioridade, prazo: r.prazo || null, etiquetas: r.etiquetas,
         entrega_id: r.entrega_id ? Number(r.entrega_id) : null,
-        responsavel_id: r.responsavel_id || null,
+        responsaveis: r.responsaveis,
+        responsavel_id: r.responsaveis[0] ?? null,
         responsavel_nome: dono?.nome ?? null,
         responsavel_foto: dono?.foto_url ?? null,
       };
@@ -692,7 +697,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
             descricao: t.descricao ?? null,
             status: t.status,
             prioridade: t.prioridade ?? null,
-            responsavel_nome: t.responsavel_nome ?? null,
+            responsavel_nome: nomesDosDonos(t, pessoas).join(', ') || null,
             prazo: t.prazo ?? null,
             etiquetas: t.etiquetas ?? [],
             concluida_em: t.concluida_em ?? null,
@@ -773,7 +778,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
     ...VAZIO,
     status: entrada,
     projeto_id: projetos[0]?.id ?? '',
-    responsavel_id: usuario?.id ?? '',
+    responsaveis: usuario?.id ? [usuario.id] : [],
   });
 
   /** O estado em que a tarefa foi criada. Serve para saber, ao fechar, se
@@ -864,7 +869,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
   const abrirEdicao = (t: Tarefa) => setForm({
     id: t.id, projeto_id: t.projeto_id, entrega_id: t.entrega_id ? String(t.entrega_id) : '',
     titulo: t.titulo, descricao: t.descricao ?? '', status: t.status,
-    prioridade: t.prioridade ?? PRIORIDADE_PADRAO, responsavel_id: t.responsavel_id ?? '',
+    prioridade: t.prioridade ?? PRIORIDADE_PADRAO, responsaveis: t.responsaveis ?? [],
     prazo: t.prazo ?? '', etiquetas: t.etiquetas,
   });
 
@@ -1010,17 +1015,17 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
           )}
         </div>
       ) : view === 'quadro' ? (
-        <Quadro grupos={grupos} agrupamento={agrupamento} et={et} etq={etq} podeEditar={podeEditar}
+        <Quadro grupos={grupos} pessoas={pessoas} agrupamento={agrupamento} et={et} etq={etq} podeEditar={podeEditar}
           onAbrir={abrirEdicao} onMover={mover}
           onCriarNaEtapa={podeEditar ? novaTarefa : undefined}
           onFixarRecolhida={pode('configuracoes:etapas') ? fixarRecolhida : undefined}
           onExcluir={podeExcluir ? setExcluindo : undefined}
           onDuplicar={podeEditar ? (x => void duplicar(x)) : undefined} />
       ) : view === 'lista' ? (
-        <Lista grupos={grupos} et={et} etq={etq} podeExcluir={podeExcluir}
+        <Lista grupos={grupos} pessoas={pessoas} et={et} etq={etq} podeExcluir={podeExcluir}
           onAbrir={abrirEdicao} onExcluir={setExcluindo} />
       ) : (
-        <Tabela grupos={grupos} et={et} etq={etq} podeExcluir={podeExcluir}
+        <Tabela grupos={grupos} pessoas={pessoas} et={et} etq={etq} podeExcluir={podeExcluir}
           onAbrir={abrirEdicao} onExcluir={setExcluindo} />
       )}
 
@@ -1119,9 +1124,10 @@ const INTENCAO_MS = 200;
 /** Uma coluna do quadro. Recolhe quando está vazia (padrão de todo board da
  *  casa) ou quando a etapa foi marcada como pontual em Configurações, e volta a
  *  abrir com intenção: mouse parado em cima, ou uma tarefa arrastada até ela. */
-function Coluna({ grupo, et, etq, podeEditar, arrastando, isOver, onAbrir, onDragOver, onDragLeave,
+function Coluna({ grupo, pessoas, et, etq, podeEditar, arrastando, isOver, onAbrir, onDragOver, onDragLeave,
   onDrop, onArrastar, onSoltar, onCriarNaEtapa, onFixarRecolhida, onExcluir, onDuplicar }: {
   grupo: Grupo;
+  pessoas: Pessoa[];
   et: Etapario;
   etq: Etiquetario;
   podeEditar: boolean;
@@ -1300,9 +1306,7 @@ function Coluna({ grupo, et, etq, podeEditar, arrastando, isOver, onAbrir, onDra
               </div>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {t.responsavel_nome && (
-                <Avatar nome={t.responsavel_nome} foto={t.responsavel_foto} size={20} />
-              )}
+              <DonosDaTarefa ids={t.responsaveis} pessoas={pessoas} size={20} />
               <SinaisDaTarefa t={t} />
               <span style={{ marginLeft: 'auto' }}>
                 {/* Etapa desconsiderada não cobra prazo: a tarefa saiu da conta. */}
@@ -1323,9 +1327,10 @@ function Coluna({ grupo, et, etq, podeEditar, arrastando, isOver, onAbrir, onDra
   );
 }
 
-function Quadro({ grupos, agrupamento, et, etq, podeEditar, onAbrir, onMover, onCriarNaEtapa,
+function Quadro({ grupos, pessoas, agrupamento, et, etq, podeEditar, onAbrir, onMover, onCriarNaEtapa,
   onFixarRecolhida, onExcluir, onDuplicar }: {
   grupos: Grupo[];
+  pessoas: Pessoa[];
   agrupamento: string;
   et: Etapario;
   etq: Etiquetario;
@@ -1353,6 +1358,7 @@ function Quadro({ grupos, agrupamento, et, etq, podeEditar, onAbrir, onMover, on
         <Coluna
           key={grupo.chave}
           grupo={grupo}
+          pessoas={pessoas}
           et={et}
           etq={etq}
           podeEditar={arrastavel}
@@ -1381,8 +1387,9 @@ function Quadro({ grupos, agrupamento, et, etq, podeEditar, onAbrir, onMover, on
 
 // ── Lista ───────────────────────────────────────────────────────────────────
 
-function Lista({ grupos, et, etq, podeExcluir, onAbrir, onExcluir }: {
+function Lista({ grupos, pessoas, et, etq, podeExcluir, onAbrir, onExcluir }: {
   grupos: Grupo[];
+  pessoas: Pessoa[];
   et: Etapario;
   etq: Etiquetario;
   podeExcluir: boolean;
@@ -1434,7 +1441,7 @@ function Lista({ grupos, et, etq, podeExcluir, onAbrir, onExcluir }: {
                 <SinaisDaTarefa t={t} />
                 <Prioridade valor={t.prioridade} />
                 <Prazo iso={t.prazo} concluida={et.fecha(t.status) || !!grupo.desconsiderada} />
-                {t.responsavel_nome && <Avatar nome={t.responsavel_nome} foto={t.responsavel_foto} size={22} />}
+                <DonosDaTarefa ids={t.responsaveis} pessoas={pessoas} size={22} />
                 {podeExcluir && (
                   <button type="button" className="file-delete-btn" title="Excluir tarefa"
                     aria-label={`Excluir ${t.titulo}`}
@@ -1453,8 +1460,9 @@ function Lista({ grupos, et, etq, podeExcluir, onAbrir, onExcluir }: {
 
 // ── Tabela ──────────────────────────────────────────────────────────────────
 
-function Tabela({ grupos, et, etq, podeExcluir, onAbrir, onExcluir }: {
+function Tabela({ grupos, pessoas, et, etq, podeExcluir, onAbrir, onExcluir }: {
   grupos: Grupo[];
+  pessoas: Pessoa[];
   et: Etapario;
   etq: Etiquetario;
   podeExcluir: boolean;
@@ -1514,10 +1522,10 @@ function Tabela({ grupos, et, etq, podeExcluir, onAbrir, onExcluir }: {
                   <td style={{ fontSize: 12, color: 'var(--gray2)' }}>{entrega?.titulo ?? '-'}</td>
                   <td><ChipStatus status={t.status} cor={et.cor(t.status)} /></td>
                   <td style={{ fontSize: 12, color: 'var(--gray)' }}>
-                    {t.responsavel_nome ? (
+                    {t.responsaveis?.length ? (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-                        <Avatar nome={t.responsavel_nome} foto={t.responsavel_foto} size={20} />
-                        {t.responsavel_nome}
+                        <DonosDaTarefa ids={t.responsaveis} pessoas={pessoas} size={20} />
+                        {nomesDosDonos(t, pessoas).join(', ')}
                       </span>
                     ) : <span style={{ color: 'var(--gray2)' }}>Sem responsável</span>}
                   </td>

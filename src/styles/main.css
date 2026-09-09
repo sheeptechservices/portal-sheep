@@ -12825,6 +12825,21 @@ button.checklist-texto:focus-visible {
 
 .pub-prazo { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
+/* Os donos de uma tarefa, empilhados. O anel separa uma foto da outra na
+   sobreposicao, como na pilha da entrega. */
+.tarefa-donos { display: inline-flex; align-items: center; flex-shrink: 0; }
+.tarefa-donos > span { display: inline-flex; margin-left: -6px; box-shadow: 0 0 0 2px var(--white); border-radius: 50%; }
+.tarefa-donos > span:first-child { margin-left: 0; }
+.tarefa-donos-mais {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--gray3);
+  color: var(--gray);
+  font-size: 9px;
+  font-weight: 800;
+}
 
 /* ── Barra de ferramentas ─────────────────────────── */
 /* ── Indicadores do cliente ───────────────────────────

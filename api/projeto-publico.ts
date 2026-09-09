@@ -259,8 +259,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const gravado = await db.execute({
         sql: `INSERT INTO projeto_tarefas
               (projeto_id, entrega_id, titulo, descricao, status, prioridade, responsavel_id,
-               prazo, etiquetas, ordem, concluida_em, criado_em, criado_por_id, criado_por_nome)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+               responsaveis, prazo, etiquetas, ordem, concluida_em, criado_em,
+               criado_por_id, criado_por_nome)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         args: [
           String(p.id), null, assunto,
           // Quem pediu vai no corpo da tarefa, e nao so no autor: o autor e um
@@ -271,6 +272,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // escolhe a propria posicao na fila.
           'Média',
           responsavel?.id != null ? String(responsavel.id) : null,
+          // A mesma pessoa na lista: a tarefa aceita vários donos, e o pedido
+          // do cliente nasce com o gestor do projeto.
+          JSON.stringify(responsavel?.id != null ? [String(responsavel.id)] : []),
           null,
           JSON.stringify(['Cliente', ROTULO_DO_TIPO[tipo] ?? tipo]),
           Number(posicao.rows[0]?.proxima ?? 0),
