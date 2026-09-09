@@ -697,7 +697,7 @@ function mascaraPorcento(raw: string): string {
  *  que fecha vira projeto desse tipo, e duas listas diferentes obrigariam a
  *  traduzir na passagem. */
 export const INTERESSES_OPORTUNIDADE = [
-  'BI', 'SaaS', 'Automação', 'Integração', 'App', 'Site', 'Consultoria', 'Outro',
+  'BI', 'IA', 'SaaS', 'Automação', 'Integração', 'App', 'Site', 'Consultoria', 'Outro',
 ] as const;
 
 /** O quanto a conversa está perto de virar negócio. Três degraus e nada entre

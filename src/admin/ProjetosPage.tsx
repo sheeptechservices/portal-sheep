@@ -154,7 +154,7 @@ export { PAPEIS_EQUIPE } from '../lib/papeisDeEquipe';
 
 /** Tipos de projeto da casa. Lista fechada de propósito: campo livre viraria
  *  "BI", "bi" e "Business Intelligence" na mesma base, e o filtro não fecharia. */
-export const TIPOS_PROJETO = ['BI', 'SaaS', 'Automação', 'Integração', 'App', 'Site', 'Consultoria', 'Outro'] as const;
+export const TIPOS_PROJETO = ['BI', 'IA', 'SaaS', 'Automação', 'Integração', 'App', 'Site', 'Consultoria', 'Outro'] as const;
 
 
 /** Anexo grande vira base64 ainda maior (~33% a mais) e o corpo do POST estoura.
