@@ -74,6 +74,11 @@ export interface Submission {
   /** O que quer, no vocabulário dos projetos da casa. */
   interesse: string | null;
   valor_estimado: number | null;
+  /** Em quantas vezes o valor estimado se divide. Anda colado a ele: valor sem
+   *  o número de parcelas não diz quanto entra por mês. É a coluna `parcelas`
+   *  da era do crédito, que guardava as parcelas de um recebível e estava sem
+   *  uso desde que a tabela virou funil comercial. */
+  parcelas?: number | null;
   responsavel_id: string | null;
   responsavel_nome?: string | null;
   responsavel_foto?: string | null;
@@ -113,7 +118,6 @@ export interface Submission {
   reunioes?: ReuniaoDoCard[];
   current_status_id: number | null;
   status_since: string | null;
-  parcelas: string | null;
   cedente_id?: string | null;
   sacado_id?: string | null;
   previsao_execucao?: string | null;

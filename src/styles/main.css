@@ -4362,6 +4362,15 @@ body.arrastando-painel {
   color: var(--black);
 }
 
+/* Em quantas vezes o valor se divide, colado nele e em tom mais leve: o valor
+   e quem manda na leitura de relance, e a parcela e a segunda pergunta. */
+.kanban-card-parcelas {
+  margin-left: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray2);
+}
+
 .kanban-card-days {
   font-size: 10px;
   font-weight: 700;
@@ -14100,6 +14109,12 @@ button.checklist-texto:focus-visible {
   word-break: break-word;
 }
 .oportunidade-ficha-valor-forte { font-size: 15px; font-weight: 800; }
+.oportunidade-ficha-parcelas {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray2);
+}
 .oportunidade-ficha-sub {
   font-size: 11.5px;
   color: var(--gray2);

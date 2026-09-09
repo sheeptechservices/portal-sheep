@@ -410,6 +410,10 @@ async function migrarSchema(db: Client) {
       fim_type            INTEGER
     )
   `);
+  // Sobrou da era do crédito, onde guardava as parcelas de um recebível. Hoje
+  // guarda em quantas vezes o valor estimado da oportunidade se divide. A
+  // afinidade continua TEXT, e por isso quem lê converte: o número entra como
+  // '12' e voltaria assim para a tela.
   try { await ddl(`ALTER TABLE oportunidades ADD COLUMN parcelas TEXT`); } catch {}
 
   // O funil comercial. A tabela nasceu para operação de crédito - cedente,
@@ -2988,6 +2992,7 @@ async function despacharAdminData(
           s.empresa, s.cnpj,
           s.contato_nome, s.contato_cargo, s.contato_email, s.contato_telefone,
           s.origem, s.interesse, s.valor_estimado,
+          CAST(s.parcelas AS INTEGER) AS parcelas,
           s.responsavel_id, u.nome AS responsavel_nome, u.foto_url AS responsavel_foto,
           s.proxima_acao, s.proxima_acao_em, s.motivo_perda,
           COUNT(DISTINCT a.id) + (SELECT COUNT(*) FROM oportunidade_etapa_arquivos ea WHERE ea.oportunidade_id = s.id) AS arquivo_count,
@@ -6481,18 +6486,20 @@ function faltaEmProjeto(p: any): string | null {
       await db.execute({
         sql: `INSERT INTO oportunidades
               (id, created_at, empresa, cnpj, contato_nome, contato_cargo, contato_email,
-               contato_telefone, origem, interesse, valor_estimado, responsavel_id,
+               contato_telefone, origem, interesse, valor_estimado, parcelas,
+               responsavel_id,
                proxima_acao, proxima_acao_em, observacoes,
                cidade, estado, pais, indicado_por, parceria, segmento, briefing,
                temperatura, tipo_projeto, parceria_percentual,
                criado_por_id, criado_por_nome)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         args: [
           id, now, empresa,
           texto(body?.cnpj), texto(body?.contato_nome), texto(body?.contato_cargo),
           texto(body?.contato_email), texto(body?.contato_telefone),
           texto(body?.origem), texto(body?.interesse),
-          numero(body?.valor_estimado), texto(body?.responsavel_id),
+          numero(body?.valor_estimado), numero(body?.parcelas),
+          texto(body?.responsavel_id),
           texto(body?.proxima_acao), texto(body?.proxima_acao_em), texto(body?.observacoes),
           texto(body?.cidade), texto(body?.estado), texto(body?.pais),
           texto(body?.indicado_por), marca(body?.parceria), texto(body?.segmento),
@@ -6533,6 +6540,7 @@ function faltaEmProjeto(p: any): string | null {
             origem: texto(body?.origem),
             interesse: texto(body?.interesse),
             valor_estimado: numero(body?.valor_estimado),
+            parcelas: numero(body?.parcelas),
             responsavel_id: texto(body?.responsavel_id),
             responsavel_nome: texto(body?.responsavel_nome),
             proxima_acao: texto(body?.proxima_acao),
@@ -6576,6 +6584,7 @@ function faltaEmProjeto(p: any): string | null {
         origem: texto,
         interesse: texto,
         valor_estimado: numero,
+        parcelas: numero,
         responsavel_id: texto,
         proxima_acao: texto,
         proxima_acao_em: texto,

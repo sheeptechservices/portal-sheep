@@ -547,6 +547,12 @@ function fmtValor(v: number | null | undefined): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 }
 
+/** Em quantas vezes: "12x", e "à vista" quando é uma só - "1x" faz o olho
+ *  procurar o que ele quer dizer. */
+function fmtParcelas(n: number): string {
+  return n === 1 ? 'à vista' : `${n}x`;
+}
+
 /** `YYYY-MM-DD` em `dd/mm/aaaa`. */
 /** De onde a oportunidade veio. Lista curta e fechada: origem digitada à mão vira dez
  *  grafias da mesma coisa e o filtro deixa de somar. */
@@ -772,6 +778,8 @@ export interface RascunhoOportunidade {
   briefing: string;
   /** Guardado com máscara enquanto se digita; vira número no envio. */
   valor_estimado: string;
+  /** Em quantas vezes o valor se divide. Só dígitos. */
+  parcelas: string;
   responsavel_id: string;
   proxima_acao: string;
   proxima_acao_em: string;
@@ -786,7 +794,7 @@ export const OPORTUNIDADE_VAZIA: RascunhoOportunidade = {
   pais: 'Brasil',
   origem: '', indicado_por: '', parceria: false, parceria_percentual: '',
   temperatura: '', tipo_projeto: '', segmento: '',
-  interesse: '', briefing: '', valor_estimado: '',
+  interesse: '', briefing: '', valor_estimado: '', parcelas: '',
   responsavel_id: '', proxima_acao: '', proxima_acao_em: '', observacoes: '',
 };
 
@@ -818,6 +826,7 @@ export function corpoDaOportunidade(r: RascunhoOportunidade) {
       ? Number(r.parceria_percentual)
       : null,
     valor_estimado: parseCurrencyBRL(r.valor_estimado) || null,
+    parcelas: r.parcelas !== '' ? Number(r.parcelas) : null,
     responsavel_id: r.responsavel_id || null,
     proxima_acao: r.proxima_acao.trim() || null,
     proxima_acao_em: r.proxima_acao_em || null,
@@ -1052,6 +1061,13 @@ function CamposDaOportunidade({ r, set, token, pessoas }: {
           <input className="form-input" value={r.valor_estimado} placeholder="R$ 0,00"
             onChange={e => set('valor_estimado', maskCurrencyBRL(e.target.value))} />
         </div>
+        {/* Ao lado do valor, e não noutra seção: os dois só dizem alguma coisa
+            juntos - R$ 60 mil em 1 vez e em 12 são negócios diferentes. */}
+        <div className="form-group" style={{ flex: '0 1 110px' }}>
+          <label className="form-label">Parcelas</label>
+          <input className="form-input" value={r.parcelas} inputMode="numeric" placeholder="1"
+            onChange={e => set('parcelas', e.target.value.replace(/\D/g, '').slice(0, 3))} />
+        </div>
         <div className="form-group" style={{ flex: '1 1 200px' }}>
           <label className="form-label">Responsável</label>
           <FormSelect value={r.responsavel_id} onChange={v => set('responsavel_id', v)}
@@ -1235,6 +1251,7 @@ function EditModal({ detail, token, onClose, onSaved }: {
     valor_estimado: s.valor_estimado != null
       ? Number(s.valor_estimado).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
       : '',
+    parcelas: s.parcelas != null ? String(s.parcelas) : '',
     responsavel_id: s.responsavel_id ?? '',
     proxima_acao: s.proxima_acao ?? '',
     proxima_acao_em: s.proxima_acao_em ?? '',
@@ -2054,7 +2071,12 @@ export function DetailPanel({
                 </div>
                 <div className="oportunidade-ficha-item">
                   <p className="admin-info-label">Valor estimado</p>
-                  <p className="oportunidade-ficha-valor oportunidade-ficha-valor-forte">{fmtValor(s!.valor_estimado)}</p>
+                  <p className="oportunidade-ficha-valor oportunidade-ficha-valor-forte">
+                    {fmtValor(s!.valor_estimado)}
+                    {s!.parcelas != null && s!.parcelas > 0 && (
+                      <span className="oportunidade-ficha-parcelas">{fmtParcelas(s!.parcelas)}</span>
+                    )}
+                  </p>
                 </div>
                 <div className="oportunidade-ficha-item">
                   <p className="admin-info-label">Responsável</p>
@@ -2786,7 +2808,15 @@ function KanbanCard({
         </p>
       )}
       <div className="kanban-card-meta">
-        <span className="kanban-card-value">{fmtValor(sub.valor_estimado)}</span>
+        <span className="kanban-card-value">
+          {fmtValor(sub.valor_estimado)}
+          {/* As parcelas andam coladas ao valor, e em tom mais leve: quem lê o
+              funil de relance vê primeiro quanto vale, e logo depois em quantas
+              vezes. Sem parcela lançada o card fica como sempre foi. */}
+          {sub.parcelas != null && sub.parcelas > 0 && (
+            <span className="kanban-card-parcelas">{fmtParcelas(sub.parcelas)}</span>
+          )}
+        </span>
         {/* Idade e dono no fim da linha, juntos: os dois são sinais da mesma
             leitura de relance - há quanto tempo isto está parado, e com quem.
             A foto vem sem o nome, como no quadro de tarefas: numa coluna de
