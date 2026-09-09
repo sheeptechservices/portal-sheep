@@ -390,17 +390,18 @@ export default function GeradorPropostas() {
     <div className="admin-content-wrap">
       <style>{ESTILO}</style>
 
-      {/* Os passos são as abas da casa, as mesmas de Configurações: clicar num
-          passo já visitado volta para ele, porque o formulário não tranca
-          ninguém andando para frente. */}
-      <Abas valor={atual.id} onChange={irParaOPasso}
-        opcoes={PASSOS.map(p => ({ valor: p.id, label: p.titulo }))} />
-
-      <div className="admin-page-header">
-        <div>
+      {/* Os passos são as abas da casa, as mesmas de Configurações, sentadas na
+          linha do cabeçalho: a faixa ao lado do título estava vazia, e uma
+          fileira só para elas empurrava a prévia para baixo. Clicar num passo
+          já visitado volta para ele, porque o formulário não tranca ninguém
+          andando para frente. */}
+      <div className="admin-page-header gp-cabecalho">
+        <div className="gp-titulo">
           <h1 className="admin-page-title">Gerador de Propostas</h1>
           <p className="admin-page-desc">A apresentação da casa, um passo por vez</p>
         </div>
+        <Abas valor={atual.id} onChange={irParaOPasso}
+          opcoes={PASSOS.map(p => ({ valor: p.id, label: p.titulo }))} />
       </div>
 
       <div className="gp-lado-a-lado">
@@ -687,6 +688,18 @@ function limpar(d: DadosProposta, previa: boolean): DadosProposta {
 }
 
 const ESTILO = `
+  /* As abas sentam na linha do cabeçalho, e não numa fileira própria. A linha
+     passa a ser do cabeçalho inteiro - é ela que atravessa a página -, a das
+     abas sai, e o traço da aba ativa desce para pousar em cima dela. É o mesmo
+     arranjo que o cabeçalho de modal já usa com abas. */
+  .gp-cabecalho {
+    align-items: flex-end; flex-wrap: wrap; gap: 4px 24px;
+    padding-bottom: 0; border-bottom: 1.5px solid var(--gray3);
+  }
+  .gp-titulo { padding-bottom: 12px; }
+  .gp-cabecalho .config-tabs { border-bottom: none; margin-bottom: 0; }
+  .gp-cabecalho .config-tab-traco { bottom: -1.5px; }
+
   /* O formulário fica estreito de propósito: os campos empilham, e a largura
      que sobra vai toda para o slide, que é o que precisa ser lido. */
   .gp-lado-a-lado {
