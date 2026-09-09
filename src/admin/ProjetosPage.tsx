@@ -398,7 +398,11 @@ function entregasDePartida(): EntregaPendente[] {
 /** O nome com que o projeto nasce. Ele é criado no clique, e nome vazio não
  *  passa pela gravação - este fica no campo, já selecionado, para a primeira
  *  tecla o trocar. */
-export const NOME_PADRAO = 'Projeto sem nome';
+/** O mesmo texto da tarefa, e de propósito: as duas gavetas nascem iguais, com
+ *  o nome de partida marcado, e a primeira tecla substitui em vez de escrever
+ *  depois dele. Dois textos diferentes para o mesmo gesto fariam a segunda
+ *  gaveta parecer outra coisa. */
+export const NOME_PADRAO = 'Sem título';
 
 /** O rascunho de um projeto recém-nascido. Só entra aqui o que é verdade sem
  *  perguntar a ninguém: quem clicou é o gestor, e os ritos da casa são os
