@@ -189,6 +189,23 @@ Todo caminho de fechar - o fundo, o botão de fechar, o Cancelar, o Escape - cha
 `fechar`, e não `onFechar`. Gaveta lateral sai pela direita; diálogo centrado
 encolhe de leve, porque ele não veio da borda.
 
+**Espera é spinner, nunca texto.** Enquanto algo carrega, o que aparece na tela é
+o giro da casa - jamais "Carregando…", "Abrindo…", "Buscando…" ou qualquer frase
+no lugar do conteúdo. Texto de espera muda de palavra a cada tela, some junto com
+o conteúdo quando ele chega e não diz nada que o giro já não diga.
+
+São duas peças, e a escolha é pelo lugar:
+
+| Onde | O que usar |
+|---|---|
+| No lugar do conteúdo (página, painel, lista, quadro) | `<div className="dux-spinner-row"><span className="dux-spinner sm" /></div>` |
+| Dentro de um botão, ao lado do rótulo | `<IconSpinner size={13} />` |
+
+O `.dux-spinner` tem a variante `.sm` para blocos menores, e o `<IconSpinner />`
+herda a cor do texto, então funciona em botão claro e escuro sem regra extra. Em
+botão, o rótulo perde as reticências: o giro já diz que está acontecendo, e
+"Gravando" com o giro ao lado se lê melhor que "Gravando…".
+
 **Movimento reduzido:** animação de entrada, deslocamento e revelação precisa de um
 bloco `@media (prefers-reduced-motion: reduce)` que a desligue, como já é feito na
 troca de tema.
@@ -228,4 +245,5 @@ atrás se ele recusar. Ninguém espera a ida e a volta para ver o próprio gesto
 10. Dropdown alternando no segundo clique, em portal e acima de qualquer painel.
 11. Ação de gravar pintando na hora, com desfazer no erro; nenhuma espera de
     listagem na frente de quem clicou.
-12. Conferido nos dois temas (claro e escuro).
+12. Espera desenhada com o spinner da casa, e não com texto de "Carregando".
+13. Conferido nos dois temas (claro e escuro).

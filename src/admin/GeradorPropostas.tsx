@@ -303,7 +303,11 @@ function Previa({ html, secao }: { html: string | null; secao: string | null }) 
       </div>
       {html
         ? <iframe ref={quadro} title="Prévia da proposta" srcDoc={html} onLoad={irParaOSlide} />
-        : <div className="gp-previa-vazia">Carregando o modelo…</div>}
+        : (
+          <div className="gp-previa-vazia">
+            <span className="dux-spinner sm" />
+          </div>
+        )}
     </div>
   );
 }
@@ -624,7 +628,7 @@ export default function GeradorPropostas() {
                   disabled={faltando.length > 0 || semQuemPrepara || !template}>
                   <IconDownload size={14} /> Baixar a proposta
                 </button>
-                {!template && <span className="gp-falta">Carregando o modelo…</span>}
+                {!template && <span className="dux-spinner sm" />}
               </div>
             </>
           )}
