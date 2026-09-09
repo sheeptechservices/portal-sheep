@@ -189,6 +189,61 @@ Todo caminho de fechar - o fundo, o botão de fechar, o Cancelar, o Escape - cha
 `fechar`, e não `onFechar`. Gaveta lateral sai pela direita; diálogo centrado
 encolhe de leve, porque ele não veio da borda.
 
+**Gaveta lateral: uma só estrutura.** Ficha que abre por cima da tela - tarefa,
+projeto, segredo do cofre - é sempre a mesma peça, montada do mesmo jeito. Não
+existe "a gaveta daquela tela": existe a gaveta da casa, e ela é esta:
+
+```tsx
+const { largura, arrastando, setArrastando, porTecla } = useLarguraPainel('<nome>');
+const { saindo, fechar } = useSaidaSuave(onFechar);
+const fundo = useFecharNoFundo(fechar);
+
+return createPortal(
+  <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`} {...fundo}>
+    <PuxadorDoPainel largura={largura} arrastando={arrastando}
+      setArrastando={setArrastando} porTecla={porTecla} />
+    <div className="admin-modal painel-gaveta"
+      style={{ width: `min(${largura}px, 96vw)` }}
+      onClick={e => e.stopPropagation()}>
+
+      <div className="admin-modal-header">
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p className="painel-rotulo">O QUE É</p>
+          <input className="painel-titulo painel-titulo-campo" ... />
+        </div>
+      </div>
+
+      <div className="admin-modal-body"> ... </div>
+      <div className="painel-rodape"> ... </div>
+    </div>
+  </div>,
+  document.body,
+);
+```
+
+O que cada peça garante, e por que nenhuma é opcional:
+
+| Peça | O que ela resolve |
+|---|---|
+| `createPortal` no `body` | a gaveta nasce fora do `overflow` da página, senão ela é recortada |
+| `.painel-gaveta` | cabeçalho e rodapé parados, corpo rolando entre os dois |
+| `PuxadorDoPainel` + `useLarguraPainel('<nome>')` | a largura é escolhida por quem usa e fica guardada, com chave por gaveta |
+| `useSaidaSuave` | a saída chega a rodar; sem ele o React desmonta antes da animação |
+| `useFecharNoFundo` | clicar fora fecha, e o clique de dentro não vaza para o fundo |
+| `.painel-rotulo` | o rótulo acima do título, que diz que ficha é esta |
+| `.painel-titulo` **e** `.painel-titulo-campo` juntas | a segunda é só a moldura; o tamanho e o peso vêm da primeira |
+
+O título nasce com o texto de partida `Sem título`, em foco e **marcado**
+(`autoFocus` mais `onFocus` com `select()`), e o botão de gravar fica desabilitado
+enquanto ele não for trocado: a primeira tecla substitui, em vez de escrever
+depois do rótulo, e ninguém guarda uma ficha chamada "Sem título".
+
+As gavetas de projeto e de oportunidade são as mais antigas e ainda montam o
+esqueleto na mão, com `.admin-modal` pelado, cabeçalho grudado por `position` e
+o corpo rolando a página inteira. É dívida conhecida, não é modelo: gaveta nova
+segue a tabela acima, e quem for mexer nessas duas troca a classe em vez de
+copiar o arranjo delas.
+
 **Espera é spinner, nunca texto.** Enquanto algo carrega, o que aparece na tela é
 o giro da casa - jamais "Carregando…", "Abrindo…", "Buscando…" ou qualquer frase
 no lugar do conteúdo. Texto de espera muda de palavra a cada tela, some junto com
@@ -246,4 +301,5 @@ atrás se ele recusar. Ninguém espera a ida e a volta para ver o próprio gesto
 11. Ação de gravar pintando na hora, com desfazer no erro; nenhuma espera de
     listagem na frente de quem clicou.
 12. Espera desenhada com o spinner da casa, e não com texto de "Carregando".
-13. Conferido nos dois temas (claro e escuro).
+13. Gaveta lateral montada com a estrutura da casa, sem inventar variação.
+14. Conferido nos dois temas (claro e escuro).

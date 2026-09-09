@@ -3347,16 +3347,19 @@ body.arrastando-painel {
    o rodapé ficam parados por serem itens de flex, sem depender de `sticky` -
    que aqui competiria com as duas definições de `.admin-modal-body` que o CSS
    já carrega, e a que vence não é a desta gaveta. */
-.admin-modal.painel-tarefa {
+/* O esqueleto de toda gaveta lateral: cabeçalho e rodapé parados, corpo
+   rolando entre os dois. Chamava-se `painel-tarefa` porque a tarefa foi a
+   primeira a usá-lo - o nome novo diz o que ele é, e não quem o estreou. */
+.admin-modal.painel-gaveta {
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
-.admin-modal.painel-tarefa .admin-modal-header {
+.admin-modal.painel-gaveta .admin-modal-header {
   position: static;
   flex-shrink: 0;
 }
-.admin-modal.painel-tarefa .admin-modal-body {
+.admin-modal.painel-gaveta .admin-modal-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -3366,7 +3369,7 @@ body.arrastando-painel {
   padding: 20px 24px 24px;
   gap: 12px;
 }
-.admin-modal.painel-tarefa .painel-rodape {
+.admin-modal.painel-gaveta .painel-rodape {
   position: static;
   flex-shrink: 0;
 }

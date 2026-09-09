@@ -920,7 +920,7 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
       style={{ zIndex: 10000 }} {...fundo}>
       <PuxadorDoPainel largura={largura} arrastando={arrastando}
         setArrastando={setArrastando} porTecla={porTecla} />
-      <div className="admin-modal painel-tarefa"
+      <div className="admin-modal painel-gaveta"
         style={{ width: `min(${largura}px, 96vw)` }}
         onClick={e => e.stopPropagation()}>
 

@@ -33,6 +33,8 @@ import { useAuth, useToast } from './AdminApp';
 import { useApi } from './OportunidadesPage';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
+import { useLarguraPainel } from '../lib/painelLateral';
+import { PuxadorDoPainel } from '../components/PuxadorDoPainel';
 
 /** O que a prateleira mostra. O conteúdo não vem junto: é pedido por segredo, e
  *  só com o cofre aberto. */
@@ -454,6 +456,9 @@ function GavetaDoSegredo({
   const api = useApi(token);
   const { saindo, fechar } = useSaidaSuave(onFechar);
   const fundo = useFecharNoFundo(fechar);
+  // A largura é escolhida por quem usa e fica guardada, como nas outras duas
+  // gavetas. Cada uma tem a sua chave: quem alarga a do projeto não mexe nesta.
+  const { largura, arrastando, setArrastando, porTecla } = useLarguraPainel('cofre');
 
   const [titulo, setTitulo] = useState(segredo?.titulo ?? TITULO_PADRAO);
   const [categoria, setCategoria] = useState(segredo?.categoria ?? '');
@@ -551,7 +556,10 @@ function GavetaDoSegredo({
   return createPortal(
     <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`}
       style={{ zIndex: 10040 }} {...fundo}>
-      <div className="admin-modal painel-tarefa" style={{ width: 'min(460px, 96vw)' }}
+      <PuxadorDoPainel largura={largura} arrastando={arrastando}
+        setArrastando={setArrastando} porTecla={porTecla} />
+      <div className="admin-modal painel-gaveta"
+        style={{ width: `min(${largura}px, 96vw)` }}
         onClick={e => e.stopPropagation()}>
 
         <div className="admin-modal-header">
