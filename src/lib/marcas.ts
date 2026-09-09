@@ -60,6 +60,14 @@ export const MARCAS: Marca[] = [
   // em duas linhas: chapada, a silhueta comeria o cachorro e o gato, que sao o
   // que identifica a marca.
   { nome: 'HOVEP', src: '/marcas/hovep.webp', altura: 34, detalhe: true },
+  // O nome em preto e, acima do "L", duas folhas em dois azuis. Entra chapada
+  // como a maioria: não há desenho vazado por dentro que a silhueta apagasse, e
+  // as duas folhas continuam separadas pelo vão entre elas.
+  //
+  // Fica em .png, e não em .webp como as vizinhas: o arquivo veio assim, tem
+  // transparência e 67 kB, que é menos do que a Orteconte já ocupa. Reconverter
+  // só para igualar a extensão trocaria definição por nada.
+  { nome: 'Libero Seguros', src: '/marcas/libero.png', altura: 36 },
 ];
 
 /** Casa o cliente com a marca pelo nome. Cliente cadastrado à mão não tem logo,
