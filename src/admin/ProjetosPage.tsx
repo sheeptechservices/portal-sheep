@@ -1290,13 +1290,16 @@ function ColunaDaEntrega({ etapa, tarefas, podeEditar, arrastando, onAbrir, onCr
 
       <div className="kanban-column-body">
         {tarefas.map(x => (
+          // Abrir a tarefa é leitura, e não edição: quem não pode editar
+          // continua podendo ler o que foi combinado - o formulário abre em
+          // modo de leitura sozinho. O que a permissão barra é arrastar,
+          // criar e excluir, que são os gestos que mudam alguma coisa.
           <div key={x.id} className="kanban-card"
             draggable={podeEditar}
             onDragStart={() => onArrastar(x.id)}
             onDragEnd={onFimDoArraste}
-            onClick={() => podeEditar && onAbrir(x)}
-            style={{ cursor: podeEditar ? 'pointer' : 'default',
-              opacity: arrastando === x.id ? 0.45 : 1 }}>
+            onClick={() => onAbrir(x)}
+            style={{ cursor: 'pointer', opacity: arrastando === x.id ? 0.45 : 1 }}>
             <p className="kanban-card-title">{x.titulo}</p>
             <div className="entrega-kanban-pe">
               {/* O ícone de prioridade explica a ordem da coluna, que de outro
