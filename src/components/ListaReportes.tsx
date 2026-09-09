@@ -108,19 +108,12 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
    *  e vale para todo mundo - não é ajuste de administrador. */
   const [verResolvidos, setVerResolvidos] = useState(false);
   const [aberta, setAberta] = useState<number | null>(null);
-  /** Os ids já abertos alguma vez. O detalhe deles fica montado daí em diante:
-   *  montado só enquanto aberto, o bloco animaria de nada para nada. */
-  const [jaAbertas, setJaAbertas] = useState<Set<number>>(new Set());
 
   /** Quantos estão fora da fila agora - o número que a chave mostra. */
   const resolvidos = (lista ?? []).filter(r => r.status === 'resolvido').length;
   /** O que a tabela desenha. Filtrar aqui, e não esconder por CSS: linha
    *  escondida continua no caminho do teclado e da leitura de tela. */
   const visiveis = (lista ?? []).filter(r => verResolvidos || r.status !== 'resolvido');
-  /** O quadro agendado para abrir uma linha recém-montada. Guardado para ser
-   *  cancelado se a janela fechar antes de ele chegar. */
-  const quadro = useRef(0);
-  useEffect(() => () => cancelAnimationFrame(quadro.current), []);
   const { toast } = useToast();
   const { saindo, fechar } = useSaidaSuave(onFechar);
   const fundo = useFecharNoFundo(fechar);
@@ -194,20 +187,23 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
   // o campo vive dentro de uma caixa que entra animada.
   useEffect(() => { if (confirmando) campoNota.current?.focus(); }, [confirmando]);
 
+  /**
+   * Abrir é trocar um estado, e mais nada.
+   *
+   * Antes o detalhe só era montado no primeiro clique, e a classe `aberto`
+   * vinha dois quadros depois, para a animação ter de onde sair. O preço era
+   * alto demais: numa janela encoberta o Chrome para de entregar quadro sem
+   * marcar a aba como escondida - `document.hidden` continua falso -, e os
+   * dois quadros nunca chegavam. A linha montava o detalhe de altura zero, dava
+   * o tremido, e não abria. Voltar à janela soltava tudo de uma vez.
+   *
+   * Agora o detalhe nasce montado com a lista, que é o que a regra da casa já
+   * pedia: conteúdo montado antes de abrir e mantido montado. São algumas
+   * linhas de texto por chamado, e em troca a abertura não depende de o
+   * navegador estar com vontade de desenhar.
+   */
   function alternar(id: number) {
-    if (aberta === id) { setAberta(null); return; }
-    if (jaAbertas.has(id)) { setAberta(id); return; }
-    // Primeira vez desta linha. Montar o detalhe e pôr a classe `aberto` no
-    // mesmo quadro faz o bloco nascer já com a altura final: não há estado
-    // anterior para interpolar, e a primeira abertura de cada linha saía seca.
-    // Aqui o detalhe entra fechado e a classe vem depois - dois quadros, um
-    // para o conteúdo existir e outro para o navegador ter de onde animar, que
-    // é o mesmo que o `useRevelar` faz.
-    setAberta(null);
-    setJaAbertas(s => new Set(s).add(id));
-    quadro.current = requestAnimationFrame(() => {
-      quadro.current = requestAnimationFrame(() => setAberta(id));
-    });
+    setAberta(a => (a === id ? null : id));
   }
 
   return createPortal(
@@ -370,61 +366,60 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
                         </td>
                       </tr>
                       {/* O detalhe: o relato inteiro, sem corte, e de onde ele
-                          veio. Fica montado depois da primeira abertura - montado
-                          só enquanto aberto, o bloco animaria de nada para nada. */}
-                      {jaAbertas.has(r.id) && (
-                        <tr className={`reportes-detalhe${resolvido ? ' resolvida' : ''}`}>
-                          <td colSpan={6}>
-                            <div className={`revelar${abertaAqui ? ' aberto' : ''}`}>
-                              <div>
-                                <div className="reportes-detalhe-corpo">
-                                  <p className="reportes-detalhe-texto">{r.texto}</p>
-                                  <p className="reportes-detalhe-meta">
-                                    {r.pagina && <>Reportado em <strong>{r.pagina}</strong></>}
-                                    {r.pagina && r.autor_email ? ' · ' : ''}
-                                    {r.autor_email}
-                                  </p>
-                                  {/* Todos os anexos, um a um: a célula da fila
-                                      abre o primeiro, e o resto se alcança aqui,
-                                      que é onde o chamado se lê inteiro. */}
-                                  {!!r.anexos?.length && (
-                                    <ul className="reportes-anexos">
-                                      {r.anexos.map((a, i) => (
-                                        <li key={a.id ?? `antigo-${i}`}>
-                                          <button type="button" className="reportes-anexo"
-                                            onClick={() => setVendo({ reporte: r, indice: i })}>
-                                            {a.tipo === 'application/pdf'
-                                              ? <IconDoc size={12} /> : <IconImage size={12} />}
-                                            <span>{a.nome}</span>
-                                          </button>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  )}
-                                  {/* O que foi dito ao mudar o andamento, da nota
-                                      mais antiga para a mais nova - é a história
-                                      do chamado, e ela se lê na ordem em que
-                                      aconteceu. */}
-                                  {!!r.notas?.length && (
-                                    <ul className="reportes-notas">
-                                      {r.notas.map((n, i) => (
-                                        <li key={i} className="reportes-nota">
-                                          <p className="reportes-nota-texto">{n.texto}</p>
-                                          <p className="reportes-nota-quem">
-                                            {n.autor_nome}
-                                            {n.status && <> · {ROTULO_STATUS[n.status]?.label ?? n.status}</>}
-                                            {' · '}{instante(n.criado_em)}
-                                          </p>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  )}
-                                </div>
+                          veio. Nasce montado e assim fica - é dele que a
+                          animação tira a altura de destino, e montar só ao
+                          abrir faria o bloco animar de nada para nada. */}
+                      <tr className={`reportes-detalhe${resolvido ? ' resolvida' : ''}`}>
+                        <td colSpan={6}>
+                          <div className={`revelar${abertaAqui ? ' aberto' : ''}`}>
+                            <div>
+                              <div className="reportes-detalhe-corpo">
+                                <p className="reportes-detalhe-texto">{r.texto}</p>
+                                <p className="reportes-detalhe-meta">
+                                  {r.pagina && <>Reportado em <strong>{r.pagina}</strong></>}
+                                  {r.pagina && r.autor_email ? ' · ' : ''}
+                                  {r.autor_email}
+                                </p>
+                                {/* Todos os anexos, um a um: a célula da fila
+                                    abre o primeiro, e o resto se alcança aqui,
+                                    que é onde o chamado se lê inteiro. */}
+                                {!!r.anexos?.length && (
+                                  <ul className="reportes-anexos">
+                                    {r.anexos.map((a, i) => (
+                                      <li key={a.id ?? `antigo-${i}`}>
+                                        <button type="button" className="reportes-anexo"
+                                          onClick={() => setVendo({ reporte: r, indice: i })}>
+                                          {a.tipo === 'application/pdf'
+                                            ? <IconDoc size={12} /> : <IconImage size={12} />}
+                                          <span>{a.nome}</span>
+                                        </button>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                                {/* O que foi dito ao mudar o andamento, da nota
+                                    mais antiga para a mais nova - é a história
+                                    do chamado, e ela se lê na ordem em que
+                                    aconteceu. */}
+                                {!!r.notas?.length && (
+                                  <ul className="reportes-notas">
+                                    {r.notas.map((n, i) => (
+                                      <li key={i} className="reportes-nota">
+                                        <p className="reportes-nota-texto">{n.texto}</p>
+                                        <p className="reportes-nota-quem">
+                                          {n.autor_nome}
+                                          {n.status && <> · {ROTULO_STATUS[n.status]?.label ?? n.status}</>}
+                                          {' · '}{instante(n.criado_em)}
+                                        </p>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
                               </div>
                             </div>
-                          </td>
-                        </tr>
-                      )}
+                          </div>
+                        </td>
+                      </tr>
                       </Fragment>
                     );
                   })}
