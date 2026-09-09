@@ -3192,6 +3192,24 @@ body.arrastando-painel {
 
 /* Ícone-botão de acrescentar. Mesmo porte e desenho do botão de baixar das
    linhas de anexo, para o cabeçalho e a lista abaixo dele combinarem. */
+/* "Anexar arquivo" dentro da entrega aberta: e um "mais um" de texto, do mesmo
+   peso dos outros da tela, e nao um botao de acao. */
+.entrega-anexar {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--gray);
+  transition: color var(--transition);
+}
+.entrega-anexar:hover { color: var(--black); }
+
 .secao-add {
   display: flex;
   align-items: center;

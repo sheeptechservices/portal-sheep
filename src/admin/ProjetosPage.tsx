@@ -207,6 +207,18 @@ export interface Evidencia {
   criado_por_nome: string | null;
 }
 
+/** Um anexo da entrega: o que ela carrega de material, sem ser prova de nada.
+ *  O conteúdo não vem na listagem - ele desce quando alguém pede o arquivo. */
+export interface ArquivoDaEntrega {
+  id: number;
+  entrega_id: number;
+  nome: string;
+  tipo: string;
+  tamanho: number;
+  criado_em: string;
+  criado_por_nome: string | null;
+}
+
 export interface Entrega {
   id: number;
   projeto_id: string;
@@ -221,9 +233,14 @@ export interface Entrega {
   status: string;
   prazo: string | null;
   responsaveis: string[];
+  /** Saíram da tela em favor dos anexos, mas continuam na coluna: uma tela que
+   *  não conhece mais o campo não pode apagar o que foi guardado antes dela. */
   links: { label: string; url: string }[];
   ordem: number;
   evidencias: Evidencia[];
+  /** O documento, a imagem, a planilha que a entrega carrega. Sem o conteúdo:
+   *  ele desce quando alguém pede aquele arquivo. */
+  arquivos: ArquivoDaEntrega[];
   /** Vêm do servidor, deduzidos das tarefas ligadas a esta entrega. O `status`
    *  acima já chega deduzido junto - só resolução manual sobrevive à dedução. */
   tarefas_total: number;
@@ -273,7 +290,6 @@ export interface EntregaPendente {
   status: string;
   prazo: string;
   responsaveis: string[];
-  links: { label: string; url: string }[];
 }
 
 export interface Projeto {
@@ -423,24 +439,6 @@ function lerBase64(f: File): Promise<string> {
     fr.onload = () => resolve(String(fr.result).split(',')[1] ?? '');
     fr.readAsDataURL(f);
   });
-}
-
-/** Nome de exibição de um link, tirado do próprio endereço. Pedir um rótulo a
- *  quem só quer colar um link do Drive é atrito sem retorno. */
-function rotuloDoLink(url: string): string {
-  try {
-    const host = new URL(url).hostname.replace(/^www\./, '');
-    const CONHECIDOS: Record<string, string> = {
-      'drive.google.com': 'Drive',
-      'docs.google.com': 'Documento',
-      'github.com': 'GitHub',
-      'figma.com': 'Figma',
-      'notion.so': 'Notion',
-    };
-    return CONHECIDOS[host] ?? host;
-  } catch {
-    return url;
-  }
 }
 
 /** Anel de progresso, no lugar da barra: ocupa a largura de um ícone e a fatia
@@ -612,6 +610,78 @@ function SeletorCompacto({ valor, opcoes, titulo, icones, onChange }: {
         document.body,
       )}
     </>
+  );
+}
+
+/**
+ * Os anexos de uma entrega.
+ *
+ * Substituiu o campo de referências, que era uma lista de links: link some,
+ * muda de dono e depende de quem tem acesso à pasta do outro lado. O arquivo
+ * que importa fica aqui, junto do marco a que ele pertence.
+ *
+ * A seção só aparece quando há o que mostrar ou quem possa anexar: entrega
+ * vazia lida por quem não edita não ganha um cabeçalho anunciando o nada.
+ */
+function AnexosDaEntrega({ entregaId, arquivos, somenteLeitura, onAnexar, onRemover, onVer, onBaixar }: {
+  entregaId: number;
+  arquivos: ArquivoDaEntrega[];
+  somenteLeitura: boolean;
+  onAnexar: (entregaId: number, arquivos: FileList) => void;
+  onRemover: (a: ArquivoDaEntrega) => void;
+  onVer: (a: ArquivoDaEntrega) => void;
+  onBaixar: (a: ArquivoDaEntrega) => void;
+}) {
+  const entrada = useRef<HTMLInputElement>(null);
+  if (arquivos.length === 0 && somenteLeitura) return null;
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em',
+        textTransform: 'uppercase', color: 'var(--gray2)', margin: '0 0 5px' }}>
+        Anexos
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {arquivos.map(a => (
+          <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5 }}>
+            <span style={{ color: 'var(--gray2)' }}><IconClip size={12} /></span>
+            <span style={{ flex: 1, minWidth: 0, color: 'var(--black)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={a.nome}>
+              {a.nome}
+            </span>
+            <span style={{ color: 'var(--gray2)', fontSize: 10.5 }}>{fmtTamanho(a.tamanho)}</span>
+            <button type="button" className="file-eye-btn" title="Visualizar"
+              aria-label={`Visualizar ${a.nome}`} onClick={() => onVer(a)}>
+              <IconEye size={13} />
+            </button>
+            <button type="button" className="admin-file-download" title="Baixar"
+              aria-label={`Baixar ${a.nome}`} onClick={() => onBaixar(a)}>
+              <IconDownload size={12} />
+            </button>
+            {!somenteLeitura && (
+              <button type="button" className="file-delete-btn" title="Remover anexo"
+                aria-label={`Remover ${a.nome}`} onClick={() => onRemover(a)}>
+                <IconTrash size={12} />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      {!somenteLeitura && (
+        <>
+          <button type="button" className="entrega-anexar" style={{ marginTop: 6 }}
+            onClick={() => entrada.current?.click()}
+            title={`Anexar arquivo · máx. ${fmtTamanho(LIMITE_ANEXO)}`}>
+            <IconPlus size={12} /> Anexar arquivo
+          </button>
+          <input ref={entrada} type="file" multiple hidden
+            onChange={ev => {
+              if (ev.target.files?.length) onAnexar(entregaId, ev.target.files);
+              ev.target.value = '';
+            }} />
+        </>
+      )}
+    </div>
   );
 }
 
@@ -1456,25 +1526,18 @@ function EditorEntrega({ inicial, pessoas, marcadores, submarcadores, salvando, 
   const status = inicial?.status ?? ENTREGA_PLANEJADA;
   const [prazo, setPrazo] = useState(inicial?.prazo ?? '');
   const [responsaveis, setResponsaveis] = useState<string[]>(inicial?.responsaveis ?? []);
-  const [links, setLinks] = useState<{ label: string; url: string }[]>(inicial?.links ?? []);
-  const [url, setUrl] = useState('');
   const [erros, setErros] = useState<Record<string, string>>({});
-
-  function adicionarLink() {
-    const limpo = url.trim();
-    if (!limpo) return;
-    setLinks(l => [...l, { label: rotuloDoLink(limpo), url: limpo }]);
-    setUrl('');
-  }
 
   function salvar() {
     if (!titulo.trim()) {
       setErros({ titulo: 'Informe o título da entrega.' });
       return;
     }
+    // Sem `links`: o campo saiu da tela, e o servidor só reescreve a coluna
+    // quando ela vem no corpo.
     onSalvar({ titulo: titulo.trim(), descricao,
       marcador: marcador.trim(), submarcador: submarcador.trim(),
-      status, prazo, responsaveis, links });
+      status, prazo, responsaveis });
   }
 
   return (
@@ -1532,41 +1595,6 @@ function EditorEntrega({ inicial, pessoas, marcadores, submarcadores, salvando, 
           placeholder="O que precisa estar pronto para esta entrega ser dada como feita" />
       </div>
 
-      <div className="form-group">
-        <label className="form-label">Referências</label>
-        {links.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 6 }}>
-            {links.map((l, i) => (
-              <div key={i} className="admin-file-item" style={{ padding: '6px 9px' }}>
-                <span style={{ color: 'var(--gray2)', flexShrink: 0 }}><IconLink size={14} /></span>
-                <span style={{ flex: 1, minWidth: 0 }} title={l.url}>
-                  <span style={{ display: 'block', fontSize: 12, fontWeight: 600 }}>{l.label}</span>
-                  <span style={{ display: 'block', fontSize: 10.5, color: 'var(--gray2)',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {l.url}
-                  </span>
-                </span>
-                <button type="button" className="file-delete-btn" title="Remover link"
-                  aria-label={`Remover ${l.label}`}
-                  onClick={() => setLinks(x => x.filter((_, j) => j !== i))}>
-                  <IconTrash size={13} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        <div style={{ display: 'flex', gap: 6 }}>
-          <input className="form-input" style={{ flex: 1 }} value={url}
-            onChange={e => setUrl(e.target.value)}
-            placeholder="https://drive.google.com/..."
-            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); adicionarLink(); } }} />
-          <button type="button" className="secao-add" onClick={adicionarLink} disabled={!url.trim()}
-            title="Adicionar link" aria-label="Adicionar link">
-            <IconPlus size={14} />
-          </button>
-        </div>
-      </div>
-
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <button type="button" className="modal-acao" onClick={onCancelar}>Cancelar</button>
         <button type="button" className="modal-acao-primaria" onClick={salvar} disabled={salvando}>
@@ -1587,6 +1615,7 @@ function SecaoEntregas({
   reunioes, focada, onVincular, onAbrirReuniao,
   onSalvarEntrega, onExcluirEntrega, onAlterarPendentes,
   onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
+  onAnexarNaEntrega, onRemoverAnexoDaEntrega, onVerAnexoDaEntrega, onBaixarAnexoDaEntrega,
 }: {
   /** Já gravadas. Vazio enquanto o projeto não existe. */
   entregas: Entrega[];
@@ -1632,6 +1661,10 @@ function SecaoEntregas({
   onSubirEvidencia: (e: Entrega, arquivos: FileList | null, comentario?: string, etapa?: string) => Promise<void>;
   onBaixarEvidencia: (ev: Evidencia) => void;
   onVerEvidencia: (ev: Evidencia) => void;
+  onAnexarNaEntrega: (entregaId: number, arquivos: FileList) => void;
+  onRemoverAnexoDaEntrega: (a: ArquivoDaEntrega) => void;
+  onVerAnexoDaEntrega: (a: ArquivoDaEntrega) => void;
+  onBaixarAnexoDaEntrega: (a: ArquivoDaEntrega) => void;
 }) {
   /** Entregas com a seção de tarefas aberta. Fechada por padrão: a lista é o
    *  segundo passo de quem abriu a entrega, e não a primeira coisa que ela diz.
@@ -1669,7 +1702,7 @@ function SecaoEntregas({
     return {
       titulo: e.titulo, descricao: e.descricao ?? '',
       marcador: e.marcador ?? '', submarcador: e.submarcador ?? '', status,
-      prazo: e.prazo ?? '', responsaveis: e.responsaveis, links: e.links,
+      prazo: e.prazo ?? '', responsaveis: e.responsaveis,
     };
   }
 
@@ -2097,21 +2130,14 @@ function SecaoEntregas({
                           </div>
                         )}
 
-                        {e.links.length > 0 && (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                            {e.links.map((l, i) => (
-                              <a key={i} href={l.url} target="_blank" rel="noopener noreferrer"
-                                style={{
-                                  display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11,
-                                  fontWeight: 600, color: 'var(--gray)', textDecoration: 'none',
-                                  border: '1px solid var(--gray3)', borderRadius: 'var(--radius-pill)',
-                                  padding: '2px 9px',
-                                }}>
-                                <IconLink size={11} />{l.label}
-                              </a>
-                            ))}
-                          </div>
-                        )}
+                        <AnexosDaEntrega
+                          entregaId={e.id}
+                          arquivos={e.arquivos ?? []}
+                          somenteLeitura={somenteLeitura}
+                          onAnexar={onAnexarNaEntrega}
+                          onRemover={onRemoverAnexoDaEntrega}
+                          onVer={onVerAnexoDaEntrega}
+                          onBaixar={onBaixarAnexoDaEntrega} />
 
                         {/* A evidência entra pelo diálogo de conclusão e por
                             nenhum outro caminho, então a seção só existe em
@@ -3725,6 +3751,7 @@ function FormularioProjeto({
   onAnexarReuniaoFireflies,
   onExcluirReuniao,
   onPublicar, onSalvarEntrega, onExcluirEntrega, onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
+  onAnexarNaEntrega, onRemoverAnexoDaEntrega, onVerAnexoDaEntrega, onBaixarAnexoDaEntrega,
 }: {
   editando: Projeto | null;
   /** Com que rascunho o painel abre enquanto o projeto ainda não voltou do
@@ -3777,6 +3804,10 @@ function FormularioProjeto({
   onSubirEvidencia: (e: Entrega, arquivos: FileList | null, comentario?: string, etapa?: string) => Promise<void>;
   onBaixarEvidencia: (ev: Evidencia) => void;
   onVerEvidencia: (ev: Evidencia) => void;
+  onAnexarNaEntrega: (entregaId: number, arquivos: FileList) => void;
+  onRemoverAnexoDaEntrega: (a: ArquivoDaEntrega) => void;
+  onVerAnexoDaEntrega: (a: ArquivoDaEntrega) => void;
+  onBaixarAnexoDaEntrega: (a: ArquivoDaEntrega) => void;
 }) {
   const [r, setR] = useState<Rascunho>(() => editando ? {
     nome: editando.nome, descricao: editando.descricao ?? '',
@@ -4317,6 +4348,10 @@ function FormularioProjeto({
             onSubirEvidencia={onSubirEvidencia}
             onBaixarEvidencia={onBaixarEvidencia}
             onVerEvidencia={onVerEvidencia}
+            onAnexarNaEntrega={onAnexarNaEntrega}
+            onRemoverAnexoDaEntrega={onRemoverAnexoDaEntrega}
+            onVerAnexoDaEntrega={onVerAnexoDaEntrega}
+            onBaixarAnexoDaEntrega={onBaixarAnexoDaEntrega}
           />
 
           <fieldset className="painel-leitura campos-travaveis" disabled={somenteLeitura}>
@@ -4532,7 +4567,10 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
    *  o conteúdo: anexo do projeto e evidência de entrega vivem em tabelas
    *  diferentes, com ações próprias. */
   const [previa, setPrevia] = useState<
-    { fonte: 'anexo'; item: Arquivo } | { fonte: 'evidencia'; item: Evidencia } | null
+    { fonte: 'anexo'; item: Arquivo }
+    | { fonte: 'evidencia'; item: Evidencia }
+    | { fonte: 'entrega_arquivo'; item: ArquivoDaEntrega }
+    | null
   >(null);
   /** Projeto cuja leitura de saúde está sendo registrada pela listagem. */
   // Guarda o estado escolhido na lista junto do projeto: o modal abre com ele
@@ -5099,7 +5137,12 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
         prazo: dados.prazo || null,
         status: String(r.status ?? 'Planejada'),
         ordem: Number(r.ordem ?? 0),
-        evidencias: [], tarefas_total: 0, tarefas_feitas: 0, progresso: 0,
+        evidencias: [],
+        arquivos: [],
+        // O campo saiu da tela e a entrega nova nasce sem ele; a coluna
+        // continua guardando o que foi escrito antes de ele sair.
+        links: [],
+        tarefas_total: 0, tarefas_feitas: 0, progresso: 0,
       };
       setProjetos(ps => ps.map(x => (x.id === p.id ? { ...x, entregas: [...x.entregas, nova] } : x)));
     }
@@ -5144,6 +5187,63 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     // A prova vira id e carimbo no servidor, então quem a traz é a listagem -
     // mas sem prender a tela: ela chega em seguida, com o painel já aberto.
     void recarregar();
+  }
+
+  /** Anexa um ou vários de uma vez. Os envios vão em paralelo: três arquivos
+   *  são três pedidos ao mesmo tempo, e não três idas em fila. */
+  async function anexarNaEntrega(entregaId: number, escolhidos: FileList) {
+    const lista = [...escolhidos];
+    const grandes = lista.filter(f => f.size > LIMITE_ANEXO);
+    if (grandes.length) {
+      toast('error', 'Arquivo grande demais',
+        `${grandes[0].name} passa de ${fmtTamanho(LIMITE_ANEXO)}.`);
+      return;
+    }
+    const envios = lista.map(async f => {
+      const base64 = await lerBase64(f);
+      return api('', 'POST', {
+        action: 'add_entrega_arquivo',
+        entrega_id: entregaId, nome: f.name, tipo: f.type, tamanho: f.size, base64,
+      });
+    });
+    const respostas = await Promise.all(envios);
+    const ruim = respostas.find(r => r?.error);
+    if (ruim) { toast('error', 'Não foi possível anexar', ruim.error); void recarregar(); return; }
+    // O servidor devolve id e carimbo; o resto a tela já tem. Assim o anexo
+    // aparece no gesto, sem esperar a listagem inteira voltar.
+    mudancasRef.current++;
+    setProjetos(ps => ps.map(p => ({
+      ...p,
+      entregas: (p.entregas ?? []).map(e => (e.id !== entregaId ? e : {
+        ...e,
+        arquivos: [...(e.arquivos ?? []), ...respostas.map(r => r as ArquivoDaEntrega)],
+      })),
+    })));
+    toast('success', lista.length > 1 ? 'Anexos guardados' : 'Anexo guardado');
+  }
+
+  /** Some da tela na hora e volta se o servidor recusar. */
+  async function removerAnexoDaEntrega(a: ArquivoDaEntrega) {
+    const antes = projetos;
+    mudancasRef.current++;
+    setProjetos(ps => ps.map(p => ({
+      ...p,
+      entregas: (p.entregas ?? []).map(e => (e.id !== a.entrega_id ? e : {
+        ...e, arquivos: (e.arquivos ?? []).filter(x => x.id !== a.id),
+      })),
+    })));
+    const r = await api('', 'POST', { action: 'excluir_entrega_arquivo', id: a.id });
+    if (r?.error) { setProjetos(antes); toast('error', 'Não foi possível remover', r.error); return; }
+    toast('success', 'Anexo removido');
+  }
+
+  async function baixarAnexoDaEntrega(a: ArquivoDaEntrega) {
+    const r = await api(`?action=entrega_arquivo_base64&id=${a.id}`);
+    if (!r?.base64) { toast('error', 'Não deu', 'O anexo não veio.'); return; }
+    const link = document.createElement('a');
+    link.href = `data:${r.tipo};base64,${r.base64}`;
+    link.download = r.nome;
+    link.click();
   }
 
   async function baixarEvidencia(ev: Evidencia) {
@@ -5841,6 +5941,10 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
           onSubirEvidencia={subirEvidencia}
           onBaixarEvidencia={baixarEvidencia}
           onVerEvidencia={ev => setPrevia({ fonte: 'evidencia', item: ev })}
+          onAnexarNaEntrega={anexarNaEntrega}
+          onRemoverAnexoDaEntrega={removerAnexoDaEntrega}
+          onVerAnexoDaEntrega={a => setPrevia({ fonte: 'entrega_arquivo', item: a })}
+          onBaixarAnexoDaEntrega={baixarAnexoDaEntrega}
           onVerAnexo={a => setPrevia({ fonte: 'anexo', item: a })}
         />
       )}
@@ -5899,10 +6003,14 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
           }}
           onCarregar={() => api(previa.fonte === 'evidencia'
             ? `?action=entrega_evidencia_base64&id=${previa.item.id}`
-            : `?action=projeto_arquivo_base64&id=${previa.item.id}`)}
+            : previa.fonte === 'entrega_arquivo'
+              ? `?action=entrega_arquivo_base64&id=${previa.item.id}`
+              : `?action=projeto_arquivo_base64&id=${previa.item.id}`)}
           onBaixar={() => (previa.fonte === 'evidencia'
             ? void baixarEvidencia(previa.item)
-            : void baixarAnexo(previa.item))}
+            : previa.fonte === 'entrega_arquivo'
+              ? void baixarAnexoDaEntrega(previa.item)
+              : void baixarAnexo(previa.item))}
           onFechar={() => setPrevia(null)}
         />
       )}

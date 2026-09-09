@@ -109,7 +109,8 @@ async function guardaDaEquipe(
   db: Client,
   usuario: UsuarioAdmin | null | undefined,
   id: unknown,
-  de: 'projeto' | 'entrega' | 'evidencia' | 'arquivo' | 'saude' | 'reuniao' | 'tarefa' = 'projeto',
+  de: 'projeto' | 'entrega' | 'evidencia' | 'entrega_arquivo' | 'arquivo' | 'saude'
+    | 'reuniao' | 'tarefa' = 'projeto',
 ) {
   if (papelEfetivo(usuario?.email, usuario?.papel) !== 'membro') return null;
   if (id === undefined || id === null || id === '') return FORA_DA_EQUIPE;
@@ -120,6 +121,8 @@ async function guardaDaEquipe(
     tarefa: 'SELECT projeto_id FROM projeto_tarefas WHERE id = ?',
     evidencia: `SELECT t.projeto_id FROM entrega_evidencias e
                 JOIN projeto_entregas t ON t.id = e.entrega_id WHERE e.id = ?`,
+    entrega_arquivo: `SELECT t.projeto_id FROM entrega_arquivos a
+                      JOIN projeto_entregas t ON t.id = a.entrega_id WHERE a.id = ?`,
     arquivo: 'SELECT projeto_id FROM projeto_arquivos WHERE id = ?',
     saude: 'SELECT projeto_id FROM projeto_saude WHERE id = ?',
     reuniao: 'SELECT projeto_id FROM projeto_reunioes WHERE id = ?',
@@ -1599,6 +1602,35 @@ async function migrarSchema(db: Client) {
       criado_por_nome TEXT
     )
   `);
+
+  // Anexos da entrega: o documento, a imagem, a planilha que a entrega carrega.
+  //
+  // Tabela à parte da de evidências, e não uma coluna `tipo` nela: evidência é
+  // prova de um estado - o comprovante do envio, o aceite do cliente -, entra
+  // por um caminho só e não se apaga. Anexo é material de apoio, entra e sai
+  // quando quiser. Juntar os dois numa tabela só faria toda regra da evidência
+  // precisar perguntar antes se aquela linha é mesmo evidência.
+  //
+  // O conteúdo vai em base64 na própria linha, como nas evidências e nos anexos
+  // do projeto: são poucos arquivos por entrega, e um balde à parte seria mais
+  // uma peça de infraestrutura para manter.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS entrega_arquivos (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      entrega_id      INTEGER NOT NULL,
+      nome            TEXT NOT NULL,
+      tipo            TEXT NOT NULL,
+      tamanho         INTEGER NOT NULL,
+      base64          TEXT NOT NULL,
+      criado_em       TEXT NOT NULL,
+      criado_por_id   TEXT,
+      criado_por_nome TEXT
+    )
+  `);
+  try {
+    await ddl(`CREATE INDEX IF NOT EXISTS idx_entrega_arquivo_dono
+               ON entrega_arquivos (entrega_id, criado_em)`);
+  } catch { /* índice já existe */ }
 
   // Descrição breve do projeto, acrescentada depois da tabela existir.
   try {
@@ -3405,7 +3437,7 @@ async function despacharAdminData(
       // custavam uma ida e volta inteira ao banco em cada recarregamento - e a
       // listagem é o que roda depois de toda ação da tela.
       const [etapasTarefa, projs, equipe, arqs, clientes, saude, reunioes, vinculos, entregas,
-        evidencias, tarefas, conversas, anexosDaConversa] = await Promise.all([
+        evidencias, arquivosDeEntrega, tarefas, conversas, anexosDaConversa] = await Promise.all([
         etapasDeTarefa(db),
         db.execute({
           sql: `
@@ -3460,6 +3492,12 @@ async function despacharAdminData(
           SELECT id, entrega_id, nome, tipo, tamanho, comentario, etapa, criado_em, criado_por_nome
           FROM entrega_evidencias ORDER BY criado_em
         `),
+        // Sem o base64: a listagem carrega dezenas de entregas de uma vez, e o
+        // conteúdo desce quando alguém pede aquele arquivo.
+        db.execute(`
+          SELECT id, entrega_id, nome, tipo, tamanho, criado_em, criado_por_nome
+          FROM entrega_arquivos ORDER BY criado_em
+        `),
         db.execute(`
           SELECT t.id, t.projeto_id, t.entrega_id, t.titulo, t.descricao, t.status, t.prioridade,
                  t.responsavel_id, t.responsaveis, t.prazo, t.etiquetas, t.ordem, t.concluida_em,
@@ -3499,6 +3537,7 @@ async function despacharAdminData(
             responsaveis: JSON.parse(String(x.responsaveis ?? '[]')) as string[],
             links: JSON.parse(String(x.links ?? '[]')) as { label: string; url: string }[],
             evidencias: evidencias.rows.filter(e => e.entrega_id === x.id),
+            arquivos: arquivosDeEntrega.rows.filter(a => a.entrega_id === x.id),
             // O estado gravado só vale quando é resolução de alguém. Nos demais
             // casos quem manda são as tarefas, e é aqui que isso é resolvido -
             // uma coluna a mais no banco ficaria velha a cada tarefa movida.
@@ -3703,6 +3742,19 @@ async function despacharAdminData(
         sql: 'SELECT nome, tipo, base64 FROM tarefa_comentario_anexos WHERE id = ?',
         args: [id],
       });
+      return { status: 200, body: r.rows[0] };
+    }
+
+    if (action === 'entrega_arquivo_base64') {
+      const id = Number(query.get('id'));
+      if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };
+      const barrado = await guardaDaEquipe(db, usuario, id, 'entrega_arquivo');
+      if (barrado) return barrado;
+      const r = await db.execute({
+        sql: 'SELECT nome, tipo, base64 FROM entrega_arquivos WHERE id = ?',
+        args: [id],
+      });
+      if (!r.rows[0]) return { status: 404, body: { error: 'Anexo não encontrado.' } };
       return { status: 200, body: r.rows[0] };
     }
 
@@ -5125,6 +5177,10 @@ function faltaEmProjeto(p: any): string | null {
       if (!titulo) return { status: 400, body: { error: 'A entrega precisa de um título.' } };
 
       const responsaveis = JSON.stringify(Array.isArray(e.responsaveis) ? e.responsaveis : []);
+      // As referências saíram da tela quando a entrega ganhou anexos de verdade.
+      // A coluna fica, e só é reescrita quando o corpo a traz: uma tela que não
+      // conhece mais o campo não pode apagar o que foi guardado antes dela.
+      const mudaLinks = e.links !== undefined;
       const links = JSON.stringify(Array.isArray(e.links) ? e.links : []);
       // Vazio vira nulo: "" e "sem marcador" são a mesma coisa, e guardar os dois
       // faria a lista de sugestões oferecer um item em branco.
@@ -5154,11 +5210,11 @@ function faltaEmProjeto(p: any): string | null {
           };
         }
         const campos = [titulo, e.descricao ?? null, marcador, submarcador,
-          e.prazo || null, responsaveis, links];
+          e.prazo || null, responsaveis, ...(mudaLinks ? [links] : [])];
         await db.execute({
           sql: `UPDATE projeto_entregas
                 SET titulo=?, descricao=?, marcador=?, submarcador=?, prazo=?,
-                    responsaveis=?, links=?${mudaStatus ? ', status=?' : ''}
+                    responsaveis=?${mudaLinks ? ', links=?' : ''}${mudaStatus ? ', status=?' : ''}
                 WHERE id=?`,
           args: mudaStatus ? [...campos, e.status, e.id] : [...campos, e.id],
         });
@@ -5210,11 +5266,45 @@ function faltaEmProjeto(p: any): string | null {
         return { status: 400, body: { error: 'O projeto precisa de ao menos uma entrega.' } };
       }
       await db.execute({ sql: 'DELETE FROM entrega_evidencias WHERE entrega_id = ?', args: [body.id] });
+      await db.execute({ sql: 'DELETE FROM entrega_arquivos WHERE entrega_id = ?', args: [body.id] });
       // A tarefa sobrevive à entrega, solta no projeto: apagá-la junto perderia
       // trabalho que existe, só porque o marco a que pendia foi reorganizado.
       await db.execute({ sql: 'UPDATE projeto_tarefas SET entrega_id = NULL WHERE entrega_id = ?', args: [body.id] });
       await db.execute({ sql: 'DELETE FROM projeto_entregas WHERE id = ?', args: [body.id] });
       await recalcularProgresso(db, String(projetoId));
+      return { status: 200, body: { ok: true } };
+    }
+
+    if (action === 'add_entrega_arquivo') {
+      { const barrado = await guardaDaEquipe(db, usuario, body.entrega_id, 'entrega'); if (barrado) return barrado; }
+      if (!body.entrega_id) return { status: 400, body: { error: 'entrega_id ausente.' } };
+      const nome = String(body.nome ?? '').trim();
+      if (!nome || !body.base64) return { status: 400, body: { error: 'Arquivo ausente.' } };
+      const criadoEm = new Date().toISOString();
+      const r = await db.execute({
+        sql: `INSERT INTO entrega_arquivos
+                (entrega_id, nome, tipo, tamanho, base64, criado_em, criado_por_id, criado_por_nome)
+              VALUES (?,?,?,?,?,?,?,?)`,
+        args: [body.entrega_id, nome, String(body.tipo ?? ''), Number(body.tamanho ?? 0),
+          String(body.base64), criadoEm, autorId, autorNome],
+      });
+      // O id sai do próprio insert: a tela põe a linha na lista sem esperar a
+      // listagem inteira voltar.
+      return {
+        status: 200,
+        body: {
+          id: Number(r.lastInsertRowid), entrega_id: Number(body.entrega_id), nome,
+          tipo: String(body.tipo ?? ''), tamanho: Number(body.tamanho ?? 0),
+          criado_em: criadoEm, criado_por_nome: autorNome,
+        },
+      };
+    }
+
+    if (action === 'excluir_entrega_arquivo') {
+      const id = Number(body?.id);
+      if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };
+      { const barrado = await guardaDaEquipe(db, usuario, id, 'entrega_arquivo'); if (barrado) return barrado; }
+      await db.execute({ sql: 'DELETE FROM entrega_arquivos WHERE id = ?', args: [id] });
       return { status: 200, body: { ok: true } };
     }
 
