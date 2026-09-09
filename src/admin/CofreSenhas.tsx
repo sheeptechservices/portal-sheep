@@ -12,18 +12,23 @@
 //  que a casa já controla: quem tomou a sessão do navegador não tem a caixa de
 //  entrada.
 //
+//  A tela é a da casa: busca e "novo" no canto do cabeçalho, filtros abaixo,
+//  tabela embaixo, e a gaveta lateral para cadastrar e para abrir um segredo.
+//
 //  Duas regras para o que se escrever aqui dentro:
 //
 //  1. Segredo decifrado nasce escondido e vive o menos possível. Ele é pedido um
-//     a um, fica no estado de um card só e some quando o card fecha ou o cofre
-//     tranca. Nada de guardar a lista aberta em memória.
+//     a um, vive dentro da gaveta que o abriu e some quando ela fecha ou quando
+//     o cofre tranca. Nada de guardar a lista aberta em memória.
 //  2. Quem diz se pode ver é o servidor, sempre. Esconder botão é cortesia; o
 //     porteiro está do outro lado, e é ele quem recusa.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
-  IconCheck, IconClipboard, IconEye, IconEyeOff, IconPlus, IconSpinner, IconTrash,
+  IconCheck, IconClipboard, IconEye, IconEyeOff, IconSearch, IconSpinner, IconTrash, IconX,
 } from '../components/icons';
+import FilterDropdown from '../components/FilterDropdown';
 import { useAuth, useToast } from './AdminApp';
 import { useApi } from './OportunidadesPage';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
@@ -50,6 +55,12 @@ interface Conteudo {
 
 const CONTEUDO_VAZIO: Conteudo = { usuario: '', senha: '', url: '', notas: '' };
 
+/** O título de partida do segredo novo, o mesmo da tarefa e do projeto: a gaveta
+ *  nasce com ele marcado, e a primeira tecla substitui em vez de escrever
+ *  depois. Campo em branco pede que se descubra o que fazer; campo marcado já
+ *  diz que é ali que se escreve. */
+const TITULO_PADRAO = 'Sem título';
+
 /** Categorias sugeridas. Lista aberta: quem tiver um caso novo escreve. */
 const CATEGORIAS = ['Ferramenta', 'GitHub', 'Servidor', 'Banco de dados', 'E-mail', 'Financeiro', 'Outro'];
 
@@ -74,7 +85,9 @@ export default function CofreSenhas({ token }: { token: string }) {
   const [abertoAte, setAbertoAte] = useState<string | null>(null);
   const [pedindoCodigo, setPedindoCodigo] = useState(false);
   const [busca, setBusca] = useState('');
-  const [editando, setEditando] = useState<{ id: string | null } | null>(null);
+  const [fCategoria, setFCategoria] = useState<string[]>([]);
+  /** `null` na gaveta quer dizer segredo novo. */
+  const [gaveta, setGaveta] = useState<{ segredo: Segredo | null } | null>(null);
 
   const podeEditar = pode('cofre:editar');
   const podeExcluir = pode('cofre:excluir');
@@ -103,68 +116,146 @@ export default function CofreSenhas({ token }: { token: string }) {
     return () => clearTimeout(t);
   }, [abertoAte, toast]);
 
-  const filtrados = useMemo(() => {
-    const q = busca.trim().toLocaleLowerCase('pt-BR');
-    if (!q) return segredos;
-    return segredos.filter(s =>
-      s.titulo.toLocaleLowerCase('pt-BR').includes(q)
-      || (s.categoria ?? '').toLocaleLowerCase('pt-BR').includes(q));
-  }, [segredos, busca]);
+  const categorias = useMemo(
+    () => [...new Set(segredos.map(s => s.categoria).filter((c): c is string => !!c))]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+      .map(c => ({ value: c, label: c })),
+    [segredos],
+  );
 
-  if (carregando) {
-    return (
-      <div className="admin-content-wrap">
-        <Cabecalho />
-        <div className="dux-spinner-row" style={{ padding: '40px 0' }}>
-          <span className="dux-spinner sm" />
-        </div>
-      </div>
-    );
+  const lista = useMemo(() => {
+    const q = busca.trim().toLocaleLowerCase('pt-BR');
+    return segredos.filter(s =>
+      (fCategoria.length === 0 || fCategoria.includes(s.categoria ?? ''))
+      && (!q || s.titulo.toLocaleLowerCase('pt-BR').includes(q)
+        || (s.categoria ?? '').toLocaleLowerCase('pt-BR').includes(q)));
+  }, [segredos, busca, fCategoria]);
+
+  /** Copia a senha sem pintá-la na tela. O conteúdo vem, vai para a área de
+   *  transferência e não fica em estado nenhum. */
+  async function copiarSenha(s: Segredo) {
+    if (!aberto) { setPedindoCodigo(true); return; }
+    const r = await api('', 'POST', { action: 'cofre_revelar', id: s.id });
+    if (r?.error) {
+      if (r.trancado) { setAbertoAte(null); setPedindoCodigo(true); return; }
+      toast('error', 'Não foi possível ler este segredo', r.error);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(String(r.conteudo?.senha ?? ''));
+      toast('success', 'Senha copiada', `De "${s.titulo}". Está na área de transferência.`);
+    } catch {
+      toast('error', 'O navegador não deixou copiar', 'Abra o segredo e copie à mão.');
+    }
   }
 
   return (
     <div className="admin-content-wrap">
       <style>{ESTILO}</style>
-      <Cabecalho aberto={aberto} ate={abertoAte} onTrancar={() => setAbertoAte(null)} />
 
-      <div className="cofre-barra">
-        <input className="form-input cofre-busca" value={busca} placeholder="Buscar por título ou categoria"
-          onChange={e => setBusca(e.target.value)} />
-        {!aberto && (
-          <button type="button" className="btn btn-primary" onClick={() => setPedindoCodigo(true)}>
-            Ver as senhas
-          </button>
+      <div className="admin-page-header">
+        <div>
+          <h1 className="admin-page-title">Cofre de Senhas</h1>
+          <p className="admin-page-desc">
+            Cadastrar é livre. Para ver uma senha, o portal manda um código ao seu e-mail.
+          </p>
+        </div>
+        <div className="admin-page-acoes">
+          <span className="secao-busca-campo cofre-busca">
+            <IconSearch size={13} />
+            <input value={busca} aria-label="Buscar segredo"
+              placeholder="Buscar por título ou categoria"
+              onChange={e => setBusca(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Escape') setBusca(''); }} />
+            {busca && (
+              <button type="button" aria-label="Limpar a busca" onClick={() => setBusca('')}>
+                <IconX size={12} />
+              </button>
+            )}
+          </span>
+          {podeEditar && (
+            <button type="button" className="btn btn-primary"
+              style={{ height: 38, padding: '0 18px', fontSize: 13, flexShrink: 0 }}
+              onClick={() => setGaveta({ segredo: null })}>
+              + Novo segredo
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="admin-toolbar">
+        <span className="admin-toolbar-label">Filtrar</span>
+        <FilterDropdown label="Categoria" values={fCategoria} options={categorias}
+          onChange={setFCategoria} />
+        {fCategoria.length > 0 && (
+          <button type="button" className="cofre-limpar" onClick={() => setFCategoria([])}>Limpar</button>
         )}
-        {podeEditar && (
-          <button type="button" className="btn btn-secondary" onClick={() => setEditando({ id: null })}>
-            <IconPlus size={14} /> Novo segredo
+        <div className="admin-toolbar-spacer" />
+        {aberto ? (
+          <span className="cofre-aberto-ate">
+            <span className="cofre-ponto" />
+            Aberto até {hora(abertoAte)}
+            <button type="button" className="cofre-limpar" onClick={() => setAbertoAte(null)}>
+              Trancar agora
+            </button>
+          </span>
+        ) : (
+          <button type="button" className="btn btn-secondary cofre-abrir"
+            onClick={() => setPedindoCodigo(true)}>
+            <IconEye size={13} /> Ver as senhas
           </button>
         )}
       </div>
 
-      {!aberto && (
-        <p className="cofre-dica cofre-trancado">
-          O cofre está trancado. Cadastrar é livre; para ver uma senha, o portal manda um código
-          para {usuario?.email ?? 'o e-mail da sua sessão'}.
-        </p>
-      )}
-
-      {filtrados.length === 0 ? (
+      {carregando ? (
+        <div className="dux-spinner-row" style={{ padding: '40px 0' }}>
+          <span className="dux-spinner sm" />
+        </div>
+      ) : lista.length === 0 ? (
         <p className="cofre-vazio">
           {segredos.length === 0
             ? 'O cofre está vazio. O primeiro segredo entra pelo botão acima.'
             : 'Nada com esse texto no título nem na categoria.'}
         </p>
       ) : (
-        <div className="cofre-lista lista-anima" key={filtrados.map(s => s.id).join('|')}>
-          {filtrados.map(s => (
-            <CardDoSegredo key={s.id} token={token} s={s} aberto={aberto}
-              podeEditar={podeEditar} podeExcluir={podeExcluir}
-              onTrancou={() => setAbertoAte(null)}
-              onPedirCodigo={() => setPedindoCodigo(true)}
-              onEditar={() => setEditando({ id: s.id })}
-              onExcluido={() => setSegredos(l => l.filter(x => x.id !== s.id))} />
-          ))}
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Título</th>
+                <th>Categoria</th>
+                <th style={{ whiteSpace: 'nowrap' }}>Última mudança</th>
+                <th style={{ width: 90 }}>Senha</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lista.map(s => (
+                <tr key={s.id} className="cofre-linha" onClick={() => setGaveta({ segredo: s })}
+                  title={`Abrir ${s.titulo}`}>
+                  <td style={{ fontWeight: 600, color: 'var(--black)' }}>{s.titulo}</td>
+                  <td>{s.categoria
+                    ? <span className="cofre-etiqueta">{s.categoria}</span>
+                    : <span style={{ color: 'var(--gray2)' }}>-</span>}
+                  </td>
+                  <td style={{ fontSize: 12, color: 'var(--gray2)', whiteSpace: 'nowrap' }}>
+                    {s.atualizado_em
+                      ? `${dia(s.atualizado_em)} · ${s.atualizado_por_nome ?? 'alguém'}`
+                      : `${dia(s.criado_em)} · ${s.criado_por_nome ?? 'alguém'}`}
+                  </td>
+                  <td>
+                    {/* Copiar sem mostrar: o valor vai para a area de
+                        transferência e não passa pela tela. */}
+                    <button type="button" className="admin-toolbar-btn"
+                      title={aberto ? 'Copiar a senha' : 'Pedir o código para copiar'}
+                      aria-label={`Copiar a senha de ${s.titulo}`}
+                      onClick={e => { e.stopPropagation(); void copiarSenha(s); }}>
+                      <IconClipboard size={13} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -176,43 +267,26 @@ export default function CofreSenhas({ token }: { token: string }) {
           onAberto={ate => { setAbertoAte(ate); setPedindoCodigo(false); }} />
       )}
 
-      {editando && (
-        <EditorDeSegredo
+      {gaveta && (
+        <GavetaDoSegredo
           token={token}
-          segredo={editando.id ? segredos.find(s => s.id === editando.id) ?? null : null}
+          segredo={gaveta.segredo}
           cofreAberto={aberto}
+          podeEditar={podeEditar}
+          podeExcluir={podeExcluir}
           onTrancou={() => setAbertoAte(null)}
-          onFechar={() => setEditando(null)}
+          onPedirCodigo={() => setPedindoCodigo(true)}
+          onFechar={() => setGaveta(null)}
+          onExcluido={id => {
+            setSegredos(l => l.filter(x => x.id !== id));
+            setGaveta(null);
+          }}
           onGravado={s => {
             setSegredos(l => (l.some(x => x.id === s.id)
               ? l.map(x => (x.id === s.id ? s : x))
               : [...l, s].sort((a, b) => a.titulo.localeCompare(b.titulo, 'pt-BR'))));
-            setEditando(null);
+            setGaveta(null);
           }} />
-      )}
-    </div>
-  );
-}
-
-function Cabecalho({ aberto, ate, onTrancar }: {
-  aberto?: boolean;
-  ate?: string | null;
-  onTrancar?: () => void;
-}) {
-  return (
-    <div className="admin-page-header">
-      <div>
-        <h1 className="admin-page-title">Cofre de Senhas</h1>
-        <p className="admin-page-desc">
-          Cadastrar é livre. Para ver uma senha, o portal manda um código ao seu e-mail.
-        </p>
-      </div>
-      {aberto && (
-        <span className="cofre-aberto-ate">
-          <span className="cofre-ponto" />
-          Aberto até {hora(ate)}
-          <button type="button" className="cofre-acao" onClick={onTrancar}>Trancar agora</button>
-        </span>
       )}
     </div>
   );
@@ -301,11 +375,12 @@ function PopupDoCodigo({ token, email, onFechar, onAberto }: {
     onAberto(r.liberado_ate);
   }
 
-  return (
-    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`} {...fundo}>
-      <div className="admin-modal cofre-popup" role="dialog" aria-modal="true"
-        aria-label="Código para abrir o cofre">
-        <p className="cofre-porta-titulo">Abrir o cofre</p>
+  return createPortal(
+    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`}
+      style={{ zIndex: 10060, alignItems: 'center', justifyContent: 'center' }} {...fundo}>
+      <div className="cofre-popup" role="dialog" aria-modal="true"
+        aria-label="Código para abrir o cofre" onClick={e => e.stopPropagation()}>
+        <p className="cofre-secao">Abrir o cofre</p>
 
         {enviando ? (
           <div className="dux-spinner-row" style={{ padding: '24px 0' }}>
@@ -318,7 +393,7 @@ function PopupDoCodigo({ token, email, onFechar, onAberto }: {
               uma vez.
             </p>
 
-            <label className="cofre-campo" style={{ marginTop: 12 }}>
+            <label className="cofre-campo" style={{ marginTop: 14 }}>
               <span className="form-label">Código</span>
               <input ref={campo} className="form-input cofre-codigo" value={codigo}
                 inputMode="numeric" autoComplete="one-time-code" autoFocus maxLength={6}
@@ -333,8 +408,8 @@ function PopupDoCodigo({ token, email, onFechar, onAberto }: {
             </label>
 
             <div className="cofre-popup-pe">
-              <button type="button" className="cofre-acao" onClick={fechar}>Cancelar</button>
-              <button type="button" className="cofre-acao" onClick={() => void pedir()}>
+              <button type="button" className="modal-acao" onClick={fechar}>Cancelar</button>
+              <button type="button" className="modal-acao" onClick={() => void pedir()}>
                 Reenviar código
               </button>
               <button type="button" className="btn btn-primary"
@@ -345,49 +420,78 @@ function PopupDoCodigo({ token, email, onFechar, onAberto }: {
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
-// ── Um segredo ──────────────────────────────────────────────────────────────
+// ── A gaveta ────────────────────────────────────────────────────────────────
 
-function CardDoSegredo({ token, s, aberto, podeEditar, podeExcluir, onTrancou, onPedirCodigo, onEditar, onExcluido }: {
+/**
+ * A gaveta serve os dois momentos: cadastrar um segredo novo e abrir um que já
+ * existe. É a mesma peça porque é a mesma ficha - o que muda é se ela chega
+ * vazia ou preenchida.
+ *
+ * Cadastrar é livre. Abrir um que já existe pede o cofre destrancado, e o
+ * motivo é o mesmo de sempre: para editar é preciso ver o que está lá.
+ */
+function GavetaDoSegredo({
+  token, segredo, cofreAberto, podeEditar, podeExcluir,
+  onTrancou, onPedirCodigo, onFechar, onExcluido, onGravado,
+}: {
   token: string;
-  s: Segredo;
-  aberto: boolean;
+  segredo: Segredo | null;
+  cofreAberto: boolean;
   podeEditar: boolean;
   podeExcluir: boolean;
   onTrancou: () => void;
   onPedirCodigo: () => void;
-  onEditar: () => void;
-  onExcluido: () => void;
+  onFechar: () => void;
+  onExcluido: (id: string) => void;
+  onGravado: (s: Segredo) => void;
 }) {
   const { toast } = useToast();
   const api = useApi(token);
-  const [conteudo, setConteudo] = useState<Conteudo | null>(null);
+  const { saindo, fechar } = useSaidaSuave(onFechar);
+  const fundo = useFecharNoFundo(fechar);
+
+  const [titulo, setTitulo] = useState(segredo?.titulo ?? TITULO_PADRAO);
+  const [categoria, setCategoria] = useState(segredo?.categoria ?? '');
+  const [c, setC] = useState<Conteudo>(CONTEUDO_VAZIO);
+  const [aberto, setAberto] = useState(!segredo);
   const [buscando, setBuscando] = useState(false);
-  const [mostrandoSenha, setMostrandoSenha] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [mostrando, setMostrando] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
+  const jaPediu = useRef(false);
 
-  // Trancou: o que estava aberto na tela fecha junto. Deixar o texto ali depois
-  // de o cofre trancar seria trancar a porta com a janela aberta.
-  useEffect(() => {
-    if (!aberto) { setConteudo(null); setMostrandoSenha(false); }
-  }, [aberto]);
-
-  async function abrir() {
-    if (conteudo) { setConteudo(null); setMostrandoSenha(false); return; }
-    if (!aberto) { onPedirCodigo(); return; }
+  const revelar = useCallback(async () => {
+    if (!segredo || buscando) return;
+    if (!cofreAberto) { onPedirCodigo(); return; }
     setBuscando(true);
-    const r = await api('', 'POST', { action: 'cofre_revelar', id: s.id });
+    const r = await api('', 'POST', { action: 'cofre_revelar', id: segredo.id });
     setBuscando(false);
     if (r?.error) {
       if (r.trancado) { onTrancou(); onPedirCodigo(); return; }
-      toast('error', 'Não foi possível ler este segredo', r.error);
+      toast('error', 'Não foi possível abrir este segredo', r.error);
       return;
     }
-    setConteudo(r.conteudo);
-  }
+    setC(r.conteudo);
+    setAberto(true);
+  }, [segredo, cofreAberto, buscando, api, toast, onPedirCodigo, onTrancou]);
+
+  // Com o cofre já destrancado, a gaveta abre o segredo sozinha: quem clicou na
+  // linha quer ver o que tem dentro, e um segundo clique seria pedágio.
+  useEffect(() => {
+    if (!segredo || jaPediu.current || !cofreAberto) return;
+    jaPediu.current = true;
+    void revelar();
+  }, [segredo, cofreAberto, revelar]);
+
+  // Trancou com a gaveta aberta: o que estava na tela sai junto.
+  useEffect(() => {
+    if (segredo && !cofreAberto) { setAberto(false); setC(CONTEUDO_VAZIO); setMostrando(false); }
+  }, [segredo, cofreAberto]);
 
   async function copiar(valor: string, oQue: string) {
     try {
@@ -398,233 +502,227 @@ function CardDoSegredo({ token, s, aberto, podeEditar, podeExcluir, onTrancou, o
     }
   }
 
+  async function salvar() {
+    if (!titulo.trim() || titulo === TITULO_PADRAO || salvando) return;
+    setSalvando(true);
+    // O `finally` não é zelo: sem ele, um pedido que estoura - rede caída,
+    // resposta que não é JSON - deixa o botão desabilitado para sempre, e a
+    // gaveta vira uma tela onde não dá para fazer nada nem entender por quê.
+    try {
+      const r = await api('', 'POST', {
+        action: 'salvar_segredo',
+        id: segredo?.id, titulo: titulo.trim(), categoria: categoria.trim() || null, conteudo: c,
+      });
+      // Sem `id` de volta não houve gravação, mesmo sem mensagem de erro: é o
+      // que acontece quando a sessão caiu no meio do caminho.
+      if (r?.error || !r?.id) {
+        toast('error', 'Não foi possível gravar',
+          r?.error ?? 'O servidor não confirmou a gravação. Tente de novo.');
+        return;
+      }
+      onGravado({
+        id: r.id,
+        titulo: titulo.trim(),
+        categoria: categoria.trim() || null,
+        criado_em: segredo?.criado_em ?? r.criado_em,
+        criado_por_nome: segredo?.criado_por_nome ?? r.criado_por_nome ?? null,
+        atualizado_em: segredo ? r.atualizado_em : null,
+        atualizado_por_nome: segredo ? r.atualizado_por_nome ?? null : null,
+      });
+      toast('success', segredo ? 'Segredo atualizado' : 'Segredo guardado');
+    } catch {
+      toast('error', 'Não foi possível gravar', 'O pedido não chegou ao servidor.');
+    } finally {
+      setSalvando(false);
+    }
+  }
+
   async function excluir() {
+    if (!segredo) return;
     setConfirmando(false);
-    const r = await api('', 'POST', { action: 'excluir_segredo', id: s.id });
+    const r = await api('', 'POST', { action: 'excluir_segredo', id: segredo.id });
     if (r?.error) { toast('error', 'Não foi possível excluir', r.error); return; }
-    onExcluido();
+    onExcluido(segredo.id);
     toast('success', 'Segredo excluído');
   }
 
-  return (
-    <div className="cofre-card">
-      <div className="cofre-card-topo">
-        <div className="cofre-card-nome">
-          <p className="cofre-card-titulo">{s.titulo}</p>
-          {s.categoria && <span className="cofre-etiqueta">{s.categoria}</span>}
-        </div>
-        <button type="button" className="cofre-acao" onClick={() => void abrir()} disabled={buscando}
-          title={conteudo ? 'Esconder' : aberto ? 'Mostrar' : 'Pedir o código para ver'}
-          aria-label={conteudo ? `Esconder ${s.titulo}` : `Mostrar ${s.titulo}`}>
-          {buscando
-            ? <IconSpinner size={14} />
-            : conteudo ? <IconEyeOff size={14} /> : <IconEye size={14} />}
-        </button>
-        {podeEditar && (
-          <button type="button" className="cofre-acao" onClick={onEditar} title="Editar">Editar</button>
-        )}
-        {podeExcluir && (
-          <button type="button" className="cofre-acao perigo" onClick={() => setConfirmando(true)}
-            title="Excluir" aria-label={`Excluir ${s.titulo}`}>
-            <IconTrash size={13} />
-          </button>
-        )}
-      </div>
+  const somenteLeitura = !podeEditar;
 
-      {conteudo && (
-        <div className="cofre-corpo surge">
-          <Linha rotulo="Usuário" valor={conteudo.usuario} onCopiar={() => void copiar(conteudo.usuario, 'Usuário')} />
-          <div className="cofre-linha">
-            <span className="cofre-rotulo">Senha</span>
-            <span className="cofre-valor mono">
-              {mostrandoSenha ? conteudo.senha : '•'.repeat(Math.min(conteudo.senha.length, 24))}
-            </span>
-            <button type="button" className="cofre-acao" onClick={() => setMostrandoSenha(v => !v)}
-              aria-label={mostrandoSenha ? 'Esconder a senha' : 'Ver a senha'}>
-              {mostrandoSenha ? <IconEyeOff size={14} /> : <IconEye size={14} />}
-            </button>
-            <button type="button" className="cofre-acao" onClick={() => void copiar(conteudo.senha, 'Senha')}
-              aria-label="Copiar a senha">
-              <IconClipboard size={14} />
-            </button>
+  return createPortal(
+    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`}
+      style={{ zIndex: 10040 }} {...fundo}>
+      <div className="admin-modal painel-tarefa" style={{ width: 'min(460px, 96vw)' }}
+        onClick={e => e.stopPropagation()}>
+
+        <div className="admin-modal-header">
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 600,
+              textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              {segredo ? 'Segredo' : 'Novo segredo'}
+            </p>
+            <input className="painel-titulo painel-titulo-campo" value={titulo} disabled={somenteLeitura}
+              autoFocus={titulo === TITULO_PADRAO}
+              onFocus={e => { if (e.target.value === TITULO_PADRAO) e.target.select(); }}
+              placeholder="GitHub da conta assinaturas"
+              aria-label="Título do segredo"
+              title={titulo}
+              onChange={e => setTitulo(e.target.value)} />
           </div>
-          {conteudo.url && <Linha rotulo="Endereço" valor={conteudo.url} onCopiar={() => void copiar(conteudo.url, 'Endereço')} />}
-          {conteudo.notas && (
-            <div className="cofre-linha">
-              <span className="cofre-rotulo">Notas</span>
-              <span className="cofre-valor cofre-notas">{conteudo.notas}</span>
+          <button type="button" className="rodape-icone" onClick={fechar}
+            title="Fechar" aria-label="Fechar">
+            <IconX size={14} />
+          </button>
+        </div>
+
+        <div className="admin-modal-body">
+          <div className="form-group">
+            <label className="form-label">Categoria</label>
+            <input className="form-input" value={categoria} list="cofre-categorias"
+              disabled={somenteLeitura} placeholder="Ferramenta"
+              onChange={e => setCategoria(e.target.value)} />
+            <datalist id="cofre-categorias">
+              {CATEGORIAS.map(x => <option key={x} value={x} />)}
+            </datalist>
+            <p className="cofre-dica" style={{ marginTop: 4 }}>
+              Título e categoria ficam legíveis na lista mesmo com o cofre trancado. É o que a
+              busca alcança, então não escreva a senha aí.
+            </p>
+          </div>
+
+          {/* Segredo que já existe e cofre trancado: a ficha fica fechada, e a
+              porta de saída é pedir o código. */}
+          {segredo && !aberto ? (
+            <div className="cofre-trancado">
+              {buscando ? (
+                <div className="dux-spinner-row" style={{ padding: '20px 0' }}>
+                  <span className="dux-spinner sm" />
+                </div>
+              ) : (
+                <>
+                  <p className="cofre-dica" style={{ marginBottom: 10 }}>
+                    O conteúdo deste segredo está guardado. Para vê-lo, o portal manda um código
+                    ao seu e-mail.
+                  </p>
+                  <button type="button" className="btn btn-primary" onClick={() => void revelar()}>
+                    <IconEye size={14} /> Ver o conteúdo
+                  </button>
+                </>
+              )}
             </div>
+          ) : (
+            <>
+              <div className="form-group">
+                <label className="form-label">Usuário</label>
+                <span className="cofre-linha-campo">
+                  <input className="form-input" value={c.usuario} autoComplete="off"
+                    disabled={somenteLeitura}
+                    onChange={e => setC({ ...c, usuario: e.target.value })} />
+                  {c.usuario && (
+                    <button type="button" className="rodape-icone" aria-label="Copiar o usuário"
+                      title="Copiar" onClick={() => void copiar(c.usuario, 'Usuário')}>
+                      <IconClipboard size={13} />
+                    </button>
+                  )}
+                </span>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Senha</label>
+                <span className="cofre-linha-campo">
+                  <input className="form-input cofre-mono" value={c.senha}
+                    type={mostrando ? 'text' : 'password'} autoComplete="new-password"
+                    disabled={somenteLeitura}
+                    onChange={e => setC({ ...c, senha: e.target.value })} />
+                  <button type="button" className="rodape-icone"
+                    aria-label={mostrando ? 'Esconder a senha' : 'Ver a senha'}
+                    title={mostrando ? 'Esconder' : 'Ver'}
+                    onClick={() => setMostrando(v => !v)}>
+                    {mostrando ? <IconEyeOff size={13} /> : <IconEye size={13} />}
+                  </button>
+                  {c.senha && (
+                    <button type="button" className="rodape-icone" aria-label="Copiar a senha"
+                      title="Copiar" onClick={() => void copiar(c.senha, 'Senha')}>
+                      <IconClipboard size={13} />
+                    </button>
+                  )}
+                </span>
+                {!somenteLeitura && (
+                  <button type="button" className="entrega-anexar" style={{ marginTop: 6 }}
+                    onClick={() => { setC({ ...c, senha: sortearSenha() }); setMostrando(true); }}>
+                    Sortear uma senha forte
+                  </button>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Endereço</label>
+                <span className="cofre-linha-campo">
+                  <input className="form-input" value={c.url} autoComplete="off"
+                    disabled={somenteLeitura} placeholder="https://"
+                    onChange={e => setC({ ...c, url: e.target.value })} />
+                  {c.url && (
+                    <button type="button" className="rodape-icone" aria-label="Copiar o endereço"
+                      title="Copiar" onClick={() => void copiar(c.url, 'Endereço')}>
+                      <IconClipboard size={13} />
+                    </button>
+                  )}
+                </span>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Notas</label>
+                <textarea className="form-input" rows={3} value={c.notas} disabled={somenteLeitura}
+                  style={{ resize: 'vertical' }}
+                  onChange={e => setC({ ...c, notas: e.target.value })}
+                  placeholder="Onde essa conta é usada, quem mais a usa, o que quebra se ela mudar." />
+              </div>
+            </>
+          )}
+
+          {segredo && (
+            <p className="cofre-rodape-info">
+              {segredo.atualizado_em
+                ? `Atualizado por ${segredo.atualizado_por_nome ?? 'alguém'} em ${dia(segredo.atualizado_em)}`
+                : `Criado por ${segredo.criado_por_nome ?? 'alguém'} em ${dia(segredo.criado_em)}`}
+            </p>
           )}
         </div>
-      )}
 
-      <p className="cofre-rodape">
-        {s.atualizado_em
-          ? `Atualizado por ${s.atualizado_por_nome ?? 'alguém'} em ${dia(s.atualizado_em)}`
-          : `Criado por ${s.criado_por_nome ?? 'alguém'} em ${dia(s.criado_em)}`}
-      </p>
-
-      {confirmando && (
-        <div className="cofre-confirma surge">
-          <span>Excluir <b>{s.titulo}</b>? Não há como recuperar.</span>
-          <button type="button" className="cofre-acao" onClick={() => setConfirmando(false)}>Cancelar</button>
-          <button type="button" className="cofre-acao perigo" onClick={() => void excluir()}>Excluir</button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Linha({ rotulo, valor, onCopiar }: { rotulo: string; valor: string; onCopiar: () => void }) {
-  if (!valor) return null;
-  return (
-    <div className="cofre-linha">
-      <span className="cofre-rotulo">{rotulo}</span>
-      <span className="cofre-valor">{valor}</span>
-      <button type="button" className="cofre-acao" onClick={onCopiar} aria-label={`Copiar ${rotulo}`}>
-        <IconClipboard size={14} />
-      </button>
-    </div>
-  );
-}
-
-// ── Editor ──────────────────────────────────────────────────────────────────
-
-/**
- * Cadastrar é livre; editar um segredo que já existe pede o cofre aberto, e o
- * motivo é o mesmo de sempre: para editar é preciso ver o que está lá.
- */
-function EditorDeSegredo({ token, segredo, cofreAberto, onTrancou, onFechar, onGravado }: {
-  token: string;
-  segredo: Segredo | null;
-  cofreAberto: boolean;
-  onTrancou: () => void;
-  onFechar: () => void;
-  onGravado: (s: Segredo) => void;
-}) {
-  const { toast } = useToast();
-  const api = useApi(token);
-  const [titulo, setTitulo] = useState(segredo?.titulo ?? '');
-  const [categoria, setCategoria] = useState(segredo?.categoria ?? '');
-  const [c, setC] = useState<Conteudo>(CONTEUDO_VAZIO);
-  const [pronto, setPronto] = useState(!segredo);
-  const [salvando, setSalvando] = useState(false);
-  const [mostrando, setMostrando] = useState(false);
-  const carregou = useRef(false);
-
-  useEffect(() => {
-    if (!segredo || carregou.current) return;
-    carregou.current = true;
-    if (!cofreAberto) {
-      toast('error', 'O cofre está trancado', 'Peça o código para editar um segredo que já existe.');
-      onFechar();
-      return;
-    }
-    void (async () => {
-      const r = await api('', 'POST', { action: 'cofre_revelar', id: segredo.id });
-      if (r?.error) {
-        if (r.trancado) onTrancou();
-        toast('error', 'Não foi possível abrir este segredo', r.error);
-        onFechar();
-        return;
-      }
-      setC(r.conteudo);
-      setPronto(true);
-    })();
-  }, [segredo, cofreAberto, api, toast, onFechar, onTrancou]);
-
-  async function salvar() {
-    if (!titulo.trim() || salvando) return;
-    setSalvando(true);
-    const r = await api('', 'POST', {
-      action: 'salvar_segredo',
-      id: segredo?.id, titulo: titulo.trim(), categoria: categoria.trim() || null, conteudo: c,
-    });
-    if (r?.error) { toast('error', 'Não foi possível gravar', r.error); setSalvando(false); return; }
-    onGravado({
-      id: r.id,
-      titulo: titulo.trim(),
-      categoria: categoria.trim() || null,
-      criado_em: segredo?.criado_em ?? r.criado_em,
-      criado_por_nome: segredo?.criado_por_nome ?? r.criado_por_nome ?? null,
-      atualizado_em: segredo ? r.atualizado_em : null,
-      atualizado_por_nome: segredo ? r.atualizado_por_nome ?? null : null,
-    });
-    toast('success', segredo ? 'Segredo atualizado' : 'Segredo guardado');
-  }
-
-  return (
-    <div className="cofre-editor surge">
-      <p className="cofre-porta-titulo">{segredo ? 'Editar segredo' : 'Novo segredo'}</p>
-      {!pronto ? (
-        <div className="dux-spinner-row" style={{ padding: '24px 0' }}>
-          <span className="dux-spinner sm" />
-        </div>
-      ) : (
-        <>
-          <div className="cofre-grade">
-            <label className="cofre-campo">
-              <span className="form-label">Título</span>
-              <input className="form-input" value={titulo} onChange={e => setTitulo(e.target.value)}
-                placeholder="GitHub da conta assinaturas" />
-              <span className="cofre-dica">
-                Fica legível na lista, junto com a categoria, mesmo com o cofre trancado. É o que a
-                busca alcança, então não escreva a senha aqui.
-              </span>
-            </label>
-            <label className="cofre-campo">
-              <span className="form-label">Categoria</span>
-              <input className="form-input" value={categoria} list="cofre-categorias"
-                onChange={e => setCategoria(e.target.value)} placeholder="Ferramenta" />
-              <datalist id="cofre-categorias">
-                {CATEGORIAS.map(x => <option key={x} value={x} />)}
-              </datalist>
-            </label>
-            <label className="cofre-campo">
-              <span className="form-label">Usuário</span>
-              <input className="form-input" value={c.usuario} autoComplete="off"
-                onChange={e => setC({ ...c, usuario: e.target.value })} />
-            </label>
-            <label className="cofre-campo">
-              <span className="form-label">Endereço</span>
-              <input className="form-input" value={c.url} autoComplete="off"
-                onChange={e => setC({ ...c, url: e.target.value })} placeholder="https://" />
-            </label>
-          </div>
-
-          <label className="cofre-campo">
-            <span className="form-label">Senha</span>
-            <span className="cofre-senha-linha">
-              <input className="form-input mono" type={mostrando ? 'text' : 'password'} value={c.senha}
-                autoComplete="new-password" onChange={e => setC({ ...c, senha: e.target.value })} />
-              <button type="button" className="cofre-acao" onClick={() => setMostrando(v => !v)}
-                aria-label={mostrando ? 'Esconder a senha' : 'Ver a senha'}>
-                {mostrando ? <IconEyeOff size={14} /> : <IconEye size={14} />}
+        <div className="painel-rodape">
+          {segredo && podeExcluir && (
+            <div className="painel-rodape-lado">
+              <button type="button" className="rodape-icone perigo" onClick={() => setConfirmando(true)}
+                title="Excluir segredo" aria-label={`Excluir ${segredo.titulo}`}>
+                <IconTrash size={14} />
               </button>
-              <button type="button" className="cofre-acao"
-                onClick={() => { setC({ ...c, senha: sortearSenha() }); setMostrando(true); }}>
-                Sortear
-              </button>
-            </span>
-          </label>
-
-          <label className="cofre-campo">
-            <span className="form-label">Notas</span>
-            <textarea className="form-input" rows={3} value={c.notas} style={{ resize: 'vertical' }}
-              onChange={e => setC({ ...c, notas: e.target.value })}
-              placeholder="Onde essa conta é usada, quem mais a usa, o que quebra se ela mudar." />
-          </label>
-
-          <div className="cofre-editor-pe">
-            <button type="button" className="cofre-acao" onClick={onFechar}>Cancelar</button>
-            <button type="button" className="btn btn-primary" disabled={!titulo.trim() || salvando}
+            </div>
+          )}
+          <button type="button" className="modal-acao" onClick={fechar}>Fechar</button>
+          {!somenteLeitura && (!segredo || aberto) && (
+            <button type="button" className="btn btn-primary"
+              disabled={!titulo.trim() || titulo === TITULO_PADRAO || salvando}
+              title={titulo === TITULO_PADRAO ? 'Dê um nome ao segredo antes de guardar' : undefined}
               onClick={() => void salvar()}>
               {salvando ? <><IconSpinner size={13} /> Gravando</> : <><IconCheck size={14} /> Guardar</>}
             </button>
+          )}
+        </div>
+
+        {confirmando && segredo && (
+          <div className="cofre-confirma surge">
+            <span>Excluir <b>{segredo.titulo}</b>? Não há como recuperar.</span>
+            <button type="button" className="modal-acao" onClick={() => setConfirmando(false)}>
+              Cancelar
+            </button>
+            <button type="button" className="modal-acao-primaria cofre-excluir"
+              onClick={() => void excluir()}>
+              Excluir
+            </button>
           </div>
-        </>
-      )}
-    </div>
+        )}
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -646,22 +744,49 @@ function mmss(segundos: number): string {
 }
 
 const ESTILO = `
+  .cofre-busca { width: 260px; max-width: 40vw; }
   .cofre-vazio { font-size: 13px; color: var(--gray2); margin-top: 18px; }
-  .cofre-trancado { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+  .cofre-dica { font-size: 11px; color: var(--gray2); line-height: 1.45; margin: 0; }
+  .cofre-dica.erro { color: var(--red); }
+  .cofre-campo { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .cofre-secao {
+    font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--gray2); margin: 0 0 12px;
+  }
+  .cofre-limpar {
+    background: none; border: none; padding: 0; cursor: pointer; font-family: inherit;
+    font-size: 11px; font-weight: 600; color: var(--gray2);
+    transition: color var(--transition);
+  }
+  .cofre-limpar:hover { color: var(--black); }
+
   .cofre-aberto-ate {
     display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0;
     font-size: 11.5px; font-weight: 700; color: var(--gray);
   }
   .cofre-ponto { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
-  .cofre-porta-titulo {
-    font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
-    color: var(--gray2); margin: 0 0 12px;
-  }
-  .cofre-campo { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
-  .cofre-dica { font-size: 11px; color: var(--gray2); line-height: 1.45; }
-  .cofre-dica.erro { color: var(--red); }
 
-  .cofre-popup { max-width: 420px; padding: 22px; }
+  /* Botão de texto, e não o .admin-toolbar-btn: aquele é um quadrado de 34px
+     feito para ícone sozinho, e o rótulo vazava para fora dele. Aqui fica na
+     altura do filtro ao lado, que é o que alinha a linha inteira. */
+  .cofre-abrir {
+    height: 32px; padding: 0 14px; font-size: 12px;
+    display: inline-flex; align-items: center; gap: 6px;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .cofre-linha { cursor: pointer; }
+  .cofre-etiqueta {
+    display: inline-block; font-size: 10px; font-weight: 700;
+    color: var(--gray2); background: var(--gray4);
+    padding: 2px 8px; border-radius: var(--radius-pill);
+  }
+
+  /* O popup do código é o único diálogo centrado da tela: ele interrompe, e
+     gaveta que desliza da borda leria como "mais uma ficha". */
+  .cofre-popup {
+    background: var(--white); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card-hover); padding: 22px; width: min(420px, 92vw);
+  }
   .cofre-codigo {
     font-size: 22px; font-weight: 700; letter-spacing: 8px; text-align: center;
     font-variant-numeric: tabular-nums;
@@ -672,80 +797,21 @@ const ESTILO = `
   }
   .cofre-popup-pe .btn { display: inline-flex; align-items: center; gap: 7px; }
 
-  .cofre-barra {
-    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 18px;
+  .cofre-linha-campo { display: flex; align-items: center; gap: 6px; }
+  .cofre-linha-campo .form-input { flex: 1; min-width: 0; }
+  .cofre-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .cofre-trancado {
+    padding: 16px; border: 1px dashed var(--gray3); border-radius: var(--radius-md);
+    background: var(--bg); text-align: center;
   }
-  .cofre-busca { flex: 1 1 260px; max-width: 420px; }
-  .cofre-barra .btn { display: inline-flex; align-items: center; gap: 7px; }
-
-  .cofre-lista {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 12px; margin-top: 14px;
-  }
-  .cofre-card {
-    background: var(--white); border: 1px solid var(--gray3);
-    border-radius: var(--radius-lg); padding: 14px 16px; box-shadow: var(--shadow-card);
-    transition: box-shadow var(--transition-spring), border-color var(--transition);
-  }
-  .cofre-card:hover { box-shadow: var(--shadow-card-hover); }
-  .cofre-card-topo { display: flex; align-items: center; gap: 8px; }
-  .cofre-card-nome { flex: 1; min-width: 0; }
-  .cofre-card-titulo {
-    margin: 0; font-size: 13px; font-weight: 700; color: var(--black);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .cofre-etiqueta {
-    display: inline-block; margin-top: 4px; font-size: 10px; font-weight: 700;
-    color: var(--gray2); background: var(--gray4);
-    padding: 2px 8px; border-radius: var(--radius-pill);
-  }
-  .cofre-acao {
-    display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0;
-    background: none; border: none; padding: 4px 7px; cursor: pointer; font-family: inherit;
-    font-size: 11.5px; font-weight: 700; color: var(--gray2); border-radius: var(--radius-sm);
-    transition: color var(--transition), background var(--transition);
-  }
-  .cofre-acao:hover { color: var(--black); background: var(--gray4); }
-  .cofre-acao:disabled { cursor: default; color: var(--gray3); background: none; }
-  .cofre-acao.perigo:hover { color: var(--red); }
-
-  .cofre-corpo {
-    margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--gray3);
-    display: flex; flex-direction: column; gap: 8px;
-  }
-  .cofre-linha { display: flex; align-items: center; gap: 8px; }
-  .cofre-rotulo {
-    flex-shrink: 0; width: 62px; font-size: 10.5px; font-weight: 700;
-    letter-spacing: .04em; text-transform: uppercase; color: var(--gray2);
-  }
-  .cofre-valor {
-    flex: 1; min-width: 0; font-size: 12.5px; color: var(--black);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .cofre-valor.cofre-notas { white-space: pre-wrap; overflow: visible; }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-  .cofre-rodape { margin: 10px 0 0; font-size: 10.5px; color: var(--gray2); }
+  .cofre-trancado .btn { display: inline-flex; align-items: center; gap: 7px; }
+  .cofre-rodape-info { margin: 4px 0 0; font-size: 10.5px; color: var(--gray2); }
+  /* O unico botao vermelho da tela, e so no momento de confirmar. */
+  .cofre-excluir { background: var(--red); border-color: var(--red); }
   .cofre-confirma {
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-    margin-top: 10px; padding: 8px 10px;
+    margin: 0 24px 16px; padding: 10px 12px;
     border: 1px solid var(--red); border-radius: var(--radius-md);
-    font-size: 11.5px; color: var(--gray);
+    font-size: 11.5px; color: var(--gray); background: var(--white);
   }
-
-  .cofre-editor {
-    margin-top: 14px; padding: 20px;
-    background: var(--white); border: 1px solid var(--gray3);
-    border-radius: var(--radius-lg); box-shadow: var(--shadow-card);
-    display: flex; flex-direction: column; gap: 12px;
-  }
-  .cofre-grade {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;
-  }
-  .cofre-senha-linha { display: flex; align-items: center; gap: 6px; }
-  .cofre-senha-linha .form-input { flex: 1; min-width: 0; }
-  .cofre-editor-pe {
-    display: flex; align-items: center; gap: 10px; justify-content: flex-end;
-    padding-top: 12px; border-top: 1px solid var(--gray3);
-  }
-  .cofre-editor-pe .btn { display: inline-flex; align-items: center; gap: 7px; }
 `;
