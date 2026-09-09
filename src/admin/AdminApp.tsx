@@ -18,6 +18,7 @@ const TarefasPage = lazy(() => import('./TarefasPage'));
 const ConfiguracoesPage = lazy(() => import('./ConfiguracoesPage'));
 const FerramentasPage = lazy(() => import('./FerramentasPage'));
 const GeradorContratos = lazy(() => import('./GeradorContratos'));
+const GeradorPropostas = lazy(() => import('./GeradorPropostas'));
 const TalentosPage = lazy(() => import('./TalentosPage'));
 const PerfilPage = lazy(() => import('./PerfilPage'));
 const UsuariosPage = lazy(() => import('./UsuariosPage'));
@@ -1443,6 +1444,7 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
             {paginaNaTela === 'configuracoes' && <ConfiguracoesPage token={token} />}
             {paginaNaTela === 'ferramentas'   && <FerramentasPage onNavigate={p => setPage(p as Page)} />}
             {paginaNaTela === 'gerador-documentos' && <GeradorContratos token={token} />}
+            {paginaNaTela === 'gerador-propostas' && <GeradorPropostas />}
             {paginaNaTela === 'talentos'      && <TalentosPage      token={token} />}
             {paginaNaTela === 'perfil'        && <PerfilPage token={token} />}
             {paginaNaTela === 'usuarios'      && <UsuariosPage   token={token} />}

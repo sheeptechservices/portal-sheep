@@ -5,7 +5,7 @@
 export type Page =
   | 'dashboard'
   | 'projetos' | 'tarefas' | 'oportunidades' | 'configuracoes'
-  | 'ferramentas' | 'gerador-documentos' | 'talentos' | 'perfil'
+  | 'ferramentas' | 'gerador-documentos' | 'gerador-propostas' | 'talentos' | 'perfil'
   | 'usuarios';
 
 export type GrupoDestino = 'Páginas' | 'Ferramentas';
@@ -154,6 +154,22 @@ export const DESTINOS: Destino[] = [
         <rect x="8.4" y="8.4" width="13.2" height="13.2" rx="2.2" />
         <path d="M4.6 15.6a2.2 2.2 0 0 1-2.2-2.2V4.6a2.2 2.2 0 0 1 2.2-2.2h8.8a2.2 2.2 0 0 1 2.2 2.2" />
         <path d="M11.6 13.2h6.8M11.6 16.8h4.4" />
+      </svg>
+    ),
+  },
+  {
+    page: 'gerador-propostas',
+    titulo: 'Gerador de Propostas',
+    descricao: 'A apresentação comercial, do projeto ao investimento',
+    grupo: 'Ferramentas',
+    termos: ['proposta', 'comercial', 'apresentação', 'slides', 'orçamento', 'deck'],
+    icon: (
+      <svg {...ic}>
+        <path d="M13.4 2.6H6.2A2.2 2.2 0 0 0 4 4.8v14.4a2.2 2.2 0 0 0 2.2 2.2h7" />
+        <path d="M13.4 2.6 19 8.2v3" />
+        <path d="M7.8 11h5.6M7.8 14.6h3.4" />
+        <circle cx="17.4" cy="17.4" r="3.2" />
+        <path d="m15.9 17.4 1.1 1.1 2-2.2" />
       </svg>
     ),
   },

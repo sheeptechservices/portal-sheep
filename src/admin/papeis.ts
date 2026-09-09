@@ -53,13 +53,14 @@ export const PERMISSAO_DA_PAGINA: Record<string, string> = {
   'tarefas': 'tarefas:ver',
   'ferramentas': 'ferramentas:ver',
   'gerador-documentos': 'gerador:ver',
+  'gerador-propostas': 'propostas:ver',
   'talentos': 'talentos:ver',
   'configuracoes': 'configuracoes:ver',
 };
 
 /** Páginas que moram dentro do hub de Ferramentas. Abrir qualquer uma delas
  *  exige também abrir o hub - a mesma regra que o servidor aplica às ações. */
-export const PAGINAS_DE_FERRAMENTA = ['gerador-documentos'];
+export const PAGINAS_DE_FERRAMENTA = ['gerador-documentos', 'gerador-propostas'];
 
 /**
  * Páginas que não entram na matriz de permissões porque a trava delas é outra:

@@ -127,6 +127,18 @@ export const CATALOGO: PermGrupo[] = [
     ],
   },
   {
+    chave: 'propostas',
+    dentroDe: 'ferramentas',
+    label: 'Gerador de Propostas',
+    page: 'gerador-propostas',
+    nota: 'A apresentação comercial da casa, montada a partir do modelo aprovado.',
+    // A montagem acontece no navegador, então não há ação de servidor para
+    // trancar - só a porta da página.
+    acoes: [
+      { chave: 'propostas:ver', label: 'Abrir o gerador', acesso: true },
+    ],
+  },
+  {
     chave: 'talentos',
     dentroDe: 'ferramentas',
     label: 'Banco de Talentos',

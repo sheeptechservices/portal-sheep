@@ -112,6 +112,15 @@ const FERRAMENTAS: (Ferramenta & { page?: string })[] = [
     cor: '#D97706',
   },
   {
+    id: 'gerador-propostas',
+    page: 'gerador-propostas',
+    area: 'comercial',
+    nome: 'Gerador de Propostas',
+    descricao: 'Monte a apresentação comercial a partir do modelo aprovado: o projeto, as entregas, o cronograma e o investimento.',
+    icon: IconProposta,
+    cor: '#0EA5E9',
+  },
+  {
     id: 'banco-talentos',
     page: 'talentos',
     area: 'comercial',
@@ -119,15 +128,6 @@ const FERRAMENTAS: (Ferramenta & { page?: string })[] = [
     descricao: 'Quem já é da casa e quem quer ser, com a avaliação de competências de cada um em um só lugar.',
     icon: IconTalentos,
     cor: '#7C3AED',
-  },
-  {
-    id: 'gerador-propostas',
-    area: 'comercial',
-    nome: 'Gerador de Propostas',
-    descricao: 'Monte propostas comerciais a partir de modelos, com condições e valores já preenchidos, prontas para enviar ao cliente.',
-    icon: IconProposta,
-    cor: '#0EA5E9',
-    breve: true,
   },
 ];
 

@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Proposta · {{CLIENTE_NOME}} · Sheep Technology</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23beff01'/%3E%3Ctext x='16' y='23' font-family='Helvetica, Arial, sans-serif' font-size='21' font-weight='800' fill='%23121316' text-anchor='middle'%3ES%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ==========================================================================
+   V3 — PROPOSTA EM FORMATO DE SLIDES (16:9, tela cheia)
+   Design system portado do módulo de propostas do sistema interno
+   (Interno_GestaoProjetos/sheep-gestao · components/documentos).
+   Mecânica: crossfade + teclado/clique + barra de progresso + hint.
+   ========================================================================== */
+:root{
+  --bg:#F8F8F6;--white:#FFFFFF;--black:#121316;--black2:#0B0B0B;
+  --gray:#666666;--gray2:#AAAAAA;--gray3:#E3E4DE;
+  --yellow:#beff01;--yd:rgba(190,255,1,0.12);--yb:rgba(190,255,1,0.4);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--black);font-family:'Manrope',sans-serif;height:100vh;overflow:hidden;user-select:none}
+
+/* ---------- deck / slides ---------- */
+.deck{width:100vw;height:100vh;position:relative}
+.slide{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:clamp(36px,6.7vh,72px) clamp(48px,6.7vw,96px);opacity:0;pointer-events:none;transition:opacity .45s ease;background:var(--bg);overflow:hidden}
+.slide.active{opacity:1;pointer-events:all}
+.sw{background:var(--white)}
+.sd{background:var(--black2)}
+
+/* header / footer do slide */
+.sh{position:absolute;top:clamp(28px,3.3vh,36px);left:clamp(48px,6.7vw,96px);right:clamp(48px,6.7vw,96px);display:flex;align-items:center;justify-content:space-between}
+.st{font-size:clamp(9px,0.83vw,12px);font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--gray2)}
+.sn{font-size:clamp(9px,0.83vw,12px);color:var(--gray2);letter-spacing:.08em}
+.sd .st{color:rgba(255,255,255,0.25)}
+.st.site{text-transform:lowercase;text-decoration:none;transition:opacity .2s ease}
+.st.site:hover{opacity:.65}
+.sd .st.site{color:var(--yellow)}
+.sd .sn{color:var(--yellow)}
+.sf{position:absolute;bottom:clamp(28px,5.2vh,48px);left:clamp(48px,6.7vw,96px);right:clamp(48px,6.7vw,96px);display:flex;align-items:center;justify-content:space-between}
+.pt{width:160px;height:2px;background:var(--gray3);border-radius:2px;overflow:hidden}
+.sd .pt{background:rgba(255,255,255,0.12)}
+.pf{height:100%;width:0;background:var(--yellow);border-radius:2px;transition:width .45s ease}
+
+/* ---------- tipografia ---------- */
+.display{font-size:clamp(36px,6.7vw,96px);font-weight:800;line-height:1;letter-spacing:-.025em;color:var(--black)}
+.display .acc{color:var(--yellow)}
+.title{font-size:clamp(22px,3.9vw,56px);font-weight:700;line-height:1.1;letter-spacing:-.02em;color:var(--black)}
+.title.sm{font-size:clamp(16px,2.4vw,34px)}
+.title .acc{color:var(--yellow)}
+.sd .title{color:#fff}
+.body-text{font-size:clamp(10px,1.18vw,17px);font-weight:400;line-height:1.75;color:var(--gray);max-width:clamp(280px,40vw,580px)}
+.eyebrow{font-size:clamp(8px,0.83vw,12px);font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--yellow);margin-bottom:clamp(7px,0.97vw,14px)}
+/* so espacador: a barra visivel saiu, mas a margem dela separa o titulo do resto */
+.rule{width:clamp(28px,3.3vw,48px);height:2px;background:transparent;margin:clamp(10px,2vh,22px) 0;border-radius:1px}
+
+/* ---------- logo do cliente na capa — OPCIONAL, desativada por padrão ----------
+   Testada em 19/08/2026 e descartada a pedido do usuário ("não gostei muito").
+   Para retomar, inserir na capa antes do eyebrow "Proposta Comercial":
+     <div class="a"><div class="client-logo"><img src="/assets/clientes/ARQUIVO" alt="CLIENTE"></div></div>
+   O chip branco é necessário porque a capa é preta e logos vêm em qualquer cor. */
+.client-logo{display:inline-flex;align-items:center;justify-content:center;background:#fff;border-radius:clamp(8px,0.9vw,14px);padding:clamp(9px,1vw,16px) clamp(13px,1.5vw,24px);margin-bottom:clamp(14px,2.2vh,26px);box-shadow:0 8px 28px rgba(0,0,0,0.28)}
+.client-logo img{max-height:clamp(34px,4.2vw,64px);max-width:clamp(130px,17vw,260px);object-fit:contain;display:block}
+
+/* ---------- faixa de créditos da capa (equivalente ao meta-row do v1/v2) ---------- */
+.meta-row{display:grid;grid-template-columns:repeat(3,1fr);margin-top:clamp(20px,3.2vh,38px);border-top:1px solid rgba(255,255,255,0.14);max-width:clamp(420px,52vw,760px)}
+.meta-cell{padding:clamp(10px,1.6vh,18px) clamp(14px,1.6vw,24px) 0 clamp(16px,1.8vw,28px);border-right:1px solid rgba(255,255,255,0.09)}
+.meta-cell:first-child{padding-left:0}
+.meta-cell:last-child{border-right:none}
+.meta-k{font-size:clamp(7px,0.74vw,10px);font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,0.3);margin-bottom:clamp(4px,0.6vh,8px)}
+.meta-v{font-size:clamp(10px,1.04vw,15px);font-weight:600;color:rgba(255,255,255,0.82)}
+
+/* ---------- cards / grids / listas ---------- */
+.card{background:var(--white);border:1px solid var(--gray3);border-radius:clamp(10px,1.1vw,16px);padding:clamp(14px,1.67vw,24px);transition:border-color .2s,transform .28s cubic-bezier(.34,1.56,.64,1),box-shadow .28s;cursor:default}
+.card:hover{border-color:var(--yellow);transform:translateY(-7px) scale(1.02);box-shadow:0 18px 40px rgba(0,0,0,0.10)}
+.ct{border-top:2px solid var(--yellow)}
+.card-title{font-size:clamp(12px,1.32vw,19px);font-weight:700;color:var(--black);margin-bottom:clamp(5px,0.56vw,8px)}
+.card-body{font-size:clamp(9px,0.97vw,14px);color:var(--gray);line-height:1.65}
+.card-num{display:inline-flex;align-items:center;justify-content:center;min-width:clamp(22px,2.2vw,30px);height:clamp(22px,2.2vw,30px);border-radius:100px;background:var(--yellow);color:var(--black);font-size:clamp(9px,0.9vw,13px);font-weight:800;margin-bottom:clamp(8px,0.97vw,14px)}
+/* ícone quadrado verde dos cards de solução (mesmo do módulo interno) */
+.sol-icon{display:inline-flex;align-items:center;justify-content:center;width:clamp(26px,3.06vw,44px);height:clamp(26px,3.06vw,44px);border-radius:clamp(7px,0.83vw,12px);background:var(--yellow);font-size:clamp(14px,1.53vw,22px);margin-bottom:clamp(8px,0.97vw,14px);flex-shrink:0;transition:transform .28s cubic-bezier(.34,1.56,.64,1)}
+.card:hover .sol-icon{transform:scale(1.18) rotate(-8deg)}
+.g2{display:grid;grid-template-columns:1fr 1.3fr;gap:clamp(32px,5vw,72px);align-items:start}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(9px,1.11vw,16px)}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:clamp(7px,0.83vw,12px)}
+.g5{display:grid;grid-template-columns:repeat(5,1fr);gap:clamp(7px,0.83vw,12px)}
+.krl{list-style:none;display:flex;flex-direction:column;gap:clamp(5px,0.56vw,8px)}
+.krl li{display:flex;gap:clamp(6px,0.69vw,10px);align-items:flex-start;font-size:clamp(9px,1.04vw,15px);color:var(--gray);line-height:1.55;padding:clamp(6px,0.69vw,10px) clamp(9px,0.97vw,14px);background:var(--white);border:1px solid var(--gray3);border-radius:clamp(5px,0.56vw,8px);transition:transform .22s cubic-bezier(.34,1.56,.64,1),border-color .18s,box-shadow .22s;cursor:default}
+.krl li:hover{transform:translateX(10px);border-color:var(--yellow);box-shadow:0 4px 14px rgba(0,0,0,0.07)}
+.krl li::before{content:'';width:clamp(3px,0.35vw,5px);height:clamp(3px,0.35vw,5px);border-radius:50%;background:var(--yellow);margin-top:clamp(4px,0.49vw,7px);flex-shrink:0}
+
+/* callout de missão / nota de decisão */
+.note{border-left:2px solid var(--yellow);background:var(--white);border-radius:0 clamp(8px,0.8vw,12px) clamp(8px,0.8vw,12px) 0;padding:clamp(14px,1.5vw,22px) clamp(16px,1.7vw,26px)}
+.note .k{font-size:clamp(7px,0.76vw,11px);font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--gray2);margin-bottom:clamp(6px,0.7vw,10px)}
+.note .q{font-size:clamp(11px,1.25vw,18px);font-weight:600;line-height:1.5;color:var(--black)}
+
+/* ---------- tecnologias (pill cloud flutuante) ---------- */
+@keyframes floatpill{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes floatpill-sm{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+.pill-cloud{display:flex;flex-wrap:wrap;gap:clamp(7px,0.8vw,12px);justify-content:center;align-items:center;align-content:center;margin-top:6px}
+.pill{display:inline-block;padding:clamp(7px,0.7vw,10px) clamp(14px,1.5vw,22px);border-radius:100px;font-size:clamp(10px,1.04vw,15px);font-weight:700;line-height:1;letter-spacing:.01em;border:1px solid var(--black2);animation:floatpill 3s ease-in-out infinite;cursor:default;transition:box-shadow .25s,filter .25s}
+/* lista grande (~50+ tecnologias): reduz tamanho e amplitude do float, como faz o módulo interno */
+.pill-cloud.dense{gap:clamp(4px,0.45vw,7px)}
+.pill-cloud.dense .pill{padding:clamp(3px,0.35vw,5px) clamp(7px,0.75vw,11px);font-size:clamp(7px,0.72vw,11px);animation-name:floatpill-sm}
+.pill-dark{background:var(--black2);color:#fff}
+.pill-accent{background:var(--yellow);color:var(--black2)}
+
+/* ---------- clientes (mural de logos) ---------- */
+.logo-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:clamp(7px,0.8vw,12px)}
+.logo-card{background:#fff;border:1px solid var(--gray3);border-radius:clamp(7px,0.8vw,10px);padding:clamp(8px,0.9vw,14px);display:flex;align-items:center;justify-content:center;aspect-ratio:2/1;transition:border-color .2s,transform .2s,box-shadow .2s}
+.logo-card:hover{border-color:var(--yellow);transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,0.08)}
+.logo-card img{max-width:100%;max-height:100%;object-fit:contain}
+.logo-card img.reduz{max-width:78%;max-height:78%}
+/* logo de origem pequena: amplia um pouco (arquivo tem baixa resolucao) */
+.logo-card img.amplia{height:76%;width:auto;max-height:none;max-width:78%}
+
+/* ---------- investimento ---------- */
+.inv-table{width:100%;border-collapse:collapse;margin-top:clamp(9px,1.11vw,16px)}
+.inv-table tr{border-bottom:1px solid var(--gray3)}
+.inv-table tr:last-child{border-bottom:none}
+.inv-table td{padding:clamp(6px,0.69vw,10px) clamp(9px,0.97vw,14px);font-size:clamp(9px,0.97vw,14px);color:var(--gray);background:var(--white)}
+.inv-table td:last-child{font-weight:700;color:var(--black);text-align:right}
+.inv-total{background:var(--black2)!important}
+.inv-total td{color:rgba(255,255,255,0.4)!important}
+.inv-total td:last-child{color:var(--yellow)!important;font-size:clamp(13px,1.39vw,20px)}
+.price-figure{font-size:clamp(26px,3.4vw,48px);font-weight:800;letter-spacing:-.02em;color:var(--black);line-height:1}
+.price-figure sup{font-size:.45em;font-weight:700;color:var(--gray2);margin-right:2px;vertical-align:super}
+.price-unit{font-size:clamp(9px,0.9vw,13px);color:var(--gray2);margin-top:clamp(4px,0.5vw,7px)}
+
+/* ---------- cronograma (fases) ---------- */
+@keyframes gbar{from{opacity:0;transform:scaleX(0)}to{opacity:1;transform:scaleX(1)}}
+.gantt{width:100%;margin-top:clamp(8px,1vh,14px);position:relative}
+/* linhas verticais suaves separando os meses; os marcos ficam sobre elas.
+   Ficam presas ao .gantt-corpo (cabeçalho + etapas), então nunca invadem o rodapé. */
+.gantt-corpo{position:relative}
+.gantt-vlines{position:absolute;top:0;bottom:0;left:clamp(160px,20vw,275px);right:0;pointer-events:none;z-index:1}
+.gantt-vlines span{position:absolute;top:0;bottom:0;width:1px;background:var(--gray3);opacity:.85}
+.gantt-head{display:flex;margin-bottom:clamp(4px,0.5vh,7px)}
+.gantt-namecol{width:clamp(160px,20vw,275px);flex-shrink:0}
+.gantt-weeks{flex:1;display:grid}
+.gantt-week{text-align:center;font-size:clamp(7px,0.66vw,10px);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gray2)}
+.gantt-row{display:flex;align-items:center;padding:clamp(4px,0.55vh,8px) 0;border-bottom:1px solid var(--gray3)}
+.gantt-row:last-child{border-bottom:none}
+.gantt-name{width:clamp(160px,20vw,275px);flex-shrink:0;display:flex;align-items:center;gap:clamp(6px,0.7vw,10px);font-size:clamp(9px,0.97vw,14px);font-weight:700;color:var(--black);padding-right:clamp(8px,1vw,16px)}
+.gantt-num{width:clamp(17px,1.7vw,23px);height:clamp(17px,1.7vw,23px);border-radius:50%;background:var(--yellow);display:flex;align-items:center;justify-content:center;font-size:clamp(7px,0.7vw,10px);font-weight:800;color:var(--black);flex-shrink:0}
+.gantt-track{flex:1;height:clamp(20px,2.4vh,30px);background:rgba(0,0,0,0.04);border-radius:clamp(4px,0.45vw,6px);position:relative;overflow:hidden}
+.gantt-bar{position:absolute;top:0;height:100%;z-index:2;border-radius:clamp(4px,0.45vw,6px);background:linear-gradient(90deg,var(--yellow),rgba(190,255,1,0.78));transform-origin:left center;animation:gbar .6s cubic-bezier(.34,1.56,.64,1) both;display:flex;align-items:center;justify-content:flex-end;padding-right:clamp(5px,0.6vw,10px)}
+.gantt-bar span{font-size:clamp(7px,0.68vw,10px);font-weight:800;color:rgba(0,0,0,0.55);white-space:nowrap}
+.gantt-note{margin-top:clamp(7px,0.9vh,12px);font-size:clamp(7px,0.7vw,10px);font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--gray2)}
+/* marcos na régua do tempo: sprint reviews e conclusão */
+.gantt-marcos{position:relative;z-index:3;display:flex;align-items:center;height:clamp(21px,2.9vh,31px)}
+.gantt-marcos-track{flex:1;position:relative;height:100%}
+.marco{position:absolute;top:32%;width:clamp(7px,0.68vw,10px);height:clamp(7px,0.68vw,10px);transform:translate(-50%,-50%) rotate(45deg);border-radius:1px}
+.marco.sprint{background:#F59E0B}
+.marco.fim{background:#3B82F6;top:80%}
+/* bandeira quadriculada: conclusão da fase atual, logo após o fim da régua */
+.marco-bandeira{position:absolute;left:100%;top:32%;transform:translate(-50%,-50%);width:clamp(11px,1.05vw,15px);height:clamp(11px,1.05vw,15px);color:var(--black)}
+/* etapa transversal: barra cheia + textura diagonal para destacá-la das demais */
+.gantt-bar.cross{background-image:repeating-linear-gradient(45deg,rgba(0,0,0,0.13) 0 4px,transparent 4px 10px),linear-gradient(90deg,var(--yellow),rgba(190,255,1,0.78))}
+.gantt-num.aster{font-size:clamp(11px,1.1vw,16px);line-height:0;padding-top:clamp(3px,0.35vh,5px)}
+/* legenda + dinâmica de reuniões */
+/* rodapé do cronograma: LEGENDA e DINÂMICA lado a lado */
+.gantt-rodape{display:flex;flex-wrap:wrap;gap:clamp(22px,3.2vw,56px);align-items:flex-start;justify-content:center;width:fit-content;max-width:100%;margin:clamp(26px,3.6vh,46px) auto 0;background:var(--white);border:1px solid var(--gray3);border-radius:clamp(8px,0.9vw,14px);padding:clamp(12px,1.4vw,20px) clamp(20px,2.2vw,36px)}
+.gantt-bloco-t{font-size:clamp(7px,0.7vw,10px);font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--black);margin-bottom:clamp(5px,0.7vh,9px)}
+.gantt-dinamica{list-style:none;display:flex;flex-direction:column;gap:clamp(4px,0.55vh,7px);max-width:clamp(280px,40vw,560px)}
+.gantt-dinamica li{display:flex;gap:clamp(5px,0.6vw,9px);align-items:flex-start;font-size:clamp(7px,0.74vw,11px);line-height:1.5;color:var(--gray)}
+.gantt-dinamica li::before{content:'';width:clamp(3px,0.3vw,4px);height:clamp(3px,0.3vw,4px);border-radius:50%;background:var(--yellow);margin-top:clamp(4px,0.45vh,6px);flex-shrink:0}
+.gantt-dinamica b{color:var(--black);font-weight:700}
+.gantt-legenda{display:flex;flex-direction:column;gap:clamp(4px,0.55vh,7px);align-items:flex-start;font-size:clamp(7px,0.74vw,11px);font-weight:600;letter-spacing:0;color:var(--gray)}
+.gantt-legenda span{display:flex;align-items:center;gap:clamp(4px,0.45vw,7px)}
+.gantt-legenda i{width:clamp(6px,0.58vw,9px);height:clamp(6px,0.58vw,9px);transform:rotate(45deg);border-radius:1px;display:inline-block;flex-shrink:0}
+.gantt-legenda i.sprint{background:#F59E0B}
+.gantt-legenda i.fim{background:#3B82F6}
+.gantt-legenda svg{width:clamp(9px,0.85vw,12px);height:clamp(9px,0.85vw,12px);color:var(--black);flex-shrink:0}
+/* subatividades dentro da expansão da etapa */
+.fd-sub{list-style:none;display:flex;flex-direction:column;gap:clamp(3px,0.4vh,6px);margin-bottom:clamp(8px,1vh,13px);padding-bottom:clamp(8px,1vh,13px);border-bottom:1px dashed var(--gray3)}
+.fd-sub li{display:flex;gap:clamp(5px,0.6vw,9px);align-items:center;font-size:clamp(8px,0.86vw,13px);color:var(--black);font-weight:600}
+.fd-sub li::before{content:'';width:clamp(4px,0.4vw,6px);height:clamp(4px,0.4vw,6px);background:var(--yellow);transform:rotate(45deg);flex-shrink:0}
+.fd-rot{font-size:clamp(7px,0.66vw,10px);font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--gray2);margin-bottom:clamp(5px,0.6vh,9px)}
+.fd-entregas{display:flex;flex-wrap:wrap;gap:clamp(4px,0.5vw,8px)}
+.fd-entrega{font-size:clamp(7px,0.7vw,10px);font-weight:700;background:var(--yellow);color:var(--black);border-radius:100px;padding:clamp(3px,0.35vh,5px) clamp(7px,0.8vw,12px)}
+/* etapas expansíveis: a fase em foco abre no lugar e as demais esmaecem */
+.gantt-fase{transition:opacity .3s ease}
+.gantt.focada .gantt-fase:not(.aberta){opacity:.2}
+/* etapas esmaecidas voltam parcialmente ao passar o mouse, sinalizando que são clicáveis */
+.gantt.focada .gantt-fase:not(.aberta):hover{opacity:.6}
+.gantt-row{cursor:pointer;border-radius:clamp(4px,0.45vw,6px);transition:background .25s ease;position:relative}
+.gantt-row:hover{background:rgba(190,255,1,0.07)}
+/* balãozinho de dica na primeira etapa, apontando para o toggle */
+@keyframes balaoPulsa{0%,100%{transform:translateY(-50%) translateX(0)}50%{transform:translateY(-50%) translateX(-4px)}}
+.dica-balao{position:absolute;top:50%;right:clamp(10px,1.2vw,20px);transform:translateY(-50%);background:var(--black2);color:#fff;font-size:clamp(7px,0.7vw,10px);font-weight:700;letter-spacing:.04em;padding:clamp(4px,0.5vw,7px) clamp(8px,0.9vw,13px);border-radius:100px;white-space:nowrap;pointer-events:none;animation:balaoPulsa 2.2s ease-in-out infinite;transition:opacity .3s ease;z-index:4}
+.dica-balao::after{content:'';position:absolute;right:100%;top:50%;transform:translateY(-50%);border:clamp(4px,0.4vw,6px) solid transparent;border-right-color:var(--black2)}
+.gantt.focada .dica-balao{opacity:0}
+.gantt-fase.aberta .gantt-row{background:rgba(190,255,1,0.13)}
+/* seta no início da etapa: aponta para a direita fechada, para baixo aberta */
+.fase-seta{flex-shrink:0;width:clamp(9px,0.95vw,13px);height:clamp(9px,0.95vw,13px);color:var(--gray2);transition:transform .3s cubic-bezier(.34,1.56,.64,1),color .25s ease}
+.gantt-row:hover .fase-seta{color:var(--black)}
+.gantt-fase.aberta .fase-seta{transform:rotate(90deg);color:var(--black)}
+.gantt-fase.aberta .gantt-num{box-shadow:0 0 0 3px rgba(190,255,1,0.35)}
+/* fecha rápido e abre suave: evita o painel anterior ficar "fantasma" ao trocar de etapa */
+.fase-exp{position:relative;z-index:3;max-height:0;opacity:0;overflow:hidden;transition:max-height .16s ease-in,opacity .1s ease-in,margin .16s ease-in}
+.gantt-fase.aberta .fase-exp{max-height:clamp(100px,20vh,190px);opacity:1;margin:clamp(5px,0.7vh,10px) 0 clamp(9px,1.1vh,15px);transition:max-height .4s cubic-bezier(.4,0,.2,1),opacity .3s ease .06s,margin .4s cubic-bezier(.4,0,.2,1)}
+.fase-exp-in{border-left:2px solid var(--yellow);background:var(--white);border-radius:0 clamp(8px,0.8vw,12px) clamp(8px,0.8vw,12px) 0;padding:clamp(10px,1.1vw,17px) clamp(13px,1.4vw,22px);margin-left:clamp(160px,20vw,275px);box-shadow:0 10px 30px rgba(0,0,0,0.07)}
+.fd-head{display:flex;align-items:baseline;gap:clamp(8px,0.9vw,13px);margin-bottom:clamp(7px,0.85vh,12px)}
+.fd-nome{font-size:clamp(10px,1.05vw,15px);font-weight:700;color:var(--black)}
+.fd-dur{margin-left:auto;font-size:clamp(7px,0.72vw,10px);font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gray2)}
+.fd-lista{list-style:none;display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(6px,0.7vw,12px)}
+.fd-lista li{display:flex;gap:clamp(5px,0.6vw,9px);align-items:flex-start;font-size:clamp(8px,0.86vw,13px);line-height:1.5;color:var(--gray)}
+.fd-lista li::before{content:'';width:clamp(3px,0.32vw,5px);height:clamp(3px,0.32vw,5px);border-radius:50%;background:var(--yellow);margin-top:clamp(4px,0.45vh,7px);flex-shrink:0}
+@media screen and (max-width:900px){.fd-lista{grid-template-columns:1fr}.fase-exp-in{margin-left:0}}
+
+/* ---------- passos de fechamento ---------- */
+.steps{display:flex;flex-direction:column;gap:clamp(8px,1vh,14px)}
+.step{display:flex;align-items:center;gap:clamp(10px,1.2vw,18px);font-size:clamp(10px,1.11vw,16px);color:var(--gray)}
+.sd .step{color:rgba(255,255,255,0.75)}
+.step-n{width:clamp(22px,2.3vw,32px);height:clamp(22px,2.3vw,32px);border-radius:50%;background:var(--yellow);color:var(--black);display:flex;align-items:center;justify-content:center;font-size:clamp(9px,0.9vw,13px);font-weight:800;flex-shrink:0}
+.cta{display:inline-flex;align-items:center;gap:10px;margin-top:clamp(16px,2vh,28px);background:var(--yellow);color:var(--black);border:none;border-radius:100px;font-size:clamp(10px,1.04vw,15px);font-weight:800;letter-spacing:.04em;text-transform:uppercase;text-decoration:none;padding:clamp(10px,1.2vw,17px) clamp(20px,2.4vw,34px);transition:transform .2s,box-shadow .2s}
+.cta:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(190,255,1,0.35)}
+.contact{display:flex;flex-direction:column;gap:clamp(3px,0.4vh,6px);font-size:clamp(9px,0.97vw,14px);color:rgba(255,255,255,0.55)}
+.contact .nm{font-size:clamp(12px,1.25vw,18px);font-weight:700;color:#fff}
+.contact a{color:var(--yellow);text-decoration:none}
+
+/* ---------- protótipos (mock) dentro do slide ---------- */
+.mock{background:var(--white);border:1px solid var(--gray3);border-radius:clamp(8px,0.9vw,14px);padding:clamp(12px,1.4vw,20px);width:100%}
+.mock-cap{display:flex;justify-content:space-between;align-items:center;font-size:clamp(7px,0.72vw,10px);font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--gray2);padding-bottom:clamp(7px,0.8vw,12px);margin-bottom:clamp(8px,0.9vw,14px);border-bottom:1px dashed var(--gray3)}
+.mock-tabs{display:flex;flex-wrap:wrap;gap:clamp(5px,0.6vw,8px);margin-bottom:clamp(8px,0.9vw,14px)}
+.mock-tab{font-family:'Manrope',sans-serif;font-size:clamp(8px,0.83vw,12px);font-weight:700;background:none;border:1px solid var(--gray3);border-radius:100px;color:var(--gray);padding:clamp(5px,0.6vw,9px) clamp(10px,1.1vw,16px);cursor:pointer;transition:background .15s,color .15s,border-color .15s}
+.mock-tab:hover{border-color:var(--yellow)}
+.mock-tab.active{background:var(--yellow);border-color:var(--yellow);color:var(--black)}
+.mock-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:clamp(6px,0.7vw,10px) clamp(8px,0.9vw,13px);border:1px solid var(--gray3);border-radius:clamp(5px,0.6vw,8px);background:var(--white);margin-bottom:clamp(4px,0.5vw,7px)}
+.mock-row-t{font-size:clamp(9px,0.95vw,13px);font-weight:700;color:var(--black)}
+.mock-row-s{font-size:clamp(8px,0.85vw,12px);color:var(--gray)}
+.mock-btn{font-family:'Manrope',sans-serif;font-size:clamp(8px,0.83vw,12px);font-weight:800;letter-spacing:.04em;text-transform:uppercase;background:var(--yellow);color:var(--black);border:none;border-radius:100px;padding:clamp(7px,0.8vw,12px) clamp(14px,1.5vw,22px);cursor:pointer}
+.mock-btn:disabled{background:var(--gray3);color:var(--gray2);cursor:default}
+.mock-link{background:none;border:none;padding:0;font-family:'Manrope',sans-serif;font-size:clamp(8px,0.83vw,12px);font-weight:700;color:var(--gray2);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.mock-link:hover{color:var(--black)}
+
+/* ---------- animação de entrada dos elementos ---------- */
+@keyframes up{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.slide.active .a{animation:up .5s ease forwards;opacity:0}
+.slide.active .a:nth-child(1){animation-delay:.05s}
+.slide.active .a:nth-child(2){animation-delay:.12s}
+.slide.active .a:nth-child(3){animation-delay:.19s}
+.slide.active .a:nth-child(4){animation-delay:.26s}
+.slide.active .a:nth-child(5){animation-delay:.33s}
+.slide.active .a:nth-child(6){animation-delay:.40s}
+.slide.active .a:nth-child(7){animation-delay:.47s}
+
+/* ---------- capa: ornamentos ---------- */
+@keyframes spin-cw{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+@keyframes spin-ccw{from{transform:rotate(0)}to{transform:rotate(-360deg)}}
+@keyframes rise{0%{opacity:0;transform:translateY(0) scale(1)}40%{opacity:1}100%{opacity:0;transform:translateY(-80px) scale(.6)}}
+@keyframes scanv{0%,100%{opacity:0;transform:translateX(-100%)}20%,80%{opacity:1}50%{transform:translateX(100vw)}}
+@keyframes ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.tw{position:absolute;bottom:clamp(36px,6.7vh,72px);left:0;right:0;overflow:hidden;white-space:nowrap;pointer-events:none}
+.ti{display:inline-block;animation:ticker 18s linear infinite;font-size:clamp(7px,0.76vw,11px);font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,0.05)}
+
+/* ---------- hint de navegação ---------- */
+.hint{position:fixed;bottom:clamp(14px,2.6vh,28px);left:50%;transform:translateX(-50%);font-size:clamp(8px,0.83vw,12px);font-weight:600;color:var(--gray2);background:var(--white);padding:clamp(4px,0.49vw,7px) clamp(10px,1.11vw,16px);border-radius:100px;border:1px solid var(--gray3);transition:opacity .5s;pointer-events:none;z-index:100}
+.hint.hidden{opacity:0}
+
+/* ---------- agenda ---------- */
+.agenda{list-style:none;display:grid;grid-auto-flow:column;grid-template-columns:1fr 1fr;column-gap:clamp(22px,3.3vw,56px);margin:clamp(8px,1.3vh,16px) 0 0;padding:0}
+.ag-item{display:flex;align-items:center;gap:clamp(9px,1.11vw,16px);width:100%;background:none;border:0;border-bottom:1px solid var(--gray3);padding:clamp(8px,1.25vh,15px) clamp(3px,0.4vw,6px);font-family:'Manrope',sans-serif;text-align:left;cursor:pointer;transition:background .22s ease,padding-left .22s ease}
+.ag-item:hover{background:var(--white);padding-left:clamp(9px,1.11vw,16px)}
+.ag-n{flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:clamp(20px,2.1vw,28px);height:clamp(20px,2.1vw,28px);border-radius:100px;background:var(--yellow);color:var(--black);font-size:clamp(8px,0.8vw,11px);font-weight:800}
+.ag-t{font-size:clamp(11px,1.18vw,17px);font-weight:600;line-height:1.3;color:var(--black)}
+.ag-p{margin-left:auto;padding-left:clamp(8px,1vw,14px);font-size:clamp(8px,0.72vw,11px);font-weight:700;letter-spacing:.1em;color:var(--gray)}
+
+/* ---------- contraste do acento em fundo claro ---------- */
+/* O lime e cor de fundo, nao de letra: sobre branco da ~1,5:1, quando o minimo
+   legivel e 4,5:1. Em slide claro o acento do titulo acompanha o resto do
+   titulo em preto - o destaque vem do tamanho e do peso, nao da cor. Slides .sd
+   ficam como estao, porque la o lime tem fundo escuro atras e le a ~17:1. */
+.slide:not(.sd) .title .acc,
+.slide:not(.sd) .display .acc,
+.slide:not(.sd) .eyebrow{ color: var(--black) }
+
+/* ---------- responsivo: tablet estreito e celular ---------- */
+/* No desktop cada slide cabe numa tela. No celular isso e impossivel sem
+   espremer, entao a estrategia muda: as colunas empilham, a tipografia cai um
+   degrau e o slide passa a rolar verticalmente quando precisa. */
+@media screen and (max-width: 860px){
+  html, body{ overflow-x: hidden }
+
+  /* a agenda vira coluna unica; o grid-template-rows vem inline do JS */
+  .agenda{ grid-auto-flow: row; grid-template-columns: 1fr; grid-template-rows: none !important }
+  .slide{
+    padding: clamp(22px,4.5vh,40px) clamp(18px,5vw,34px);
+    justify-content: flex-start;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* .sh e .sf sao absolutos no desktop, ancorados nas bordas do slide. Com o
+     slide rolando no celular, eles ficariam por cima do conteudo: entram no
+     fluxo para acompanhar a rolagem. */
+  .sh{ position: relative; top: auto; left: auto; right: auto; margin-bottom: clamp(10px,2vh,18px) }
+  .sf{ position: relative; bottom: auto; left: auto; right: auto; margin-top: clamp(14px,2.6vh,22px) }
+
+  /* grades: tudo em coluna unica, que e o unico jeito de manter o texto legivel */
+  /* !important porque varios slides definem as colunas inline, e no celular
+     coluna unica nao e preferencia: e o que mantem o texto legivel */
+  .g2, .g3, .g4, .g5{ grid-template-columns: 1fr !important; gap: clamp(12px,2.4vh,20px) }
+
+  .title{ font-size: clamp(26px,7.4vw,40px); line-height: 1.12 }
+  .title.sm{ font-size: clamp(21px,6vw,31px) }
+  .body-text{ font-size: clamp(13px,3.5vw,16px); max-width: none }
+
+  .card{ padding: clamp(13px,3.4vw,19px) }
+  .krl li{ font-size: clamp(12px,3.2vw,14px) }
+  .note{ font-size: clamp(12px,3.2vw,14px) }
+
+  .price-figure{ font-size: clamp(30px,8.6vw,42px) }
+  .inv-table td{ font-size: clamp(11px,2.9vw,13px) }
+
+  .pill{ font-size: clamp(11px,2.9vw,13px); padding: 7px 13px }
+  .logo-grid{ gap: clamp(9px,2.4vw,14px) }
+
+  /* cronograma: as barras ficam ilegiveis em 375px, entao o corpo rola na
+     horizontal com largura minima util, em vez de comprimir tudo */
+  .gantt-corpo{ overflow-x: auto; -webkit-overflow-scrolling: touch }
+  .gantt-corpo > *{ min-width: 620px }
+  .gantt-rodape{ grid-template-columns: 1fr; gap: clamp(10px,2.2vh,16px) }
+  .fase-exp-in{ margin-left: 0 }
+  .dica-balao{ display: none }
+
+  /* prototipos: largura cheia, sem margem lateral herdada do layout de duas colunas */
+  .mock{ width: 100% }
+
+  .steps{ gap: clamp(9px,2vh,14px) }
+  .cta{ width: 100%; text-align: center }
+}
+
+/* celular estreito: mais um degrau, sem quebrar a hierarquia */
+@media screen and (max-width: 480px){
+  .slide{ padding: clamp(18px,3.6vh,28px) clamp(15px,4.4vw,22px) }
+  .title{ font-size: clamp(23px,7.8vw,32px) }
+  .title.sm{ font-size: clamp(19px,6.4vw,25px) }
+  .sh .st{ font-size: 9px }
+  .gantt-corpo > *{ min-width: 560px }
+}
+
+/* deitado no celular: altura curta, entao o respiro vertical encolhe */
+@media screen and (max-height: 480px) and (orientation: landscape){
+  .slide{ padding-top: clamp(14px,3vh,22px); padding-bottom: clamp(14px,3vh,22px) }
+  .title{ font-size: clamp(21px,4.6vw,30px) }
+}
+
+/* ---------- IMPRESSAO / PDF ---------- */
+/* Na tela o deck e uma pilha de slides sobrepostos, so um visivel. No papel
+   isso vira um documento linear: cada slide ocupa uma pagina inteira, na
+   proporcao 16:9, e os elementos de navegacao somem. */
+@page{ size: 1280px 720px; margin: 0 }
+
+@media print{
+  html, body{ height:auto; overflow:visible; background:#fff }
+  .deck{ position:static; height:auto; overflow:visible }
+
+  .slide{
+    position:relative !important;
+    inset:auto !important;
+    opacity:1 !important;
+    pointer-events:auto !important;
+    width:1280px; height:720px;
+    transition:none !important; animation:none !important;
+    break-after:page; page-break-after:always;
+    overflow:hidden;
+  }
+  .slide:last-child{ break-after:auto; page-break-after:auto }
+
+  /* a barra de progresso anima a largura; a captura pode pegar o meio do
+     caminho e imprimir a barra pela metade */
+  .pf{ transition: none !important }
+
+  /* a entrada escalonada depende de JS e no papel so atrapalharia */
+  .a{ opacity:1 !important; transform:none !important; animation:none !important }
+
+  /* controles que so fazem sentido na tela */
+  .navhint, .dica-balao, [data-biframe-dica], .ag-dica{ display:none !important }
+
+  /* As barras do cronograma nascem em opacity 0 e scaleX(0), e so aparecem pela
+     animacao de entrada. Sem animacao no papel, elas sumiriam: aqui vao direto
+     para o estado final. */
+  .gantt-bar{ opacity:1 !important; transform:none !important; animation:none !important }
+  .gantt-bar > span{ opacity:1 !important }
+
+  /* cores chapadas: sem isso o navegador imprime os fundos em branco */
+  *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important }
+}
+
+@media (prefers-reduced-motion: reduce){
+  .slide{transition:none}
+  .slide.active .a{animation:none;opacity:1}
+  .pill,.ti,.gantt-bar{animation:none}
+}
+</style>
+</head>
+<body>
+
+<div class="hint" id="hint">← → para navegar · clique para avançar</div>
+
+<div class="deck">
+
+  <!-- ══════════════ 01 · CAPA ══════════════ -->
+  <div class="slide sd active">
+    <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none" xmlns="http://www.w3.org/2000/svg">
+      <defs><pattern id="dotg" x="0" y="0" width="32" height="32" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="rgba(190,255,1,0.08)"/></pattern></defs>
+      <rect width="100%" height="100%" fill="url(#dotg)"/>
+    </svg>
+    <div style="position:absolute;top:0;left:0;width:100%;height:1px;background:linear-gradient(90deg,transparent,rgba(190,255,1,0.25),transparent);animation:scanv 8s ease-in-out infinite;pointer-events:none"></div>
+
+    <!-- órbitas -->
+    <div style="position:absolute;right:-120px;top:50%;transform:translateY(-50%);pointer-events:none;overflow:visible">
+      <svg width="820" height="820" viewBox="0 0 580 580" fill="none" overflow="visible">
+        <g style="transform-origin:290px 290px;animation:spin-cw 32s linear infinite">
+          <circle cx="290" cy="290" r="275" stroke="rgba(190,255,1,0.09)" stroke-width="1" stroke-dasharray="8 18"/>
+          <circle cx="290" cy="15" r="4" fill="rgba(190,255,1,0.22)"/>
+        </g>
+        <g style="transform-origin:290px 290px;animation:spin-ccw 22s linear infinite">
+          <circle cx="290" cy="290" r="195" stroke="rgba(190,255,1,0.11)" stroke-width="1"/>
+          <circle cx="290" cy="95" r="5" fill="rgba(190,255,1,0.28)"/>
+          <circle cx="485" cy="290" r="3" fill="rgba(190,255,1,0.18)"/>
+        </g>
+        <g style="transform-origin:290px 290px;animation:spin-cw 14s linear infinite">
+          <circle cx="290" cy="290" r="115" stroke="rgba(190,255,1,0.16)" stroke-width="1.5" stroke-dasharray="4 8"/>
+          <circle cx="290" cy="175" r="5" fill="rgba(190,255,1,0.32)"/>
+        </g>
+        <circle cx="290" cy="290" r="5" fill="rgba(190,255,1,0.3)"/>
+        <circle cx="290" cy="290" r="14" stroke="rgba(190,255,1,0.1)" stroke-width="1"/>
+      </svg>
+    </div>
+
+    <!-- partículas -->
+    <div style="position:absolute;inset:0;pointer-events:none;overflow:hidden">
+      <div style="position:absolute;left:14%;bottom:20%;width:4px;height:4px;border-radius:50%;background:rgba(190,255,1,0.3);animation:rise 5.2s ease-in-out infinite"></div>
+      <div style="position:absolute;left:22%;bottom:35%;width:3px;height:3px;border-radius:50%;background:rgba(190,255,1,0.22);animation:rise 6.8s ease-in-out infinite;animation-delay:1.4s"></div>
+      <div style="position:absolute;left:8%;bottom:50%;width:2px;height:2px;border-radius:50%;background:rgba(190,255,1,0.25);animation:rise 4.5s ease-in-out infinite;animation-delay:.7s"></div>
+      <div style="position:absolute;left:30%;bottom:15%;width:3px;height:3px;border-radius:50%;background:rgba(190,255,1,0.18);animation:rise 7.1s ease-in-out infinite;animation-delay:2.2s"></div>
+      <div style="position:absolute;left:18%;bottom:65%;width:2px;height:2px;border-radius:50%;background:rgba(190,255,1,0.22);animation:rise 5.9s ease-in-out infinite;animation-delay:3.1s"></div>
+    </div>
+
+    <!-- cantoneiras -->
+    <svg style="position:absolute;top:28px;right:28px;pointer-events:none" width="40" height="40" viewBox="0 0 40 40" fill="none"><path d="M40 10 L40 0 L30 0" stroke="rgba(190,255,1,0.28)" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <svg style="position:absolute;bottom:28px;left:28px;pointer-events:none" width="40" height="40" viewBox="0 0 40 40" fill="none"><path d="M0 30 L0 40 L10 40" stroke="rgba(190,255,1,0.28)" stroke-width="1.5" stroke-linecap="round"/></svg>
+
+    <div class="sh"><a class="st site" href="https://www.sheeptechnology.com.br/" target="_blank" rel="noopener">sheeptechnology.com.br</a><div class="sn" data-num></div></div>
+
+    <div class="a" style="font-size:clamp(9px,0.9vw,13px);font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:clamp(16px,2.4vh,28px)">Proposta Comercial</div>
+    <div class="display a" style="color:#fff"><span class="acc">Proposta</span><br>{{CLIENTE_NOME}}</div>
+    <div class="a" style="display:flex;align-items:center;gap:16px;margin:clamp(14px,2.2vh,24px) 0 clamp(18px,2.8vh,32px)">
+      <div style="width:60px;height:1px;background:var(--yb)"></div>
+      <div style="font-size:clamp(10px,1.1vw,16px);color:rgba(255,255,255,0.45);font-weight:500" data-today></div>
+    </div>
+    <div class="body-text a" style="color:rgba(255,255,255,0.4)">{{SUBTITULO}}</div>
+
+    <!-- faixa de créditos (equivalente ao meta-row do v1/v2) -->
+    <div class="meta-row a">
+      <div class="meta-cell">
+        <div class="meta-k">Preparado para</div>
+        <div class="meta-v">{{CLIENTE_NOME}}</div>
+      </div>
+      <div class="meta-cell">
+        <div class="meta-k">Preparado por</div>
+        <div class="meta-v">{{PREPARADO_POR}}</div>
+      </div>
+      <div class="meta-cell">
+        <div class="meta-k">Apresentado por</div>
+        <div class="meta-v">{{APRESENTADO_POR}}</div>
+      </div>
+    </div>
+
+    <div class="tw"><div class="ti">{{CLIENTE_NOME}} · PROPOSTA · SHEEP TECHNOLOGY · &nbsp;{{CLIENTE_NOME}} · PROPOSTA · SHEEP TECHNOLOGY · &nbsp;</div></div>
+    <div class="sf"><div class="pt"><div class="pf"></div></div></div>
+  </div>
+
+  <!-- ══════════════ 02 · AGENDA ══════════════ -->
+  <div class="slide" data-agenda-slide>
+    <div class="sh" data-secao="Agenda"><div class="st">Sheep Technology</div><div class="sn" data-num></div></div>
+    <div class="title sm a" style="margin-bottom:clamp(6px,0.9vh,12px)">Agenda</div>
+    <div class="body-text a ag-dica" style="max-width:none;margin-bottom:clamp(12px,1.8vh,22px)">Clique em qualquer item para ir direto à tela.</div>
+    <ol class="agenda a" data-agenda></ol>
+    <div class="sf"><div class="pt"><div class="pf"></div></div></div>
+  </div>
+
+  <!-- ══════════════ SEÇÕES INSTITUCIONAIS FIXAS (iguais em toda proposta) ══════════════ -->
+
+  <!-- 03 · QUEM SOMOS (inclui os 3 pilares) -->
+  <div class="slide">
+    <div class="sh" data-secao="Quem somos"><div class="st">Sheep Technology</div><div class="sn" data-num></div></div>
+    <div class="title sm a">Quem somos</div>
+    <div class="rule a"></div>
+    <div class="g2 a" style="margin-bottom:clamp(14px,2.2vh,26px)">
+      <div class="body-text" style="max-width:none">A Sheep Technology combina <b style="color:var(--black);font-weight:700">desenvolvimento de software, dados e inteligência artificial</b> para transformar a operação de quem trabalha com a gente. Do primeiro diagnóstico à entrega em produção, construímos soluções sob medida que geram <b style="color:var(--black);font-weight:700">resultado real e mensurável</b>.</div>
+      <div class="note">
+        <div class="k">Nossa missão</div>
+        <div class="q">"Fazer a tecnologia parar de ser discurso e virar vantagem competitiva."</div>
+      </div>
+    </div>
+    <div class="g3 a">
+      <div class="card ct">
+        <div class="card-num">01</div>
+        <div class="card-title">Excelência</div>
+        <div class="card-body">Buscamos excelência em cada entrega, com alto padrão técnico, atenção aos detalhes e foco total em gerar resultados reais para o negócio.</div>
+      </div>
+      <div class="card ct">
+        <div class="card-num">02</div>
+        <div class="card-title">Inovação</div>
+        <div class="card-body">Aplicamos inovação de forma prática e estratégica, utilizando tecnologia e inteligência artificial para resolver problemas reais e escalar operações.</div>
+      </div>
+      <div class="card ct">
+        <div class="card-num">03</div>
+        <div class="card-title">Parcerias</div>
+        <div class="card-body">Construímos parcerias sólidas e duradouras, atuando lado a lado com nossos clientes para evoluir soluções de forma contínua.</div>
+      </div>
+    </div>
+    <div class="sf"><div class="pt"><div class="pf"></div></div></div>
+  </div>
+
+  <!-- 04 · TECNOLOGIAS -->
+  <div class="slide sw" style="justify-content:center;gap:clamp(14px,2.2vh,26px)">
+    <div class="sh" data-secao="Stack tecnológico"><div class="st">Sheep Technology</div><div class="sn" data-num></div></div>
+    <div class="a" style="display:flex;flex-direction:column;align-items:center;text-align:center">
+      <div class="title sm">Stack tecnológico</div>
+      <div class="rule" style="margin:clamp(10px,1.5vh,16px) auto"></div>
+    </div>
+    <div style="width:100%;overflow:visible">
+      <div class="pill-cloud dense" data-pills>
+        <span class="pill pill-accent">PHP</span>
+        <span class="pill pill-dark">Dataverse</span>
+        <span class="pill pill-accent">Power Automate</span>
+        <span class="pill pill-dark">Power BI</span>
+        <span class="pill pill-accent">Looker Studio</span>
+        <span class="pill pill-dark">JavaScript</span>
+        <span class="pill pill-accent">Google Cloud</span>
+        <span class="pill pill-dark">Oracle</span>
+        <span class="pill pill-accent">SharePoint</span>
+        <span class="pill pill-dark">Power Apps</span>
+        <span class="pill pill-accent">Laravel</span>
+        <span class="pill pill-dark">Java</span>
+        <span class="pill pill-accent">Supabase</span>
+        <span class="pill pill-dark">Node.js</span>
+        <span class="pill pill-accent">Excel</span>
+        <span class="pill pill-dark">n8n</span>
+        <span class="pill pill-accent">React</span>
+        <span class="pill pill-dark">Open AI</span>
+        <span class="pill pill-accent">Python</span>
+        <span class="pill pill-dark">MySQL</span>
+        <span class="pill pill-accent">AWS</span>
+        <span class="pill pill-dark">Git</span>
+        <span class="pill pill-accent">Azure</span>
+        <span class="pill pill-dark">SQL</span>
+        <span class="pill pill-accent">Flutter</span>
+        <span class="pill pill-dark">Gemini</span>
+        <span class="pill pill-accent">TypeScript</span>
+        <span class="pill pill-dark">Vue.js</span>
+        <span class="pill pill-accent">Next.js</span>
+        <span class="pill pill-dark">Angular</span>
+        <span class="pill pill-accent">Tailwind CSS</span>
+        <span class="pill pill-dark">Docker</span>
+        <span class="pill pill-accent">Kubernetes</span>
+        <span class="pill pill-dark">GitHub</span>
+        <span class="pill pill-accent">PostgreSQL</span>
+        <span class="pill pill-dark">MongoDB</span>
+        <span class="pill pill-accent">Redis</span>
+        <span class="pill pill-dark">Firebase</span>
+        <span class="pill pill-accent">FastAPI</span>
+        <span class="pill pill-dark">Django</span>
+        <span class="pill pill-accent">.NET</span>
+        <span class="pill pill-dark">Go</span>
+        <span class="pill pill-accent">Vercel</span>
+        <span class="pill pill-dark">Figma</span>
+        <span class="pill pill-accent">LangChain</span>
+        <span class="pill pill-dark">Hugging Face</span>
+        <span class="pill pill-accent">Linux</span>
+        <span class="pill pill-dark">GraphQL</span>
+        <span class="pill pill-accent">REST API</span>
+        <span class="pill pill-dark">Kotlin</span>
+        <span class="pill pill-accent">Swift</span>
+        <span class="pill pill-dark">React Native</span>
+        <span class="pill pill-accent">Expo</span>
+        <span class="pill pill-dark">Svelte</span>
+        <span class="pill pill-accent">Astro</span>
+        <span class="pill pill-dark">Vite</span>
+        <span class="pill pill-accent">Webpack</span>
+        <span class="pill pill-dark">Nginx</span>
+        <span class="pill pill-accent">Cloudflare</span>
+        <span class="pill pill-dark">Terraform</span>
+        <span class="pill pill-accent">Ansible</span>
+        <span class="pill pill-dark">DynamoDB</span>
+        <span class="pill pill-accent">BigQuery</span>
+        <span class="pill pill-dark">Elasticsearch</span>
+        <span class="pill pill-accent">Kafka</span>
+        <span class="pill pill-dark">RabbitMQ</span>
+        <span class="pill pill-accent">WebSocket</span>
+        <span class="pill pill-dark">Stripe</span>
+        <span class="pill pill-accent">Twilio</span>
+        <span class="pill pill-dark">SendGrid</span>
+        <span class="pill pill-accent">Auth0</span>
+        <span class="pill pill-dark">Zapier</span>
+        <span class="pill pill-accent">Make</span>
+        <span class="pill pill-dark">PyTorch</span>
+        <span class="pill pill-accent">Pandas</span>
+        <span class="pill pill-dark">Notion</span>
+        <span class="pill pill-accent">Jira</span>
+      </div>
+    </div>
+    <div class="sf"><div class="pt"><div class="pf"></div></div></div>
+  </div>
+
+  <!-- 05 · NOSSOS CLIENTES -->
+  <div class="slide sw">
+    <div class="sh" data-secao="Nossos clientes"><div class="st">Sheep Technology</div><div class="sn" data-num></div></div>
+    <div class="title sm a">Nossos clientes</div>
+    <div class="rule a"></div>
+    <div class="logo-grid a">
+      <div class="logo-card"><img src="/assets/logos/vale.png" class="reduz" alt="Vale" loading="lazy"></div>
+      <div class="logo-card"><img src="/assets/logos/shell.png" alt="Shell" loading="lazy"></div>
+      <div class="logo-card"><img src="/assets/logos/bi.png" alt="bip." loading="lazy"></div>
+      <div class="logo-card"><img src="/assets/logos/cheirin-bao.png" alt="Cheirin Bão" loading="lazy"></div>
+      <div class="logo-card"><img src="/assets/logos/click.png" class="reduz" alt="click!" loading="lazy"></div>
+      <div class="logo-card"><img src="/assets/logos/j17.png" class="reduz" alt="J17 Bank" loading="lazy"></div>
+      <div class="logo-card"><img src="/assets/logos/bitka.png" alt="Bitka Analytics" loading="lazy"></div>
+      <div class="logo-card"><img src="/assets/logos/prontomed.jpg" alt="ProntoMed" loading="lazy"></div>
+      <div class="logo-card"><img src="/assets/logos/300-f.jpg" alt="300 Franchising" loading="lazy"></div>
+      <div class="logo-card"><img src="/assets/logos/consigo-cred.png" class="reduz" alt="Consigo Cred" loading="lazy"></div>
+      <div class="logo-card"><img src="/assets/logos/hovep.jpg" alt="HOVEP" loading="lazy"></div>
+      <div class="logo-card"><img src="/assets/logos/fm_rocket.jpg" alt="FM Rocket" loading="lazy"></div>
+      <div class="logo-card"><img src="/assets/logos/orteconte_contabilidade_logo.jpg" alt="Orteconte Contabilidade" loading="lazy"></div>
+      <div class="logo-card"><img src="/assets/logos/kenia_gama.png" class="amplia" alt="Kenia Gama" loading="lazy"></div>
+      <div class="logo-card"><img src="/assets/logos/apvs-brasil.png" alt="APVS Brasil" loading="lazy"></div>
+      <div class="logo-card"><img src="/assets/logos/proteauto.png" alt="Proteauto Truck" loading="lazy"></div>
+      <div class="logo-card"><img src="/assets/logos/segsmart.webp" alt="SegSmart Web Plus" loading="lazy"></div>
+    </div>
+    <div class="sf"><div class="pt"><div class="pf"></div></div></div>
+  </div>
+
+  <!-- 06 · NOSSAS SOLUÇÕES -->
+  <div class="slide sw">
+    <div class="sh" data-secao="Nossas soluções"><div class="st">Sheep Technology</div><div class="sn" data-num></div></div>
+    <div class="title sm a">Nossas soluções</div>
+    <div class="rule a"></div>
+    <div class="g3 a">
+      <div class="card ct">
+        <div class="sol-icon">👥</div>
+        <div class="card-title">Teams as a Service (TaaS)</div>
+        <div class="card-body">Equipe sob demanda para seus projetos digitais. Disponibilizamos profissionais especializados, gestão de projetos e entrega ágil.</div>
+      </div>
+      <div class="card ct">
+        <div class="sol-icon">☁️</div>
+        <div class="card-title">Software as a Service (SaaS)</div>
+        <div class="card-body">Soluções escaláveis na nuvem. Criamos sistemas web modernos e infraestrutura em nuvem.</div>
+      </div>
+      <div class="card ct">
+        <div class="sol-icon">📊</div>
+        <div class="card-title">BI (Business Intelligence)</div>
+        <div class="card-body">Dashboards e insights para seu negócio. Estruturamos Power BI integrado, análise de dados e relatórios automatizados.</div>
+      </div>
+      <div class="card ct">
+        <div class="sol-icon">🤖</div>
+        <div class="card-title">IA (Inteligência Artificial)</div>
+        <div class="card-body">Automação e personalização inteligente. Construímos automações focadas em processos comerciais para aumentar as vendas do cliente.</div>
+      </div>
+      <div class="card ct">
+        <div class="sol-icon">⚡</div>
+        <div class="card-title">Power Platform</div>
+        <div class="card-body">Automação de processos e aplicações low-code com Microsoft Power Platform. Desenvolvemos fluxos com Power Automate, aplicativos com Power Apps e dashboards com Power BI integrados ao ecossistema Microsoft.</div>
+      </div>
+      <div class="card ct">
+        <div class="sol-icon">🌐</div>
+        <div class="card-title">Websites</div>
+        <div class="card-body">Desenvolvimento de sites institucionais com painel admin para personalização e administração geral do portal.</div>
+      </div>
+    </div>
+    <div class="sf"><div class="pt"><div class="pf"></div></div></div>
+  </div>
+
+  <!--
+    ══════════════ CONTEÚDO DO PROJETO (por proposta) ══════════════
+    O bloco abaixo, entre INICIO_CONTEUDO e FIM_CONTEUDO, e o MODELO FECHADO,
+    igual ao da proposta aprovada SHP-LPA-26-01. O montar.cjs SUBSTITUI essa
+    regiao inteira pelo conteudo passado em --conteudo, entao o que esta aqui
+    serve de referencia viva: abrindo este arquivo no navegador voce ve a forma
+    que a proposta deve ter.
+
+    Ordem e nomes (nao inventar outros):
+      O projeto -> Entrega 1 · <nome> -> Entrega 2... -> Como funciona
+      -> Cronograma -> Investimento
+
+    Um <div class="slide"> por tela. Conteudo longo vira MAIS SLIDES, nunca
+    rolagem interna. Todo slide precisa de data-secao no .sh, senao some da
+    Agenda sem nenhum aviso.
+
+    Para escrever uma proposta nova, copie os arquivos de
+    ~/.claude/skills/proposta-sheep/blocos/ e troque o texto.
+  -->
+  <!-- INICIO_CONTEUDO -->
+<div class="slide" data-exemplo>
+    <div class="sh" data-secao="O projeto"><div class="st">Sheep Technology</div><div class="sn" data-num></div></div>
+    <div class="title a">O projeto</div>
+    <div class="rule a"></div>
+    <div class="g2 a">
+      <div class="body-text" style="max-width:none">A Laticínios Porto Alegre já tem o Data Lake e já tem os números. O que não tem é a leitura: hoje a diretoria acompanha estoque e devoluções por planilhas montadas à mão, que envelhecem no dia seguinte e não respondem à pergunta seguinte. Nossa proposta é transformar essa base em painéis vivos no Power BI, começando pelos três relatórios que vocês apontaram como prioritários.</div>
+      <ul class="krl">
+        <li>Painéis que atualizam sozinhos, sem montagem manual</li>
+        <li>Versão para impressão preservada, do jeito que a diretoria usa</li>
+        <li>Devoluções sob controle, que é onde a perda aparece</li>
+        <li>Um caminho claro para os demais painéis que vierem</li>
+      </ul>
+    </div>
+    <div class="sf"><div class="pt"><div class="pf"></div></div></div>
+  </div>
+
+<div class="slide sw" data-exemplo>
+    <div class="sh" data-secao="Entrega 1 · Pacote de BIs"><div class="st">Sheep Technology</div><div class="sn" data-num></div></div>
+    <div class="title sm a" style="margin-bottom:clamp(3px,0.4vh,6px)">Entrega 1 · Pacote de BIs</div>
+    <div class="body-text a" style="max-width:none;margin-bottom:clamp(6px,0.8vh,11px)">Posição de estoque, estoque não comercializável e devoluções, sobre o Data Lake que já existe. O painel abaixo é navegável: troque as abas e os filtros.</div>
+    <div class="a" data-biframe style="position:relative;width:100%;overflow:hidden;border-radius:clamp(7px,0.8vw,12px);border:1px solid #DDE2DA;box-shadow:0 12px 34px rgba(0,0,0,0.10);background:#F5F7F4">
+      <iframe data-biframe-src src="/assets/lpa-bi.html" title="Painel de Gestão de Estoque · Laticínios Porto Alegre" loading="lazy" scrolling="no" style="position:absolute;top:0;left:0;width:1440px;height:1048px;border:0;transform-origin:top left"></iframe>
+    </div>
+    <div data-biframe-dica hidden style="display:none;align-items:center;gap:6px;margin-top:clamp(5px,0.8vh,9px);font-size:clamp(10px,2.6vw,12px);color:var(--gray2)">
+      <span>Arraste o painel para o lado, ou</span>
+      <a href="/assets/lpa-bi.html" target="_blank" rel="noopener" style="color:var(--black);font-weight:700;text-decoration:underline">abra em tela cheia</a>
+    </div>
+    <div class="sf"><div class="pt"><div class="pf"></div></div></div>
+  </div>
+
+<div class="slide sw" data-exemplo>
+    <div class="sh" data-secao="Como funciona"><div class="st">Sheep Technology</div><div class="sn" data-num></div></div>
+    <div class="title sm a" style="margin-bottom:clamp(4px,0.6vh,8px)">Como funciona</div>
+    <div class="body-text a" style="max-width:none;margin-bottom:clamp(12px,1.8vh,22px)">Um time de dados à disposição, não um projeto que acaba.</div>
+    <div class="g3 a">
+      <div class="card ct">
+        <div class="card-num">1</div>
+        <b>Vocês definem a fila</b>
+        <div class="body-text" style="max-width:none">A cada ciclo, vocês dizem quais painéis entram. A prioridade é de quem conhece a operação, não de quem escreve o código.</div>
+      </div>
+      <div class="card ct">
+        <div class="card-num">2</div>
+        <b>Nós construímos</b>
+        <div class="body-text" style="max-width:none">Cinco dias por painel é a média, do levantamento à publicação, em jornadas de 8 horas. Varia com a complexidade do que foi pedido e com o quanto o dado já está estruturado.</div>
+      </div>
+      <div class="card ct">
+        <div class="card-num">3</div>
+        <b>A fila anda</b>
+        <div class="body-text" style="max-width:none">O que entrega valor vira prioridade, o que perdeu sentido sai. Sem repactuação de contrato a cada mudança.</div>
+      </div>
+    </div>
+    <div class="note a" style="margin-top:clamp(12px,1.8vh,22px)">O mapeamento inicial aponta cerca de <b>40 painéis</b> entre estoque, devoluções, qualidade e comercial, o que dá <b>7 meses</b> a uma média de cinco dias por painel, cerca de seis por mês. Os três primeiros saem logo no mês 1, junto com o setup. Não é preciso decidir todos agora: a fila é revista a cada ciclo.</div>
+    <div class="sf"><div class="pt"><div class="pf"></div></div></div>
+  </div>
+
+<div class="slide" data-exemplo>
+    <div class="sh" data-secao="Cronograma"><div class="st">Sheep Technology</div><div class="sn" data-num></div></div>
+    <div class="title sm a">Cronograma</div>
+    <div class="rule a"></div>
+    <div class="gantt a">
+      <div class="gantt-corpo">
+        <div class="gantt-vlines" aria-hidden="true">
+          <span style="left:14.28%"></span><span style="left:28.57%"></span><span style="left:42.85%"></span>
+          <span style="left:57.14%"></span><span style="left:71.42%"></span><span style="left:85.71%"></span><span style="left:100%"></span>
+        </div>
+        <div class="gantt-head">
+          <div class="gantt-namecol"></div>
+          <div class="gantt-weeks" style="grid-template-columns:repeat(7,1fr)">
+            <div class="gantt-week">Mês 1</div><div class="gantt-week">Mês 2</div><div class="gantt-week">Mês 3</div>
+            <div class="gantt-week">Mês 4</div><div class="gantt-week">Mês 5</div><div class="gantt-week">Mês 6</div>
+            <div class="gantt-week">Mês 7</div>
+          </div>
+        </div>
+
+        <div class="gantt-marcos">
+          <div class="gantt-namecol"></div>
+          <div class="gantt-marcos-track">
+            <span class="marco sprint" style="left:14.28%"></span>
+            <span class="marco sprint" style="left:42.85%"></span>
+            <span class="marco sprint" style="left:71.42%"></span>
+            <span class="marco fim" style="left:100%"></span>
+            <svg class="marco-bandeira" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.2 1.5 V14.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="3.4" y="2.2" width="10.4" height="7.2" stroke="currentColor" stroke-width="0.9" fill="none"/><rect x="3.4" y="2.2" width="3.4" height="2.4" fill="currentColor"/><rect x="10.2" y="2.2" width="3.6" height="2.4" fill="currentColor"/><rect x="6.8" y="4.6" width="3.4" height="2.4" fill="currentColor"/><rect x="3.4" y="7" width="3.4" height="2.4" fill="currentColor"/><rect x="10.2" y="7" width="3.6" height="2.4" fill="currentColor"/></svg>
+          </div>
+        </div>
+
+        <div class="gantt-fase" data-fase="0" data-nonav>
+          <div class="gantt-row">
+            <div class="gantt-name">
+              <svg class="fase-seta" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 1.5 L7 5 L3.5 8.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span class="gantt-num">01</span>Planejamento + setup
+            </div>
+            <div class="gantt-track"><div class="gantt-bar" style="left:0%;width:14.28%;animation-delay:.10s"><span>1 mês</span></div></div>
+            <span class="dica-balao">Clique para ver as entregas</span>
+          </div>
+          <div class="fase-exp"><div class="fase-exp-in">
+            <div class="fd-head"><span class="fd-nome">Planejamento + setup</span><span class="fd-dur">Mês 1</span></div>
+            <ul class="fd-sub">
+              <li>Levantamento dos relatórios usados hoje, com quem os monta</li>
+              <li>Liberação dos acessos ao Data Lake e ao ambiente Power BI</li>
+              <li>Entendimento do modelo semântico que já existe, para consumir sem recriar</li>
+              <li>Definição das métricas e das regras de cálculo de cada painel</li>
+              <li>Mapeamento dos gaps entre o monitor de ocorrências e as notas fiscais</li>
+              <li>Priorização da fila inicial de painéis</li>
+            </ul>
+            <div class="fd-rot">Entregas</div>
+            <div class="fd-entregas"><span class="fd-entrega">Acessos ativos</span><span class="fd-entrega">Dicionário de métricas</span><span class="fd-entrega">Fila priorizada</span></div>
+          </div></div>
+        </div>
+
+        <div class="gantt-fase" data-fase="1" data-nonav>
+          <div class="gantt-row">
+            <div class="gantt-name">
+              <svg class="fase-seta" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 1.5 L7 5 L3.5 8.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span class="gantt-num">02</span>Desenvolvimento
+            </div>
+            <div class="gantt-track"><div class="gantt-bar" style="left:10%;width:76%;animation-delay:.18s"><span>5 meses</span></div></div>
+          </div>
+          <div class="fase-exp"><div class="fase-exp-in">
+            <div class="fd-head"><span class="fd-nome">Desenvolvimento</span><span class="fd-dur">Mês 2 ao 6 · média de 5 dias por painel</span></div>
+            <ul class="fd-sub">
+              <li>Os três painéis iniciais: posição de estoque, não comercializável e devoluções</li>
+              <li>Portal centralizado, com acesso por área e exportação para impressão</li>
+              <li>Demais painéis conforme a fila revista a cada ciclo</li>
+              <li>Versão para impressão preservada em todos os relatórios</li>
+            </ul>
+            <div class="fd-rot">Entregas</div>
+            <div class="fd-entregas"><span class="fd-entrega">3 painéis iniciais</span><span class="fd-entrega">Portal</span><span class="fd-entrega">Painéis por ciclo</span></div>
+          </div></div>
+        </div>
+
+        <div class="gantt-fase" data-fase="2" data-nonav>
+          <div class="gantt-row">
+            <div class="gantt-name">
+              <svg class="fase-seta" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 1.5 L7 5 L3.5 8.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span class="gantt-num">03</span>Testes, homologação e go-live
+            </div>
+            <div class="gantt-track"><div class="gantt-bar" style="left:17%;width:83%;animation-delay:.26s"><span>até o fim</span></div></div>
+          </div>
+          <div class="fase-exp"><div class="fase-exp-in">
+            <div class="fd-head"><span class="fd-nome">Testes, homologação e go-live</span><span class="fd-dur">Mês 2 ao 7 · contínuo</span></div>
+            <ul class="fd-sub">
+              <li>Conferência dos números contra a planilha atual, painel a painel</li>
+              <li>Homologação com quem usa o relatório no dia a dia</li>
+              <li>Publicação em produção e acompanhamento das primeiras semanas</li>
+              <li>Ajustes de performance conforme o volume cresce</li>
+            </ul>
+            <div class="fd-rot">Entregas</div>
+            <div class="fd-entregas"><span class="fd-entrega">Aceite por painel</span><span class="fd-entrega">Publicação</span></div>
+          </div></div>
+        </div>
+
+        <div class="gantt-fase" data-fase="3" data-nonav>
+          <div class="gantt-row">
+            <div class="gantt-name">
+              <svg class="fase-seta" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 1.5 L7 5 L3.5 8.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span class="gantt-num">04</span>Documentação e treinamento
+            </div>
+            <div class="gantt-track"><div class="gantt-bar" style="left:14.28%;width:85.72%;animation-delay:.34s"><span>6 meses</span></div></div>
+          </div>
+          <div class="fase-exp"><div class="fase-exp-in">
+            <div class="fd-head"><span class="fd-nome">Documentação e treinamento</span><span class="fd-dur">Mês 2 ao 7 · acompanha as entregas</span></div>
+            <ul class="fd-sub">
+              <li>Cada painel entregue já sai com as métricas documentadas</li>
+              <li>Registro da origem de cada número, painel a painel</li>
+              <li>Treinamento das áreas conforme os relatórios entram em uso</li>
+              <li>Guia para a equipe interna manter e evoluir os painéis</li>
+            </ul>
+            <div class="fd-rot">Entregas</div>
+            <div class="fd-entregas"><span class="fd-entrega">Documentação</span><span class="fd-entrega">Treinamento</span></div>
+          </div></div>
+        </div>
+
+        <div class="gantt-fase cross-fase" data-fase="4" data-nonav>
+          <div class="gantt-row">
+            <div class="gantt-name">
+              <svg class="fase-seta" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 1.5 L7 5 L3.5 8.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span class="gantt-num aster">*</span>Mapeamento de necessidades
+            </div>
+            <div class="gantt-track"><div class="gantt-bar cross" style="left:0%;width:100%;animation-delay:.42s"><span>contínuo</span></div></div>
+          </div>
+          <div class="fase-exp"><div class="fase-exp-in">
+            <div class="fd-head"><span class="fd-nome">Mapeamento de necessidades</span><span class="fd-dur">Transversal ao projeto</span></div>
+            <ul class="fd-sub">
+              <li>Escuta das áreas para descobrir o painel que ninguém pediu e todo mundo precisa</li>
+              <li>Revisão da fila a cada ciclo, com entrada e saída de prioridades</li>
+              <li>Registro do que foi descartado e por quê</li>
+            </ul>
+            <div class="fd-rot">Entregas</div>
+            <div class="fd-entregas"><span class="fd-entrega">Fila revista por ciclo</span></div>
+          </div></div>
+        </div>
+      </div>
+
+      <div class="gantt-note">Duração estimada: 7 meses para o roadmap completo · datas exatas definidas no kickoff</div>
+      <div class="gantt-rodape">
+        <div>
+          <div class="gantt-bloco-t">Legenda</div>
+          <div class="gantt-legenda">
+            <span><i class="sprint"></i>Sprint review e entregas</span>
+            <span><i class="fim"></i>Proposta de próximos passos</span>
+            <span><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.2 1.5 V14.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="3.4" y="2.2" width="10.4" height="7.2" stroke="currentColor" stroke-width="0.9" fill="none"/><rect x="3.4" y="2.2" width="3.4" height="2.4" fill="currentColor"/><rect x="10.2" y="2.2" width="3.6" height="2.4" fill="currentColor"/><rect x="6.8" y="4.6" width="3.4" height="2.4" fill="currentColor"/><rect x="3.4" y="7" width="3.4" height="2.4" fill="currentColor"/><rect x="10.2" y="7" width="3.6" height="2.4" fill="currentColor"/></svg>Conclusão da fase atual</span>
+          </div>
+        </div>
+        <div>
+          <div class="gantt-bloco-t">Dinâmica</div>
+          <ul class="gantt-dinamica">
+            <li><b>Semanal (opcional):</b> weeklys de alinhamento geral, com duração máxima de 30 minutos.</li>
+            <li><b>Mensal:</b> sprint reviews para alinhamentos gerais, documentadas e formalizadas, com duração máxima de 1 hora.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="sf"><div class="pt"><div class="pf"></div></div></div>
+  </div>
+
+<div class="slide sd" data-exemplo>
+    <div class="sh" data-secao="Investimento"><div class="st">Sheep Technology</div><div class="sn" data-num></div></div>
+    <div class="title sm a">Investimento</div>
+    <div class="rule a"></div>
+    <div class="g2 a" style="align-items:stretch;grid-template-columns:1fr 1fr;gap:clamp(12px,1.4vw,22px)">
+      <div style="position:relative;display:flex;flex-direction:column;background:rgba(190,255,1,0.05);border:2px solid var(--yellow);border-radius:clamp(10px,1.1vw,16px);padding:clamp(14px,1.67vw,24px);box-shadow:0 0 clamp(28px,3vw,44px) rgba(190,255,1,0.09)">
+        <div style="position:absolute;top:calc(-1 * clamp(8px,0.85vw,12px));right:clamp(14px,1.67vw,24px);font-size:clamp(7px,0.68vw,10px);font-weight:800;letter-spacing:.12em;text-transform:uppercase;padding:clamp(3px,0.36vw,5px) clamp(9px,0.95vw,14px);border-radius:100px;white-space:nowrap;background:var(--yellow);color:var(--black)">Opção A</div>
+        <div class="eyebrow" style="margin:0">Roadmap completo</div>
+        <div style="display:flex;align-items:center;gap:clamp(9px,1vw,15px);margin-top:clamp(5px,0.7vh,10px)">
+          <div style="flex-shrink:0">
+            <div class="price-figure" style="color:#fff;font-size:clamp(22px,2.5vw,36px)"><sup style="color:var(--yellow)">R$</sup>21.600</div>
+            <div class="price-unit" style="color:rgba(255,255,255,0.55);margin-top:clamp(2px,0.3vw,4px)">por mês · 1 desenvolvedor em 8h/dia</div>
+          </div>
+          <div style="flex:1;background:var(--yd);border:1px solid var(--yb);border-radius:clamp(7px,0.8vw,11px);padding:clamp(6px,0.7vw,10px) clamp(9px,1vw,14px)">
+            <div style="display:flex;align-items:baseline;gap:clamp(5px,0.55vw,8px)">
+              <span style="font-size:clamp(14px,1.55vw,22px);font-weight:800;color:var(--yellow);line-height:1;white-space:nowrap">R$ 0</span>
+              <span style="font-size:clamp(8px,0.8vw,11px);font-weight:700;color:#fff;line-height:1.3">no primeiro mês</span>
+            </div>
+            <div style="font-size:clamp(7px,0.72vw,10px);color:rgba(255,255,255,0.6);line-height:1.4;margin-top:clamp(2px,0.28vw,4px)">os três painéis e o setup ocupam os 20 dias úteis</div>
+          </div>
+        </div>
+        <ul class="krl" style="margin-top:clamp(8px,1vh,14px)">
+          <li style="background:rgba(190,255,1,0.06);border-color:rgba(190,255,1,0.28);color:rgba(255,255,255,0.9)">Demais painéis pelo mesmo valor mensal</li>
+          <li style="background:rgba(190,255,1,0.06);border-color:rgba(190,255,1,0.28);color:rgba(255,255,255,0.9)">Bolsa mensal de horas, ajustável a cada ciclo</li>
+          <li style="background:rgba(190,255,1,0.06);border-color:rgba(190,255,1,0.28);color:rgba(255,255,255,0.9)">Roadmap de cerca de 40 painéis, ao longo de 7 meses</li>
+        </ul>
+      </div>
+
+
+      <div style="position:relative;display:flex;flex-direction:column;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.13);border-radius:clamp(10px,1.1vw,16px);padding:clamp(14px,1.67vw,24px)">
+        <div style="position:absolute;top:calc(-1 * clamp(8px,0.85vw,12px));right:clamp(14px,1.67vw,24px);font-size:clamp(7px,0.68vw,10px);font-weight:800;letter-spacing:.12em;text-transform:uppercase;padding:clamp(3px,0.36vw,5px) clamp(9px,0.95vw,14px);border-radius:100px;white-space:nowrap;background:rgba(255,255,255,0.13);color:rgba(255,255,255,0.75);border:1px solid rgba(255,255,255,0.18)">Opção B</div>
+        <div class="eyebrow" style="margin:0">Somente os três painéis iniciais</div>
+        <div style="display:flex;align-items:center;gap:clamp(9px,1vw,15px);margin-top:clamp(5px,0.7vh,10px)">
+          <div style="flex-shrink:0">
+            <div class="price-figure" style="color:#fff;font-size:clamp(22px,2.5vw,36px)"><sup style="color:rgba(255,255,255,0.45)">R$</sup>21.600</div>
+            <div class="price-unit" style="color:rgba(255,255,255,0.5);margin-top:clamp(2px,0.3vw,4px)">valor fechado · 20 dias úteis em 8h/dia</div>
+          </div>
+          <div style="flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.14);border-radius:clamp(7px,0.8vw,11px);padding:clamp(6px,0.7vw,10px) clamp(9px,1vw,14px)">
+            <div style="display:flex;align-items:baseline;gap:clamp(5px,0.55vw,8px)">
+              <span style="font-size:clamp(13px,1.4vw,20px);font-weight:800;color:#fff;line-height:1;white-space:nowrap">3 painéis</span>
+              <span style="font-size:clamp(8px,0.8vw,11px);font-weight:700;color:rgba(255,255,255,0.8);line-height:1.3">e nada além deles</span>
+            </div>
+            <div style="font-size:clamp(7px,0.72vw,10px);color:rgba(255,255,255,0.55);line-height:1.4;margin-top:clamp(2px,0.28vw,4px)">sem mensalidade e sem painéis adicionais</div>
+          </div>
+        </div>
+        <ul class="krl" style="margin-top:clamp(8px,1vh,14px)">
+          <li style="background:rgba(255,255,255,0.045);border-color:rgba(255,255,255,0.11);color:rgba(255,255,255,0.82)">Posição de estoque, não comercializável e devoluções</li>
+          <li style="background:rgba(255,255,255,0.045);border-color:rgba(255,255,255,0.11);color:rgba(255,255,255,0.82)">Os mesmos três painéis que abrem a Opção A</li>
+          <li style="background:rgba(255,255,255,0.045);border-color:rgba(255,255,255,0.11);color:rgba(255,255,255,0.82)">Sem continuidade: painéis novos exigem nova contratação</li>
+        </ul>
+      </div>
+
+    </div>
+
+    <div class="a" style="margin-top:clamp(12px,1.7vh,22px)">
+      <div class="eyebrow" style="margin-bottom:clamp(5px,0.6vh,9px)">Time alocado</div>
+      <div style="display:flex;flex-direction:column;gap:clamp(6px,0.7vh,10px)">
+        <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.12);border-radius:clamp(9px,1vw,14px);padding:clamp(8px,0.85vw,13px) clamp(12px,1.3vw,19px)">
+          <div style="display:flex;align-items:center;gap:clamp(6px,0.65vw,10px)">
+            <span style="display:inline-block;background:var(--yellow);color:var(--black);font-weight:800;font-size:clamp(7px,0.66vw,10px);padding:clamp(2px,0.22vw,4px) clamp(6px,0.58vw,9px);border-radius:100px">01</span>
+            <span style="font-size:clamp(10px,1vw,14px);font-weight:700;color:#fff">Gestor de Projetos</span>
+            <span style="margin-left:auto;background:var(--yd);border:1px solid var(--yb);color:var(--yellow);font-size:clamp(6px,0.62vw,9px);font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:clamp(2px,0.24vw,4px) clamp(6px,0.62vw,9px);border-radius:100px;white-space:nowrap">Não cobrado</span>
+          </div>
+          <div style="font-size:clamp(8px,0.8vw,11px);color:rgba(255,255,255,0.55);line-height:1.5;margin-top:clamp(5px,0.6vh,9px)">Planeja, organiza e acompanha o projeto, garante os prazos e mantém a fila de painéis priorizada com vocês.</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.12);border-radius:clamp(9px,1vw,14px);padding:clamp(8px,0.85vw,13px) clamp(12px,1.3vw,19px)">
+          <div style="display:flex;align-items:center;gap:clamp(6px,0.65vw,10px)">
+            <span style="display:inline-block;background:var(--yellow);color:var(--black);font-weight:800;font-size:clamp(7px,0.66vw,10px);padding:clamp(2px,0.22vw,4px) clamp(6px,0.58vw,9px);border-radius:100px">02</span>
+            <span style="font-size:clamp(10px,1vw,14px);font-weight:700;color:#fff">Desenvolvedor de BI</span>
+            <span style="margin-left:auto;font-size:clamp(7px,0.7vw,10px);color:rgba(255,255,255,0.55);font-weight:700;white-space:nowrap">1 pessoa · 8h por dia</span>
+          </div>
+          <div style="font-size:clamp(8px,0.8vw,11px);color:rgba(255,255,255,0.55);line-height:1.5;margin-top:clamp(5px,0.6vh,9px)">Constrói os painéis em Power BI, do modelo de dados à publicação, e sustenta o que já está no ar. Dedicação de 8 horas por dia útil, que é o que compõe os valores acima.</div>
+        </div>
+      </div>
+    </div>
+    <div class="a" style="margin-top:clamp(9px,1.3vh,16px);font-size:clamp(6px,0.62vw,9px);font-style:italic;line-height:1.6;color:rgba(255,255,255,0.42)">
+      <b style="color:rgba(255,255,255,0.78);font-weight:700">Como se chega aos valores:</b> a hora-homem é R$ 135, em jornadas de 8 horas, e o mês tem 20 dias úteis, 8 × 20 × 135 = <b style="color:#fff;font-weight:700">R$ 21.600</b>. Os três primeiros painéis, com o setup, ocupam esse mês inteiro: na <b style="color:rgba(255,255,255,0.78);font-weight:700">Opção A</b> ele não é cobrado, e o primeiro mês fica em <b style="color:#fff;font-weight:700">R$ 0</b>. Na <b style="color:rgba(255,255,255,0.78);font-weight:700">Opção B</b> esse mesmo mês é o contrato inteiro, cobrado integralmente.
+    </div>
+    <div class="sf"><div class="pt"><div class="pf"></div></div></div>
+  </div>
+  <!-- FIM_CONTEUDO -->
+
+  <!-- ══════════════ FECHAMENTO ══════════════ -->
+  <div class="slide sd">
+    <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="100%" height="100%" fill="url(#dotg)"/>
+    </svg>
+    <div class="sh" data-secao="Próximos passos"><div class="st"></div><div class="sn" data-num></div></div>
+    <div class="g2" style="align-items:center">
+      <div>
+        <div class="eyebrow a">Vamos começar</div>
+        <div class="title a" style="color:#fff">Próximos passos</div>
+        <div class="body-text a" style="color:rgba(255,255,255,0.45);margin-top:clamp(10px,1.6vh,18px)">{{CLOSING_SUB}}</div>
+        <a href="{{WHATSAPP_CTA_LINK}}" class="cta a" target="_blank" rel="noopener">Quero começar →</a>
+      </div>
+      <div>
+        <div class="steps a">
+          <div class="step"><span class="step-n">1</span>{{CLOSING_STEP_1}}</div>
+          <div class="step"><span class="step-n">2</span>{{CLOSING_STEP_2}}</div>
+          <div class="step"><span class="step-n">3</span>{{CLOSING_STEP_3}}</div>
+        </div>
+        <div class="a" style="margin-top:clamp(20px,3vh,34px);padding-top:clamp(16px,2.4vh,26px);border-top:1px solid rgba(255,255,255,0.12)">
+          <div class="contact">
+            <div class="nm">Thales Carneiro</div>
+            <div>CEO &amp; Founder · Sheep Technology</div>
+            <div><a href="mailto:thales.carneiro@sheeptechnology.com.br">thales.carneiro@sheeptechnology.com.br</a></div>
+            <div><a href="https://wa.me/5531982440323" target="_blank" rel="noopener">+55 (31) 9 8244-0323</a></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="sf">
+      <div class="pt"><div class="pf"></div></div>
+      <div class="st" style="color:rgba(255,255,255,0.25)">Sheep Technology © {{ANO}} · válida por {{VALIDADE_DIAS}} dias</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  var meses=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+  var d=new Date();
+  document.querySelectorAll('[data-today]').forEach(function(el){
+    el.textContent=d.getDate()+' de '+meses[d.getMonth()]+' de '+d.getFullYear();
+  });
+})();
+
+var slides=document.querySelectorAll('.slide');
+var total=slides.length;
+var cur=0, hT;
+
+// numeração dos slides (dinâmica — acompanha quantos slides a proposta tiver)
+slides.forEach(function(s,i){
+  var n=s.querySelector('[data-num]');
+  if(n) n.textContent=String(i+1).padStart(2,'0')+' / '+String(total).padStart(2,'0');
+});
+
+// agenda: monta o indice a partir dos rotulos dos proprios slides
+(function(){
+  var lista=document.querySelector('[data-agenda]');
+  if(!lista) return;
+  var eu=document.querySelector('[data-agenda-slide]');
+  var anterior=null, n=0;
+  var itens=[];
+  slides.forEach(function(s,i){
+    if(i===0||s===eu) return;                    // capa e a propria agenda ficam de fora
+    // o nome da secao vive num data-secao porque o cabecalho e igual em todas
+    // as telas; o .st fica de reserva para slide que ainda nao tenha o atributo
+    var sh=s.querySelector('[data-secao]');
+    var rot=s.querySelector('.st');
+    var texto=(sh&&sh.getAttribute('data-secao').trim())||(rot&&rot.textContent.trim())||'';
+    if(!texto||texto===anterior) return;         // secao que ocupa mais de um slide entra uma vez so
+    anterior=texto; n++;
+    var li=document.createElement('li');
+    var b=document.createElement('button');
+    b.type='button';
+    b.className='ag-item';
+    b.innerHTML='<span class="ag-n">'+String(n).padStart(2,'0')+'</span>'+
+                '<span class="ag-t"></span>'+
+                '<span class="ag-p">'+String(i+1).padStart(2,'0')+'</span>';
+    b.querySelector('.ag-t').textContent=texto;
+    b.addEventListener('click',function(){ go(i); });
+    li.appendChild(b);
+    itens.push(li);
+  });
+  // duas colunas lidas de cima a baixo: o grid precisa da altura em linhas
+  lista.style.gridTemplateRows='repeat('+Math.ceil(itens.length/2)+',auto)';
+  itens.forEach(function(li){ lista.appendChild(li); });
+})();
+
+function progress(){
+  // a largura de cada barra depende so da posicao do proprio slide, entao
+  // todas sao preenchidas de uma vez. Preencher apenas a do slide atual deixa
+  // as demais zeradas para quem nao navegou ate elas - o caso do PDF, que
+  // renderiza todas as telas sem passar por nenhuma.
+  slides.forEach(function(s,i){
+    var w=((i+1)/total*100);
+    s.querySelectorAll('.pf').forEach(function(pf){ pf.style.width=w+'%'; });
+  });
+}
+function go(n){
+  if(n<0||n>=total) return;
+  slides[cur].classList.remove('active');
+  cur=n;
+  slides[cur].classList.add('active');
+  progress();
+  hint();
+}
+function hint(){
+  var h=document.getElementById('hint');
+  h.classList.remove('hidden');
+  clearTimeout(hT);
+  hT=setTimeout(function(){ h.classList.add('hidden'); },3000);
+}
+
+document.addEventListener('keydown',function(e){
+  if(['ArrowRight','ArrowDown',' ','PageDown'].indexOf(e.key)>=0){ e.preventDefault(); go(cur+1); }
+  if(['ArrowLeft','ArrowUp','PageUp'].indexOf(e.key)>=0){ e.preventDefault(); go(cur-1); }
+  if(e.key==='Home'){ e.preventDefault(); go(0); }
+  if(e.key==='End'){ e.preventDefault(); go(total-1); }
+});
+
+// clique: metade direita avança, esquerda volta (ignora cliques em controles)
+document.querySelector('.deck').addEventListener('click',function(e){
+  if(e.target.closest('a,button,input,select,textarea,[data-nonav]')) return;
+  e.clientX>window.innerWidth/2 ? go(cur+1) : go(cur-1);
+});
+
+// swipe no touch
+(function(){
+  var x0=null;
+  document.addEventListener('touchstart',function(e){ x0=e.changedTouches[0].clientX; },{passive:true});
+  document.addEventListener('touchend',function(e){
+    if(x0===null) return;
+    var dx=e.changedTouches[0].clientX-x0;
+    if(Math.abs(dx)>50){ dx<0 ? go(cur+1) : go(cur-1); }
+    x0=null;
+  },{passive:true});
+})();
+
+// controle externo (preview em iframe)
+window.addEventListener('message',function(e){ if(e.data&&typeof e.data.goSlide==='number') go(e.data.goSlide); });
+
+// REGRA: todo link clicável abre em nova aba, nunca substitui a proposta.
+// Vale para os links já escritos e para qualquer um criado depois (protótipos, conteúdo do projeto).
+(function(){
+  function externo(h){ return h && !/^(#|mailto:|tel:|javascript:)/i.test(h); }
+  // 1) marca os links presentes no carregamento
+  document.querySelectorAll('a[href]').forEach(function(a){
+    if(!externo(a.getAttribute('href'))) return;
+    a.setAttribute('target','_blank');
+    a.setAttribute('rel','noopener noreferrer');
+  });
+  // 2) rede de segurança: pega links criados dinamicamente
+  document.addEventListener('click', function(e){
+    var a = e.target.closest && e.target.closest('a[href]');
+    if(!a || !externo(a.getAttribute('href')) || a.target === '_blank') return;
+    e.preventDefault();
+    window.open(a.href, '_blank', 'noopener');
+  });
+})();
+
+// pills de tecnologia: fase/duração variadas para o "float" não ficar sincronizado
+document.querySelectorAll('[data-pills] .pill').forEach(function(p,i){
+  p.style.animationDelay=((i*0.17)%2.6).toFixed(2)+'s';
+  p.style.animationDuration=(2.6+(i*0.13)%1.2).toFixed(2)+'s';
+});
+
+progress();
+hint();
+
+// ---------- JS específico de protótipos por proposta ----------
+/* ---------- cronograma: detalhamento por etapa ----------
+   O CSS ja trazia .gantt-fase.aberta e .gantt.focada, mas nada aplicava as
+   classes, entao clicar numa etapa nao fazia nada. Acordeao: uma etapa aberta
+   por vez, clique na aberta fecha. Enquanto houver etapa aberta o gantt fica
+   .focada, o que esmaece as demais e some com o balao de dica. */
+document.querySelectorAll('.gantt').forEach(function (g) {
+  var fases = Array.prototype.slice.call(g.querySelectorAll('.gantt-fase'));
+  fases.forEach(function (f) {
+    var linha = f.querySelector('.gantt-row');
+    if (!linha) return;
+    linha.style.cursor = 'pointer';
+    linha.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var jaAberta = f.classList.contains('aberta');
+      fases.forEach(function (o) { o.classList.remove('aberta'); });
+      if (!jaAberta) f.classList.add('aberta');
+      g.classList.toggle('focada', !jaAberta);
+    });
+  });
+});
+
+// INICIO_SCRIPT_MODULOS
+// FIM_SCRIPT_MODULOS
+</script>
+
+</body>
+</html>
