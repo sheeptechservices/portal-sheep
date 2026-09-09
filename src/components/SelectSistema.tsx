@@ -7,6 +7,7 @@ import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 // Sem opção vazia: o campo é obrigatório.
 export function SelectSistema<T extends string>({
   valor, onChange, opcoes, minWidth, placeholder, estiloGatilho, classeLista,
+  desabilitado,
 }: {
   valor: T;
   onChange: (v: T) => void;
@@ -44,6 +45,12 @@ export function SelectSistema<T extends string>({
    * alcança - sem esta classe, campo e lista acabam em escalas diferentes.
    */
   classeLista?: string;
+  /**
+   * Ficha aberta em leitura: o gatilho continua na tela, dizendo o que está
+   * gravado, mas não abre. Some seria pior - o campo desapareceria da ficha
+   * justamente para quem não pode conferir de outro jeito.
+   */
+  desabilitado?: boolean;
 }) {
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState('');
@@ -172,6 +179,7 @@ export function SelectSistema<T extends string>({
         ref={triggerRef}
         type="button"
         onClick={abrir}
+        disabled={desabilitado}
         className="liquidez-trigger"
         // Mesma métrica de `.form-input`: 14px de texto com 10px de folga em
         // cima e embaixo dão os 42px, e o raio é o `--radius-md` de lá. Campo
