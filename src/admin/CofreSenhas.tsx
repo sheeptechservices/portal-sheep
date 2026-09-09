@@ -61,7 +61,12 @@ const CONTEUDO_VAZIO: Conteudo = { usuario: '', senha: '', url: '', notas: '' };
 /** O título de partida do segredo novo, o mesmo da tarefa e do projeto: a gaveta
  *  nasce com ele marcado, e a primeira tecla substitui em vez de escrever
  *  depois. Campo em branco pede que se descubra o que fazer; campo marcado já
- *  diz que é ali que se escreve. */
+ *  diz que é ali que se escreve.
+ *
+ *  E é um título como outro qualquer: quem não quiser trocar guarda assim, do
+ *  mesmo jeito que a tarefa e o projeto já deixam. Segurar a gravação por causa
+ *  dele obrigaria a inventar nome para um segredo que quem abriu já reconhece.
+ *  O que trava é o campo vazio, e só. */
 const TITULO_PADRAO = 'Sem título';
 
 /** As categorias do cofre, e são só estas. Lista fechada porque categoria
@@ -512,7 +517,7 @@ function GavetaDoSegredo({
   }
 
   async function salvar() {
-    if (!titulo.trim() || titulo === TITULO_PADRAO || salvando) return;
+    if (!titulo.trim() || salvando) return;
     setSalvando(true);
     // O `finally` não é zelo: sem ele, um pedido que estoura - rede caída,
     // resposta que não é JSON - deixa o botão desabilitado para sempre, e a
@@ -715,8 +720,7 @@ function GavetaDoSegredo({
           <button type="button" className="modal-acao" onClick={fechar}>Fechar</button>
           {!somenteLeitura && (!segredo || aberto) && (
             <button type="button" className="btn btn-primary"
-              disabled={!titulo.trim() || titulo === TITULO_PADRAO || salvando}
-              title={titulo === TITULO_PADRAO ? 'Dê um nome ao segredo antes de guardar' : undefined}
+              disabled={!titulo.trim() || salvando}
               onClick={() => void salvar()}>
               {salvando ? <><IconSpinner size={13} /> Gravando</> : <><IconCheck size={14} /> Guardar</>}
             </button>

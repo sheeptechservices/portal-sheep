@@ -234,9 +234,11 @@ O que cada peça garante, e por que nenhuma é opcional:
 | `.painel-titulo` **e** `.painel-titulo-campo` juntas | a segunda é só a moldura; o tamanho e o peso vêm da primeira |
 
 O título nasce com o texto de partida `Sem título`, em foco e **marcado**
-(`autoFocus` mais `onFocus` com `select()`), e o botão de gravar fica desabilitado
-enquanto ele não for trocado: a primeira tecla substitui, em vez de escrever
-depois do rótulo, e ninguém guarda uma ficha chamada "Sem título".
+(`autoFocus` mais `onFocus` com `select()`): a primeira tecla substitui, em vez de
+escrever depois do rótulo. E `Sem título` é título válido, gravado como qualquer
+outro - o que segura o botão de gravar é o campo **vazio**, nunca o texto de
+partida. Obrigar a trocá-lo é pedir que se invente nome para uma ficha que quem
+abriu já sabe qual é.
 
 As gavetas de projeto e de oportunidade são as mais antigas e ainda montam o
 esqueleto na mão, com `.admin-modal` pelado, cabeçalho grudado por `position` e
