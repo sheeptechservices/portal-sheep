@@ -139,6 +139,20 @@ export const CATALOGO: PermGrupo[] = [
     ],
   },
   {
+    chave: 'cofre',
+    dentroDe: 'ferramentas',
+    label: 'Cofre de Senhas',
+    page: 'cofre',
+    nota: 'As senhas das ferramentas, do GitHub e dos servidores. Cadastrar é '
+      + 'livre para quem tem a permissão de gravar; para ver, o portal manda um '
+      + 'código ao e-mail da sessão e ele vale três minutos.',
+    acoes: [
+      { chave: 'cofre:ver', label: 'Abrir o cofre e ver as senhas', acesso: true },
+      { chave: 'cofre:editar', label: 'Cadastrar e editar segredos' },
+      { chave: 'cofre:excluir', label: 'Apagar segredos' },
+    ],
+  },
+  {
     chave: 'talentos',
     dentroDe: 'ferramentas',
     label: 'Banco de Talentos',
@@ -188,6 +202,15 @@ export const SO_ADMIN = '@admin';
  * mapeie-a aqui - o teste de fumaça `_permissoes.test.mjs` acusa a que faltar.
  */
 export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
+  // O cofre. Ler a lista já é `cofre:ver`, mesmo que o conteúdo saia cifrado:
+  // título e categoria estão em claro, e eles sozinhos já dizem o que a casa
+  // guarda e onde.
+  cofre: 'cofre:ver',
+  cofre_enviar_token: 'cofre:ver',
+  cofre_abrir: 'cofre:ver',
+  cofre_revelar: 'cofre:ver',
+  salvar_segredo: 'cofre:editar',
+  excluir_segredo: 'cofre:excluir',
   // Alimenta as duas telas: quem vê tarefas precisa da mesma carga, e ela já
   // vem cortada por equipe no servidor.
   projetos: ['projetos:ver', 'tarefas:ver'],

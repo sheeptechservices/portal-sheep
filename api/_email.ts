@@ -103,6 +103,24 @@ export function botaoEmail(rotulo: string, link: string): string {
   </table>`;
 }
 
+/**
+ * Um código de uso único, do tamanho de quem vai copiá-lo.
+ *
+ * Bloco próprio, e não uma palavra em negrito no meio do parágrafo: quem abre
+ * este e-mail está com a outra janela aberta esperando, e o código tem de ser a
+ * primeira coisa que o olho acha. Espaçado porque vai ser lido dígito a dígito,
+ * e em fonte de largura fixa porque 0 e O, 1 e l não podem se parecer.
+ */
+export function codigoEmail(codigo: string): string {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 14px">
+    <tr>
+      <td align="center" style="padding:18px 12px;background:#F7F6F3;border-radius:12px;
+                 font-family:'SFMono-Regular',Consolas,Menlo,monospace;font-size:30px;
+                 font-weight:700;letter-spacing:10px;color:#121316">${esc(codigo)}</td>
+    </tr>
+  </table>`;
+}
+
 /** Parágrafo comum do corpo. */
 export function textoEmail(texto: string): string {
   return `<p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#3C3C39">${esc(texto)}</p>`;

@@ -2,7 +2,7 @@ import type { Client } from '@libsql/client';
 import { randomUUID, randomBytes, scrypt, timingSafeEqual, createHash } from 'crypto';
 import {
   ANTHROPIC_KEY, DEFAULT_ANTHROPIC_MODEL, FIREFLIES_KEY,
-  getIntegrationCredential, saveIntegrationCredential,
+  getIntegrationCredential, saveIntegrationCredential, encryptSecret, decryptSecret,
   RESEND_KEY, validateResendKey,
   updateIntegrationMeta, removeIntegrationCredential, validateAnthropicKey,
   validateFirefliesKey, listarModelosAnthropic, listarReunioesFireflies, obterReuniaoFireflies,
@@ -10,7 +10,7 @@ import {
   obterGravacaoFireflies,
 } from './_credentials.js';
 import {
-  botaoEmail, citacaoEmail, enderecoDoPortal, esc, fichaEmail, layoutEmail, notaEmail,
+  botaoEmail, citacaoEmail, codigoEmail, enderecoDoPortal, esc, fichaEmail, layoutEmail, notaEmail,
   notifyEmail, remetenteDeEmail, remetenteEndereco, textoEmail,
 } from './_email.js';
 import { obterDdl } from './_schema.js';
@@ -1047,6 +1047,67 @@ async function migrarSchema(db: Client) {
     )
   `);
 
+  // ── Cofre de senhas da casa ───────────────────────────────────────────────
+  //
+  //  Guardar é livre: quem tem permissão cadastra uma senha e pronto. Ver é que
+  //  custa - e custa de propósito, porque aqui dentro moram senha de servidor e
+  //  de GitHub, e uma sessão esquecida aberta numa máquina não pode ser a única
+  //  coisa entre quem senta ali e as senhas todas.
+  //
+  //  Para ver, a pessoa pede um código, ele vai para o e-mail da própria sessão
+  //  e vale três minutos. Conferido o código, o cofre fica aberto por um tempo
+  //  curto e depois tranca de novo. É uma segunda prova de identidade, no canal
+  //  que a casa já controla: quem roubou a sessão do navegador não tem a caixa
+  //  de entrada.
+  //
+  //  Em repouso o conteúdo é cifrado pelo servidor, com AES-256-GCM e a
+  //  `APP_ENCRYPTION_KEY` - o mesmo cofre de integrações logo acima, e as mesmas
+  //  funções. O banco sozinho não devolve senha nenhuma.
+  //
+  //  Um cofre só para a casa, e não um por pessoa: a senha do servidor é a mesma
+  //  para quem precisa dela, e um cofre por pessoa viraria cópias da mesma senha
+  //  envelhecendo em ritmos diferentes.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS cofre_segredos (
+      id                  TEXT PRIMARY KEY,
+      -- Em claro, os dois: são o que a lista mostra e o que a busca alcança com
+      -- o cofre ainda trancado. Quem os escreve sabe que ficam legíveis - por
+      -- isso o título é "GitHub da conta assinaturas", e nunca a senha em si.
+      titulo              TEXT NOT NULL,
+      categoria           TEXT,
+      -- O resto (usuário, senha, endereço, notas) num pacote cifrado só.
+      segredo             TEXT NOT NULL,
+      criado_em           TEXT NOT NULL,
+      criado_por_id       TEXT,
+      criado_por_nome     TEXT,
+      atualizado_em       TEXT,
+      atualizado_por_id   TEXT,
+      atualizado_por_nome TEXT
+    )
+  `);
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS cofre_tokens (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      usuario_id   TEXT NOT NULL,
+      -- Só o hash. A tabela não remonta o código, do mesmo jeito que a coluna de
+      -- senha não remonta a senha.
+      hash         TEXT NOT NULL,
+      criado_em    TEXT NOT NULL,
+      expira_em    TEXT NOT NULL,
+      -- Quantas vezes já erraram este código. Seis dígitos em três minutos são
+      -- adivinháveis por força bruta; um teto de tentativas não são.
+      tentativas   INTEGER NOT NULL DEFAULT 0,
+      usado_em     TEXT,
+      -- Até quando o cofre fica aberto depois do código conferido. É esta
+      -- coluna, e não a sessão do portal, que responde "pode ver?".
+      liberado_ate TEXT
+    )
+  `);
+  try {
+    await ddl(`CREATE INDEX IF NOT EXISTS idx_cofre_token_dono
+               ON cofre_tokens (usuario_id, criado_em)`);
+  } catch { /* índice já existe */ }
+
   // Autoria nas entidades editáveis. Roda depois de todos os CREATE TABLE porque
   // é ALTER: cada uma guarda o id do usuário e uma cópia do nome. O id é a
   // referência; o nome é o que a tela mostra e continua legível mesmo que a
@@ -1770,6 +1831,49 @@ function rowToUsuario(r: Record<string, any>): UsuarioAdmin {
  * responde sim para linha marcada como convidada e ativa - desligar o acesso no
  * painel basta para barrar a próxima entrada.
  */
+
+// ── Cofre de senhas: o código que vai por e-mail ─────────────────────────────
+//
+//  Guardar é livre; ver pede uma segunda prova de identidade, no canal que a
+//  casa já controla. Quem tomou a sessão do navegador não tem a caixa de
+//  entrada, e é essa distância que o código cobre.
+
+/** Quanto tempo o código vale. Três minutos: o bastante para trocar de janela e
+ *  copiar, curto o bastante para um código esquecido na caixa não servir depois. */
+const COFRE_TOKEN_MINUTOS = 3;
+/** Quanto tempo o cofre fica aberto depois do código conferido. */
+const COFRE_ABERTO_MINUTOS = 10;
+/** Quantos erros o mesmo código aguenta. Seis dígitos em três minutos são
+ *  adivinháveis por força bruta; com teto, não são. */
+const COFRE_TENTATIVAS = 5;
+
+const hashDoCodigo = (codigo: string) => createHash('sha256').update(codigo).digest('hex');
+
+/** Seis dígitos, sorteados sem viés: o resto de um byte por 10 favorece os
+ *  primeiros algarismos, e aqui o sorteio é a única coisa que segura a porta. */
+function sortearCodigoDoCofre(): string {
+  let saida = '';
+  while (saida.length < 6) {
+    for (const b of randomBytes(6)) {
+      if (b < 250 && saida.length < 6) saida += String(b % 10);
+    }
+  }
+  return saida;
+}
+
+/** Até quando o cofre está aberto para esta pessoa, ou `null` se está trancado.
+ *  É a única resposta que libera conteúdo, e ela vem do banco - a tela não opina. */
+async function cofreAbertoAte(db: Client, usuarioId: string | undefined): Promise<string | null> {
+  if (!usuarioId) return null;
+  const r = await db.execute({
+    sql: `SELECT liberado_ate FROM cofre_tokens
+          WHERE usuario_id = ? AND liberado_ate IS NOT NULL AND liberado_ate > ?
+          ORDER BY id DESC LIMIT 1`,
+    args: [usuarioId, new Date().toISOString()],
+  });
+  return r.rows[0]?.liberado_ate != null ? String(r.rows[0].liberado_ate) : null;
+}
+
 // ── Senha do convidado ───────────────────────────────────────────────────────
 //
 //  Quem tem e-mail da casa entra pelo Google e ponto. O convidado - um cliente,
@@ -4207,6 +4311,25 @@ async function despacharAdminData(
       };
     }
 
+    /**
+     * A prateleira do cofre: o que existe lá dentro, sem nada do que existe
+     * dentro de cada coisa.
+     *
+     * O conteúdo não vem junto de propósito. Mandá-lo e esconder na tela seria
+     * esconder de quem olha a tela, e não de quem olha a resposta - e a resposta
+     * é a que qualquer aba de rede mostra. Quem quiser um segredo pede aquele
+     * segredo, com o cofre aberto.
+     */
+    if (action === 'cofre') {
+      const [itens, aberto] = await Promise.all([
+        db.execute(`SELECT id, titulo, categoria,
+                           criado_em, criado_por_nome, atualizado_em, atualizado_por_nome
+                    FROM cofre_segredos ORDER BY titulo COLLATE NOCASE`),
+        cofreAbertoAte(db, usuario?.id),
+      ]);
+      return { status: 200, body: { segredos: itens.rows, liberado_ate: aberto } };
+    }
+
     return { status: 400, body: { error: 'Unknown action' } };
   }
 
@@ -5392,6 +5515,181 @@ function faltaEmProjeto(p: any): string | null {
 
     // Matriz de permissões do papel. Chave fora do catálogo é descartada em
     // `salvarMatrizPapel`, então a tela não consegue inventar permissão.
+    /**
+     * Manda o código de acesso para o e-mail da sessão.
+     *
+     * O destino não vem do corpo: é o e-mail de quem está logado, lido aqui. Se
+     * viesse da tela, quem tomasse a sessão escolheria para onde mandar o
+     * código - e a segunda prova deixaria de ser segunda.
+     *
+     * Os códigos anteriores da pessoa morrem aqui. Dois códigos vivos são duas
+     * portas, e só uma delas foi pedida.
+     */
+    if (action === 'cofre_enviar_token') {
+      const dono = usuario?.id;
+      const paraOnde = String(usuario?.email ?? '').trim();
+      if (!dono || !paraOnde) {
+        return { status: 400, body: { error: 'A sessão não tem e-mail para onde mandar o código.' } };
+      }
+      // Um pedido a cada meio minuto. Sem isto, o botão vira uma máquina de
+      // encher a caixa de entrada de quem está logado.
+      const recente = await db.execute({
+        sql: 'SELECT criado_em FROM cofre_tokens WHERE usuario_id = ? ORDER BY id DESC LIMIT 1',
+        args: [dono],
+      });
+      const ultimo = recente.rows[0]?.criado_em ? Date.parse(String(recente.rows[0].criado_em)) : 0;
+      if (Date.now() - ultimo < 30_000) {
+        return { status: 429, body: { error: 'Espere meio minuto para pedir outro código.' } };
+      }
+
+      await db.execute({
+        sql: 'DELETE FROM cofre_tokens WHERE usuario_id = ? AND usado_em IS NULL',
+        args: [dono],
+      });
+      const codigo = sortearCodigoDoCofre();
+      const agora = new Date();
+      const expira = new Date(agora.getTime() + COFRE_TOKEN_MINUTOS * 60_000);
+      await db.execute({
+        sql: 'INSERT INTO cofre_tokens (usuario_id, hash, criado_em, expira_em) VALUES (?,?,?,?)',
+        args: [dono, hashDoCodigo(codigo), agora.toISOString(), expira.toISOString()],
+      });
+
+      const corpo = textoEmail('Use este código para abrir o cofre de senhas do portal.')
+        + codigoEmail(codigo)
+        + notaEmail(`Ele vale ${COFRE_TOKEN_MINUTOS} minutos e serve uma vez só. Se não foi você`
+          + ' quem pediu, ignore este e-mail e avise o time.');
+      const enviado = await notifyEmail(db, paraOnde, 'Código para abrir o cofre de senhas', corpo, 'cofre', {
+        previa: 'Código do cofre, válido por ' + COFRE_TOKEN_MINUTOS + ' minutos.',
+        rodape: 'Você está recebendo porque pediu acesso ao cofre de senhas do portal.',
+      });
+      if (!enviado.ok) {
+        // O código que não saiu não vale nada, e deixá-lo na tabela travaria a
+        // próxima tentativa no limitador de meio minuto - por um e-mail que
+        // ninguém recebeu.
+        await db.execute({
+          sql: 'DELETE FROM cofre_tokens WHERE usuario_id = ? AND usado_em IS NULL',
+          args: [dono],
+        });
+        return { status: 502, body: { error: 'Não foi possível enviar o código. Tente de novo.' } };
+      }
+      return { status: 200, body: { expira_em: expira.toISOString(), email: paraOnde } };
+    }
+
+    /**
+     * Confere o código e abre o cofre por um tempo.
+     *
+     * Três recusas diferentes, e a mensagem diz qual: código errado, código
+     * vencido e tentativas esgotadas pedem coisas diferentes de quem está do
+     * outro lado - reescrever, pedir outro, pedir outro.
+     */
+    if (action === 'cofre_abrir') {
+      const dono = usuario?.id;
+      if (!dono) return { status: 401, body: { error: 'Sessão sem dono.' } };
+      const codigo = String(body?.codigo ?? '').replace(/[^0-9]/g, '');
+      if (!codigo) return { status: 400, body: { error: 'Digite o código que chegou por e-mail.' } };
+
+      const r = await db.execute({
+        sql: `SELECT id, hash, expira_em, tentativas FROM cofre_tokens
+              WHERE usuario_id = ? AND usado_em IS NULL ORDER BY id DESC LIMIT 1`,
+        args: [dono],
+      });
+      const linha = r.rows[0];
+      if (!linha) return { status: 400, body: { error: 'Peça um código antes.', vencido: true } };
+      if (Date.parse(String(linha.expira_em)) < Date.now()) {
+        return { status: 400, body: { error: 'Esse código venceu. Peça outro.', vencido: true } };
+      }
+      if (Number(linha.tentativas) >= COFRE_TENTATIVAS) {
+        return { status: 429, body: { error: 'Tentativas demais neste código. Peça outro.', vencido: true } };
+      }
+      if (hashDoCodigo(codigo) !== String(linha.hash)) {
+        await db.execute({
+          sql: 'UPDATE cofre_tokens SET tentativas = tentativas + 1 WHERE id = ?',
+          args: [linha.id as never],
+        });
+        return { status: 400, body: { error: 'Código errado.' } };
+      }
+
+      const ate = new Date(Date.now() + COFRE_ABERTO_MINUTOS * 60_000).toISOString();
+      await db.execute({
+        sql: 'UPDATE cofre_tokens SET usado_em = ?, liberado_ate = ? WHERE id = ?',
+        args: [new Date().toISOString(), ate, linha.id as never],
+      });
+      return { status: 200, body: { liberado_ate: ate } };
+    }
+
+    /**
+     * O conteúdo de um segredo, decifrado.
+     *
+     * Um por vez, e sempre com o cofre aberto conferido aqui - a tela some com o
+     * botão quando ele fecha, mas esconder botão é cortesia, e o porteiro é
+     * este.
+     */
+    if (action === 'cofre_revelar') {
+      const id = String(body?.id ?? '').trim();
+      if (!id) return { status: 400, body: { error: 'id ausente.' } };
+      const ate = await cofreAbertoAte(db, usuario?.id);
+      if (!ate) return { status: 403, body: { error: 'O cofre está trancado.', trancado: true } };
+
+      const r = await db.execute({
+        sql: 'SELECT segredo FROM cofre_segredos WHERE id = ?', args: [id],
+      });
+      if (!r.rows[0]) return { status: 404, body: { error: 'Segredo não encontrado.' } };
+      try {
+        return {
+          status: 200,
+          body: { conteudo: JSON.parse(decryptSecret(String(r.rows[0].segredo))), liberado_ate: ate },
+        };
+      } catch {
+        return { status: 500, body: { error: 'Não foi possível abrir este segredo.' } };
+      }
+    }
+
+    /** Grava um segredo, novo ou editado. Guardar é livre: o que custa é ver. */
+    if (action === 'salvar_segredo') {
+      const titulo = String(body?.titulo ?? '').trim();
+      if (!titulo) return { status: 400, body: { error: 'O título é obrigatório.' } };
+      const conteudo = body?.conteudo;
+      if (!conteudo || typeof conteudo !== 'object') {
+        return { status: 400, body: { error: 'Conteúdo ausente.' } };
+      }
+      // A cifra é do servidor, com a chave do ambiente. O corpo chega em claro
+      // por HTTPS e nunca é gravado assim.
+      const segredo = encryptSecret(JSON.stringify({
+        usuario: String(conteudo.usuario ?? ''),
+        senha: String(conteudo.senha ?? ''),
+        url: String(conteudo.url ?? ''),
+        notas: String(conteudo.notas ?? ''),
+      }));
+      const categoria = texto(body?.categoria);
+      const agora = new Date().toISOString();
+      const id = String(body?.id ?? '').trim();
+      if (id) {
+        const r = await db.execute({
+          sql: `UPDATE cofre_segredos
+                SET titulo = ?, categoria = ?, segredo = ?,
+                    atualizado_em = ?, atualizado_por_id = ?, atualizado_por_nome = ?
+                WHERE id = ?`,
+          args: [titulo, categoria, segredo, agora, autorId, autorNome, id],
+        });
+        if (r.rowsAffected === 0) return { status: 404, body: { error: 'Segredo não encontrado.' } };
+        return { status: 200, body: { id, atualizado_em: agora, atualizado_por_nome: autorNome } };
+      }
+      const novo = randomUUID();
+      await db.execute({
+        sql: `INSERT INTO cofre_segredos (id, titulo, categoria, segredo, criado_em, criado_por_id, criado_por_nome)
+              VALUES (?,?,?,?,?,?,?)`,
+        args: [novo, titulo, categoria, segredo, agora, autorId, autorNome],
+      });
+      return { status: 200, body: { id: novo, criado_em: agora, criado_por_nome: autorNome } };
+    }
+
+    if (action === 'excluir_segredo') {
+      const id = String(body?.id ?? '').trim();
+      if (!id) return { status: 400, body: { error: 'id ausente.' } };
+      await db.execute({ sql: 'DELETE FROM cofre_segredos WHERE id = ?', args: [id] });
+      return { status: 200, body: { ok: true } };
+    }
+
     if (action === 'set_permissoes_papel') {
       if (!podeGerenciarUsuarios(usuario)) return NEGADO_USUARIOS;
       const papel = String(body?.papel ?? 'membro').trim().toLowerCase();

@@ -5,7 +5,7 @@
 export type Page =
   | 'dashboard'
   | 'projetos' | 'tarefas' | 'oportunidades' | 'configuracoes'
-  | 'ferramentas' | 'gerador-documentos' | 'gerador-propostas' | 'talentos' | 'perfil'
+  | 'ferramentas' | 'gerador-documentos' | 'gerador-propostas' | 'cofre' | 'talentos' | 'perfil'
   | 'usuarios';
 
 export type GrupoDestino = 'Páginas' | 'Ferramentas';
@@ -170,6 +170,20 @@ export const DESTINOS: Destino[] = [
         <path d="M7.8 11h5.6M7.8 14.6h3.4" />
         <circle cx="17.4" cy="17.4" r="3.2" />
         <path d="m15.9 17.4 1.1 1.1 2-2.2" />
+      </svg>
+    ),
+  },
+  {
+    page: 'cofre',
+    titulo: 'Cofre de Senhas',
+    descricao: 'As senhas da casa, cifradas no navegador',
+    grupo: 'Ferramentas',
+    termos: ['senha', 'cofre', 'credencial', 'github', 'servidor', 'acesso', 'login', 'chave'],
+    icon: (
+      <svg {...ic}>
+        <rect x="3.4" y="10.4" width="17.2" height="11" rx="2.2" />
+        <path d="M7.6 10.4V7.2a4.4 4.4 0 0 1 8.8 0v3.2" />
+        <path d="M12 14.6v2.6" />
       </svg>
     ),
   },

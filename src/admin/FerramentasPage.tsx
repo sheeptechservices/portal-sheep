@@ -3,7 +3,7 @@ import { useAuth, useToast } from './AdminApp';
 import { podeAbrirPagina, podeGerenciarUsuarios } from './papeis';
 
 /** Área da operação que é dona da ferramenta - vira uma coluna no hub. */
-type AreaId = 'juridico' | 'comercial';
+type AreaId = 'juridico' | 'comercial' | 'tecnologia';
 
 interface Ferramenta {
   id: string;
@@ -23,6 +23,7 @@ interface Ferramenta {
 const AREAS: { id: AreaId; nome: string; descricao: string }[] = [
   { id: 'juridico', nome: 'Jurídico', descricao: 'Contratos e documentos da casa' },
   { id: 'comercial', nome: 'Comercial', descricao: 'Quem trabalha com a gente, e quem pode vir a trabalhar' },
+  { id: 'tecnologia', nome: 'Tecnologia', descricao: 'Os acessos e a infraestrutura da casa' },
 ];
 
 // Ícones em traço, herdando a cor do card via currentColor. Mesmo peso de linha
@@ -84,6 +85,15 @@ const IconProposta = (
   </svg>
 );
 
+/** Cadeado fechado - o cofre de senhas */
+const IconCofre = (
+  <svg {...svgProps}>
+    <rect x="3.4" y="10.4" width="17.2" height="11" rx="2.2" />
+    <path d="M7.6 10.4V7.2a4.4 4.4 0 0 1 8.8 0v3.2" />
+    <path d="M12 14.6v2.6" />
+  </svg>
+);
+
 /** Pessoas - o banco de talentos */
 const IconTalentos = (
   <svg {...svgProps}>
@@ -119,6 +129,15 @@ const FERRAMENTAS: (Ferramenta & { page?: string })[] = [
     descricao: 'Monte a apresentação comercial a partir do modelo aprovado: o projeto, as entregas, o cronograma e o investimento.',
     icon: IconProposta,
     cor: '#0EA5E9',
+  },
+  {
+    id: 'cofre',
+    page: 'cofre',
+    area: 'tecnologia',
+    nome: 'Cofre de Senhas',
+    descricao: 'As senhas das ferramentas, do GitHub e dos servidores. Cadastrar é livre; para ver, o portal manda um código ao seu e-mail.',
+    icon: IconCofre,
+    cor: '#0F766E',
   },
   {
     id: 'banco-talentos',
