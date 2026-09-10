@@ -370,7 +370,10 @@ export function ListaReportes({
       <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`} style={{ zIndex: 10040 }} {...fundo}>
         <div className="modal-central reportes-modal" onClick={e => e.stopPropagation()}>
           <div className="gravacao-topo">
-            <p className="gravacao-titulo">
+            {/* `com-descricao` porque o que acompanha o título aqui é uma
+                frase, e não a data curta que a entrega e a reunião põem nesse
+                mesmo lugar. */}
+            <p className="gravacao-titulo com-descricao">
               <span className="gravacao-nome">Chamados</span>
               <span className="gravacao-meta">
                 {admin

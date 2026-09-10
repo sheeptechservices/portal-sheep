@@ -9993,6 +9993,20 @@ button.checklist-texto:focus-visible {
 .gravacao-meta a { color: var(--gray2); }
 .gravacao-meta a:hover { color: var(--black); }
 
+/* Quando o que acompanha o titulo e uma frase, e nao um dado curto.
+   Data, status e duracao cabem ao lado porque sao dois ou tres tokens; uma
+   frase ali disputa a largura com o titulo e acaba truncando os dois. Aqui ela
+   desce para a linha de baixo e pode quebrar. */
+.gravacao-titulo.com-descricao { display: block; overflow: visible; }
+/* O nome volta a ser bloco para continuar truncando: `overflow` nao vale em
+   elemento em linha, e sem isto um titulo longo furaria a caixa. */
+.gravacao-titulo.com-descricao .gravacao-nome { display: block; }
+.gravacao-titulo.com-descricao .gravacao-meta {
+  display: block;
+  margin-top: 2px;
+  white-space: normal;
+}
+
 .gravacao-corpo { overflow-y: auto; padding: 16px 20px 20px; }
 /* Fundo preto sob o video: a gravacao de tela quase nunca tem a proporcao da
    caixa, e a sobra escura e menos ruidosa que a branca. */
