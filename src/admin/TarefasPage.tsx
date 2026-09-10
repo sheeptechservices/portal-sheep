@@ -263,10 +263,14 @@ export interface FiltroInicialTarefas {
   nonce: number;
 }
 
-export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: {
+export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, abrir, onAbriu }: {
   token: string;
   filtroInicial?: FiltroInicialTarefas;
   onFiltroAplicado?: () => void;
+  /** A tarefa que a busca rápida escolheu. O `nonce` faz a mesma tarefa reabrir
+   *  quando se busca por ela de novo depois de ter fechado a gaveta. */
+  abrir?: { id: string; nonce: number };
+  onAbriu?: () => void;
 }) {
   const { pode, usuario, onSessionExpired } = useAuth();
   const { toast } = useToast();
@@ -411,6 +415,14 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
       tarefas: (p.tarefas ?? []).map(t => (t.id === id ? { ...t, ...mudancas } : t)),
     })));
   }, []);
+
+  // A tarefa que a busca rápida escolheu. Guarda o id e espera a listagem: o
+  // alvo chega com a página recém-montada, e abrir a gaveta antes de a tarefa
+  // existir seria abrir uma gaveta vazia.
+  const [alvoDaBusca, setAlvoDaBusca] = useState<number | null>(null);
+  useEffect(() => {
+    if (abrir) setAlvoDaBusca(Number(abrir.id));
+  }, [abrir?.nonce]);
 
   // Chegou de uma entrega: entra com o projeto e a entrega já escolhidos, e a
   // tabela aberta, que é onde os detalhes cabem lado a lado.
@@ -872,6 +884,23 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado }: 
     prioridade: t.prioridade ?? PRIORIDADE_PADRAO, responsaveis: t.responsaveis ?? [],
     prazo: t.prazo ?? '', etiquetas: t.etiquetas,
   });
+
+  // A gaveta da tarefa que veio da busca, assim que ela aparece na listagem.
+  // Os filtros são limpos junto: achar pelo nome e cair numa tela que esconde
+  // justamente aquela tarefa seria o mesmo que não ter achado.
+  useEffect(() => {
+    if (alvoDaBusca == null) return;
+    const t = tarefas.find(x => x.id === alvoDaBusca);
+    if (!t) return;
+    setAlvoDaBusca(null);
+    setFProjeto([]);
+    setFStatus([]);
+    setFResponsavel([]);
+    setFEtiqueta([]);
+    setFEntrega([]);
+    abrirEdicao(t);
+    onAbriu?.();
+  }, [alvoDaBusca, tarefas]);
 
   if (!pode('tarefas:ver')) {
     return (

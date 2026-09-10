@@ -7,7 +7,7 @@ import { podeAbrirPagina, podeGerenciarUsuarios } from './papeis';
 // Alvo de navegação devolvido ao shell. Um alvo é ou um card (abre a página e
 // destaca o card) ou um destino de navegação (só troca de página).
 export type QuickTarget =
-  | { kind: 'card'; page: 'oportunidades'; id: string; titulo: string; sub?: string | null }
+  | { kind: 'card'; page: 'oportunidades' | 'projetos' | 'tarefas'; id: string; titulo: string; sub?: string | null }
   | { kind: 'nav'; page: Page; titulo: string; sub?: string | null };
 
 interface SolHit {
@@ -21,6 +21,22 @@ interface SolHit {
   status_cor: string | null;
 }
 
+
+interface ProjetoHit {
+  id: string;
+  codigo: string | null;
+  nome: string;
+  status: string | null;
+  cliente_nome: string | null;
+}
+
+interface TarefaHit {
+  id: number;
+  titulo: string;
+  status: string | null;
+  projeto_id: string;
+  projeto_nome: string | null;
+}
 
 type Row = { target: QuickTarget; badge?: string | null; badgeCor?: string | null; meta?: string | null };
 
@@ -57,11 +73,26 @@ function maskDoc(v: string | null): string {
   return v;
 }
 
-const CardIcon = {
+/* Os mesmos desenhos que o menu usa para cada pagina: a linha da busca e um
+   atalho para la, e o icone e o que faz o olho reconhecer o destino antes de
+   ler o titulo. */
+const CardIcon: Record<string, JSX.Element> = {
   oportunidades: (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
       <rect x="3" y="3" width="7" height="18" rx="2" stroke="currentColor" strokeWidth="1.8"/>
       <rect x="14" y="3" width="7" height="11" rx="2" stroke="currentColor" strokeWidth="1.8"/>
+    </svg>
+  ),
+  projetos: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+      <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.2l1.8 2.2h8A2.5 2.5 0 0 1 21 9.7v7.8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M8 13h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+    </svg>
+  ),
+  tarefas: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+      <rect x="3" y="4" width="18" height="16" rx="2.5" stroke="currentColor" strokeWidth="1.8"/>
+      <path d="M9 11l2 2 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   ),
 };
@@ -93,6 +124,8 @@ export default function QuickSearch({ token, onClose, onSelect }: {
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(false);
   const [sols, setSols] = useState<SolHit[]>([]);
+  const [projs, setProjs] = useState<ProjetoHit[]>([]);
+  const [tarefas, setTarefas] = useState<TarefaHit[]>([]);
   const [active, setActive] = useState(0);
   const [recents] = useState<QuickTarget[]>(() => loadRecents());
   const inputRef = useRef<HTMLInputElement>(null);
@@ -110,7 +143,7 @@ export default function QuickSearch({ token, onClose, onSelect }: {
 
   // Busca com debounce - cada tecla cancela o request anterior em voo.
   useEffect(() => {
-    if (!buscandoCards) { setSols([]); setLoading(false); return; }
+    if (!buscandoCards) { setSols([]); setProjs([]); setTarefas([]); setLoading(false); return; }
     const ctrl = new AbortController();
     setLoading(true);
     const timer = setTimeout(() => {
@@ -119,7 +152,11 @@ export default function QuickSearch({ token, onClose, onSelect }: {
         signal: ctrl.signal,
       })
         .then(r => r.json())
-        .then(d => { setSols(d.oportunidades ?? []); })
+        .then(d => {
+          setSols(d.oportunidades ?? []);
+          setProjs(d.projetos ?? []);
+          setTarefas(d.tarefas ?? []);
+        })
         .catch(() => { /* abortado ou offline */ })
         .finally(() => { if (!ctrl.signal.aborted) setLoading(false); });
     }, 180);
@@ -148,6 +185,37 @@ export default function QuickSearch({ token, onClose, onSelect }: {
             meta: s.valor_estimado != null
               ? s.valor_estimado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
               : null,
+          })),
+        },
+        {
+          titulo: 'Projetos',
+          rows: projs.map(p => ({
+            target: {
+              kind: 'card' as const,
+              page: 'projetos' as const,
+              id: p.id,
+              titulo: p.nome,
+              // O cliente diz de quem e o projeto, que e o que separa dois
+              // projetos de nome parecido; o codigo fica na coluna da direita.
+              sub: p.cliente_nome,
+            },
+            badge: p.status,
+            meta: p.codigo,
+          })),
+        },
+        {
+          titulo: 'Tarefas',
+          rows: tarefas.map(t => ({
+            target: {
+              kind: 'card' as const,
+              page: 'tarefas' as const,
+              id: String(t.id),
+              titulo: t.titulo,
+              // Sem o projeto ao lado, "Ajustar o filtro" aparece tres vezes na
+              // lista e nao da para saber qual e qual.
+              sub: t.projeto_nome,
+            },
+            badge: t.status,
           })),
         },
       ].filter(g => g.rows.length > 0)

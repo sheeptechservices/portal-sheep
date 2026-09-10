@@ -1494,6 +1494,8 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
             {paginaNaTela === 'projetos'      && (
               <ProjetosPage
                 token={token}
+                abrir={openCard?.page === 'projetos' ? openCard : undefined}
+                onAbriu={() => setOpenCard(null)}
                 onVerTarefasDaEntrega={(projeto: string, entrega: number) => {
                   setTarefasDaEntrega({ projeto, entrega, nonce: Date.now() });
                   setPage('tarefas');
@@ -1505,6 +1507,8 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
                 token={token}
                 filtroInicial={tarefasDaEntrega ?? undefined}
                 onFiltroAplicado={() => setTarefasDaEntrega(null)}
+                abrir={openCard?.page === 'tarefas' ? openCard : undefined}
+                onAbriu={() => setOpenCard(null)}
               />
             )}
             {paginaNaTela === 'dashboard'     && <DashboardPage     token={token} />}

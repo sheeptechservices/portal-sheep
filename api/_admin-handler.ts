@@ -3304,13 +3304,17 @@ async function despacharAdminData(
     // Casa por empresa, nome do contato, CNPJ (com ou sem máscara) e id do card.
     if (action === 'quick_search') {
       const raw = (query.get('q') ?? '').trim();
-      if (raw.length < 2) return { status: 200, body: { oportunidades: [] } };
+      if (raw.length < 2) return { status: 200, body: { oportunidades: [], projetos: [], tarefas: [] } };
 
       // A busca é livre para qualquer sessão, mas o resultado não: quem não
       // enxerga o kanban não pode achar cards dele por aqui. Sem este filtro a
       // busca rápida seria a porta dos fundos das duas páginas.
       const veOportunidades = pode(permissoes, 'oportunidades:ver');
-      if (!veOportunidades) return { status: 200, body: { oportunidades: [] } };
+      const veProjetos = pode(permissoes, 'projetos:ver');
+      const veTarefas = pode(permissoes, 'tarefas:ver');
+      if (!veOportunidades && !veProjetos && !veTarefas) {
+        return { status: 200, body: { oportunidades: [], projetos: [], tarefas: [] } };
+      }
 
       const digits = raw.replace(/\D/g, '');
       const LIMIT = 8;
@@ -3319,7 +3323,7 @@ async function despacharAdminData(
       // SQL: uma pilha de 37 REPLACE aninhados por coluna estoura o parser do
       // Turso antes de a consulta rodar. O funil é pequeno o bastante para o
       // filtro caber na memória - e a comparação fica igual à do resto da casa.
-      const linhas = await db.execute(`
+      const linhas = !veOportunidades ? { rows: [] as Record<string, unknown>[] } : await db.execute(`
         SELECT
           s.id, s.created_at, s.empresa, s.cnpj, s.contato_nome, s.valor_estimado,
           st.nome AS status_nome, st.cor AS status_cor
@@ -3343,10 +3347,53 @@ async function despacharAdminData(
         return !!digits && digits.length >= 3 && soDigitos(r.cnpj).includes(digits);
       }).slice(0, LIMIT);
 
+      // Projeto e tarefa, pelo nome. O recorte de equipe e o mesmo da tela de
+      // Projetos: quem so enxerga o que e seu nao acha aqui o que nao acharia
+      // la - a busca rapida nao pode ser a porta dos fundos de nenhuma pagina.
+      const soDaEquipeAqui = papelEfetivo(usuario?.email, usuario?.papel) === 'membro';
+      const projetos = !veProjetos ? { rows: [] as Record<string, unknown>[] } : await db.execute({
+        sql: `
+          SELECT p.id, p.codigo, p.nome, p.status, c.nome AS cliente_nome
+          FROM projetos p
+          LEFT JOIN clientes c ON c.id = p.cliente_id
+          WHERE p.ativo = 1
+            AND (? = 0 OR EXISTS (
+              SELECT 1 FROM projeto_equipe e
+              WHERE e.projeto_id = p.id AND e.usuario_id = ?
+            ))
+          ORDER BY p.criado_em DESC
+          LIMIT 500
+        `,
+        args: [soDaEquipeAqui ? 1 : 0, usuario?.id ?? ''],
+      });
+      const projetosAchados = projetos.rows.filter(r =>
+        foldTerm(String(r.nome ?? '')).includes(alvo)
+        || foldTerm(String(r.codigo ?? '')).includes(alvo)).slice(0, LIMIT);
+
+      const tarefas = !veTarefas ? { rows: [] as Record<string, unknown>[] } : await db.execute({
+        sql: `
+          SELECT t.id, t.titulo, t.status, t.projeto_id, p.nome AS projeto_nome
+          FROM projeto_tarefas t
+          JOIN projetos p ON p.id = t.projeto_id
+          WHERE p.ativo = 1
+            AND (? = 0 OR EXISTS (
+              SELECT 1 FROM projeto_equipe e
+              WHERE e.projeto_id = p.id AND e.usuario_id = ?
+            ))
+          ORDER BY t.id DESC
+          LIMIT 1000
+        `,
+        args: [soDaEquipeAqui ? 1 : 0, usuario?.id ?? ''],
+      });
+      const tarefasAchadas = tarefas.rows
+        .filter(r => foldTerm(String(r.titulo ?? '')).includes(alvo)).slice(0, LIMIT);
+
       return {
         status: 200,
         body: {
           oportunidades: achados,
+          projetos: projetosAchados,
+          tarefas: tarefasAchadas,
         },
       };
     }

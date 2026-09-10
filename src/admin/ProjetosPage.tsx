@@ -4604,10 +4604,14 @@ function FormularioProjeto({
 
 type Aba = 'geral' | 'gestao';
 
-export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
+export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAbriu }: {
   token: string;
   /** Entregue pelo painel: leva à tela de Tarefas já filtrada numa entrega. */
   onVerTarefasDaEntrega?: (projetoId: string, entregaId: number) => void;
+  /** O projeto que a busca rápida escolheu. O `nonce` faz o mesmo projeto
+   *  reabrir quando se busca por ele de novo depois de ter fechado a ficha. */
+  abrir?: { id: string; nonce: number };
+  onAbriu?: () => void;
 }) {
   const { pode, usuario, onSessionExpired } = useAuth();
   const { toast } = useToast();
@@ -4628,6 +4632,10 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
   const [excluindoTarefa, setExcluindoTarefa] = useState<Tarefa | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [form, setForm] = useState<{ editando: Projeto | null; base?: Rascunho } | null>(null);
+  /** A ficha que a busca rápida pediu. Espera a lista chegar: o alvo pode
+   *  aterrissar antes dela, e abrir uma ficha vazia seria pior do que esperar
+   *  um instante. */
+  const [alvoDaBusca, setAlvoDaBusca] = useState<string | null>(null);
   /** O projeto que acabou de nascer do clique em "Novo projeto", enquanto o
    *  painel dele está aberto. A promessa existe porque a primeira gravação
    *  automática pode sair antes de o servidor dizer que id ele deu. */
@@ -5051,6 +5059,23 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
     setIdNascido(null);
     setForm(f => (f && !f.editando ? { ...f, editando: p } : f));
   }, [idNascido, projetos]);
+
+  // O alvo da busca rápida chega antes da listagem: a página acabou de montar,
+  // e os projetos ainda estão vindo. Guardar o id e esperar é o que faz a ficha
+  // abrir com o projeto dentro, em vez de abrir vazia e piscar depois.
+  useEffect(() => {
+    if (abrir) setAlvoDaBusca(abrir.id);
+  }, [abrir?.nonce]);
+
+  useEffect(() => {
+    if (!alvoDaBusca) return;
+    const p = projetos.find(x => x.id === alvoDaBusca);
+    if (!p) return;
+    setAlvoDaBusca(null);
+    setAba('geral');
+    setForm({ editando: p });
+    onAbriu?.();
+  }, [alvoDaBusca, projetos]);
 
   /** Fecha o painel. O projeto que ninguém tocou não fica: abrir e desistir não
    *  deveria deixar "Projeto sem nome" no quadro da casa. Qualquer alteração,
