@@ -565,6 +565,7 @@ function NavInferior({ page, setPage, onMais }: {
 function Sidebar({
   page, setPage, open, pinned, onClose, onReportar, onListarReportes, onPrintDoReporte,
   onMudarStatusDoReporte, onMudarTipoDoReporte, onEditarReporte, onExcluirReporte,
+  onReabrirReporte,
 }: {
   page: Page; setPage: (p: Page) => void; open: boolean; pinned: boolean; onClose: () => void;
   onReportar: (relato: Relato) => Promise<{ error?: string; aviso?: string | null } | null>;
@@ -574,6 +575,7 @@ function Sidebar({
   onMudarTipoDoReporte: (id: number, tipo: string) => Promise<{ error?: string } | null>;
   onEditarReporte: (id: number, texto: string, urgencia: string) => Promise<{ error?: string } | null>;
   onExcluirReporte: (id: number) => Promise<{ error?: string } | null>;
+  onReabrirReporte: (id: number, comentario: string) => Promise<{ error?: string; aviso?: string | null; reaberto_em?: string } | null>;
 }) {
   // Só o que depende de estar preso ou solto, e de estar aberto ou fechado: a
   // aparência - folha, fio da borda e sombra - mora na folha de estilo, com o
@@ -680,6 +682,7 @@ function Sidebar({
         mudarTipo={onMudarTipoDoReporte}
         editar={onEditarReporte}
         excluir={onExcluirReporte}
+        reabrir={onReabrirReporte}
         admin={admin}
       />
 
@@ -1180,6 +1183,18 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
       return { error: 'Erro de conexão. Tente de novo.' };
     }
   }, [token]);
+  const reabrirReporte = useCallback(async (id: number, comentario: string) => {
+    try {
+      const r = await fetch('/api/admin-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-session': token },
+        body: JSON.stringify({ action: 'reabrir_reporte', id, comentario }),
+      });
+      return await r.json().catch(() => ({ error: 'Não foi possível reabrir.' }));
+    } catch {
+      return { error: 'Erro de conexão. Tente de novo.' };
+    }
+  }, [token]);
   const printDoReporte = useCallback(async (id: number, anexo?: number) => {
     try {
       // Sem `anexo`, e o print antigo da propria linha; com ele, e um dos
@@ -1412,6 +1427,7 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
           onMudarTipoDoReporte={mudarTipoDoReporte}
           onEditarReporte={editarReporte}
           onExcluirReporte={excluirReporte}
+          onReabrirReporte={reabrirReporte}
         />
 
         <NavInferior page={page} setPage={setPage} onMais={() => setOpen(true)} />

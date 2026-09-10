@@ -329,6 +329,7 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   // o que muda e de qual chamado.
   editar_reporte: LIVRE,
   excluir_reporte: LIVRE,
+  reabrir_reporte: LIVRE,
   board: 'oportunidades:ver',
   detail: 'oportunidades:ver',
   status_card_count: 'oportunidades:ver',

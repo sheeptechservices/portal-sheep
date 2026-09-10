@@ -14,7 +14,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   IconAlert, IconBug, IconChevronRight, IconDoc, IconEdit, IconImage, IconImagemSem,
-  IconSparkles, IconSpinner, IconTrash, IconX,
+  IconSparkles, IconSpinner, IconTrash, IconUndo, IconX,
 } from './icons';
 import { Dialogo } from './Dialogo';
 import { PreviaArquivo } from './PreviaArquivo';
@@ -89,6 +89,9 @@ export interface ReporteNaLista {
   anexos?: { id: number | null; nome: string; tipo: string; tamanho: number }[];
   status: string;
   criado_em: string;
+  /** Quando voltou para a fila depois de ter sido resolvido. Nulo e o normal.
+   *  Carimbo, e nao um quinto status: reaberto esta `aberto` de novo. */
+  reaberto_em?: string | null;
   /** Se este chamado e de quem esta olhando. Vem decidido do servidor, que e
    *  onde a regra tambem recusa - a tela so escolhe o que desenhar. */
   meu?: boolean;
@@ -97,7 +100,8 @@ export interface ReporteNaLista {
 }
 
 export function ListaReportes({
-  carregar, carregarPrint, mudarStatus, mudarTipo, editar, excluir, admin, onFechar,
+  carregar, carregarPrint, mudarStatus, mudarTipo, editar, excluir, reabrir,
+  admin, onFechar,
 }: {
   carregar: () => Promise<{ reportes?: ReporteNaLista[]; error?: string }>;
   /** O conteúdo do print vem um por vez: na lista ele não viaja. */
@@ -110,6 +114,9 @@ export function ListaReportes({
    *  o servidor: aqui elas so nao sao oferecidas onde `meu` e falso. */
   editar?: (id: number, texto: string, urgencia: string) => Promise<{ error?: string } | null>;
   excluir?: (id: number) => Promise<{ error?: string } | null>;
+  /** Trazer de volta o proprio chamado ja resolvido. So o autor, e so a partir
+   *  de resolvido - as duas coisas conferidas no servidor. */
+  reabrir?: (id: number, comentario: string) => Promise<{ error?: string; aviso?: string | null; reaberto_em?: string } | null>;
   /**
    * O dono do painel: vê a fila inteira e muda o andamento. Quem não é vê só o
    * que escreveu, e sem o campo de status.
@@ -155,6 +162,11 @@ export function ListaReportes({
   const [gravando, setGravando] = useState(false);
   /** O chamado que a pergunta de excluir esta mirando. */
   const [apagando, setApagando] = useState<ReporteNaLista | null>(null);
+  /** O chamado que esta sendo reaberto, e o motivo que vai junto. */
+  const [reabrindo, setReabrindo] = useState<ReporteNaLista | null>(null);
+  const [motivo, setMotivo] = useState('');
+  const campoMotivo = useRef<HTMLTextAreaElement>(null);
+  const limparReabertura = () => { setReabrindo(null); setMotivo(''); };
 
   /** Quantos estão fora da fila agora - o número que a chave mostra. */
   const resolvidos = (lista ?? []).filter(r => r.status === 'resolvido').length;
@@ -285,6 +297,45 @@ export function ListaReportes({
     if (r?.error) { setLista(antes); setErroStatus(r.error); return; }
     toast('success', 'Chamado excluído');
   }
+
+  /** Traz o chamado de volta para a fila. Espera a resposta, como a correcao:
+   *  a caixa esta aberta na frente de quem clicou, e o motivo que ela carrega e
+   *  o que o servidor grava como nota. */
+  async function reabrirAgora() {
+    if (!reabrir || !reabrindo) return;
+    const texto = motivo.trim();
+    if (!texto || gravando) return;
+    setGravando(true);
+    setErroStatus('');
+    const alvo = reabrindo;
+    const r = await reabrir(alvo.id, texto);
+    setGravando(false);
+    if (r?.error) { setErroStatus(r.error); return; }
+    const quando = r?.reaberto_em ?? new Date().toISOString();
+    // A nota entra na hora com o que a pessoa acabou de escrever; do servidor
+    // so viria o carimbo, e espera-lo para ver o proprio texto e esperar a ida
+    // e a volta por nada.
+    setLista(l => l?.map(x => (x.id === alvo.id
+      ? {
+        ...x,
+        status: 'aberto',
+        reaberto_em: quando,
+        notas: [...(x.notas ?? []), {
+          texto, status: 'aberto', autor_nome: 'Você', criado_em: quando,
+        }],
+      }
+      : x)) ?? l);
+    limparReabertura();
+    // O aviso que falhou nao e erro: o chamado voltou para a fila. Ele fica na
+    // linha de ressalva, e nao no balao, porque some sozinho em quatro segundos
+    // e ressalva que some e ressalva perdida.
+    if (r?.aviso) { setErroStatus(r.aviso); return; }
+    toast('success', 'Chamado reaberto', 'Quem cuida da fila foi avisado por e-mail.');
+  }
+
+  // O cursor ja no motivo quando a caixa abre: escrever e o que se faz ali. Por
+  // efeito, e nao por `autoFocus` - o campo vive dentro de uma caixa animada.
+  useEffect(() => { if (reabrindo) campoMotivo.current?.focus(); }, [reabrindo]);
 
   /** Quem o e-mail iria avisar, para a pergunta dizer o nome em vez de "a
    *  pessoa". */
@@ -443,6 +494,16 @@ export function ListaReportes({
                             <span className={`entrega-seta${abertaAqui ? ' aberta' : ''}`}>
                               <IconChevronRight size={12} />
                             </span>
+                            {/* A marca vem antes do relato, e nao junto do
+                                status: o status ja voltou a dizer "Aberto", e o
+                                que ele nao conta e que este aqui ja tinha sido
+                                dado como feito uma vez. */}
+                            {r.reaberto_em && (
+                              <span className="reportes-reaberto"
+                                title={`Reaberto em ${instante(r.reaberto_em)}`}>
+                                <IconUndo size={10} /> Reaberto
+                              </span>
+                            )}
                             <p className="reportes-texto">{r.texto}</p>
                           </div>
                         </td>
@@ -613,8 +674,19 @@ export function ListaReportes({
                                     ao clique errado. Somem enquanto o
                                     formulario de correcao esta aberto, que ja
                                     tem as saidas dele. */}
-                                {r.meu && !editandoAqui && (editar || excluir) && (
+                                {r.meu && !editandoAqui && (editar || excluir || reabrir) && (
                                   <div className="reportes-detalhe-acoes">
+                                    {/* Reabrir so existe onde faz sentido: no
+                                        chamado que foi dado como resolvido.
+                                        Descartado nao entra - aquilo foi uma
+                                        decisao de alguem, e se discute falando
+                                        com a pessoa, nao clicando. */}
+                                    {reabrir && r.status === 'resolvido' && (
+                                      <button type="button" className="reportes-acao"
+                                        onClick={() => setReabrindo(r)}>
+                                        <IconUndo size={12} /> Reabrir
+                                      </button>
+                                    )}
                                     {editar && (
                                       <button type="button" className="reportes-acao"
                                         onClick={() => setEditando({ id: r.id, texto: r.texto, urgencia: r.urgencia })}>
@@ -643,6 +715,46 @@ export function ListaReportes({
           </div>
         </div>
       </div>
+
+      {/* Reabrir devolve para a fila um chamado que ja tinha sido dado como
+          feito, e por isso pede o motivo - sem ele, o que chega em quem cuida da
+          fila e so "voltou". O botao de confirmar fica travado ate haver texto:
+          e o unico campo obrigatorio de uma caixa do sistema, e e obrigatorio
+          porque a caixa existe por causa dele. */}
+      {reabrindo && (
+        <Dialogo
+          titulo="Reabrir este chamado?"
+          descricao={
+            <>
+              <strong>{reabrindo.texto.slice(0, 90)}{reabrindo.texto.length > 90 ? '…' : ''}</strong>
+              <br />
+              Ele volta para a fila como Aberto, e quem cuida dela recebe um e-mail com o
+              que você escrever aqui.
+            </>
+          }
+          perigo={false}
+          rotuloOk="Reabrir"
+          ocupado={gravando || !motivo.trim()}
+          ocupadoRotulo={gravando ? 'Reabrindo' : undefined}
+          zIndex={10070}
+          largura={460}
+          onFechar={limparReabertura}
+          onConfirmar={() => void reabrirAgora()}
+        >
+          <label className="reportes-nota-campo">
+            <span>O que continua faltando?</span>
+            <textarea
+              ref={campoMotivo}
+              className="form-input"
+              rows={3}
+              value={motivo}
+              onChange={e => setMotivo(e.target.value)}
+              placeholder="O erro voltou a acontecer quando…"
+              maxLength={2000}
+            />
+          </label>
+        </Dialogo>
+      )}
 
       {/* Apagar nao tem volta, e por isso pergunta. O texto mostra o comeco do
           relato: numa fila de vinte linhas parecidas, "o chamado" nao diz qual. */}

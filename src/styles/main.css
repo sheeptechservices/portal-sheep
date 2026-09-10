@@ -17318,6 +17318,27 @@ button.checklist-texto:focus-visible {
 .reportes-acao:hover { border-color: var(--gray2); color: var(--black); }
 .reportes-acao.perigo:hover { border-color: var(--red); color: var(--red); }
 
+/* A marca de quem ja foi dado como feito e voltou. Ambar, que e a cor de
+   atencao da casa: nao e erro - o chamado esta so na fila de novo -, mas e a
+   linha que merece ser lida antes das outras, porque alguem achou que ela ja
+   estava resolvida. Fica antes do relato: o status ao lado ja voltou a dizer
+   "Aberto", e e justamente isso que ele deixa de contar. */
+.reportes-reaberto {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--amber) 14%, transparent);
+  color: var(--amber);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 /* A correcao, no lugar onde o relato estava sendo lido. O campo ocupa a faixa
    inteira e a linha de baixo junta a urgencia com as duas saidas, encostadas a
    direita: e a mesma ordem do rodape de toda gaveta da casa. */

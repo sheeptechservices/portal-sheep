@@ -911,6 +911,14 @@ async function migrarSchema(db: Client) {
   // existir. Sem `DEFAULT`, de proposito: um padrao carimbaria de melhoria os
   // chamados antigos, inclusive os que eram defeito.
   try { await ddl(`ALTER TABLE reportes ADD COLUMN tipo TEXT`); } catch {}
+  // Quando o chamado foi reaberto pela ultima vez. Nulo quer dizer que nunca
+  // foi, que e o caso da esmagadora maioria.
+  //
+  // E carimbo de data, e nao um quinto status: reaberto volta para `aberto`,
+  // porque e la que ele esta de novo. Um estado proprio dividiria a fila em
+  // duas gavetas que pedem o mesmo trabalho, e todo filtro por "o que falta"
+  // teria de lembrar de somar as duas.
+  try { await ddl(`ALTER TABLE reportes ADD COLUMN reaberto_em TEXT`); } catch {}
 
   // Os anexos do chamado. Tabela, e nao as colunas `print_*`: um chamado tem um
   // print, mas tambem tem "o print da tela, o print do console e o PDF que o
@@ -4053,7 +4061,7 @@ async function despacharAdminData(
         sql: `
         SELECT r.id, r.texto, r.urgencia, r.tipo, r.pagina, r.autor_id, r.autor_nome,
                r.autor_email, r.print_nome, r.print_base64 IS NOT NULL AS tem_print,
-               r.status, r.criado_em, u.foto_url AS autor_foto
+               r.status, r.criado_em, r.reaberto_em, u.foto_url AS autor_foto
         FROM reportes r
         LEFT JOIN usuarios u ON u.id = r.autor_id
         ${filaInteira ? '' : meus}
@@ -4147,6 +4155,7 @@ async function despacharAdminData(
             ],
             status: String(x.status ?? 'aberto'),
             criado_em: String(x.criado_em),
+            reaberto_em: x.reaberto_em != null ? String(x.reaberto_em) : null,
             notas: notasPorRelato.get(Number(x.id)) ?? [],
           })),
         },
@@ -6435,6 +6444,78 @@ function faltaEmProjeto(p: any): string | null {
       await db.execute({ sql: 'DELETE FROM reporte_notas WHERE reporte_id = ?', args: [body?.id] });
       await db.execute({ sql: 'DELETE FROM reportes WHERE id = ?', args: [body?.id] });
       return { status: 200, body: { ok: true } };
+    }
+
+    /**
+     * Reabrir o proprio chamado.
+     *
+     * So a partir de `resolvido`, e so pelo autor. Reabrir de `descartado`
+     * seria discutir uma decisao que alguem tomou, e isso se faz falando com a
+     * pessoa; reabrir de `aberto` ou `em_analise` nao quer dizer nada, porque
+     * ele ja esta na fila.
+     *
+     * O motivo e obrigatorio. Reabrir sem dizer por que devolve para a fila um
+     * chamado que ja tinha sido dado como feito, e quem cuida dela precisa
+     * saber o que continua faltando - senao a unica coisa que chega e "voltou".
+     */
+    if (action === 'reabrir_reporte') {
+      const linha = (await db.execute({
+        sql: 'SELECT texto, urgencia, pagina, status, autor_id, autor_nome, autor_email FROM reportes WHERE id = ?',
+        args: [body?.id],
+      })).rows[0];
+      if (!linha) return { status: 404, body: { error: 'Relato não encontrado.' } };
+      if (!ehDonoDoRelato(linha, usuario)) {
+        return { status: 403, body: { error: 'Só quem reportou pode reabrir este chamado.' } };
+      }
+      if (String(linha.status ?? '') !== 'resolvido') {
+        return { status: 400, body: { error: 'Só dá para reabrir um chamado que está resolvido.' } };
+      }
+      const motivo = String(body?.comentario ?? '').trim().slice(0, 2000);
+      if (!motivo) {
+        return { status: 400, body: { error: 'Diga o que continua faltando.' } };
+      }
+      const agora = new Date().toISOString();
+      await db.execute({
+        sql: `UPDATE reportes SET status = 'aberto', reaberto_em = ? WHERE id = ?`,
+        args: [agora, body?.id],
+      });
+      // O motivo entra como nota do chamado, na mesma lista em que moram os
+      // recados de quem mudou o andamento: e a historia dele, em ordem.
+      await db.execute({
+        sql: `INSERT INTO reporte_notas (reporte_id, texto, status, autor_id, autor_nome, criado_em)
+              VALUES (?, ?, 'aberto', ?, ?, ?)`,
+        args: [body?.id, motivo, autorId ?? null, autorNome ?? 'quem reportou', agora],
+      });
+
+      // O aviso vai para quem cuida da fila, e nao para quem reabriu: quem
+      // reabriu acabou de fazer isso, e nao precisa ser informado do proprio
+      // gesto. Falhar no e-mail nao desfaz a reabertura - ela ja esta gravada.
+      const quem = autorNome ?? usuario?.email ?? 'Quem reportou';
+      const envio = await notifyEmail(
+        db, emailAdmin(),
+        `Portal: ${quem} reabriu um chamado`,
+        fichaEmail([
+          ['Quem reabriu', usuario?.email ? `${quem} (${usuario.email})` : quem],
+          ['Onde', String(linha.pagina ?? '')],
+          ['Urgência', String(linha.urgencia ?? '')],
+        ])
+        + citacaoEmail(String(linha.texto ?? ''))
+        + textoEmail('Motivo da reabertura:')
+        + citacaoEmail(motivo),
+        'reporte_status',
+        {
+          previa: motivo,
+          rodape: 'Você recebe este aviso porque é quem cuida do portal.',
+        },
+      );
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          reaberto_em: agora,
+          aviso: envio.ok ? null : `O chamado voltou para a fila, mas o e-mail não saiu: ${envio.erro}`,
+        },
+      };
     }
 
     if (action === 'delete_comment') {
