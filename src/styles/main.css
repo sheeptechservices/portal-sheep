@@ -486,6 +486,22 @@ body {
 
 .form-input::placeholder { color: var(--gray2); font-weight: 400; }
 
+/* A caixa de texto da casa cresce só para baixo.
+
+   A alça nativa do `textarea` arrasta nos dois eixos, e o que ela grava é
+   largura em estilo inline - que vence o `width: 100%` daqui. Bastava um
+   arrasto para o campo passar da borda do painel e levar a gaveta junto,
+   porque o corpo do painel antigo não tem `overflow-x` para segurá-lo.
+
+   Altura é escolha legítima de quem escreve: um relato de dez linhas cabe
+   melhor num campo alto. Largura é do formulário, e não de quem digita. O
+   `max-width` fica junto do `resize` para prender também o campo que já foi
+   alargado antes desta regra existir. */
+textarea.form-input {
+  resize: vertical;
+  max-width: 100%;
+}
+
 .form-input:hover,
 .form-select:hover {
   border-color: var(--gray2);
