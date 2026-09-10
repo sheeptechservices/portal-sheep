@@ -321,6 +321,8 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   // Mudar o andamento é do dono do painel. Ver o próprio andamento é de quem
   // reportou: sem isso, quem escreveu não saberia se aquilo virou alguma coisa.
   set_reporte_status: SO_ADMIN,
+  // Reclassificar tambem: e arrumacao da fila, e a fila e do dono do painel.
+  set_reporte_tipo: SO_ADMIN,
   board: 'oportunidades:ver',
   detail: 'oportunidades:ver',
   status_card_count: 'oportunidades:ver',

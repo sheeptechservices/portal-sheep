@@ -85,6 +85,13 @@ const URGENCIAS_DO_RELATO = ['Urgente', 'Alta', 'Média', 'Baixa'];
  *  para `aberto`, e a auditoria conta a história. Estado a mais numa fila
  *  pequena só cria dúvida sobre qual usar. */
 const STATUS_DO_RELATO = ['aberto', 'em_analise', 'resolvido', 'descartado'];
+/** O que o chamado e: defeito no que existe, ou pedido do que nao existe. Sao
+ *  dois porque a pergunta que a fila responde e uma so - "isto esta quebrado?"
+ *  -, e uma terceira gaveta viraria o deposito de quem nao quis escolher.
+ *  Chamado gravado antes desta coluna fica sem tipo, e a fila o mostra assim
+ *  ate alguem classificar: inventar um tipo para ele seria dado errado com
+ *  cara de dado certo. */
+const TIPOS_DO_RELATO = ['bug', 'melhoria'];
 
 /** Como cada estado se escreve para quem lê. A chave é de banco; o e-mail que
  *  chega em quem reportou não pode dizer "em_analise". */
@@ -877,6 +884,11 @@ async function migrarSchema(db: Client) {
     )
   `);
   await ddl(`CREATE INDEX IF NOT EXISTS idx_reportes_data ON reportes (criado_em DESC)`);
+  // O tipo do chamado: 'bug' ou 'melhoria'. Nasce nulo, e nulo quer dizer "sem
+  // classificacao" - o que a fila mostra para o que foi gravado antes disto
+  // existir. Sem `DEFAULT`, de proposito: um padrao carimbaria de melhoria os
+  // chamados antigos, inclusive os que eram defeito.
+  try { await ddl(`ALTER TABLE reportes ADD COLUMN tipo TEXT`); } catch {}
 
   // Os anexos do chamado. Tabela, e nao as colunas `print_*`: um chamado tem um
   // print, mas tambem tem "o print da tela, o print do console e o PDF que o
@@ -4017,7 +4029,7 @@ async function despacharAdminData(
       // que reportou no mês passado.
       const r = await db.execute({
         sql: `
-        SELECT r.id, r.texto, r.urgencia, r.pagina, r.autor_nome, r.autor_email,
+        SELECT r.id, r.texto, r.urgencia, r.tipo, r.pagina, r.autor_nome, r.autor_email,
                r.print_nome, r.print_base64 IS NOT NULL AS tem_print, r.status,
                r.criado_em, u.foto_url AS autor_foto
         FROM reportes r
@@ -4089,6 +4101,9 @@ async function despacharAdminData(
             id: Number(x.id),
             texto: String(x.texto),
             urgencia: String(x.urgencia),
+            // Nulo continua nulo ate a fila da tela: e ela que sabe desenhar
+            // "sem classificacao" sem que isso vire um tipo de mentira.
+            tipo: x.tipo != null ? String(x.tipo) : null,
             pagina: x.pagina != null ? String(x.pagina) : null,
             autor_nome: String(x.autor_nome),
             autor_email: x.autor_email != null ? String(x.autor_email) : null,
@@ -6110,6 +6125,13 @@ function faltaEmProjeto(p: any): string | null {
       if (!URGENCIAS_DO_RELATO.includes(urgencia)) {
         return { status: 400, body: { error: 'Escolha a urgência.' } };
       }
+      // O tipo separa a fila em duas leituras: o que quebrou e o que falta. Vem
+      // de quem escreve porque e quem sabe - de fora, "o relatorio nao bate" e
+      // "queria um relatorio novo" chegam com a mesma cara.
+      const tipo = String(body?.tipo ?? '').trim();
+      if (!TIPOS_DO_RELATO.includes(tipo)) {
+        return { status: 400, body: { error: 'Diga se é um bug ou uma melhoria.' } };
+      }
       // Os anexos são opcionais e vão até cinco. `print` continua aceito como um
       // anexo só: é o formato que o cartão mandava antes, e recusá-lo quebraria
       // uma aba aberta desde antes do deploy.
@@ -6132,9 +6154,9 @@ function faltaEmProjeto(p: any): string | null {
       // uma recusa apagaria o que a pessoa escreveu.
       const gravado = await db.execute({
         sql: `INSERT INTO reportes
-                (texto, urgencia, pagina, autor_id, autor_nome, autor_email, criado_em)
-              VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        args: [texto, urgencia, de || null, autorId, quem, usuario?.email ?? null, agora],
+                (texto, urgencia, tipo, pagina, autor_id, autor_nome, autor_email, criado_em)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [texto, urgencia, tipo, de || null, autorId, quem, usuario?.email ?? null, agora],
       });
       const id = Number(gravado.lastInsertRowid ?? 0);
       // Três anexos são três gravações ao mesmo tempo, e não uma fila.
@@ -6148,10 +6170,11 @@ function faltaEmProjeto(p: any): string | null {
         db, emailAdmin(),
         // A urgência vai no assunto porque é nele que se faz a triagem de uma
         // caixa de entrada: dentro do corpo ela só aparece depois de abrir.
-        `Portal: ${quem} reportou alguma coisa (${urgencia})`,
+        `Portal: ${quem} reportou ${tipo === 'bug' ? 'um bug' : 'uma melhoria'} (${urgencia})`,
         fichaEmail([
           ['Quem', usuario?.email ? `${quem} (${usuario.email})` : quem],
           ['Onde', de],
+          ['Tipo', tipo === 'bug' ? 'Bug' : 'Melhoria'],
           ['Urgência', urgencia],
         ])
         + citacaoEmail(texto)
@@ -6307,6 +6330,26 @@ function faltaEmProjeto(p: any): string | null {
           aviso: envio.ok ? null : `O status mudou, mas o e-mail não saiu: ${envio.erro}`,
         },
       };
+    }
+
+    // Reclassificar. Existe porque quem escreve nem sempre acerta de primeira -
+    // "o filtro nao traz nada" pode ser defeito ou pode ser campo que nunca
+    // existiu -, e porque a fila herdou chamados sem tipo nenhum.
+    //
+    // Sem e-mail, ao contrario da mudanca de andamento: trocar a gaveta de um
+    // chamado nao muda nada para quem reportou, e aviso que nao diz respeito a
+    // ninguem e o que faz as pessoas pararem de ler os que dizem.
+    if (action === 'set_reporte_tipo') {
+      const tipo = String(body?.tipo ?? '');
+      if (!TIPOS_DO_RELATO.includes(tipo)) {
+        return { status: 400, body: { error: 'Tipo desconhecido.' } };
+      }
+      const r = await db.execute({
+        sql: 'UPDATE reportes SET tipo = ? WHERE id = ?',
+        args: [tipo, body?.id],
+      });
+      if (!r.rowsAffected) return { status: 404, body: { error: 'Relato não encontrado.' } };
+      return { status: 200, body: { ok: true } };
     }
 
     if (action === 'delete_comment') {

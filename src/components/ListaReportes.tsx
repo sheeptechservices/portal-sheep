@@ -10,11 +10,15 @@
 //  ordenada por chegada ela devolveria a caixa de entrada. Quem ordena é o
 //  servidor; aqui só se desenha o que veio.
 // ─────────────────────────────────────────────────────────────────────────────
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { IconAlert, IconChevronRight, IconDoc, IconImage, IconImagemSem, IconX } from './icons';
+import {
+  IconAlert, IconBug, IconChevronRight, IconDoc, IconImage, IconImagemSem,
+  IconSparkles, IconX,
+} from './icons';
 import { Dialogo } from './Dialogo';
 import { PreviaArquivo } from './PreviaArquivo';
+import FilterDropdown from './FilterDropdown';
 import { SelectSistema } from './SelectSistema';
 import { Avatar } from '../admin/FormularioTarefa';
 import { Chave } from './Chave';
@@ -42,6 +46,21 @@ export const STATUS_DO_RELATO = [
 const ROTULO_STATUS: Record<string, { label: string; cor: string }> =
   Object.fromEntries(STATUS_DO_RELATO.map(s => [s.valor, s]));
 
+/**
+ * O que o chamado e. Sao dois, e de proposito: a pergunta que a fila responde e
+ * uma so - isto esta quebrado? -, e uma terceira gaveta viraria o deposito de
+ * quem nao quis escolher.
+ *
+ * Vermelho para o defeito e verde para o pedido, porque e a mesma leitura de
+ * toda a casa: vermelho e o que esta errado agora, verde e o que se ganha.
+ */
+export const TIPOS_DO_RELATO = [
+  { valor: 'bug', label: 'Bug', cor: 'var(--red)', Icone: IconBug },
+  { valor: 'melhoria', label: 'Melhoria', cor: 'var(--green-light)', Icone: IconSparkles },
+];
+const ROTULO_TIPO: Record<string, { label: string; cor: string; Icone: (p: { size?: number }) => JSX.Element }> =
+  Object.fromEntries(TIPOS_DO_RELATO.map(t => [t.valor, t]));
+
 /** Uma nota do chamado: o recado que acompanhou uma mudanca de andamento. */
 export interface NotaDoRelato {
   texto: string;
@@ -55,6 +74,9 @@ export interface ReporteNaLista {
   id: number;
   texto: string;
   urgencia: string;
+  /** 'bug' | 'melhoria'. Nulo no chamado gravado antes de a classificacao
+   *  existir: a fila o mostra como sem classificacao ate alguem escolher. */
+  tipo: string | null;
   pagina: string | null;
   autor_nome: string;
   autor_email: string | null;
@@ -71,11 +93,14 @@ export interface ReporteNaLista {
   notas?: NotaDoRelato[];
 }
 
-export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onFechar }: {
+export function ListaReportes({ carregar, carregarPrint, mudarStatus, mudarTipo, admin, onFechar }: {
   carregar: () => Promise<{ reportes?: ReporteNaLista[]; error?: string }>;
   /** O conteúdo do print vem um por vez: na lista ele não viaja. */
   carregarPrint: (id: number, anexo?: number) => Promise<{ nome: string; tipo: string; base64: string } | null>;
   mudarStatus?: (id: number, status: string, avisar: boolean, comentario: string) => Promise<{ error?: string; aviso?: string | null } | null>;
+  /** Corrigir a gaveta do chamado. Sem e-mail e sem pergunta: trocar o tipo nao
+   *  muda nada para quem reportou, e a fila e do dono do painel. */
+  mudarTipo?: (id: number, tipo: string) => Promise<{ error?: string } | null>;
   /**
    * O dono do painel: vê a fila inteira e muda o andamento. Quem não é vê só o
    * que escreveu, e sem o campo de status.
@@ -107,13 +132,38 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
    *  ainda não aconteceu. A chave traz de volta quem quer conferir o histórico,
    *  e vale para todo mundo - não é ajuste de administrador. */
   const [verResolvidos, setVerResolvidos] = useState(false);
+  /** Quais tipos ficam a vista. Lista vazia quer dizer todos, que e como o
+   *  filtro da casa trabalha: escolher nada e nao filtrar, e nao um estado
+   *  "Todos" que precisa ser clicado de volta.
+   *
+   *  `sem` e o chamado que ninguem classificou ainda. Ele e uma escolha como as
+   *  outras porque tambem e uma fila: e a dos que precisam de triagem. */
+  const [filtroTipos, setFiltroTipos] = useState<string[]>([]);
   const [aberta, setAberta] = useState<number | null>(null);
 
   /** Quantos estão fora da fila agora - o número que a chave mostra. */
   const resolvidos = (lista ?? []).filter(r => r.status === 'resolvido').length;
   /** O que a tabela desenha. Filtrar aqui, e não esconder por CSS: linha
    *  escondida continua no caminho do teclado e da leitura de tela. */
-  const visiveis = (lista ?? []).filter(r => verResolvidos || r.status !== 'resolvido');
+  const visiveis = (lista ?? []).filter(r =>
+    (verResolvidos || r.status !== 'resolvido')
+    && (filtroTipos.length === 0 || filtroTipos.includes(r.tipo ?? 'sem')));
+  /** As opcoes do filtro, com a conta de cada uma: um filtro que nao diz o
+   *  tamanho do que oferece faz quem clica descobrir por tentativa.
+   *
+   *  A conta e sobre a fila que a chave de resolvidos deixa passar - dizer "3
+   *  bugs" e mostrar um so, porque dois estao resolvidos, e pior que nao dizer
+   *  nada. E `Sem tipo` so aparece quando existe algum: opcao que sempre
+   *  devolve lista vazia e so mais uma linha para ler. */
+  const opcoesDeTipo = useMemo(() => {
+    const naFila = (lista ?? []).filter(r => verResolvidos || r.status !== 'resolvido');
+    const quantos = (t: string) => naFila.filter(r => (r.tipo ?? 'sem') === t).length;
+    const semTipo = quantos('sem');
+    return [
+      ...TIPOS_DO_RELATO.map(t => ({ value: t.valor, label: `${t.label} (${quantos(t.valor)})` })),
+      ...(semTipo ? [{ value: 'sem', label: `Sem tipo (${semTipo})` }] : []),
+    ];
+  }, [lista, verResolvidos]);
   const { toast } = useToast();
   const { saindo, fechar } = useSaidaSuave(onFechar);
   const fundo = useFecharNoFundo(fechar);
@@ -178,6 +228,17 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
     );
   }
 
+  /** Troca a gaveta do chamado. Como toda gravacao da casa, a tela muda no
+   *  gesto e volta atras se o servidor recusar. */
+  async function trocarTipo(id: number, tipo: string) {
+    if (!mudarTipo) return;
+    const antes = lista;
+    setErroStatus('');
+    setLista(l => l?.map(x => (x.id === id ? { ...x, tipo } : x)) ?? l);
+    const r = await mudarTipo(id, tipo);
+    if (r?.error) { setLista(antes); setErroStatus(r.error); }
+  }
+
   /** Quem o e-mail iria avisar, para a pergunta dizer o nome em vez de "a
    *  pessoa". */
   const alvoDoAviso = confirmando ? lista?.find(x => x.id === confirmando.id) : null;
@@ -220,6 +281,14 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
               </span>
             </p>
             <div className="reportes-acoes">
+              {/* O filtro do tipo antes da chave: ele recorta a fila, e a chave
+                  so decide se o que ja acabou continua aparecendo. */}
+              <FilterDropdown
+                label="Tipo"
+                values={filtroTipos}
+                options={opcoesDeTipo}
+                onChange={setFiltroTipos}
+              />
               <Chave
                 ligada={verResolvidos}
                 onChange={setVerResolvidos}
@@ -251,6 +320,7 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
                 <thead>
                   <tr>
                     <th>Urgência</th>
+                    <th>Tipo</th>
                     <th>Relato</th>
                     <th>Print</th>
                     <th>Status</th>
@@ -262,10 +332,11 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
                 </thead>
                 {/* A chave remonta o corpo da tabela, e é a troca da chave que
                     faz a entrada das linhas tocar - o padrão da casa para lista
-                    que responde a filtro. A chave é `verResolvidos`, e não a
-                    assinatura das linhas: assim resolver um chamado não
-                    reanima a fila inteira, só a troca da chave anima. */}
-                <tbody className="lista-anima" key={String(verResolvidos)}>
+                    que responde a filtro. Ela é feita das duas escolhas de
+                    filtro, e não da assinatura das linhas: assim resolver ou
+                    reclassificar um chamado não reanima a fila inteira, e só
+                    quem mexeu num filtro vê a entrada tocar. */}
+                <tbody className="lista-anima" key={`${verResolvidos}|${filtroTipos.join(',')}`}>
                   {visiveis.map(r => {
                     const Icone = ICONE_PRIORIDADE[r.urgencia];
                     const abertaAqui = aberta === r.id;
@@ -290,6 +361,30 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
                           <span className="reportes-urgencia">
                             {Icone && <Icone size={13} />} {r.urgencia}
                           </span>
+                        </td>
+                        {/* Mesma regra das outras celulas com algo dentro: so
+                            engole o clique quem tem o que fazer com ele. Para
+                            quem nao reclassifica, o tipo e um chip, e o clique
+                            volta a ser da linha. */}
+                        <td onClick={admin && mudarTipo ? (e => e.stopPropagation()) : undefined}>
+                          {admin && mudarTipo ? (
+                            <div style={{ width: 124 }}>
+                              <SelectSistema
+                                valor={r.tipo ?? ''}
+                                onChange={v => void trocarTipo(r.id, v)}
+                                placeholder="Classificar"
+                                minWidth={124}
+                                estiloGatilho={{ height: 30, fontSize: 12, padding: '0 10px' }}
+                                opcoes={TIPOS_DO_RELATO.map(t => ({
+                                  valor: t.valor,
+                                  label: t.label,
+                                  icone: <t.Icone size={13} />,
+                                }))}
+                              />
+                            </div>
+                          ) : (
+                            <ChipDoTipo tipo={r.tipo} />
+                          )}
                         </td>
                         <td className="reportes-col-relato">
                           {/* A linha mostra o começo; o resto abre no detalhe.
@@ -370,7 +465,7 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
                           animação tira a altura de destino, e montar só ao
                           abrir faria o bloco animar de nada para nada. */}
                       <tr className={`reportes-detalhe${resolvido ? ' resolvida' : ''}`}>
-                        <td colSpan={6}>
+                        <td colSpan={admin ? 7 : 6}>
                           <div className={`revelar${abertaAqui ? ' aberto' : ''}`}>
                             <div>
                               <div className="reportes-detalhe-corpo">
@@ -518,6 +613,27 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, admin, onF
 /** O ponto de cor do status, na lista e no chip. */
 function PontoStatus({ cor }: { cor: string }) {
   return <span className="reportes-ponto" style={{ background: cor }} />;
+}
+
+/** O tipo de quem não pode mudá-lo, na mesma pílula do status. Sem tipo ele
+ *  fica cinza e diz isso com todas as letras: um traço deixaria a dúvida entre
+ *  "ninguém classificou" e "não tem coluna aqui". */
+function ChipDoTipo({ tipo }: { tipo: string | null }) {
+  const t = tipo ? ROTULO_TIPO[tipo] : undefined;
+  if (!t) {
+    return (
+      <span className="reportes-status" style={{ '--cor': 'var(--gray2)' } as React.CSSProperties}>
+        <PontoStatus cor="var(--gray2)" />
+        Sem tipo
+      </span>
+    );
+  }
+  return (
+    <span className="reportes-status" style={{ '--cor': t.cor } as React.CSSProperties}>
+      <t.Icone size={12} />
+      {t.label}
+    </span>
+  );
 }
 
 /** O status de quem não pode mudá-lo: a mesma pílula de status do resto do

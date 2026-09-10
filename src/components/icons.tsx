@@ -268,6 +268,10 @@ export function IconShuffle({ size = 14 }: { size?: number }) {
 export function IconSave({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" /><path d="M17 21v-8H7v8" /><path d="M7 3v5h7" /></Ico>;
 }
+// Chamado que é defeito: alguma coisa que já existe parou de funcionar.
+export function IconBug({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><path d="M8.5 8.5h7a3 3 0 013 3v2a6.5 6.5 0 01-13 0v-2a3 3 0 013-3z" /><path d="M9.2 8.5L7.6 5.6M14.8 8.5l1.6-2.9" /><path d="M5.5 11.5H2.8M21.2 11.5h-2.7M5.5 16H2.8M21.2 16h-2.7" /><path d="M12 11.5v7" /></Ico>;
+}
 // Ação de IA - gerar, interpretar, sugerir.
 export function IconSparkles({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M11 3l1.7 4.4 4.4 1.7-4.4 1.7L11 15.2 9.3 10.8 4.9 9.1l4.4-1.7z" /><path d="M18 14.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" /></Ico>;

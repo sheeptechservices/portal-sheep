@@ -15,12 +15,12 @@
 //  porque o cartão precisa se separar dos itens de navegação sem gritar: parado
 //  e chapado, ele viraria mais uma linha do menu.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   IconAlert, IconCheck, IconDoc, IconImage, IconInbox, IconMegafone, IconSpinner, IconTrash,
   IconUpload,
 } from './icons';
-import { ListaReportes, type ReporteNaLista } from './ListaReportes';
+import { ListaReportes, TIPOS_DO_RELATO, type ReporteNaLista } from './ListaReportes';
 import { SelectSistema } from './SelectSistema';
 import { ICONE_PRIORIDADE, PRIORIDADES } from '../lib/prioridades';
 import { iniciarOndas } from '../lib/ondas';
@@ -38,6 +38,9 @@ export interface Relato {
   texto: string;
   pagina: string;
   urgencia: string;
+  /** 'bug' ou 'melhoria'. Quem escreve escolhe porque e quem sabe: de fora, "o
+   *  relatorio nao bate" e "queria um relatorio novo" chegam com a mesma cara. */
+  tipo: string;
   anexos?: PrintDoRelato[];
 }
 
@@ -83,8 +86,32 @@ function lerComoDataUrl(file: File): Promise<string> {
   });
 }
 
+/**
+ * O gatilho é o único pedaço do dropdown que fica sobre o cartão: com o branco
+ * do sistema ele seria um retângulo claro no meio das ondas, e na altura de
+ * 42px destoaria dos campos daqui. Os dois campos do cartão dividem o mesmo
+ * desenho - dois selects lado a lado com métricas diferentes leem como dois
+ * componentes distintos.
+ *
+ * A borda fica na folha, e não aqui: inline ela venceria o hover, e um campo
+ * sem hover destoa de tudo no cartão.
+ */
+const ESTILO_DO_GATILHO: CSSProperties = {
+  height: 32, padding: '0 9px', fontSize: 11.5,
+  borderRadius: 'var(--radius-sm)',
+  background: 'rgba(255, 255, 255, .06)',
+  color: 'var(--reportar-tinta)',
+};
+
+/** A régua do tipo, na mesma ideia da régua da urgência: sem ela, a escolha
+ *  vira gosto, e a mesma queixa chega classificada de um jeito por pessoa. */
+const DESCRICAO_DO_TIPO: Record<string, string> = {
+  bug: 'Existe e parou de funcionar, ou funciona errado',
+  melhoria: 'Não existe ainda, ou existe e podia ser melhor',
+};
+
 export function CartaoReportar({
-  pagina, enviar, listar, carregarPrint, mudarStatus, admin,
+  pagina, enviar, listar, carregarPrint, mudarStatus, mudarTipo, admin,
 }: {
   /** Em que tela a pessoa estava. Vai no e-mail para quem lê não precisar
    *  perguntar "em qual?". */
@@ -95,6 +122,8 @@ export function CartaoReportar({
   listar?: () => Promise<{ reportes?: ReporteNaLista[]; error?: string }>;
   carregarPrint?: (id: number) => Promise<{ nome: string; tipo: string; base64: string } | null>;
   mudarStatus?: (id: number, status: string, avisar: boolean, comentario: string) => Promise<{ error?: string; aviso?: string | null } | null>;
+  /** Corrigir a classificacao de um chamado, na fila. */
+  mudarTipo?: (id: number, tipo: string) => Promise<{ error?: string } | null>;
   /** Só o dono do painel muda o andamento; o resto do time só lê. */
   /** O dono do painel - ver `ListaReportes`. */
   admin?: boolean;
@@ -104,6 +133,7 @@ export function CartaoReportar({
   // Sem valor inicial: obrigatório é obrigatório. Um padrão aqui seria uma
   // resposta que ninguém deu - e "Média" em tudo é o mesmo que urgência nenhuma.
   const [urgencia, setUrgencia] = useState('');
+  const [tipoDoRelato, setTipoDoRelato] = useState('');
   const [prints, setPrints] = useState<{ file: File; url: string }[]>([]);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -224,13 +254,14 @@ export function CartaoReportar({
     return () => document.removeEventListener('paste', aoColar);
   }, [aberto]);
 
-  const completo = !!texto.trim() && !!urgencia;
+  const completo = !!texto.trim() && !!tipoDoRelato && !!urgencia;
 
   async function mandar() {
     const limpo = texto.trim();
     // Uma queixa por vez, na ordem em que os campos aparecem: listar as duas
     // juntas faz a pessoa reler o cartão inteiro para achar o que faltou.
     if (!limpo) { campo.current?.focus(); return; }
+    if (!tipoDoRelato) { setErro('Diga se é um bug ou uma melhoria.'); return; }
     if (!urgencia) { setErro('Escolha a urgência.'); return; }
     setEnviando(true);
     setErro(null);
@@ -249,12 +280,13 @@ export function CartaoReportar({
       setErro('Não foi possível ler um dos anexos.');
       return;
     }
-    const r = await enviar({ texto: limpo, pagina, urgencia, anexos });
+    const r = await enviar({ texto: limpo, pagina, urgencia, tipo: tipoDoRelato, anexos });
     setEnviando(false);
     if (r?.error) { setErro(r.error); return; }
     // O relato sai da tela junto com o painel: guardá-lo faria o próximo nascer
     // com o anterior dentro.
     setTexto('');
+    setTipoDoRelato('');
     setUrgencia('');
     tirarTodos();
     setAberto(false);
@@ -263,7 +295,7 @@ export function CartaoReportar({
   }
 
   /**
-   * Cancelar joga fora o rascunho inteiro - texto, urgência e print.
+   * Cancelar joga fora o rascunho inteiro - texto, tipo, urgência e print.
    *
    * Guardar era a escolha anterior, e ela criava um fantasma: quem cancelou
    * achava que tinha descartado, e no dia seguinte o cartão abria com o relato
@@ -277,6 +309,7 @@ export function CartaoReportar({
   function fechar() {
     setAberto(false);
     setTexto('');
+    setTipoDoRelato('');
     setUrgencia('');
     tirarTodos();
     setErro(null);
@@ -332,6 +365,25 @@ export function CartaoReportar({
               }}
             />
 
+            {/* O tipo vem antes da urgência porque é a pergunta mais fácil, e
+                porque é ele que separa a fila em duas leituras: o que quebrou e
+                o que falta. Quem escreve é quem sabe - de fora, "o relatório
+                não bate" e "queria um relatório novo" chegam iguais. */}
+            <span className="reportar-rotulo">Tipo</span>
+            <SelectSistema
+              valor={tipoDoRelato}
+              onChange={v => { setTipoDoRelato(v); setErro(null); }}
+              placeholder="Escolher…"
+              classeLista="reportar-lista"
+              estiloGatilho={ESTILO_DO_GATILHO}
+              opcoes={TIPOS_DO_RELATO.map(t => ({
+                valor: t.valor,
+                label: t.label,
+                descricao: DESCRICAO_DO_TIPO[t.valor],
+                icone: <t.Icone size={14} />,
+              }))}
+            />
+
             <span className="reportar-rotulo">Urgência</span>
             <SelectSistema
               valor={urgencia}
@@ -341,18 +393,7 @@ export function CartaoReportar({
               // regra escrita a partir daqui: sem a classe, ela nasce na escala
               // e na cor do sistema, e desce clara e grande sobre o cartão.
               classeLista="reportar-lista"
-              // O gatilho é o único pedaço do dropdown que fica sobre o cartão:
-              // com o branco do sistema ele seria um retângulo claro no meio
-              // das ondas, e na altura de 42px destoaria dos campos daqui.
-              estiloGatilho={{
-                height: 32, padding: '0 9px', fontSize: 11.5,
-                borderRadius: 'var(--radius-sm)',
-                background: 'rgba(255, 255, 255, .06)',
-                color: 'var(--reportar-tinta)',
-                // A borda fica na folha, e nao aqui: inline ela venceria o
-                // hover, e um campo sem hover destoa de tudo no cartao.
-
-              }}
+              estiloGatilho={ESTILO_DO_GATILHO}
               opcoes={PRIORIDADES.map(nivel => ({
                 valor: nivel as string,
                 label: nivel,
@@ -428,11 +469,13 @@ export function CartaoReportar({
             disabled={enviando || (aberto && !completo)}
             // Desabilitado enquanto falta campo, mas o `mandar` confere de novo
             // e diz o que falta: botão apagado sem motivo é adivinhação.
-            title={aberto && !completo ? 'Escreva o relato e escolha a urgência.' : undefined}
+            title={aberto && !completo ? 'Escreva o relato, diga o tipo e escolha a urgência.' : undefined}
             onClick={() => (aberto ? void mandar() : setAberto(true))}
           >
+            {/* Sem reticências ao lado do giro: ele já diz que está acontecendo,
+                e é a regra do sistema para espera dentro de botão. */}
             {enviando
-              ? <><IconSpinner size={13} /> Enviando…</>
+              ? <><IconSpinner size={13} /> Enviando</>
               : <><IconMegafone size={13} /> {aberto ? 'Enviar' : 'Reportar'}</>}
           </button>
           {/* A fila fica ao lado do Reportar, e some com o formulário aberto:
@@ -453,6 +496,7 @@ export function CartaoReportar({
           carregar={listar}
           carregarPrint={carregarPrint}
           mudarStatus={mudarStatus}
+          mudarTipo={mudarTipo}
           admin={admin}
           onFechar={() => setVendoFila(false)}
         />

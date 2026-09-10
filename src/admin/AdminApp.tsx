@@ -564,13 +564,14 @@ function NavInferior({ page, setPage, onMais }: {
 
 function Sidebar({
   page, setPage, open, pinned, onClose, onReportar, onListarReportes, onPrintDoReporte,
-  onMudarStatusDoReporte,
+  onMudarStatusDoReporte, onMudarTipoDoReporte,
 }: {
   page: Page; setPage: (p: Page) => void; open: boolean; pinned: boolean; onClose: () => void;
   onReportar: (relato: Relato) => Promise<{ error?: string; aviso?: string | null } | null>;
   onListarReportes: () => Promise<{ reportes?: ReporteNaLista[]; error?: string }>;
   onPrintDoReporte: (id: number) => Promise<{ nome: string; tipo: string; base64: string } | null>;
   onMudarStatusDoReporte: (id: number, status: string, avisar: boolean, comentario: string) => Promise<{ error?: string; aviso?: string | null } | null>;
+  onMudarTipoDoReporte: (id: number, tipo: string) => Promise<{ error?: string } | null>;
 }) {
   // Só o que depende de estar preso ou solto, e de estar aberto ou fechado: a
   // aparência - folha, fio da borda e sombra - mora na folha de estilo, com o
@@ -674,6 +675,7 @@ function Sidebar({
         listar={onListarReportes}
         carregarPrint={onPrintDoReporte}
         mudarStatus={onMudarStatusDoReporte}
+        mudarTipo={onMudarTipoDoReporte}
         admin={admin}
       />
 
@@ -1138,6 +1140,18 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
       return { error: 'Erro de conexão. Tente de novo.' };
     }
   }, [token]);
+  const mudarTipoDoReporte = useCallback(async (id: number, tipo: string) => {
+    try {
+      const r = await fetch('/api/admin-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-session': token },
+        body: JSON.stringify({ action: 'set_reporte_tipo', id, tipo }),
+      });
+      return await r.json().catch(() => ({ error: 'Não foi possível classificar.' }));
+    } catch {
+      return { error: 'Erro de conexão. Tente de novo.' };
+    }
+  }, [token]);
   const printDoReporte = useCallback(async (id: number, anexo?: number) => {
     try {
       // Sem `anexo`, e o print antigo da propria linha; com ele, e um dos
@@ -1367,6 +1381,7 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
           onListarReportes={listarReportes}
           onPrintDoReporte={printDoReporte}
           onMudarStatusDoReporte={mudarStatusDoReporte}
+          onMudarTipoDoReporte={mudarTipoDoReporte}
         />
 
         <NavInferior page={page} setPage={setPage} onMais={() => setOpen(true)} />
