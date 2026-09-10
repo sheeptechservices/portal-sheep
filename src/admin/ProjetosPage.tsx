@@ -5,7 +5,7 @@ import {
   IconAlert, IconArrowRight, IconClip, IconClipboard, IconDoc, IconDownload,
   IconImage, IconInbox,
   IconChevronDown, IconChevronRight, IconChevronUp, IconChevronUpDown,
-  IconEdit, IconEye, IconGlobo, IconLink, IconMarcoAndamento, IconMarcoBloqueado,
+  IconDrive, IconEdit, IconEye, IconGitHub, IconGlobo, IconLink, IconMarcoAndamento, IconMarcoBloqueado,
   IconAgrupar, IconCalendario, IconCheck, IconExternal, IconOrdenar, IconSearch,
   IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado, IconMarcoValidado,
   IconPlay, IconPlus, IconPrioridadeAlta, IconPrioridadeBaixa, IconPrioridadeMaxima,
@@ -300,10 +300,10 @@ export interface Projeto {
   cliente_id: string | null;
   cliente_nome: string | null;
   tipo: string | null;
-  /** Os repositorios do projeto, ate dois. Vem pronta do servidor, que resolve
-   *  o formato antigo de um campo so. */
-  repositorios: string[];
-  drive: string | null;
+  /** Os endereços do projeto, com nome e URL. Vêm prontos do servidor, que
+   *  resolve os formatos antigos - a lista de strings e o campo único. */
+  repositorios: LinkDoProjeto[];
+  drives: LinkDoProjeto[];
   /** Endereço do que foi entregue. É o único link do projeto que o cliente vê. */
   link_portal: string | null;
   objetivo: string | null;
@@ -339,10 +339,8 @@ interface AnexoPendente {
 
 const VAZIO = {
   nome: '', descricao: '', cliente_id: '', tipo: '',
-  /** Uma caixa vazia ja aberta: o campo tem de existir para ser preenchido, e
-   *  um projeto sem repositorio nenhum grava a lista vazia do mesmo jeito. */
-  repositorios: [''] as string[],
-  drive: '',
+  repositorios: [] as LinkDoProjeto[],
+  drives: [] as LinkDoProjeto[],
   link_portal: '',
   entregas: [] as EntregaPendente[],
   status: 'Em andamento' as string, prioridade: PRIORIDADE_PADRAO as string,
@@ -943,66 +941,136 @@ function CampoEndereco({ rotulo, valor, placeholder, dica, somenteLeitura, onCha
 }
 
 /** Quantos repositórios cabem num projeto. O mesmo número está no servidor, que
- *  é quem recusa o terceiro: aqui ele só decide quando o botão de somar some. */
+ *  é quem recusa o terceiro: aqui ele só decide quando o botão de somar some.
+ *
+ *  Pasta do Drive não tem teto: um projeto tem quantas o cliente tiver. */
 const MAX_REPOSITORIOS = 2;
 
-/**
- * Os repositórios do projeto, até dois.
- *
- * Dois, e não uma lista aberta: um projeto tem no máximo o de trás e o da
- * frente, e quando ele tem cinco o que existe ali são cinco projetos que
- * ninguém separou. O teto também é conferido no servidor, que é quem recusa.
- *
- * O segundo campo não nasce na tela: ele aparece quando alguém pede, porque a
- * maioria dos projetos tem um só, e um campo vazio a mais em toda ficha é um
- * campo que se lê e se descarta toda vez.
- */
-function CamposDeRepositorio({ valores, somenteLeitura, onChange }: {
-  valores: string[];
-  somenteLeitura: boolean;
-  onChange: (v: string[]) => void;
-}) {
-  const lista = valores.length ? valores : [''];
-  const trocar = (i: number, v: string) =>
-    onChange(lista.map((x, j) => (j === i ? v : x)));
-  // Some da lista, e não vira string vazia: campo vazio no meio faria o segundo
-  // repositório virar o terceiro na próxima abertura.
-  const tirar = (i: number) => onChange(lista.filter((_, j) => j !== i));
-  const cabeMais = lista.length < MAX_REPOSITORIOS;
-  // Em leitura, campo sem endereço não tem o que mostrar: some, e a ficha do
-  // projeto deixa de ter uma linha dizendo "Não informado" para cada um.
-  const visiveis = somenteLeitura ? lista.filter(x => x.trim()) : lista;
+/** Um endereço do projeto: o nome que se lê e o endereço que se abre. */
+export interface LinkDoProjeto { nome: string; url: string }
 
-  if (somenteLeitura && visiveis.length === 0) {
-    return (
-      <CampoEndereco rotulo="Repositório no GitHub" valor="" placeholder=""
-        somenteLeitura onChange={() => { /* leitura */ }} />
-    );
+/** O nome que um endereço ganha quando ninguém escreveu um. A mesma dedução do
+ *  servidor, repetida aqui para o chip nascer nomeado antes de a gravação ir e
+ *  voltar. */
+function nomeDoEndereco(url: string): string {
+  const limpo = url.trim();
+  const gh = /github\.com\/([^/?#]+)\/([^/?#]+)/i.exec(limpo);
+  if (gh) return `${gh[1]}/${gh[2].replace(/\.git$/i, '')}`;
+  try { return new URL(limpo).hostname.replace(/^www\./, ''); } catch { return limpo.slice(0, 60); }
+}
+
+/**
+ * Os endereços do projeto, em chips: a marca do serviço e o nome do que está
+ * do outro lado.
+ *
+ * Chip, e não campo de texto empilhado, porque uma URL do Drive tem setenta
+ * caracteres de id opaco: lida em linha ela não diz nada, e três delas juntas
+ * viram um bloco ilegível. O que identifica a pasta é o nome que alguém deu.
+ *
+ * Do GitHub o nome é deduzido da própria URL - `owner/repo` está lá, e é assim
+ * que o repositório é chamado em voz alta. Do Drive não dá: a pasta é um id, e
+ * por isso ali o nome é digitado.
+ */
+function ChipsDeEndereco({ rotulo, valores, marca, exemplo, dica, teto, somenteLeitura, onChange }: {
+  rotulo: string;
+  valores: LinkDoProjeto[];
+  marca: 'github' | 'drive';
+  exemplo: string;
+  dica?: string;
+  /** Sem teto quando não vem: o botão de somar fica para sempre. */
+  teto?: number;
+  somenteLeitura: boolean;
+  onChange: (v: LinkDoProjeto[]) => void;
+}) {
+  const [somando, setSomando] = useState(false);
+  const [url, setUrl] = useState('');
+  const [nome, setNome] = useState('');
+  const campoUrl = useRef<HTMLInputElement>(null);
+  // O cursor vai para o endereço quando o bloco abre, e não na montagem: o
+  // formulário fica montado o tempo todo - é o que dá à animação de onde sair -
+  // e `autoFocus` ali roubaria o cursor assim que a ficha do projeto abrisse.
+  useEffect(() => { if (somando) campoUrl.current?.focus(); }, [somando]);
+  const fecharForm = () => { setSomando(false); setUrl(''); setNome(''); };
+  const Marca = marca === 'github' ? IconGitHub : IconDrive;
+  const cabeMais = teto == null || valores.length < teto;
+
+  function somar() {
+    const limpo = url.trim();
+    if (!limpo) return;
+    onChange([...valores, { url: limpo, nome: nome.trim() || nomeDoEndereco(limpo) }]);
+    fecharForm();
   }
 
   return (
-    <>
-      {visiveis.map((v, i) => (
-        <div key={i}>
-          <CampoEndereco
-            rotulo={i === 0 ? 'Repositório no GitHub' : 'Segundo repositório'}
-            valor={v}
-            placeholder="https://github.com/sheeptechservices/portal-sheep"
-            somenteLeitura={somenteLeitura}
-            onChange={x => trocar(i, x)} />
-          {!somenteLeitura && i > 0 && (
-            <button type="button" className="campo-acao" onClick={() => tirar(i)}>
-              Remover
-            </button>
-          )}
+    <div className="form-group">
+      <label className="form-label">{rotulo}</label>
+      <div className="link-chips">
+        {valores.map((v, i) => (
+          // `.surge` em cada chip, e não `.lista-anima` no contêiner: os chips
+          // que já estavam têm chave estável, então só o que acabou de nascer
+          // anima. Com a classe no contêiner, somar um faria todos piscarem.
+          <span className="link-chip surge" key={`${v.url}-${i}`}>
+            <a href={v.url} target="_blank" rel="noopener noreferrer" title={v.url}>
+              <Marca size={13} />
+              <span>{v.nome || nomeDoEndereco(v.url)}</span>
+            </a>
+            {!somenteLeitura && (
+              <button type="button" aria-label={`Tirar ${v.nome}`} title="Tirar"
+                onClick={() => onChange(valores.filter((_, j) => j !== i))}>
+                <IconX size={11} />
+              </button>
+            )}
+          </span>
+        ))}
+        {valores.length === 0 && somenteLeitura && (
+          <span className="link-chips-vazio">Não informado</span>
+        )}
+        {!somenteLeitura && cabeMais && !somando && (
+          <button type="button" className="link-chip-add" onClick={() => setSomando(true)}>
+            <IconPlus size={11} /> Adicionar
+          </button>
+        )}
+      </div>
+
+      {/* O formulário de somar é um gesto, e não um campo da ficha - por isso
+          nasce fechado. Abre e fecha com `.revelar`, que anima a altura: ele
+          empurra a dica e o resto da ficha para baixo, e um corte ali faria a
+          página saltar.
+
+          Fica montado o tempo todo, e não condicionado ao `somando`: é dele que
+          a animação tira a altura de destino, e montado só enquanto aberto o
+          bloco animaria de nada para nada. Quem esvazia o rascunho é o
+          `fecharForm`, e não a desmontagem. */}
+      {!somenteLeitura && (
+        <div className={`revelar${somando ? ' aberto' : ''}`}>
+          <div>
+            <div className="link-chip-form">
+              <input ref={campoUrl} className="form-input" value={url} placeholder={exemplo}
+                onChange={e => setUrl(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Escape') { e.preventDefault(); fecharForm(); }
+                  if (e.key === 'Enter') { e.preventDefault(); somar(); }
+                }} />
+              <input className="form-input" value={nome}
+                placeholder={marca === 'github' ? 'Nome (sai da URL se ficar vazio)' : 'Nome da pasta'}
+                onChange={e => setNome(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Escape') { e.preventDefault(); fecharForm(); }
+                  if (e.key === 'Enter') { e.preventDefault(); somar(); }
+                }} />
+              <button type="button" className="btn btn-primary btn-sm" disabled={!url.trim()}
+                onClick={somar}>
+                <IconPlus size={11} /> Adicionar
+              </button>
+              <button type="button" className="campo-acao" onClick={fecharForm}>
+                Cancelar
+              </button>
+            </div>
+          </div>
         </div>
-      ))}
-      {!somenteLeitura && cabeMais && (
-        <button type="button" className="campo-acao" onClick={() => onChange([...lista, ''])}>
-          <IconPlus size={11} /> Segundo repositório
-        </button>
       )}
-    </>
+      {dica && <p className="form-hint" style={{ marginTop: 4 }}>{dica}</p>}
+    </div>
   );
 }
 
@@ -3887,9 +3955,9 @@ function FormularioProjeto({
     nome: editando.nome, descricao: editando.descricao ?? '',
     cliente_id: editando.cliente_id ?? '',
     tipo: editando.tipo ?? '',
-    repositorios: editando.repositorios?.length ? editando.repositorios : [''],
+    repositorios: editando.repositorios ?? [],
+    drives: editando.drives ?? [],
     link_portal: editando.link_portal ?? '',
-    drive: editando.drive ?? '',
     // As entregas de um projeto existente são gravadas uma a uma, fora do
     // rascunho: aqui a lista fica vazia de propósito.
     entregas: [] as EntregaPendente[],
@@ -4354,11 +4422,22 @@ function FormularioProjeto({
                 placeholder="https://portal.cliente.com.br/"
                 dica="Endereço do que foi entregue. Aparece na página do cliente."
                 somenteLeitura={somenteLeitura} onChange={v => set('link_portal', v)} />
-              <CamposDeRepositorio valores={r.repositorios} somenteLeitura={somenteLeitura}
+              <ChipsDeEndereco
+                rotulo="Repositórios no GitHub"
+                valores={r.repositorios}
+                marca="github"
+                teto={MAX_REPOSITORIOS}
+                exemplo="https://github.com/sheeptechservices/portal-sheep"
+                somenteLeitura={somenteLeitura}
                 onChange={v => set('repositorios', v)} />
-              <CampoEndereco rotulo="Pasta no Drive" valor={r.drive}
-                placeholder="https://drive.google.com/drive/folders/..."
-                somenteLeitura={somenteLeitura} onChange={v => set('drive', v)} />
+              <ChipsDeEndereco
+                rotulo="Pastas no Drive"
+                valores={r.drives}
+                marca="drive"
+                exemplo="https://drive.google.com/drive/folders/..."
+                dica="Os diretórios do projeto. Quantos forem precisos."
+                somenteLeitura={somenteLeitura}
+                onChange={v => set('drives', v)} />
             </div>
           </section>
 
@@ -5149,7 +5228,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
         data_inicio: campos.data_inicio || null,
         previsao_entrega: campos.previsao_entrega || null,
         observacoes: campos.observacoes, repositorios: campos.repositorios,
-        drive: campos.drive, link_portal: campos.link_portal,
+        drives: campos.drives, link_portal: campos.link_portal,
       } : p)));
       reconciliar();
     } finally {

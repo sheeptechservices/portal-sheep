@@ -545,6 +545,99 @@ textarea.form-input {
 }
 .campo-acao:hover { color: var(--black); }
 
+/* Os enderecos do projeto: repositorio e pasta, cada um numa pilula com a marca
+   do servico e o nome do que esta do outro lado.
+
+   Pilula, e nao campo de texto empilhado, porque uma URL do Drive tem setenta
+   caracteres de id opaco - lida em linha ela nao diz nada, e tres delas juntas
+   viram um bloco ilegivel. O que identifica a pasta e o nome que alguem deu. */
+.link-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.link-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-pill);
+  background: var(--white);
+  transition: border-color var(--transition);
+  max-width: 100%;
+}
+.link-chip:hover { border-color: var(--gray2); }
+/* O corpo do chip e o link inteiro: quem ve um nome de repositorio na tela
+   clica no nome, e nao num icone ao lado dele. */
+.link-chip a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 4px 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--black);
+  text-decoration: none;
+}
+.link-chip a span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 26ch;
+}
+.link-chip a:hover span { text-decoration: underline; }
+/* O X so aparece na edicao, e fica apagado ate o ponteiro chegar no chip: em
+   repouso ele competia com o nome, que e o que se le ali. */
+.link-chip > button {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 8px 5px 4px;
+  border: none;
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  opacity: .55;
+  transition: color var(--transition), opacity var(--transition);
+}
+.link-chip:hover > button { opacity: 1; }
+.link-chip > button:hover { color: var(--red); }
+/* Somar mais um: mesma altura dos chips, tracejado para dizer que e o vazio a
+   ser preenchido, e nao mais um endereco ja guardado. */
+.link-chip-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border: 1px dashed var(--gray3);
+  border-radius: var(--radius-pill);
+  background: none;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+.link-chip-add:hover { border-color: var(--gray2); color: var(--black); }
+.link-chips-vazio { font-size: 13px; color: var(--gray2); }
+/* O formulario de somar. Os dois campos dividem a linha e as saidas ficam a
+   direita, na mesma ordem do rodape de toda gaveta da casa. */
+.link-chip-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.link-chip-form .form-input { flex: 1; min-width: 160px; height: 34px; font-size: 12.5px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .link-chip,
+  .link-chip > button,
+  .link-chip-add { transition: none; }
+}
+
 /* Ações do rodapé de modal. Estavam com estilo inline, que não faz :hover, e
    ficavam sem retorno nenhum ao passar o mouse. O realce é de propósito
    discreto: o modal já é o foco da tela, e botão que salta aqui compete com o

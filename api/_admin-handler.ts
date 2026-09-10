@@ -209,30 +209,65 @@ function donosDaTarefa(r: Record<string, any> | null | undefined): string[] {
  *  migracao. */
 const MAX_REPOSITORIOS = 2;
 
-/** Os repositorios do projeto, na mesma ideia da `donosDaTarefa`: o banco
- *  guarda JSON, e a tela quer a lista pronta.
+/** Quantas pastas do Drive cabem. Aqui nao ha teto de produto - um projeto tem
+ *  quantas pastas o cliente tiver -, e o numero e so guarda contra corpo de
+ *  pedido absurdo. */
+const MAX_DRIVES = 20;
+
+/** Um endereco do projeto: o nome que se le e o endereco que se abre. */
+interface LinkDoProjeto { nome: string; url: string }
+
+/** O nome que um endereco ganha quando ninguem escreveu um.
  *
- *  Cai no `repositorio` quando a lista nao existe - e o formato de antes de o
- *  projeto aceitar mais de um, e projeto que ainda nao passou por uma gravacao
- *  continua legivel. */
-function repositoriosDoProjeto(r: Record<string, any> | null | undefined): string[] {
-  if (!r) return [];
-  const bruto = r.repositorios;
+ *  Do GitHub da para deduzir - `owner/repo` esta na propria URL, e e assim que
+ *  o repositorio e chamado em voz alta. Do Drive nao da: a pasta e um id
+ *  opaco, e por isso ali o nome e digitado. */
+function nomeDoEndereco(url: string): string {
+  const limpo = url.trim();
+  const gh = /github\.com\/([^/?#]+)\/([^/?#]+)/i.exec(limpo);
+  if (gh) return `${gh[1]}/${gh[2].replace(/\.git$/i, '')}`;
+  try { return new URL(limpo).hostname.replace(/^www\./, ''); } catch { return limpo.slice(0, 60); }
+}
+
+/** Lista de enderecos vinda do banco, na mesma ideia da `donosDaTarefa`: o
+ *  banco guarda JSON, e a tela quer a lista pronta.
+ *
+ *  Tres formatos convivem, e todos precisam continuar legiveis: a lista de
+ *  objetos de hoje, a lista de strings da primeira versao com mais de um, e a
+ *  coluna unica de antes disso. Migrar os dados nao resolveria - a coluna velha
+ *  continua sendo escrita como reserva de rollback. */
+function linksDoProjeto(
+  bruto: unknown, legado: unknown, teto: number,
+): LinkDoProjeto[] {
   const lista = Array.isArray(bruto)
     ? bruto
     : (() => {
       try { const v = JSON.parse(String(bruto ?? 'null')); return Array.isArray(v) ? v : null; }
       catch { return null; }
     })();
-  if (lista) return lista.map(String).map(s => s.trim()).filter(Boolean).slice(0, MAX_REPOSITORIOS);
-  const um = String(r.repositorio ?? '').trim();
-  return um ? [um] : [];
+  if (lista) {
+    return lista
+      .map(x => (typeof x === 'string'
+        ? { nome: nomeDoEndereco(x), url: x.trim() }
+        : { nome: String((x as any)?.nome ?? '').trim(), url: String((x as any)?.url ?? '').trim() }))
+      .filter(x => x.url)
+      .map(x => ({ nome: x.nome || nomeDoEndereco(x.url), url: x.url }))
+      .slice(0, teto);
+  }
+  const um = String(legado ?? '').trim();
+  return um ? [{ nome: nomeDoEndereco(um), url: um }] : [];
 }
 
 /** O que vem da tela, limpo e dentro do teto. */
-function repositoriosDoPedido(bruto: unknown): string[] {
+function linksDoPedido(bruto: unknown, teto: number): LinkDoProjeto[] {
   const lista = Array.isArray(bruto) ? bruto : [];
-  return lista.map(x => String(x ?? '').trim()).filter(Boolean).slice(0, MAX_REPOSITORIOS);
+  return lista
+    .map(x => (typeof x === 'string'
+      ? { nome: '', url: x.trim() }
+      : { nome: String((x as any)?.nome ?? '').trim().slice(0, 120), url: String((x as any)?.url ?? '').trim() }))
+    .filter(x => x.url)
+    .map(x => ({ nome: x.nome || nomeDoEndereco(x.url), url: x.url }))
+    .slice(0, teto);
 }
 
 /** O estado da tarefa reduzido a texto, para comparar antes com depois. */
@@ -1242,6 +1277,9 @@ async function migrarSchema(db: Client) {
   // versao anterior do portal leria se este deploy voltasse atras, e nesse caso
   // e melhor ver um repositorio do que ver nenhum.
   try { await ddl(`ALTER TABLE projetos ADD COLUMN repositorios TEXT`); } catch {}
+  // As pastas do Drive, pelo mesmo desenho dos repositorios: JSON aqui, e a
+  // coluna `drive` de cima virando reserva com a primeira da lista.
+  try { await ddl(`ALTER TABLE projetos ADD COLUMN drives TEXT`); } catch {}
 
   // Clientes atendidos. Registro próprio, e não `cedentes`: aquele é cadastro de
   // crédito, com CNPJ e limite; aqui basta quem é o cliente do projeto.
@@ -3654,7 +3692,8 @@ async function despacharAdminData(
       const projetos = projs.rows.map(p => ({
         ...p,
         // O banco guarda JSON; a tela quer a lista pronta, como nas tarefas.
-        repositorios: repositoriosDoProjeto(p),
+        repositorios: linksDoProjeto(p.repositorios, p.repositorio, MAX_REPOSITORIOS),
+        drives: linksDoProjeto(p.drives, p.drive, MAX_DRIVES),
         equipe: equipe.rows.filter(e => e.projeto_id === p.id)
           .map(e => ({ id: e.usuario_id, nome: e.nome, email: e.email, foto_url: e.foto_url, papel: e.papel })),
         arquivos: arqs.rows.filter(a => a.projeto_id === p.id),
@@ -4695,20 +4734,21 @@ function faltaEmProjeto(p: any): string | null {
       await db.execute({
         sql: `INSERT INTO projetos (
                 id, codigo, nome, descricao, cliente_id, tipo, repositorio, repositorios,
-                drive, link_portal,
+                drive, drives, link_portal,
                 objetivo, status, prioridade, data_inicio, previsao_entrega, progresso, observacoes,
                 ativo, criado_em, criado_por_id, criado_por_nome
-              ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
+              ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
         args: [
           id, await proximoCodigo(), String(p.nome).trim(),
           String(p.descricao ?? '').trim() || null, p.cliente_id || null,
           p.tipo || null,
           // As duas colunas saem da mesma lista: a nova guarda tudo, e a antiga
           // fica com o primeiro, para uma versao anterior do portal ainda achar
-          // um repositorio ali.
-          repositoriosDoPedido(p.repositorios)[0] ?? null,
-          JSON.stringify(repositoriosDoPedido(p.repositorios)),
-          String(p.drive ?? '').trim() || null,
+          // um endereco ali.
+          linksDoPedido(p.repositorios, MAX_REPOSITORIOS)[0]?.url ?? null,
+          JSON.stringify(linksDoPedido(p.repositorios, MAX_REPOSITORIOS)),
+          linksDoPedido(p.drives, MAX_DRIVES)[0]?.url ?? null,
+          JSON.stringify(linksDoPedido(p.drives, MAX_DRIVES)),
           String(p.link_portal ?? '').trim() || null, p.objetivo ?? null,
           p.status ?? 'Em andamento', p.prioridade ?? 'Média',
           p.data_inicio || null, p.previsao_entrega || null,
@@ -4769,11 +4809,11 @@ function faltaEmProjeto(p: any): string | null {
         descricao: v => String(v ?? '').trim() || null,
         cliente_id: v => v || null,
         tipo: v => v || null,
-        // A tela manda `repositorios`, e as duas colunas saem dele - ver o
-        // INSERT acima. `repositorio` sozinho nao chega mais da tela, e por isso
-        // nao esta neste mapa: quem escreve nele e a linha abaixo.
-        repositorios: v => JSON.stringify(repositoriosDoPedido(v)),
-        drive: v => String(v ?? '').trim() || null,
+        // A tela manda `repositorios` e `drives`, e as colunas antigas saem
+        // deles - ver o INSERT acima. Elas nao chegam mais da tela, e por isso
+        // nao estao neste mapa: quem escreve nelas sao as linhas abaixo.
+        repositorios: v => JSON.stringify(linksDoPedido(v, MAX_REPOSITORIOS)),
+        drives: v => JSON.stringify(linksDoPedido(v, MAX_DRIVES)),
         link_portal: v => String(v ?? '').trim() || null,
         objetivo: v => v ?? null,
         status: v => v ?? 'Em andamento',
@@ -4792,12 +4832,16 @@ function faltaEmProjeto(p: any): string | null {
         sets.push(`${campo}=?`);
         args.push(normalizar(p[campo]));
       }
-      // A coluna antiga acompanha a lista, com o primeiro dela. Fica fora do
-      // mapa acima porque não é campo que a tela manda: é espelho, e o espelho
-      // só se mexe quando o original se mexe.
+      // As colunas antigas acompanham as listas, com o primeiro de cada uma.
+      // Ficam fora do mapa acima porque não são campos que a tela manda: são
+      // espelhos, e espelho só se mexe quando o original se mexe.
       if (p.repositorios !== undefined) {
         sets.push('repositorio=?');
-        args.push(repositoriosDoPedido(p.repositorios)[0] ?? null);
+        args.push(linksDoPedido(p.repositorios, MAX_REPOSITORIOS)[0]?.url ?? null);
+      }
+      if (p.drives !== undefined) {
+        sets.push('drive=?');
+        args.push(linksDoPedido(p.drives, MAX_DRIVES)[0]?.url ?? null);
       }
       await db.execute({
         sql: `UPDATE projetos SET ${sets.concat([
