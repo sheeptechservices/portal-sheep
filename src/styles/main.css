@@ -15563,6 +15563,12 @@ button.checklist-texto:focus-visible {
 .reportes-tabela th {
   position: sticky;
   top: 0;
+  /* Sem `z-index` o cabecalho grudado nao cria contexto de empilhamento, e
+     quem cria passa por cima dele. E o caso das proprias linhas: a entrada da
+     lista (`entraLista`) anima `transform`, e elemento com transform sobe de
+     camada enquanto a animacao roda - por isso o embaralhado aparecia so as
+     vezes, no quadro em que a fila era remontada. */
+  z-index: 2;
   /* Os 4px que sairam do topo da area que rola voltam aqui, para o cabecalho
      manter a mesma respiracao de antes. */
   padding: 12px 10px 8px;
