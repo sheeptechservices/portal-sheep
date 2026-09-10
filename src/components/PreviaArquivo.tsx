@@ -2,9 +2,16 @@
 //  Prévia de arquivo.
 //
 //  Uma janela só para todo anexo do sistema: anexo de projeto, evidência de
-//  entrega e arquivo de comentário. Quem chama diz como buscar o conteúdo - o
-//  `api` da tela é que carrega o token da sessão -, e a janela cuida do resto:
-//  imagem e PDF abrem aqui dentro, o resto oferece o download.
+//  entrega, arquivo de comentário, print de chamado e anexo de oportunidade.
+//  Quem chama diz como buscar o conteúdo - o `api` da tela é que carrega o
+//  token da sessão -, e a janela cuida do resto: imagem e PDF abrem aqui
+//  dentro, o resto oferece o download.
+//
+//  Ela é tela cheia, e não uma caixa branca no meio da página. Um print de
+//  chamado é lido para se achar o detalhe que quem escreveu não soube nomear, e
+//  dentro de uma moldura de 960px isso vira apertar os olhos. Aqui a página sai
+//  do caminho: o fundo escurece, o arquivo ocupa o que tiver, e as duas ações
+//  ficam soltas no canto de cima, onde não disputam com o que se está olhando.
 //
 //  Morava dentro de `ProjetosPage`, e a conversa da tarefa não conseguia usá-la
 //  sem uma importação circular.
@@ -90,64 +97,72 @@ export function PreviaArquivo({ arquivo, onCarregar, onBaixar, onFechar, camada,
   const pdf = conteudo?.tipo === 'application/pdf';
 
   return createPortal(
-    <div className={`file-preview-backdrop${saindo ? ' saindo' : ''}`}
+    // O fundo é a própria tela: clicar nele fecha, e o arquivo no meio segura o
+    // clique para quem quiser olhar de perto sem perder a janela.
+    <div className={`previa-tela${saindo ? ' saindo' : ''}`}
       style={{ zIndex: camada ?? 10002 }} {...fundo}>
-      <div className="file-preview-modal" onClick={e => e.stopPropagation()}>
-        <div className="file-preview-header">
-          <span className="file-preview-name">{arquivo.nome}</span>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {/* O folheador so aparece quando ha mais de um: uma seta que nao
-                leva a lugar nenhum e um botao morto no cabecalho. */}
-            {navegacao && navegacao.total > 1 && (
-              <span className="file-preview-nav">
-                <button type="button" aria-label="Anexo anterior" title="Anterior (seta esquerda)"
-                  onClick={navegacao.onAnterior}>
-                  <IconArrowLeft size={13} />
-                </button>
-                <span className="file-preview-conta">
-                  {navegacao.posicao} de {navegacao.total}
-                </span>
-                <button type="button" aria-label="Próximo anexo" title="Próximo (seta direita)"
-                  onClick={navegacao.onProximo}>
-                  <IconArrowRight size={13} />
-                </button>
-              </span>
-            )}
-            <button type="button" className="file-preview-action" onClick={() => onBaixar()}>
-              <IconDownload size={13} />
-              Baixar
-            </button>
-            <button type="button" className="file-preview-close" aria-label="Fechar" onClick={fechar}>
-              <IconX size={16} />
+      {/* O nome à esquerda e as ações à direita, os dois soltos sobre o
+          arquivo. Sem barra: uma faixa opaca no topo comeria justamente a
+          altura que a imagem tem para crescer. */}
+      <div className="previa-topo">
+        <span className="previa-nome" title={arquivo.nome}>{arquivo.nome}</span>
+        <div className="previa-acoes">
+          <button type="button" className="previa-botao" title="Baixar"
+            aria-label="Baixar" onClick={() => onBaixar()}>
+            <IconDownload size={15} />
+          </button>
+          <button type="button" className="previa-botao" title="Fechar (Esc)"
+            aria-label="Fechar" onClick={fechar}>
+            <IconX size={16} />
+          </button>
+        </div>
+      </div>
+
+      <div className="previa-palco" onClick={e => e.stopPropagation()}>
+        {erro && <div className="previa-recado"><p>{erro}</p></div>}
+        {!erro && !conteudo && <div className="dux-spinner-row"><span className="dux-spinner" /></div>}
+        {conteudo && imagem && (
+          <img src={conteudo.url} alt={arquivo.nome} className="previa-img" />
+        )}
+        {conteudo && pdf && (
+          <iframe src={conteudo.url} className="previa-iframe" title={arquivo.nome} />
+        )}
+        {conteudo && !imagem && !pdf && (
+          <div className="previa-recado">
+            <p>Visualização não disponível para este formato.</p>
+            <button type="button" className="btn btn-primary" style={{ marginTop: 16 }}
+              onClick={() => onBaixar()}>
+              Baixar arquivo
             </button>
           </div>
-        </div>
-        <div className="file-preview-body">
-          {erro && <div className="file-preview-unsupported"><p>{erro}</p></div>}
-          {!erro && !conteudo && <div className="file-preview-spinner" />}
-          {conteudo && imagem && (
-            <img src={conteudo.url} alt={arquivo.nome} className="file-preview-img" />
-          )}
-          {conteudo && pdf && (
-            <iframe src={conteudo.url} className="file-preview-iframe" title={arquivo.nome} />
-          )}
-          {conteudo && !imagem && !pdf && (
-            <div className="file-preview-unsupported">
-              <p>Visualização não disponível para este formato.</p>
-              <button type="button" className="btn btn-primary" style={{ marginTop: 16 }}
-                onClick={() => onBaixar()}>
-                Baixar arquivo
-              </button>
-            </div>
-          )}
-        </div>
-        {arquivo.comentario && (
-          <p style={{ fontSize: 12.5, color: 'var(--gray)', margin: 0, padding: '12px 20px',
-            borderTop: '1px solid var(--gray3)', whiteSpace: 'pre-wrap' }}>
-            {arquivo.comentario}
-          </p>
         )}
       </div>
+
+      {/* O que veio escrito junto do anexo, no pé e sobre o escuro: é legenda
+          do que está na tela, e não um bloco da ficha. */}
+      {arquivo.comentario && (
+        <p className="previa-legenda" onClick={e => e.stopPropagation()}>
+          {arquivo.comentario}
+        </p>
+      )}
+
+      {/* O folheador só aparece quando há mais de um: uma seta que não leva a
+          lugar nenhum é um botão morto. Fica no pé, e não no topo com as ações -
+          passar de anexo é o gesto repetido, e ele não deve dividir espaço com
+          o de fechar. */}
+      {navegacao && navegacao.total > 1 && (
+        <div className="previa-folheador" onClick={e => e.stopPropagation()}>
+          <button type="button" aria-label="Anexo anterior" title="Anterior (seta esquerda)"
+            onClick={navegacao.onAnterior}>
+            <IconArrowLeft size={14} />
+          </button>
+          <span>{navegacao.posicao} de {navegacao.total}</span>
+          <button type="button" aria-label="Próximo anexo" title="Próximo (seta direita)"
+            onClick={navegacao.onProximo}>
+            <IconArrowRight size={14} />
+          </button>
+        </div>
+      )}
     </div>,
     document.body,
   );

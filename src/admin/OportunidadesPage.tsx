@@ -20,6 +20,7 @@ import { EditorRico } from '../components/EditorRico';
 import { TextoRico } from '../components/TextoRico';
 import { CartaoKpi, CartoesKpiEsqueleto } from '../components/CartaoKpi';
 import { CategoriaTag, ANEXO_CATEGORIAS, normalizaCategoria } from '../components/CategoriaTag';
+import { PreviaArquivo } from '../components/PreviaArquivo';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { useLarguraPainel } from '../lib/painelLateral';
@@ -579,74 +580,6 @@ function formatDate(iso: string) {
 
 function formatSize(b: number) {
   return b < 1024 * 1024 ? `${(b / 1024).toFixed(0)} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`;
-}
-
-type PreviewFile = { base64: string; nome: string; tipo: string };
-type PreviewState = { nome: string; tipo: string; base64: string | null };
-
-function FilePreviewModal({ state, onClose, onDownload }: {
-  state: PreviewState;
-  onClose: () => void;
-  onDownload: () => void;
-}) {
-  const loading = state.base64 === null;
-  const isImg = state.tipo.startsWith('image/');
-  const isPdf = state.tipo === 'application/pdf';
-  const dataUrl = state.base64
-    ? (state.base64.startsWith('data:') ? state.base64 : `data:${state.tipo};base64,${state.base64}`)
-    : '';
-
-  // Chrome blocks PDF data URLs in iframes - convert to blob URL instead
-  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
-  useEffect(() => {
-    if (!isPdf || !dataUrl) { setPdfBlobUrl(null); return; }
-    const base64Data = dataUrl.split(',')[1];
-    const bytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-    const blob = new Blob([bytes], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    setPdfBlobUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [dataUrl, isPdf]);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  return createPortal(
-    <div className="file-preview-backdrop" onClick={onClose}>
-      <div className="file-preview-modal" onClick={e => e.stopPropagation()}>
-        <div className="file-preview-header">
-          <span className="file-preview-name">{state.nome}</span>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {!loading && (
-              <button className="file-preview-action" onClick={onDownload}>
-                <IconDownload size={14} />
-                Baixar
-              </button>
-            )}
-            <button className="file-preview-close" onClick={onClose}>
-              <IconX size={16} />
-            </button>
-          </div>
-        </div>
-        <div className="file-preview-body">
-          {loading && <div className="file-preview-spinner" />}
-          {!loading && isImg && <img src={dataUrl} alt={state.nome} className="file-preview-img" />}
-          {!loading && isPdf && pdfBlobUrl && <iframe src={pdfBlobUrl} className="file-preview-iframe" title={state.nome} />}
-          {!loading && isPdf && !pdfBlobUrl && <div className="file-preview-spinner" />}
-          {!loading && !isImg && !isPdf && (
-            <div className="file-preview-unsupported">
-              <p>Visualização não disponível para este formato.</p>
-              <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={onDownload}>Baixar arquivo</button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
 }
 
 // ── API helper ──────────────────────────────────────
@@ -1344,7 +1277,10 @@ export function DetailPanel({
   const [pipelineLocalNames, setPipelineLocalNames] = useState<Record<number, string>>({});
   const [pipelineEditingId, setPipelineEditingId] = useState<number | null>(null);
   const [pipelineEditValue, setPipelineEditValue] = useState('');
-  const [pipelinePreviewState, setPipelinePreviewState] = useState<PreviewState | null>(null);
+  /** O arquivo em prévia. Só o que identifica o arquivo, e não o conteúdo: a
+   *  janela busca o que precisa e cuida da espera. */
+  const [pipelinePreviewAlvo, setPipelinePreviewAlvo] =
+    useState<{ id: number; nome: string; tipo: string; isForm: boolean } | null>(null);
   const pipelineEditRef = useRef<HTMLInputElement>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [deleteConfirmNome, setDeleteConfirmNome] = useState('');
@@ -1693,11 +1629,24 @@ export function DetailPanel({
 
   const canPreviewPipeline = (tipo: string) => tipo.startsWith('image/') || tipo === 'application/pdf';
 
-  async function openPipelinePreview(f: { id: number; nome: string; tipo: string }, isForm = false) {
-    const displayName = pipelineLocalNames[f.id] ?? f.nome;
-    setPipelinePreviewState({ nome: displayName, tipo: f.tipo, base64: null });
-    const data = await api('', 'POST', { action: isForm ? 'get_form_file_base64' : 'get_file_base64', id: f.id });
-    setPipelinePreviewState({ nome: displayName, tipo: f.tipo, base64: data.base64 });
+  function openPipelinePreview(f: { id: number; nome: string; tipo: string }, isForm = false) {
+    setPipelinePreviewAlvo({ id: f.id, nome: pipelineLocalNames[f.id] ?? f.nome, tipo: f.tipo, isForm });
+  }
+
+  /** Baixar de dentro da prévia: o conteúdo já foi buscado uma vez para a
+   *  janela, mas quem o guarda é ela - aqui a busca se repete, que é o preço de
+   *  a prévia não precisar devolver nada para fora. */
+  async function baixarPipelinePreview() {
+    const alvo = pipelinePreviewAlvo;
+    if (!alvo) return;
+    const d = await api('', 'POST', {
+      action: alvo.isForm ? 'get_form_file_base64' : 'get_file_base64', id: alvo.id,
+    });
+    if (!d?.base64) { toast('error', 'Arquivo indisponível'); return; }
+    const link = document.createElement('a');
+    link.href = String(d.base64).startsWith('data:') ? d.base64 : `data:${alvo.tipo};base64,${d.base64}`;
+    link.download = alvo.nome;
+    link.click();
   }
 
   function startPipelineEdit(f: { id: number; nome: string }) {
@@ -2414,17 +2363,23 @@ export function DetailPanel({
             );
             })()}
 
-            {pipelinePreviewState && (
-              <FilePreviewModal
-                state={pipelinePreviewState}
-                onClose={() => setPipelinePreviewState(null)}
-                onDownload={() => {
-                  if (!pipelinePreviewState.base64) return;
-                  const link = document.createElement('a');
-                  link.href = pipelinePreviewState.base64.startsWith('data:') ? pipelinePreviewState.base64 : `data:${pipelinePreviewState.tipo};base64,${pipelinePreviewState.base64}`;
-                  link.download = pipelinePreviewState.nome;
-                  link.click();
+            {/* A prévia da casa, a mesma de anexo de projeto e de chamado. O
+                conteúdo vem por `onCarregar`, e não pronto no estado: assim a
+                janela é dona da própria espera, e o erro de rede aparece dentro
+                dela em vez de deixar um quadro vazio. */}
+            {pipelinePreviewAlvo && (
+              <PreviaArquivo
+                arquivo={{ nome: pipelinePreviewAlvo.nome, chave: pipelinePreviewAlvo.id }}
+                camada={1080}
+                onCarregar={async () => {
+                  const d = await api('', 'POST', {
+                    action: pipelinePreviewAlvo.isForm ? 'get_form_file_base64' : 'get_file_base64',
+                    id: pipelinePreviewAlvo.id,
+                  });
+                  return d?.base64 ? { tipo: pipelinePreviewAlvo.tipo, base64: d.base64 } : null;
                 }}
+                onBaixar={() => void baixarPipelinePreview()}
+                onFechar={() => setPipelinePreviewAlvo(null)}
               />
             )}
 
@@ -2631,35 +2586,35 @@ function AnexosModal({ oportunidadeId, onClose }: { oportunidadeId: string; onCl
         )}
       </div>
 
-      {/* Pré-visualização - modal sobre o modal */}
-      {cur && createPortal(
-        <div className="anexos-overlay" style={{ zIndex: 1080 }} onClick={() => setPreview(null)}>
-          <div className="anexos-preview-modal" onClick={e => e.stopPropagation()}>
-            <div className="admin-modal-header">
-              <h3 style={{ fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cur.nome}</h3>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-                {cur.url && <button className="btn btn-secondary" style={{ padding: '5px 12px', fontSize: 12 }} onClick={() => window.open(cur.url, '_blank')}>Nova aba</button>}
-                <button className="btn btn-secondary" style={{ padding: '5px 12px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => baixar(cur)}><IconDownload size={13} /> Baixar</button>
-                <button className="admin-modal-close" aria-label="Fechar" onClick={() => setPreview(null)}><IconX size={16} /></button>
-              </div>
-            </div>
-            <div className="anexos-preview-body">
-              {cur.url ? (
-                isPdf(cur.tipo) ? (
-                  <iframe title={cur.nome} src={cur.url} style={{ width: '100%', height: '100%', border: 'none', borderRadius: 8 }} />
-                ) : isImg(cur.tipo) ? (
-                  <img src={cur.url} alt={cur.nome} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-                ) : (
-                  <div style={{ textAlign: 'center', color: 'var(--gray)' }}>
-                    <p style={{ marginBottom: 12 }}>Sem pré-visualização para este tipo de arquivo.</p>
-                    <button className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }} onClick={() => baixar(cur)}><IconDownload size={14} /> Baixar {cur.nome}</button>
-                  </div>
-                )
-              ) : <div style={{ color: 'var(--gray)' }}>Arquivo indisponível.</div>}
-            </div>
-          </div>
-        </div>,
-        document.body,
+      {/* A prévia da casa, e aqui como folheador: os anexos são um conjunto, e
+          quem abre um quer passar pelos outros sem voltar à lista a cada vez.
+
+          O arquivo já foi baixado para montar a lista, e o que se tem em mão é
+          a URL do blob. A prévia trabalha com base64, então ela é relida daqui
+          - é uma volta pela memória, e não pela rede. */}
+      {cur && preview != null && (
+        <PreviaArquivo
+          arquivo={{ nome: cur.nome, chave: preview }}
+          camada={1080}
+          navegacao={{
+            posicao: preview + 1,
+            total: itens.length,
+            onAnterior: () => setPreview(p => (p == null ? p : (p - 1 + itens.length) % itens.length)),
+            onProximo: () => setPreview(p => (p == null ? p : (p + 1) % itens.length)),
+          }}
+          onCarregar={async () => {
+            if (!cur.url) return null;
+            const b = await (await fetch(cur.url)).blob();
+            const base64 = await new Promise<string>(ok => {
+              const fr = new FileReader();
+              fr.onload = () => ok(String(fr.result).split(',')[1] ?? '');
+              fr.readAsDataURL(b);
+            });
+            return base64 ? { tipo: cur.tipo, base64 } : null;
+          }}
+          onBaixar={() => baixar(cur)}
+          onFechar={() => setPreview(null)}
+        />
       )}
     </div>,
     document.body,

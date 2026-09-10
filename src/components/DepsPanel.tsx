@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DepsMark } from './DepsMark';
+import { IconExternal, IconX } from './icons';
 
 // Nível do score DEPS (0 a 1000) → cor do chip. Score alto = menor risco (verde).
 export function depsScoreLevel(score: string): 'alto' | 'medio' | 'baixo' {
@@ -123,39 +124,36 @@ export function DepsPreviewModal({ nome, url, onClose, onOpenTab }: {
   }, []);
 
   return createPortal(
-    <div className="file-preview-backdrop" onClick={onClose}>
-      <div className="file-preview-modal" onClick={e => e.stopPropagation()}>
-        <div className="file-preview-header">
-          <span className="file-preview-name">Relatório DEPS - {nome}</span>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button className="file-preview-action" onClick={onOpenTab}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                <path d="M15 3h6v6M10 14L21 3M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              Nova aba
-            </button>
-            <button className="file-preview-close" onClick={onClose}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
-            </button>
+    // A mesma tela cheia da prévia de arquivo: o relatório é um documento para
+    // ler, e o que ele pede é a tela inteira, não uma caixa no meio dela.
+    <div className="previa-tela" onClick={onClose}>
+      <div className="previa-topo">
+        <span className="previa-nome">Relatório DEPS - {nome}</span>
+        <div className="previa-acoes">
+          <button type="button" className="previa-botao" title="Abrir em nova aba"
+            aria-label="Abrir em nova aba" onClick={onOpenTab}>
+            <IconExternal size={15} />
+          </button>
+          <button type="button" className="previa-botao" title="Fechar (Esc)"
+            aria-label="Fechar" onClick={onClose}>
+            <IconX size={16} />
+          </button>
+        </div>
+      </div>
+      <div className="previa-palco deps-frame-wrap" onClick={e => e.stopPropagation()}>
+        {carregando && (
+          <div className="deps-frame-loading">
+            <span className="deps-frame-spinner" />
+            Carregando o relatório no portal da DEPS…
           </div>
-        </div>
-        <div className="file-preview-body deps-frame-wrap">
-          {carregando && (
-            <div className="deps-frame-loading">
-              <span className="deps-frame-spinner" />
-              Carregando o relatório no portal da DEPS…
-            </div>
-          )}
-          <iframe
-            src={url}
-            className="file-preview-iframe"
-            title={`Relatório DEPS ${nome}`}
-            referrerPolicy="no-referrer"
-            onLoad={() => setTimeout(() => setCarregando(false), 1200)}
-          />
-        </div>
+        )}
+        <iframe
+          src={url}
+          className="previa-iframe"
+          title={`Relatório DEPS ${nome}`}
+          referrerPolicy="no-referrer"
+          onLoad={() => setTimeout(() => setCarregando(false), 1200)}
+        />
       </div>
     </div>,
     document.body
