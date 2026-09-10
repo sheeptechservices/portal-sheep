@@ -26,7 +26,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  IconCheck, IconClipboard, IconEye, IconEyeOff, IconSearch, IconSpinner, IconTrash, IconX,
+  IconCheck, IconClipboard, IconEye, IconEyeOff, IconInbox, IconSearch, IconSpinner,
+  IconTrash, IconX,
 } from '../components/icons';
 import FilterDropdown from '../components/FilterDropdown';
 import { SelectSistema } from '../components/SelectSistema';
@@ -142,6 +143,12 @@ export default function CofreSenhas({ token }: { token: string }) {
         || (s.categoria ?? '').toLocaleLowerCase('pt-BR').includes(q)));
   }, [segredos, busca, fCategoria]);
 
+  /** Se o que está na tela passou por algum recorte. É isso que separa "não há
+   *  nada" de "não há nada que case com isto" - duas frases diferentes, e só a
+   *  segunda tem saída. */
+  const temFiltro = !!busca.trim() || fCategoria.length > 0;
+  const limparFiltros = () => { setBusca(''); setFCategoria([]); };
+
   /** Copia a senha sem pintá-la na tela. O conteúdo vem, vai para a área de
    *  transferência e não fica em estado nenhum. */
   async function copiarSenha(s: Segredo) {
@@ -198,8 +205,8 @@ export default function CofreSenhas({ token }: { token: string }) {
         <span className="admin-toolbar-label">Filtrar</span>
         <FilterDropdown label="Categoria" values={fCategoria} options={categorias}
           onChange={setFCategoria} />
-        {fCategoria.length > 0 && (
-          <button type="button" className="cofre-limpar" onClick={() => setFCategoria([])}>Limpar</button>
+        {temFiltro && (
+          <button type="button" className="cofre-limpar" onClick={limparFiltros}>Limpar</button>
         )}
         <div className="admin-toolbar-spacer" />
         {aberto ? (
@@ -223,11 +230,27 @@ export default function CofreSenhas({ token }: { token: string }) {
           <span className="dux-spinner sm" />
         </div>
       ) : lista.length === 0 ? (
-        <p className="cofre-vazio">
-          {segredos.length === 0
-            ? 'O cofre está vazio. O primeiro segredo entra pelo botão acima.'
-            : 'Nada com esse texto no título nem na categoria.'}
-        </p>
+        // O mesmo vazio de Projetos e Tarefas: a caixa de entrada vazia, a
+        // linha que diz o que aconteceu e, quando foi filtro que esvaziou, a
+        // saída para desfazê-lo. Sem o desenho, a página parece que não
+        // carregou; sem a saída, quem filtrou demais fica procurando o botão.
+        <div className="admin-empty">
+          <p style={{ color: 'var(--gray2)', marginBottom: 6 }}><IconInbox size={34} /></p>
+          <p>{temFiltro ? 'Nada para essa busca' : 'O cofre está vazio'}</p>
+          {temFiltro && (
+            <button
+              style={{ marginTop: 10, fontSize: 12, fontWeight: 600, color: 'var(--gray2)',
+                background: 'none', border: 'none', cursor: 'pointer' }}
+              onClick={limparFiltros}>
+              Limpar busca e filtros
+            </button>
+          )}
+          {!temFiltro && podeEditar && (
+            <p style={{ fontSize: 12.5, color: 'var(--gray2)', marginTop: 4 }}>
+              Guarde o primeiro em "Novo segredo".
+            </p>
+          )}
+        </div>
       ) : (
         <div className="admin-table-wrap">
           <table className="admin-table">
@@ -764,7 +787,6 @@ function mmss(segundos: number): string {
 
 const ESTILO = `
   .cofre-busca { width: 260px; max-width: 40vw; }
-  .cofre-vazio { font-size: 13px; color: var(--gray2); margin-top: 18px; }
   .cofre-dica { font-size: 11px; color: var(--gray2); line-height: 1.45; margin: 0; }
   .cofre-dica.erro { color: var(--red); }
   .cofre-campo { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
