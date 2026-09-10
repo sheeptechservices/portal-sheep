@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 
@@ -23,6 +23,36 @@ export default function FilterDropdown({
   }
 
   useDropdownDismiss(open, [triggerRef, dropRef], () => setOpen(false));
+
+  /**
+   * A posição se refaz enquanto a lista está aberta, e não só na abertura.
+   *
+   * Escolher um filtro encolhe a lista que está atrás; a janela encurta junto,
+   * o gatilho sobe - e a lista ficava boiando onde ele estava, longe do botão
+   * que a abriu. Quanto menos itens o filtro deixa passar, maior o salto: com
+   * "Bug (1)" a fila perde treze linhas de uma vez.
+   *
+   * Sem lista de dependências de propósito: o que move o gatilho é o
+   * redesenho de quem está em volta, e não um estado daqui. A comparação antes
+   * do `setPos` é o que impede o laço.
+   *
+   * De carona, a lista deixa de passar da borda: sem espaço embaixo e com
+   * espaço em cima, ela abre para cima, e o canto fica preso dentro da janela.
+   */
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current || !dropRef.current) return;
+    const MARGEM = 8;
+    const g = triggerRef.current.getBoundingClientRect();
+    const r = dropRef.current.getBoundingClientRect();
+    const cabeAbaixo = window.innerHeight - g.bottom - MARGEM >= r.height + 4;
+    const top = cabeAbaixo || g.top < r.height + 4
+      ? Math.min(g.bottom + 4, window.innerHeight - MARGEM - r.height)
+      : g.top - r.height - 4;
+    const left = Math.max(MARGEM, Math.min(g.left, window.innerWidth - r.width - MARGEM));
+    setPos(p => (Math.abs(p.top - Math.max(MARGEM, top)) < 1 && Math.abs(p.left - left) < 1
+      ? p
+      : { top: Math.max(MARGEM, top), left }));
+  });
 
   function toggle(v: string) {
     onChange(values.includes(v) ? values.filter(x => x !== v) : [...values, v]);
