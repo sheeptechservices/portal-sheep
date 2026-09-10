@@ -200,6 +200,41 @@ function donosDaTarefa(r: Record<string, any> | null | undefined): string[] {
   return um ? [um] : [];
 }
 
+/** Quantos repositorios cabem num projeto.
+ *
+ *  Dois, e nao uma lista aberta: um projeto tem no maximo o de tras e o da
+ *  frente, e quando ele tem cinco o que existe ali sao cinco projetos que
+ *  ninguem separou. O teto e produto, e por isso mora aqui e nao no schema -
+ *  a coluna guarda uma lista, e mudar de ideia sobre o numero nao pede
+ *  migracao. */
+const MAX_REPOSITORIOS = 2;
+
+/** Os repositorios do projeto, na mesma ideia da `donosDaTarefa`: o banco
+ *  guarda JSON, e a tela quer a lista pronta.
+ *
+ *  Cai no `repositorio` quando a lista nao existe - e o formato de antes de o
+ *  projeto aceitar mais de um, e projeto que ainda nao passou por uma gravacao
+ *  continua legivel. */
+function repositoriosDoProjeto(r: Record<string, any> | null | undefined): string[] {
+  if (!r) return [];
+  const bruto = r.repositorios;
+  const lista = Array.isArray(bruto)
+    ? bruto
+    : (() => {
+      try { const v = JSON.parse(String(bruto ?? 'null')); return Array.isArray(v) ? v : null; }
+      catch { return null; }
+    })();
+  if (lista) return lista.map(String).map(s => s.trim()).filter(Boolean).slice(0, MAX_REPOSITORIOS);
+  const um = String(r.repositorio ?? '').trim();
+  return um ? [um] : [];
+}
+
+/** O que vem da tela, limpo e dentro do teto. */
+function repositoriosDoPedido(bruto: unknown): string[] {
+  const lista = Array.isArray(bruto) ? bruto : [];
+  return lista.map(x => String(x ?? '').trim()).filter(Boolean).slice(0, MAX_REPOSITORIOS);
+}
+
 /** O estado da tarefa reduzido a texto, para comparar antes com depois. */
 function fotoDaTarefa(r: Record<string, any> | null | undefined): FotoDaTarefa | null {
   if (!r) return null;
@@ -1202,6 +1237,11 @@ async function migrarSchema(db: Client) {
   // ao banco quando muda algo, então repetir aqui não custa ida nenhuma.
   try { await ddl(`ALTER TABLE projetos ADD COLUMN tipo TEXT`); } catch { /* já existe */ }
   try { await ddl(`ALTER TABLE projetos ADD COLUMN repositorio TEXT`); } catch { /* já existe */ }
+  // A lista de repositorios, em JSON. A coluna `repositorio` acima fica onde
+  // esta e continua sendo escrita com o primeiro da lista: ela e o que uma
+  // versao anterior do portal leria se este deploy voltasse atras, e nesse caso
+  // e melhor ver um repositorio do que ver nenhum.
+  try { await ddl(`ALTER TABLE projetos ADD COLUMN repositorios TEXT`); } catch {}
 
   // Clientes atendidos. Registro próprio, e não `cedentes`: aquele é cadastro de
   // crédito, com CNPJ e limite; aqui basta quem é o cliente do projeto.
@@ -3566,6 +3606,8 @@ async function despacharAdminData(
       const nAnexos = new Map(anexosDaConversa.rows.map(r => [Number(r.tarefa_id), Number(r.n)]));
       const projetos = projs.rows.map(p => ({
         ...p,
+        // O banco guarda JSON; a tela quer a lista pronta, como nas tarefas.
+        repositorios: repositoriosDoProjeto(p),
         equipe: equipe.rows.filter(e => e.projeto_id === p.id)
           .map(e => ({ id: e.usuario_id, nome: e.nome, email: e.email, foto_url: e.foto_url, papel: e.papel })),
         arquivos: arqs.rows.filter(a => a.projeto_id === p.id),
@@ -4605,14 +4647,20 @@ function faltaEmProjeto(p: any): string | null {
       const agora = new Date().toISOString();
       await db.execute({
         sql: `INSERT INTO projetos (
-                id, codigo, nome, descricao, cliente_id, tipo, repositorio, drive, link_portal,
+                id, codigo, nome, descricao, cliente_id, tipo, repositorio, repositorios,
+                drive, link_portal,
                 objetivo, status, prioridade, data_inicio, previsao_entrega, progresso, observacoes,
                 ativo, criado_em, criado_por_id, criado_por_nome
-              ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
+              ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
         args: [
           id, await proximoCodigo(), String(p.nome).trim(),
           String(p.descricao ?? '').trim() || null, p.cliente_id || null,
-          p.tipo || null, String(p.repositorio ?? '').trim() || null,
+          p.tipo || null,
+          // As duas colunas saem da mesma lista: a nova guarda tudo, e a antiga
+          // fica com o primeiro, para uma versao anterior do portal ainda achar
+          // um repositorio ali.
+          repositoriosDoPedido(p.repositorios)[0] ?? null,
+          JSON.stringify(repositoriosDoPedido(p.repositorios)),
           String(p.drive ?? '').trim() || null,
           String(p.link_portal ?? '').trim() || null, p.objetivo ?? null,
           p.status ?? 'Em andamento', p.prioridade ?? 'Média',
@@ -4674,7 +4722,10 @@ function faltaEmProjeto(p: any): string | null {
         descricao: v => String(v ?? '').trim() || null,
         cliente_id: v => v || null,
         tipo: v => v || null,
-        repositorio: v => String(v ?? '').trim() || null,
+        // A tela manda `repositorios`, e as duas colunas saem dele - ver o
+        // INSERT acima. `repositorio` sozinho nao chega mais da tela, e por isso
+        // nao esta neste mapa: quem escreve nele e a linha abaixo.
+        repositorios: v => JSON.stringify(repositoriosDoPedido(v)),
         drive: v => String(v ?? '').trim() || null,
         link_portal: v => String(v ?? '').trim() || null,
         objetivo: v => v ?? null,
@@ -4693,6 +4744,13 @@ function faltaEmProjeto(p: any): string | null {
         if (p[campo] === undefined) continue;
         sets.push(`${campo}=?`);
         args.push(normalizar(p[campo]));
+      }
+      // A coluna antiga acompanha a lista, com o primeiro dela. Fica fora do
+      // mapa acima porque não é campo que a tela manda: é espelho, e o espelho
+      // só se mexe quando o original se mexe.
+      if (p.repositorios !== undefined) {
+        sets.push('repositorio=?');
+        args.push(repositoriosDoPedido(p.repositorios)[0] ?? null);
       }
       await db.execute({
         sql: `UPDATE projetos SET ${sets.concat([

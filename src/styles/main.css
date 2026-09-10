@@ -523,6 +523,28 @@ textarea.form-input {
 
 .form-hint { font-size: 11px; color: var(--gray2); }
 
+/* A acao pequena que acompanha um campo: somar mais um, tirar o que sobrou.
+   Texto, e nao botao com moldura - ela nao e a acao do formulario, e um botao
+   de verdade ali disputaria com o Gravar do rodape. E a mesma peca do "Limpar"
+   da barra de filtros, com nome proprio porque aqui ela tambem soma, e
+   `.admin-toolbar-limpar` num botao que acrescenta e um nome mentindo. */
+.campo-acao {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.campo-acao:hover { color: var(--black); }
+
 /* Ações do rodapé de modal. Estavam com estilo inline, que não faz :hover, e
    ficavam sem retorno nenhum ao passar o mouse. O realce é de propósito
    discreto: o modal já é o foco da tela, e botão que salta aqui compete com o

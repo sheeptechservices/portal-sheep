@@ -300,7 +300,9 @@ export interface Projeto {
   cliente_id: string | null;
   cliente_nome: string | null;
   tipo: string | null;
-  repositorio: string | null;
+  /** Os repositorios do projeto, ate dois. Vem pronta do servidor, que resolve
+   *  o formato antigo de um campo so. */
+  repositorios: string[];
   drive: string | null;
   /** Endereço do que foi entregue. É o único link do projeto que o cliente vê. */
   link_portal: string | null;
@@ -336,7 +338,11 @@ interface AnexoPendente {
 }
 
 const VAZIO = {
-  nome: '', descricao: '', cliente_id: '', tipo: '', repositorio: '', drive: '',
+  nome: '', descricao: '', cliente_id: '', tipo: '',
+  /** Uma caixa vazia ja aberta: o campo tem de existir para ser preenchido, e
+   *  um projeto sem repositorio nenhum grava a lista vazia do mesmo jeito. */
+  repositorios: [''] as string[],
+  drive: '',
   link_portal: '',
   entregas: [] as EntregaPendente[],
   status: 'Em andamento' as string, prioridade: PRIORIDADE_PADRAO as string,
@@ -933,6 +939,70 @@ function CampoEndereco({ rotulo, valor, placeholder, dica, somenteLeitura, onCha
       </span>
       {dica && <p className="form-hint" style={{ marginTop: 4 }}>{dica}</p>}
     </div>
+  );
+}
+
+/** Quantos repositórios cabem num projeto. O mesmo número está no servidor, que
+ *  é quem recusa o terceiro: aqui ele só decide quando o botão de somar some. */
+const MAX_REPOSITORIOS = 2;
+
+/**
+ * Os repositórios do projeto, até dois.
+ *
+ * Dois, e não uma lista aberta: um projeto tem no máximo o de trás e o da
+ * frente, e quando ele tem cinco o que existe ali são cinco projetos que
+ * ninguém separou. O teto também é conferido no servidor, que é quem recusa.
+ *
+ * O segundo campo não nasce na tela: ele aparece quando alguém pede, porque a
+ * maioria dos projetos tem um só, e um campo vazio a mais em toda ficha é um
+ * campo que se lê e se descarta toda vez.
+ */
+function CamposDeRepositorio({ valores, somenteLeitura, onChange }: {
+  valores: string[];
+  somenteLeitura: boolean;
+  onChange: (v: string[]) => void;
+}) {
+  const lista = valores.length ? valores : [''];
+  const trocar = (i: number, v: string) =>
+    onChange(lista.map((x, j) => (j === i ? v : x)));
+  // Some da lista, e não vira string vazia: campo vazio no meio faria o segundo
+  // repositório virar o terceiro na próxima abertura.
+  const tirar = (i: number) => onChange(lista.filter((_, j) => j !== i));
+  const cabeMais = lista.length < MAX_REPOSITORIOS;
+  // Em leitura, campo sem endereço não tem o que mostrar: some, e a ficha do
+  // projeto deixa de ter uma linha dizendo "Não informado" para cada um.
+  const visiveis = somenteLeitura ? lista.filter(x => x.trim()) : lista;
+
+  if (somenteLeitura && visiveis.length === 0) {
+    return (
+      <CampoEndereco rotulo="Repositório no GitHub" valor="" placeholder=""
+        somenteLeitura onChange={() => { /* leitura */ }} />
+    );
+  }
+
+  return (
+    <>
+      {visiveis.map((v, i) => (
+        <div key={i}>
+          <CampoEndereco
+            rotulo={i === 0 ? 'Repositório no GitHub' : 'Segundo repositório'}
+            valor={v}
+            placeholder="https://github.com/sheeptechservices/portal-sheep"
+            somenteLeitura={somenteLeitura}
+            onChange={x => trocar(i, x)} />
+          {!somenteLeitura && i > 0 && (
+            <button type="button" className="campo-acao" onClick={() => tirar(i)}>
+              Remover
+            </button>
+          )}
+        </div>
+      ))}
+      {!somenteLeitura && cabeMais && (
+        <button type="button" className="campo-acao" onClick={() => onChange([...lista, ''])}>
+          <IconPlus size={11} /> Segundo repositório
+        </button>
+      )}
+    </>
   );
 }
 
@@ -3816,7 +3886,8 @@ function FormularioProjeto({
   const [r, setR] = useState<Rascunho>(() => editando ? {
     nome: editando.nome, descricao: editando.descricao ?? '',
     cliente_id: editando.cliente_id ?? '',
-    tipo: editando.tipo ?? '', repositorio: editando.repositorio ?? '',
+    tipo: editando.tipo ?? '',
+    repositorios: editando.repositorios?.length ? editando.repositorios : [''],
     link_portal: editando.link_portal ?? '',
     drive: editando.drive ?? '',
     // As entregas de um projeto existente são gravadas uma a uma, fora do
@@ -4283,9 +4354,8 @@ function FormularioProjeto({
                 placeholder="https://portal.cliente.com.br/"
                 dica="Endereço do que foi entregue. Aparece na página do cliente."
                 somenteLeitura={somenteLeitura} onChange={v => set('link_portal', v)} />
-              <CampoEndereco rotulo="Repositório no GitHub" valor={r.repositorio}
-                placeholder="https://github.com/sheeptechservices/portal-sheep"
-                somenteLeitura={somenteLeitura} onChange={v => set('repositorio', v)} />
+              <CamposDeRepositorio valores={r.repositorios} somenteLeitura={somenteLeitura}
+                onChange={v => set('repositorios', v)} />
               <CampoEndereco rotulo="Pasta no Drive" valor={r.drive}
                 placeholder="https://drive.google.com/drive/folders/..."
                 somenteLeitura={somenteLeitura} onChange={v => set('drive', v)} />
@@ -5053,7 +5123,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega }: {
         tipo: campos.tipo || null, status: campos.status, prioridade: campos.prioridade,
         data_inicio: campos.data_inicio || null,
         previsao_entrega: campos.previsao_entrega || null,
-        observacoes: campos.observacoes, repositorio: campos.repositorio,
+        observacoes: campos.observacoes, repositorios: campos.repositorios,
         drive: campos.drive, link_portal: campos.link_portal,
       } : p)));
       reconciliar();
