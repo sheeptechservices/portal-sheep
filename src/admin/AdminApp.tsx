@@ -564,7 +564,7 @@ function NavInferior({ page, setPage, onMais }: {
 
 function Sidebar({
   page, setPage, open, pinned, onClose, onReportar, onListarReportes, onPrintDoReporte,
-  onMudarStatusDoReporte, onMudarTipoDoReporte,
+  onMudarStatusDoReporte, onMudarTipoDoReporte, onEditarReporte, onExcluirReporte,
 }: {
   page: Page; setPage: (p: Page) => void; open: boolean; pinned: boolean; onClose: () => void;
   onReportar: (relato: Relato) => Promise<{ error?: string; aviso?: string | null } | null>;
@@ -572,6 +572,8 @@ function Sidebar({
   onPrintDoReporte: (id: number) => Promise<{ nome: string; tipo: string; base64: string } | null>;
   onMudarStatusDoReporte: (id: number, status: string, avisar: boolean, comentario: string) => Promise<{ error?: string; aviso?: string | null } | null>;
   onMudarTipoDoReporte: (id: number, tipo: string) => Promise<{ error?: string } | null>;
+  onEditarReporte: (id: number, texto: string, urgencia: string) => Promise<{ error?: string } | null>;
+  onExcluirReporte: (id: number) => Promise<{ error?: string } | null>;
 }) {
   // Só o que depende de estar preso ou solto, e de estar aberto ou fechado: a
   // aparência - folha, fio da borda e sombra - mora na folha de estilo, com o
@@ -676,6 +678,8 @@ function Sidebar({
         carregarPrint={onPrintDoReporte}
         mudarStatus={onMudarStatusDoReporte}
         mudarTipo={onMudarTipoDoReporte}
+        editar={onEditarReporte}
+        excluir={onExcluirReporte}
         admin={admin}
       />
 
@@ -1152,6 +1156,30 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
       return { error: 'Erro de conexão. Tente de novo.' };
     }
   }, [token]);
+  const editarReporte = useCallback(async (id: number, texto: string, urgencia: string) => {
+    try {
+      const r = await fetch('/api/admin-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-session': token },
+        body: JSON.stringify({ action: 'editar_reporte', id, texto, urgencia }),
+      });
+      return await r.json().catch(() => ({ error: 'Não foi possível gravar a correção.' }));
+    } catch {
+      return { error: 'Erro de conexão. Tente de novo.' };
+    }
+  }, [token]);
+  const excluirReporte = useCallback(async (id: number) => {
+    try {
+      const r = await fetch('/api/admin-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-session': token },
+        body: JSON.stringify({ action: 'excluir_reporte', id }),
+      });
+      return await r.json().catch(() => ({ error: 'Não foi possível excluir.' }));
+    } catch {
+      return { error: 'Erro de conexão. Tente de novo.' };
+    }
+  }, [token]);
   const printDoReporte = useCallback(async (id: number, anexo?: number) => {
     try {
       // Sem `anexo`, e o print antigo da propria linha; com ele, e um dos
@@ -1382,6 +1410,8 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
           onPrintDoReporte={printDoReporte}
           onMudarStatusDoReporte={mudarStatusDoReporte}
           onMudarTipoDoReporte={mudarTipoDoReporte}
+          onEditarReporte={editarReporte}
+          onExcluirReporte={excluirReporte}
         />
 
         <NavInferior page={page} setPage={setPage} onMais={() => setOpen(true)} />

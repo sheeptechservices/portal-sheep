@@ -17290,6 +17290,50 @@ button.checklist-texto:focus-visible {
 }
 .reportes-anexo:hover { border-color: var(--gray2); color: var(--black); }
 
+/* As duas acoes de quem escreveu o chamado, no pe do detalhe: corrigir o que
+   contou e desistir dele. Mesma pilula dos anexos logo acima, porque estao na
+   mesma faixa e no mesmo tamanho - dois desenhos ali leriam como dois assuntos.
+   O que separa a de apagar e a cor, e so no hover: vermelho em repouso pediria
+   atencao para a saida menos usada das duas. */
+.reportes-detalhe-acoes {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+}
+.reportes-acao {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border: 1px solid var(--gray4);
+  border-radius: var(--radius-pill);
+  background: var(--white);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray);
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+.reportes-acao:hover { border-color: var(--gray2); color: var(--black); }
+.reportes-acao.perigo:hover { border-color: var(--red); color: var(--red); }
+
+/* A correcao, no lugar onde o relato estava sendo lido. O campo ocupa a faixa
+   inteira e a linha de baixo junta a urgencia com as duas saidas, encostadas a
+   direita: e a mesma ordem do rodape de toda gaveta da casa. */
+.reportes-editar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 90ch;
+}
+.reportes-editar-linha {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.reportes-editar-linha .delete-confirm-cancel { margin-left: auto; }
+
 /* O anexo em PDF no cartao de reportar: sem miniatura, um icone no lugar dela. */
 .reportar-print-doc {
   display: inline-flex;
@@ -17307,7 +17351,8 @@ button.checklist-texto:focus-visible {
 .reportar-print + .reportar-solta { margin-top: 6px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .reportes-anexo { transition: none; }
+  .reportes-anexo,
+  .reportes-acao { transition: none; }
 }
 
 /* O folheador da previa: setas e posicao, no cabecalho, so quando ha mais de um

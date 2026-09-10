@@ -323,6 +323,12 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   set_reporte_status: SO_ADMIN,
   // Reclassificar tambem: e arrumacao da fila, e a fila e do dono do painel.
   set_reporte_tipo: SO_ADMIN,
+  // Corrigir e apagar o proprio chamado e de quem o escreveu, e nao de um papel:
+  // livre de chamar, e a acao confere no banco se quem pede e o autor daquele
+  // `id`. Permissao aqui diria "quem pode perguntar", e a pergunta e de todos -
+  // o que muda e de qual chamado.
+  editar_reporte: LIVRE,
+  excluir_reporte: LIVRE,
   board: 'oportunidades:ver',
   detail: 'oportunidades:ver',
   status_card_count: 'oportunidades:ver',

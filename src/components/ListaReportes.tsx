@@ -13,8 +13,8 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  IconAlert, IconBug, IconChevronRight, IconDoc, IconImage, IconImagemSem,
-  IconSparkles, IconX,
+  IconAlert, IconBug, IconChevronRight, IconDoc, IconEdit, IconImage, IconImagemSem,
+  IconSparkles, IconSpinner, IconTrash, IconX,
 } from './icons';
 import { Dialogo } from './Dialogo';
 import { PreviaArquivo } from './PreviaArquivo';
@@ -22,7 +22,7 @@ import FilterDropdown from './FilterDropdown';
 import { SelectSistema } from './SelectSistema';
 import { Avatar } from '../admin/FormularioTarefa';
 import { Chave } from './Chave';
-import { ICONE_PRIORIDADE } from '../lib/prioridades';
+import { ICONE_PRIORIDADE, PRIORIDADES } from '../lib/prioridades';
 import { instante, tempoRelativo } from '../lib/datas';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
@@ -89,11 +89,16 @@ export interface ReporteNaLista {
   anexos?: { id: number | null; nome: string; tipo: string; tamanho: number }[];
   status: string;
   criado_em: string;
+  /** Se este chamado e de quem esta olhando. Vem decidido do servidor, que e
+   *  onde a regra tambem recusa - a tela so escolhe o que desenhar. */
+  meu?: boolean;
   /** As notas ja escritas, da mais antiga para a mais nova. */
   notas?: NotaDoRelato[];
 }
 
-export function ListaReportes({ carregar, carregarPrint, mudarStatus, mudarTipo, admin, onFechar }: {
+export function ListaReportes({
+  carregar, carregarPrint, mudarStatus, mudarTipo, editar, excluir, admin, onFechar,
+}: {
   carregar: () => Promise<{ reportes?: ReporteNaLista[]; error?: string }>;
   /** O conteúdo do print vem um por vez: na lista ele não viaja. */
   carregarPrint: (id: number, anexo?: number) => Promise<{ nome: string; tipo: string; base64: string } | null>;
@@ -101,6 +106,10 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, mudarTipo,
   /** Corrigir a gaveta do chamado. Sem e-mail e sem pergunta: trocar o tipo nao
    *  muda nada para quem reportou, e a fila e do dono do painel. */
   mudarTipo?: (id: number, tipo: string) => Promise<{ error?: string } | null>;
+  /** Corrigir e apagar o proprio chamado. Quem pode e o autor, e quem confere e
+   *  o servidor: aqui elas so nao sao oferecidas onde `meu` e falso. */
+  editar?: (id: number, texto: string, urgencia: string) => Promise<{ error?: string } | null>;
+  excluir?: (id: number) => Promise<{ error?: string } | null>;
   /**
    * O dono do painel: vê a fila inteira e muda o andamento. Quem não é vê só o
    * que escreveu, e sem o campo de status.
@@ -140,6 +149,12 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, mudarTipo,
    *  outras porque tambem e uma fila: e a dos que precisam de triagem. */
   const [filtroTipos, setFiltroTipos] = useState<string[]>([]);
   const [aberta, setAberta] = useState<number | null>(null);
+  /** O chamado em edicao, com o rascunho dentro. Um por vez: dois formularios
+   *  abertos na mesma fila e o comeco de gravar um achando que era o outro. */
+  const [editando, setEditando] = useState<{ id: number; texto: string; urgencia: string } | null>(null);
+  const [gravando, setGravando] = useState(false);
+  /** O chamado que a pergunta de excluir esta mirando. */
+  const [apagando, setApagando] = useState<ReporteNaLista | null>(null);
 
   /** Quantos estão fora da fila agora - o número que a chave mostra. */
   const resolvidos = (lista ?? []).filter(r => r.status === 'resolvido').length;
@@ -237,6 +252,38 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, mudarTipo,
     setLista(l => l?.map(x => (x.id === id ? { ...x, tipo } : x)) ?? l);
     const r = await mudarTipo(id, tipo);
     if (r?.error) { setLista(antes); setErroStatus(r.error); }
+  }
+
+  /** Grava a correcao. Aqui a tela espera, ao contrario do resto: o formulario
+   *  esta aberto na frente de quem escreveu, e fecha-lo antes da resposta
+   *  deixaria o texto antigo de volta na linha por um instante, como se a
+   *  correcao nao tivesse pegado. */
+  async function gravarEdicao() {
+    if (!editar || !editando) return;
+    const texto = editando.texto.trim();
+    if (!texto || !editando.urgencia || gravando) return;
+    setGravando(true);
+    setErroStatus('');
+    const r = await editar(editando.id, texto, editando.urgencia);
+    setGravando(false);
+    if (r?.error) { setErroStatus(r.error); return; }
+    setLista(l => l?.map(x => (x.id === editando.id
+      ? { ...x, texto, urgencia: editando.urgencia } : x)) ?? l);
+    setEditando(null);
+    toast('success', 'Chamado corrigido');
+  }
+
+  /** Apaga, pintando primeiro: a linha sai da fila no gesto e volta se o
+   *  servidor recusar. */
+  async function apagar(alvo: ReporteNaLista) {
+    if (!excluir) return;
+    const antes = lista;
+    setApagando(null);
+    setErroStatus('');
+    setLista(l => l?.filter(x => x.id !== alvo.id) ?? l);
+    const r = await excluir(alvo.id);
+    if (r?.error) { setLista(antes); setErroStatus(r.error); return; }
+    toast('success', 'Chamado excluído');
   }
 
   /** Quem o e-mail iria avisar, para a pergunta dizer o nome em vez de "a
@@ -340,6 +387,7 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, mudarTipo,
                   {visiveis.map(r => {
                     const Icone = ICONE_PRIORIDADE[r.urgencia];
                     const abertaAqui = aberta === r.id;
+                    const editandoAqui = editando?.id === r.id;
                     // Resolvido sai do caminho sem sair da lista: fica riscado e
                     // apagado, do jeito que um item feito fica numa lista de
                     // tarefas. Some da fila ele nao pode - a fila tambem serve
@@ -469,7 +517,54 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, mudarTipo,
                           <div className={`revelar${abertaAqui ? ' aberto' : ''}`}>
                             <div>
                               <div className="reportes-detalhe-corpo">
-                                <p className="reportes-detalhe-texto">{r.texto}</p>
+                                {/* Ler vira corrigir na mesma area, e por isso
+                                    o `.troca`: a peca nao nasce nem some, ela
+                                    muda de cara. */}
+                                {editandoAqui ? (
+                                  <div className="reportes-editar troca">
+                                    <textarea
+                                      className="form-input"
+                                      rows={4}
+                                      autoFocus
+                                      value={editando.texto}
+                                      maxLength={4000}
+                                      onChange={e => setEditando(v => v && { ...v, texto: e.target.value })}
+                                      onKeyDown={e => {
+                                        if (e.key === 'Escape') { e.preventDefault(); setEditando(null); }
+                                        // Ctrl+Enter grava, como em toda caixa
+                                        // de texto longo da casa.
+                                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                                          e.preventDefault(); void gravarEdicao();
+                                        }
+                                      }}
+                                    />
+                                    <div className="reportes-editar-linha">
+                                      <div style={{ width: 150 }}>
+                                        <SelectSistema
+                                          valor={editando.urgencia}
+                                          onChange={v => setEditando(x => x && { ...x, urgencia: v })}
+                                          opcoes={PRIORIDADES.map(nivel => ({
+                                            valor: nivel as string,
+                                            label: nivel,
+                                            icone: ICONE_PRIORIDADE[nivel]({ size: 13 }),
+                                          }))}
+                                          estiloGatilho={{ height: 30, fontSize: 12, padding: '0 10px' }}
+                                        />
+                                      </div>
+                                      <button type="button" className="delete-confirm-cancel"
+                                        onClick={() => setEditando(null)}>
+                                        Cancelar
+                                      </button>
+                                      <button type="button" className="btn btn-primary btn-sm"
+                                        disabled={!editando.texto.trim() || gravando}
+                                        onClick={() => void gravarEdicao()}>
+                                        {gravando ? <><IconSpinner size={12} /> Gravando</> : 'Gravar'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p className="reportes-detalhe-texto troca">{r.texto}</p>
+                                )}
                                 <p className="reportes-detalhe-meta">
                                   {r.pagina && <>Reportado em <strong>{r.pagina}</strong></>}
                                   {r.pagina && r.autor_email ? ' · ' : ''}
@@ -510,6 +605,30 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, mudarTipo,
                                     ))}
                                   </ul>
                                 )}
+                                {/* As duas acoes de quem escreveu, e so para
+                                    ela: corrigir o que contou e desistir do
+                                    chamado. Ficam no pe do detalhe, e nao na
+                                    linha da fila - a fila e para varrer, e um
+                                    botao de apagar em toda linha e um convite
+                                    ao clique errado. Somem enquanto o
+                                    formulario de correcao esta aberto, que ja
+                                    tem as saidas dele. */}
+                                {r.meu && !editandoAqui && (editar || excluir) && (
+                                  <div className="reportes-detalhe-acoes">
+                                    {editar && (
+                                      <button type="button" className="reportes-acao"
+                                        onClick={() => setEditando({ id: r.id, texto: r.texto, urgencia: r.urgencia })}>
+                                        <IconEdit size={12} /> Editar
+                                      </button>
+                                    )}
+                                    {excluir && (
+                                      <button type="button" className="reportes-acao perigo"
+                                        onClick={() => setApagando(r)}>
+                                        <IconTrash size={12} /> Excluir
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -524,6 +643,25 @@ export function ListaReportes({ carregar, carregarPrint, mudarStatus, mudarTipo,
           </div>
         </div>
       </div>
+
+      {/* Apagar nao tem volta, e por isso pergunta. O texto mostra o comeco do
+          relato: numa fila de vinte linhas parecidas, "o chamado" nao diz qual. */}
+      {apagando && (
+        <Dialogo
+          titulo="Excluir este chamado?"
+          descricao={
+            <>
+              <strong>{apagando.texto.slice(0, 90)}{apagando.texto.length > 90 ? '…' : ''}</strong>
+              <br />
+              Some da fila e não volta. Os anexos e as notas vão junto.
+            </>
+          }
+          rotuloOk="Excluir"
+          zIndex={10070}
+          onFechar={() => setApagando(null)}
+          onConfirmar={() => void apagar(apagando)}
+        />
+      )}
 
       {/* Mudar o andamento pergunta se quem reportou deve saber. Três respostas:
           avisar, mudar sem avisar, ou deixar como estava. O Cancelar existe

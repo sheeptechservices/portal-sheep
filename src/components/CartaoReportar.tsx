@@ -111,7 +111,7 @@ const DESCRICAO_DO_TIPO: Record<string, string> = {
 };
 
 export function CartaoReportar({
-  pagina, enviar, listar, carregarPrint, mudarStatus, mudarTipo, admin,
+  pagina, enviar, listar, carregarPrint, mudarStatus, mudarTipo, editar, excluir, admin,
 }: {
   /** Em que tela a pessoa estava. Vai no e-mail para quem lê não precisar
    *  perguntar "em qual?". */
@@ -124,6 +124,9 @@ export function CartaoReportar({
   mudarStatus?: (id: number, status: string, avisar: boolean, comentario: string) => Promise<{ error?: string; aviso?: string | null } | null>;
   /** Corrigir a classificacao de um chamado, na fila. */
   mudarTipo?: (id: number, tipo: string) => Promise<{ error?: string } | null>;
+  /** Corrigir e apagar o proprio chamado. Quem pode e conferido no servidor. */
+  editar?: (id: number, texto: string, urgencia: string) => Promise<{ error?: string } | null>;
+  excluir?: (id: number) => Promise<{ error?: string } | null>;
   /** Só o dono do painel muda o andamento; o resto do time só lê. */
   /** O dono do painel - ver `ListaReportes`. */
   admin?: boolean;
@@ -497,6 +500,8 @@ export function CartaoReportar({
           carregarPrint={carregarPrint}
           mudarStatus={mudarStatus}
           mudarTipo={mudarTipo}
+          editar={editar}
+          excluir={excluir}
           admin={admin}
           onFechar={() => setVendoFila(false)}
         />

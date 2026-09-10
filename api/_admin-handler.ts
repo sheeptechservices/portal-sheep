@@ -93,6 +93,28 @@ const STATUS_DO_RELATO = ['aberto', 'em_analise', 'resolvido', 'descartado'];
  *  cara de dado certo. */
 const TIPOS_DO_RELATO = ['bug', 'melhoria'];
 
+/**
+ * Se este chamado e de quem esta perguntando.
+ *
+ * O `id` e a resposta quando existe; o e-mail cobre o relato gravado antes de o
+ * id do autor existir - a mesma dupla que a consulta da fila ja usa para
+ * decidir o que cada um enxerga. Sessao sem identidade, a da senha
+ * compartilhada, nao e dona de nada: `null` nunca casa com `null`, e e por isso
+ * que os dois lados sao conferidos antes de comparar.
+ */
+function ehDonoDoRelato(
+  // `Record`, e nao um formato com os dois campos: o que chega aqui e uma
+  // `Row` do libSQL, que so tem indice - declarar as colunas esperadas nao a
+  // aceitaria, e obrigaria a um `as` em cada chamada.
+  linha: Record<string, unknown>,
+  usuario?: UsuarioAdmin | null,
+): boolean {
+  const id = linha.autor_id != null ? String(linha.autor_id) : null;
+  const email = linha.autor_email != null ? String(linha.autor_email) : null;
+  if (id && usuario?.id && id === usuario.id) return true;
+  return !!email && !!usuario?.email && email === usuario.email;
+}
+
 /** Como cada estado se escreve para quem lê. A chave é de banco; o e-mail que
  *  chega em quem reportou não pode dizer "em_analise". */
 const ROTULO_DO_STATUS: Record<string, string> = {
@@ -4029,9 +4051,9 @@ async function despacharAdminData(
       // que reportou no mês passado.
       const r = await db.execute({
         sql: `
-        SELECT r.id, r.texto, r.urgencia, r.tipo, r.pagina, r.autor_nome, r.autor_email,
-               r.print_nome, r.print_base64 IS NOT NULL AS tem_print, r.status,
-               r.criado_em, u.foto_url AS autor_foto
+        SELECT r.id, r.texto, r.urgencia, r.tipo, r.pagina, r.autor_id, r.autor_nome,
+               r.autor_email, r.print_nome, r.print_base64 IS NOT NULL AS tem_print,
+               r.status, r.criado_em, u.foto_url AS autor_foto
         FROM reportes r
         LEFT JOIN usuarios u ON u.id = r.autor_id
         ${filaInteira ? '' : meus}
@@ -4104,6 +4126,10 @@ async function despacharAdminData(
             // Nulo continua nulo ate a fila da tela: e ela que sabe desenhar
             // "sem classificacao" sem que isso vire um tipo de mentira.
             tipo: x.tipo != null ? String(x.tipo) : null,
+            // Quem pode corrigir e apagar esta linha. Vem decidido daqui, e nao
+            // comparado na tela: a regra e uma so, e ela ja mora do lado que
+            // recusa. A tela so escolhe o que desenhar com a resposta.
+            meu: ehDonoDoRelato(x, usuario),
             pagina: x.pagina != null ? String(x.pagina) : null,
             autor_nome: String(x.autor_nome),
             autor_email: x.autor_email != null ? String(x.autor_email) : null,
@@ -6349,6 +6375,65 @@ function faltaEmProjeto(p: any): string | null {
         args: [tipo, body?.id],
       });
       if (!r.rowsAffected) return { status: 404, body: { error: 'Relato não encontrado.' } };
+      return { status: 200, body: { ok: true } };
+    }
+
+    /**
+     * Corrigir o proprio chamado.
+     *
+     * Texto e urgencia, e mais nada: o tipo e triagem, e triagem e de quem
+     * cuida da fila - por isso ele nao entra aqui nem quando quem pede e o
+     * autor. O andamento, pelo mesmo motivo, tambem nao.
+     *
+     * A dona do chamado e conferida contra o banco, e nao contra o que o corpo
+     * do pedido diz: quem chama a acao escolhe o `id`, e so isso.
+     */
+    if (action === 'editar_reporte') {
+      const linha = (await db.execute({
+        sql: 'SELECT autor_id, autor_email FROM reportes WHERE id = ?',
+        args: [body?.id],
+      })).rows[0];
+      if (!linha) return { status: 404, body: { error: 'Relato não encontrado.' } };
+      if (!ehDonoDoRelato(linha, usuario)) {
+        return { status: 403, body: { error: 'Só quem reportou pode editar este chamado.' } };
+      }
+      const texto = String(body?.texto ?? '').trim();
+      if (!texto) return { status: 400, body: { error: 'Escreva o que você quer contar.' } };
+      if (texto.length > 4000) {
+        return { status: 400, body: { error: 'O relato passou de 4000 caracteres.' } };
+      }
+      const urgencia = String(body?.urgencia ?? '').trim();
+      if (!URGENCIAS_DO_RELATO.includes(urgencia)) {
+        return { status: 400, body: { error: 'Escolha a urgência.' } };
+      }
+      await db.execute({
+        sql: 'UPDATE reportes SET texto = ?, urgencia = ? WHERE id = ?',
+        args: [texto, urgencia, body?.id],
+      });
+      return { status: 200, body: { ok: true } };
+    }
+
+    /**
+     * Apagar o proprio chamado.
+     *
+     * Some de vez, com os anexos e as notas junto - e por isso e do autor, e de
+     * mais ninguem. Quem cuida da fila tem o `Descartado`, que diz "olhei e nao
+     * vai ser feito" sem apagar o que a pessoa escreveu.
+     */
+    if (action === 'excluir_reporte') {
+      const linha = (await db.execute({
+        sql: 'SELECT autor_id, autor_email FROM reportes WHERE id = ?',
+        args: [body?.id],
+      })).rows[0];
+      if (!linha) return { status: 404, body: { error: 'Relato não encontrado.' } };
+      if (!ehDonoDoRelato(linha, usuario)) {
+        return { status: 403, body: { error: 'Só quem reportou pode excluir este chamado.' } };
+      }
+      // Os filhos primeiro: a tabela nao tem cascata, e anexo orfao continuaria
+      // ocupando o banco com um base64 que ninguem mais alcanca.
+      await db.execute({ sql: 'DELETE FROM reporte_anexos WHERE reporte_id = ?', args: [body?.id] });
+      await db.execute({ sql: 'DELETE FROM reporte_notas WHERE reporte_id = ?', args: [body?.id] });
+      await db.execute({ sql: 'DELETE FROM reportes WHERE id = ?', args: [body?.id] });
       return { status: 200, body: { ok: true } };
     }
 
