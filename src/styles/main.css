@@ -15179,8 +15179,21 @@ button.checklist-texto:focus-visible {
 .reportar-cartao .liquidez-trigger {
   border-color: rgba(255, 255, 255, .16);
   backdrop-filter: blur(3px);
+  /* O realce de quando a lista esta aberta vem inline do componente, e regra
+     daqui nao o alcanca: o que o componente deixa em aberto sao estes dois
+     tons. Sem redefini-los, o gatilho aberto acende o mesmo anel claro do
+     sistema, que aqui e luz no meio da penumbra. */
+  --select-realce-borda: rgba(255, 255, 255, .38);
+  --select-realce-halo: rgba(255, 255, 255, .10);
 }
-.reportar-cartao .liquidez-trigger:hover { border-color: rgba(255, 255, 255, .3); }
+/* Sem o halo do sistema. Ele e `--gray4`, que e claro, e sobre as ondas escuras
+   virava um anel branco em volta do campo - luz onde o cartao inteiro e
+   penumbra. Quem diz que o campo esta sob o ponteiro e a borda, que ja clareia
+   aqui em cima. */
+.reportar-cartao .liquidez-trigger:hover {
+  border-color: rgba(255, 255, 255, .3);
+  box-shadow: none;
+}
 
 /* A lista de urgencia do cartao. Ela mora num portal no `body`, entao nao herda
    nada daqui - por isso a classe vem do componente, e por isso a tinta e
