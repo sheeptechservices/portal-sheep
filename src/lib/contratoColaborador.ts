@@ -10,8 +10,13 @@
 //  O texto é transcrição literal do modelo assinado, e é para continuar assim:
 //  fora os campos, nem uma vírgula muda. Isso inclui o que parece erro e é -
 //  "PRESTRAÇÃO" no título, "minímo", "duarante", "perído", "recisão", "9,610",
-//  "SHEEP TECNOLOGY" na assinatura, o espaço que falta antes da modalidade na
-//  cláusula 3ª e a numeração romana que repete o VII e pula VIII e XI.
+//  "SHEEP TECNOLOGY" na assinatura e a numeração romana que repete o VII e pula
+//  VIII e XI.
+//
+//  Uma exceção, aberta em 10/09/2026: o espaço que faltava antes da modalidade
+//  na cláusula 3ª entrou. Ali o vão não é erro de digitação do modelo, é emenda
+//  da máquina - o campo entra colado na palavra que o anuncia, e "na
+//  modalidadeHome Office" aparece impresso em todo contrato que sai daqui.
 //
 //  Os travessões (–) são os do documento e ficam, embora o padrão de escrita da
 //  casa peça hífen: aqui o que vale é ser idêntico ao que foi assinado, e não a
@@ -154,7 +159,7 @@ export function contratoColaborador(d: DadosColaborador): Paragrafo[] {
     // este é o contrato do colaborador com a casa, e o cliente que ele atende é
     // da CONTRATANTE, muda ao longo do contrato e não pertence a este papel.
     p(`3ª – Os serviços contratados serão prestados com orientação e responsabilidade técnica `
-      + `da CONTRATADA, na modalidade${d.modalidade}, de conformidade com os cronogramas de `
+      + `da CONTRATADA, na modalidade ${d.modalidade}, de conformidade com os cronogramas de `
       + `execução dos serviços, estabelecido de comum acordo entre as partes contratantes, `
       + `devendo sempre ser respeitado e priorizado as necessidades da CONTRATANTE.`),
 
