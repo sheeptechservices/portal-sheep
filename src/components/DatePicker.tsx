@@ -366,9 +366,13 @@ export function DatePicker({ value, onChange, label, required, error, disabled, 
           style={{
             ['--bc' as string]: borderColor,
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            height: 38, padding: '0 11px', borderRadius: 'var(--radius-sm)',
+            // A mesma caixa do `.form-input` ao lado: altura, folga lateral,
+            // raio e corpo de letra. Sem isto o campo de data era o unico da
+            // linha com outro tamanho, e a grade mostrava.
+            minHeight: 'var(--campo-altura)',
+            padding: '0 14px', borderRadius: 'var(--radius-md)',
             background: 'var(--white)',
-            fontSize: 13.5, color: display ? 'var(--black)' : 'var(--gray2)',
+            fontSize: 14, color: display ? 'var(--black)' : 'var(--gray2)',
             cursor: disabled ? 'not-allowed' : 'pointer', userSelect: 'none',
             opacity: disabled ? 0.6 : 1, width: '100%', boxSizing: 'border-box',
             boxShadow, outline: 'none', transition: 'border-color 0.15s',

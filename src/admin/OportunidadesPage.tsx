@@ -90,7 +90,13 @@ function FormSelect({ value, onChange, options, placeholder = '- Não definido -
         type="button"
         onClick={openDropdown}
         className="liquidez-trigger"
-        style={{ width: '100%', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 500, borderColor: open ? 'var(--yellow)' : undefined, boxShadow: open ? '0 0 0 4px var(--yd)' : undefined }}
+        style={{
+          width: '100%', justifyContent: 'space-between',
+          minHeight: 'var(--campo-altura)', padding: '5px 14px',
+          borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 500,
+          borderColor: open ? 'var(--yellow)' : undefined,
+          boxShadow: open ? '0 0 0 4px var(--yd)' : undefined,
+        }}
       >
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0,
           color: current ? 'var(--gray)' : 'var(--gray2)' }}>

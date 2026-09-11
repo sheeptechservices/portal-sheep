@@ -52,6 +52,16 @@
   --medalha-bronze-base:  #C4803F;
   --medalha-bronze-escuro:#7F4A1E;
 
+  /* A altura do campo da casa.
+     E a que o `.form-input` ja tinha - 14px de corpo entre 10px de folga em
+     cima e embaixo -, e a que os botoes ao lado de um campo de busca vestem a
+     mao pela tela toda. O token existe porque as pecas que nao sao `<input>`
+     (o dropdown do sistema, o seletor de pessoas, o campo de data) desenham a
+     propria caixa em estilo inline, e cada uma tinha chegado a um numero
+     diferente: 42 nos dropdowns, 38 na data, com raio e corpo de letra
+     proprios. Lado a lado numa grade, isso se ve. */
+  --campo-altura: 38px;
+
   --radius-sm:   8px;
   --radius-md:   12px;
   --radius-lg:   16px;

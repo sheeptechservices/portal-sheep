@@ -186,7 +186,9 @@ export function SelectSistema<T extends string>({
         // de texto e dropdown lado a lado precisam ler como a mesma família.
         style={{
           width: '100%', justifyContent: 'space-between', margin: 0,
-          height: 42, padding: '0 14px', borderRadius: 'var(--radius-md)',
+          // `minHeight`, e nao `height`: a caixa acompanha o campo de texto ao
+          // lado, e ainda cresce se o rotulo da opcao quebrar em duas linhas.
+          minHeight: 'var(--campo-altura)', padding: '0 14px', borderRadius: 'var(--radius-md)',
           fontFamily: "'Manrope', sans-serif", fontSize: 14, fontWeight: 500,
           background: 'var(--white)',
           ...estiloGatilho,

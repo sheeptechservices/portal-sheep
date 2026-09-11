@@ -47,7 +47,8 @@ export function SeletorPessoas({ pessoas, valor, onChange, vazio = 'Escolher pes
     <>
       <button ref={triggerRef} type="button" onClick={abrir} className="liquidez-trigger"
         style={{
-          width: '100%', justifyContent: 'space-between', margin: 0, minHeight: 42,
+          width: '100%', justifyContent: 'space-between', margin: 0,
+          minHeight: 'var(--campo-altura)',
           padding: '5px 14px', borderRadius: 'var(--radius-md)',
           fontFamily: "'Manrope', sans-serif", fontSize: 14, fontWeight: 500,
           background: 'var(--white)',

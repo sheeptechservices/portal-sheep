@@ -616,7 +616,8 @@ export function SeletorEtiquetas({ valor, opcoes, etq, onChange, desabilitado }:
       <button ref={triggerRef} type="button" className="liquidez-trigger" onClick={abrir}
         disabled={desabilitado} aria-expanded={aberto}
         style={{
-          width: '100%', justifyContent: 'space-between', margin: 0, minHeight: 42,
+          width: '100%', justifyContent: 'space-between', margin: 0,
+          minHeight: 'var(--campo-altura)',
           padding: '5px 14px', borderRadius: 'var(--radius-md)',
           fontFamily: "'Manrope', sans-serif", fontSize: 14, fontWeight: 500,
           // O mesmo fundo que o `SelectSistema` pinta: sem isto o campo herdava
