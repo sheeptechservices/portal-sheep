@@ -15,6 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { IconSpinner } from './icons';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 
@@ -97,12 +98,18 @@ export function Dialogo({
               {rotuloMeio}
             </button>
           )}
+          {/* Trabalhando, o botão gira ao lado do rótulo - espera no sistema é
+              o giro da casa, e não uma palavra trocada. O giro entra só com o
+              `ocupadoRotulo`: sem ele, `ocupado` quer dizer "ainda não dá para
+              confirmar", que é trava e não espera. */}
           <button type="button" className="delete-confirm-ok" disabled={ocupado}
             style={corOk
               ? { background: corOk, color: corTextoOk ?? '#fff' }
               : perigo ? undefined : { background: 'var(--yellow)', color: 'var(--on-yellow)' }}
             onClick={confirmar}>
-            {ocupado && ocupadoRotulo ? ocupadoRotulo : rotuloOk}
+            {ocupado && ocupadoRotulo
+              ? <><IconSpinner size={13} /> {ocupadoRotulo}</>
+              : rotuloOk}
           </button>
         </div>
       </div>
