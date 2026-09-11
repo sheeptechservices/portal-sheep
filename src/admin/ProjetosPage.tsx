@@ -4174,7 +4174,6 @@ function FormularioProjeto({
                 valores={r.drives}
                 marca="drive"
                 exemplo="https://drive.google.com/drive/folders/..."
-                dica="Os diretórios do projeto. Quantos forem precisos."
                 somenteLeitura={somenteLeitura}
                 onChange={v => set('drives', v)} />
             </div>
