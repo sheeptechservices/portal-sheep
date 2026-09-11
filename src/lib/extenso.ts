@@ -67,6 +67,21 @@ function inteiroPorExtenso(n: number): string {
 }
 
 /**
+ * Um inteiro por extenso, sem moeda: "seis", "quinze", "cento e vinte".
+ *
+ * O contrato escreve toda contagem duas vezes, como faz com o valor - "6 (seis)
+ * meses", "1 (uma) semana". No feminino porque semana, via e testemunha pedem
+ * "uma" e "duas", e escrever "1 (um) semana" e o tipo de erro que so aparece
+ * depois de assinado.
+ */
+export function numeroPorExtenso(n: number, genero: 'm' | 'f' = 'm'): string {
+  const texto = inteiroPorExtenso(Math.trunc(Math.abs(n)));
+  return genero === 'f'
+    ? texto.replace(/\bum$/, 'uma').replace(/\bdois$/, 'duas')
+    : texto;
+}
+
+/**
  * O valor como o contrato o escreve: "cinco mil e oitocentos reais".
  * Centavos entram só quando existem.
  */
