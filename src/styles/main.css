@@ -6366,234 +6366,336 @@ button.checklist-texto:focus-visible {
   .donut-dica { animation: none; }
 }
 
-/* ── Revista da aba Gestão ────────────────────────────
-   Cada projeto é um capítulo. Coluna única e larga de leitura, títulos grandes,
-   citação de abertura e linha do tempo - o formato de quem lê uma história, e
-   não de quem compara uma planilha. É também o que sobrevive ao celular sem
-   virar rolagem lateral. */
-/* Uma folha só para o relatório inteiro, e não uma ficha por projeto. O que
-   separa capítulo de capítulo e seção de seção é um fio, não uma borda: a
-   leitura corre de cima a baixo como num documento. */
-.rev-revista {
+/* ── Planning ─────────────────────────────────────────
+   A reuniao de planejamento da semana. A navegacao e a de uma agenda de
+   divisorias: as abas empilhadas na borda esquerda, e a folha do projeto
+   escolhido encostada nelas. */
+
+/* A barra de cima: que semana esta em foco, e como sair dela. */
+.pl-barra {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.pl-semana {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-pill);
+  background: var(--white);
+}
+.pl-semana-texto {
   display: flex;
   flex-direction: column;
-  gap: 0;
-  background: var(--white);
-  border: 1px solid var(--gray3);
-  border-radius: var(--radius-lg);
-  padding: 4px 26px 8px;
+  line-height: 1.15;
+  padding: 0 10px;
+  text-align: center;
+  min-width: 168px;
 }
+.pl-semana-texto strong { font-size: 12.5px; font-weight: 700; color: var(--black); }
+.pl-semana-texto small { font-size: 10px; font-weight: 600; color: var(--gray2); }
+.pl-seta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.pl-seta:hover { background: var(--gray4); color: var(--black); }
+/* A seta da esquerda e a mesma da direita, virada: um icone so para o par, como
+   no resto da casa. */
+.pl-seta:first-child svg { transform: rotate(180deg); }
 
-/* ── Página com índice ────────────────────────────────
-   O índice fica preso na lateral enquanto a leitura corre, e é por ele que se
-   navega. Numa página de uma tela só, saber onde se está vale tanto quanto
-   poder pular para outro ponto. */
-.rev-pagina {
+/* ── A pagina: divisorias e folha ────────────────────── */
+.pl-pagina {
   display: grid;
   grid-template-columns: 232px minmax(0, 1fr);
-  gap: 32px;
   align-items: start;
 }
 
-.rev-indice {
-  position: sticky;
-  top: 4px;
-  align-self: start;
-  max-height: calc(100vh - 140px);
-  overflow-y: auto;
-  scrollbar-width: none;
-}
-.rev-indice::-webkit-scrollbar { display: none; }
-
-.rev-indice-titulo {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--gray2);
-  margin: 0 0 10px 8px;
-}
-
-.rev-indice ol {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+/* As divisorias, empilhadas e encostadas na folha. Sem espaco entre elas: numa
+   agenda as abas nascem da mesma borda, e o vao entre uma e outra as leria como
+   botoes soltos. */
+.pl-abas {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 0;
+  position: sticky;
+  top: 4px;
+  /* Passam por cima da borda da folha, que e o que funde a ativa com ela. */
+  z-index: 1;
 }
 
-.rev-indice-item {
+.pl-aba {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 9px;
   width: 100%;
-  padding: 8px 10px;
-  border: none;
-  border-left: 2px solid transparent;
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  background: none;
+  padding: 11px 12px 11px 14px;
+  border: 1px solid var(--gray3);
+  border-right: none;
+  border-bottom: none;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  background: var(--bg);
   font-family: inherit;
-  font-size: 12.5px;
-  color: var(--gray2);
   text-align: left;
   cursor: pointer;
+  color: var(--gray);
   transition: background var(--transition), color var(--transition),
-              border-color var(--transition);
+    transform var(--transition-spring);
 }
-.rev-indice-item:hover { background: var(--gray4); color: var(--black); }
-/* O item aceso é o que está sendo lido, e não o que foi clicado. */
-.rev-indice-item.ativo {
-  background: var(--gray4);
-  border-left-color: var(--yellow);
-  color: var(--black);
-  font-weight: 700;
+.pl-aba:last-child { border-bottom: 1px solid var(--gray3); }
+/* A cor da prioridade no fio de fora, que e a beira exposta da divisoria. */
+.pl-aba::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  background: var(--cor-aba, var(--gray3));
+  opacity: .45;
+  transition: opacity var(--transition);
 }
-.rev-indice-item:focus-visible { outline: none; }
+.pl-aba:hover { background: var(--gray4); color: var(--black); }
+.pl-aba:hover::before { opacity: .8; }
+.pl-aba:focus-visible { outline: none; background: var(--gray4); }
 
-.rev-indice-num {
+/* A ativa e a divisoria puxada para frente: branca como a folha, sem o fio que
+   as separa, e um fio a mais para cobrir a borda da folha. */
+.pl-aba.ativa {
+  background: var(--white);
+  color: var(--black);
+  box-shadow: -1px 0 0 0 var(--gray3);
+}
+.pl-aba.ativa::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--white);
+}
+.pl-aba.ativa::before { opacity: 1; width: 4px; }
+
+.pl-aba-num {
+  flex: none;
   font-size: 10px;
   font-weight: 800;
-  color: var(--gray3);
+  color: var(--gray2);
   font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
+  letter-spacing: .04em;
 }
-.rev-indice-item.ativo .rev-indice-num { color: var(--gray2); }
-
-.rev-indice-prio { display: inline-flex; flex-shrink: 0; }
-.rev-indice-nome {
-  flex: 1;
+.pl-aba-texto {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  gap: 1px;
+  flex: 1;
+}
+.pl-aba-texto strong {
+  font-size: 12.5px;
+  font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.rev-indice-pct {
-  font-size: 11px;
+.pl-aba-texto small {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--gray2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Quantas tarefas o projeto tem na semana. Zero fica apagado: e a diferenca
+   entre "ja montamos" e "falta montar", que e o que a sala procura. */
+.pl-aba-conta {
+  flex: none;
+  min-width: 20px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--gray4);
+  font-size: 10.5px;
   font-weight: 700;
   color: var(--gray2);
   font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
 }
+.pl-aba.ativa .pl-aba-conta { background: var(--yellow); color: var(--on-yellow); }
+.pl-aba-conta.vazia { background: transparent; color: var(--gray3); }
 
-/* ── Relatório em página de editor ────────────────────
-   Uma folha branca só, com margem generosa e coluna única de leitura. Os
-   projetos vêm um sob o outro, separados por divisor - não há ficha em volta
-   de cada um. */
-.rev-revista {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
+/* A folha. Encostada nas divisorias: sem canto arredondado do lado delas. */
+.pl-sheet {
   background: var(--white);
   border: 1px solid var(--gray3);
-  border-radius: var(--radius-lg);
-  padding: 10px 40px 24px;
-}
-
-/* Um fio separa um projeto do outro. No documento corrido, só o respiro não
-   dizia onde um capítulo acabava - o título seguinte podia passar por seção do
-   projeto anterior. */
-.nt-pagina {
-  /* Mesmo respiro dos dois lados do fio: com 10px embaixo, o traço colava no
-     último bloco do capítulo e parecia pertencer a ele. */
-  padding: 40px 0;
-  border-top: 1px solid var(--gray3);
-  scroll-margin-top: 12px;
-  /* Entra ao aparecer pela primeira vez; o observador põe `entrou`. */
-  opacity: 0;
-  transform: translateY(10px);
-  transition: opacity .4s var(--curva-anti), transform .4s var(--curva-anti);
-}
-.nt-pagina:first-child { padding-top: 18px; border-top: none; }
-.nt-pagina.entrou { opacity: 1; transform: none; }
-
-.nt-cabeca {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.nt-numero {
-  font-size: 15px;
-  font-weight: 800;
-  color: var(--gray3);
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-}
-
-.nt-titulo {
-  margin: 0;
-  font-size: 26px;
-  font-weight: 800;
-  letter-spacing: -0.022em;
-  line-height: 1.2;
-  color: var(--black);
+  border-radius: 0 var(--radius-lg) var(--radius-lg) var(--radius-lg);
+  padding: 22px 26px 24px;
+  min-height: 420px;
   min-width: 0;
 }
-.nt-titulo button {
-  font: inherit;
-  color: inherit;
-  background: none;
+
+.pl-folha { display: flex; flex-direction: column; gap: 22px; }
+
+.pl-cabeca {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--gray4);
+}
+.pl-quem h2 { margin: 0; font-size: 21px; font-weight: 800; letter-spacing: -.01em; }
+.pl-quem h2 button {
   border: none;
+  background: none;
   padding: 0;
+  font: inherit;
+  color: var(--black);
   cursor: pointer;
-  text-align: left;
   border-bottom: 2px solid transparent;
   transition: border-color var(--transition);
 }
-.nt-titulo button:hover { border-bottom-color: var(--yellow); }
-.nt-titulo button:focus-visible {
-  outline: none;
-  border-radius: var(--radius-sm);
-}
-
-/* ── Propriedades ─────────────────────────────────────
-   O cabeçalho de página: rótulo apagado à esquerda, valor à direita. */
-/* Propriedades lado a lado, com o rótulo em cima e o valor embaixo. Em coluna
-   única elas ocupavam sete linhas antes de o texto começar; deitadas, o
-   cabeçalho da página cabe em uma faixa e o `auto-fit` decide quantas cabem por
-   linha em cada largura. */
-.nt-props {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
-  gap: 4px 8px;
-  /* Sem fio embaixo: a faixa de propriedades pertence ao cabeçalho do capítulo,
-     e o traço a lia como bloco à parte. O respiro já a separa do texto. */
-  margin-bottom: 26px;
-}
-
-.nt-prop {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
-  padding: 6px 8px;
-  border-radius: var(--radius-sm);
-  transition: background var(--transition);
-}
-.nt-prop:hover { background: var(--gray4); }
-
-.nt-prop-rotulo {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--gray2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.nt-prop-valor {
-  min-width: 0;
+.pl-quem h2 button:hover { border-bottom-color: var(--yellow); }
+.pl-quem h2 button:focus-visible { outline: none; border-bottom-color: var(--yellow); }
+.pl-quem p {
   display: flex;
   align-items: center;
   gap: 7px;
-  flex-wrap: wrap;
-  font-size: 13.5px;
-  color: var(--black);
+  margin: 5px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray2);
+}
+.pl-progresso {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gray);
+  font-variant-numeric: tabular-nums;
+}
+
+.pl-secao { min-width: 0; }
+.pl-secao-titulo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--gray2);
+}
+
+/* Destaques e reunioes lado a lado: sao as duas metades do mesmo combinado, e
+   uma embaixo da outra empurrava os pontos de atencao para fora da tela. */
+.pl-combinado {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+}
+
+/* ── As linhas do combinado ─────────────────────────── */
+.pl-linhas { display: flex; flex-direction: column; gap: 5px; }
+.pl-linha { display: flex; align-items: center; gap: 7px; }
+/* O ponto da lista, que e o que faz a linha ler como item e nao como campo. */
+.pl-linha-marca {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--gray3);
+}
+.pl-linha .form-input { flex: 1; min-width: 0; }
+.pl-linha-x {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--gray2);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition), background var(--transition), color var(--transition);
+}
+.pl-linha:hover .pl-linha-x,
+.pl-linha-x:focus-visible { opacity: 1; }
+.pl-linha-x:hover { background: var(--gray4); color: var(--red); }
+.pl-add { align-self: flex-start; gap: 6px; padding: 0 10px; font-size: 11.5px; }
+
+.pl-linhas-leitura { margin: 0; padding-left: 16px; }
+.pl-linhas-leitura li {
+  font-size: 12.5px;
+  color: var(--gray);
+  margin-bottom: 4px;
+}
+
+.pl-assinatura {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--gray2);
+}
+.pl-equipe { display: flex; align-items: center; gap: 7px; margin: 0; flex-wrap: wrap; }
+/* O ponto que separa cliente de gestor na linha de baixo do titulo. Mais claro
+   que o texto: ele e pontuacao, e nao mais uma informacao na fila. */
+.nt-sep { color: var(--gray3); }
+
+/* O backlog e coluna do quadro da semana, a primeira. Fundo de papel e fio
+   tracejado: e a pilha de onde as coisas saem, e nao um dia. */
+.nt-dia.nt-backlog {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--gray3);
+  border-right: none;
+}
+.nt-dia.nt-backlog .nt-dia-nome { color: var(--gray2); }
+
+@media (max-width: 1000px) {
+  .pl-pagina { grid-template-columns: 1fr; }
+  .pl-abas {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .pl-aba {
+    width: auto;
+    flex: 0 0 auto;
+    border: 1px solid var(--gray3);
+    border-bottom: none;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+  }
+  .pl-aba.ativa { box-shadow: 0 1px 0 0 var(--white); }
+  .pl-aba.ativa::after { display: none; }
+  .pl-sheet { border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+  .pl-combinado { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pl-aba { transition: none; }
 }
 
 .nt-tag {
@@ -6604,14 +6706,6 @@ button.checklist-texto:focus-visible {
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
-}
-
-.nt-progresso {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
 }
 /* Base fixa, e não `width: 100%`: dentro de um flex de largura dada pelo
    conteúdo, a porcentagem resolve contra si mesma e a barra some. */
@@ -6630,94 +6724,6 @@ button.checklist-texto:focus-visible {
   background: var(--yellow);
 }
 
-/* ── Bloco recolhível ─────────────────────────────────
-   O toggle do editor: triângulo que gira, título ao lado, conteúdo recuado. */
-.nt-toggle { margin: 2px 0; }
-
-.nt-toggle-cabeca {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 5px 6px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: none;
-  font-family: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background var(--transition);
-}
-.nt-toggle-cabeca:hover { background: var(--gray4); }
-.nt-toggle-cabeca:focus-visible { outline: none; }
-
-.nt-triangulo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: var(--radius-sm);
-  color: var(--gray2);
-  flex-shrink: 0;
-  /* No mesmo tempo e curva da caixa: girando mais rápido, o triângulo termina
-     com o bloco ainda em movimento e os dois parecem coisas separadas. */
-  transition: transform .3s var(--curva-anti), color var(--transition);
-}
-.nt-toggle.aberto .nt-triangulo { transform: rotate(90deg); }
-.nt-toggle-cabeca:hover .nt-triangulo { color: var(--black); }
-
-.nt-toggle-titulo {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--black);
-  letter-spacing: -0.01em;
-}
-
-.nt-toggle-contagem {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--gray2);
-  background: var(--gray4);
-  padding: 1px 7px;
-  border-radius: var(--radius-pill);
-  font-variant-numeric: tabular-nums;
-}
-
-/* Abre e fecha animando a altura. `grid-template-rows: 0fr -> 1fr` porque
-   `height: auto` não anima; o tempo é o de revelação, não o de realce. */
-.nt-toggle-corpo {
-  display: grid;
-  grid-template-rows: 0fr;
-  opacity: 0;
-  transition: grid-template-rows .3s var(--curva-anti), opacity .14s ease;
-}
-.nt-toggle-corpo > * {
-  overflow: hidden;
-  min-height: 0;
-}
-/* O conteúdo alinha com o título do bloco, sem fio de guia: o recuo já diz que
-   ele pertence ao título, e a linha competia com os cards do quadro.
-   O respiro vem aqui, uma camada abaixo do que recorta: margem e padding não
-   encolhem com a linha da grade e sobrariam visíveis no fechado. */
-.nt-toggle-conteudo {
-  margin: 4px 0 12px 32px;
-  padding: 2px 0 4px;
-}
-.nt-toggle.aberto .nt-toggle-corpo {
-  grid-template-rows: 1fr;
-  opacity: 1;
-  /* Abrindo, o conteúdo espera a caixa ganhar espaço; fechando, some antes de
-     ela terminar de subir. */
-  transition: grid-template-rows .3s var(--curva-anti), opacity .24s ease .08s;
-}
-
-.nt-texto {
-  font-size: 13.5px;
-  line-height: 1.55;
-  color: var(--gray);
-  margin: 0;
-}
 .nt-vazio {
   font-size: 13px;
   color: var(--gray2);
@@ -6763,43 +6769,6 @@ button.checklist-texto:focus-visible {
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 2px 10px;
 }
-
-/* Anel, recorte e lista numa coluna com respiro próprio: a linha do recorte só
-   existe quando há filtro, e o espaçamento não pode depender dela. */
-.nt-entregas {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-/* A linha entre o anel e a lista: diz o que está filtrado e desfaz o filtro. */
-.nt-recorte {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 11.5px;
-  color: var(--gray2);
-}
-.nt-recorte button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 8px;
-  border: 1px solid var(--gray3);
-  border-radius: var(--radius-pill);
-  background: none;
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--gray);
-  cursor: pointer;
-  transition: background var(--transition), border-color var(--transition), color var(--transition);
-}
-.nt-recorte button:hover { background: var(--gray4); color: var(--black); }
-.nt-recorte button:focus-visible { outline: none; }
-
-/* A foto do responsável ao lado do título da entrega, sem roubar coluna. */
-.nt-entrega-dono { margin-left: 8px; vertical-align: middle; }
 
 /* ── Atividade da tarefa ──────────────────────────────
    Diário e conversa, no rodapé do modal de tarefa. */

@@ -138,6 +138,15 @@ const FORA_DA_EQUIPE = {
  *
  *  `de` diz de onde o projeto é deduzido quando a ação recebe o id de um filho
  *  (entrega, anexo, evidência) em vez do projeto. */
+/** Uma lista de frases, vindas do corpo do pedido ou de uma coluna JSON.
+ *  Linha em branco sai, espaco das pontas sai, e o que nao for lista vira lista
+ *  vazia: o campo e escrito a varias maos numa reuniao. */
+function listaDeTexto(v: unknown): string[] {
+  const cru = typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch { return []; } })() : v;
+  if (!Array.isArray(cru)) return [];
+  return cru.map(x => String(x ?? '').trim()).filter(Boolean).slice(0, 50);
+}
+
 async function guardaDaEquipe(
   db: Client,
   usuario: UsuarioAdmin | null | undefined,
@@ -1324,6 +1333,30 @@ async function migrarSchema(db: Client) {
       etapa           TEXT NOT NULL DEFAULT 'Entrega',
       criado_em       TEXT NOT NULL,
       criado_por_nome TEXT
+    )
+  `);
+
+  await ddl(`
+    -- O combinado da reuniao de planning, por projeto e por semana.
+    --
+    -- A semana e a segunda-feira dela, em ISO, e e o que amarra a linha: a
+    -- planning acontece toda semana, e o valor esta em poder abrir a de tras e
+    -- ver o que tinha sido combinado. Guardar so o estado atual apagaria isso a
+    -- cada segunda.
+    --
+    -- \`destaques\` e \`reunioes\` sao listas em JSON, e nao linhas proprias: sao
+    -- frases curtas escritas na reuniao, sempre lidas juntas e sempre do mesmo
+    -- projeto - uma tabela por item so acrescentaria juncao.
+    CREATE TABLE IF NOT EXISTS planning_semana (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      projeto_id        TEXT NOT NULL,
+      semana            TEXT NOT NULL,
+      destaques         TEXT NOT NULL DEFAULT '[]',
+      reunioes          TEXT NOT NULL DEFAULT '[]',
+      atualizado_em     TEXT NOT NULL,
+      atualizado_por_id TEXT,
+      atualizado_por_nome TEXT,
+      UNIQUE (projeto_id, semana)
     )
   `);
 
@@ -3545,6 +3578,34 @@ async function despacharAdminData(
 
     // Etapas do quadro de tarefas. A tela de Tarefas monta as colunas com isto,
     // e Configurações > Etapas edita a mesma lista.
+    // O combinado de uma semana, de todos os projetos de uma vez. A tela de
+    // Planning percorre projeto por projeto, e uma ida por projeto seria uma
+    // consulta a cada clique numa aba lateral.
+    if (action === 'planning_semana') {
+      const semana = String(query.get('semana') ?? '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(semana)) {
+        return { status: 400, body: { error: 'Semana ausente ou fora do formato AAAA-MM-DD.' } };
+      }
+      const r = await db.execute({
+        sql: `SELECT projeto_id, destaques, reunioes, atualizado_em, atualizado_por_nome
+              FROM planning_semana WHERE semana = ?`,
+        args: [semana],
+      });
+      return {
+        status: 200,
+        body: {
+          semana,
+          planning: r.rows.map(x => ({
+            projeto_id: String(x.projeto_id),
+            destaques: listaDeTexto(x.destaques),
+            reunioes: listaDeTexto(x.reunioes),
+            atualizado_em: x.atualizado_em,
+            atualizado_por_nome: x.atualizado_por_nome,
+          })),
+        },
+      };
+    }
+
     if (action === 'tarefa_status_configs') {
       const [etapas, inscritos] = await Promise.all([
         db.execute('SELECT * FROM tarefa_status_configs WHERE ativo = 1 ORDER BY ordem, id'),
@@ -6022,6 +6083,37 @@ function faltaEmProjeto(p: any): string | null {
         args: [autorId, autorNome, new Date().toISOString(), projetoId],
       });
       return { status: 200, body: { ok: true } };
+    }
+
+    // Grava o combinado da semana. Uma linha por projeto e por semana, criada
+    // na primeira frase escrita e regravada por cima dali em diante - quem
+    // escreve numa planning esta corrigindo o que a sala combinou, e nao
+    // acrescentando uma segunda versao do mesmo combinado.
+    if (action === 'salvar_planning_semana') {
+      { const barrado = await guardaDaEquipe(db, usuario, body.projeto_id); if (barrado) return barrado; }
+      const projetoId = String(body.projeto_id ?? '');
+      const semana = String(body.semana ?? '').slice(0, 10);
+      if (!projetoId) return { status: 400, body: { error: 'projeto_id ausente.' } };
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(semana)) {
+        return { status: 400, body: { error: 'Semana ausente ou fora do formato AAAA-MM-DD.' } };
+      }
+      const destaques = JSON.stringify(listaDeTexto(body.destaques));
+      const reunioes = JSON.stringify(listaDeTexto(body.reunioes));
+      const agora = new Date().toISOString();
+      await db.execute({
+        sql: `INSERT INTO planning_semana
+                (projeto_id, semana, destaques, reunioes, atualizado_em,
+                 atualizado_por_id, atualizado_por_nome)
+              VALUES (?,?,?,?,?,?,?)
+              ON CONFLICT(projeto_id, semana) DO UPDATE SET
+                destaques = excluded.destaques,
+                reunioes = excluded.reunioes,
+                atualizado_em = excluded.atualizado_em,
+                atualizado_por_id = excluded.atualizado_por_id,
+                atualizado_por_nome = excluded.atualizado_por_nome`,
+        args: [projetoId, semana, destaques, reunioes, agora, autorId, autorNome],
+      });
+      return { status: 200, body: { ok: true, atualizado_em: agora, atualizado_por_nome: autorNome } };
     }
 
     if (action === 'etiquetar_projeto_arquivo') {

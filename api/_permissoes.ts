@@ -251,6 +251,11 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   remove_tarefa_status_notif: 'configuracoes:etapas',
   // Publicar é decidir o que o cliente vê: mesma permissão de editar o projeto.
   publicar_projeto: 'projetos:editar',
+  // O combinado da planning e do projeto: quem ve o projeto le, quem edita
+  // escreve. A leitura vem cortada por equipe na propria consulta de projetos,
+  // que e o que decide quais projetos aparecem na tela.
+  planning_semana: 'projetos:ver',
+  salvar_planning_semana: 'projetos:editar',
   despublicar_projeto: 'projetos:editar',
   salvar_tarefa: 'tarefas:editar',
   excluir_tarefa: 'tarefas:excluir',

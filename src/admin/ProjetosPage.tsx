@@ -75,11 +75,11 @@ import {
 //  Projetos - o cadastro dos projetos da casa e o acompanhamento de cada um.
 //
 //  Duas abas sobre a mesma lista, porque são duas perguntas diferentes:
-//    Geral  → "quais projetos existem?"  cadastro, edição e exclusão.
-//    Gestão → "como eles estão indo?"    gestor, prazo e progresso.
+//    Geral    → "quais projetos existem?"   cadastro, edição e exclusão.
+//    Planning → "o que cada um faz esta semana?"  a reunião de planejamento.
 //
-//  A segunda não é só leitura: o progresso e o status são o que mais muda no
-//  dia a dia, então ficam editáveis ali mesmo, sem abrir o formulário inteiro.
+//  A segunda não é leitura: é a tela em que a semana é montada com o time, e o
+//  que se combina ali fica gravado por projeto e por semana.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const STATUS_PROJETO = ['Em andamento', 'Pausado', 'Concluído', 'Cancelado'] as const;
@@ -2752,27 +2752,36 @@ function SecaoEquipe({ titulo, pessoas, valor, somenteLeitura, onChange }: {
 }
 
 
-// ── Aba Gestão ──────────────────────────────────────────────────────────────
+// ── Aba Planning ────────────────────────────────────────────────────────────
 //
-//  Revista: cada projeto é um capítulo, e a pessoa rola de um para o outro
-//  lendo a mesma sequência - como está, o que andou, o que vem, o que preocupa.
-//  A ordem das seções é a da narrativa, não a da conveniência do banco: começa
-//  pelo movimento (semana e entregas), mostra o tempo (o que houve e o que
-//  vem) e fecha nos pontos de atenção.
+//  A reunião de planejamento da semana, e não um relatório: a tela existe para
+//  ser percorrida em voz alta com o time, um projeto de cada vez.
 //
-//  Sem tabela de propósito. Oito colunas viram rolagem lateral no celular, e a
-//  pergunta de quem lê isto não é "compare estes números", é "me conte como
-//  está cada projeto".
+//  A navegação é a de uma agenda de divisórias - as abas empilhadas na borda
+//  esquerda, uma por projeto, e a folha do escolhido encostada nelas. Era uma
+//  revista de rolagem contínua, com todos os projetos um abaixo do outro; numa
+//  reunião isso obrigava a procurar onde se estava a cada troca de assunto, e
+//  não dizia quantos ainda faltavam.
+//
+//  Cada folha tem três coisas, nesta ordem, que é a da conversa:
+//
+//   1. A SEMANA - o backlog do projeto ao lado dos cinco dias úteis. Os devs
+//      puxam do backlog o que entra em cada dia, e o gesto grava o prazo.
+//   2. O COMBINADO - destaques e reuniões da semana, escritos ali na hora e
+//      gravados por projeto e por semana, para a planning seguinte poder abrir
+//      a anterior.
+//   3. OS PONTOS DE ATENÇÃO - o que está fora do lugar, que é o assunto que
+//      sobra depois de a semana estar montada.
 
 /** Semana é o passo do acompanhamento: define o que é leitura velha, o recorte
  *  da atividade recente e a janela do que está planejado. */
 const DIAS_DA_SEMANA = 7;
 
-/** Segunda-feira desta semana. A semana da casa começa na segunda, e é ela que
- *  o bloco de ações mostra - não uma janela móvel de sete dias, que na quarta
- *  arrastaria metade da semana passada junto. */
-function segundaDaSemana(): Date {
-  const d = new Date();
+/** A segunda-feira da semana de uma data, ou a desta semana. A semana da casa
+ *  começa na segunda, e é ela que o quadro mostra - não uma janela móvel de
+ *  sete dias, que na quarta arrastaria metade da semana passada junto. */
+function segundaDaSemana(base?: Date): Date {
+  const d = base ? new Date(base) : new Date();
   d.setHours(0, 0, 0, 0);
   // `getDay` põe domingo em 0; aqui o domingo fecha a semana que começou na
   // segunda anterior, e não abre uma nova.
@@ -2794,10 +2803,19 @@ const diaLocal = (iso: string | undefined | null): string => {
   return Number.isNaN(d.getTime()) ? iso.slice(0, 10) : iso10(d);
 };
 
-const dentroDaSemana = (iso: string | undefined | null) => {
-  if (!iso) return false;
+/** O domingo que fecha a semana dos cinco dias úteis recebidos. */
+function domingoDepoisDe(dias: string[]): string {
+  const d = new Date(`${dias[dias.length - 1]}T12:00:00`);
+  d.setDate(d.getDate() + 2);
+  return iso10(d);
+}
+
+/** Dentro da semana cujos dias úteis são estes - o fim de semana incluído, que
+ *  é quando parte do trabalho acaba sendo concluída. */
+const dentroDaSemana = (iso: string | undefined | null, dias: string[]) => {
+  if (!iso || dias.length === 0) return false;
   const dia = diaLocal(iso);
-  return dia >= iso10(segundaDaSemana()) && dia <= hojeIso();
+  return dia >= dias[0] && dia <= domingoDepoisDe(dias);
 };
 
 /** A data local em texto. Montada a partir dos componentes, e não por
@@ -2808,10 +2826,10 @@ const iso10 = (d: Date) =>
 
 const hojeIso = () => iso10(new Date());
 
-/** Segunda a sexta desta semana, em ISO. É a régua do quadro: as colunas, o
- *  que conta como "da semana" e o que sobra para o rodapé do fim de semana. */
-function diasUteisDaSemana(): string[] {
-  const s = segundaDaSemana();
+/** Segunda a sexta da semana pedida, em ISO. É a régua do quadro: as colunas,
+ *  o que conta como "da semana" e o que sobra para o rodapé do fim de semana. */
+function diasUteisDaSemana(segunda: Date): string[] {
+  const s = segundaDaSemana(segunda);
   return Array.from({ length: 5 }, (_, i) => {
     const d = new Date(s);
     d.setDate(d.getDate() + i);
@@ -2827,31 +2845,17 @@ type ItemDaSemana = { tarefa: Tarefa; dia: string; feita: boolean };
  *  Sem as abertas o quadro só olhava para trás, e numa segunda-feira não havia
  *  para onde arrastar nada - a semana inteira estava no futuro. Com elas, o
  *  bloco vira o plano da semana e o arraste passa a servir para montá-lo. */
-function tarefasDaSemana(p: Projeto): ItemDaSemana[] {
-  const dias = diasUteisDaSemana();
+function tarefasDaSemana(p: Projeto, dias: string[]): ItemDaSemana[] {
   const itens: ItemDaSemana[] = [];
   for (const t of p.tarefas ?? []) {
     const feito = diaLocal(t.concluida_em);
-    if (feito && dentroDaSemana(t.concluida_em)) {
+    if (feito && dentroDaSemana(t.concluida_em, dias)) {
       itens.push({ tarefa: t, dia: feito, feita: true });
     } else if (!t.concluida_em && t.prazo && dias.includes(t.prazo.slice(0, 10))) {
       itens.push({ tarefa: t, dia: t.prazo.slice(0, 10), feita: false });
     }
   }
   return itens;
-}
-
-/** O que aconteceu no projeto nos últimos sete dias. Sai todo do que a listagem
- *  já traz - nenhuma consulta a mais para montar a revista. */
-function semanaDoProjeto(p: Projeto) {
-  return {
-    tarefasFeitas: (p.tarefas ?? []).filter(t => dentroDaSemana(t.concluida_em)),
-    tarefasNovas: (p.tarefas ?? []).filter(t => dentroDaSemana(t.criado_em)).length,
-    reunioes: p.reunioes.filter(r => dentroDaSemana(r.data)),
-    // Evidência nova é o sinal de que uma entrega andou de verdade: ela é
-    // exigida tanto para marcar entregue quanto para marcar validada.
-    evidencias: p.entregas.flatMap(e => e.evidencias.filter(v => dentroDaSemana(v.criado_em))),
-  };
 }
 
 /** O que está fora do lugar neste projeto. Só entra o que de fato disparou:
@@ -2912,60 +2916,12 @@ function PessoaFoto({ nome, id, equipe, tamanho = 20 }: {
   );
 }
 
-/** Índice do relatório: por onde a pessoa navega e onde ela vê onde está.
- *
- *  Fica preso na lateral enquanto a leitura corre. O item aceso não é escolha
- *  do clique, é do que está sendo lido - por isso um observador de interseção,
- *  e não um estado guardado ao clicar: rolar com a roda também tem de acender
- *  o item certo. */
-function Indice({ lista, ativo, progressoDe: pct, onIr }: {
-  lista: Projeto[];
-  ativo: string | null;
-  progressoDe: (p: Projeto) => number;
-  onIr: (id: string) => void;
-}) {
-  return (
-    <nav className="rev-indice" aria-label="Índice dos projetos">
-      <p className="rev-indice-titulo">Índice</p>
-      <ol>
-        {lista.map((p, i) => (
-          <li key={p.id}>
-            <button
-              type="button"
-              className={`rev-indice-item${ativo === p.id ? ' ativo' : ''}`}
-              aria-current={ativo === p.id ? 'true' : undefined}
-              // O índice lista clientes, mas dois projetos podem ser do mesmo:
-              // a dica diz de qual deles é a linha, sem poluir a lista.
-              title={p.cliente_nome ? `${p.cliente_nome} - ${p.nome}` : p.nome}
-              onClick={() => onIr(p.id)}
-            >
-              <span className="rev-indice-num">{String(i + 1).padStart(2, '0')}</span>
-              {/* O ícone de prioridade no índice: é ele que explica a ordem da
-                  lista, que de outro modo pareceria arbitrária. */}
-              <span className="rev-indice-prio"
-                style={{ color: COR_PRIORIDADE[p.prioridade ?? PRIORIDADE_PADRAO] ?? 'var(--gray2)' }}
-                title={`Prioridade: ${p.prioridade ?? PRIORIDADE_PADRAO}`}>
-                {ICONE_PRIORIDADE[p.prioridade ?? PRIORIDADE_PADRAO]?.({ size: 13 })}
-              </span>
-              <span className="rev-indice-nome">{p.cliente_nome ?? 'Sem cliente'}</span>
-              <span className="rev-indice-pct">{pct(p)}%</span>
-            </button>
-          </li>
-        ))}
-      </ol>
-    </nav>
-  );
-}
-
-// ── Página do projeto ───────────────────────────────────────────────────────
+// ── A folha de cada projeto ─────────────────────────────────────────────────
 //
-//  O capítulo é montado como uma página de editor de texto: título, uma tabela
-//  de propriedades, um destaque com a leitura da semana e blocos recolhíveis
-//  para o resto. O vocabulário é o de quem escreve documento, não o de painel:
-//  toggle, destaque, divisor, lista.
-//
-//  Os blocos nascem abertos. O triângulo está ali para quem quiser fechar o que
-//  já leu, e não para esconder coisa de quem chega.
+//  Papel de agenda: a folha encostada na divisória, com o nome do projeto no
+//  alto e o que a sala precisa ver enquanto fala dele. Sem bloco recolhível -
+//  numa reunião, o que está fechado não é lido, e tudo o que está aqui é para
+//  ser lido.
 
 const VERDE = '#23A455';
 const AMARELO = '#B58300';
@@ -2977,125 +2933,6 @@ const NEUTRO = '#8A8B84';
 function Tag({ texto, cor = NEUTRO }: { texto: string; cor?: string }) {
   return (
     <span className="nt-tag" style={{ color: cor, background: `${cor}1A` }}>{texto}</span>
-  );
-}
-
-/** Uma linha da tabela de propriedades: rótulo apagado à esquerda, valor à
- *  direita. É o cabeçalho de página do editor, e resume o projeto antes de
- *  qualquer texto. */
-function Prop({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
-  return (
-    <div className="nt-prop">
-      <span className="nt-prop-rotulo">{rotulo}</span>
-      <span className="nt-prop-valor">{children}</span>
-    </div>
-  );
-}
-
-/** Bloco recolhível. Abre e fecha deslizando a altura, no tempo de revelação
- *  da casa - o corte seco fazia o documento inteiro pular sob o cursor. */
-function Bloco({ titulo, contagem, children }: {
-  titulo: string;
-  contagem?: number;
-  children: React.ReactNode;
-}) {
-  const [aberto, setAberto] = useState(true);
-  return (
-    <div className={`nt-toggle${aberto ? ' aberto' : ''}`}>
-      <button type="button" className="nt-toggle-cabeca" aria-expanded={aberto}
-        onClick={() => setAberto(a => !a)}>
-        <span className="nt-triangulo"><IconTriangulo size={10} /></span>
-        <span className="nt-toggle-titulo">{titulo}</span>
-        {contagem != null && contagem > 0 && (
-          <span className="nt-toggle-contagem">{contagem}</span>
-        )}
-      </button>
-      {/* O conteúdo fica montado mesmo fechado: é o que permite animar a
-          altura. Três camadas porque a técnica exige - a de fora é a grade que
-          anima, a do meio recorta, e o respiro mora na de dentro, senão ele
-          sobraria como faixa visível no estado fechado. */}
-      <div className="nt-toggle-corpo">
-        <div>
-          <div className="nt-toggle-conteudo">{children}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** Barra segmentada com a composição das entregas. Uma barra só, e não seis
- *  números soltos: a proporção é a leitura que interessa. */
-/** As entregas do projeto: a composição por situação no anel, e a lista logo
- *  abaixo. Clicar numa fatia recorta a lista - a pergunta que vinha depois da
- *  barra era sempre "quais são as bloqueadas", e ela não respondia. */
-function EntregasDoProjeto({ entregas, equipe }: { entregas: Entrega[]; equipe: Membro[] }) {
-  const [foco, setFoco] = useState<string | null>(null);
-
-  const fatias: FatiaDonut[] = STATUS_ENTREGA.map(st => ({
-    chave: st,
-    rotulo: st,
-    valor: entregas.filter(e => e.status === st).length,
-    cor: COR_ENTREGA[st] ?? NEUTRO,
-  }));
-
-  if (entregas.length === 0) {
-    return <p className="nt-vazio">Sem entregas cadastradas.</p>;
-  }
-
-  const lista = foco ? entregas.filter(e => e.status === foco) : entregas;
-
-  return (
-    <div className="nt-entregas">
-      <Donut
-        fatias={fatias}
-        unidade="entregas"
-        esticar
-        tamanho={124}
-        onEscolher={ch => setFoco(f => (f === ch ? null : ch))}
-      />
-
-      {/* Só aparece quando há recorte: sem filtro, a linha era instrução, e
-          instrução fixa vira ruído depois da primeira vez. */}
-      {foco && (
-        <div className="nt-recorte">
-          <span>{lista.length} de {entregas.length}, em {foco.toLocaleLowerCase('pt-BR')}</span>
-          <button type="button" onClick={() => setFoco(null)}>
-            Ver todas
-            <IconX size={11} />
-          </button>
-        </div>
-      )}
-
-      <table className="nt-tabela">
-        <thead>
-          <tr><th>Entrega</th><th>Etapa</th><th>Prazo</th><th>Tarefas</th></tr>
-        </thead>
-        <tbody>
-          {lista.map(e => {
-            const dono = e.responsaveis.map(id => equipe.find(m => m.id === id)).filter(Boolean)[0];
-            return (
-              <tr key={e.id}>
-                <td title={e.titulo}>
-                  {e.titulo}
-                  {dono && (
-                    <span className="nt-entrega-dono">
-                      <PessoaFoto nome={dono.nome} id={dono.id} equipe={equipe} tamanho={15} />
-                    </span>
-                  )}
-                </td>
-                <td><Tag texto={e.status} cor={COR_ENTREGA[e.status] ?? NEUTRO} /></td>
-                <td>{e.prazo
-                  ? fmtData(e.prazo)
-                  : <span className="nt-vazio">Sem prazo</span>}</td>
-                <td>{e.tarefas_total
-                  ? `${e.tarefas_feitas}/${e.tarefas_total}`
-                  : <span className="nt-vazio">Nenhuma</span>}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
   );
 }
 
@@ -3159,10 +2996,27 @@ function CardDaSemana({ tarefa: t, equipe, feita, podeArrastar, podeMarcar, arra
   );
 }
 
-function QuadroDaSemana({ projeto: p, itens, etapaDeEntrada, etapaDeConclusao, podeEditar,
-  onAbrirTarefa, onSalvarTarefa }: {
+/**
+ * O quadro da semana: o backlog do projeto à esquerda e os cinco dias úteis à
+ * direita, com as tarefas indo de um lado para o outro no arrasto.
+ *
+ * É a peça central da planning. Puxar uma tarefa do backlog para um dia é o
+ * gesto que a sala faz enquanto conversa, e ele grava o prazo naquele dia -
+ * não existe um segundo conceito de "semana planejada" por trás, justamente
+ * para o compromisso assumido aqui ser o mesmo que a tela de Tarefas, o painel
+ * do cliente e a conta de atrasadas enxergam.
+ *
+ * O caminho de volta é o mesmo gesto: arrastar de um dia para o backlog tira o
+ * prazo, e a tarefa sai da semana sem sumir do projeto.
+ */
+function QuadroDaSemana({ projeto: p, itens, backlog, dias: diasIso, etapaDeEntrada,
+  etapaDeConclusao, podeEditar, onAbrirTarefa, onSalvarTarefa }: {
   projeto: Projeto;
   itens: ItemDaSemana[];
+  /** Abertas que não caíram em nenhum dia desta semana. */
+  backlog: Tarefa[];
+  /** Segunda a sexta da semana em foco, em ISO. */
+  dias: string[];
   /** Onde a tarefa volta a nascer quando é reaberta. Vazio enquanto a
    *  configuração de etapas não chegou. */
   etapaDeEntrada: string;
@@ -3177,8 +3031,7 @@ function QuadroDaSemana({ projeto: p, itens, etapaDeEntrada, etapaDeConclusao, p
   const { toast } = useToast();
   const hoje = hojeIso();
 
-  // Cinco colunas fixas, de segunda a sexta: a semana de trabalho da casa.
-  const dias = diasUteisDaSemana().map(iso => {
+  const dias = diasIso.map(iso => {
     const d = new Date(`${iso}T12:00:00`);
     return {
       iso,
@@ -3198,15 +3051,22 @@ function QuadroDaSemana({ projeto: p, itens, etapaDeEntrada, etapaDeConclusao, p
   // pode sumir da conta sem aviso.
   const noFimDeSemana = itens.filter(x => !dias.some(d => d.iso === x.dia)).length;
 
-  const emArraste = itens.find(x => x.tarefa.id === arrastando) ?? null;
+  /** O que está na mão, venha do backlog ou de um dia. */
+  const emArraste: ItemDaSemana | null =
+    itens.find(x => x.tarefa.id === arrastando)
+    ?? (backlog.find(t => t.id === arrastando)
+      ? { tarefa: backlog.find(t => t.id === arrastando)!, dia: '', feita: false }
+      : null);
 
-  /** Marca ou desmarca a tarefa pela caixa do card.
+  /**
+   *  Marca ou desmarca a tarefa pela caixa do card.
    *
    *  Marcar leva à etapa de conversão e carimba a conclusão agora - o card
    *  anda para a coluna de hoje, porque é hoje que a tarefa ficou pronta.
    *  Desmarcar devolve à etapa de entrada e deixa a tarefa planejada para o dia
    *  em que ela estava, senão ela sumiria do quadro se o prazo fosse de outra
-   *  semana. */
+   *  semana.
+   */
   const marcar = (item: ItemDaSemana, feita: boolean) => {
     if (feita) {
       onSalvarTarefa(item.tarefa, {
@@ -3215,7 +3075,7 @@ function QuadroDaSemana({ projeto: p, itens, etapaDeEntrada, etapaDeConclusao, p
       });
     } else {
       onSalvarTarefa(item.tarefa, {
-        status: etapaDeEntrada, concluida_em: null, prazo: item.dia,
+        concluida_em: null, prazo: item.dia || null, status: etapaDeEntrada,
       });
     }
   };
@@ -3227,13 +3087,96 @@ function QuadroDaSemana({ projeto: p, itens, etapaDeEntrada, etapaDeConclusao, p
   const aceita = (futuro: boolean) =>
     podeEditar && !!emArraste && (!futuro || !emArraste.feita || !!etapaDeEntrada);
 
+  /** O backlog recebe o que tem dia. Concluída não volta para lá: tirar o prazo
+   *  de uma tarefa já feita não a tira da semana, porque o que a põe na coluna
+   *  é o carimbo de conclusão. */
+  const aceitaNoBacklog = podeEditar && !!emArraste && !emArraste.feita && !!emArraste.dia;
+
+  const soltarNoDia = (d: typeof dias[number]) => {
+    const item = emArraste;
+    setArrastando(null);
+    if (!item || !aceita(d.futuro) || item.dia === d.iso) return;
+    if (item.feita && !d.futuro) {
+      // Mantém a hora do dia e troca só a data, tudo no fuso local: o carimbo
+      // vai para o servidor em UTC, e é `diaLocal` que o traz de volta para a
+      // coluna certa.
+      const antes = item.tarefa.concluida_em ? new Date(item.tarefa.concluida_em) : new Date();
+      const quando = new Date(`${d.iso}T00:00:00`);
+      quando.setHours(antes.getHours(), antes.getMinutes(), antes.getSeconds(), 0);
+      onSalvarTarefa(item.tarefa, { concluida_em: quando.toISOString() });
+    } else if (item.feita) {
+      // Reabre: quem leva uma concluída para depois de hoje está dizendo que
+      // ela não estava pronta, e agora tem data para ficar. O aviso é
+      // obrigatório - o gesto foi "mudar de dia", e o efeito é maior.
+      onSalvarTarefa(item.tarefa, {
+        concluida_em: null, prazo: d.iso, status: etapaDeEntrada,
+      });
+      toast('info', 'Tarefa reaberta',
+        `Deixou de constar concluída e ficou planejada para ${d.nome} ${d.numero}, em "${etapaDeEntrada}".`);
+    } else {
+      onSalvarTarefa(item.tarefa, { prazo: d.iso });
+    }
+  };
+
   return (
     <>
     <div className="nt-semana">
+      {/* O backlog é coluna do quadro, e não uma lista à parte: é de onde os
+          cards saem, e o caminho mais curto entre pegar e soltar é ficarem
+          lado a lado. */}
+      <div
+        className={`nt-dia nt-backlog${sobre === 'backlog' ? ' alvo' : ''}`}
+        onDragOver={e => {
+          if (!aceitaNoBacklog) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          setSobre('backlog');
+        }}
+        onDragLeave={e => {
+          if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+          setSobre(x => (x === 'backlog' ? null : x));
+        }}
+        onDrop={e => {
+          e.preventDefault();
+          setSobre(null);
+          const item = emArraste;
+          setArrastando(null);
+          if (!item || !aceitaNoBacklog) return;
+          onSalvarTarefa(item.tarefa, { prazo: null });
+        }}
+      >
+        <div className="nt-dia-cabeca">
+          <span className="nt-dia-nome">backlog</span>
+          {backlog.length > 0 && <span className="nt-dia-conta">{backlog.length}</span>}
+        </div>
+        <div className="nt-dia-corpo">
+          {backlog.map(t => (
+            <CardDaSemana
+              key={t.id}
+              tarefa={t}
+              equipe={p.equipe}
+              feita={false}
+              podeArrastar={podeEditar}
+              podeMarcar={false}
+              arrastando={arrastando === t.id}
+              onAbrir={onAbrirTarefa}
+              onMarcar={() => {}}
+              onArrastar={setArrastando}
+              onSoltar={() => { setArrastando(null); setSobre(null); }}
+            />
+          ))}
+          {backlog.length === 0 && (
+            <p className="nt-dia-alvo">
+              {aceitaNoBacklog ? 'Soltar aqui' : 'Nada em aberto fora da semana'}
+            </p>
+          )}
+        </div>
+      </div>
+
       {dias.map(d => (
         <div
           key={d.iso}
-          // Não se conclui coisa amanhã: dia futuro não recebe card.
+          // Não se conclui coisa amanhã: dia futuro não recebe card concluído.
           className={`nt-dia${d.hoje ? ' hoje' : ''}${d.futuro ? ' futuro' : ''}${sobre === d.iso ? ' alvo' : ''}`}
           onDragOver={e => {
             if (!aceita(d.futuro)) return;
@@ -3250,31 +3193,7 @@ function QuadroDaSemana({ projeto: p, itens, etapaDeEntrada, etapaDeConclusao, p
           onDrop={e => {
             e.preventDefault();
             setSobre(null);
-            const item = emArraste;
-            setArrastando(null);
-            if (!item || !aceita(d.futuro) || item.dia === d.iso) return;
-            if (item.feita && !d.futuro) {
-              // Mantém a hora e troca só o dia: a hora do dia continua sendo a
-              // que foi registrada, e mover de coluna não a inventa de novo.
-              // Mantém a hora do dia e troca só a data, tudo no fuso local: o
-              // carimbo vai para o servidor em UTC, e é `diaLocal` que o traz
-              // de volta para a coluna certa.
-              const antes = item.tarefa.concluida_em ? new Date(item.tarefa.concluida_em) : new Date();
-              const quando = new Date(`${d.iso}T00:00:00`);
-              quando.setHours(antes.getHours(), antes.getMinutes(), antes.getSeconds(), 0);
-              onSalvarTarefa(item.tarefa, { concluida_em: quando.toISOString() });
-            } else if (item.feita) {
-              // Reabre: quem leva uma concluída para depois de hoje está dizendo
-              // que ela não estava pronta, e agora tem data para ficar. O aviso
-              // é obrigatório - o gesto foi "mudar de dia", e o efeito é maior.
-              onSalvarTarefa(item.tarefa, {
-                concluida_em: null, prazo: d.iso, status: etapaDeEntrada,
-              });
-              toast('info', 'Tarefa reaberta',
-                `Deixou de constar concluída e ficou planejada para ${d.nome} ${d.numero}, em "${etapaDeEntrada}".`);
-            } else {
-              onSalvarTarefa(item.tarefa, { prazo: d.iso });
-            }
+            soltarNoDia(d);
           }}
         >
           <div className="nt-dia-cabeca">
@@ -3314,42 +3233,56 @@ function QuadroDaSemana({ projeto: p, itens, etapaDeEntrada, etapaDeConclusao, p
   );
 }
 
-function Capitulo({ projeto: p, numero, registrar, pessoas, onAbrir,
-  onSalvarTarefa, onAbrirTarefa, etapaDeEntrada, etapaDeConclusao,
-  podeEditarTarefa }: {
+/**
+ * A folha de um projeto na Planning: o que a sala olha enquanto fala dele.
+ *
+ * A ordem é a da reunião, e não a do banco: primeiro a semana, que é o que se
+ * monta ali na hora; depois o que ficou combinado; e por último o que está fora
+ * do lugar, que é o assunto que sobra quando a semana já foi fechada.
+ */
+function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEditar,
+  podeEditarTarefa, etapaDeEntrada, etapaDeConclusao, onAbrir, onAbrirTarefa,
+  onSalvarTarefa, onMudarPlanning }: {
   projeto: Projeto;
-  numero: number;
-  /** Entrega o nó ao índice, que precisa dele para rolar até aqui. */
-  registrar: (id: string, el: HTMLElement | null) => void;
+  /** A segunda-feira da semana em foco. */
+  semana: Date;
+  dias: string[];
   pessoas: Pessoa[];
-  onAbrir: (p: Projeto) => void;
-  onSalvarTarefa: (t: Tarefa, mudancas: Record<string, unknown>) => void;
-  onAbrirTarefa: (t: Tarefa, p: Projeto) => void;
+  planning: PlanningDaSemana;
+  /** Escrever o combinado é `projetos:editar`. */
+  podeEditar: boolean;
+  /** Puxar tarefa para a semana é `tarefas:editar`, que é outra. */
+  podeEditarTarefa: boolean;
   etapaDeEntrada: string;
   etapaDeConclusao: string;
-  /** Mexer na tarefa é outra permissão: a revista vive em Projetos, mas o
-   *  servidor cobra `tarefas:editar` de quem grava. */
-  podeEditarTarefa: boolean;
+  onAbrir: (p: Projeto) => void;
+  onAbrirTarefa: (t: Tarefa, p: Projeto) => void;
+  onSalvarTarefa: (t: Tarefa, mudancas: Record<string, unknown>) => void;
+  onMudarPlanning: (dados: { destaques: string[]; reunioes: string[] }) => void;
 }) {
-  const semana = semanaDoProjeto(p);
-  const itensDaSemana = tarefasDaSemana(p);
+  const itens = tarefasDaSemana(p, dias);
   const pontos = pontosDeAtencao(p);
   const gestor = p.equipe.find(m => m.papel === 'Gestor');
-  const progresso = progressoDe(p);
   const hoje = hojeIso();
 
-  const dias = diasPara(p.previsao_entrega);
-  // "Aberta" sai do carimbo do servidor: quais etapas encerram é configuração
-  // de outra tela, e o relatório não deveria depender dela para contar.
+  // O backlog da folha: o que está aberto e não caiu em nenhum dia desta
+  // semana. É de onde as tarefas são puxadas, e para onde elas voltam.
+  //
+  // Atrasada primeiro, e depois por urgência: numa planning a primeira pergunta
+  // sobre o que ficou para trás é "isso entra nesta semana?".
+  const backlog = (p.tarefas ?? [])
+    .filter(t => !t.concluida_em && !dias.includes((t.prazo ?? '').slice(0, 10)))
+    .sort((a, b) => {
+      const va = a.prazo && a.prazo < hoje ? 0 : 1;
+      const vb = b.prazo && b.prazo < hoje ? 0 : 1;
+      if (va !== vb) return va - vb;
+      const pa = PRIORIDADES.indexOf((a.prioridade ?? PRIORIDADE_PADRAO) as typeof PRIORIDADES[number]);
+      const pb = PRIORIDADES.indexOf((b.prioridade ?? PRIORIDADE_PADRAO) as typeof PRIORIDADES[number]);
+      return (pa < 0 ? PRIORIDADES.length : pa) - (pb < 0 ? PRIORIDADES.length : pb);
+    });
+
   const atrasadas = (p.tarefas ?? [])
     .filter(t => !t.concluida_em && t.prazo && t.prazo < hoje);
-
-  const acoes = [
-    semana.tarefasFeitas.length && `${semana.tarefasFeitas.length} tarefa(s) concluída(s)`,
-    semana.tarefasNovas && `${semana.tarefasNovas} criada(s)`,
-    semana.evidencias.length && `${semana.evidencias.length} evidência(s) anexada(s)`,
-    semana.reunioes.length && `${semana.reunioes.length} reunião(ões)`,
-  ].filter(Boolean) as string[];
 
   const questoes = [
     ...p.entregas.filter(e => e.status === 'Bloqueada').map(e => ({
@@ -3370,75 +3303,72 @@ function Capitulo({ projeto: p, numero, registrar, pessoas, onAbrir,
   ];
 
   return (
-    <article className="nt-pagina" id={`capitulo-${p.id}`} data-id={p.id}
-      ref={el => registrar(p.id, el)}>
-
-      <header className="nt-cabeca">
-        <span className="nt-numero">{String(numero).padStart(2, '0')}</span>
-        <h2 className="nt-titulo">
-          <button type="button" onClick={() => onAbrir(p)}>{p.nome}</button>
-        </h2>
+    <div className="pl-folha troca" key={`${p.id}|${iso10(semana)}`}>
+      <header className="pl-cabeca">
+        <div className="pl-quem">
+          <h2>
+            <button type="button" onClick={() => onAbrir(p)} title="Abrir a ficha do projeto">
+              {p.nome}
+            </button>
+          </h2>
+          <p>
+            {p.cliente_nome ?? 'Sem cliente'}
+            <span className="nt-sep">·</span>
+            {gestor
+              ? <PessoaFoto nome={gestor.nome} id={gestor.id} equipe={p.equipe} tamanho={17} />
+              : <span className="nt-vazio">Sem gestor</span>}
+          </p>
+        </div>
+        <span className="pl-progresso" title="Entregas validadas">
+          <span className="nt-progresso-barra"><span style={{ width: `${progressoDe(p)}%` }} /></span>
+          {progressoDe(p)}%
+        </span>
       </header>
 
-      {/* Tabela de propriedades: o cabeçalho de página do editor. Resume o
-          projeto antes de qualquer parágrafo. */}
-      <div className="nt-props">
-        <Prop rotulo="Cliente">{p.cliente_nome ?? 'Sem cliente'}</Prop>
-        <Prop rotulo="Gestor">
-          {gestor
-            ? <PessoaFoto nome={gestor.nome} id={gestor.id} equipe={p.equipe} tamanho={18} />
-            : <span className="nt-vazio">Sem gestor</span>}
-        </Prop>
-        <Prop rotulo="Prioridade">
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6,
-            color: COR_PRIORIDADE[p.prioridade ?? PRIORIDADE_PADRAO] ?? 'var(--gray)' }}>
-            {ICONE_PRIORIDADE[p.prioridade ?? PRIORIDADE_PADRAO]?.({ size: 14 })}
-            {p.prioridade ?? PRIORIDADE_PADRAO}
-          </span>
-        </Prop>
-        <Prop rotulo="Fim previsto">
-          {p.previsao_entrega ? (
-            <>
-              {fmtData(p.previsao_entrega)}
-              {dias !== null && (
-                <Tag
-                  texto={dias < 0 ? `venceu há ${Math.abs(dias)}d` : `faltam ${dias}d`}
-                  cor={dias < 0 ? VERMELHO : dias <= DIAS_DA_SEMANA ? AMARELO : VERDE}
-                />
-              )}
-            </>
-          ) : <span className="nt-vazio">Sem data</span>}
-        </Prop>
-        <Prop rotulo="Progresso">
-          <span className="nt-progresso">
-            <span className="nt-progresso-barra">
-              <span style={{ width: `${progresso}%` }} />
-            </span>
-            {progresso}%
-          </span>
-        </Prop>
+      <section className="pl-secao">
+        <p className="pl-secao-titulo">
+          A semana
+          <span className="kanban-conta-bolha">{itens.length}</span>
+        </p>
+        <QuadroDaSemana
+          projeto={p}
+          itens={itens}
+          backlog={backlog}
+          dias={dias}
+          etapaDeEntrada={etapaDeEntrada}
+          etapaDeConclusao={etapaDeConclusao}
+          podeEditar={podeEditarTarefa}
+          onAbrirTarefa={x => onAbrirTarefa(x, p)}
+          onSalvarTarefa={onSalvarTarefa} />
+      </section>
+
+      <div className="pl-combinado">
+        <section className="pl-secao">
+          <p className="pl-secao-titulo">Destaques da semana</p>
+          <LinhasDaPlanning
+            valores={planning.destaques}
+            somenteLeitura={!podeEditar}
+            placeholder="O que precisa acontecer nesta semana"
+            onChange={v => onMudarPlanning({ destaques: v, reunioes: planning.reunioes })} />
+        </section>
+
+        <section className="pl-secao">
+          <p className="pl-secao-titulo">Reuniões da semana</p>
+          <LinhasDaPlanning
+            valores={planning.reunioes}
+            somenteLeitura={!podeEditar}
+            placeholder="Com quem, sobre o quê, quando"
+            onChange={v => onMudarPlanning({ destaques: planning.destaques, reunioes: v })} />
+        </section>
       </div>
 
-      <Bloco titulo="Ações da semana" contagem={semana.tarefasFeitas.length}>
-        {acoes.length === 0 && itensDaSemana.length === 0 ? (
-          <p className="nt-vazio">Nada registrado nem planejado nesta semana.</p>
-        ) : (
-          <>
-            {itensDaSemana.length > 0 && (
-              <QuadroDaSemana projeto={p} itens={itensDaSemana}
-                etapaDeEntrada={etapaDeEntrada} etapaDeConclusao={etapaDeConclusao}
-                podeEditar={podeEditarTarefa}
-                onAbrirTarefa={x => onAbrirTarefa(x, p)} onSalvarTarefa={onSalvarTarefa} />
-            )}
-          </>
-        )}
-      </Bloco>
-
-      <Bloco titulo="Entregas" contagem={p.entregas.length}>
-        <EntregasDoProjeto entregas={p.entregas} equipe={p.equipe} />
-      </Bloco>
-
-      <Bloco titulo="Pontos de atenção" contagem={questoes.length + pontos.length}>
+      <section className="pl-secao">
+        <p className="pl-secao-titulo">
+          Pontos de atenção
+          {questoes.length + pontos.length > 0 && (
+            <span className="kanban-conta-bolha">{questoes.length + pontos.length}</span>
+          )}
+        </p>
         {questoes.length === 0 && pontos.length === 0 ? (
           <p className="nt-vazio">Nada fora do lugar neste projeto.</p>
         ) : (
@@ -3472,135 +3402,301 @@ function Capitulo({ projeto: p, numero, registrar, pessoas, onAbrir,
             )}
           </>
         )}
-      </Bloco>
-    </article>
+      </section>
+
+      {planning.atualizado_por_nome && (
+        <p className="pl-assinatura">
+          Combinado por {planning.atualizado_por_nome}
+          {planning.atualizado_em ? `, ${fmtData(planning.atualizado_em.slice(0, 10))}` : ''}.
+        </p>
+      )}
+
+      {/* Pessoas do projeto ficam no rodapé da folha: na planning elas são a
+          conferência de quem está na sala, e não o assunto. */}
+      <p className="pl-equipe">
+        {p.equipe.length === 0
+          ? <span className="nt-vazio">Sem equipe definida</span>
+          : p.equipe.map(m => (
+            <PessoaFoto key={m.id} nome={m.nome} id={m.id} equipe={p.equipe} tamanho={17} />
+          ))}
+      </p>
+    </div>
   );
 }
 
-function AbaGestao({
-  projetos, pessoas, onAbrir, onSalvarTarefa, onAbrirTarefa,
-  etapaDeEntrada, etapaDeConclusao, podeEditarTarefa,
+/**
+ * Lista de frases que se escreve na reunião: uma linha por item, Enter abre a
+ * seguinte, e a linha vazia sai sozinha ao perder o foco.
+ *
+ * É o mesmo gesto do checklist da tarefa, e não um campo de texto corrido: o
+ * que se combina numa planning é uma lista de coisas, e texto corrido vira
+ * parágrafo que ninguém relê.
+ */
+function LinhasDaPlanning({ valores, placeholder, somenteLeitura, onChange }: {
+  valores: string[];
+  placeholder: string;
+  somenteLeitura: boolean;
+  onChange: (v: string[]) => void;
+}) {
+  const campos = useRef<Array<HTMLInputElement | null>>([]);
+  /** A linha que acabou de nascer, para o foco ir até ela depois da pintura. */
+  const nova = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (nova.current === null) return;
+    campos.current[nova.current]?.focus();
+    nova.current = null;
+  });
+
+  const trocar = (i: number, texto: string) =>
+    onChange(valores.map((v, k) => (k === i ? texto : v)));
+
+  const inserir = (depoisDe: number) => {
+    const lista = [...valores];
+    lista.splice(depoisDe + 1, 0, '');
+    nova.current = depoisDe + 1;
+    onChange(lista);
+  };
+
+  const remover = (i: number) => onChange(valores.filter((_, k) => k !== i));
+
+  if (somenteLeitura) {
+    return valores.length === 0
+      ? <p className="nt-vazio">Nada combinado para esta semana.</p>
+      : (
+        <ul className="pl-linhas-leitura">
+          {valores.map((v, i) => <li key={i}>{v}</li>)}
+        </ul>
+      );
+  }
+
+  return (
+    <div className="pl-linhas">
+      {valores.map((v, i) => (
+        <div key={i} className="pl-linha">
+          <span className="pl-linha-marca" aria-hidden="true" />
+          <input
+            ref={el => { campos.current[i] = el; }}
+            className="form-input"
+            value={v}
+            placeholder={placeholder}
+            onChange={e => trocar(i, e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); inserir(i); }
+              // Backspace na linha vazia apaga a linha, como em toda lista:
+              // obrigar a ir até o X para desfazer uma linha em branco é pedir
+              // um gesto de mouse no meio de quem está digitando.
+              if (e.key === 'Backspace' && v === '' && valores.length > 1) {
+                e.preventDefault();
+                nova.current = Math.max(0, i - 1);
+                remover(i);
+              }
+            }}
+            // Linha em branco não vira item: sair dela é desistir de escrevê-la.
+            onBlur={() => { if (v.trim() === '' && valores.length > 0) remover(i); }} />
+          <button type="button" className="pl-linha-x" aria-label="Remover esta linha"
+            onMouseDown={e => e.preventDefault()} onClick={() => remover(i)}>
+            <IconX size={12} />
+          </button>
+        </div>
+      ))}
+      <button type="button" className="secao-add pl-add" onClick={() => inserir(valores.length - 1)}>
+        <IconPlus size={13} /> Adicionar
+      </button>
+    </div>
+  );
+}
+
+/**
+ * As abas laterais da Planning, no desenho das divisórias de uma agenda: uma
+ * aba por projeto, empilhadas na borda esquerda, e a folha do projeto escolhido
+ * encostada nelas.
+ *
+ * É navegação de reunião, e não índice de relatório: a sala percorre um projeto
+ * de cada vez, e o que interessa é saber em qual se está e quantos faltam. Por
+ * isso a aba ativa se funde com a folha, como a divisória que se puxa para
+ * frente - e as outras ficam recuadas, atrás dela.
+ */
+function AbasDeCaderno({ lista, ativo, contagem, onEscolher }: {
+  lista: Projeto[];
+  ativo: string | null;
+  /** Quantas tarefas cada projeto tem na semana em foco. */
+  contagem: (p: Projeto) => number;
+  onEscolher: (id: string) => void;
+}) {
+  const botoes = useRef<Array<HTMLButtonElement | null>>([]);
+
+  /** Seta sobe e desce entre as abas, como em toda lista de abas do sistema. */
+  const porTecla = (e: React.KeyboardEvent, i: number) => {
+    const passo = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
+    if (!passo) return;
+    e.preventDefault();
+    const alvo = (i + passo + lista.length) % lista.length;
+    botoes.current[alvo]?.focus();
+    onEscolher(lista[alvo].id);
+  };
+
+  return (
+    <nav className="pl-abas" role="tablist" aria-orientation="vertical"
+      aria-label="Projetos da planning">
+      {lista.map((p, i) => {
+        const quantas = contagem(p);
+        return (
+          <button
+            key={p.id}
+            ref={el => { botoes.current[i] = el; }}
+            type="button"
+            role="tab"
+            aria-selected={ativo === p.id}
+            tabIndex={ativo === p.id ? 0 : -1}
+            className={`pl-aba${ativo === p.id ? ' ativa' : ''}`}
+            style={{ ['--cor-aba' as string]: COR_PRIORIDADE[p.prioridade ?? PRIORIDADE_PADRAO] ?? 'var(--gray3)' }}
+            onClick={() => onEscolher(p.id)}
+            onKeyDown={e => porTecla(e, i)}
+          >
+            <span className="pl-aba-num">{String(i + 1).padStart(2, '0')}</span>
+            <span className="pl-aba-texto">
+              <strong>{p.nome}</strong>
+              <small>{p.cliente_nome ?? 'Sem cliente'}</small>
+            </span>
+            {/* O número da semana na aba: é o que diz, sem entrar no projeto,
+                se ele já tem semana montada ou se a sala ainda vai montá-la. */}
+            <span className={`pl-aba-conta${quantas === 0 ? ' vazia' : ''}`}>{quantas}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+/** O combinado de um projeto numa semana. */
+interface PlanningDaSemana {
+  destaques: string[];
+  reunioes: string[];
+  atualizado_em?: string | null;
+  atualizado_por_nome?: string | null;
+}
+
+const PLANNING_VAZIA: PlanningDaSemana = { destaques: [], reunioes: [] };
+
+/**
+ * Aba Planning: a reunião de planejamento da semana, projeto por projeto.
+ *
+ * A tela é feita para ser percorrida em voz alta com o time: escolhe-se o
+ * projeto na divisória lateral, os devs puxam do backlog o que entra em cada
+ * dia, e o que a sala combina fica escrito ali mesmo - destaques e reuniões da
+ * semana, gravados por projeto e por semana, para a planning seguinte poder
+ * abrir a anterior e conferir.
+ *
+ * Só projetos em andamento: planning é sobre o que está correndo, e uma lista
+ * com os pausados obrigaria a escolher entre eles a cada segunda-feira.
+ */
+function AbaPlanning({
+  projetos, pessoas, planning, semana, onMudarSemana, onSalvarPlanning,
+  onAbrir, onSalvarTarefa, onAbrirTarefa,
+  etapaDeEntrada, etapaDeConclusao, podeEditar, podeEditarTarefa,
 }: {
   projetos: Projeto[];
   pessoas: Pessoa[];
+  /** O combinado de todos os projetos na semana em foco, por id de projeto. */
+  planning: Record<string, PlanningDaSemana>;
+  semana: Date;
+  onMudarSemana: (d: Date) => void;
+  onSalvarPlanning: (projetoId: string, dados: PlanningDaSemana) => void;
   onAbrir: (p: Projeto) => void;
   onSalvarTarefa: (t: Tarefa, mudancas: Record<string, unknown>) => void;
   onAbrirTarefa: (t: Tarefa, p: Projeto) => void;
   etapaDeEntrada: string;
   etapaDeConclusao: string;
+  podeEditar: boolean;
   podeEditarTarefa: boolean;
 }) {
-  // Guardado por id de quem está fechado, e não de quem está aberto: assim um
-  // projeto novo na lista nasce aberto, que é o padrão da revista.
+  const dias = useMemo(() => diasUteisDaSemana(semana), [semana]);
+
+  // A ordem da reunião: prioridade primeiro, porque é a decisão que a casa já
+  // tomou sobre o que importa mais. No empate vale a ordem da listagem.
+  const lista = useMemo(() => {
+    const ordem = (p: Projeto) => {
+      const i = PRIORIDADES.indexOf((p.prioridade ?? PRIORIDADE_PADRAO) as typeof PRIORIDADES[number]);
+      return i < 0 ? PRIORIDADES.length : i;
+    };
+    return projetos.filter(p => p.status === 'Em andamento').sort((a, b) => ordem(a) - ordem(b));
+  }, [projetos]);
+
   const [ativo, setAtivo] = useState<string | null>(null);
-  const nos = useRef(new Map<string, HTMLElement>());
+  // O projeto escolhido, ou o primeiro da lista. Guardado por id e não por
+  // posição: a lista se reordena quando alguém muda uma prioridade, e a folha
+  // não pode trocar de projeto por causa disso.
+  const atual = lista.find(p => p.id === ativo) ?? lista[0] ?? null;
 
-  const registrar = useCallback((id: string, el: HTMLElement | null) => {
-    if (el) nos.current.set(id, el);
-    else nos.current.delete(id);
-  }, []);
+  const naSemana = useCallback(
+    (p: Projeto) => tarefasDaSemana(p, dias).length, [dias]);
 
-  // A revista é da operação corrente: projeto concluído, pausado ou cancelado
-  // não tem semana que valha a pena contar.
-  const emAndamento = useMemo(
-    () => projetos.filter(p => p.status === 'Em andamento'),
-    [projetos],
-  );
+  const estaSemana = iso10(segundaDaSemana());
+  const emFoco = iso10(semana);
 
-  // A ordem do relatório: prioridade primeiro, porque é a decisão que a casa
-  // já tomou sobre o que importa mais. Dentro da mesma prioridade vale a ordem
-  // da listagem, que é a de quem entrou por último.
-  const ordem = (p: Projeto) => {
-    const i = PRIORIDADES.indexOf((p.prioridade ?? PRIORIDADE_PADRAO) as typeof PRIORIDADES[number]);
-    return i < 0 ? PRIORIDADES.length : i;
+  const andar = (passo: number) => {
+    const d = new Date(semana);
+    d.setDate(d.getDate() + passo * 7);
+    onMudarSemana(d);
   };
 
-  const lista = useMemo(() => {
-    return [...emAndamento].sort((a, b) => ordem(a) - ordem(b));
-  }, [emAndamento]);
-
-  const chaves = lista.map(p => p.id).join('|');
-
-  // Um observador só, com duas funções: acender o item do índice e deixar o
-  // capítulo entrar quando ele aparece pela primeira vez. A faixa é estreita e
-  // fica no alto da área de leitura - é ali que está o capítulo "atual".
-  useEffect(() => {
-    const alvos = [...nos.current.values()];
-    if (alvos.length === 0) return;
-
-    // Sem observador não há entrada nem item aceso, mas o capítulo tem de
-    // aparecer: a regra de entrada o deixa invisível até a classe chegar.
-    if (typeof IntersectionObserver === 'undefined') {
-      for (const el of alvos) el.classList.add('entrou');
-      return;
-    }
-
-    const raiz = alvos[0].closest('.admin-content-wrap') as HTMLElement | null;
-
-    const espia = new IntersectionObserver(entradas => {
-      const visiveis = entradas
-        .filter(e => e.isIntersecting)
-        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-      const alvo = visiveis[0]?.target as HTMLElement | undefined;
-      if (alvo) setAtivo(alvo.dataset.id ?? null);
-    }, { root: raiz, rootMargin: '-12% 0px -72% 0px', threshold: 0 });
-
-    // A entrada usa margem folgada: o capítulo já começa a aparecer antes de
-    // chegar à faixa do índice, senão o movimento acontece fora de vista.
-    const entrada = new IntersectionObserver(entradas => {
-      for (const e of entradas) {
-        if (e.isIntersecting) {
-          e.target.classList.add('entrou');
-          entrada.unobserve(e.target);
-        }
-      }
-    }, { root: raiz, rootMargin: '0px 0px -8% 0px', threshold: 0.02 });
-
-    for (const el of alvos) { espia.observe(el); entrada.observe(el); }
-    return () => { espia.disconnect(); entrada.disconnect(); };
-  }, [chaves]);
-
-  const suave = typeof window !== 'undefined'
-    && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  function irPara(id: string) {
-    setAtivo(id);
-    nos.current.get(id)?.scrollIntoView({
-      behavior: suave ? 'smooth' : 'auto',
-      block: 'start',
-    });
+  if (lista.length === 0) {
+    return (
+      <div className="admin-empty" style={{ padding: '48px 0' }}>
+        <p style={{ color: 'var(--gray2)', marginBottom: 6 }}><IconInbox size={30} /></p>
+        <p>Nenhum projeto em andamento para planejar.</p>
+      </div>
+    );
   }
 
   return (
     <>
-      {lista.length === 0 ? (
-        <div className="admin-empty" style={{ padding: '48px 0' }}>
-          <p style={{ color: 'var(--gray2)', marginBottom: 6 }}><IconInbox size={30} /></p>
-          <p>Nenhum projeto em andamento.</p>
+      <div className="pl-barra">
+        <div className="pl-semana">
+          <button type="button" className="pl-seta" aria-label="Semana anterior"
+            onClick={() => andar(-1)}><IconChevronRight size={14} /></button>
+          <span className="pl-semana-texto">
+            <strong>{fmtData(dias[0])} a {fmtData(dias[4])}</strong>
+            <small>{emFoco === estaSemana ? 'Esta semana' : 'Outra semana'}</small>
+          </span>
+          <button type="button" className="pl-seta" aria-label="Próxima semana"
+            onClick={() => andar(1)}><IconChevronRight size={14} /></button>
         </div>
-      ) : (
-        <div className="rev-pagina">
-          <Indice lista={lista} ativo={ativo} progressoDe={progressoDe} onIr={irPara} />
+        {emFoco !== estaSemana && (
+          <button type="button" className="modal-acao surge"
+            onClick={() => onMudarSemana(segundaDaSemana())}>
+            Voltar para esta semana
+          </button>
+        )}
+      </div>
 
-          <div className="rev-revista">
-            {lista.map((p, i) => (
-              <Capitulo
-                key={p.id}
-                projeto={p}
-                numero={i + 1}
-                registrar={registrar}
-                pessoas={pessoas}
-                onAbrir={onAbrir}
-                onSalvarTarefa={onSalvarTarefa}
-                onAbrirTarefa={onAbrirTarefa}
-                etapaDeEntrada={etapaDeEntrada}
-                etapaDeConclusao={etapaDeConclusao}
-                podeEditarTarefa={podeEditarTarefa}
-              />
-            ))}
-          </div>
+      <div className="pl-pagina">
+        <AbasDeCaderno lista={lista} ativo={atual?.id ?? null} contagem={naSemana}
+          onEscolher={setAtivo} />
+
+        <div className="pl-sheet" role="tabpanel">
+          {atual && (
+            <FolhaDaPlanning
+              projeto={atual}
+              semana={semana}
+              dias={dias}
+              pessoas={pessoas}
+              planning={planning[atual.id] ?? PLANNING_VAZIA}
+              podeEditar={podeEditar}
+              podeEditarTarefa={podeEditarTarefa}
+              etapaDeEntrada={etapaDeEntrada}
+              etapaDeConclusao={etapaDeConclusao}
+              onAbrir={onAbrir}
+              onAbrirTarefa={onAbrirTarefa}
+              onSalvarTarefa={onSalvarTarefa}
+              onMudarPlanning={dados => onSalvarPlanning(atual.id, {
+                ...planning[atual.id],
+                ...dados,
+              })} />
+          )}
         </div>
-      )}
+      </div>
     </>
   );
 }
@@ -4419,7 +4515,7 @@ function FormularioProjeto({
 
 // ── Página ───────────────────────────────────────────────────────────────────
 
-type Aba = 'geral' | 'gestao';
+type Aba = 'geral' | 'planning';
 
 export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAbriu }: {
   token: string;
@@ -4478,6 +4574,12 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     | { fonte: 'entrega_arquivo'; item: ArquivoDaEntrega }
     | null
   >(null);
+  /** A segunda-feira da semana em foco na Planning. Uma data, e não um texto:
+   *  andar de semana é somar sete dias, e o texto sai dela. */
+  const [semanaDaPlanning, setSemanaDaPlanning] = useState(() => segundaDaSemana());
+  /** O combinado de cada projeto na semana em foco, por id de projeto. */
+  const [planning, setPlanning] = useState<Record<string, PlanningDaSemana>>({});
+
   const [view, setView] = useState<'quadro' | 'lista'>('lista');
   const [fStatus, setFStatus] = useState<string[]>([]);
   const [fCliente, setFCliente] = useState<string[]>([]);
@@ -4552,6 +4654,63 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
   }, [api, toast]);
 
   useEffect(() => { void carregar(); }, [carregar]);
+
+  // O combinado da semana vem por ação própria, e só quando a Planning está à
+  // vista: é um pedido a mais, e quem abre Projetos na aba Geral não o usa.
+  // Trocar de semana recarrega, porque cada semana tem o seu.
+  const semanaIso = iso10(semanaDaPlanning);
+  useEffect(() => {
+    if (aba !== 'planning') return;
+    let vivo = true;
+    void api(`?action=planning_semana&semana=${semanaIso}`).then(r => {
+      if (!vivo || !Array.isArray(r?.planning)) return;
+      const mapa: Record<string, PlanningDaSemana> = {};
+      for (const x of r.planning) {
+        mapa[String(x.projeto_id)] = {
+          destaques: Array.isArray(x.destaques) ? x.destaques.map(String) : [],
+          reunioes: Array.isArray(x.reunioes) ? x.reunioes.map(String) : [],
+          atualizado_em: x.atualizado_em ?? null,
+          atualizado_por_nome: x.atualizado_por_nome ?? null,
+        };
+      }
+      setPlanning(mapa);
+    });
+    return () => { vivo = false; };
+  }, [aba, api, semanaIso]);
+
+  /** Grava o combinado de um projeto. Pinta na hora e manda depois, juntando as
+   *  teclas: numa reunião se digita a frase inteira, e uma gravação por letra
+   *  seria uma ida ao servidor a cada tecla de quem está falando. */
+  const gravando = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const salvarPlanning = useCallback((projetoId: string, dados: PlanningDaSemana) => {
+    setPlanning(atual => ({ ...atual, [projetoId]: { ...atual[projetoId], ...dados } }));
+    const chave = `${projetoId}|${semanaIso}`;
+    clearTimeout(gravando.current.get(chave));
+    gravando.current.set(chave, setTimeout(() => {
+      gravando.current.delete(chave);
+      void api('', 'POST', {
+        action: 'salvar_planning_semana',
+        projeto_id: projetoId,
+        semana: semanaIso,
+        destaques: dados.destaques ?? [],
+        reunioes: dados.reunioes ?? [],
+      }).then(r => {
+        if (r?.error) { toast('error', 'Não foi possível gravar o combinado', r.error); return; }
+        setPlanning(atual => ({
+          ...atual,
+          [projetoId]: {
+            ...atual[projetoId],
+            atualizado_em: r?.atualizado_em ?? null,
+            atualizado_por_nome: r?.atualizado_por_nome ?? null,
+          },
+        }));
+      });
+    }, 700));
+  }, [api, semanaIso, toast]);
+
+  // A gravação pendente não pode morrer com a tela: quem fecha a página logo
+  // depois de escrever perderia a última frase.
+  useEffect(() => () => { for (const t of gravando.current.values()) clearTimeout(t); }, []);
 
   // Abriu um projeto, chegam os resumos das reuniões dele - uma vez por
   // projeto, e não a cada recarregamento da listagem.
@@ -5440,7 +5599,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
       <Abas
         valor={aba}
         onChange={setAba}
-        opcoes={[{ valor: 'geral', label: 'Geral' }, { valor: 'gestao', label: 'Gestão' }]}
+        opcoes={[{ valor: 'geral', label: 'Geral' }, { valor: 'planning', label: 'Planning' }]}
       />
 
       <div className="admin-page-header">
@@ -5449,7 +5608,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           <p className="admin-page-desc">
             {aba === 'geral'
               ? 'Cadastro dos projetos da casa'
-              : 'Como cada projeto está indo: gestor, prazo e progresso'}
+              : 'A semana de cada projeto, montada com o time'}
           </p>
         </div>
         {aba === 'geral' && podeCriar && (
@@ -5467,9 +5626,9 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
         // filtros, busca e lista -, e um vao proprio deixava esta tela mais
         // solta que as outras.
         style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* Os cartões são da aba Geral. Na Gestão nem o esqueleto deles aparece,
+      {/* Os cartões são da aba Geral. Na Planning nem o esqueleto deles aparece,
           senão a tela prometeria uma faixa que não vem. */}
-      {aba === 'gestao' ? null : carregando ? (
+      {aba === 'planning' ? null : carregando ? (
         <CartoesKpiEsqueleto cartoes={5} />
       ) : projetos.length > 0 && (
         <div className="admin-stats" style={{ marginBottom: 18 }}>
@@ -5489,9 +5648,9 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
         </div>
       )}
 
-      {/* A barra de filtros é da aba Geral. Na Gestão o relatório é a carteira
-          inteira: recortá-la por cliente ou por tipo daria um panorama que não
-          é panorama de nada. */}
+      {/* A barra de filtros é da aba Geral. Na Planning a reunião percorre a
+          carteira inteira: recortá-la por cliente ou por tipo deixaria projeto
+          de fora da conversa sem ninguém perceber. */}
       {aba === 'geral' && !carregando && projetos.length > 0 && (
         <div className="admin-toolbar">
           <span className="admin-toolbar-label">Filtrar</span>
@@ -5766,13 +5925,18 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           </table>
         </div>
       ) : (
-        <AbaGestao
+        <AbaPlanning
           projetos={projetos}
           pessoas={pessoas}
+          planning={planning}
+          semana={semanaDaPlanning}
+          onMudarSemana={setSemanaDaPlanning}
+          onSalvarPlanning={salvarPlanning}
           onSalvarTarefa={salvarTarefa}
           onAbrirTarefa={abrirTarefa}
           etapaDeEntrada={etapaDeEntrada}
           etapaDeConclusao={etapaDeConclusao}
+          podeEditar={podeEditar}
           podeEditarTarefa={pode('tarefas:editar')}
           onAbrir={p => setForm({ editando: p })}
         />
