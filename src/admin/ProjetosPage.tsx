@@ -3884,7 +3884,7 @@ function AbaGestao({
 // ── Formulário ───────────────────────────────────────────────────────────────
 
 function FormularioProjeto({
-  editando, base, pessoas, clientes, salvando, onFechar, onSalvar,
+  editando, base, pessoas, clientes, salvando, abertura, onFechar, onSalvar,
   onCriarTarefaNaEntrega, onAbrirTarefa, onExcluirTarefa, onMoverTarefa,
   onFixarRecolhida, podeEditarTarefa, etapasTarefa, onBaixarAnexo, onVerAnexo, onEtiquetar,
   marcadores, submarcadores, onExcluir, somenteLeitura, onVerTarefasDaEntrega,
@@ -3899,6 +3899,9 @@ function FormularioProjeto({
   /** Com que rascunho o painel abre enquanto o projeto ainda não voltou do
    *  servidor. É o mesmo objeto que foi gravado no clique. */
   base?: Rascunho;
+  /** Em que aba a ficha abre, e que reunião já vem aberta. Vem do inbox, que
+   *  acabou de atrelar uma - quem abre pela lista não pede nada disto. */
+  abertura?: { aba?: 'reunioes'; reuniao?: number } | null;
   pessoas: Pessoa[];
   clientes: Cliente[];
   salvando: boolean;
@@ -4058,11 +4061,23 @@ function FormularioProjeto({
 
   // Projeto novo não tem reuniões nem saúde a que se prender, então só existe
   // "Geral" até ele ser criado.
-  const [abaModal, setAbaModal] = useState<'geral' | 'reunioes' | 'saude'>('geral');
+  const [abaModal, setAbaModal] = useState<'geral' | 'reunioes' | 'saude'>(
+    abertura?.aba ?? 'geral');
   /** Entrega para onde a tela deve ir, vinda do chip de uma reunião. */
   const [entregaFocada, setEntregaFocada] = useState<number | null>(null);
-  /** E o caminho inverso: a reunião que o chip da entrega quer mostrar. */
-  const [reuniaoFocada, setReuniaoFocada] = useState<number | null>(null);
+  /** E o caminho inverso: a reunião que o chip da entrega quer mostrar - ou a
+   *  que o inbox acabou de atrelar, quando a ficha abriu por ele. */
+  const [reuniaoFocada, setReuniaoFocada] = useState<number | null>(abertura?.reuniao ?? null);
+
+  // O pedido de abertura também chega com a ficha já montada: quem estava com
+  // um projeto aberto e vinculou uma reunião pelo inbox continua na mesma
+  // instância do painel, e o estado inicial acima não roda de novo. Sem isto, a
+  // ficha trocava de projeto mas ficava na aba Geral.
+  useEffect(() => {
+    if (!abertura) return;
+    if (abertura.aba) setAbaModal(abertura.aba);
+    if (abertura.reuniao) setReuniaoFocada(abertura.reuniao);
+  }, [abertura]);
   /** A reunião aberta no modal central. Quem clica no chip dentro da entrega
    *  quer ver a conversa, e não ser levado para outra aba para procurá-la. */
   const [reuniaoAberta, setReuniaoAberta] = useState<Reuniao | null>(null);
@@ -4688,8 +4703,11 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
   /** Entregue pelo painel: leva à tela de Tarefas já filtrada numa entrega. */
   onVerTarefasDaEntrega?: (projetoId: string, entregaId: number) => void;
   /** O projeto que a busca rápida escolheu. O `nonce` faz o mesmo projeto
-   *  reabrir quando se busca por ele de novo depois de ter fechado a ficha. */
-  abrir?: { id: string; nonce: number };
+   *  reabrir quando se busca por ele de novo depois de ter fechado a ficha.
+   *
+   *  `aba` e `reuniao` vêm do inbox, quando ele acaba de atrelar uma reunião:
+   *  a ficha abre na aba de Reuniões, com aquela aberta. */
+  abrir?: { id: string; nonce: number; aba?: 'reunioes'; reuniao?: number };
   onAbriu?: () => void;
 }) {
   const { pode, usuario, onSessionExpired } = useAuth();
@@ -4715,6 +4733,10 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
    *  aterrissar antes dela, e abrir uma ficha vazia seria pior do que esperar
    *  um instante. */
   const [alvoDaBusca, setAlvoDaBusca] = useState<string | null>(null);
+  /** Com o que a ficha deve abrir, quando quem pediu sabe mais que o id: a aba
+   *  e a reunião que o inbox acabou de atrelar. */
+  const [aberturaPedida, setAberturaPedida] =
+    useState<{ aba?: 'reunioes'; reuniao?: number } | null>(null);
   /** O projeto que acabou de nascer do clique em "Novo projeto", enquanto o
    *  painel dele está aberto. A promessa existe porque a primeira gravação
    *  automática pode sair antes de o servidor dizer que id ele deu. */
@@ -5143,24 +5165,37 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
   // e os projetos ainda estão vindo. Guardar o id e esperar é o que faz a ficha
   // abrir com o projeto dentro, em vez de abrir vazia e piscar depois.
   useEffect(() => {
-    if (abrir) setAlvoDaBusca(abrir.id);
+    if (!abrir) return;
+    setAlvoDaBusca(abrir.id);
+    setAberturaPedida(abrir.aba || abrir.reuniao ? { aba: abrir.aba, reuniao: abrir.reuniao } : null);
+    // Vindo com reunião, a listagem que está na tela é de antes de ela existir:
+    // a ficha abriria sem a reunião que o clique acabou de criar. Recarregar
+    // aqui, e só aqui, evita pagar a leitura inteira em toda abertura de ficha.
+    if (abrir.reuniao) void carregar();
   }, [abrir?.nonce]);
 
   useEffect(() => {
     if (!alvoDaBusca) return;
     const p = projetos.find(x => x.id === alvoDaBusca);
     if (!p) return;
+    // Com reunião pedida, a ficha só abre quando ela já está na lista - do
+    // contrário a aba de Reuniões abriria sem a reunião do clique, e o "espere
+    // um instante" viraria "não aconteceu nada".
+    if (aberturaPedida?.reuniao && !(p.reunioes ?? []).some(r => r.id === aberturaPedida.reuniao)) return;
     setAlvoDaBusca(null);
     setAba('geral');
     setForm({ editando: p });
     onAbriu?.();
-  }, [alvoDaBusca, projetos]);
+  }, [alvoDaBusca, projetos, aberturaPedida]);
 
   /** Fecha o painel. O projeto que ninguém tocou não fica: abrir e desistir não
    *  deveria deixar "Projeto sem nome" no quadro da casa. Qualquer alteração,
    *  por menor que seja, já o torna trabalho de alguém - e aí ele permanece. */
   async function fecharProjeto(intacto: boolean) {
     setForm(null);
+    // O pedido de abertura vale para a ficha que acabou de fechar, e nao para a
+    // proxima: sem zerar, reabrir qualquer projeto cairia na aba de Reunioes.
+    setAberturaPedida(null);
     const novo = nascendo.current;
     nascendo.current = null;
     if (!novo || !intacto) return;
@@ -6083,6 +6118,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           // mostraria o registro recém-criado.
           editando={form.editando ? projetos.find(p => p.id === form.editando!.id) ?? form.editando : null}
           base={form.base}
+          abertura={aberturaPedida}
           onVerTarefasDaEntrega={form.editando && onVerTarefasDaEntrega
             ? entregaId => onVerTarefasDaEntrega(form.editando!.id, entregaId)
             : undefined}

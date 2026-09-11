@@ -291,6 +291,13 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   contratos_gerados: 'gerador:ver',
   registrar_contrato: 'gerador:ver',
 
+  // O inbox. Livre porque o recorte de quem ve o que acontece dentro da propria
+  // consulta - cada fonte ja tem a sua regra la -, e marcar como lido so mexe na
+  // linha de quem clicou.
+  inbox: LIVRE,
+  marcar_inbox_lido: LIVRE,
+  limpar_inbox: LIVRE,
+
   // ── Sempre liberado ────────────────────────────────────────────────────────
   me: LIVRE,
   perfil: LIVRE,

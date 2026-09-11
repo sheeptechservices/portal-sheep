@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect, useRef, createContext, useContext, useCallback, useMemo, lazy, Suspense, useSyncExternalStore } from 'react';
+import type { ReactNode } from 'react';
 import { IconAcessos, IconAlert, IconArrowRight, IconDashboard, IconGoogle, IconSpinner } from '../components/icons';
 import {
   criarPode, podeAbrirPagina, podeGerenciarUsuarios, PERMISSAO_DA_PAGINA,
@@ -27,6 +28,7 @@ const QuickSearch = lazy(() => import('./QuickSearch'));
 import type { QuickTarget } from './QuickSearch';
 import { DESTINOS, TOOL_PAGES, TOOL_LABELS, type Page } from './destinos';
 import { CartaoReportar, type Relato } from '../components/CartaoReportar';
+import { Inbox, type ItemDoInbox } from '../components/Inbox';
 import type { ReporteNaLista } from '../components/ListaReportes';
 import { iniciarOndas } from '../lib/ondas';
 import { ToastContext, type ToastItem } from '../lib/toast';
@@ -56,7 +58,10 @@ interface AuthCtx {
    *  `me` não voltou, para o menu não piscar cheio e esvaziar. */
   pode: Pode;
 }
-const AuthContext = createContext<AuthCtx>({
+/** Exportado pelo mesmo motivo do `ToastContext`: página montada fora da casca
+ *  - numa bancada, num teste - precisa de quem responda pelo `pode`, e sem o
+ *  contexto à mão a única saída seria montar o portal inteiro com sessão. */
+export const AuthContext = createContext<AuthCtx>({
   onSessionExpired: () => {},
   usuario: null,
   pode: criarPode(null),
@@ -320,9 +325,12 @@ function ThemeToggle() {
   );
 }
 
-function Topbar({ onToggle, onLogout, onQuickSearch, usuario, onAbrirPerfil }: {
+function Topbar({ onToggle, onLogout, onQuickSearch, usuario, onAbrirPerfil, inbox }: {
   onToggle: () => void; onLogout: () => void; onQuickSearch: () => void; usuario: UsuarioSessao | null;
   onAbrirPerfil: () => void;
+  /** O inbox vem montado de cima: quem sabe falar com o servidor e a casca, e
+   *  o topo so escolhe onde ele fica. */
+  inbox: ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [semFoto, setSemFoto] = useState(false);
@@ -402,8 +410,9 @@ function Topbar({ onToggle, onLogout, onQuickSearch, usuario, onAbrirPerfil }: {
         </button>
       </div>
 
-      {/* Right: avatar (o switch de tema vive no rodapé da sidebar) */}
+      {/* Right: inbox e avatar (o switch de tema vive no rodapé da sidebar) */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      {inbox}
       <div ref={avatarRef} style={{ position: 'relative' }}>
         <button
           type="button"
@@ -565,9 +574,13 @@ function NavInferior({ page, setPage, onMais }: {
 function Sidebar({
   page, setPage, open, pinned, onClose, onReportar, onListarReportes, onPrintDoReporte,
   onMudarStatusDoReporte, onMudarTipoDoReporte, onEditarReporte, onExcluirReporte,
-  onReabrirReporte,
+  onReabrirReporte, abrirFilaDeChamados, onAbriuFila,
 }: {
   page: Page; setPage: (p: Page) => void; open: boolean; pinned: boolean; onClose: () => void;
+  /** O inbox pede a fila de chamados, e diz qual chamado deve nascer aberto;
+   *  quem a tem e o cartao do pe do menu. */
+  abrirFilaDeChamados: { nonce: number; chamado?: number } | null;
+  onAbriuFila: () => void;
   onReportar: (relato: Relato) => Promise<{ error?: string; aviso?: string | null } | null>;
   onListarReportes: () => Promise<{ reportes?: ReporteNaLista[]; error?: string }>;
   onPrintDoReporte: (id: number) => Promise<{ nome: string; tipo: string; base64: string } | null>;
@@ -684,6 +697,8 @@ function Sidebar({
         excluir={onExcluirReporte}
         reabrir={onReabrirReporte}
         admin={admin}
+        abrirFila={abrirFilaDeChamados}
+        onAbriuFila={onAbriuFila}
       />
 
       <div className="app-menu-rodape">
@@ -1105,7 +1120,12 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
   // Card a abrir na página destino. O nonce força o efeito a rodar de novo quando
   // o mesmo card é escolhido duas vezes; a página zera o pedido ao consumi-lo, para
   // não reabrir o detalhe quando o usuário voltar à página pelo menu.
-  const [openCard, setOpenCard] = useState<{ page: Page; id: string; nonce: number } | null>(null);
+  /** A ficha que uma tela precisa abrir. `aba` e `reuniao` só existem no
+   *  caminho do inbox: vincular uma reunião leva à ficha do projeto já na aba
+   *  certa, com ela aberta. */
+  const [openCard, setOpenCard] = useState<
+    { page: Page; id: string; nonce: number; aba?: 'reunioes'; reuniao?: number } | null
+  >(null);
 
   /** Manda o relato para o administrador do sistema. O cartão do menu cuida do
    *  próprio estado; daqui sai só a ida ao servidor. */
@@ -1128,6 +1148,137 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
     const r = await fetch(`/api/admin-data?${busca}`, { headers: { 'x-admin-session': token } });
     return await r.json().catch(() => null);
   }, [token]);
+  /**
+   * Quem está esperando a ficha de projeto abrir.
+   *
+   * Vincular uma reunião pelo inbox leva à ficha dela, e entre o clique e a
+   * ficha há uma ida ao servidor: a caixa de vincular fica na tela, girando,
+   * até a página avisar que abriu. Sem isto ela fechava no clique e a pessoa
+   * ficava alguns segundos olhando a tela de onde tinha saído.
+   */
+  const esperandoFicha = useRef<(() => void) | null>(null);
+  const avisarFichaAberta = useCallback(() => {
+    esperandoFicha.current?.();
+    esperandoFicha.current = null;
+  }, []);
+
+  /** A fila de chamados abre pelo cartão do menu; o inbox pede que ela abra,
+   *  e diz qual chamado deve estar expandido quando ela abrir. O `nonce` faz o
+   *  mesmo chamado reabrir se alguém clicar no aviso duas vezes. */
+  const [filaDeChamados, setFilaDeChamados] =
+    useState<{ nonce: number; chamado?: number } | null>(null);
+
+  const listarInbox = useCallback(async () => {
+    try {
+      return await lerAdmin('action=inbox') ?? { error: 'Não foi possível carregar os avisos.' };
+    } catch {
+      return { error: 'Erro de conexão. Tente de novo.' };
+    }
+  }, [lerAdmin]);
+
+  const marcarInboxLido = useCallback(async (chaves: string[]) => {
+    try {
+      const r = await fetch('/api/admin-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-session': token },
+        body: JSON.stringify({ action: 'marcar_inbox_lido', chaves }),
+      });
+      return await r.json().catch(() => null);
+    } catch {
+      return { error: 'Erro de conexão. Tente de novo.' };
+    }
+  }, [token]);
+
+  /** Tira avisos da gaveta. É o único caminho que faz um aviso sumir. */
+  const limparInbox = useCallback(async (chaves: string[]) => {
+    try {
+      const r = await fetch('/api/admin-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-session': token },
+        body: JSON.stringify({ action: 'limpar_inbox', chaves }),
+      });
+      return await r.json().catch(() => null);
+    } catch {
+      return { error: 'Erro de conexão. Tente de novo.' };
+    }
+  }, [token]);
+
+  /**
+   * Atrela a reunião do Fireflies ao projeto escolhido na caixa do inbox. É a
+   * mesma ação que a ficha do projeto usa - o caminho é um só.
+   *
+   * Vinculada, a tela vai à ficha daquele projeto, na aba de Reuniões, com a
+   * reunião recém-criada aberta. Sem isso, o aviso sumia do inbox e nada
+   * aparecia: a reunião existia no banco e a página de Projetos, montada antes,
+   * continuava com a lista de antes - era preciso recarregar para vê-la.
+   */
+  const vincularReuniaoDoInbox = useCallback(async (firefliesId: string, projetoId: string) => {
+    try {
+      const r = await fetch('/api/admin-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-session': token },
+        body: JSON.stringify({
+          action: 'anexar_reuniao_fireflies', projeto_id: projetoId, fireflies_ids: [firefliesId],
+        }),
+      });
+      const resposta = await r.json().catch(() => null);
+      if (resposta?.error) return resposta;
+      // O id da reunião que acabou de nascer, que é o que a ficha precisa para
+      // abrir aquela e não outra.
+      const nova = Number(resposta?.reunioes?.[0]?.id) || undefined;
+      setPage('projetos');
+      setOpenCard(prev => ({
+        page: 'projetos', id: projetoId, nonce: (prev?.nonce ?? 0) + 1,
+        aba: 'reunioes', reuniao: nova,
+      }));
+      // Espera a ficha abrir para devolver: é o que mantém a caixa na tela,
+      // girando, em vez de fechar e deixar um vão. O teto de 8s é rede: se a
+      // ficha não abrir - projeto que sumiu, leitura que falhou -, ninguém
+      // fica preso numa caixa que não fecha.
+      await new Promise<void>(resolve => {
+        esperandoFicha.current = resolve;
+        setTimeout(() => {
+          if (esperandoFicha.current === resolve) {
+            esperandoFicha.current = null;
+            resolve();
+          }
+        }, 8000);
+      });
+      return resposta;
+    } catch {
+      return { error: 'Erro de conexão. Tente de novo.' };
+    }
+  }, [token]);
+
+  /**
+   * Onde cada aviso se resolve.
+   *
+   * O pedido do cliente já é uma tarefa no quadro, e o clique abre a gaveta
+   * dela - pelo mesmo caminho da busca rápida, com o `nonce` que faz a mesma
+   * tarefa reabrir se alguém clicar duas vezes. Levar só até a página deixava
+   * a pessoa procurando no quadro a tarefa que o aviso acabara de nomear.
+   *
+   * A reunião se atrela na ficha do projeto e o chamado mora na fila que o
+   * cartão do menu abre. Nos três casos o inbox leva até a tela e sai da
+   * frente: resolver o aviso é trabalho de quem já sabe fazer aquilo.
+   */
+  const irPeloInbox = useCallback((item: ItemDoInbox) => {
+    if (item.tipo === 'chamado') {
+      setFilaDeChamados(prev => ({
+        nonce: (prev?.nonce ?? 0) + 1,
+        chamado: Number(item.chave.replace(/^reporte:/, '')) || undefined,
+      }));
+      return;
+    }
+    // A reunião não passa por aqui: ela abre a caixa de vincular dentro do
+    // próprio inbox, que é onde a pergunta é feita.
+    if (item.tipo === 'reuniao') return;
+    setPage('tarefas');
+    if (item.alvo) {
+      setOpenCard(prev => ({ page: 'tarefas', id: item.alvo!, nonce: (prev?.nonce ?? 0) + 1 }));
+    }
+  }, []);
+
   const listarReportes = useCallback(async () => {
     try {
       return await lerAdmin('action=reportes') ?? { error: 'Não foi possível carregar os relatos.' };
@@ -1400,6 +1551,10 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
           onQuickSearch={() => setQuickOpen(true)}
           usuario={usuario}
           onAbrirPerfil={() => setPage('perfil')}
+          inbox={(
+            <Inbox listar={listarInbox} marcarLido={marcarInboxLido} limpar={limparInbox}
+              vincularReuniao={vincularReuniaoDoInbox} onIr={irPeloInbox} />
+          )}
         />
 
         {/* Overlay backdrop (mobile / overlay mode) */}
@@ -1415,6 +1570,8 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
         )}
 
         <Sidebar
+          abrirFilaDeChamados={filaDeChamados}
+          onAbriuFila={() => setFilaDeChamados(null)}
           page={page}
           setPage={setPage}
           open={open}
@@ -1495,7 +1652,7 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
               <ProjetosPage
                 token={token}
                 abrir={openCard?.page === 'projetos' ? openCard : undefined}
-                onAbriu={() => setOpenCard(null)}
+                onAbriu={() => { setOpenCard(null); avisarFichaAberta(); }}
                 onVerTarefasDaEntrega={(projeto: string, entrega: number) => {
                   setTarefasDaEntrega({ projeto, entrega, nonce: Date.now() });
                   setPage('tarefas');

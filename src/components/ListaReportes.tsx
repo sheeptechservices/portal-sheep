@@ -101,7 +101,7 @@ export interface ReporteNaLista {
 
 export function ListaReportes({
   carregar, carregarPrint, mudarStatus, mudarTipo, editar, excluir, reabrir,
-  admin, onFechar,
+  admin, expandir, onFechar,
 }: {
   carregar: () => Promise<{ reportes?: ReporteNaLista[]; error?: string }>;
   /** O conteúdo do print vem um por vez: na lista ele não viaja. */
@@ -126,6 +126,8 @@ export function ListaReportes({
    * os relatos de quem pergunta.
    */
   admin?: boolean;
+  /** O chamado que deve nascer expandido - o inbox abre a fila mirando um. */
+  expandir?: number | null;
   onFechar: () => void;
 }) {
   const [lista, setLista] = useState<ReporteNaLista[] | null>(null);
@@ -202,6 +204,29 @@ export function ListaReportes({
       .catch(() => { if (vivo) setErro('Não foi possível carregar os relatos.'); });
     return () => { vivo = false; };
   }, []);
+
+  /**
+   * O chamado que o inbox mirou nasce aberto, e a fila rola ate ele.
+   *
+   * Depois da lista chegar, e nao no primeiro quadro: a linha so existe quando
+   * os relatos chegam, e mandar rolar ate ela antes disso e rolar ate nada.
+   * Quem chega pela lista, sem mira, nao tem nenhuma aberta - e a fila e para
+   * varrer, e tres detalhes abertos ja sao mais texto do que fila.
+   */
+  useEffect(() => {
+    if (!expandir || !lista?.length) return;
+    if (!lista.some(r => r.id === expandir)) return;
+    setAberta(expandir);
+    // O resolvido so aparece com a chave ligada: mirado pelo inbox, ele tem de
+    // aparecer de qualquer jeito, senao a fila abre sem o chamado do aviso.
+    if (lista.find(r => r.id === expandir)?.status === 'resolvido') setVerResolvidos(true);
+    // Um quadro depois, para a linha ja estar desenhada quando a rolagem sair.
+    const t = setTimeout(() => {
+      document.getElementById(`reporte-${expandir}`)
+        ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 60);
+    return () => clearTimeout(t);
+  }, [expandir, lista]);
 
   // Modal em portal não recebe tecla por si: o Esc é escutado na janela. Com a
   // prévia ou a pergunta do e-mail abertas, o Esc é delas - senão duas caixas
@@ -449,7 +474,8 @@ export function ListaReportes({
                     const resolvido = r.status === 'resolvido';
                     return (
                       <Fragment key={r.id}>
-                      <tr className={`reportes-linha${abertaAqui ? ' aberta' : ''}${resolvido ? ' resolvida' : ''}`}
+                      <tr id={`reporte-${r.id}`}
+                        className={`reportes-linha${abertaAqui ? ' aberta' : ''}${resolvido ? ' resolvida' : ''}`}
                         role="button" tabIndex={0} aria-expanded={abertaAqui}
                         onClick={() => alternar(r.id)}
                         onKeyDown={e => {

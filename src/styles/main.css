@@ -14937,6 +14937,229 @@ button.checklist-texto:focus-visible {
 }
 .painel-rodape strong { color: var(--black); font-weight: 800; }
 
+/* ── O inbox do topo ──────────────────────────────────────────────────────────
+   O gatilho e um icone-botao do topo, como os outros, com o balao pendurado no
+   canto. A gaveta e a lista moram num portal, entao nada aqui depende de onde
+   o botao esta na arvore. */
+.inbox-gatilho { position: relative; }
+/* O balao: numero pequeno, chapa vermelha, preso ao canto de cima. Fica por
+   fora da caixa do icone de proposito - dentro dele, cobriria o desenho. */
+.inbox-balao {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  /* O fio da cor da barra separa o balao do icone por baixo dele. */
+  border: 1.5px solid var(--white);
+  background: var(--red);
+  color: #FFF;
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.inbox-gaveta {
+  position: fixed;
+  z-index: 10050;
+  width: 380px;
+  max-width: calc(100vw - 16px);
+  max-height: 440px;
+  display: flex;
+  flex-direction: column;
+  background: var(--white);
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card-hover);
+  overflow: hidden;
+  animation: entraLista .18s var(--curva-anti) backwards;
+}
+.inbox-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--gray4);
+}
+.inbox-titulo { margin: 0; font-size: 13px; font-weight: 800; color: var(--black); }
+.inbox-tudo {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.inbox-tudo:hover { background: var(--gray4); color: var(--black); }
+.inbox-tudo:focus-visible { outline: none; background: var(--gray4); color: var(--black); }
+
+/* A rolagem para na gaveta: chegando ao fim da lista, a roda passava a rolar a
+   pagina atras dela e o gesto parecia nao responder. */
+.inbox-lista { overflow: auto; overscroll-behavior: contain; padding: 6px; }
+.inbox-itens { list-style: none; margin: 0; padding: 0; }
+.inbox-item { display: flex; align-items: flex-start; gap: 2px; }
+/* A linha inteira e o alvo do clique, e nao um "abrir" no fim dela. */
+.inbox-item-alvo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 8px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.inbox-item-alvo:hover { background: var(--card-hover-bg, var(--gray4)); }
+.inbox-item-alvo:focus-visible { outline: none; background: var(--gray4); }
+.inbox-item-icone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  margin-top: 1px;
+  border-radius: var(--radius-md);
+  background: var(--gray4);
+  color: var(--gray);
+}
+/* Por ler, o aviso acende: o icone ganha a cor da casa e o titulo, o peso.
+   Lido, ele continua na lista em tom de arquivo - sumir apagaria a unica prova
+   de que ele existiu. */
+.inbox-item:not(.lido) .inbox-item-icone { background: var(--yd); color: var(--black); }
+.inbox-item-texto { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.inbox-item-titulo {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--black);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inbox-item.lido .inbox-item-titulo { font-weight: 600; color: var(--gray); }
+.inbox-item-desc {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--gray2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.inbox-item-rodape {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--gray2);
+}
+.inbox-item-quando { margin-left: auto; font-weight: 500; white-space: nowrap; }
+.inbox-item-rodape { flex-wrap: wrap; row-gap: 3px; }
+
+/* As duas acoes do topo. Numa gaveta estreita elas quebram para a linha de
+   baixo em vez de espremer o titulo. */
+.inbox-acoes { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* O que ja aconteceu com o assunto do aviso - reuniao atrelada, chamado
+   resolvido. Fica no fim do rodape da linha, discreto: e estado, e nao titulo.
+   O aviso resolvido continua na gaveta ate alguem limpa-lo, e sem esta marca
+   ele seria indistinguivel do que ainda espera. */
+.inbox-item-situacao {
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--gray4);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--gray2);
+  white-space: nowrap;
+}
+
+/* As duas acoes da linha, uma ao lado da outra. */
+.inbox-item-acoes { display: flex; align-items: center; gap: 1px; flex: none; align-self: center; }
+
+/* O marcar so aparece na linha sob o cursor, como o tirar do checklist: um
+   tique em cada linha de uma lista de dez compete com o que esta escrito. */
+.inbox-marcar {
+  flex: none;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition), background var(--transition), color var(--transition);
+}
+.inbox-item:hover .inbox-marcar,
+.inbox-marcar:focus-visible { opacity: 1; }
+.inbox-marcar:hover { background: var(--gray4); color: var(--black); }
+.inbox-marcar:focus-visible { outline: none; }
+/* Limpar tira o aviso da gaveta: o hover vai para o vermelho, como o tirar do
+   checklist e o excluir da fila. Nao e destrutivo la fora - o chamado e a
+   reuniao continuam onde estao -, mas aqui e o unico gesto sem volta. */
+.inbox-limpar:hover { background: var(--gray3); color: var(--red); }
+
+/* O campo da caixa de vincular.
+   A folga de baixo e a mesma que a descricao da caixa tem: colado nos botoes, o
+   seletor lia como parte deles, e o dropdown abria encostado no "Vincular".
+   Fica aqui, e nao no `Dialogo`, porque cada caixa que traz campo ja traz a
+   propria medida - por na peca comum somaria com as que ja existem. */
+.inbox-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 20px;
+  text-align: left;
+}
+
+.inbox-vazio {
+  margin: 0;
+  padding: 24px 12px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--gray2);
+}
+.inbox-vazio-nota {
+  max-width: 30ch;
+  margin: 6px auto 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--gray2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inbox-gaveta { animation: none; }
+  .inbox-item-alvo, .inbox-marcar, .inbox-tudo { transition: none; }
+}
+
 /* ── Os blocos do Dashboard ───────────────────────────────────────────────────
    O painel Comercial tem moldura porque e dado de verdade e se le sozinho. O
    resto da pagina e bloco: um assunto por vez, com titulo, uma linha dizendo o

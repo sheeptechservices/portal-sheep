@@ -1839,6 +1839,34 @@ async function migrarSchema(db: Client) {
     }
   }
 
+  // ── O que cada um ja leu no inbox ────────────────────────────────────────
+  //
+  //  O inbox nao guarda os avisos: ele os monta na hora, a partir do que ja
+  //  existe no banco - a fila de chamados, os pedidos que os clientes abriram
+  //  pela pagina do projeto, as reunioes do Fireflies. Uma tabela de avisos
+  //  seria uma segunda copia dessas tres, envelhecendo em ritmo proprio: um
+  //  chamado apagado deixaria o aviso dele para tras, e o pedido do cliente
+  //  passaria a existir em dois lugares com dois textos.
+  //
+  //  O que precisa ser guardado e so o que o banco nao sabe: quem ja leu o que.
+  //  Uma linha por pessoa e por aviso, com a chave sendo o tipo e o id da coisa
+  //  de onde ele saiu - `reporte:12`, `tarefa:87`, `reuniao:01JABC`.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS inbox_lidos (
+      usuario_id TEXT NOT NULL,
+      chave      TEXT NOT NULL,
+      lido_em    TEXT NOT NULL,
+      PRIMARY KEY (usuario_id, chave)
+    )
+  `);
+  // Quando a pessoa tirou o aviso da gaveta.
+  //
+  // Lido e limpo sao coisas diferentes: lido e "ja vi", limpo e "nao quero mais
+  // ver". Nada mais tira um aviso do inbox - nem atrelar a reuniao, nem
+  // resolver o chamado. O aviso resolvido continua na lista dizendo que foi
+  // resolvido, e quem decide quando ele sai e quem esta olhando.
+  try { await ddl(`ALTER TABLE inbox_lidos ADD COLUMN limpo_em TEXT`); } catch {}
+
   // ── Contratos gerados ────────────────────────────────────────────────────
   //
   //  O que o gerador de contratos ja emitiu.
@@ -2746,6 +2774,34 @@ function foldTerm(s: string): string {
  * Identificador do que a ação mexeu, para a linha de auditoria ficar rastreável.
  * Numa criação o id ainda não existe no pedido, então vem da resposta.
  */
+/** As chaves que o corpo mandou, conferidas: uma ou varias, sem repetidas e
+ *  sem tipo que o inbox nao conheca. */
+function chavesDoInbox(body: any): string[] {
+  const cruas = Array.isArray(body?.chaves) ? body.chaves : [body?.chave];
+  return [...new Set(cruas
+    .map((c: unknown) => String(c ?? '').trim())
+    .filter((c: string) => /^(reporte|tarefa|reuniao):.{1,80}$/.test(c)))] as string[];
+}
+
+/** Um aviso do inbox. O mesmo formato para as tres fontes: a gaveta desenha
+ *  uma linha so, e quem sabe de onde o aviso veio e o `tipo`. */
+interface ItemDoInbox {
+  /** `reporte:12`, `tarefa:87`, `reuniao:01JABC` - tipo e id da coisa. */
+  chave: string;
+  tipo: 'chamado' | 'pedido' | 'reuniao';
+  titulo: string;
+  descricao: string;
+  /** O canto direito da linha: urgencia do chamado, projeto do pedido. */
+  etiqueta: string;
+  quando: string;
+  lido: boolean;
+  /** O que ja aconteceu com o assunto do aviso: reuniao atrelada, chamado
+   *  resolvido. Ausente enquanto nada aconteceu. */
+  situacao?: string;
+  /** O id que a tela de destino precisa para abrir a ficha, quando existe. */
+  alvo?: string;
+}
+
 /** JSON de coluna, sem derrubar a leitura da lista inteira se uma linha
  *  estiver ilegivel. */
 function comoObjeto(valor: unknown): Record<string, unknown> {
@@ -4613,6 +4669,173 @@ async function despacharAdminData(
         cofreAbertoAte(db, usuario?.id),
       ]);
       return { status: 200, body: { segredos: itens.rows, liberado_ate: aberto } };
+    }
+
+    /**
+     * O inbox: o que chegou de fora e pede uma olhada.
+     *
+     * Tres fontes, e o mesmo formato para as tres. O recorte de quem ve o que
+     * acontece aqui, na consulta, e nao na tela - esconder no navegador seria
+     * esconder de quem olha a tela, e nao de quem olha a resposta:
+     *
+     *   - Chamados do time: quem cuida da fila. O resto do time so ve os
+     *     proprios chamados, e o proprio chamado nao e novidade para quem o
+     *     escreveu.
+     *   - Pedidos de cliente: quem enxerga o projeto. Membro so ve projeto em
+     *     que esta na equipe, como no resto do sistema.
+     *   - Reunioes do Fireflies: quem edita projeto, que e quem as atrela.
+     *
+     * A janela e de 30 dias. Aviso de mes passado nao e aviso, e a lista
+     * precisa caber numa gaveta - o que passou disso se procura na fila, no
+     * quadro ou no Fireflies, que e onde mora inteiro.
+     */
+    if (action === 'inbox') {
+      const desde = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+      const cuidaDaFila = podeGerenciarUsuarios(usuario);
+      const soDaEquipe = papelEfetivo(usuario?.email, usuario?.papel) === 'membro';
+      const podeAtrelar = podeAcao(permissoes, 'vincular_reuniao');
+
+      const [chamados, pedidos, lidos] = await Promise.all([
+        cuidaDaFila
+          ? db.execute({
+            // Sem filtro de andamento: chamado resolvido continua no inbox, com
+            // o andamento dele na linha. Quem tira e quem limpa.
+            sql: `SELECT id, texto, tipo, urgencia, status, autor_nome, criado_em, reaberto_em
+                  FROM reportes
+                  WHERE criado_em >= ?
+                  ORDER BY criado_em DESC LIMIT 40`,
+            args: [desde],
+          })
+          : Promise.resolve({ rows: [] as Record<string, unknown>[] }),
+        db.execute({
+          // A etiqueta `Cliente` e o que a pagina publica carimba em todo pedido
+          // que vira tarefa. E por ela que o pedido do cliente se distingue da
+          // tarefa que o time abriu.
+          sql: `SELECT t.id, t.titulo, t.criado_em, t.criado_por_nome,
+                       t.projeto_id, p.nome AS projeto_nome
+                FROM projeto_tarefas t
+                JOIN projetos p ON p.id = t.projeto_id
+                WHERE t.etiquetas LIKE '%"Cliente"%'
+                  AND t.criado_em >= ?
+                  AND (? = 0 OR EXISTS (
+                    SELECT 1 FROM projeto_equipe e
+                    WHERE e.projeto_id = p.id AND e.usuario_id = ?
+                  ))
+                ORDER BY t.criado_em DESC LIMIT 40`,
+          args: [desde, soDaEquipe ? 1 : 0, usuario?.id ?? ''],
+        }),
+        db.execute({
+          sql: 'SELECT chave, limpo_em FROM inbox_lidos WHERE usuario_id = ?',
+          args: [usuario?.id ?? ''],
+        }),
+      ]);
+
+      const jaLido = new Set(lidos.rows.map(x => String(x.chave)));
+      const jaLimpo = new Set(lidos.rows.filter(x => x.limpo_em).map(x => String(x.chave)));
+      const itens: ItemDoInbox[] = [];
+
+      for (const c of chamados.rows) {
+        if (jaLimpo.has(`reporte:${c.id}`)) continue;
+        const texto = String(c.texto ?? '').trim();
+        itens.push({
+          chave: `reporte:${c.id}`,
+          tipo: 'chamado',
+          titulo: `${c.autor_nome} reportou${c.reaberto_em ? ' de novo' : ''}`,
+          descricao: texto.length > 160 ? `${texto.slice(0, 160)}…` : texto,
+          etiqueta: String(c.urgencia ?? ''),
+          quando: String(c.reaberto_em ?? c.criado_em),
+          lido: jaLido.has(`reporte:${c.id}`),
+          // O que ja aconteceu com ele desde que chegou. Aberto nao vira
+          // situacao: e o estado de quem ainda espera, e dize-lo em toda linha
+          // seria repetir "novo" numa gaveta de novidades.
+          situacao: String(c.status ?? '') === 'aberto' ? undefined
+            : String(c.status) === 'em_analise' ? 'Em análise'
+              : String(c.status) === 'resolvido' ? 'Resolvido' : 'Descartado',
+        });
+      }
+
+      for (const t of pedidos.rows) {
+        if (jaLimpo.has(`tarefa:${t.id}`)) continue;
+        itens.push({
+          chave: `tarefa:${t.id}`,
+          tipo: 'pedido',
+          titulo: String(t.titulo ?? ''),
+          descricao: `${t.criado_por_nome ?? 'Um cliente'} pediu pela página de ${t.projeto_nome}`,
+          etiqueta: String(t.projeto_nome ?? ''),
+          quando: String(t.criado_em),
+          lido: jaLido.has(`tarefa:${t.id}`),
+          // O id da tarefa, que e o que a tela de Tarefas pede para abrir a
+          // gaveta dela - o mesmo caminho da busca rapida.
+          alvo: String(t.id),
+        });
+      }
+
+      // O Fireflies e o unico que mora fora do banco, e por isso e o unico que
+      // pode falhar. Falha dele nao derruba o inbox: as outras duas fontes ja
+      // estao na mao, e um aviso a menos e melhor que uma gaveta que nao abre.
+      if (podeAtrelar) {
+        const cred = await getIntegrationCredential(db, FIREFLIES_KEY).catch(() => null);
+        if (cred?.value) {
+          const r = await listarReunioesFireflies(cred.value, '', 20).catch(() => null);
+          if (r && r.ok) {
+            const atreladas = await db.execute(
+              `SELECT DISTINCT fireflies_id FROM projeto_reunioes WHERE fireflies_id IS NOT NULL`);
+            const jaTem = new Set(atreladas.rows.map(x => String(x.fireflies_id)));
+            for (const m of r.reunioes) {
+              if (jaLimpo.has(`reuniao:${m.id}`) || !m.data || m.data < desde) continue;
+              itens.push({
+                chave: `reuniao:${m.id}`,
+                tipo: 'reuniao',
+                titulo: m.titulo,
+                descricao: m.participantes.length
+                  ? `Com ${m.participantes.slice(0, 3).join(', ')}`
+                    + (m.participantes.length > 3 ? ` e mais ${m.participantes.length - 3}` : '')
+                  : 'Gravada no Fireflies, ainda sem projeto',
+                // Sem etiqueta: o nome da fonte na propria linha ja diz
+                // Fireflies, e repetir a palavra ao lado dela e ruido.
+                etiqueta: '',
+                quando: m.data,
+                lido: jaLido.has(`reuniao:${m.id}`),
+                // Atrelada, ela continua na lista dizendo que ja foi: o aviso
+                // vira registro do que se fez, e nao some por conta propria.
+                situacao: jaTem.has(m.id) ? 'Atrelada a um projeto' : undefined,
+              });
+            }
+          }
+        }
+      }
+
+      // Os projetos a que uma reuniao pode ser atrelada vao junto da lista, e
+      // nao numa acao propria: a caixa de vincular abre em cima do inbox, e uma
+      // segunda ida ao servidor deixaria o seletor vazio no primeiro quadro.
+      // Sao id e nome, que e o que a caixa mostra - a listagem inteira de
+      // projetos pesa cem vezes isto.
+      // O cliente vem junto do nome: a casa tem dois projetos chamados "SDR IA",
+      // e numa lista de nomes soltos eles sao a mesma linha duas vezes.
+      const projetos = podeAtrelar && itens.some(i => i.tipo === 'reuniao')
+        ? (await db.execute({
+          sql: `SELECT p.id, p.nome, c.nome AS cliente
+                FROM projetos p
+                LEFT JOIN clientes c ON c.id = p.cliente_id
+                WHERE p.ativo = 1
+                  AND (? = 0 OR EXISTS (
+                    SELECT 1 FROM projeto_equipe e
+                    WHERE e.projeto_id = p.id AND e.usuario_id = ?
+                  ))
+                ORDER BY c.nome COLLATE NOCASE, p.nome COLLATE NOCASE`,
+          args: [soDaEquipe ? 1 : 0, usuario?.id ?? ''],
+        })).rows.map(p => ({
+          id: String(p.id),
+          nome: String(p.nome),
+          cliente: p.cliente == null ? null : String(p.cliente),
+        }))
+        : [];
+
+      itens.sort((a, b) => (a.quando < b.quando ? 1 : a.quando > b.quando ? -1 : 0));
+      return {
+        status: 200,
+        body: { itens, naoLidos: itens.filter(i => !i.lido).length, projetos },
+      };
     }
 
     /**
@@ -6759,6 +6982,56 @@ function faltaEmProjeto(p: any): string | null {
           aviso: envio.ok ? null : `O chamado voltou para a fila, mas o e-mail não saiu: ${envio.erro}`,
         },
       };
+    }
+
+    /**
+     * Marca aviso como lido. Um, ou os que estao na tela de quem clicou em
+     * "marcar todas".
+     *
+     * As chaves vem da tela de proposito: marcar tudo e dizer "vi o que voce me
+     * mostrou", e nao "vi o que existir no banco neste instante". O que chegou
+     * enquanto a gaveta estava aberta continua por ler, que e o certo.
+     */
+    if (action === 'marcar_inbox_lido') {
+      if (!usuario?.id) {
+        return { status: 400, body: { error: 'Sessão sem identidade não tem inbox.' } };
+      }
+      const chaves = chavesDoInbox(body);
+      if (!chaves.length) return { status: 400, body: { error: 'Nenhum aviso para marcar.' } };
+      if (chaves.length > 200) return { status: 400, body: { error: 'Avisos demais de uma vez.' } };
+
+      const agora = new Date().toISOString();
+      await db.batch(chaves.map(chave => ({
+        sql: `INSERT INTO inbox_lidos (usuario_id, chave, lido_em) VALUES (?,?,?)
+              ON CONFLICT(usuario_id, chave) DO NOTHING`,
+        args: [usuario.id, chave, agora],
+      })));
+      return { status: 200, body: { ok: true, lidas: chaves.length } };
+    }
+
+    /**
+     * Tira avisos da gaveta. Um, ou todos os que estao na tela.
+     *
+     * Limpar e decisao de quem olha, e a unica forma de um aviso sair do inbox:
+     * atrelar a reuniao e resolver o chamado mudam a linha, nao a tiram. O
+     * limpo tambem vale como lido - nao faz sentido guardar "por ler" o que a
+     * pessoa mandou embora.
+     */
+    if (action === 'limpar_inbox') {
+      if (!usuario?.id) {
+        return { status: 400, body: { error: 'Sessão sem identidade não tem inbox.' } };
+      }
+      const chaves = chavesDoInbox(body);
+      if (!chaves.length) return { status: 400, body: { error: 'Nenhum aviso para limpar.' } };
+      if (chaves.length > 200) return { status: 400, body: { error: 'Avisos demais de uma vez.' } };
+
+      const agora = new Date().toISOString();
+      await db.batch(chaves.map(chave => ({
+        sql: `INSERT INTO inbox_lidos (usuario_id, chave, lido_em, limpo_em) VALUES (?,?,?,?)
+              ON CONFLICT(usuario_id, chave) DO UPDATE SET limpo_em = excluded.limpo_em`,
+        args: [usuario.id, chave, agora, agora],
+      })));
+      return { status: 200, body: { ok: true, limpas: chaves.length } };
     }
 
     /**

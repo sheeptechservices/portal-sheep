@@ -112,7 +112,7 @@ const DESCRICAO_DO_TIPO: Record<string, string> = {
 
 export function CartaoReportar({
   pagina, enviar, listar, carregarPrint, mudarStatus, mudarTipo, editar, excluir,
-  reabrir, admin,
+  reabrir, admin, abrirFila, onAbriuFila,
 }: {
   /** Em que tela a pessoa estava. Vai no e-mail para quem lê não precisar
    *  perguntar "em qual?". */
@@ -133,6 +133,16 @@ export function CartaoReportar({
   /** Só o dono do painel muda o andamento; o resto do time só lê. */
   /** O dono do painel - ver `ListaReportes`. */
   admin?: boolean;
+  /**
+   * Abrir a fila de fora, sem clicar no cartao. E o inbox do topo que pede: o
+   * aviso de chamado se resolve na fila, e ela mora aqui dentro.
+   *
+   * O par `abrirFila`/`onAbriuFila` e o mesmo dos chips de endereco do projeto:
+   * quem pede zera o pedido assim que ele e atendido, senao a fila reabriria a
+   * cada render.
+   */
+  abrirFila?: { nonce: number; chamado?: number } | null;
+  onAbriuFila?: () => void;
 }) {
   const [aberto, setAberto] = useState(false);
   const [texto, setTexto] = useState('');
@@ -148,6 +158,8 @@ export function CartaoReportar({
   // -, e some junto com o agradecimento.
   const [aviso, setAviso] = useState<string | null>(null);
   const [vendoFila, setVendoFila] = useState(false);
+  /** O chamado que o inbox mandou expandir ao abrir a fila. */
+  const [chamadoAberto, setChamadoAberto] = useState<number | null>(null);
   const [arrastando, setArrastando] = useState(false);
   const campo = useRef<HTMLTextAreaElement>(null);
   const seletor = useRef<HTMLInputElement>(null);
@@ -162,6 +174,15 @@ export function CartaoReportar({
   useEffect(() => {
     if (aberto) campo.current?.focus();
   }, [aberto]);
+
+  // O pedido de fora: abre a fila, guarda qual chamado deve estar expandido e
+  // devolve o aviso de que abriu.
+  useEffect(() => {
+    if (!abrirFila) return;
+    setChamadoAberto(abrirFila.chamado ?? null);
+    setVendoFila(true);
+    onAbriuFila?.();
+  }, [abrirFila, onAbriuFila]);
 
   // O agradecimento não fica na tela para sempre: some sozinho e o cartão volta
   // ao convite, pronto para o próximo achado.
@@ -499,6 +520,7 @@ export function CartaoReportar({
 
       {vendoFila && listar && carregarPrint && (
         <ListaReportes
+          expandir={chamadoAberto}
           carregar={listar}
           carregarPrint={carregarPrint}
           mudarStatus={mudarStatus}
