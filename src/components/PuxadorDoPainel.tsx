@@ -1,5 +1,5 @@
 import type React from 'react';
-import { PAINEL_MIN, PAINEL_MAX } from '../lib/painelLateral';
+import { PAINEL_MIN, painelMaximo } from '../lib/painelLateral';
 
 /**
  * A borda esquerda da gaveta, que se arrasta para alargar o painel.
@@ -36,7 +36,7 @@ export function PuxadorDoPainel({ largura, arrastando, setArrastando, porTecla }
       aria-label="Ajustar a largura do painel"
       aria-valuenow={largura}
       aria-valuemin={PAINEL_MIN}
-      aria-valuemax={PAINEL_MAX}
+      aria-valuemax={painelMaximo()}
       title="Arraste para ajustar a largura"
     />
   );

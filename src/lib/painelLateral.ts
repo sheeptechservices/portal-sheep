@@ -11,10 +11,29 @@
 import { useEffect, useState } from 'react';
 import type React from 'react';
 
-/** O mínimo é a largura que o painel sempre teve; o máximo evita que ele engula
- *  a listagem atrás, que é a referência de onde a pessoa está. */
+/** O mínimo é a largura que o painel sempre teve. */
 export const PAINEL_MIN = 560;
-export const PAINEL_MAX = 1100;
+
+/** E o máximo é quase a janela inteira.
+ *
+ *  Era um número fixo de 1.100px, escolhido para o painel não engolir a
+ *  listagem atrás. Em monitor grande isso deixava meia tela de folga do lado de
+ *  uma ficha apertada: o que existe atrás é a listagem de onde se veio, e quem
+ *  arrasta a borda até o fim está dizendo que quer a ficha, não ela.
+ *
+ *  A faixa que sobra não é enfeite. É por ela que se clica para fechar, e é ela
+ *  que diz de que tela a gaveta saiu - por isso o teto é proporcional, e não a
+ *  janela inteira: em qualquer tamanho de tela sobra uma nesga clicável.
+ *
+ *  O mesmo 96% está no `min(Xpx, 96vw)` com que cada gaveta se desenha, então o
+ *  arrasto para no ponto exato em que a largura para de crescer - passar disso
+ *  seria arrastar sem nada acontecer. */
+const PROPORCAO_MAXIMA = 0.96;
+
+export function painelMaximo(): number {
+  if (typeof window === 'undefined') return PAINEL_MIN;
+  return Math.max(PAINEL_MIN, Math.round(window.innerWidth * PROPORCAO_MAXIMA));
+}
 
 /** Cada painel guarda a própria largura: alargar o de projeto não devia mexer
  *  no de tarefa. O de projeto fica com a chave antiga, sem sufixo, para quem já
@@ -22,10 +41,14 @@ export const PAINEL_MAX = 1100;
 const chaveDaLargura = (nome: string) =>
   nome === 'projeto' ? 'portal-sheep:largura-painel' : `portal-sheep:largura-painel:${nome}`;
 
+/** Sem teto na leitura: quem alargou num monitor grande e abriu o portal no
+ *  notebook não perde o ajuste - quem corta a largura na hora de desenhar é o
+ *  `min(Xpx, 96vw)` da gaveta, e a medida guardada continua inteira para quando
+ *  a tela grande voltar. */
 function larguraGuardada(chave: string): number {
   try {
     const n = Number(localStorage.getItem(chave));
-    return Number.isFinite(n) && n >= PAINEL_MIN ? Math.min(n, PAINEL_MAX) : PAINEL_MIN;
+    return Number.isFinite(n) && n >= PAINEL_MIN ? n : PAINEL_MIN;
   } catch {
     // Navegador com armazenamento bloqueado: vale o padrão.
     return PAINEL_MIN;
@@ -46,7 +69,7 @@ export function useLarguraPainel(nome: string) {
     const mover = (e: MouseEvent) =>
       setLargura(Math.round(Math.min(
         Math.max(window.innerWidth - e.clientX, PAINEL_MIN),
-        Math.min(PAINEL_MAX, window.innerWidth - 40),
+        painelMaximo(),
       )));
 
     const soltar = () => setArrastando(false);
@@ -73,7 +96,7 @@ export function useLarguraPainel(nome: string) {
     const passo = e.key === 'ArrowLeft' ? 40 : e.key === 'ArrowRight' ? -40 : 0;
     if (!passo) return;
     e.preventDefault();
-    setLargura(l => Math.min(Math.max(l + passo, PAINEL_MIN), PAINEL_MAX));
+    setLargura(l => Math.min(Math.max(l + passo, PAINEL_MIN), painelMaximo()));
   };
 
   return { largura, arrastando, setArrastando, porTecla };
