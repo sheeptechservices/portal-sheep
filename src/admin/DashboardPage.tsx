@@ -10,10 +10,14 @@
 //  próximos entram embaixo, na mesma moldura.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useAuth } from './AdminApp';
-import { IconAlert, IconMedalha } from '../components/icons';
+import { IconAlert, IconMedalha, IconTrendDown, IconTrendUp } from '../components/icons';
 import { Skeleton } from '../components/Skeleton';
 import { SegSwitch } from '../components/SegSwitch';
+import { CartaoKpi } from '../components/CartaoKpi';
+import { Donut } from '../components/Donut';
+import { COR_ENTREGA } from '../lib/etapasEntrega';
 
 /** Um projeto fechado no mês, para o detalhe que o clique na coluna abre. */
 interface ProjetoFechado {
@@ -139,11 +143,22 @@ export default function DashboardPage({ token }: { token: string }) {
   return (
     // A moldura de toda página do painel: é dela que vem a folga das bordas e o
     // vão entre os blocos. Sem ela a página encostava na barra lateral.
-    <div className="admin-content-wrap">
-      <div className="admin-page-header">
+    <div className="admin-content-wrap pagina-cristal pagina-painel">
+      {/* Os indicadores moram no cabeçalho, à direita do título: é a leitura
+          de relance da página, e ela não deve custar uma rolagem. */}
+      <div className="admin-page-header painel-cabecalho">
         <div>
           <h1 className="admin-page-title">Dashboard</h1>
-          <p className="admin-page-desc">Os números da casa, por assunto.</p>
+          <p className="admin-page-desc">
+            Os números da casa, por assunto. O que está marcado como exemplo é
+            maquete: o desenho do painel antes dos dados.
+          </p>
+        </div>
+        <div className="admin-stats painel-kpis">
+          {EXEMPLO.kpis.map((k, i) => (
+            <CartaoKpi key={k.rotulo} rotulo={k.rotulo} valor={k.valor} nota={k.nota}
+              cor={k.cor} atraso={i * 0.05} />
+          ))}
         </div>
       </div>
 
@@ -191,6 +206,8 @@ export default function DashboardPage({ token }: { token: string }) {
             serie={desenhada} metrica={metrica} />
         )}
       </section>
+
+      <MaqueteDoPainel />
     </div>
   );
 }
@@ -460,6 +477,309 @@ function GraficoFechados({ serie, metrica }: { serie: MesFechado[]; metrica: Met
         <strong>{total}</strong> fechada{total === 1 ? '' : 's'} no período
         {totalValor > 0 && <> · {dinheiro(totalValor)} somados</>}
       </p>
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  A maquete do painel.
+//
+//  Os blocos daqui para baixo são exemplo: números inventados, no lugar e no
+//  formato que os de verdade vão ocupar quando cada consulta existir. Servem
+//  para decidir o desenho do painel - quantos cartões cabem na fileira, que
+//  gráfico responde melhor a cada pergunta - sem esperar o servidor.
+//
+//  Cada um leva a marca "Exemplo" ao lado do título, e ela sai junto com o
+//  mock. Número inventado sem aviso num painel é o tipo de coisa que vira
+//  decisão errada numa reunião, e o aviso custa uma etiqueta.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A paleta dos gráficos: o verde da casa, e os tons que as etapas de entrega
+ *  já usam. Nada de hex novo - cor de dado no sistema sai daqui. */
+const TINTA = {
+  principal: 'var(--yellow)',
+  apoio: 'var(--gray2)',
+  entregue: COR_ENTREGA['Entregue'],
+  andamento: COR_ENTREGA['Em andamento'],
+  validada: COR_ENTREGA['Validada'],
+  parada: COR_ENTREGA['Planejada'],
+};
+
+const MESES_EXEMPLO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun'];
+
+/** Uma série de barras verticais. Com mais de um valor por grupo elas ficam
+ *  lado a lado dentro do mesmo mês, que é o que se lê como comparação. */
+function BarrasVerticais({ grupos, series, altura = 148 }: {
+  grupos: { rotulo: string; valores: number[] }[];
+  series: { nome: string; cor: string }[];
+  altura?: number;
+}) {
+  const teto = Math.max(1, ...grupos.flatMap(g => g.valores));
+  return (
+    <>
+      <div className="mini-grafico" style={{ height: altura }}>
+        {grupos.map(g => (
+          <div key={g.rotulo} className="mini-grupo">
+            <span className="mini-barras">
+              {g.valores.map((v, i) => (
+                <span key={series[i].nome} className="mini-barra"
+                  title={`${series[i].nome}: ${v}`}
+                  style={{ height: `${(v / teto) * 100}%`, background: series[i].cor }} />
+              ))}
+            </span>
+            <span className="mini-rotulo">{g.rotulo}</span>
+          </div>
+        ))}
+      </div>
+      {series.length > 1 && <Legenda series={series} />}
+    </>
+  );
+}
+
+/** As mesmas barras, uma em cima da outra: aqui a pergunta é de que o total é
+ *  feito, e não quanto cada parte deu sozinha. */
+function BarrasEmpilhadas({ grupos, series, altura = 148 }: {
+  grupos: { rotulo: string; valores: number[] }[];
+  series: { nome: string; cor: string }[];
+  altura?: number;
+}) {
+  const soma = (g: { valores: number[] }) => g.valores.reduce((a, b) => a + b, 0);
+  const teto = Math.max(1, ...grupos.map(soma));
+  return (
+    <>
+      <div className="mini-grafico" style={{ height: altura }}>
+        {grupos.map(g => (
+          <div key={g.rotulo} className="mini-grupo">
+            <span className="mini-pilha" style={{ height: `${(soma(g) / teto) * 100}%` }}>
+              {g.valores.map((v, i) => (
+                <span key={series[i].nome} className="mini-fatia"
+                  title={`${series[i].nome}: ${v}`}
+                  style={{ flexGrow: v, background: series[i].cor }} />
+              ))}
+            </span>
+            <span className="mini-rotulo">{g.rotulo}</span>
+          </div>
+        ))}
+      </div>
+      <Legenda series={series} />
+    </>
+  );
+}
+
+/** Barras deitadas: para quando o rótulo é um nome, e não um mês. Em pé, seis
+ *  nomes de cliente viram seis textos tombados. */
+function BarrasHorizontais({ itens, cor, rotuloDentro }: {
+  itens: { rotulo: string; valor: number }[];
+  cor: string;
+  /** O nome vai dentro da barra, como no painel de referência. Fora dela, a
+   *  coluna de nomes come metade da largura num painel de um terço de tela. */
+  rotuloDentro?: boolean;
+}) {
+  const teto = Math.max(1, ...itens.map(i => i.valor));
+  return (
+    <div className={`mini-linhas${rotuloDentro ? ' com-nome-dentro' : ''}`}>
+      {itens.map(i => (
+        <div key={i.rotulo} className="mini-linha">
+          {!rotuloDentro && <span className="mini-linha-nome">{i.rotulo}</span>}
+          <span className="mini-trilho">
+            <span className="mini-preenche"
+              style={{ width: `${Math.max(6, (i.valor / teto) * 100)}%`, background: cor }}>
+              {rotuloDentro && <span className="mini-dentro">{i.rotulo}</span>}
+            </span>
+          </span>
+          <span className="mini-linha-valor">{i.valor}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** A legenda das séries. Só aparece quando há mais de uma: com uma só, ela
+ *  repetiria o título do painel. */
+function Legenda({ series }: { series: { nome: string; cor: string }[] }) {
+  return (
+    <div className="mini-legenda">
+      {series.map(s => (
+        <span key={s.nome} className="mini-legenda-item">
+          <span className="mini-legenda-cor" style={{ background: s.cor }} />
+          {s.nome}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Um bloco do painel: o título do assunto, uma linha dizendo o que se lê ali, e
+ * os gráficos embaixo.
+ *
+ * O bloco é a moldura, e não cada gráfico. Cada um numa caixa própria, a página
+ * virava uma parede de cartões iguais onde nada dizia o que estava junto com o
+ * quê - e a leitura passa a ser "que assunto é este", que é a pergunta do
+ * bloco, não do gráfico.
+ */
+function Bloco({ titulo, apoio, exemplo, children }: {
+  titulo: string;
+  apoio: string;
+  /** Marca o bloco inteiro como maquete. Uma vez por assunto, e não um selo em
+   *  cima de cada gráfico: seis etiquetas iguais na mesma tela viram ruído, e a
+   *  primeira já disse o que era preciso dizer. */
+  exemplo?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <section className="bloco">
+      <div className="bloco-topo">
+        <p className="bloco-titulo">
+          {titulo}
+          {exemplo && <span className="painel-marca">Exemplo</span>}
+        </p>
+        <p className="bloco-apoio">{apoio}</p>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * Um gráfico no cartão da casa: título, o período que ele cobre, o desenho e a
+ * linha de leitura embaixo.
+ *
+ * O cartão é o mesmo `.painel` do Comercial - mesma moldura, mesmo acabamento
+ * de cristal. Um gráfico solto sobre a folha lia como sobra da página; dentro
+ * do cartão ele é uma peça, e a fileira de três vira uma fileira de peças.
+ */
+function Quadro({ titulo, periodo, tendencia, caindo, nota, children }: {
+  titulo: string;
+  periodo: string;
+  tendencia: string;
+  caindo?: boolean;
+  nota: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="painel quadro">
+      <div className="quadro-cabeca">
+        <p className="quadro-titulo">{titulo}</p>
+        <p className="quadro-periodo">{periodo}</p>
+      </div>
+      {children}
+      <p className="quadro-rodape">
+        <span className={`painel-tendencia-linha${caindo ? ' caindo' : ''}`}>
+          {caindo ? <IconTrendDown size={13} /> : <IconTrendUp size={13} />}
+          <strong>{tendencia}</strong>
+        </span>
+        <span className="painel-tendencia-nota">{nota}</span>
+      </p>
+    </section>
+  );
+}
+
+/** Os números inventados da maquete, num lugar só - trocar o mock por consulta
+ *  é apagar esta constante e o que a lê. */
+const EXEMPLO = {
+  kpis: [
+    { rotulo: 'Projetos ativos', valor: 12, nota: '3 neste mês', cor: 'var(--yellow)' },
+    { rotulo: 'Entregas no prazo', valor: '87%', nota: 'em 6 meses', cor: COR_ENTREGA['Validada'] },
+    { rotulo: 'Horas apontadas', valor: '1.248', nota: 'no mês', cor: COR_ENTREGA['Em andamento'] },
+    { rotulo: 'Chamados abertos', valor: 5, nota: '2 esperando', cor: 'var(--gray2)' },
+  ],
+  entregas: [8, 12, 9, 15, 11, 18, 14, 19, 16, 21, 17, 24],
+  clientes: [
+    { rotulo: 'Grupo 3SA', valor: 9 },
+    { rotulo: 'Cheirin Bão', valor: 7 },
+    { rotulo: 'J17 Bank', valor: 5 },
+    { rotulo: 'Prontomed', valor: 4 },
+    { rotulo: 'Orteconte', valor: 2 },
+  ],
+  planejadoEntregue: [[10, 8], [12, 12], [9, 7], [14, 15], [11, 10], [16, 18]],
+  horas: [
+    { rotulo: 'Guilherme', valor: 168 },
+    { rotulo: 'Thales', valor: 152 },
+    { rotulo: 'Equipe dev', valor: 486 },
+    { rotulo: 'Parceiros', valor: 210 },
+  ],
+  tarefas: [[6, 4, 10], [8, 5, 12], [5, 6, 9], [9, 4, 14], [7, 7, 11], [10, 5, 16]],
+  chamados: [
+    { rotulo: 'Bug', valor: 14 },
+    { rotulo: 'Melhoria', valor: 23 },
+    { rotulo: 'Dúvida', valor: 8 },
+  ],
+  receita: [
+    { chave: 'projetos', rotulo: 'Projetos', valor: 48, cor: 'var(--yellow)' },
+    { chave: 'squad', rotulo: 'Squad alocado', valor: 31, cor: COR_ENTREGA['Entregue'] },
+    { chave: 'manutencao', rotulo: 'Manutenção', valor: 14, cor: COR_ENTREGA['Em andamento'] },
+    { chave: 'consultoria', rotulo: 'Consultoria', valor: 7, cor: COR_ENTREGA['Planejada'] },
+  ],
+};
+
+/** Os doze meses do exemplo temporal, do mais antigo para o mais novo. */
+const DOZE_MESES = ['out', 'nov', 'dez', 'jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set'];
+
+/** A maquete: um bloco largo em cima e dois de três gráficos embaixo. */
+function MaqueteDoPainel() {
+  const mes = (i: number) => MESES_EXEMPLO[i];
+  return (
+    <>
+      <Bloco titulo="Entregas" exemplo
+        apoio="Quanto a casa entregou por mês, nos últimos doze.">
+        {/* Largura cheia: a série temporal é a que mais ganha com espaço - doze
+            meses espremidos num terço de tela viram serrilha. */}
+        <Quadro titulo="Entregas validadas por mês" periodo="outubro de 2025 a setembro de 2026"
+          tendencia="Subindo 5,2% em relação ao mês passado"
+          nota="184 entregas validadas no período">
+          <BarrasVerticais altura={200}
+            series={[{ nome: 'Entregas', cor: TINTA.principal }]}
+            grupos={EXEMPLO.entregas.map((v, i) => ({ rotulo: DOZE_MESES[i], valores: [v] }))} />
+        </Quadro>
+      </Bloco>
+
+      <Bloco titulo="Projetos e time" exemplo
+        apoio="De onde vem o trabalho, como ele foi planejado e onde as horas foram parar.">
+        <div className="bloco-grade">
+          <Quadro titulo="Projetos por cliente" periodo="janeiro a junho de 2026"
+            tendencia="Dois clientes novos no semestre" nota="Projetos abertos por conta">
+            <BarrasHorizontais itens={EXEMPLO.clientes} cor={TINTA.principal} />
+          </Quadro>
+          <Quadro titulo="Planejado x entregue" periodo="janeiro a junho de 2026"
+            tendencia="Acima do planejado em dois meses" nota="Comparação mês a mês">
+            <BarrasVerticais
+              series={[
+                { nome: 'Planejado', cor: TINTA.apoio },
+                { nome: 'Entregue', cor: TINTA.principal },
+              ]}
+              grupos={EXEMPLO.planejadoEntregue.map((v, i) => ({ rotulo: mes(i), valores: v }))} />
+          </Quadro>
+          <Quadro titulo="Horas por frente" periodo="setembro de 2026"
+            tendencia="Equipe dev com 47% do total" nota="Apontamentos do mês corrente">
+            <BarrasHorizontais itens={EXEMPLO.horas} cor={TINTA.entregue} />
+          </Quadro>
+        </div>
+      </Bloco>
+
+      <Bloco titulo="Qualidade e receita" exemplo
+        apoio="O que a fila de trabalho mostra, o que o time reportou e de onde vem o dinheiro.">
+        <div className="bloco-grade">
+          <Quadro titulo="Tarefas por etapa" periodo="janeiro a junho de 2026"
+            tendencia="Fila 8% mais curta que em maio" nota="Composição do quadro no fim do mês">
+            <BarrasEmpilhadas
+              series={[
+                { nome: 'A fazer', cor: TINTA.parada },
+                { nome: 'Em andamento', cor: TINTA.andamento },
+                { nome: 'Concluídas', cor: TINTA.validada },
+              ]}
+              grupos={EXEMPLO.tarefas.map((v, i) => ({ rotulo: mes(i), valores: v }))} />
+          </Quadro>
+          <Quadro titulo="Chamados por tipo" periodo="últimos 90 dias" caindo
+            tendencia="Bugs caindo 12% no trimestre" nota="O que o time reportou no portal">
+            <BarrasHorizontais itens={EXEMPLO.chamados} cor={TINTA.andamento} rotuloDentro />
+          </Quadro>
+          <Quadro titulo="Composição da receita" periodo="primeiro semestre de 2026"
+            tendencia="Recorrente em 45% do total" nota="Participação de cada frente">
+            <Donut fatias={EXEMPLO.receita} unidade="por cento" tamanho={118} esticar />
+          </Quadro>
+        </div>
+      </Bloco>
     </>
   );
 }

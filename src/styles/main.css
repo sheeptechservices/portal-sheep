@@ -5550,6 +5550,7 @@ button.checklist-texto:focus-visible {
 .pagina-cristal .kanban-card,
 .pagina-cristal .linha-grupo,
 .pagina-cristal .admin-table-wrap,
+.pagina-cristal .painel,
 .pagina-cristal .admin-stat-card-v2 {
   border-color: var(--cristal-borda);
   box-shadow: inset 0 1px 0 var(--cristal-luz),
@@ -14890,6 +14891,276 @@ button.checklist-texto:focus-visible {
   color: var(--gray);
 }
 .painel-rodape strong { color: var(--black); font-weight: 800; }
+
+/* ── Os blocos do Dashboard ───────────────────────────────────────────────────
+   O painel Comercial tem moldura porque e dado de verdade e se le sozinho. O
+   resto da pagina e bloco: um assunto por vez, com titulo, uma linha dizendo o
+   que se le ali e os graficos correndo embaixo, separados so pelo vao.
+
+   Cada grafico numa caixa propria virava uma parede de cartoes iguais, onde
+   nada dizia o que estava junto com o que - a pergunta "que assunto e este"
+   e do bloco, e nao de cada desenho. */
+.bloco {
+  padding-top: 22px;
+  border-top: 1px solid var(--gray4);
+}
+.bloco-topo { margin-bottom: 18px; }
+.bloco-titulo {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -.01em;
+  color: var(--black);
+}
+.bloco-apoio {
+  margin: 3px 0 0;
+  max-width: 72ch;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--gray2);
+}
+/* Tres por linha onde cabem tres, e quantas couberem abaixo disso. O vao e
+   largo de proposito: sem moldura, e ele quem separa um grafico do outro. */
+.bloco-grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 26px 32px;
+}
+/* O cartao de um grafico. Mesma moldura do painel Comercial - o cartao branco
+   veste todo grafico da pagina, e nao so o do topo. */
+.quadro {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 16px 18px 14px;
+}
+/* A cabeca: o que o grafico mede e o periodo que ele cobre, separados do
+   desenho por um fio - e o fio que diz onde acaba o rotulo e comeca o dado. */
+.quadro-cabeca {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--gray4);
+}
+.quadro-titulo {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: -.01em;
+  color: var(--black);
+}
+.quadro-periodo {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--gray2);
+}
+/* O rodape desce para o pe do cartao: numa fileira de tres alturas diferentes,
+   a linha de leitura flutuando no meio le como desalinho. */
+.quadro-rodape {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 16px 0 0;
+  font-size: 12.5px;
+  color: var(--gray);
+}
+.bloco-grade .quadro-rodape { margin-top: auto; }
+
+/* A etiqueta de maquete. Discreta, mas ao lado do titulo e nao no rodape: quem
+   olha o numero grande tem de ver ali mesmo que ele e inventado. */
+.painel-marca {
+  margin-left: 8px;
+  padding: 2px 7px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-pill);
+  background: var(--bg);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gray2);
+  vertical-align: 2px;
+}
+
+/* A linha de tendencia do rodape: a leitura em negrito na primeira linha, o
+   recorte de onde ela saiu na segunda. */
+.painel-tendencia-linha {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--green);
+}
+.painel-tendencia-linha.caindo { color: var(--red); }
+.painel-tendencia-linha strong { color: inherit; font-weight: 700; }
+.painel-tendencia-nota { color: var(--gray2); font-size: 11.5px; }
+
+/* O cabecalho do painel: titulo a esquerda, indicadores a direita. E a leitura
+   de relance da pagina, e ela nao deve custar uma rolagem. Numa tela estreita a
+   fileira quebra para baixo do titulo, que e onde ela cabe. */
+.painel-cabecalho {
+  align-items: flex-start;
+  gap: 20px 28px;
+  flex-wrap: wrap;
+}
+.painel-cabecalho > div:first-child { flex: 1 1 260px; min-width: 0; }
+/* Os cartoes encolhem ate caber: no cabecalho eles dividem a linha com o
+   titulo, e nao a tela inteira como no alto de uma listagem. */
+.painel-kpis {
+  flex: 1 1 520px;
+  justify-content: flex-end;
+  margin: 0;
+}
+.painel-kpis .admin-stat-card-v2 { flex: 0 1 160px; padding: 10px 14px; }
+.painel-kpis .stat-v2-value { font-size: 22px; }
+
+/* ── Os graficos pequenos ─────────────────────────────────────────────────────
+   Barras em CSS, como a serie do painel Comercial: a altura sai de uma
+   porcentagem do proprio quadro, entao nada precisa medir largura em
+   JavaScript nem re-renderizar quando a janela muda. */
+.mini-grafico {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  /* Quatro fios claros atravessando o quadro, como no painel de referencia:
+     sem eles, comparar a altura de duas barras distantes e chute. Vao no fundo
+     e nao em elemento proprio - e desenho de apoio, nao conteudo. */
+  background-image: repeating-linear-gradient(
+    to top, var(--gray4) 0 1px, transparent 1px 25%);
+  background-position: 0 calc(100% - 21px);
+  background-size: 100% calc(100% - 21px);
+  background-repeat: no-repeat;
+}
+.mini-grupo {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+}
+/* As barras do mes, lado a lado. Encostadas entre si e separadas dos vizinhos
+   pelo vao do grupo: e o que diz que as duas sao do mesmo mes. */
+.mini-barras {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+}
+.mini-barra,
+.mini-pilha {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 26px;
+  border-radius: 4px 4px 0 0;
+  animation: mini-cresce .34s var(--curva-anti) both;
+  transition: filter var(--transition);
+}
+.mini-barra:hover, .mini-pilha:hover { filter: brightness(1.06); }
+/* A pilha e a barra inteira; as fatias dividem a altura dela na proporcao dos
+   valores, e so a de cima arredonda - as de baixo sao emenda. */
+.mini-pilha {
+  width: 100%;
+  display: flex;
+  flex-direction: column-reverse;
+  overflow: hidden;
+  background: none;
+}
+.mini-fatia { flex-basis: 0; min-height: 2px; }
+.mini-rotulo {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--gray2);
+  white-space: nowrap;
+}
+
+/* Barras deitadas. O trilho e a medida, o preenchimento e o valor. */
+.mini-linhas { display: flex; flex-direction: column; gap: 10px; }
+.mini-linha { display: flex; align-items: center; gap: 8px; }
+.mini-linha-nome {
+  flex: 0 0 86px;
+  font-size: 11.5px;
+  color: var(--gray);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mini-trilho {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  background: var(--gray4);
+  overflow: hidden;
+}
+.mini-preenche {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  border-radius: var(--radius-sm);
+  animation: mini-estica .34s var(--curva-anti) both;
+  transition: filter var(--transition);
+}
+.mini-preenche:hover { filter: brightness(1.06); }
+/* O nome dentro da barra, como na referencia. Branco porque a barra e cheia, e
+   com sombra rasa para continuar legivel na ponta mais clara. */
+.mini-dentro {
+  padding: 0 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--white);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .18);
+}
+.mini-linha-valor {
+  flex: none;
+  min-width: 22px;
+  text-align: right;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--black);
+}
+
+.mini-legenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 12px;
+}
+.mini-legenda-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--gray2);
+}
+.mini-legenda-cor {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  flex: none;
+}
+
+/* As barras crescem do chao, como a area do painel Comercial: o grafico se
+   monta, e nao aparece pronto de estalo. */
+@keyframes mini-cresce {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+@keyframes mini-estica {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.mini-barra, .mini-pilha { transform-origin: bottom; }
+.mini-preenche { transform-origin: left; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mini-barra, .mini-pilha, .mini-preenche { animation: none; }
+}
 
 /* A serie mensal, em area. Cada coluna tem o numero em cima, a celula do
    desenho no meio - que e quem tem altura fixa e faz o ponto subir em
