@@ -2,16 +2,29 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 
+/** A partir de quantos itens a lista deixa de caber de uma olhada e ganha
+ *  busca. O mesmo número para todo filtro do sistema: a régua é o tamanho da
+ *  lista, e não o assunto dela. */
+const BUSCA_A_PARTIR_DE = 5;
+
+/** Ignora acento, porque ninguém digita "Bão" para achar Cheirin Bão. */
+const semAcento = (t: string) =>
+  t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+
 // ── Filtro de múltipla escolha ───────────────────
 export default function FilterDropdown({
   label, values, options, onChange,
 }: {
   label: string;
   values: string[];
-  options: { value: string; label: string }[];
+  /** `sub` é a segunda linha da opção: o cliente do projeto, por exemplo. Ela
+   *  identifica o item quando o rótulo sozinho não basta - a casa tem dois
+   *  projetos chamados "SDR IA" -, e a busca alcança as duas. */
+  options: { value: string; label: string; sub?: string | null }[];
   onChange: (v: string[]) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [busca, setBusca] = useState('');
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -19,6 +32,7 @@ export default function FilterDropdown({
   function openDropdown() {
     const rect = triggerRef.current!.getBoundingClientRect();
     setPos({ top: rect.bottom + 4, left: rect.left });
+    setBusca('');
     setOpen(o => !o);
   }
 
@@ -58,6 +72,12 @@ export default function FilterDropdown({
     onChange(values.includes(v) ? values.filter(x => x !== v) : [...values, v]);
   }
 
+  const buscando = options.length > BUSCA_A_PARTIR_DE;
+  const q = semAcento(busca.trim());
+  const visiveis = q
+    ? options.filter(o => semAcento(`${o.label} ${o.sub ?? ''}`).includes(q))
+    : options;
+
   const hasSelection = values.length > 0;
   const btnLabel = hasSelection
     ? values.length === 1
@@ -85,7 +105,17 @@ export default function FilterDropdown({
               Limpar seleção
             </div>
           )}
-          {options.map(o => {
+          {/* A busca some junto com a lista curta: campo em cima de cinco
+              linhas é mais peça para ler do que atalho. */}
+          {buscando && (
+            <input className="form-input filter-dropdown-busca" value={busca} autoFocus
+              placeholder="Buscar" aria-label={`Buscar em ${label}`}
+              onChange={e => setBusca(e.target.value)} />
+          )}
+          {visiveis.length === 0 && (
+            <p className="filter-dropdown-vazio">Nada com esse nome.</p>
+          )}
+          {visiveis.map(o => {
             const checked = values.includes(o.value);
             return (
               <div
@@ -100,7 +130,10 @@ export default function FilterDropdown({
                     </svg>
                   )}
                 </span>
-                {o.label}
+                <span className="filter-dropdown-texto">
+                  {o.label}
+                  {o.sub && <span className="filter-dropdown-sub">{o.sub}</span>}
+                </span>
               </div>
             );
           })}

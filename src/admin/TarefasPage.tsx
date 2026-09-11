@@ -511,7 +511,18 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
     const uniq = (vs: (string | null)[]) =>
       [...new Set(vs.filter((v): v is string => !!v))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
     return {
-      projeto: uniq(tarefas.map(t => t.projeto.nome)).map(v => ({ value: v, label: v })),
+      // O cliente na segunda linha: a casa tem dois projetos com o mesmo nome, e
+      // numa lista de nomes soltos eles sao a mesma linha duas vezes. O filtro
+      // casa por nome, entao nome repetido em dois clientes mostra os dois - e
+      // e isso que ele vai filtrar.
+      projeto: uniq(tarefas.map(t => t.projeto.nome)).map(v => ({
+        value: v,
+        label: v,
+        sub: [...new Set(tarefas
+          .filter(t => t.projeto.nome === v)
+          .map(t => t.projeto.cliente_nome)
+          .filter((c): c is string => !!c))].join(', ') || null,
+      })),
       status: uniq(tarefas.map(t => t.status)).map(v => ({ value: v, label: v })),
       responsavel: uniq(tarefas.flatMap(t => nomesDosDonos(t, pessoas))).map(v => ({ value: v, label: v })),
       etiqueta: uniq(tarefas.flatMap(t => t.etiquetas)).map(v => ({ value: v, label: v })),

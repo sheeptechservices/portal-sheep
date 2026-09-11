@@ -3946,7 +3946,28 @@ body.arrastando-painel {
   animation: panelUp .08s ease both;
 }
 
+/* A busca do filtro, acima da lista. Fica grudada no topo enquanto se rola:
+   com trinta projetos, digitar exigia voltar ao comeco a cada rolagem. */
+.filter-dropdown-busca {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 30px;
+  margin-bottom: 4px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+.filter-dropdown-vazio {
+  margin: 0;
+  padding: 10px;
+  font-size: 12px;
+  color: var(--gray2);
+}
+
 .filter-dropdown-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   padding: 7px 10px;
   font-size: 12px;
   font-weight: 500;
@@ -3954,6 +3975,18 @@ body.arrastando-painel {
   border-radius: 6px;
   cursor: pointer;
   transition: background var(--transition), color var(--transition);
+}
+/* O rotulo e a segunda linha em coluna, ao lado da marca de escolhido. */
+.filter-dropdown-texto { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+/* Quem e o item, quando o nome nao basta: o cliente do projeto. Miudo e em
+   cinza - e identificacao, e nao um segundo rotulo. */
+.filter-dropdown-sub {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--gray2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .filter-dropdown-option:hover {

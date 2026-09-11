@@ -74,7 +74,13 @@ export function SelectSistema<T extends string>({
     t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLocaleLowerCase('pt-BR');
   const buscando = opcoes.length > BUSCA_A_PARTIR_DE;
   const q = semAcento(busca.trim());
-  const filtradas = q ? opcoes.filter(o => semAcento(o.label).includes(q)) : opcoes;
+  // A busca alcança também a descrição da opção. Onde ela existe, é dado de
+  // identificação e não enfeite: na lista de projetos do inbox a descrição é o
+  // cliente, e procurar "orteconte" não achava o projeto dele - a linha estava
+  // na tela dizendo justamente isso.
+  const filtradas = q
+    ? opcoes.filter(o => semAcento(`${o.label} ${o.descricao ?? ''}`).includes(q))
+    : opcoes;
 
   function abrir() {
     const rect = triggerRef.current!.getBoundingClientRect();
