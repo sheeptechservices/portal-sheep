@@ -10,7 +10,7 @@ import {
   IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado, IconMarcoValidado,
   IconPlay, IconPlus, IconPrioridadeAlta, IconPrioridadeBaixa, IconPrioridadeMaxima,
   IconRecolher,
-  IconPrioridadeMedia, IconTrash, IconTrendDown, IconTrendFlat, IconTrendUp, IconTrendWavy,
+  IconPrioridadeMedia, IconTrash,
   IconTriangulo, IconVisaoLista, IconVisaoQuadro,
   IconX, IconZip,
 } from '../components/icons';
@@ -133,24 +133,6 @@ export const ENTREGA_PLANEJADA = 'Planejada';
  *  plano, e as três resoluções. */
 export const ESCOLHAS_DO_MARCO = [ENTREGA_TRIAGEM, ...RESOLUCAO_ENTREGA] as const;
 
-/** Leitura semanal de saúde: semáforo mais o porquê. É histórico, não estado,
- *  então a saúde atual é sempre a leitura mais recente. */
-export const SAUDES = ['Saudável', 'Em risco', 'Com problemas'] as const;
-
-const COR_SAUDE: Record<string, string> = {
-  'Saudável': '#23A455',
-  'Em risco': '#B58300',
-  'Com problemas': '#D93025',
-};
-
-/** Cada estado também tem desenho próprio: quem não distingue verde de vermelho
- *  fica sem informação nenhuma se a cor for o único sinal. */
-const ICONE_SAUDE: Record<string, (p: { size?: number }) => JSX.Element> = {
-  'Saudável': IconTrendUp,
-  'Em risco': IconTrendWavy,
-  'Com problemas': IconTrendDown,
-};
-
 /** Com que etiqueta o arquivo entra. A classificação fina é feita na linha
  *  do anexo, depois de ver o que subiu. */
 const ETIQUETA_PADRAO = 'Documento';
@@ -180,16 +162,6 @@ export interface Arquivo {
   tipo: string;
   tamanho: number;
   criado_em: string;
-  criado_por_nome: string | null;
-}
-
-export interface RegistroSaude {
-  id: number;
-  projeto_id: string;
-  estado: string;
-  descricao: string;
-  criado_em: string;
-  criado_por_id: string | null;
   criado_por_nome: string | null;
 }
 
@@ -315,8 +287,6 @@ export interface Projeto {
   observacoes: string | null;
   equipe: Membro[];
   arquivos: Arquivo[];
-  /** Da leitura mais recente para a mais antiga. */
-  saude: RegistroSaude[];
   /** Da reunião mais recente para a mais antiga. */
   reunioes: Reuniao[];
   /** Na ordem em que foram criadas. */
@@ -472,7 +442,6 @@ function AnelProgresso({ valor, size = 15 }: { valor: number; size?: number }) {
 const CHAVE_ORDEM: Record<string, (p: Projeto) => string | number> = {
   projeto: p => p.nome.toLocaleLowerCase('pt-BR'),
   cliente: p => p.cliente_nome?.toLocaleLowerCase('pt-BR') ?? '\uffff',
-  saude: p => (p.saude[0] ? SAUDES.indexOf(p.saude[0].estado as typeof SAUDES[number]) : SAUDES.length),
   prioridade: p => PRIORIDADES.indexOf((p.prioridade ?? PRIORIDADE_PADRAO) as typeof PRIORIDADES[number]),
   gestor: p => gestorDe(p)?.nome.toLocaleLowerCase('pt-BR') ?? '\uffff',
   // Sem data vai para o fim: projeto sem prazo não disputa urgência.
@@ -737,158 +706,6 @@ function LinhaAnexo({ nome, tamanho, tipo, etiqueta, somenteLeitura, onEtiqueta,
         </button>
       )}
     </div>
-  );
-}
-
-// ── Saúde do projeto ────────────────────────────────────────────────────────
-
-/** Pastilha do semáforo, no mesmo desenho do chip de status. */
-/** Sem leitura o chip não some: um projeto sem acompanhamento é informação, e
- *  esconder isso faz ele parecer igual a um que está em dia. */
-const SEM_LEITURA = 'Sem update';
-
-function ChipSaude({ estado, size = 11.5 }: { estado: string; size?: number }) {
-  const cor = COR_SAUDE[estado] ?? 'var(--gray2)';
-  const Icone = ICONE_SAUDE[estado] ?? IconTrendFlat;
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: size, fontWeight: 700,
-      color: cor, background: `${cor}14`, padding: '3px 9px',
-      borderRadius: 'var(--radius-pill)', whiteSpace: 'nowrap',
-    }}>
-      {Icone ? <Icone size={13} /> : null}
-      {estado}
-    </span>
-  );
-}
-
-/** Leitura semanal de saúde. Fica fora do formulário de propósito: cada
- *  registro é gravado na hora, e não ao salvar o projeto - o histórico é o
- *  produto aqui, e um rascunho perdido levaria a leitura junto. */
-function SecaoSaude({ registros, salvando, somenteLeitura, onRegistrar, onExcluir }: {
-  registros: RegistroSaude[];
-  salvando: boolean;
-  somenteLeitura: boolean;
-  onRegistrar: (estado: string, descricao: string) => Promise<void>;
-  onExcluir: (r: RegistroSaude) => void;
-}) {
-  const [abrindo, setAbrindo] = useState(false);
-  const leitura = useRevelar(abrindo);
-  const [estado, setEstado] = useState<string>('Saudável');
-  const [descricao, setDescricao] = useState('');
-  const [erro, setErro] = useState('');
-
-  async function registrar() {
-    if (!descricao.trim()) {
-      setErro('Descreva a situação do projeto.');
-      return;
-    }
-    await onRegistrar(estado, descricao.trim());
-    setDescricao('');
-    setErro('');
-    setAbrindo(false);
-  }
-
-  return (
-    <section>
-      <div className="admin-section-head">
-        <p className="admin-section-title">
-          Saúde
-          {/* Sem leitura também mostra chip, em cinza: o vazio aqui é a
-              informação de que ninguém olhou o projeto ainda. */}
-          <span style={{ marginLeft: 8 }}>
-            <ChipSaude estado={registros[0]?.estado ?? SEM_LEITURA} size={10} />
-          </span>
-        </p>
-        {!somenteLeitura && (
-          <button type="button" className="secao-add" onClick={() => setAbrindo(a => !a)}
-            title="Registrar leitura de saúde" aria-label="Registrar leitura de saúde">
-            <IconPlus size={14} />
-          </button>
-        )}
-      </div>
-
-      {/* Mesma regra do editor de entrega: o bloco empurra o resto da coluna,
-          então ele cresce e encolhe em vez de piscar. */}
-      {leitura.montado && (
-        <div className={`revelar${leitura.aberto ? ' aberto' : ''}`}>
-        <div>
-        <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {SAUDES.map(e => {
-              const ativo = e === estado;
-              const cor = COR_SAUDE[e];
-              const Icone = ICONE_SAUDE[e];
-              return (
-                <button key={e} type="button" onClick={() => setEstado(e)}
-                  style={{
-                    flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                    padding: '7px 6px', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 700,
-                    borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                    border: `1.5px solid ${ativo ? cor : 'var(--gray3)'}`,
-                    background: ativo ? `${cor}14` : 'var(--white)',
-                    color: ativo ? cor : 'var(--gray2)',
-                    transition: 'border-color var(--transition), color var(--transition), background var(--transition)',
-                  }}>
-                  <Icone size={13} />
-                  {e}
-                </button>
-              );
-            })}
-          </div>
-          <textarea className={`form-input${erro ? ' error' : ''}`} rows={2} value={descricao}
-            onChange={e => { setDescricao(e.target.value); if (erro) setErro(''); }}
-            placeholder="O que sustenta essa leitura: o que avançou, o que travou, o que precisa de decisão" />
-          {erro && <p className="form-error">{erro}</p>}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button type="button" className="modal-acao" onClick={() => { setAbrindo(false); setErro(''); }}>
-              Cancelar
-            </button>
-            <button type="button" className="modal-acao-primaria" disabled={salvando}
-              onClick={() => void registrar()}>
-              {salvando ? 'Registrando…' : 'Registrar'}
-            </button>
-          </div>
-        </div>
-        </div>
-        </div>
-      )}
-
-      {registros.length === 0 ? (
-        <p style={{ fontSize: 12, color: 'var(--gray2)', margin: 0 }}>
-          Nenhuma leitura ainda. A primeira dá o ponto de partida do acompanhamento.
-        </p>
-      ) : (
-        <div className="admin-file-list">
-          {registros.map(reg => (
-            <div key={reg.id} className="admin-file-item" style={{ alignItems: 'flex-start' }}>
-              <span style={{ flexShrink: 0, marginTop: 1, color: COR_SAUDE[reg.estado] ?? 'var(--gray)' }}>
-                {(ICONE_SAUDE[reg.estado] ?? IconTrendWavy)({ size: 15 })}
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 12, fontWeight: 700, margin: 0,
-                  color: COR_SAUDE[reg.estado] ?? 'var(--gray)' }}>
-                  {reg.estado}
-                  <span style={{ marginLeft: 8, fontWeight: 500, color: 'var(--gray2)' }}>
-                    {fmtData(reg.criado_em.slice(0, 10))}
-                    {reg.criado_por_nome ? ` · ${reg.criado_por_nome}` : ''}
-                  </span>
-                </p>
-                <p style={{ fontSize: 12, color: 'var(--gray)', margin: '3px 0 0', whiteSpace: 'pre-wrap' }}>
-                  {reg.descricao}
-                </p>
-              </div>
-              {!somenteLeitura && (
-                <button type="button" className="file-delete-btn" title="Excluir leitura"
-                  aria-label="Excluir leitura de saúde" onClick={() => onExcluir(reg)}>
-                  <IconX size={13} />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
   );
 }
 
@@ -1208,37 +1025,6 @@ function ListaDaCelula({ aberto, ancora, itens, onFechar }: {
   );
 }
 
-/** Saúde na tabela: a lista de estados vem antes do modal. Escolher o estado é
- *  a parte que a pessoa já sabe ao olhar a linha; o texto que sustenta a
- *  leitura vem depois, com o estado já resolvido. */
-function CelulaSaude({ registro, onEscolher }: {
-  registro: RegistroSaude | undefined;
-  onEscolher: (estado: string) => void;
-}) {
-  const [aberto, setAberto] = useState(false);
-  const botao = useRef<HTMLButtonElement>(null);
-  return (
-    <>
-      {/* Só o chip: a idade da leitura vivia aqui dentro e alargava o botão,
-          o que espalhava o realce do hover e a dica por meia célula. Na aba
-          Gestão ela tem coluna própria, que é onde a comparação entre projetos
-          acontece. */}
-      <CelulaEditavel refBotao={botao}
-        titulo={registro?.descricao ?? 'Registrar leitura de saúde'}
-        onAbrir={() => setAberto(a => !a)}>
-        <ChipSaude estado={registro?.estado ?? SEM_LEITURA} size={11} />
-      </CelulaEditavel>
-      <ListaDaCelula aberto={aberto} ancora={botao} onFechar={() => setAberto(false)}
-        itens={SAUDES.map(e => ({
-          chave: e,
-          ativo: e === registro?.estado,
-          conteudo: <ChipSaude estado={e} size={11} />,
-          ao: () => onEscolher(e),
-        }))} />
-    </>
-  );
-}
-
 function CelulaPrioridade({ valor, onChange }: { valor: string; onChange: (v: string) => void }) {
   const [aberto, setAberto] = useState(false);
   const botao = useRef<HTMLButtonElement>(null);
@@ -1332,69 +1118,6 @@ function CelulaData({ valor, atrasado, onChange }: {
     </CelulaEditavel>
   );
 }
-
-/** Saúde não é um valor que se troca, é uma leitura que se registra: por isso
- *  abre o mesmo diálogo do resto do sistema, com o descritivo obrigatório. */
-function DialogoSaude({ projeto, inicial, salvando, onRegistrar, onFechar }: {
-  projeto: Projeto;
-  /** Estado já escolhido na lista da tabela. Sem ele vale a leitura anterior. */
-  inicial?: string;
-  salvando: boolean;
-  onRegistrar: (estado: string, descricao: string) => Promise<void>;
-  onFechar: () => void;
-}) {
-  const [estado, setEstado] = useState<string>(inicial ?? projeto.saude[0]?.estado ?? 'Saudável');
-  const [descricao, setDescricao] = useState('');
-  const [erro, setErro] = useState('');
-
-  async function registrar() {
-    if (!descricao.trim()) { setErro('Descreva a situação do projeto.'); return; }
-    await onRegistrar(estado, descricao.trim());
-    onFechar();
-  }
-
-  return (
-    <Dialogo
-      titulo="Registrar leitura de saúde"
-      descricao={projeto.nome}
-      rotuloOk="Registrar" ocupado={salvando} ocupadoRotulo="Registrando…"
-      corOk={COR_SAUDE[estado]} corTextoOk="var(--on-yellow)"
-      largura={420}
-      onFechar={onFechar}
-      onConfirmar={() => void registrar()}
-    >
-
-        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-          {SAUDES.map(e => {
-            const ativo = e === estado;
-            const cor = COR_SAUDE[e];
-            const Icone = ICONE_SAUDE[e];
-            return (
-              <button key={e} type="button" onClick={() => setEstado(e)}
-                style={{
-                  flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                  padding: '7px 6px', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 700,
-                  borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                  border: `1.5px solid ${ativo ? cor : 'var(--gray3)'}`,
-                  background: ativo ? `${cor}14` : 'var(--white)',
-                  color: ativo ? cor : 'var(--gray2)',
-                  transition: 'border-color var(--transition), color var(--transition), background var(--transition)',
-                }}>
-                <Icone size={13} />{e}
-              </button>
-            );
-          })}
-        </div>
-
-        <textarea className={`form-input${erro ? ' error' : ''}`} rows={3} value={descricao}
-          onChange={e => { setDescricao(e.target.value); if (erro) setErro(''); }}
-          placeholder="O que sustenta essa leitura" style={{ fontSize: 13 }} />
-        {erro && <p className="form-error">{erro}</p>}
-
-    </Dialogo>
-  );
-}
-
 
 // ── Entregas do projeto ─────────────────────────────────────────────────────
 
@@ -2954,8 +2677,8 @@ function SecaoEquipe({ titulo, pessoas, valor, somenteLeitura, onChange }: {
 //  Revista: cada projeto é um capítulo, e a pessoa rola de um para o outro
 //  lendo a mesma sequência - como está, o que andou, o que vem, o que preocupa.
 //  A ordem das seções é a da narrativa, não a da conveniência do banco: começa
-//  pelo diagnóstico (saúde), passa pelo movimento (semana e entregas), mostra o
-//  tempo (o que houve e o que vem) e fecha nos pontos de atenção.
+//  pelo movimento (semana e entregas), mostra o tempo (o que houve e o que
+//  vem) e fecha nos pontos de atenção.
 //
 //  Sem tabela de propósito. Oito colunas viram rolagem lateral no celular, e a
 //  pergunta de quem lê isto não é "compare estes números", é "me conte como
@@ -2964,11 +2687,6 @@ function SecaoEquipe({ titulo, pessoas, valor, somenteLeitura, onChange }: {
 /** Semana é o passo do acompanhamento: define o que é leitura velha, o recorte
  *  da atividade recente e a janela do que está planejado. */
 const DIAS_DA_SEMANA = 7;
-
-function idadeEmDias(iso: string | undefined | null): number | null {
-  if (!iso) return null;
-  return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
-}
 
 /** Segunda-feira desta semana. A semana da casa começa na segunda, e é ela que
  *  o bloco de ações mostra - não uma janela móvel de sete dias, que na quarta
@@ -3010,15 +2728,6 @@ const iso10 = (d: Date) =>
 
 const hojeIso = () => iso10(new Date());
 
-/** Ordem de leitura da revista: o capítulo que pede ação vem primeiro, e dentro
- *  do mesmo estado vem o que ninguém olha há mais tempo. */
-const PESO_SAUDE: Record<string, number> = {
-  'Com problemas': 0,
-  'Em risco': 1,
-  [SEM_LEITURA]: 2,
-  'Saudável': 3,
-};
-
 /** Segunda a sexta desta semana, em ISO. É a régua do quadro: as colunas, o
  *  que conta como "da semana" e o que sobra para o rodapé do fim de semana. */
 function diasUteisDaSemana(): string[] {
@@ -3058,7 +2767,6 @@ function semanaDoProjeto(p: Projeto) {
   return {
     tarefasFeitas: (p.tarefas ?? []).filter(t => dentroDaSemana(t.concluida_em)),
     tarefasNovas: (p.tarefas ?? []).filter(t => dentroDaSemana(t.criado_em)).length,
-    leituras: p.saude.filter(r => dentroDaSemana(r.criado_em)),
     reunioes: p.reunioes.filter(r => dentroDaSemana(r.data)),
     // Evidência nova é o sinal de que uma entrega andou de verdade: ela é
     // exigida tanto para marcar entregue quanto para marcar validada.
@@ -3088,13 +2796,6 @@ function pontosDeAtencao(p: Projeto): { texto: string; grave: boolean }[] {
   const dias = diasPara(p.previsao_entrega);
   if (dias !== null && dias < 0 && p.status !== 'Concluído' && p.status !== 'Cancelado') {
     pontos.push({ texto: `Fim previsto passou há ${Math.abs(dias)} dia(s)`, grave: true });
-  }
-
-  const idadeLeitura = idadeEmDias(p.saude[0]?.criado_em);
-  if (idadeLeitura === null) {
-    pontos.push({ texto: 'Nenhuma leitura de saúde registrada até hoje', grave: false });
-  } else if (idadeLeitura > DIAS_DA_SEMANA) {
-    pontos.push({ texto: `Última leitura de saúde há ${idadeLeitura} dias`, grave: false });
   }
 
   const semDono = (p.tarefas ?? []).filter(t => !(t.responsaveis ?? []).length && !t.concluida_em);
@@ -3137,11 +2838,10 @@ function PessoaFoto({ nome, id, equipe, tamanho = 20 }: {
  *  do clique, é do que está sendo lido - por isso um observador de interseção,
  *  e não um estado guardado ao clicar: rolar com a roda também tem de acender
  *  o item certo. */
-function Indice({ lista, ativo, progressoDe: pct, estadoDe, onIr }: {
+function Indice({ lista, ativo, progressoDe: pct, onIr }: {
   lista: Projeto[];
   ativo: string | null;
   progressoDe: (p: Projeto) => number;
-  estadoDe: (p: Projeto) => string;
   onIr: (id: string) => void;
 }) {
   return (
@@ -3167,8 +2867,6 @@ function Indice({ lista, ativo, progressoDe: pct, estadoDe, onIr }: {
                 title={`Prioridade: ${p.prioridade ?? PRIORIDADE_PADRAO}`}>
                 {ICONE_PRIORIDADE[p.prioridade ?? PRIORIDADE_PADRAO]?.({ size: 13 })}
               </span>
-              <span className="rev-indice-ponto"
-                style={{ background: COR_SAUDE[estadoDe(p)] ?? 'var(--gray3)' }} />
               <span className="rev-indice-nome">{p.cliente_nome ?? 'Sem cliente'}</span>
               <span className="rev-indice-pct">{pct(p)}%</span>
             </button>
@@ -3536,27 +3234,23 @@ function QuadroDaSemana({ projeto: p, itens, etapaDeEntrada, etapaDeConclusao, p
   );
 }
 
-function Capitulo({ projeto: p, numero, registrar, pessoas, onAbrir, onRegistrarSaude,
+function Capitulo({ projeto: p, numero, registrar, pessoas, onAbrir,
   onSalvarTarefa, onAbrirTarefa, etapaDeEntrada, etapaDeConclusao,
-  podeEditar, podeEditarTarefa }: {
+  podeEditarTarefa }: {
   projeto: Projeto;
   numero: number;
   /** Entrega o nó ao índice, que precisa dele para rolar até aqui. */
   registrar: (id: string, el: HTMLElement | null) => void;
   pessoas: Pessoa[];
   onAbrir: (p: Projeto) => void;
-  onRegistrarSaude: (p: Projeto, estado: string) => void;
   onSalvarTarefa: (t: Tarefa, mudancas: Record<string, unknown>) => void;
   onAbrirTarefa: (t: Tarefa, p: Projeto) => void;
   etapaDeEntrada: string;
   etapaDeConclusao: string;
-  podeEditar: boolean;
   /** Mexer na tarefa é outra permissão: a revista vive em Projetos, mas o
    *  servidor cobra `tarefas:editar` de quem grava. */
   podeEditarTarefa: boolean;
 }) {
-  const leitura = p.saude[0];
-  const idade = idadeEmDias(leitura?.criado_em);
   const semana = semanaDoProjeto(p);
   const itensDaSemana = tarefasDaSemana(p);
   const pontos = pontosDeAtencao(p);
@@ -3622,13 +3316,6 @@ function Capitulo({ projeto: p, numero, registrar, pessoas, onAbrir, onRegistrar
             {p.prioridade ?? PRIORIDADE_PADRAO}
           </span>
         </Prop>
-        <Prop rotulo="Saúde">
-          {podeEditar ? (
-            <CelulaSaude registro={leitura} onEscolher={e => onRegistrarSaude(p, e)} />
-          ) : (
-            <ChipSaude estado={leitura?.estado ?? SEM_LEITURA} size={11} />
-          )}
-        </Prop>
         <Prop rotulo="Fim previsto">
           {p.previsao_entrega ? (
             <>
@@ -3650,30 +3337,6 @@ function Capitulo({ projeto: p, numero, registrar, pessoas, onAbrir, onRegistrar
             {progresso}%
           </span>
         </Prop>
-      </div>
-
-      {/* Destaque com a leitura da semana: a barra e o ícone tomam a cor da
-          saúde, para o diagnóstico e a frase que o explica lerem como um só. */}
-      <div className="nt-destaque"
-        style={{ ['--cor-saude' as string]: COR_SAUDE[leitura?.estado ?? ''] ?? 'var(--gray3)' }}>
-        <span className="nt-destaque-icone">
-          <IconAlert size={15} />
-        </span>
-        <div className="nt-destaque-texto">
-          {leitura ? (
-            <>
-              <p>{leitura.descricao}</p>
-              <p className="nt-destaque-pe">
-                <PessoaFoto nome={leitura.criado_por_nome ?? 'Alguém da equipe'}
-                  id={leitura.criado_por_id} equipe={p.equipe} tamanho={16} />
-                <span className="nt-sep">·</span>
-                {idade === null ? '' : idade === 0 ? 'hoje' : `há ${idade} dia${idade > 1 ? 's' : ''}`}
-              </p>
-            </>
-          ) : (
-            <p className="nt-vazio">Ninguém registrou como este projeto está indo.</p>
-          )}
-        </div>
       </div>
 
       <Bloco titulo="Ações da semana" contagem={semana.tarefasFeitas.length}>
@@ -3735,18 +3398,16 @@ function Capitulo({ projeto: p, numero, registrar, pessoas, onAbrir, onRegistrar
 }
 
 function AbaGestao({
-  projetos, pessoas, onAbrir, onRegistrarSaude, onSalvarTarefa, onAbrirTarefa,
-  etapaDeEntrada, etapaDeConclusao, podeEditar, podeEditarTarefa,
+  projetos, pessoas, onAbrir, onSalvarTarefa, onAbrirTarefa,
+  etapaDeEntrada, etapaDeConclusao, podeEditarTarefa,
 }: {
   projetos: Projeto[];
   pessoas: Pessoa[];
   onAbrir: (p: Projeto) => void;
-  onRegistrarSaude: (p: Projeto, estado: string) => void;
   onSalvarTarefa: (t: Tarefa, mudancas: Record<string, unknown>) => void;
   onAbrirTarefa: (t: Tarefa, p: Projeto) => void;
   etapaDeEntrada: string;
   etapaDeConclusao: string;
-  podeEditar: boolean;
   podeEditarTarefa: boolean;
 }) {
   // Guardado por id de quem está fechado, e não de quem está aberto: assim um
@@ -3759,8 +3420,6 @@ function AbaGestao({
     else nos.current.delete(id);
   }, []);
 
-  const estadoDe = (p: Projeto) => p.saude[0]?.estado ?? SEM_LEITURA;
-
   // A revista é da operação corrente: projeto concluído, pausado ou cancelado
   // não tem semana que valha a pena contar.
   const emAndamento = useMemo(
@@ -3769,27 +3428,15 @@ function AbaGestao({
   );
 
   // A ordem do relatório: prioridade primeiro, porque é a decisão que a casa
-  // já tomou sobre o que importa mais. Dentro da mesma prioridade decide a
-  // saúde, e no empate, quem está sem leitura há mais tempo - dois projetos
-  // urgentes não são igualmente urgentes se um deles está com problemas.
+  // já tomou sobre o que importa mais. Dentro da mesma prioridade vale a ordem
+  // da listagem, que é a de quem entrou por último.
   const ordem = (p: Projeto) => {
     const i = PRIORIDADES.indexOf((p.prioridade ?? PRIORIDADE_PADRAO) as typeof PRIORIDADES[number]);
     return i < 0 ? PRIORIDADES.length : i;
   };
 
   const lista = useMemo(() => {
-    return [...emAndamento].sort((a, b) => {
-      const oa = ordem(a);
-      const ob = ordem(b);
-      if (oa !== ob) return oa - ob;
-      const pa = PESO_SAUDE[estadoDe(a)] ?? 9;
-      const pb = PESO_SAUDE[estadoDe(b)] ?? 9;
-      if (pa !== pb) return pa - pb;
-      const ia = idadeEmDias(a.saude[0]?.criado_em);
-      const ib = idadeEmDias(b.saude[0]?.criado_em);
-      // Sem leitura nenhuma é o mais antigo que existe.
-      return (ib ?? Infinity) - (ia ?? Infinity);
-    });
+    return [...emAndamento].sort((a, b) => ordem(a) - ordem(b));
   }, [emAndamento]);
 
   const chaves = lista.map(p => p.id).join('|');
@@ -3853,8 +3500,7 @@ function AbaGestao({
         </div>
       ) : (
         <div className="rev-pagina">
-          <Indice lista={lista} ativo={ativo} progressoDe={progressoDe}
-            estadoDe={estadoDe} onIr={irPara} />
+          <Indice lista={lista} ativo={ativo} progressoDe={progressoDe} onIr={irPara} />
 
           <div className="rev-revista">
             {lista.map((p, i) => (
@@ -3865,12 +3511,10 @@ function AbaGestao({
                 registrar={registrar}
                 pessoas={pessoas}
                 onAbrir={onAbrir}
-                onRegistrarSaude={onRegistrarSaude}
                 onSalvarTarefa={onSalvarTarefa}
                 onAbrirTarefa={onAbrirTarefa}
                 etapaDeEntrada={etapaDeEntrada}
                 etapaDeConclusao={etapaDeConclusao}
-                podeEditar={podeEditar}
                 podeEditarTarefa={podeEditarTarefa}
               />
             ))}
@@ -3888,7 +3532,7 @@ function FormularioProjeto({
   onCriarTarefaNaEntrega, onAbrirTarefa, onExcluirTarefa, onMoverTarefa,
   onFixarRecolhida, podeEditarTarefa, etapasTarefa, onBaixarAnexo, onVerAnexo, onEtiquetar,
   marcadores, submarcadores, onExcluir, somenteLeitura, onVerTarefasDaEntrega,
-  onRegistrarSaude, onExcluirSaude, onRegistrarReuniao, onVincularReuniao,
+  onRegistrarReuniao, onVincularReuniao,
   onBuscarReunioesFireflies, onBuscarGravacaoFireflies, onBuscarTranscricaoFireflies,
   onAnexarReuniaoFireflies,
   onExcluirReuniao,
@@ -3922,8 +3566,6 @@ function FormularioProjeto({
   onBaixarAnexo: (a: Arquivo) => void;
   onVerAnexo: (a: Arquivo) => void;
   onEtiquetar: (a: Arquivo, etiqueta: string) => Promise<void>;
-  onRegistrarSaude: (p: Projeto, estado: string, descricao: string) => Promise<void>;
-  onExcluirSaude: (r: RegistroSaude) => void;
   onRegistrarReuniao: (
     p: Projeto,
     r: { data: string; assunto: string; notas: string; participantes: string[] },
@@ -4059,9 +3701,9 @@ function FormularioProjeto({
     await copiar(url, setCopiado, 'Copie o link do projeto:');
   }
 
-  // Projeto novo não tem reuniões nem saúde a que se prender, então só existe
-  // "Geral" até ele ser criado.
-  const [abaModal, setAbaModal] = useState<'geral' | 'reunioes' | 'saude'>(
+  // Projeto novo não tem reuniões a que se prender, então só existe "Geral"
+  // até ele ser criado.
+  const [abaModal, setAbaModal] = useState<'geral' | 'reunioes'>(
     abertura?.aba ?? 'geral');
   /** Entrega para onde a tela deve ir, vinda do chip de uma reunião. */
   const [entregaFocada, setEntregaFocada] = useState<number | null>(null);
@@ -4304,14 +3946,6 @@ function FormularioProjeto({
             {somenteLeitura
               ? <ChipStatus status={r.status} />
               : <PilulaStatus valor={r.status} onChange={v => set('status', v)} />}
-            {/* A saúde só existe em projeto criado, e só depois da primeira
-                leitura. Sem registro o cabeçalho não anuncia nada: um estado
-                inventado seria pior que a ausência. */}
-            {editando && (
-              <span title={editando.saude?.[0]?.descricao ?? 'Nenhuma leitura de saúde registrada.'}>
-                <ChipSaude estado={editando.saude?.[0]?.estado ?? SEM_LEITURA} />
-              </span>
-            )}
           </div>
 
           {editando && (
@@ -4322,7 +3956,6 @@ function FormularioProjeto({
               opcoes={[
                 { valor: 'geral', label: 'Geral' },
                 { valor: 'reunioes', label: 'Reuniões' },
-                { valor: 'saude', label: 'Saúde' },
               ]}
             />
           )}
@@ -4366,16 +3999,6 @@ function FormularioProjeto({
           onBuscarTranscricao={onBuscarTranscricaoFireflies}
               onAnexarFireflies={ids => onAnexarReuniaoFireflies(editando, ids)}
               onExcluir={onExcluirReuniao}
-            />
-          )}
-
-          {editando && abaModal === 'saude' && (
-            <SecaoSaude
-              somenteLeitura={somenteLeitura}
-              registros={editando.saude ?? []}
-              salvando={salvando}
-              onRegistrar={(estado, descricao) => onRegistrarSaude(editando, estado, descricao)}
-              onExcluir={onExcluirSaude}
             />
           )}
 
@@ -4755,10 +4378,6 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     | { fonte: 'entrega_arquivo'; item: ArquivoDaEntrega }
     | null
   >(null);
-  /** Projeto cuja leitura de saúde está sendo registrada pela listagem. */
-  // Guarda o estado escolhido na lista junto do projeto: o modal abre com ele
-  // já marcado, e continua trocável lá dentro.
-  const [lendoSaude, setLendoSaude] = useState<{ projeto: Projeto; estado?: string } | null>(null);
   const [view, setView] = useState<'quadro' | 'lista'>('lista');
   const [fStatus, setFStatus] = useState<string[]>([]);
   const [fCliente, setFCliente] = useState<string[]>([]);
@@ -5151,7 +4770,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
 
   // O id chega depois da abertura. Quando o projeto aparece na listagem, o
   // painel troca de "novo" para "editando" no lugar, sem remontar: o que já foi
-  // digitado continua lá, e as entregas, a saúde, as reuniões e a publicação
+  // digitado continua lá, e as entregas, as reuniões e a publicação
   // passam a existir.
   useEffect(() => {
     if (!idNascido) return;
@@ -5271,29 +4890,6 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     }
   }
 
-
-  /** Grava a leitura e a mostra na hora. O id, a data e o autor continuam
-   *  nascendo no servidor - por isso ele os devolve na resposta: a linha entra
-   *  na tela com exatamente o que ficou gravado, sem inventar nada aqui e sem
-   *  esperar a listagem inteira. */
-  async function registrarSaude(p: Projeto, estado: string, descricao: string) {
-    const r = await api('', 'POST', {
-      action: 'registrar_saude_projeto', projeto_id: p.id, estado, descricao,
-    });
-    if (r?.error) { toast('error', 'Não foi possível registrar', r.error); return; }
-    if (r?.id) {
-      mudancasRef.current++;
-      const nova: RegistroSaude = {
-        id: Number(r.id), projeto_id: p.id, estado, descricao,
-        criado_em: String(r.criado_em), criado_por_id: r.criado_por_id ?? null,
-        criado_por_nome: r.criado_por_nome ?? null,
-      };
-      // A mais recente na frente, como a listagem devolve: a saúde atual do
-      // projeto é a primeira da série.
-      setProjetos(ps => ps.map(x => (x.id === p.id ? { ...x, saude: [nova, ...x.saude] } : x)));
-    }
-    toast('success', 'Leitura registrada');
-  }
 
   /** Publica ou tira do ar a página de acompanhamento do cliente. Devolve o
    *  token para o painel montar o link, ou `undefined` se o servidor recusou. */
@@ -5567,16 +5163,6 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     if (resp?.error) { setProjetos(antes); toast('error', 'Não foi possível excluir', resp.error); }
   }
 
-  async function excluirSaude(r: RegistroSaude) {
-    const antes = projetos;
-    mudancasRef.current++;
-    setProjetos(ps => ps.map(p => (
-      p.id === r.projeto_id ? { ...p, saude: p.saude.filter(x => x.id !== r.id) } : p
-    )));
-    const resp = await api('', 'POST', { action: 'excluir_saude_projeto', id: r.id });
-    if (resp?.error) { setProjetos(antes); toast('error', 'Não foi possível excluir', resp.error); }
-  }
-
   /** Reetiqueta na hora e grava. Sem o otimismo o arquivo demoraria a pular de
    *  grupo, e o efeito da troca ficaria invisível. */
   async function etiquetarAnexo(a: Arquivo, etiqueta: string) {
@@ -5729,9 +5315,6 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
         const d = diasPara(p.previsao_entrega);
         return d !== null && d < 0;
       }).length,
-      // Só entre os que ainda correm: cobrar leitura de projeto encerrado seria
-      // uma pendência que ninguém vai resolver.
-      semSaude: vivos.filter(p => !p.saude[0]).length,
       progresso: vivos.length
         ? Math.round(vivos.reduce((soma, p) => soma + progressoDe(p), 0) / vivos.length)
         : 0,
@@ -5799,10 +5382,8 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
               : [...f, 'Em andamento'])} />
           <CartaoKpi rotulo="Atrasados" valor={resumo.atrasados} nota="com a entrega vencida"
             cor="#D93025" atraso={0.1} />
-          <CartaoKpi rotulo="Sem leitura" valor={resumo.semSaude} nota="nunca tiveram update de saúde"
-            cor="#6E6F69" atraso={0.15} />
           <CartaoKpi rotulo="Progresso médio" valor={`${resumo.progresso}%`} nota="das entregas validadas"
-            cor="#0066CC" atraso={0.2} />
+            cor="#0066CC" atraso={0.15} />
         </div>
       )}
 
@@ -5940,7 +5521,6 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
                     32%, o resto da linha respira e o nome corta com reticências. */}
                 {([
                   ['projeto', 'Projeto', 400],
-                  ['saude', 'Saúde', 145],
                   ['prioridade', 'Prioridade', 70],
                   ['cliente', 'Cliente', 150],
                   ['gestor', 'Gestor', 160],
@@ -5997,18 +5577,6 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
                         </span>
                       );
                     })()}
-                  </td>
-
-                  <td>
-                    {podeEditar ? (
-                      <CelulaSaude registro={p.saude[0]}
-                        onEscolher={estado => setLendoSaude({ projeto: p, estado })} />
-                    ) : (
-                      <span title={p.saude[0]?.descricao ?? 'Nenhuma leitura de saúde registrada.'}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        <ChipSaude estado={p.saude[0]?.estado ?? SEM_LEITURA} size={11} />
-                      </span>
-                    )}
                   </td>
 
                   <td>
@@ -6105,17 +5673,14 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           etapaDeConclusao={etapaDeConclusao}
           podeEditarTarefa={pode('tarefas:editar')}
           onAbrir={p => setForm({ editando: p })}
-          onRegistrarSaude={(p, estado) => setLendoSaude({ projeto: p, estado })}
-          podeEditar={podeEditar}
         />
       )}
       </AbaPainel>
 
       {form && (
         <FormularioProjeto
-          // Versão viva da lista, e não o retrato de quando o modal abriu: a
-          // leitura de saúde recarrega os projetos, e o retrato antigo não
-          // mostraria o registro recém-criado.
+          // Versão viva da lista, e não o retrato de quando o modal abriu: o
+          // retrato de abertura não mostraria o que acabou de ser gravado.
           editando={form.editando ? projetos.find(p => p.id === form.editando!.id) ?? form.editando : null}
           base={form.base}
           abertura={aberturaPedida}
@@ -6140,8 +5705,6 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           somenteLeitura={!podeEditar}
           onExcluir={setExcluindo}
           onEtiquetar={etiquetarAnexo}
-          onRegistrarSaude={registrarSaude}
-          onExcluirSaude={excluirSaude}
           onRegistrarReuniao={registrarReuniao}
           onVincularReuniao={vincularReuniao}
           onBuscarReunioesFireflies={buscarReunioesFireflies}
@@ -6160,16 +5723,6 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           onVerAnexoDaEntrega={a => setPrevia({ fonte: 'entrega_arquivo', item: a })}
           onBaixarAnexoDaEntrega={baixarAnexoDaEntrega}
           onVerAnexo={a => setPrevia({ fonte: 'anexo', item: a })}
-        />
-      )}
-
-      {lendoSaude && (
-        <DialogoSaude
-          projeto={lendoSaude.projeto}
-          inicial={lendoSaude.estado}
-          salvando={salvando}
-          onFechar={() => setLendoSaude(null)}
-          onRegistrar={(estado, descricao) => registrarSaude(lendoSaude.projeto, estado, descricao)}
         />
       )}
 

@@ -5153,8 +5153,8 @@ body.arrastando-painel {
 
 /* ── Cristal do painel lateral ────────────────────────
    O material do chip: a linha que carrega conteudo - membro da equipe,
-   entrega, arquivo, reuniao, leitura de saude. Os tokens moram no painel para
-   nao repetir os valores em cada peca. */
+   entrega, arquivo, reuniao. Os tokens moram no painel para nao repetir os
+   valores em cada peca. */
 .admin-modal {
   /* Aqui o degrade e cinza, e nao branco: a folha do painel ja e branca, e uma
      superficie branca sobre folha branca so existia pela borda. Na pagina do
@@ -5210,8 +5210,8 @@ body.arrastando-painel {
 
 /* As superficies do painel. Vale para o que repousa sobre a folha e tem
    moldura propria: campo de formulario, linha de arquivo (que serve a anexo,
-   reuniao, leitura de saude e entrega), campo de busca, botao de secao e o
-   botao secundario do rodape.
+   reuniao e entrega), campo de busca, botao de secao e o botao secundario do
+   rodape.
 
    Fica de fora o que nao e superficie: o fundo do painel, que e a folha e nao
    um objeto sobre ela; as pilulas de situacao, etiqueta e prioridade, que tem
@@ -5220,7 +5220,7 @@ body.arrastando-painel {
    cristal vira sujeira; e os menus flutuantes, que pedem a elevacao de quem
    paira, nao a de quem repousa. */
 /* O preenchimento cinza e so do chip: a linha que carrega conteudo - membro da
-   equipe, entrega, arquivo, reuniao, leitura de saude. */
+   equipe, entrega, arquivo e reuniao. */
 .admin-modal .admin-file-item {
   background: var(--cristal);
 }
@@ -6383,8 +6383,6 @@ button.checklist-texto:focus-visible {
 .rev-indice-item.ativo .rev-indice-num { color: var(--gray2); }
 
 .rev-indice-prio { display: inline-flex; flex-shrink: 0; }
-.rev-indice-ponto { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-
 .rev-indice-nome {
   flex: 1;
   min-width: 0;
@@ -6553,44 +6551,6 @@ button.checklist-texto:focus-visible {
   border-radius: var(--radius-pill);
   background: var(--yellow);
 }
-
-/* ── Destaque ─────────────────────────────────────────
-   O bloco de chamada do editor, com a cor da saúde: ícone à esquerda, texto à
-   direita, fundo pálido. */
-.nt-destaque {
-  display: flex;
-  gap: 12px;
-  padding: 14px 16px;
-  margin-bottom: 20px;
-  border-radius: var(--radius-md);
-  border-left: 3px solid var(--cor-saude, var(--gray3));
-  background: color-mix(in srgb, var(--cor-saude, var(--gray3)) 7%, var(--white));
-}
-.nt-destaque-icone {
-  display: inline-flex;
-  color: var(--cor-saude, var(--gray2));
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-.nt-destaque-texto { flex: 1; min-width: 0; }
-/* No mesmo corpo do resto da página. Maior, o destaque virava manchete e
-   competia com o título do projeto. */
-.nt-destaque-texto p {
-  margin: 0;
-  font-size: 13.5px;
-  line-height: 1.5;
-  color: var(--black);
-  white-space: pre-wrap;
-}
-.nt-destaque-pe {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-top: 8px !important;
-  font-size: 11.5px !important;
-  color: var(--gray2) !important;
-}
-.nt-sep { color: var(--gray3); }
 
 /* ── Bloco recolhível ─────────────────────────────────
    O toggle do editor: triângulo que gira, título ao lado, conteúdo recuado. */
@@ -13859,9 +13819,9 @@ button.checklist-texto:focus-visible {
   /* Um tom só governa a peça inteira - texto, ponto, fio e ícones. Trocar de
      estado é trocar esta variável, e não seis regras.
 
-     A tonalidade é a do chip de saúde, que é o vizinho direto no cabeçalho:
-     mesma lavagem leve ao fundo e a cor cheia no texto. A borda dura de antes
-     fazia o selo gritar mais alto que o estado do projeto ao lado dele. */
+     A tonalidade é a dos chips vizinhos no cabeçalho: mesma lavagem leve ao
+     fundo e a cor cheia no texto. A borda dura de antes fazia o selo gritar
+     mais alto que o status do projeto ao lado dele. */
   --tom: var(--green);
   display: inline-flex;
   align-items: center;

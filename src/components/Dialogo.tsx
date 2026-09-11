@@ -10,7 +10,7 @@
 //  mesmo `fechar`, que é o do `useSaidaSuave`.
 //
 //  Não é só de exclusão: a mesma caixa pergunta "mover para fechado?" e
-//  "registrar a leitura de saúde?". Por isso o texto e o rótulo vêm de fora, e
+//  "publicar a página do cliente?". Por isso o texto e o rótulo vêm de fora, e
 //  o vermelho é escolha (`perigo`), não regra.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useRef, type ReactNode } from 'react';
@@ -38,9 +38,8 @@ export function Dialogo({
   /** Vermelho no botão de confirmar. Verdadeiro por padrão: a caixa nasceu para
    *  perguntas sem volta, e é para elas que ela é usada na maior parte. */
   perigo?: boolean;
-  /** Cor própria no botão de confirmar, quando ela quer dizer alguma coisa: o
-   *  estado da saúde do projeto, a etapa que a entrega vai assumir. Vence o
-   *  `perigo`. */
+  /** Cor própria no botão de confirmar, quando ela quer dizer alguma coisa: a
+   *  etapa que a entrega vai assumir, por exemplo. Vence o `perigo`. */
   corOk?: string;
   corTextoOk?: string;
   /** Gravando: o botão trava e, se houver, troca de rótulo. */

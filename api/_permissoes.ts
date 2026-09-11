@@ -222,7 +222,7 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   projeto_arquivo_base64: 'projetos:ver',
   etiquetar_projeto_arquivo: 'projetos:editar',
   create_cliente: 'projetos:criar',
-  // Entregas, saúde e reuniões pendem do projeto: quem edita o projeto edita o
+  // Entregas e reuniões pendem do projeto: quem edita o projeto edita o
   // que está dentro dele. Ver o conteúdo da evidência é leitura.
   // A tela de Tarefas monta as colunas com esta lista, e Configurações a edita.
   tarefa_status_configs: ['tarefas:ver', 'configuracoes:ver'],
@@ -272,8 +272,6 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   excluir_entrega_arquivo: 'projetos:editar',
   entrega_arquivo_base64: 'projetos:ver',
   definir_gestor_projeto: 'projetos:editar',
-  registrar_saude_projeto: 'projetos:editar',
-  excluir_saude_projeto: 'projetos:editar',
   fireflies_reunioes: ['projetos:editar', 'oportunidades:editar'],
   fireflies_gravacao: ['projetos:ver', 'oportunidades:ver'],
   fireflies_transcricao: ['projetos:ver', 'oportunidades:ver'],

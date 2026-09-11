@@ -142,7 +142,7 @@ async function guardaDaEquipe(
   db: Client,
   usuario: UsuarioAdmin | null | undefined,
   id: unknown,
-  de: 'projeto' | 'entrega' | 'evidencia' | 'entrega_arquivo' | 'arquivo' | 'saude'
+  de: 'projeto' | 'entrega' | 'evidencia' | 'entrega_arquivo' | 'arquivo'
     | 'reuniao' | 'tarefa' = 'projeto',
 ) {
   if (papelEfetivo(usuario?.email, usuario?.papel) !== 'membro') return null;
@@ -157,7 +157,6 @@ async function guardaDaEquipe(
     entrega_arquivo: `SELECT t.projeto_id FROM entrega_arquivos a
                       JOIN projeto_entregas t ON t.id = a.entrega_id WHERE a.id = ?`,
     arquivo: 'SELECT projeto_id FROM projeto_arquivos WHERE id = ?',
-    saude: 'SELECT projeto_id FROM projeto_saude WHERE id = ?',
     reuniao: 'SELECT projeto_id FROM projeto_reunioes WHERE id = ?',
   };
   const dono = await db.execute({ sql: ORIGEM[de], args: [id as never] });
@@ -1329,21 +1328,6 @@ async function migrarSchema(db: Client) {
   `);
 
   await ddl(`
-    -- Registro de saúde do projeto. É histórico, não estado: cada leitura fica
-    -- guardada com data e autor, e a saúde atual do projeto é a mais recente.
-    -- Serve ao acompanhamento semanal, qualitativo e descritivo.
-    CREATE TABLE IF NOT EXISTS projeto_saude (
-      id              INTEGER PRIMARY KEY AUTOINCREMENT,
-      projeto_id      TEXT NOT NULL,
-      estado          TEXT NOT NULL,
-      descricao       TEXT NOT NULL,
-      criado_em       TEXT NOT NULL,
-      criado_por_id   TEXT,
-      criado_por_nome TEXT
-    )
-  `);
-
-  await ddl(`
     -- Etapas do quadro de tarefas. Mesma estrutura das etapas do funil
     -- (\`status_configs\`): nome, cor e ordem editáveis em Configurações. As duas
     -- marcações existem porque a entrega lê o andamento daqui - \`is_entrada\` é
@@ -1918,9 +1902,6 @@ async function migrarSchema(db: Client) {
     `CREATE INDEX IF NOT EXISTS idx_sol_arq_sol ON oportunidade_arquivos (oportunidade_id)`,
     `CREATE INDEX IF NOT EXISTS idx_pend_sol ON oportunidade_pendencias (oportunidade_id, resolvida)`,
     `CREATE INDEX IF NOT EXISTS idx_deps_sol ON oportunidade_deps (oportunidade_id)`,
-    // A listagem de projetos lê o histórico de saúde inteiro e separa por
-    // projeto; a ordem por data já vem do índice.
-    `CREATE INDEX IF NOT EXISTS idx_saude_projeto ON projeto_saude (projeto_id, criado_em)`,
     `CREATE INDEX IF NOT EXISTS idx_reuniao_projeto ON projeto_reunioes (projeto_id, data)`,
     `CREATE INDEX IF NOT EXISTS idx_entrega_projeto ON projeto_entregas (projeto_id, ordem)`,
     `CREATE INDEX IF NOT EXISTS idx_tarefa_projeto ON projeto_tarefas (projeto_id, ordem)`,
@@ -3714,7 +3695,7 @@ async function despacharAdminData(
       // As etapas entram na mesma leva. Sozinhas, antes das outras, elas
       // custavam uma ida e volta inteira ao banco em cada recarregamento - e a
       // listagem é o que roda depois de toda ação da tela.
-      const [etapasTarefa, projs, equipe, arqs, clientes, saude, reunioes, vinculos, entregas,
+      const [etapasTarefa, projs, equipe, arqs, clientes, reunioes, vinculos, entregas,
         evidencias, arquivosDeEntrega, tarefas, conversas, anexosDaConversa] = await Promise.all([
         etapasDeTarefa(db),
         db.execute({
@@ -3743,12 +3724,6 @@ async function despacharAdminData(
           FROM projeto_arquivos ORDER BY criado_em
         `),
         db.execute('SELECT id, nome FROM clientes WHERE ativo = 1 ORDER BY nome'),
-        // Histórico inteiro: são poucas linhas de texto por projeto, e a tela
-        // mostra a série toda para leitura da evolução.
-        db.execute(`
-          SELECT id, projeto_id, estado, descricao, criado_em, criado_por_id, criado_por_nome
-          FROM projeto_saude ORDER BY criado_em DESC
-        `),
         // Sem a coluna `dados`: ela guarda o resumo inteiro do Fireflies, e
         // trazê-la aqui era um terço de tudo o que a listagem carregava - de
         // toda reunião de todo projeto, a cada recarregamento, para mostrar o
@@ -3808,9 +3783,6 @@ async function despacharAdminData(
         equipe: equipe.rows.filter(e => e.projeto_id === p.id)
           .map(e => ({ id: e.usuario_id, nome: e.nome, email: e.email, foto_url: e.foto_url, papel: e.papel })),
         arquivos: arqs.rows.filter(a => a.projeto_id === p.id),
-        // Já vem da mais recente para a mais antiga, então a saúde atual do
-        // projeto é o primeiro item.
-        saude: saude.rows.filter(x => x.projeto_id === p.id),
         entregas: entregas.rows.filter(x => x.projeto_id === p.id).map(x => {
           const daEntrega = tarefas.rows.filter(t => t.entrega_id === x.id);
           return {
@@ -6024,8 +5996,6 @@ function faltaEmProjeto(p: any): string | null {
       return { status: 200, body: { ok: true } };
     }
 
-    // Nova leitura de saúde. Não substitui a anterior: o valor da tela está em
-    // ver a série, então cada registro é uma linha nova.
     // Trocar o gestor pela listagem. Mexe só nesse papel: regravar a equipe
     // inteira a partir da tabela apagaria quem não aparece nela.
     if (action === 'definir_gestor_projeto') {
@@ -6051,36 +6021,6 @@ function faltaEmProjeto(p: any): string | null {
         sql: 'UPDATE projetos SET atualizado_por_id=?, atualizado_por_nome=?, atualizado_em=? WHERE id=?',
         args: [autorId, autorNome, new Date().toISOString(), projetoId],
       });
-      return { status: 200, body: { ok: true } };
-    }
-
-    if (action === 'registrar_saude_projeto') {
-      { const barrado = await guardaDaEquipe(db, usuario, body.projeto_id); if (barrado) return barrado; }
-      const estado = String(body.estado ?? '').trim();
-      const descricao = String(body.descricao ?? '').trim();
-      if (!body.projeto_id) return { status: 400, body: { error: 'projeto_id ausente.' } };
-      if (!estado) return { status: 400, body: { error: 'Escolha o estado de saúde.' } };
-      if (!descricao) return { status: 400, body: { error: 'Descreva a situação do projeto.' } };
-      const agora = new Date().toISOString();
-      const r = await db.execute({
-        sql: `INSERT INTO projeto_saude (projeto_id, estado, descricao, criado_em, criado_por_id, criado_por_nome)
-              VALUES (?,?,?,?,?,?)`,
-        args: [body.projeto_id, estado, descricao, agora, autorId, autorNome],
-      });
-      // A leitura volta pronta: id, data e autor são do servidor, e é só isso
-      // que faltava para a tela mostrá-la na hora.
-      return {
-        status: 200,
-        body: {
-          ok: true, id: Number(r.lastInsertRowid), criado_em: agora,
-          criado_por_id: autorId, criado_por_nome: autorNome,
-        },
-      };
-    }
-
-    if (action === 'excluir_saude_projeto') {
-      { const barrado = await guardaDaEquipe(db, usuario, body.id, 'saude'); if (barrado) return barrado; }
-      await db.execute({ sql: 'DELETE FROM projeto_saude WHERE id = ?', args: [body.id] });
       return { status: 200, body: { ok: true } };
     }
 

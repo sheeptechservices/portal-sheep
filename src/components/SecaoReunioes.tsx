@@ -60,8 +60,8 @@ export interface Reuniao {
   criado_por_nome: string | null;
 }
 
-/** Diário de reuniões. Mesma forma da saúde: cada registro é gravado na hora e
- *  o valor está na série, não no último item. */
+/** Diário de reuniões: cada registro é gravado na hora, e o valor está na
+ *  série, não no último item. */
 /** O que a reunião carrega, aberto: resumo, assuntos com horário, itens de
  *  ação por pessoa, palavras-chave e quem participou.
  *

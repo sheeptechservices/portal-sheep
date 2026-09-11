@@ -312,22 +312,10 @@ export function IconNote({ size = 14 }: { size?: number }) {
 export function IconUser({ size = 14 }: { size?: number }) {
   return <Ico size={size}><circle cx="12" cy="8" r="4" /><path d="M4.5 21c0-4.1 3.4-6.6 7.5-6.6s7.5 2.5 7.5 6.6" /></Ico>;
 }
-// Saúde do projeto, em metáfora de tendência: a linha sobe, oscila ou cai.
-// Só o desenho muda entre as três; a cor vem de fora, pelo currentColor.
+// Tendência de um número: a linha sobe ou cai. Só o desenho muda entre as
+// duas; a cor vem de fora, pelo currentColor.
 export function IconTrendUp({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M3 17l5.5-5.5 3.5 3.5L21 6" /><path d="M15 6h6v6" /></Ico>;
-}
-export function IconTrendWavy({ size = 14 }: { size?: number }) {
-  return (
-    <Ico size={size}>
-      <path d="M3 12l2.8-4.5 2.8 4.5 2.8-4.5 2.8 4.5H21" />
-      <path d="M16 9L21 12l-5 3" />
-    </Ico>
-  );
-}
-// Sem leitura: a linha nem sobe nem cai, e o tracejado diz que não há dado.
-export function IconTrendFlat({ size = 14 }: { size?: number }) {
-  return <Ico size={size}><path d="M3 12h3.5M10.2 12h3.6M17.5 12H21" /></Ico>;
 }
 export function IconTrendDown({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M3 7l5.5 5.5 3.5-3.5L21 18" /><path d="M15 18h6v-6" /></Ico>;
