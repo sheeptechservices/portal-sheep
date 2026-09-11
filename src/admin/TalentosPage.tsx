@@ -305,9 +305,11 @@ export default function TalentosPage({ token }: { token: string }) {
           setAndamento(a => ({ ...(a as AndamentoDaAnalise), fase: 'lendo', total: e.total }));
           t.andar(null, `dossiê de ${e.total} pessoas`);
         }
-        else if (e.tipo === 'pensando') {
-          setAndamento(a => ({ ...(a as AndamentoDaAnalise), fase: 'pensando' }));
-          t.andar(null, 'lendo e pesando as pessoas');
+        else if (e.tipo === 'triagem') {
+          setAndamento(a => ({
+            ...(a as AndamentoDaAnalise), fase: 'triando', feitas: e.feitas, total: e.total,
+          }));
+          t.andar(e.feitas / e.total, `triagem: ${e.feitas} de ${e.total}`);
         }
         else if (e.tipo === 'vaga') {
           setAndamento(a => ({ ...(a as AndamentoDaAnalise), fase: 'comparando', titulo: e.titulo }));

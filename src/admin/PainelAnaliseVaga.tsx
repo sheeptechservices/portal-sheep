@@ -64,6 +64,10 @@ export interface PessoaNoRanking {
   aderencia: number | null;
   veredito: 'forte' | 'possivel' | 'fraco';
   justificativa: string;
+  /** A pessoa parou na triagem: a nota é a leitura rápida, e não houve parecer.
+   *  Só o topo da triagem é lido em detalhe - é isso que faz a análise caber em
+   *  um minuto em vez de cinco, e escalar para um banco de mil pessoas. */
+  so_triagem?: boolean;
   /** O checklist da vaga, item por item. */
   checklist?: ItemDoChecklist[];
   /** Como era antes do checklist. Continua aqui porque análise guardada não se
@@ -74,7 +78,7 @@ export interface PessoaNoRanking {
 
 /** O que a análise já fez, contado por ela mesma enquanto acontece. */
 export interface AndamentoDaAnalise {
-  fase: 'preparando' | 'lendo' | 'pensando' | 'comparando' | 'fechando';
+  fase: 'preparando' | 'lendo' | 'triando' | 'comparando' | 'fechando';
   /** Quantas pessoas o dossiê tem. Zero até o servidor dizer. */
   total: number;
   feitas: number;
@@ -93,6 +97,16 @@ export interface AnaliseFeita {
   observacoes: string;
   modelo: string;
   analisado_em: string;
+  /** O que a análise gastou, somado das chamadas que ela fez. Vem da versão em
+   *  funil; análise guardada antes dela não tem. */
+  uso?: {
+    chamadas: number;
+    entrada: number;
+    saida: number;
+    cache_lido: number;
+    cache_escrito: number;
+    segundos: number;
+  };
   /** A resposta bateu no teto de tamanho e foi aproveitada até onde deu. */
   cortado?: boolean;
   /** O id no histórico, que o servidor devolve ao gravar. */
@@ -487,7 +501,19 @@ export function PainelAnaliseVaga({
 /** A frase do rodapé: quem respondeu, quando, e o aviso de que aquilo é opinião
  *  de máquina. Vale para a análise nova e para a guardada. */
 function assinatura(r: AnaliseFeita): string {
+  const lidas = r.ranking.filter(p => !p.so_triagem).length;
+  const triadas = r.ranking.length - lidas;
+  // O que custou fica escrito junto: a análise é a ação mais cara do portal, e
+  // "está consumindo demais" é uma conversa que só anda com número na mão.
+  const conta = r.uso
+    ? ` ${r.uso.chamadas} chamadas, ${Math.round((r.uso.entrada + r.uso.saida) / 1000)} mil tokens`
+      + `, ${String(r.uso.segundos).replace('.', ',')}s.`
+    : '';
   return `Leitura de ${r.modelo}, em ${quando(r.analisado_em)}.`
+    + (triadas > 0
+      ? ` Parecer detalhado de ${lidas} pessoas; as outras ${triadas} passaram só pela triagem.`
+      : '')
+    + conta
     + ' É opinião de máquina sobre o que está na base: confira antes de decidir.';
 }
 
@@ -591,7 +617,7 @@ function Relatorio({ relatorio, onAbrirPessoa }: {
             <span className={`entrega-seta${verDescartados ? ' aberta' : ''}`}>
               <IconChevronRight size={13} />
             </span>
-            {verDescartados ? 'Esconder' : 'Ver'} as {descartados.length} pessoas que a IA descartou
+            {verDescartados ? 'Esconder' : 'Ver'} as {descartados.length} pessoas que ficaram de fora
           </button>
           <div className={`revelar${verDescartados ? ' aberto' : ''}`}>
             <div>
@@ -623,10 +649,12 @@ function Relatorio({ relatorio, onAbrirPessoa }: {
  *  quer saber em qual dos dois está. */
 function fraseDaFase(a: AndamentoDaAnalise): string {
   if (a.fase === 'preparando') return 'Enviando a vaga e montando o dossiê da casa.';
-  if (a.fase === 'lendo') return `Lendo a vaga contra o dossiê de ${a.total} pessoas.`;
-  if (a.fase === 'pensando') return 'Pesando cada pessoa antes de escrever. É o trecho mais demorado, uns trinta segundos.';
-  if (a.fase === 'fechando') return 'Escrevendo o recado final.';
-  return a.titulo ? `Entendeu: ${a.titulo}. Agora compara pessoa por pessoa.` : 'Comparando pessoa por pessoa.';
+  if (a.fase === 'lendo') return `Lendo a vaga, com o dossiê de ${a.total} pessoas pronto.`;
+  if (a.fase === 'triando') return 'Triagem rápida do banco inteiro, para saber quem merece leitura.';
+  if (a.fase === 'fechando') return 'Fechando o relatório.';
+  return a.titulo
+    ? `Entendeu: ${a.titulo}. Agora escreve o parecer de quem passou.`
+    : 'Escrevendo o parecer de quem passou.';
 }
 
 /** O desenho de cada situação do checklist. */
@@ -668,7 +696,11 @@ function LinhaDoRanking({ pessoa, posicao, onAbrir }: {
           onClick={() => { setAberto(a => !a); setJaAbriu(true); }}>
           <span className="analise-pessoa-quem">
             <strong>{pessoa.nome}</strong>
-            <small>{pessoa.tipo === 'interno' ? 'Do time' : 'Interessado'} | {VEREDITOS[pessoa.veredito]}</small>
+            <small>
+              {pessoa.tipo === 'interno' ? 'Do time' : 'Interessado'}
+              {' | '}
+              {pessoa.so_triagem ? 'Ficou na triagem' : VEREDITOS[pessoa.veredito]}
+            </small>
           </span>
           <span className={`entrega-seta${aberto ? ' aberta' : ''}`}>
             <IconChevronRight size={12} />
@@ -703,6 +735,16 @@ function LinhaDoRanking({ pessoa, posicao, onAbrir }: {
           {jaAbriu && (
             <div className="analise-detalhe">
               {pessoa.justificativa && <p className="analise-justificativa">{pessoa.justificativa}</p>}
+
+              {/* Sem parecer não é sem leitura: a nota existe, e dizer de onde
+                  ela veio é o que impede que um número solto pareça descuido. */}
+              {pessoa.so_triagem && (
+                <p className="analise-justificativa">
+                  {pessoa.aderencia == null
+                    ? 'A triagem não chegou a esta pessoa.'
+                    : 'Nota da triagem rápida. O parecer detalhado foi escrito para quem ficou à frente dela.'}
+                </p>
+              )}
 
               {checklist.length > 0 && (
                 <ul className="analise-check">
