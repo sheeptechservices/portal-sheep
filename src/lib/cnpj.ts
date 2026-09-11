@@ -78,6 +78,11 @@ export function titulo(v: string): string {
     if (i > 0 && PARTICULAS.has(palavra)) return palavra;
     // Sigla e número continuam como estão: "LTDA", "260", "CNPJ".
     if (/^\d+$/.test(palavra)) return palavra;
-    return palavra.charAt(0).toUpperCase() + palavra.slice(1);
+    // A maiúscula vai na primeira letra, e não no primeiro caractere: "3S/A"
+    // começa por algarismo, e `charAt(0).toUpperCase()` devolvia o próprio "3" -
+    // a razão social saía "3s/a" no contrato. Depois de barra, ponto ou hífen
+    // vale o mesmo, que é onde moram as siglas de nome de empresa.
+    return palavra.replace(/(^|[^\p{L}])(\p{L})/gu, (_, antes, letra: string) =>
+      antes + letra.toUpperCase());
   }).join(' ');
 }
