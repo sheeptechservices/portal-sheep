@@ -3205,37 +3205,38 @@ body.arrastando-painel {
   flex: none;
 }
 
-/* O quadro da entrega e o mesmo da tela de Tarefas, em tamanho de painel: as
-   mesmas colunas, cores e arraste, so que estreitas o bastante para caberem
-   varias a vista. Rola de lado dentro do bloco, e nunca empurra a largura do
-   painel. */
-.entrega-kanban {
+/* O quadro de tarefas dentro do painel - de uma entrega, na aba Geral, ou do
+   projeto inteiro, na aba Tarefas. E o mesmo da tela de Tarefas, em tamanho de
+   painel: as mesmas colunas, cores e arraste, so que estreitas o bastante para
+   caberem varias a vista. Rola de lado dentro do bloco, e nunca empurra a
+   largura do painel. */
+.painel-kanban {
   flex: none;
   gap: 8px;
   padding: 2px 0 4px;
 }
-.entrega-kanban .kanban-column {
+.painel-kanban .kanban-column {
   border-width: 1px;
   border-radius: 10px;
 }
 /* A largura miuda so vale para a coluna aberta de verdade: a recolhivel tem a
    dela, que cresce e encolhe animando o flex-basis, e cravar aqui apagaria o
    traco fechado. */
-.entrega-kanban .kanban-column:not(.kanban-column-collapsible) {
+.painel-kanban .kanban-column:not(.kanban-column-collapsible) {
   flex: 0 0 170px;
   min-width: 170px;
 }
-.entrega-kanban .kanban-column.kanban-column-collapsible { min-height: 120px; }
+.painel-kanban .kanban-column.kanban-column-collapsible { min-height: 120px; }
 /* Aberta, ela assume a largura do quadro miudo - e nao os 270px do grande. */
-.entrega-kanban .kanban-column.kanban-column-collapsible.is-open { flex-basis: 170px; }
-.entrega-kanban .kanban-column-header {
+.painel-kanban .kanban-column.kanban-column-collapsible.is-open { flex-basis: 170px; }
+.painel-kanban .kanban-column-header {
   padding: 6px 8px;
   gap: 6px;
 }
 /* Coluna estreita: o nome da etapa nao quebra em duas linhas, que deixaria uma
    cabeca mais alta que as vizinhas. Corta com reticencias, e o nome inteiro
    continua na dica. */
-.entrega-kanban .kanban-column-title {
+.painel-kanban .kanban-column-title {
   font-size: 10.5px;
   gap: 5px;
   letter-spacing: .05em;
@@ -3245,29 +3246,97 @@ body.arrastando-painel {
   display: block;
   line-height: 18px;
 }
-.entrega-kanban .kanban-column-title .kanban-dot {
+.painel-kanban .kanban-column-title .kanban-dot {
   display: inline-block;
   vertical-align: middle;
   margin-right: 5px;
 }
-.entrega-kanban .kanban-column-body {
+.painel-kanban .kanban-column-body {
   padding: 6px;
   gap: 5px;
   max-height: 240px;
 }
-.entrega-kanban .kanban-card {
+
+/* Quando o quadro e a aba inteira, e nao um bloco dentro de uma entrega.
+
+   A altura vem da gaveta, e nao de uma conta: o corpo do painel para de rolar e
+   vira moldura, a secao estica, e o quadro ocupa o que sobrar entre o cabecalho
+   e o rodape. Era um teto em vh, e vh nao sabe da altura do cabecalho nem da do
+   rodape - por isso sobrava faixa morta embaixo do quadro em telas altas.
+
+   Quem rola passa a ser cada coluna, como na tela de Tarefas: o quadro inteiro
+   rolando levaria junto o cabecalho das colunas, e a etapa de um cartao e
+   justamente o que se precisa ver enquanto se desce a lista dela. */
+/* Com `.admin-modal-body` junto: o corpo da gaveta e redefinido mais abaixo
+   neste arquivo, e com a mesma forca a que vence e a de baixo. */
+.admin-modal-body.corpo-do-quadro {
+  overflow: hidden;
+  min-height: 0;
+}
+.admin-modal-body.corpo-do-quadro > section {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  /* Sem o respiro de baixo: o fim da coluna ja e o fim do quadro. E sem o fio
+     que separa uma secao da seguinte, porque aqui nao ha seguinte - a regra do
+     `:last-child` nao alcanca esta, que tem a aba Geral escondida depois dela. */
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.corpo-do-quadro .painel-kanban-alto {
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 0;
+}
+/* As colunas sobem todas a mesma altura, como no quadro grande: com a altura
+   vinda do conteudo, uma coluna cheia ao lado de uma vazia desenhava um degrau,
+   e o espaco de soltar da vazia ficava do tamanho do titulo dela. */
+.painel-kanban-alto .kanban-column { min-height: 0; }
+.painel-kanban-alto .kanban-column-body {
+  max-height: none;
+  flex: 1;
+}
+/* A mesma largura da tela de Tarefas, e nao a do quadro miudo da entrega: aqui
+   o quadro e a aba inteira, e coluna estreita cortava o titulo do cartao em tres
+   linhas para caber uma coluna a mais que ninguem pediu. O `min-width` menor que
+   o `flex-basis` e o de la: com a gaveta estreita as colunas cedem um pouco
+   antes de a barra de rolagem aparecer. */
+.painel-kanban-alto .kanban-column:not(.kanban-column-collapsible) {
+  flex: 0 0 270px;
+  min-width: 250px;
+}
+.painel-kanban-alto .kanban-column.kanban-column-collapsible.is-open { flex-basis: 270px; }
+/* Cartao no tamanho do quadro grande, ja que a coluna agora e a de la. */
+.painel-kanban-alto .kanban-card-title { font-size: 12px; }
+.painel-kanban-alto .kanban-card { padding: 9px 10px; }
+
+/* De que entrega e a tarefa. So aparece no quadro do projeto inteiro, onde os
+   cards vem de entregas diferentes: dentro de uma entrega so, o mesmo nome
+   repetido em todo card seria ruido. Uma linha, cortada com reticencias - o
+   nome inteiro fica na dica. */
+.kanban-card-entrega {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--gray2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.painel-kanban .kanban-card {
   padding: 7px 8px 7px 7px;
   border-radius: 8px;
   gap: 5px;
 }
-.entrega-kanban .kanban-card-title {
+.painel-kanban .kanban-card-title {
   font-size: 11.5px;
   -webkit-line-clamp: 3;
 }
 /* O pe do card: prazo a esquerda, quem cuida e a lixeira a direita. A lixeira
    so aparece com o ponteiro no card - uma por cartao numa coluna cheia seria
    lixo, e o clique que interessa no card e o de abrir. */
-.entrega-kanban-pe {
+.painel-kanban-pe {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -3294,23 +3363,23 @@ body.arrastando-painel {
 }
 
 /* O icone ja sai na cor do nivel; aqui so o alinhamento com o resto do pe. */
-.entrega-kanban-prio {
+.painel-kanban-prio {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
 }
-.entrega-kanban-pe .kanban-card-acao {
+.painel-kanban-pe .kanban-card-acao {
   opacity: 0;
   transition: opacity var(--transition), background var(--transition),
     color var(--transition);
 }
-.kanban-card:hover .entrega-kanban-pe .kanban-card-acao,
-.entrega-kanban-pe .kanban-card-acao:focus-visible { opacity: 1; }
+.kanban-card:hover .painel-kanban-pe .kanban-card-acao,
+.painel-kanban-pe .kanban-card-acao:focus-visible { opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) {
   .entrega-conta,
   .entrega-tarefas-link,
-  .entrega-kanban-pe .kanban-card-acao { transition: none; }
+  .painel-kanban-pe .kanban-card-acao { transition: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4276,6 +4345,15 @@ body.arrastando-painel {
   color: var(--gray2);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
+}
+/* A mesma bolha no titulo de uma secao. Ali ela nao empurra nada para a direita
+   - o `margin-right: auto` e do cabecalho da coluna, onde ela divide a linha
+   com os botoes - e precisa da folga que o espaco entre palavras nao da, porque
+   o titulo e caixa alta com letra espacada e o numero encostava nele. */
+.admin-section-title .kanban-conta-bolha {
+  margin-right: 0;
+  margin-left: 7px;
+  vertical-align: middle;
 }
 
 /* Fixar a etapa recolhida. Apagado em repouso: é ajuste de arrumação, e não

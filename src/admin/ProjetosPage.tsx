@@ -1127,19 +1127,22 @@ const RECOLHER_APOS_MS = 2000;
  *  ponteiro não deve disparar a expansão. */
 const INTENCAO_MS = 200;
 
-/** Uma coluna do quadro da entrega.
+/** Uma coluna do quadro de tarefas do painel.
  *
  *  Recolhe quando está vazia - padrão de todo quadro da casa - ou quando a
  *  etapa foi marcada como pontual pelo botão do próprio cabeçalho. Fechada, ela
  *  é um traço com a bolinha da cor e a contagem; abre parando o ponteiro em
  *  cima, e na hora quando um card está sendo arrastado, porque aí a coluna
  *  precisa estar pronta para receber. */
-function ColunaDaEntrega({ etapa, tarefas, pessoas, podeEditar, arrastando, onAbrir, onCriar,
-  onExcluir, onSoltarAqui, onArrastar, onFimDoArraste, onFixarRecolhida }: {
+function ColunaDoQuadro({ etapa, tarefas, pessoas, podeEditar, arrastando, onAbrir, onCriar,
+  onExcluir, onSoltarAqui, onArrastar, onFimDoArraste, onFixarRecolhida, entregaDe }: {
   etapa: EtapaTarefa;
   tarefas: Tarefa[];
   pessoas: Pessoa[];
   podeEditar: boolean;
+  /** De que entrega é a tarefa, quando o quadro mistura várias. Dentro de uma
+   *  entrega só, some: repetir o mesmo nome em todo card não informa nada. */
+  entregaDe?: (t: Tarefa) => string | null;
   arrastando: number | null;
   onAbrir: (t: Tarefa) => void;
   onCriar: () => void;
@@ -1258,10 +1261,15 @@ function ColunaDaEntrega({ etapa, tarefas, pessoas, podeEditar, arrastando, onAb
             onClick={() => onAbrir(x)}
             style={{ cursor: 'pointer', opacity: arrastando === x.id ? 0.45 : 1 }}>
             <p className="kanban-card-title">{x.titulo}</p>
-            <div className="entrega-kanban-pe">
+            {entregaDe?.(x) && (
+              <p className="kanban-card-entrega" title={entregaDe(x) ?? undefined}>
+                {entregaDe(x)}
+              </p>
+            )}
+            <div className="painel-kanban-pe">
               {/* O ícone de prioridade explica a ordem da coluna, que de outro
                   modo pareceria arbitrária. Mesma marca do índice de projetos. */}
-              <span className="entrega-kanban-prio"
+              <span className="painel-kanban-prio"
                 style={{ color: COR_PRIORIDADE[x.prioridade ?? PRIORIDADE_PADRAO] ?? 'var(--gray2)' }}
                 title={`Prioridade: ${x.prioridade ?? PRIORIDADE_PADRAO}`}>
                 {ICONE_PRIORIDADE[x.prioridade ?? PRIORIDADE_PADRAO]?.({ size: 12 })}
@@ -1287,7 +1295,8 @@ function ColunaDaEntrega({ etapa, tarefas, pessoas, podeEditar, arrastando, onAb
   );
 }
 
-/** As tarefas de uma entrega, em quadro.
+/** Tarefas em quadro, dentro do painel. Serve a uma entrega e ao projeto
+ *  inteiro: é a mesma leitura, e o que muda é quem entrega a lista.
  *
  *  Mesmo quadro da tela de Tarefas, em tamanho de painel: as mesmas colunas, na
  *  mesma ordem do fluxo, com as mesmas cores, o mesmo arraste e as mesmas
@@ -1305,12 +1314,16 @@ function ColunaDaEntrega({ etapa, tarefas, pessoas, podeEditar, arrastando, onAb
  *  tarefa está, e a prioridade diz por qual começar. No empate fica a ordem que
  *  já vinha, que é a de criação - ninguém reordena tarefa à mão, então não há
  *  decisão de pessoa para esta ordenação atropelar. */
-function KanbanDaEntrega({ tarefas, etapas, pessoas, podeEditar, onAbrir, onCriar, onExcluir,
-  onMover, onFixarRecolhida }: {
+function QuadroDeTarefas({ tarefas, etapas, pessoas, podeEditar, onAbrir, onCriar, onExcluir,
+  onMover, onFixarRecolhida, entregaDe, alto }: {
   tarefas: Tarefa[];
   etapas: EtapaTarefa[];
   pessoas: Pessoa[];
   podeEditar: boolean;
+  /** De que entrega é cada tarefa. Só no quadro do projeto inteiro. */
+  entregaDe?: (t: Tarefa) => string | null;
+  /** Coluna alta, para quando o quadro é a tela e não um bloco dentro dela. */
+  alto?: boolean;
   onAbrir: (t: Tarefa) => void;
   /** Nasce já na coluna em que foi pedida. */
   onCriar: (status: string) => void;
@@ -1333,15 +1346,16 @@ function KanbanDaEntrega({ tarefas, etapas, pessoas, podeEditar, onAbrir, onCria
     tarefas.filter(x => x.status === nome).sort((a, b) => urgencia(a) - urgencia(b));
 
   return (
-    <div className="kanban-board entrega-kanban">
+    <div className={`kanban-board painel-kanban${alto ? ' painel-kanban-alto' : ''}`}>
       {etapas.map(et => (
-        <ColunaDaEntrega key={et.id}
+        <ColunaDoQuadro key={et.id}
           etapa={et}
           tarefas={daColuna(et.nome)}
           pessoas={pessoas}
           podeEditar={podeEditar}
           arrastando={arrastando}
           onAbrir={onAbrir}
+          entregaDe={entregaDe}
           onCriar={() => onCriar(et.nome)}
           onExcluir={onExcluir}
           onArrastar={setArrastando}
@@ -1354,6 +1368,72 @@ function KanbanDaEntrega({ tarefas, etapas, pessoas, podeEditar, onAbrir, onCria
           onFixarRecolhida={onFixarRecolhida} />
       ))}
     </div>
+  );
+}
+
+/**
+ * A aba Tarefas da ficha do projeto: o mesmo quadro da tela de Tarefas, com as
+ * tarefas deste projeto e de nenhum outro.
+ *
+ * Existe porque a pergunta "o que está acontecendo neste projeto" era respondida
+ * em três lugares - uma entrega de cada vez, aqui dentro, ou na tela de Tarefas
+ * com o filtro certo aplicado. O quadro do projeto inteiro é a resposta direta,
+ * e o card diz de que entrega cada tarefa é, que é o que a lista por entrega
+ * dava de graça e um quadro misturado perderia.
+ *
+ * A tarefa criada por aqui nasce sem entrega: é tarefa do projeto, e pendurá-la
+ * numa entrega por chute daria à entrega um andamento que ninguém pediu. Quem
+ * quer a tarefa dentro de uma entrega cria pelo quadro dela, na aba Geral.
+ */
+function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCriar, onExcluir,
+  onMover, onFixarRecolhida }: {
+  projeto: Projeto;
+  etapas: EtapaTarefa[];
+  pessoas: Pessoa[];
+  podeEditar: boolean;
+  onAbrir: (t: Tarefa) => void;
+  onCriar: (status: string) => void;
+  onExcluir: (t: Tarefa) => void;
+  onMover: (t: Tarefa, status: string) => void;
+  onFixarRecolhida?: (etapaId: number) => void;
+}) {
+  const tarefas = projeto.tarefas ?? [];
+  const tituloDaEntrega = new Map((projeto.entregas ?? []).map(e => [e.id, e.titulo]));
+
+  return (
+    <section>
+      <div className="admin-section-head">
+        <p className="admin-section-title">
+          Tarefas
+          {/* A mesma bolha do cabeçalho das colunas, logo abaixo: é o mesmo
+              subtotal, e dois desenhos para a mesma coisa na mesma tela se leem
+              como duas coisas. */}
+          <span className="kanban-conta-bolha">{tarefas.length}</span>
+        </p>
+        {/* Com tarefa na tela o quadro se explica sozinho: contar quantas estão
+            em aberto e ensinar a arrastar era dizer em texto o que as colunas
+            já mostram. A frase fica só para o quadro vazio, onde não há coluna
+            com conteúdo que aponte para o mais. */}
+        {tarefas.length === 0 && (
+          <p className="form-hint">
+            Nenhuma tarefa ainda. O mais dentro de uma coluna cria a primeira.
+          </p>
+        )}
+      </div>
+
+      <QuadroDeTarefas
+        alto
+        tarefas={tarefas}
+        etapas={etapas}
+        pessoas={pessoas}
+        podeEditar={podeEditar}
+        entregaDe={t => (t.entrega_id ? tituloDaEntrega.get(t.entrega_id) ?? null : null)}
+        onAbrir={onAbrir}
+        onCriar={onCriar}
+        onExcluir={onExcluir}
+        onMover={onMover}
+        onFixarRecolhida={onFixarRecolhida} />
+    </section>
   );
 }
 
@@ -2102,7 +2182,7 @@ function SecaoEntregas({
 
                       <div className={`revelar${tarefasAbertas.includes(e.id) ? ' aberto' : ''}`}>
                         <div>
-                          <KanbanDaEntrega
+                          <QuadroDeTarefas
                             tarefas={daEntrega}
                             etapas={etapasTarefa}
                             pessoas={pessoas}
@@ -3529,7 +3609,7 @@ function AbaGestao({
 
 function FormularioProjeto({
   editando, base, pessoas, clientes, salvando, abertura, onFechar, onSalvar,
-  onCriarTarefaNaEntrega, onAbrirTarefa, onExcluirTarefa, onMoverTarefa,
+  onCriarTarefa, onAbrirTarefa, onExcluirTarefa, onMoverTarefa,
   onFixarRecolhida, podeEditarTarefa, etapasTarefa, onBaixarAnexo, onVerAnexo, onEtiquetar,
   marcadores, submarcadores, onExcluir, somenteLeitura, onVerTarefasDaEntrega,
   onRegistrarReuniao, onVincularReuniao,
@@ -3552,7 +3632,9 @@ function FormularioProjeto({
   /** Sai para a tela de Tarefas, estreitada numa entrega deste projeto. */
   onVerTarefasDaEntrega?: (entregaId: number) => void;
   /** Cria uma tarefa dentro da entrega, do próprio painel do projeto. */
-  onCriarTarefaNaEntrega: (p: Projeto, entregaId: number, status?: string) => void;
+  /** Cria uma tarefa neste projeto e abre o painel dela. Sem entrega quando
+   *  `entregaId` é nulo, que é o caso da aba Tarefas. */
+  onCriarTarefa: (p: Projeto, entregaId: number | null, status?: string) => void;
   onAbrirTarefa: (t: Tarefa) => void;
   onExcluirTarefa: (t: Tarefa) => void;
   onMoverTarefa: (t: Tarefa, status: string) => void;
@@ -3701,9 +3783,9 @@ function FormularioProjeto({
     await copiar(url, setCopiado, 'Copie o link do projeto:');
   }
 
-  // Projeto novo não tem reuniões a que se prender, então só existe "Geral"
-  // até ele ser criado.
-  const [abaModal, setAbaModal] = useState<'geral' | 'reunioes'>(
+  // Projeto novo não tem tarefa nem reunião a que se prender, então só existe
+  // "Geral" até ele ser criado.
+  const [abaModal, setAbaModal] = useState<'geral' | 'tarefas' | 'reunioes'>(
     abertura?.aba ?? 'geral');
   /** Entrega para onde a tela deve ir, vinda do chip de uma reunião. */
   const [entregaFocada, setEntregaFocada] = useState<number | null>(null);
@@ -3955,6 +4037,7 @@ function FormularioProjeto({
               style={{ marginBottom: 0, marginTop: 6 }}
               opcoes={[
                 { valor: 'geral', label: 'Geral' },
+                { valor: 'tarefas', label: 'Tarefas' },
                 { valor: 'reunioes', label: 'Reuniões' },
               ]}
             />
@@ -3972,7 +4055,25 @@ function FormularioProjeto({
             trocar de visão. Ver um projeto é navegar por ele.
             Quem trava agora são os `fieldset` de campo, logo abaixo, e cada
             seção esconde os próprios botões de editar pelo `somenteLeitura`. */}
-        <div className="admin-modal-body aba-painel" key={abaModal}>
+        {/* Na aba do quadro o corpo deixa de rolar e vira moldura: quem rola
+            passa a ser cada coluna, como na tela de Tarefas. Sem isso o quadro
+            tinha uma altura chutada e sobrava faixa morta embaixo dele. */}
+        <div className={`admin-modal-body aba-painel${abaModal === 'tarefas' ? ' corpo-do-quadro' : ''}`}
+          key={abaModal}>
+
+          {editando && abaModal === 'tarefas' && (
+            <TarefasDoProjeto
+              projeto={editando}
+              etapas={etapasTarefa}
+              pessoas={pessoas}
+              podeEditar={!somenteLeitura && podeEditarTarefa}
+              onAbrir={onAbrirTarefa}
+              // Sem entrega: é tarefa do projeto.
+              onCriar={status => onCriarTarefa(editando, null, status)}
+              onExcluir={onExcluirTarefa}
+              onMover={onMoverTarefa}
+              onFixarRecolhida={onFixarRecolhida} />
+          )}
 
           {editando && abaModal === 'reunioes' && (
             <SecaoReunioes
@@ -4122,7 +4223,7 @@ function FormularioProjeto({
             onVerTarefasDaEntrega={onVerTarefasDaEntrega}
             // Sem projeto gravado não há entrega gravada, e a lista nem aparece.
             onCriarTarefa={(entregaId, status) =>
-              editando && onCriarTarefaNaEntrega(editando, entregaId, status)}
+              editando && onCriarTarefa(editando, entregaId, status)}
             onAbrirTarefa={onAbrirTarefa}
             onExcluirTarefa={onExcluirTarefa}
             onMoverTarefa={onMoverTarefa}
@@ -4585,15 +4686,17 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
   /** Cria a tarefa dentro da entrega e abre o painel dela na mesma batida. Ela
    *  nasce como na tela de Tarefas: título de partida, etapa de entrada e quem
    *  clicou como responsável. */
-  const criarTarefaNaEntrega = useCallback((p: Projeto, entregaId: number, status?: string) => {
+  /** Cria a tarefa já gravada e abre o painel dela. `entregaId` nulo é tarefa
+   *  do projeto, sem entrega - o que a aba Tarefas cria. */
+  const criarTarefaNoProjeto = useCallback((p: Projeto, entregaId: number | null, status?: string) => {
     const base: RascunhoTarefa = {
-      projeto_id: p.id, entrega_id: String(entregaId), titulo: TITULO_PADRAO,
+      projeto_id: p.id, entrega_id: entregaId == null ? '' : String(entregaId), titulo: TITULO_PADRAO,
       descricao: '', status: status || etapaDeEntrada, prioridade: PRIORIDADE_PADRAO,
       responsaveis: usuario?.id ? [usuario.id] : [], prazo: '', etiquetas: [],
     };
     setRascunhoTarefa(base);
     criandoTarefa.current = api('', 'POST', {
-      action: 'salvar_tarefa', ...base, entrega_id: entregaId,
+      action: 'salvar_tarefa', ...base, entrega_id: entregaId ?? '',
     }).then(r => {
       if (r?.error) { toast('error', 'Não foi possível criar', r.error); return null; }
       const id = Number(r.id);
@@ -5687,7 +5790,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           onVerTarefasDaEntrega={form.editando && onVerTarefasDaEntrega
             ? entregaId => onVerTarefasDaEntrega(form.editando!.id, entregaId)
             : undefined}
-          onCriarTarefaNaEntrega={criarTarefaNaEntrega}
+          onCriarTarefa={criarTarefaNoProjeto}
           onAbrirTarefa={abrirTarefa}
           onExcluirTarefa={setExcluindoTarefa}
           onMoverTarefa={moverTarefaDeEtapa}
