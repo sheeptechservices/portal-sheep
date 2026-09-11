@@ -68,6 +68,18 @@ export const MARCAS: Marca[] = [
   // transparência e 67 kB, que é menos do que a Orteconte já ocupa. Reconverter
   // só para igualar a extensão trocaria definição por nada.
   { nome: 'Libero Seguros', src: '/marcas/libero.png', altura: 36 },
+  // Símbolo redondo de uma cor só - o "C" aberto atravessado pela seta de
+  // gráfico -, então entra pela máscara como a Orteconte e a FM Rocket: o
+  // arquivo dá a silhueta e a cor da marca é pintada por trás.
+  //
+  // O azul fechado se perde no fundo quase preto do tema escuro, e por isso ele
+  // ganha um tom acima lá, como a FM Rocket já fazia.
+  //
+  // O arquivo veio com 40% de vão transparente em volta (500x500 para uma marca
+  // de 302x302). Foi cortado na borda do desenho: no carrossel a medida é a
+  // altura óptica, e o vão encolheria a marca perto das vizinhas.
+  { nome: 'Chart Marketing', src: '/marcas/chart.png', altura: 30,
+    cor: '#164FB6', corEscura: '#5B8BE8', proporcao: 1 },
 ];
 
 /** Casa o cliente com a marca pelo nome. Cliente cadastrado à mão não tem logo,
