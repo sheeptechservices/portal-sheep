@@ -93,6 +93,10 @@ const STATUS_DO_RELATO = ['aberto', 'em_analise', 'resolvido', 'descartado'];
  *  cara de dado certo. */
 const TIPOS_DO_RELATO = ['bug', 'melhoria'];
 
+/** Os modelos que o gerador de contratos conhece. A tela os oferece em cartao;
+ *  aqui eles existem para o historico nao aceitar um modelo inventado. */
+const MODELOS_DE_CONTRATO = ['servicos', 'colaborador'];
+
 /**
  * Se este chamado e de quem esta perguntando.
  *
@@ -1834,6 +1838,45 @@ async function migrarSchema(db: Client) {
     }
   }
 
+  // ── Contratos gerados ────────────────────────────────────────────────────
+  //
+  //  O que o gerador de contratos ja emitiu.
+  //
+  //  Guarda os campos que a tela preencheu, e nao o arquivo: o documento e o
+  //  modelo mais esses campos, entao com eles na mao ele sai de novo igual - e
+  //  um .docx por contrato encheria a linha de base64 para guardar o que o
+  //  sistema ja sabe montar sozinho.
+  //
+  //  Uma linha por contrato, e nao por download. Gerar em PDF e depois em Word
+  //  e o mesmo contrato saindo duas vezes, e duas linhas iguais na fila fariam
+  //  o historico contar cliques em vez de contratos. Quem diz o que e o mesmo
+  //  contrato e a `chave` - modelo, CNPJ da contratada e data do fecho -, e por
+  //  isso refazer um contrato corrigido atualiza a linha em vez de criar outra.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS contratos_gerados (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      -- 'servicos' | 'colaborador', o modelo de onde o documento saiu.
+      modelo        TEXT NOT NULL,
+      -- Quem foi contratado, como sai escrito no documento.
+      titulo        TEXT NOT NULL,
+      -- A identidade do contrato. Unica: e por ela que refazer atualiza.
+      chave         TEXT NOT NULL,
+      -- Os campos do formulario, em JSON. E o que permite gerar de novo.
+      dados         TEXT NOT NULL,
+      autor_id      TEXT,
+      autor_nome    TEXT NOT NULL,
+      autor_email   TEXT,
+      criado_em     TEXT NOT NULL,
+      atualizado_em TEXT NOT NULL
+    )
+  `);
+  await ddl(`CREATE UNIQUE INDEX IF NOT EXISTS idx_contratos_chave
+             ON contratos_gerados (chave)`);
+  // A aba abre sempre pelo modelo aberto, e sempre do mais novo para o mais
+  // velho: as duas colunas na ordem em que a consulta as usa.
+  await ddl(`CREATE INDEX IF NOT EXISTS idx_contratos_modelo
+             ON contratos_gerados (modelo, atualizado_em DESC)`);
+
   // Índices nas chaves estrangeiras. Sem eles, cada busca por `oportunidade_id`
   // (etc.) vira full table scan: o board roda subqueries correlacionadas por
   // linha e cada abertura de detalhe varre as tabelas filhas inteiras, o que
@@ -2702,6 +2745,17 @@ function foldTerm(s: string): string {
  * Identificador do que a ação mexeu, para a linha de auditoria ficar rastreável.
  * Numa criação o id ainda não existe no pedido, então vem da resposta.
  */
+/** JSON de coluna, sem derrubar a leitura da lista inteira se uma linha
+ *  estiver ilegivel. */
+function comoObjeto(valor: unknown): Record<string, unknown> {
+  try {
+    const x = JSON.parse(String(valor ?? '{}'));
+    return x && typeof x === 'object' ? x as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
 function alvoDaAcao(body: any, resposta: any): string | null {
   const alvo = body?.id ?? body?.oportunidade_id ?? body?.analise_id ??
                body?.status_id ?? body?.chave ??
@@ -4558,6 +4612,45 @@ async function despacharAdminData(
         cofreAbertoAte(db, usuario?.id),
       ]);
       return { status: 200, body: { segredos: itens.rows, liberado_ate: aberto } };
+    }
+
+    /**
+     * O historico do gerador de contratos, do modelo aberto na tela.
+     *
+     * A fila e da casa, e nao de quem gerou: contrato emitido pela Sheep e
+     * documento da Sheep, e o segundo a precisar dele quase nunca e o primeiro
+     * que o emitiu. Quem abre o gerador ve o que o gerador ja emitiu.
+     *
+     * Os dados vem junto porque e deles que o documento sai de novo - a lista
+     * seria so uma lista de nomes sem eles.
+     */
+    if (action === 'contratos_gerados') {
+      const modelo = String(query.get('modelo') ?? '').trim();
+      const r = await db.execute({
+        sql: `SELECT id, modelo, titulo, dados, autor_id, autor_nome, criado_em, atualizado_em
+              FROM contratos_gerados
+              ${modelo ? 'WHERE modelo = ?' : ''}
+              ORDER BY atualizado_em DESC
+              LIMIT 200`,
+        args: modelo ? [modelo] : [],
+      });
+      return {
+        status: 200,
+        body: {
+          contratos: r.rows.map(x => ({
+            id: Number(x.id),
+            modelo: String(x.modelo),
+            titulo: String(x.titulo),
+            // Guardado com cinto: linha ilegivel vira linha sem botao de gerar,
+            // e nao uma tela que nao abre.
+            dados: comoObjeto(x.dados),
+            autor_id: x.autor_id == null ? null : String(x.autor_id),
+            autor_nome: String(x.autor_nome),
+            criado_em: String(x.criado_em),
+            atualizado_em: String(x.atualizado_em),
+          })),
+        },
+      };
     }
 
     return { status: 400, body: { error: 'Unknown action' } };
@@ -6663,6 +6756,65 @@ function faltaEmProjeto(p: any): string | null {
           ok: true,
           reaberto_em: agora,
           aviso: envio.ok ? null : `O chamado voltou para a fila, mas o e-mail não saiu: ${envio.erro}`,
+        },
+      };
+    }
+
+    /**
+     * Registra que um contrato saiu do gerador.
+     *
+     * O documento e montado no navegador - o .docx e o PDF sao escritos la, e
+     * nunca passam por aqui. O que sobe e o que a tela preencheu, que e o que
+     * o modelo precisa para gerar o mesmo documento outra vez.
+     */
+    if (action === 'registrar_contrato') {
+      const modelo = String(body?.modelo ?? '').trim();
+      const titulo = String(body?.titulo ?? '').trim().slice(0, 200);
+      const dados = body?.dados;
+      if (!MODELOS_DE_CONTRATO.includes(modelo)) {
+        return { status: 400, body: { error: 'Modelo de contrato desconhecido.' } };
+      }
+      if (!titulo || !dados || typeof dados !== 'object') {
+        return { status: 400, body: { error: 'Contrato sem dados para registrar.' } };
+      }
+      const texto = JSON.stringify(dados);
+      if (texto.length > 20000) {
+        return { status: 413, body: { error: 'Os dados deste contrato nao cabem no historico.' } };
+      }
+      const agora = new Date().toISOString();
+      // A identidade do contrato: mesmo modelo, mesma contratada, mesma data de
+      // fecho. Sem CNPJ nao da para dizer que dois sao o mesmo, e ai cada
+      // geracao vira uma linha - que e o certo, e nao um palpite.
+      const cnpj = String((dados as Record<string, unknown>).cnpj ?? '').replace(/\D/g, '');
+      const fecho = String((dados as Record<string, unknown>).dataAssinatura ?? '');
+      const chave = cnpj ? `${modelo}|${cnpj}|${fecho}` : `${modelo}|${agora}`;
+      const r = await db.execute({
+        sql: `INSERT INTO contratos_gerados
+                (modelo, titulo, chave, dados, autor_id, autor_nome, autor_email,
+                 criado_em, atualizado_em)
+              VALUES (?,?,?,?,?,?,?,?,?)
+              ON CONFLICT(chave) DO UPDATE SET
+                titulo = excluded.titulo,
+                dados = excluded.dados,
+                autor_id = excluded.autor_id,
+                autor_nome = excluded.autor_nome,
+                autor_email = excluded.autor_email,
+                atualizado_em = excluded.atualizado_em
+              RETURNING id, criado_em, atualizado_em`,
+        args: [
+          modelo, titulo, chave, texto,
+          autorId ?? null, autorNome ?? 'alguém do time', usuario?.email ?? null,
+          agora, agora,
+        ],
+      });
+      const linha = r.rows[0];
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          id: Number(linha?.id ?? 0),
+          criado_em: String(linha?.criado_em ?? agora),
+          atualizado_em: String(linha?.atualizado_em ?? agora),
         },
       };
     }

@@ -11,12 +11,17 @@
 //  avulsa, lote e atualização), que saiu inteiro em 09/2026 junto com os modelos
 //  de proposta, o cálculo de antecipação e o endpoint `gerar-documento`.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { IconBuilding, IconDoc, IconDownload, IconUpload, IconUser } from '../components/icons';
+import {
+  IconBuilding, IconDoc, IconDownload, IconInbox, IconUpload, IconUser,
+} from '../components/icons';
+import { Abas } from '../components/Abas';
 import { DatePicker } from '../components/DatePicker';
 import { SelectSistema } from '../components/SelectSistema';
-import { useToast } from './AdminApp';
+import { useAuth, useToast } from './AdminApp';
+import { useApi } from './OportunidadesPage';
+import { instante, tempoRelativo } from '../lib/datas';
 import { useDegrauTrilha } from '../lib/trilha';
 import { useTrocaDeNivel } from '../lib/useTrocaDeNivel';
 import { baixarDocx, montarDocx } from '../lib/docx';
@@ -94,6 +99,56 @@ async function lerLogo(): Promise<Uint8Array | null> {
   }
 }
 
+/** Uma linha do historico: um contrato que ja saiu, com o que ele precisa
+ *  para sair de novo.
+ *
+ *  `dados` e o formulario do colaborador porque e o unico modelo que vira
+ *  documento hoje; o de servicos entra aqui com o tipo dele quando chegar. */
+export interface ContratoGerado {
+  id: number;
+  modelo: ModeloContrato;
+  titulo: string;
+  dados: DadosColaborador;
+  autor_nome: string;
+  criado_em: string;
+  atualizado_em: string;
+}
+
+/** "Contrato_Maria_de_Sá_2026-09-08" - sem extensão, que é de quem grava.
+ *  A limpeza é por classe de letra, e não por `\w`: sem isso "Sá" vira "S" e
+ *  o arquivo perde justamente o nome de quem assina. */
+const nomeDoArquivo = (d: DadosColaborador) =>
+  `Contrato_${d.razaoSocial.replace(/[^\p{L}\p{N}\- ]+/gu, '').trim().replace(/\s+/g, '_') || 'Colaborador'}`
+  + `_${d.dataAssinatura}`;
+
+/**
+ * O contrato do colaborador, no formato pedido.
+ *
+ * Fora do formulário de propósito: o histórico gera os mesmos dois arquivos a
+ * partir do que ficou guardado, e duas cópias disto começariam iguais e
+ * terminariam diferentes - no dia em que o cabeçalho mudasse, mudaria em uma só.
+ */
+async function gerarContratoColaborador(dados: DadosColaborador, formato: 'pdf' | 'docx') {
+  const paragrafos = contratoColaborador(dados);
+  const logo = await lerLogo();
+  if (formato === 'docx') {
+    const bytes = montarDocx({
+      paragrafos,
+      imagemTopo: logo
+        ? { bytes: logo, larguraCm: LOGO.largura, alturaCm: LOGO.altura }
+        : undefined,
+    });
+    baixarDocx(bytes, `${nomeDoArquivo(dados)}.docx`);
+    return;
+  }
+  const marca = logo ? imagemDePng(logo) : null;
+  const conteudo = gerarPdf({
+    paragrafos,
+    imagemTopo: marca ? { ...marca, larguraPt: LOGO.pontos } : undefined,
+  });
+  baixarPdf(conteudo, `${nomeDoArquivo(dados)}.pdf`);
+}
+
 const ESTADOS_CIVIS = [
   'Solteiro', 'Solteira', 'Casado', 'Casada', 'Divorciado', 'Divorciada',
   'Viúvo', 'Viúva', 'Em união estável',
@@ -154,7 +209,12 @@ function Campo({ rotulo, valor, onChange, placeholder, dica, mascara }: {
   );
 }
 
-function FormColaborador({ token }: { token: string }) {
+function FormColaborador({ token, onGerado }: {
+  token: string;
+  /** O contrato acabou de sair. Quem recebe e a pagina, que guarda o
+   *  historico - o formulario nao conhece a lista, so avisa. */
+  onGerado: (dados: DadosColaborador) => void;
+}) {
   const { toast } = useToast();
   const [f, setF] = useState<Formulario>(VAZIO);
   const set = <K extends keyof Formulario>(k: K) => (v: Formulario[K]) =>
@@ -338,36 +398,13 @@ function FormColaborador({ token }: { token: string }) {
     };
   }
 
-  /** "Contrato_Maria_de_Sá_2026-09-08" - sem extensão, que é de quem grava.
-   *  A limpeza é por classe de letra, e não por `\w`: sem isso "Sá" vira "S" e
-   *  o arquivo perde justamente o nome de quem assina. */
-  const nomeDoArquivo = (d: DadosColaborador) =>
-    `Contrato_${d.razaoSocial.replace(/[^\p{L}\p{N}\- ]+/gu, '').trim().replace(/\s+/g, '_') || 'Colaborador'}`
-    + `_${d.dataAssinatura}`;
-
-  async function gerarDocx() {
+  /** Gerar e uma coisa so, e o formato e um detalhe dela: o documento e o
+   *  mesmo, e o toast e o aviso ao historico tambem. */
+  async function gerar(formato: 'pdf' | 'docx') {
     const dados = reunir();
-    const logo = await lerLogo();
-    const bytes = montarDocx({
-      paragrafos: contratoColaborador(dados),
-      imagemTopo: logo
-        ? { bytes: logo, larguraCm: LOGO.largura, alturaCm: LOGO.altura }
-        : undefined,
-    });
-    baixarDocx(bytes, `${nomeDoArquivo(dados)}.docx`);
+    await gerarContratoColaborador(dados, formato);
     toast('success', 'Contrato gerado', `${dados.razaoSocial}, a partir de ${dataBr(dados.dataInicio)}`);
-  }
-
-  async function baixarEmPdf() {
-    const dados = reunir();
-    const png = await lerLogo();
-    const marca = png ? imagemDePng(png) : null;
-    const conteudo = gerarPdf({
-      paragrafos: contratoColaborador(dados),
-      imagemTopo: marca ? { ...marca, larguraPt: LOGO.pontos } : undefined,
-    });
-    baixarPdf(conteudo, `${nomeDoArquivo(dados)}.pdf`);
-    toast('success', 'Contrato gerado', `${dados.razaoSocial}, a partir de ${dataBr(dados.dataInicio)}`);
+    onGerado(dados);
   }
 
   return (
@@ -523,11 +560,11 @@ function FormColaborador({ token }: { token: string }) {
         {/* O PDF na frente e em cor cheia: é o formato que se manda para
             assinar. O Word fica ao lado, para quando o contrato ainda precisa
             de um ajuste antes de sair. */}
-        <button type="button" className="btn btn-primary" onClick={() => { void baixarEmPdf(); }}
+        <button type="button" className="btn btn-primary" onClick={() => { void gerar('pdf'); }}
           disabled={faltando.length > 0}>
           <IconDownload size={14} /> Gerar em PDF
         </button>
-        <button type="button" className="btn btn-secondary" onClick={() => { void gerarDocx(); }}
+        <button type="button" className="btn btn-secondary" onClick={() => { void gerar('docx'); }}
           disabled={faltando.length > 0}>
           <IconDoc size={14} /> Gerar em Word
         </button>
@@ -537,7 +574,70 @@ function FormColaborador({ token }: { token: string }) {
   );
 }
 
+/**
+ * O historico do modelo aberto: o que a casa ja emitiu por ele.
+ *
+ * Cada linha gera de novo os mesmos dois arquivos, a partir do que foi
+ * preenchido na hora - e por isso a lista nao e so um registro do que
+ * aconteceu, e a segunda via de tudo que ja saiu.
+ */
+function HistoricoContratos({ lista, aoBaixar }: {
+  /** `null` enquanto a lista nao chegou. */
+  lista: ContratoGerado[] | null;
+  aoBaixar: (c: ContratoGerado, formato: 'pdf' | 'docx') => void | Promise<void>;
+}) {
+  if (lista == null) {
+    return <div className="dux-spinner-row"><span className="dux-spinner sm" /></div>;
+  }
+
+  if (!lista.length) {
+    return (
+      <div className="admin-empty" style={{ padding: '40px 0' }}>
+        <p style={{ color: 'var(--gray2)', marginBottom: 6 }}><IconInbox size={30} /></p>
+        <p>Nenhum contrato gerado por aqui ainda.</p>
+        <p className="gc-hist-nota">
+          Todo contrato que sai do gerador entra nesta lista, com o que foi preenchido -
+          e daqui ele sai de novo, sem precisar digitar tudo outra vez.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <ul className="gc-hist lista-anima" key={lista.map(c => c.id).join('|')}>
+      {lista.map(c => (
+        <li key={c.id} className="gc-hist-item">
+          <span className="gc-icone"><IconDoc size={16} /></span>
+          <div className="gc-hist-texto">
+            <p className="gc-hist-titulo">{c.titulo}</p>
+            <p className="gc-hist-meta">
+              {instante(c.criado_em)} por {c.autor_nome}
+              {c.atualizado_em !== c.criado_em && ` - refeito ${tempoRelativo(c.atualizado_em)}`}
+            </p>
+          </div>
+          <div className="gc-hist-acoes">
+            <button type="button" className="btn btn-secondary btn-sm"
+              onClick={() => { void aoBaixar(c, 'pdf'); }}>
+              <IconDownload size={13} /> PDF
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm"
+              onClick={() => { void aoBaixar(c, 'docx'); }}>
+              <IconDoc size={13} /> Word
+            </button>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** As duas abas de dentro do contrato aberto. */
+type AbaDoGerador = 'gerar' | 'historico';
+
 export default function GeradorContratos({ token }: { token: string }) {
+  const api = useApi(token);
+  const { toast } = useToast();
+  const { usuario } = useAuth();
   const [escolhido, setEscolhido] = useState<ModeloContrato | null>(null);
   // O contrato sai e a escolha entra em dois tempos, como a troca de ferramenta
   // na casca. Tudo aqui embaixo lê `naTela`, e não `escolhido`: durante a saída
@@ -545,9 +645,74 @@ export default function GeradorContratos({ token }: { token: string }) {
   const nivel = useTrocaDeNivel(escolhido, fundura);
   const modelo = MODELOS.find(m => m.valor === nivel.mostrado) ?? null;
 
+  const [aba, setAba] = useState<AbaDoGerador>('gerar');
+  // `null` = ainda não buscado. Diz duas coisas com uma variável: que a aba
+  // precisa pedir a lista, e que não há lista na tela para o registro atualizar.
+  const [historico, setHistorico] = useState<ContratoGerado[] | null>(null);
+
   // Com um contrato aberto, o caminho de pão ganha o nome dele, e "Gerador de
   // Contratos" vira o degrau que volta para a escolha.
   useDegrauTrilha(modelo ? modelo.titulo : null, () => setEscolhido(null));
+
+  // Outro modelo é outra fila: a aba volta para o formulário e o histórico é
+  // buscado de novo quando alguém pedir.
+  useEffect(() => { setAba('gerar'); setHistorico(null); }, [escolhido]);
+
+  // A lista só é buscada quando a aba é aberta, e uma vez por modelo aberto.
+  // Quem entra no gerador para fazer um contrato não paga por uma consulta que
+  // não vai olhar.
+  useEffect(() => {
+    if (aba !== 'historico' || historico != null || !modelo) return;
+    let vivo = true;
+    void api(`?action=contratos_gerados&modelo=${modelo.valor}`).then(r => {
+      if (vivo) setHistorico(Array.isArray(r?.contratos) ? r.contratos : []);
+    });
+    return () => { vivo = false; };
+  }, [aba, historico, modelo, api]);
+
+  /**
+   * O contrato acabou de sair, e o histórico passa a saber dele.
+   *
+   * A lista em memória só é mexida se já tiver sido carregada: quem nunca abriu
+   * a aba vai buscá-la inteira, e este já vem dentro. O documento é gerado no
+   * navegador antes disto - se o registro falhar, o contrato continua na mão de
+   * quem pediu, e é o histórico que fica devendo.
+   */
+  const registrar = useCallback(async (m: ModeloContrato, dados: DadosColaborador) => {
+    const r = await api('', 'POST', {
+      action: 'registrar_contrato', modelo: m, titulo: dados.razaoSocial, dados,
+    });
+    if (!r?.id) {
+      toast('error', 'O contrato saiu, mas não entrou no histórico',
+        r?.error ?? 'Gere de novo para registrar.');
+      return;
+    }
+    const linha: ContratoGerado = {
+      id: r.id, modelo: m, titulo: dados.razaoSocial, dados,
+      autor_nome: usuario?.nome ?? 'você',
+      criado_em: r.criado_em, atualizado_em: r.atualizado_em,
+    };
+    // Pelo id, e não por posição: refazer um contrato atualiza a linha dele lá
+    // no servidor, e aqui ela sobe para o topo em vez de virar uma segunda.
+    setHistorico(atual => (atual == null ? atual : [linha, ...atual.filter(c => c.id !== linha.id)]));
+  }, [api, toast, usuario]);
+
+  /**
+   * A segunda via, a partir do que ficou guardado.
+   *
+   * O `catch` cobre a linha cuja guarda veio incompleta - de um modelo que
+   * mudou de campos, ou de um JSON que nao abriu. Sem ele o clique nao faz
+   * nada e nada explica por que, que e a pior das duas respostas.
+   */
+  const baixarDoHistorico = useCallback(async (c: ContratoGerado, formato: 'pdf' | 'docx') => {
+    if (c.modelo !== 'colaborador') return;
+    try {
+      await gerarContratoColaborador(c.dados, formato);
+    } catch {
+      toast('error', 'Nao consegui refazer este contrato',
+        'O que ficou guardado com ele nao da para montar o documento.');
+    }
+  }, [toast]);
 
   return (
     <div className="admin-content-wrap">
@@ -662,6 +827,39 @@ export default function GeradorContratos({ token }: { token: string }) {
         }
         .gc-falta { font-size: 11.5px; color: var(--gray2); }
 
+        /* ── Histórico ── */
+        /* O painel que nao esta na aba sai por display, e nao desmontado: o
+           formulario fica de pe com o que ja foi digitado. Crase nenhuma neste
+           bloco - ele mora dentro de um template literal, e ela o fecharia. */
+        .gc-fora { display: none; }
+        .gc-hist {
+          list-style: none; margin: 14px 0 0; padding: 0;
+          display: flex; flex-direction: column; gap: 8px;
+        }
+        .gc-hist-item {
+          display: flex; align-items: center; gap: 12px;
+          padding: 12px 14px; background: var(--white);
+          border: 1px solid var(--gray3); border-radius: var(--radius-md);
+        }
+        .gc-hist-item .gc-icone { margin-bottom: 0; width: 30px; height: 30px; }
+        .gc-hist-texto { flex: 1; min-width: 0; }
+        .gc-hist-titulo {
+          font-size: 13px; font-weight: 800; color: var(--black);
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .gc-hist-meta { font-size: 11.5px; color: var(--gray2); margin-top: 2px; }
+        .gc-hist-acoes { display: flex; gap: 6px; flex: none; }
+        .gc-hist-nota {
+          font-size: 11.5px; color: var(--gray2); line-height: 1.5;
+          max-width: 420px; margin: 6px auto 0;
+        }
+        /* Estreito, os botões descem para a linha de baixo em vez de espremer o
+           nome de quem assinou. */
+        @media (max-width: 560px) {
+          .gc-hist-item { flex-wrap: wrap; }
+          .gc-hist-acoes { width: 100%; }
+        }
+
         @media (prefers-reduced-motion: reduce) {
           .gc-opcao { transition: none; }
           .gc-opcao:hover { transform: none; }
@@ -700,13 +898,41 @@ export default function GeradorContratos({ token }: { token: string }) {
                   <p className="gc-sub">{modelo.desc}</p>
                 </div>
               </div>
-              {modelo.valor === 'colaborador' ? <FormColaborador token={token} /> : (
-                <div className="gc-espera">
-                  <p className="gc-espera-titulo">O modelo deste contrato ainda não entrou</p>
-                  <p className="gc-espera-texto">
-                    Assim que o arquivo estiver aqui, este espaço vira o formulário: um campo
-                    para cada trecho que o modelo marca como personalizado, e nada além disso.
-                  </p>
+
+              {/* As abas ficam dentro do contrato aberto, e não na página: o
+                  histórico é o deste modelo, e ao lado da escolha ele seria o
+                  histórico de qual dos dois? */}
+              <Abas valor={aba} onChange={setAba} style={{ marginTop: 16 }}
+                opcoes={[
+                  { valor: 'gerar', label: 'Gerar contrato' },
+                  { valor: 'historico', label: 'Histórico' },
+                ]} />
+
+              {/* Os dois painéis ficam montados, e o que está fora da aba sai
+                  por `display`. Desmontar o formulário para espiar o histórico
+                  apagaria o contrato meio preenchido - e como a classe da
+                  animação sai junto, voltar faz a entrada tocar de novo. */}
+              <div className={aba === 'gerar' ? 'aba-painel' : 'gc-fora'}>
+                {modelo.valor === 'colaborador' ? (
+                  <FormColaborador token={token}
+                    onGerado={dados => { void registrar('colaborador', dados); }} />
+                ) : (
+                  <div className="gc-espera">
+                    <p className="gc-espera-titulo">O modelo deste contrato ainda não entrou</p>
+                    <p className="gc-espera-texto">
+                      Assim que o arquivo estiver aqui, este espaço vira o formulário: um campo
+                      para cada trecho que o modelo marca como personalizado, e nada além disso.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Montado a partir da primeira visita, e daí em diante fica: a
+                  lista já foi buscada, e remontá-la a cada troca de aba pediria
+                  o mesmo de novo. */}
+              {(aba === 'historico' || historico != null) && (
+                <div className={aba === 'historico' ? 'aba-painel' : 'gc-fora'}>
+                  <HistoricoContratos lista={historico} aoBaixar={baixarDoHistorico} />
                 </div>
               )}
             </div>

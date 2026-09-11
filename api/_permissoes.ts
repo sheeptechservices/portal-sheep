@@ -285,6 +285,12 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   anexar_reuniao_fireflies_oportunidade: 'oportunidades:editar',
   registrar_reuniao_oportunidade: 'oportunidades:editar',
   excluir_reuniao_oportunidade: 'oportunidades:editar',
+  // O gerador de contratos. Registrar e ver o historico sao a mesma porta de
+  // abrir o gerador: quem gera contrato pela casa ve o que a casa ja gerou, e
+  // registrar e consequencia de gerar, nao um segundo poder.
+  contratos_gerados: 'gerador:ver',
+  registrar_contrato: 'gerador:ver',
+
   // ── Sempre liberado ────────────────────────────────────────────────────────
   me: LIVRE,
   perfil: LIVRE,
