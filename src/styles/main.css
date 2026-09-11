@@ -9867,7 +9867,6 @@ button.checklist-texto:focus-visible {
   font-size: 12px;
   line-height: 1.55;
   color: var(--gray);
-  white-space: pre-wrap;
 }
 .reuniao-bloco { margin-top: 12px; }
 .reuniao-rotulo {
@@ -10172,8 +10171,54 @@ button.checklist-texto:focus-visible {
   font-size: 12.5px;
   line-height: 1.55;
   color: var(--gray);
-  white-space: pre-wrap;
 }
+
+/* ── O resumo do Fireflies, formatado ────────────────────────────────────────
+   O que vem de la e markdown - titulo de secao, lista com um nivel de recuo,
+   negrito no meio da frase -, e agora ele chega desmontado em blocos. O
+   `white-space: pre-wrap` saiu dos dois recipientes junto: quem quebra a linha
+   passou a ser o bloco, e mante-lo somaria a quebra do texto com a do desenho.
+
+   As medidas sao relativas (`em`) porque os dois lugares tem corpo diferente -
+   12px na ficha do projeto, 12,5px no modal da gravacao -, e o mesmo bloco
+   precisa se encaixar nos dois. */
+.texto-reuniao > *:first-child { margin-top: 0; }
+.texto-reuniao > *:last-child { margin-bottom: 0; }
+.texto-reuniao p { margin: 0 0 .7em; }
+/* O titulo de secao: um degrau acima do corpo, na tinta do texto principal. Um
+   corpo grande aqui brigaria com o titulo da propria reuniao, que esta logo
+   acima. */
+.texto-reuniao h4,
+.texto-reuniao h5 {
+  margin: 1.2em 0 .5em;
+  font-size: 1.04em;
+  font-weight: 800;
+  line-height: 1.4;
+  color: var(--black);
+}
+.texto-reuniao h5 { font-size: 1em; color: var(--gray); }
+.texto-reuniao ul {
+  margin: 0 0 .7em;
+  padding-left: 1.1em;
+  list-style: none;
+}
+.texto-reuniao li { position: relative; margin-bottom: .25em; }
+/* O ponto da lista desenhado a mao, e nao o `list-style`: o marcador nativo
+   herda o corpo da letra e fica pesado demais num texto de 12px. */
+.texto-reuniao li::before {
+  content: '';
+  position: absolute;
+  left: -.85em;
+  top: .55em;
+  width: 3px;
+  height: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--gray2);
+}
+/* A lista de dentro recua e clareia o ponto: e detalhe do item de cima, e nao
+   um item do mesmo peso. */
+.texto-reuniao li ul { margin: .25em 0 0; }
+.texto-reuniao li li::before { background: var(--gray3); }
 
 /* O horario de um combinado tambem leva ao ponto da gravacao. */
 .gravacao-marca {

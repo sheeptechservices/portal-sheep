@@ -20,7 +20,8 @@ import { dia as fmtData } from '../lib/datas';
 import { SeletorPessoas } from './SeletorPessoas';
 import { SeletorVinculo, Chip } from './VinculoReuniao';
 import {
-  ComNegrito, ReuniaoModal, lerAcoes, lerDados, lerTopicos, type TopicoReuniao,
+  ComNegrito, ReuniaoModal, TextoDeReuniao, lerAcoes, lerDados, lerTopicos,
+  type TopicoReuniao,
 } from './ReuniaoModal';
 import {
   Avatar, ConfirmarExclusao, type Pessoa,
@@ -139,7 +140,7 @@ export function CorpoReuniao({ reg, pessoas, entregas, somenteLeitura, onAssisti
         </div>
       )}
 
-      <p className="reuniao-notas"><ComNegrito texto={reg.notas} /></p>
+      <div className="reuniao-notas"><TextoDeReuniao texto={reg.notas} /></div>
 
       {topicos.length > 0 && (
         <div className="reuniao-bloco">

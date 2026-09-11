@@ -134,6 +134,112 @@ export function ComNegrito({ texto }: { texto: string }) {
   );
 }
 
+/**
+ * O resumo do Fireflies, com a marcação que ele usa de verdade.
+ *
+ * O que chega de lá é markdown: título de seção com `##`, lista com `- ` e um
+ * nível de recuo, e negrito no meio da frase. Sem tratar, a nota aparecia com
+ * os `##` e os `-` crus no meio do texto - era markdown escrito na tela em vez
+ * de markdown lido.
+ *
+ * Não é um interpretador de markdown, e não deve virar um: é o punhado de
+ * marcas que aquele resumo usa. O que não for nenhuma delas passa como
+ * parágrafo, que é o que o texto era antes disto existir.
+ */
+export function TextoDeReuniao({ texto }: { texto: string }) {
+  return <div className="texto-reuniao">{blocosDoTexto(texto)}</div>;
+}
+
+/** `## Título` e `### Título`. Dois níveis bastam: o resumo do Fireflies não
+ *  desce mais que isso, e um `h6` num bloco de 12px não se distingue do corpo. */
+const TITULO = /^(#{1,6})\s+(.*)$/;
+/** `- item`, `* item` ou `• item`, com o recuo que diz o nível. */
+const ITEM = /^([ \t]*)[-*\u2022]\s+(.*)$/;
+
+/** O texto inteiro virando blocos: títulos, listas e parágrafos. */
+function blocosDoTexto(texto: string): React.ReactNode[] {
+  const linhas = String(texto ?? '').replace(/\r/g, '').split('\n');
+  const blocos: React.ReactNode[] = [];
+  /** As linhas de parágrafo que ainda não foram fechadas. */
+  let paragrafo: string[] = [];
+  /** A lista em construção: cada item com o nível de recuo dele. */
+  let lista: { nivel: number; texto: string }[] = [];
+
+  const fecharParagrafo = () => {
+    if (!paragrafo.length) return;
+    blocos.push(
+      <p key={`p${blocos.length}`}><ComNegrito texto={paragrafo.join(' ')} /></p>,
+    );
+    paragrafo = [];
+  };
+
+  const fecharLista = () => {
+    if (!lista.length) return;
+    blocos.push(<ul key={`l${blocos.length}`}>{itensAninhados(lista)}</ul>);
+    lista = [];
+  };
+
+  for (const linha of linhas) {
+    const titulo = TITULO.exec(linha);
+    if (titulo) {
+      fecharParagrafo();
+      fecharLista();
+      // O `##` do Fireflies é o título de seção do resumo, e é ele que precisa
+      // pesar. Do terceiro nível em diante todos viram o mesmo: o que muda é a
+      // hierarquia do documento, e aqui ela já acabou.
+      const Tag = (titulo[1].length <= 2 ? 'h4' : 'h5') as 'h4' | 'h5';
+      blocos.push(<Tag key={`t${blocos.length}`}><ComNegrito texto={titulo[2]} /></Tag>);
+      continue;
+    }
+
+    const item = ITEM.exec(linha);
+    if (item) {
+      fecharParagrafo();
+      // Dois espaços por nível, que é como o Fireflies recua. Um nível só de
+      // aninhamento: o resumo não passa disso, e uma lista de três níveis num
+      // bloco estreito vira escada.
+      lista.push({ nivel: Math.min(1, Math.floor(item[1].replace(/\t/g, '  ').length / 2)), texto: item[2] });
+      continue;
+    }
+
+    if (!linha.trim()) {
+      fecharParagrafo();
+      fecharLista();
+      continue;
+    }
+    fecharLista();
+    paragrafo.push(linha.trim());
+  }
+  fecharParagrafo();
+  fecharLista();
+  return blocos;
+}
+
+/** Os itens da lista, com os recuados pendurados no item de cima. */
+function itensAninhados(itens: { nivel: number; texto: string }[]): React.ReactNode[] {
+  const saida: React.ReactNode[] = [];
+  for (let i = 0; i < itens.length; i++) {
+    if (itens[i].nivel > 0) continue;
+    // Os filhos deste item: os recuados que vêm logo depois dele.
+    const filhos: string[] = [];
+    for (let j = i + 1; j < itens.length && itens[j].nivel > 0; j++) filhos.push(itens[j].texto);
+    saida.push(
+      <li key={i}>
+        <ComNegrito texto={itens[i].texto} />
+        {filhos.length > 0 && (
+          <ul>{filhos.map((f, k) => <li key={k}><ComNegrito texto={f} /></li>)}</ul>
+        )}
+      </li>,
+    );
+  }
+  // Lista que começa recuada - acontece quando o título dela ficou noutro
+  // bloco - não pode sumir: sem pai, os filhos viram itens de primeiro nível.
+  if (saida.length === 0) {
+    return itens.map((it, i) => <li key={i}><ComNegrito texto={it.texto} /></li>);
+  }
+  return saida;
+}
+
 const fmtData = (v: string | null) => dia(v, '');
 
 /**
@@ -247,7 +353,7 @@ export function ReuniaoModal({ reuniao, buscarGravacao, buscarTranscricao, onFec
           {resumo && (
             <div className="gravacao-bloco">
               <p className="gravacao-secao">Resumo</p>
-              <p className="gravacao-resumo"><ComNegrito texto={resumo} /></p>
+              <div className="gravacao-resumo"><TextoDeReuniao texto={resumo} /></div>
             </div>
           )}
 
