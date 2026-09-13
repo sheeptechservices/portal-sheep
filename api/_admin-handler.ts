@@ -1349,21 +1349,27 @@ async function migrarSchema(db: Client) {
     -- ver o que tinha sido combinado. Guardar so o estado atual apagaria isso a
     -- cada segunda.
     --
-    -- \`destaques\` e \`reunioes\` sao listas em JSON, e nao linhas proprias: sao
-    -- frases curtas escritas na reuniao, sempre lidas juntas e sempre do mesmo
-    -- projeto - uma tabela por item so acrescentaria juncao.
+    -- \`destaques\` guarda os objetivos da semana, em JSON, e nao em linhas
+    -- proprias: sao frases curtas escritas na reuniao, sempre lidas juntas e
+    -- sempre do mesmo projeto - uma tabela por item so acrescentaria juncao. O
+    -- nome da coluna ficou o de antes de a secao virar "Objetivos": renomear
+    -- coluna quebraria a versao no ar enquanto o deploy nao chega.
     CREATE TABLE IF NOT EXISTS planning_semana (
       id                INTEGER PRIMARY KEY AUTOINCREMENT,
       projeto_id        TEXT NOT NULL,
       semana            TEXT NOT NULL,
       destaques         TEXT NOT NULL DEFAULT '[]',
-      reunioes          TEXT NOT NULL DEFAULT '[]',
       atualizado_em     TEXT NOT NULL,
       atualizado_por_id TEXT,
       atualizado_por_nome TEXT,
       UNIQUE (projeto_id, semana)
     )
   `);
+  // Os objetivos que ja foram cumpridos, pelo texto, e nao uma lista nova de
+  // objetos no lugar de `destaques`: a versao no ar le e grava `destaques`
+  // como lista de frases, e seguir assim a mantem de pe ate o deploy. Um
+  // objetivo reescrito volta a ficar em aberto, que e o certo - virou outro.
+  try { await ddl(`ALTER TABLE planning_semana ADD COLUMN objetivos_feitos TEXT NOT NULL DEFAULT '[]'`); } catch {}
 
   await ddl(`
     -- Etapas do quadro de tarefas. Mesma estrutura das etapas do funil
@@ -3592,7 +3598,7 @@ async function despacharAdminData(
         return { status: 400, body: { error: 'Semana ausente ou fora do formato AAAA-MM-DD.' } };
       }
       const r = await db.execute({
-        sql: `SELECT projeto_id, destaques, reunioes, atualizado_em, atualizado_por_nome
+        sql: `SELECT projeto_id, destaques, objetivos_feitos, atualizado_em, atualizado_por_nome
               FROM planning_semana WHERE semana = ?`,
         args: [semana],
       });
@@ -3600,13 +3606,15 @@ async function despacharAdminData(
         status: 200,
         body: {
           semana,
-          planning: r.rows.map(x => ({
-            projeto_id: String(x.projeto_id),
-            destaques: listaDeTexto(x.destaques),
-            reunioes: listaDeTexto(x.reunioes),
-            atualizado_em: x.atualizado_em,
-            atualizado_por_nome: x.atualizado_por_nome,
-          })),
+          planning: r.rows.map(x => {
+            const feitos = new Set(listaDeTexto(x.objetivos_feitos));
+            return {
+              projeto_id: String(x.projeto_id),
+              objetivos: listaDeTexto(x.destaques).map(texto => ({ texto, feito: feitos.has(texto) })),
+              atualizado_em: x.atualizado_em,
+              atualizado_por_nome: x.atualizado_por_nome,
+            };
+          }),
         },
       };
     }
@@ -6119,21 +6127,27 @@ function faltaEmProjeto(p: any): string | null {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(semana)) {
         return { status: 400, body: { error: 'Semana ausente ou fora do formato AAAA-MM-DD.' } };
       }
-      const destaques = JSON.stringify(listaDeTexto(body.destaques));
-      const reunioes = JSON.stringify(listaDeTexto(body.reunioes));
+      const objetivos = (Array.isArray(body.objetivos) ? body.objetivos : [])
+        .map((o: any) => ({ texto: String(o?.texto ?? '').trim(), feito: o?.feito === true }))
+        .filter((o: { texto: string }) => o.texto)
+        .slice(0, 50);
+      const destaques = JSON.stringify(objetivos.map((o: { texto: string }) => o.texto));
+      const feitos = JSON.stringify(objetivos
+        .filter((o: { feito: boolean }) => o.feito)
+        .map((o: { texto: string }) => o.texto));
       const agora = new Date().toISOString();
       await db.execute({
         sql: `INSERT INTO planning_semana
-                (projeto_id, semana, destaques, reunioes, atualizado_em,
+                (projeto_id, semana, destaques, objetivos_feitos, atualizado_em,
                  atualizado_por_id, atualizado_por_nome)
               VALUES (?,?,?,?,?,?,?)
               ON CONFLICT(projeto_id, semana) DO UPDATE SET
                 destaques = excluded.destaques,
-                reunioes = excluded.reunioes,
+                objetivos_feitos = excluded.objetivos_feitos,
                 atualizado_em = excluded.atualizado_em,
                 atualizado_por_id = excluded.atualizado_por_id,
                 atualizado_por_nome = excluded.atualizado_por_nome`,
-        args: [projetoId, semana, destaques, reunioes, agora, autorId, autorNome],
+        args: [projetoId, semana, destaques, feitos, agora, autorId, autorNome],
       });
       return { status: 200, body: { ok: true, atualizado_em: agora, atualizado_por_nome: autorNome } };
     }

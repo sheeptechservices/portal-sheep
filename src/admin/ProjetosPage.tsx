@@ -3357,7 +3357,7 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
   onAbrir: (p: Projeto) => void;
   onAbrirTarefa: (t: Tarefa, p: Projeto) => void;
   onSalvarTarefa: (t: Tarefa, mudancas: Record<string, unknown>) => void;
-  onMudarPlanning: (dados: { destaques: string[]; reunioes: string[] }) => void;
+  onMudarPlanning: (dados: PlanningDaSemana) => void;
   onCriarTarefa: (prazo: string | null) => void;
 }) {
   const itens = tarefasDaSemana(p, dias);
@@ -3458,6 +3458,25 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
         </div>
       </header>
 
+      {/* Os objetivos vêm antes do quadro: a planning começa pelo que a semana
+          precisa entregar, e só então decide que tarefa entra em que dia. Com
+          o quadro na frente, a sala montava a semana antes de dizer para quê. */}
+      <section className="pl-secao pl-combinado">
+        <p className="pl-secao-titulo">
+          Objetivos da semana
+          {planning.objetivos.length > 0 && (
+            <span className="kanban-conta-bolha">
+              {planning.objetivos.filter(o => o.feito).length}/{planning.objetivos.length}
+            </span>
+          )}
+        </p>
+        <ObjetivosDaPlanning
+          valores={planning.objetivos}
+          somenteLeitura={!podeEditar}
+          placeholder="O que precisa acontecer nesta semana"
+          onChange={v => onMudarPlanning({ objetivos: v })} />
+      </section>
+
       <section className="pl-secao">
         <p className="pl-secao-titulo">
           A semana
@@ -3481,36 +3500,6 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
           // quando a configuração das etapas já chegou.
           onCriar={podeEditarTarefa && etapaDeEntrada ? onCriarTarefa : undefined} />
       </section>
-
-      <div className="pl-combinado">
-        <section className="pl-secao">
-          <p className="pl-secao-titulo">Destaques da semana</p>
-          <LinhasDaPlanning
-            valores={planning.destaques}
-            somenteLeitura={!podeEditar}
-            placeholder="O que precisa acontecer nesta semana"
-            onChange={v => onMudarPlanning({ destaques: v, reunioes: planning.reunioes })} />
-        </section>
-
-        <section className="pl-secao">
-          <p className="pl-secao-titulo">Reuniões da semana</p>
-          <LinhasDaPlanning
-            valores={planning.reunioes}
-            somenteLeitura={!podeEditar}
-            placeholder="Com quem, sobre o quê, quando"
-            onChange={v => onMudarPlanning({ destaques: planning.destaques, reunioes: v })} />
-        </section>
-
-        {/* Quem combinou fica no pe do combinado, e nao no fim da folha: e a
-            assinatura daquilo, e la embaixo ela parecia ser dos pontos de
-            atencao. */}
-        {planning.atualizado_por_nome && (
-          <p className="pl-assinatura">
-            Combinado por {planning.atualizado_por_nome}
-            {planning.atualizado_em ? `, ${fmtData(planning.atualizado_em.slice(0, 10))}` : ''}.
-          </p>
-        )}
-      </div>
 
       <section className="pl-secao">
         <p className="pl-secao-titulo">
@@ -3559,22 +3548,31 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
 }
 
 /**
- * Lista de frases que se escreve na reunião: uma linha por item, Enter abre a
- * seguinte, e a linha vazia sai sozinha ao perder o foco.
+ * Os objetivos da semana, em checklist: uma linha por objetivo, Enter abre a
+ * seguinte, a linha vazia sai sozinha ao perder o foco, e a caixinha marca o
+ * que foi cumprido.
  *
  * É o mesmo gesto do checklist da tarefa, e não um campo de texto corrido: o
- * que se combina numa planning é uma lista de coisas, e texto corrido vira
- * parágrafo que ninguém relê.
+ * que se combina numa planning é uma lista de coisas, e a planning seguinte
+ * abre esta semana para conferir o que andou - a marca é essa conferência.
  */
-function LinhasDaPlanning({ valores, placeholder, somenteLeitura, onChange }: {
-  valores: string[];
+function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, onChange }: {
+  valores: ObjetivoDaSemana[];
   placeholder: string;
   somenteLeitura: boolean;
-  onChange: (v: string[]) => void;
+  onChange: (v: ObjetivoDaSemana[]) => void;
 }) {
   const campos = useRef<Array<HTMLInputElement | null>>([]);
   /** A linha que acabou de nascer, para o foco ir até ela depois da pintura. */
   const nova = useRef<number | null>(null);
+  /** A linha levada pelo punho, e onde ela vai cair. */
+  const [arrastando, setArrastando] = useState<string | null>(null);
+  const [sobre, setSobre] = useState<{ id: string; pos: 'antes' | 'depois' } | null>(null);
+  /** Cada linha pelo id, e onde ela estava antes da troca de ordem: é o que
+   *  deixa a linha deslizar até o lugar novo em vez de saltar para ele. */
+  const porId = useRef(new Map<string, HTMLDivElement>());
+  const antes = useRef<Map<string, DOMRect> | null>(null);
+  const ordem = valores.map(v => v.id).join('|');
 
   useEffect(() => {
     if (nova.current === null) return;
@@ -3582,58 +3580,171 @@ function LinhasDaPlanning({ valores, placeholder, somenteLeitura, onChange }: {
     nova.current = null;
   });
 
-  const trocar = (i: number, texto: string) =>
-    onChange(valores.map((v, k) => (k === i ? texto : v)));
+  useLayoutEffect(() => {
+    const velhas = antes.current;
+    antes.current = null;
+    if (!velhas || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    for (const [id, el] of porId.current) {
+      const de = velhas.get(id);
+      if (!de) continue;
+      const dy = de.top - el.getBoundingClientRect().top;
+      if (!dy) continue;
+      el.style.transition = 'none';
+      el.style.transform = `translateY(${dy}px)`;
+      void el.offsetHeight;
+      el.style.transition = 'transform var(--transition-spring)';
+      el.style.transform = '';
+      const limpar = () => { el.style.transition = ''; el.removeEventListener('transitionend', limpar); };
+      el.addEventListener('transitionend', limpar);
+    }
+  }, [ordem]);
+
+  const trocar = (i: number, mudanca: Partial<ObjetivoDaSemana>) =>
+    onChange(valores.map((v, k) => (k === i ? { ...v, ...mudanca } : v)));
 
   const inserir = (depoisDe: number) => {
     const lista = [...valores];
-    lista.splice(depoisDe + 1, 0, '');
+    lista.splice(depoisDe + 1, 0, { id: novoIdDeObjetivo(), texto: '', feito: false });
     nova.current = depoisDe + 1;
     onChange(lista);
   };
 
   const remover = (i: number) => onChange(valores.filter((_, k) => k !== i));
 
+  /** Grava a ordem nova, guardando antes onde cada linha estava. */
+  const reordenar = (lista: ObjetivoDaSemana[]) => {
+    if (lista.map(v => v.id).join('|') === ordem) return;
+    antes.current = new Map([...porId.current].map(([id, el]) => [id, el.getBoundingClientRect()]));
+    onChange(lista);
+  };
+
+  const soltar = (alvoId: string) => {
+    const origem = valores.find(v => v.id === arrastando);
+    const pos = sobre?.pos ?? 'antes';
+    setArrastando(null);
+    setSobre(null);
+    if (!origem || origem.id === alvoId) return;
+    const lista = valores.filter(v => v.id !== origem.id);
+    const para = lista.findIndex(v => v.id === alvoId);
+    lista.splice(pos === 'antes' ? para : para + 1, 0, origem);
+    reordenar(lista);
+  };
+
+  /** Alt com a seta leva a linha junto: arrastar não pode ser o único jeito de
+   *  arrumar a ordem, e quem está escrevendo não quer largar o teclado. */
+  const moverPorTecla = (i: number, passo: number) => {
+    const destino = i + passo;
+    if (destino < 0 || destino >= valores.length) return;
+    const lista = [...valores];
+    [lista[i], lista[destino]] = [lista[destino], lista[i]];
+    nova.current = destino;
+    reordenar(lista);
+  };
+
   if (somenteLeitura) {
     return valores.length === 0
       ? <p className="nt-vazio">Nada combinado para esta semana.</p>
       : (
-        <ul className="pl-linhas-leitura">
-          {valores.map((v, i) => <li key={i}>{v}</li>)}
-        </ul>
+        <div className="pl-linhas">
+          {valores.map(v => (
+            <div key={v.id} className={`pl-linha${v.feito ? ' feito' : ''}`}>
+              <input type="checkbox" className="form-checkbox" checked={v.feito} disabled
+                aria-label={v.texto} />
+              <span className="pl-linha-texto">{v.texto}</span>
+            </div>
+          ))}
+        </div>
       );
   }
 
   return (
-    <div className="pl-linhas">
-      {valores.map((v, i) => (
-        <div key={i} className="pl-linha">
-          <span className="pl-linha-marca" aria-hidden="true" />
+    <div className={`pl-linhas${arrastando ? ' reordenando' : ''}`}>
+      {valores.map((v, i) => {
+        const alvo = sobre?.id === v.id && arrastando !== v.id ? sobre.pos : null;
+        return (
+        <div
+          key={v.id}
+          ref={el => { if (el) porId.current.set(v.id, el); else porId.current.delete(v.id); }}
+          className={[
+            'pl-linha',
+            v.feito ? 'feito' : '',
+            arrastando === v.id ? 'levada' : '',
+            alvo ? `cai-${alvo}` : '',
+          ].filter(Boolean).join(' ')}
+          onDragOver={e => {
+            if (!arrastando) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            const r = e.currentTarget.getBoundingClientRect();
+            const pos = e.clientY < r.top + r.height / 2 ? 'antes' : 'depois';
+            if (sobre?.id !== v.id || sobre.pos !== pos) setSobre({ id: v.id, pos });
+          }}
+          onDragLeave={e => {
+            if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+            setSobre(x => (x?.id === v.id ? null : x));
+          }}
+          onDrop={e => { e.preventDefault(); soltar(v.id); }}
+        >
+          {/* O punho, e não a linha inteira, é o que arrasta: a linha é um campo
+              de texto, e arrastar por ela brigaria com selecionar o que está
+              escrito. Ele mora na margem do painel, então aparecer no hover
+              não empurra a caixinha. */}
+          <span
+            className="pl-linha-punho"
+            draggable
+            aria-hidden="true"
+            title="Arraste para mudar a ordem"
+            onDragStart={e => {
+              e.dataTransfer.effectAllowed = 'move';
+              // Sem carga o Firefox nem começa o arraste.
+              e.dataTransfer.setData('text/plain', v.id);
+              const linha = e.currentTarget.parentElement!;
+              const r = linha.getBoundingClientRect();
+              e.dataTransfer.setDragImage(linha, e.clientX - r.left, e.clientY - r.top);
+              setArrastando(v.id);
+            }}
+            onDragEnd={() => { setArrastando(null); setSobre(null); }}
+          >
+            <IconArrastar size={13} />
+          </span>
+          <label className="checklist-marca" title={v.feito ? 'Desmarcar' : 'Marcar como cumprido'}>
+            <input type="checkbox" className="form-checkbox"
+              checked={v.feito}
+              // Linha ainda em branco não tem o que cumprir.
+              disabled={v.texto.trim() === ''}
+              aria-label={`Marcar "${v.texto}" como cumprido`}
+              onChange={e => trocar(i, { feito: e.target.checked })} />
+          </label>
           <input
             ref={el => { campos.current[i] = el; }}
             className="pl-linha-campo"
-            value={v}
+            value={v.texto}
             placeholder={placeholder}
-            onChange={e => trocar(i, e.target.value)}
+            onChange={e => trocar(i, { texto: e.target.value })}
             onKeyDown={e => {
               if (e.key === 'Enter') { e.preventDefault(); inserir(i); }
+              if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+                e.preventDefault();
+                moverPorTecla(i, e.key === 'ArrowDown' ? 1 : -1);
+              }
               // Backspace na linha vazia apaga a linha, como em toda lista:
               // obrigar a ir até o X para desfazer uma linha em branco é pedir
               // um gesto de mouse no meio de quem está digitando.
-              if (e.key === 'Backspace' && v === '' && valores.length > 1) {
+              if (e.key === 'Backspace' && v.texto === '' && valores.length > 1) {
                 e.preventDefault();
                 nova.current = Math.max(0, i - 1);
                 remover(i);
               }
             }}
             // Linha em branco não vira item: sair dela é desistir de escrevê-la.
-            onBlur={() => { if (v.trim() === '' && valores.length > 0) remover(i); }} />
+            onBlur={() => { if (v.texto.trim() === '' && valores.length > 0) remover(i); }} />
           <button type="button" className="checklist-tirar" aria-label="Remover esta linha"
             title="Remover" onMouseDown={e => e.preventDefault()} onClick={() => remover(i)}>
             <IconX size={11} />
           </button>
         </div>
-      ))}
+        );
+      })}
       {/* O mesmo "+" discreto do checklist da tarefa: em repouso a lista termina
           no ultimo item, e uma caixa com moldura pesava mais que os itens. */}
       <button type="button" className="checklist-add" onClick={() => inserir(valores.length - 1)}>
@@ -4105,22 +4216,31 @@ function SeletorDeSemana({ semana, onMudar }: {
   );
 }
 
-/** O combinado de um projeto numa semana. */
-interface PlanningDaSemana {
-  destaques: string[];
-  reunioes: string[];
-  atualizado_em?: string | null;
-  atualizado_por_nome?: string | null;
+/** Um objetivo da semana, que a sala marca quando cumpre. O `id` só existe na
+ *  tela: é a chave que deixa a linha ser levada para outra posição sem que o
+ *  React a confunda com a vizinha. O servidor guarda a ordem da lista. */
+interface ObjetivoDaSemana {
+  id: string;
+  texto: string;
+  feito: boolean;
 }
 
-const PLANNING_VAZIA: PlanningDaSemana = { destaques: [], reunioes: [] };
+let ultimoIdDeObjetivo = 0;
+const novoIdDeObjetivo = () => `objetivo-${++ultimoIdDeObjetivo}`;
+
+/** O combinado de um projeto numa semana: os objetivos dela. */
+interface PlanningDaSemana {
+  objetivos: ObjetivoDaSemana[];
+}
+
+const PLANNING_VAZIA: PlanningDaSemana = { objetivos: [] };
 
 /**
  * Aba Planning: a reunião de planejamento da semana, projeto por projeto.
  *
  * A tela é feita para ser percorrida em voz alta com o time: escolhe-se o
  * projeto na divisória lateral, os devs puxam do backlog o que entra em cada
- * dia, e o que a sala combina fica escrito ali mesmo - destaques e reuniões da
+ * dia, e o que a sala combina fica escrito ali mesmo - os objetivos da
  * semana, gravados por projeto e por semana, para a planning seguinte poder
  * abrir a anterior e conferir.
  *
@@ -5201,10 +5321,11 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
       const mapa: Record<string, PlanningDaSemana> = {};
       for (const x of r.planning) {
         mapa[String(x.projeto_id)] = {
-          destaques: Array.isArray(x.destaques) ? x.destaques.map(String) : [],
-          reunioes: Array.isArray(x.reunioes) ? x.reunioes.map(String) : [],
-          atualizado_em: x.atualizado_em ?? null,
-          atualizado_por_nome: x.atualizado_por_nome ?? null,
+          objetivos: Array.isArray(x.objetivos)
+            ? x.objetivos.map((o: any) => ({
+              id: novoIdDeObjetivo(), texto: String(o?.texto ?? ''), feito: o?.feito === true,
+            }))
+            : [],
         };
       }
       setPlanning(mapa);
@@ -5226,18 +5347,9 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
         action: 'salvar_planning_semana',
         projeto_id: projetoId,
         semana: semanaIso,
-        destaques: dados.destaques ?? [],
-        reunioes: dados.reunioes ?? [],
+        objetivos: (dados.objetivos ?? []).map(o => ({ texto: o.texto, feito: o.feito })),
       }).then(r => {
-        if (r?.error) { toast('error', 'Não foi possível gravar o combinado', r.error); return; }
-        setPlanning(atual => ({
-          ...atual,
-          [projetoId]: {
-            ...atual[projetoId],
-            atualizado_em: r?.atualizado_em ?? null,
-            atualizado_por_nome: r?.atualizado_por_nome ?? null,
-          },
-        }));
+        if (r?.error) toast('error', 'Não foi possível gravar os objetivos', r.error);
       });
     }, 700));
   }, [api, semanaIso, toast]);

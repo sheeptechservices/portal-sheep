@@ -6953,13 +6953,9 @@ button.checklist-texto:focus-visible {
   color: var(--gray2);
 }
 
-/* Destaques e reunioes lado a lado, num painel so: sao as duas metades do
-   mesmo combinado, e o fundo de papel e o que as le como uma coisa so - soltas
-   na folha, pareciam duas secoes sem relacao. */
+/* Os objetivos da semana num painel proprio, com fundo de papel: e o
+   combinado da sala, e o painel o separa do quadro logo abaixo. */
 .pl-combinado {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px 28px;
   padding: 16px 18px 12px;
   border: 1px solid var(--cristal-borda, transparent);
   border-radius: var(--radius-md);
@@ -6969,12 +6965,6 @@ button.checklist-texto:focus-visible {
     var(--cristal-sombra, none);
 }
 .pl-combinado .pl-secao-titulo { margin-bottom: 4px; }
-.pl-combinado .pl-assinatura {
-  grid-column: 1 / -1;
-  padding-top: 8px;
-  border-top: 1px solid var(--gray4);
-  text-align: right;
-}
 
 /* ── As linhas do combinado ───────────────────────────
    No desenho do checklist da tarefa: o item e texto em repouso, a linha acende
@@ -6992,15 +6982,13 @@ button.checklist-texto:focus-visible {
 }
 .pl-linha:hover,
 .pl-linha:focus-within { background: var(--gray4); }
-/* O ponto da lista, que e o que faz a linha ler como item e nao como campo. */
-.pl-linha-marca {
-  flex: none;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--gray2);
-}
-.pl-linha-campo {
+/* A caixinha e a do checklist da tarefa, e e ela que faz a linha ler como item
+   e nao como campo. Sem texto ainda, ela apaga: nao ha o que cumprir. */
+.pl-linha .checklist-marca { align-items: center; }
+.pl-linha .checklist-marca input { margin-top: 0; }
+.pl-linha .form-checkbox:disabled { opacity: .45; cursor: default; }
+.pl-linha-campo,
+.pl-linha-texto {
   flex: 1;
   min-width: 0;
   height: 24px;
@@ -7021,19 +7009,55 @@ button.checklist-texto:focus-visible {
 .pl-linha:focus-within .checklist-tirar { opacity: 1; }
 .pl-linhas .checklist-add { align-self: flex-start; margin-top: 2px; }
 
-.pl-linhas-leitura { margin: 0; padding-left: 16px; }
-.pl-linhas-leitura li {
-  font-size: 12.5px;
-  color: var(--gray);
-  margin-bottom: 4px;
+/* O punho de arrastar mora na margem do painel, a esquerda da caixinha: aparece
+   no hover sem empurrar nada. */
+.pl-linha { position: relative; }
+.pl-linha-punho {
+  position: absolute;
+  left: -13px;
+  top: 50%;
+  display: inline-flex;
+  padding: 2px 1px;
+  border-radius: var(--radius-sm);
+  color: var(--gray2);
+  opacity: 0;
+  cursor: grab;
+  transform: translateY(-50%);
+  transition: opacity var(--transition), color var(--transition);
+}
+.pl-linha:hover .pl-linha-punho { opacity: 1; }
+.pl-linha-punho:hover { color: var(--black); }
+.pl-linha-punho:active { cursor: grabbing; }
+/* Com uma linha na mao, o hover das outras apaga: so a linha de queda diz
+   alguma coisa. */
+.pl-linhas.reordenando .pl-linha:not(.levada) { background: none; }
+.pl-linhas.reordenando .pl-linha:not(.levada) .pl-linha-punho,
+.pl-linhas.reordenando .checklist-tirar { opacity: 0; }
+.pl-linha.levada { opacity: .4; }
+/* A linha amarela de onde o objetivo vai cair, a mesma das divisorias. */
+.pl-linha.cai-antes::after,
+.pl-linha.cai-depois::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--yellow);
+  pointer-events: none;
+}
+.pl-linha.cai-antes::after { top: -2px; }
+.pl-linha.cai-depois::after { bottom: -2px; }
+.pl-linha-texto { display: flex; align-items: center; border-bottom: none; }
+/* Cumprido continua legivel, como o passo feito da tarefa: e o registro do que
+   a semana entregou, e a planning seguinte vem conferir. */
+.pl-linha.feito .pl-linha-campo,
+.pl-linha.feito .pl-linha-texto {
+  color: var(--gray2);
+  text-decoration: line-through;
+  text-decoration-color: var(--gray3);
 }
 
-.pl-assinatura {
-  margin: 0;
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--gray2);
-}
 /* O ponto que separa cliente de gestor na linha de baixo do titulo. Mais claro
    que o texto: ele e pontuacao, e nao mais uma informacao na fila. */
 .nt-sep { color: var(--gray3); }
@@ -7114,13 +7138,13 @@ button.checklist-texto:focus-visible {
     box-shadow: none;
   }
   .pl-sheet { border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
-  .pl-combinado { grid-template-columns: 1fr; }
   .pl-numeros { width: 100%; }
   .pl-folha .nt-semana { grid-template-columns: repeat(6, minmax(160px, 1fr)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .pl-linha,
+  .pl-linha-punho,
   .pl-linha-campo { transition: none; }
 }
 
