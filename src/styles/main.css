@@ -5298,13 +5298,20 @@ body.arrastando-painel {
 .admin-modal .admin-file-download,
 .admin-modal .file-eye-btn,
 .admin-modal .file-delete-btn,
-.admin-modal .modal-acao {
+.admin-modal .modal-acao,
+.pl-entregas .secao-add,
+.pl-entregas .admin-file-download,
+.pl-entregas .file-eye-btn,
+.pl-entregas .file-delete-btn {
   color: var(--gray2);
 }
 .admin-modal .secao-add:hover:not(:disabled),
 .admin-modal .admin-file-download:hover,
 .admin-modal .file-eye-btn:hover,
-.admin-modal .modal-acao:hover {
+.admin-modal .modal-acao:hover,
+.pl-entregas .secao-add:hover:not(:disabled),
+.pl-entregas .admin-file-download:hover,
+.pl-entregas .file-eye-btn:hover {
   color: var(--black);
 }
 
@@ -5324,6 +5331,11 @@ body.arrastando-painel {
 .admin-modal .admin-file-item {
   background: var(--cristal);
 }
+/* As entregas da Planning sao a mesma secao da ficha, e levam o mesmo
+   acabamento: a pagina ja define o cristal em `.pagina-cristal`. */
+.pl-entregas .admin-file-item {
+  background: var(--cristal);
+}
 
 /* O acabamento, esse vale para tudo: fio de luz na aresta de cima, sombra fina
    na de baixo e sombra larga por fora. Sobre o branco ele nao pinta nada - so
@@ -5337,7 +5349,15 @@ body.arrastando-painel {
 .admin-modal .form-checkbox:not(:checked),
 .admin-modal .secao-busca-campo,
 .admin-modal .secao-add,
-.admin-modal .btn-secondary {
+.admin-modal .btn-secondary,
+.pl-entregas .admin-file-item,
+.pl-entregas .form-input,
+.pl-entregas textarea.form-input,
+.pl-entregas .campo-data,
+.pl-entregas .form-checkbox:not(:checked),
+.pl-entregas .secao-busca-campo,
+.pl-entregas .secao-add,
+.pl-entregas .btn-secondary {
   border-color: var(--cristal-borda);
   box-shadow: inset 0 1px 0 var(--cristal-luz),
     inset 0 -1px 0 var(--cristal-base),
@@ -5353,13 +5373,22 @@ body.arrastando-painel {
 .admin-modal .secao-busca-campo:hover,
 .admin-modal .secao-busca-campo:focus-within,
 .admin-modal .secao-add:hover:not(:disabled),
-.admin-modal .btn-secondary:hover:not(:disabled) {
+.admin-modal .btn-secondary:hover:not(:disabled),
+.pl-entregas .admin-file-item:hover,
+.pl-entregas .form-input:hover:not(:disabled),
+.pl-entregas .campo-data:hover,
+.pl-entregas .form-checkbox:hover:not(:checked),
+.pl-entregas .secao-busca-campo:hover,
+.pl-entregas .secao-busca-campo:focus-within,
+.pl-entregas .secao-add:hover:not(:disabled),
+.pl-entregas .btn-secondary:hover:not(:disabled) {
   border-color: var(--cristal-borda-forte);
 }
 /* Campo em foco troca o acabamento pelo halo: e o realce que diz onde a
    escrita esta indo, e dois efeitos somados viravam borrao. */
 .admin-modal .form-input:focus,
-.admin-modal .form-select:focus {
+.admin-modal .form-select:focus,
+.pl-entregas .form-input:focus {
   box-shadow: 0 0 0 3px var(--gray4);
 }
 
@@ -7080,8 +7109,8 @@ button.checklist-texto:focus-visible {
   .pl-numero-progresso { min-width: 96px; }
 }
 /* A coluna rola por dentro e tem teto: sem ele, um backlog de vinte tarefas
-   empurrava o combinado e os pontos de atencao para fora da tela, e a reuniao
-   montava a semana sem ver o que tinha acabado de combinar. */
+   empurrava as entregas para fora da tela, e a reuniao montava a semana sem
+   ver o que o projeto tinha de entregar. */
 .pl-folha .nt-dia-corpo {
   max-height: min(40vh, 380px);
   overflow-y: auto;
@@ -7162,15 +7191,6 @@ button.checklist-texto:focus-visible {
   .pl-seta:active { transform: none; }
 }
 
-.nt-tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
-}
 /* Base fixa, e não `width: 100%`: dentro de um flex de largura dada pelo
    conteúdo, a porcentagem resolve contra si mesma e a barra some. */
 .nt-progresso-barra {
@@ -7193,34 +7213,6 @@ button.checklist-texto:focus-visible {
   color: var(--gray2);
   margin: 0;
 }
-
-.nt-lista {
-  list-style: none;
-  margin: 10px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.nt-lista li {
-  position: relative;
-  padding-left: 18px;
-  font-size: 13.5px;
-  line-height: 1.5;
-  color: var(--gray);
-}
-.nt-lista li::before {
-  content: '';
-  position: absolute;
-  left: 4px;
-  top: 9px;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--gray2);
-}
-.nt-lista li.grave { color: var(--black); font-weight: 600; }
-.nt-lista li.grave::before { background: var(--red); }
 
 /* Anel e legenda ocupando a faixa inteira. Encolhido à esquerda, o donut
    deixava metade da linha vazia num bloco que vai de ponta a ponta. */
@@ -7758,37 +7750,6 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   gap: 5px;
   min-height: 26px;
 }
-
-/* ── Tabela ───────────────────────────────────────────
-   Linhas finas, cabeçalho apagado: a tabela do editor, não a do painel. */
-.nt-tabela {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-.nt-tabela th {
-  text-align: left;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--gray2);
-  padding: 0 10px 7px 0;
-  border-bottom: 1px solid var(--gray3);
-}
-.nt-tabela td {
-  padding: 9px 10px 9px 0;
-  border-bottom: 1px solid var(--gray4);
-  color: var(--gray);
-  vertical-align: middle;
-}
-.nt-tabela td:first-child {
-  color: var(--black);
-  max-width: 0;
-  width: 52%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.nt-tabela tr:last-child td { border-bottom: none; }
 
 @media (max-width: 1100px) {
   /* Sem largura para a coluna lateral, o índice vira uma faixa presa no alto,

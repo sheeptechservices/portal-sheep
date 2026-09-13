@@ -1564,7 +1564,12 @@ function SecaoEntregas({
   onSalvarEntrega, onExcluirEntrega, onAlterarPendentes,
   onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
   onAnexarNaEntrega, onRemoverAnexoDaEntrega, onVerAnexoDaEntrega, onBaixarAnexoDaEntrega,
+  naPlanning = false,
 }: {
+  /** Na folha da Planning, e não na ficha: o projeto já existe, então entrega
+   *  nova grava na hora mesmo sendo a primeira, e o título segue o das outras
+   *  seções da folha. */
+  naPlanning?: boolean;
   /** Já gravadas. Vazio enquanto o projeto não existe. */
   entregas: Entrega[];
   /** As do projeto, para vincular a entrega às que a trataram. */
@@ -1665,7 +1670,7 @@ function SecaoEntregas({
     await onSalvarEntrega(comStatus(e, status), e.id);
   }
 
-  const gravado = entregas.length > 0;
+  const gravado = naPlanning || entregas.length > 0;
   const total = entregas.length + pendentes.length;
 
   const [busca, setBusca] = useState('');
@@ -1792,16 +1797,27 @@ function SecaoEntregas({
   useEffect(() => { setRecolhidos(new Set()); }, [maior, menor]);
 
   return (
-    <section>
+    <section className={naPlanning ? 'pl-secao pl-entregas' : undefined}>
       <div className="admin-section-head">
-        <p className="admin-section-title">
-          Entregas *
-          {total > 0 && (
-            <span style={{ marginLeft: 6, fontWeight: 600 }}>
-              ({busca.trim() ? `${visiveis.length} de ${total}` : total})
-            </span>
-          )}
-        </p>
+        {naPlanning ? (
+          <p className="pl-secao-titulo">
+            Entregas
+            {total > 0 && (
+              <span className="kanban-conta-bolha">
+                {busca.trim() ? `${visiveis.length}/${total}` : total}
+              </span>
+            )}
+          </p>
+        ) : (
+          <p className="admin-section-title">
+            Entregas *
+            {total > 0 && (
+              <span style={{ marginLeft: 6, fontWeight: 600 }}>
+                ({busca.trim() ? `${visiveis.length} de ${total}` : total})
+              </span>
+            )}
+          </p>
+        )}
         {/* No alto fica só a escolha de como olhar - lista, quadro ou
             calendário -, que é a decisão que muda a seção inteira. O que opera
             sobre o que está à vista desceu para a linha da busca. */}
@@ -1863,7 +1879,7 @@ function SecaoEntregas({
 
       {total === 0 && editando === null && editandoPendente === null && (
         <p style={{ fontSize: 12, color: 'var(--gray2)', margin: 0 }}>
-          Nenhuma entrega. O projeto precisa de ao menos uma.
+          {naPlanning ? 'Nenhuma entrega neste projeto.' : 'Nenhuma entrega. O projeto precisa de ao menos uma.'}
         </p>
       )}
 
@@ -2861,42 +2877,6 @@ function tarefasDaSemana(p: Projeto, dias: string[]): ItemDaSemana[] {
   return itens;
 }
 
-/** O que está fora do lugar neste projeto. Só entra o que de fato disparou:
- *  uma lista com "nada a apontar" repetido seis vezes ensina a pular a seção. */
-function pontosDeAtencao(p: Projeto): { texto: string; grave: boolean }[] {
-  const pontos: { texto: string; grave: boolean }[] = [];
-  const hoje = hojeIso();
-
-  const atrasadas = (p.tarefas ?? []).filter(t => t.prazo && !t.concluida_em && t.prazo < hoje);
-  if (atrasadas.length) {
-    pontos.push({ texto: `${atrasadas.length} tarefa(s) com prazo vencido e ainda abertas`, grave: true });
-  }
-
-  const bloqueadas = p.entregas.filter(e => e.status === 'Bloqueada');
-  if (bloqueadas.length) {
-    pontos.push({
-      texto: `${bloqueadas.length} entrega(s) bloqueada(s): ${bloqueadas.slice(0, 3).map(e => e.titulo).join(', ')}`,
-      grave: true,
-    });
-  }
-
-  const dias = diasPara(p.previsao_entrega);
-  if (dias !== null && dias < 0 && p.status !== 'Concluído' && p.status !== 'Cancelado') {
-    pontos.push({ texto: `Fim previsto passou há ${Math.abs(dias)} dia(s)`, grave: true });
-  }
-
-  const semDono = (p.tarefas ?? []).filter(t => !(t.responsaveis ?? []).length && !t.concluida_em);
-  if (semDono.length) {
-    pontos.push({ texto: `${semDono.length} tarefa(s) aberta(s) sem responsável`, grave: false });
-  }
-
-  if (!p.equipe.some(m => m.papel === 'Gestor')) {
-    pontos.push({ texto: 'Projeto sem gestor definido', grave: true });
-  }
-
-  return pontos;
-}
-
 /** Pessoa com foto. Nome sozinho obriga a lembrar quem é; a foto resolve isso
  *  antes da leitura. Quando o registro só guardou o nome - leituras antigas,
  *  antes de o id ser gravado - as iniciais entram no lugar. */
@@ -2922,22 +2902,8 @@ function PessoaFoto({ nome, id, equipe, tamanho = 20 }: {
 // ── A folha de cada projeto ─────────────────────────────────────────────────
 //
 //  Papel de agenda: a folha encostada na divisória, com o nome do projeto no
-//  alto e o que a sala precisa ver enquanto fala dele. Sem bloco recolhível -
-//  numa reunião, o que está fechado não é lido, e tudo o que está aqui é para
-//  ser lido.
-
-const VERDE = '#23A455';
-const AMARELO = '#B58300';
-const VERMELHO = '#D93025';
-const NEUTRO = '#8A8B84';
-
-/** Etiqueta colorida de propriedade, no desenho de tag de editor: fundo pálido
- *  da própria cor, texto na cor cheia. */
-function Tag({ texto, cor = NEUTRO }: { texto: string; cor?: string }) {
-  return (
-    <span className="nt-tag" style={{ color: cor, background: `${cor}1A` }}>{texto}</span>
-  );
-}
+//  alto e o que a sala precisa ver enquanto fala dele: os objetivos, o quadro
+//  da semana e as entregas do projeto.
 
 /**
  * Um cartão do quadro da semana, no mesmo desenho do cartão do kanban das
@@ -3338,8 +3304,11 @@ function QuadroDaSemana({ projeto: p, itens, backlog, dias: diasIso, etapaDeEntr
  */
 function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEditar,
   podeEditarTarefa, podeExcluirTarefa, etapas, etapaDeEntrada, etapaDeConclusao, onAbrir,
-  onAbrirTarefa, onSalvarTarefa, onExcluirTarefa, onMudarPlanning, onCriarTarefa }: {
+  onAbrirTarefa, onSalvarTarefa, onExcluirTarefa, onMudarPlanning, onCriarTarefa, entregas }: {
   projeto: Projeto;
+  /** A seção de entregas do projeto, montada pela página, que é quem tem os
+   *  gestos de gravar entrega, evidência e anexo. */
+  entregas: React.ReactNode;
   /** A segunda-feira da semana em foco. */
   semana: Date;
   dias: string[];
@@ -3361,7 +3330,6 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
   onCriarTarefa: (prazo: string | null) => void;
 }) {
   const itens = tarefasDaSemana(p, dias);
-  const pontos = pontosDeAtencao(p);
   const gestor = p.equipe.find(m => m.papel === 'Gestor');
   const hoje = hojeIso();
 
@@ -3383,24 +3351,6 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
 
   const atrasadas = (p.tarefas ?? [])
     .filter(t => !t.concluida_em && t.prazo && t.prazo < hoje);
-
-  const questoes = [
-    ...p.entregas.filter(e => e.status === 'Bloqueada').map(e => ({
-      nome: e.titulo,
-      estado: 'Bloqueada',
-      cor: VERMELHO,
-      dono: e.responsaveis.map(id => p.equipe.find(m => m.id === id)).filter(Boolean)[0] ?? null,
-    })),
-    ...atrasadas
-      .sort((a, b) => a.prazo!.localeCompare(b.prazo!))
-      .slice(0, 5)
-      .map(t => ({
-        nome: t.titulo,
-        estado: `Atrasada ${Math.abs(diasPara(t.prazo)!)}d`,
-        cor: AMARELO,
-        dono: (t.responsaveis ?? []).map(id => p.equipe.find(m => m.id === id)).filter(Boolean)[0] ?? null,
-      })),
-  ];
 
   return (
     <div className="pl-folha troca" key={`${p.id}|${iso10(semana)}`}>
@@ -3500,47 +3450,10 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
           onCriar={podeEditarTarefa && etapaDeEntrada ? onCriarTarefa : undefined} />
       </section>
 
-      <section className="pl-secao">
-        <p className="pl-secao-titulo">
-          Pontos de atenção
-          {questoes.length + pontos.length > 0 && (
-            <span className="kanban-conta-bolha">{questoes.length + pontos.length}</span>
-          )}
-        </p>
-        {questoes.length === 0 && pontos.length === 0 ? (
-          <p className="nt-vazio">Nada fora do lugar neste projeto.</p>
-        ) : (
-          <>
-            {questoes.length > 0 && (
-              <table className="nt-tabela">
-                <thead>
-                  <tr><th>Item</th><th>Situação</th><th>Responsável</th></tr>
-                </thead>
-                <tbody>
-                  {questoes.map((q, k) => (
-                    <tr key={k}>
-                      <td title={q.nome}>{q.nome}</td>
-                      <td><Tag texto={q.estado} cor={q.cor} /></td>
-                      <td>
-                        {q.dono
-                          ? <PessoaFoto nome={q.dono.nome} id={q.dono.id} equipe={p.equipe} tamanho={16} />
-                          : <span className="nt-vazio">Sem dono</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            {pontos.length > 0 && (
-              <ul className="nt-lista" style={{ marginTop: questoes.length ? 14 : 0 }}>
-                {pontos.map((x, k) => (
-                  <li key={k} className={x.grave ? 'grave' : undefined}>{x.texto}</li>
-                ))}
-              </ul>
-            )}
-          </>
-        )}
-      </section>
+      {/* As entregas do projeto, a mesma seção da ficha, com tudo o que ela
+          faz: a planning decide a semana olhando para o que o projeto tem de
+          entregar, e sair para a ficha a cada pergunta partiria a reunião. */}
+      {entregas}
 
     </div>
   );
@@ -4250,7 +4163,10 @@ function AbaPlanning({
   projetos, pessoas, planning, semana, onMudarSemana, onSalvarPlanning, onReordenar,
   onAbrir, onSalvarTarefa, onAbrirTarefa, onCriarTarefa, onExcluirTarefa,
   etapas, etapaDeEntrada, etapaDeConclusao, podeEditar, podeEditarTarefa, podeExcluirTarefa,
+  entregasDe,
 }: {
+  /** Monta a seção de entregas de um projeto. */
+  entregasDe: (p: Projeto) => React.ReactNode;
   projetos: Projeto[];
   pessoas: Pessoa[];
   /** O combinado de todos os projetos na semana em foco, por id de projeto. */
@@ -4343,6 +4259,7 @@ function AbaPlanning({
               onSalvarTarefa={onSalvarTarefa}
               onExcluirTarefa={onExcluirTarefa}
               onCriarTarefa={prazo => onCriarTarefa(atual, prazo)}
+              entregas={entregasDe(atual)}
               onMudarPlanning={dados => onSalvarPlanning(atual.id, {
                 ...planning[atual.id],
                 ...dados,
@@ -6610,6 +6527,49 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           podeEditarTarefa={pode('tarefas:editar')}
           podeExcluirTarefa={pode('tarefas:excluir')}
           onAbrir={p => setForm({ editando: p })}
+          // A mesma seção da ficha, ligada aos mesmos gestos da página: o que
+          // se faz numa entrega aqui é o que se faria abrindo o projeto.
+          entregasDe={p => (
+            <SecaoEntregas
+              naPlanning
+              somenteLeitura={!podeEditar}
+              entregas={p.entregas ?? []}
+              reunioes={p.reunioes ?? []}
+              onVincular={vincularReuniao}
+              // A reunião mora na ficha: o chip abre o projeto já na aba de
+              // reuniões, com ela aberta.
+              onAbrirReuniao={id => {
+                setAberturaPedida({ aba: 'reunioes', reuniao: id });
+                setForm({ editando: p });
+              }}
+              pendentes={[]}
+              onAlterarPendentes={() => {}}
+              tarefas={p.tarefas ?? []}
+              onVerTarefasDaEntrega={onVerTarefasDaEntrega
+                ? entregaId => onVerTarefasDaEntrega(p.id, entregaId)
+                : undefined}
+              onCriarTarefa={(entregaId, status) => criarTarefaNoProjeto(p, entregaId, status)}
+              onAbrirTarefa={abrirTarefa}
+              onExcluirTarefa={setExcluindoTarefa}
+              onMoverTarefa={moverTarefaDeEtapa}
+              onFixarRecolhida={pode('configuracoes:etapas') ? fixarEtapaRecolhida : undefined}
+              podeEditarTarefa={pode('tarefas:editar')}
+              etapasTarefa={etapasTarefa}
+              pessoas={pessoas}
+              marcadores={marcadoresDeEntrega}
+              submarcadores={submarcadoresDeEntrega}
+              salvando={salvando}
+              onSalvarEntrega={(dados, id) => salvarEntrega(p, dados, id)}
+              onExcluirEntrega={excluirEntrega}
+              onSubirEvidencia={subirEvidencia}
+              onBaixarEvidencia={baixarEvidencia}
+              onVerEvidencia={ev => setPrevia({ fonte: 'evidencia', item: ev })}
+              onAnexarNaEntrega={anexarNaEntrega}
+              onRemoverAnexoDaEntrega={removerAnexoDaEntrega}
+              onVerAnexoDaEntrega={a => setPrevia({ fonte: 'entrega_arquivo', item: a })}
+              onBaixarAnexoDaEntrega={baixarAnexoDaEntrega}
+            />
+          )}
         />
       )}
       </AbaPainel>
