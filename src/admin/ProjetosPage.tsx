@@ -1,12 +1,12 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { iniciais, useAuth, useToast } from './AdminApp';
 import {
-  IconAlert, IconArrowRight, IconClip, IconClipboard, IconDoc, IconDownload,
+  IconAlert, IconArrowLeft, IconArrowRight, IconClip, IconClipboard, IconDoc, IconDownload,
   IconImage, IconInbox,
   IconChevronDown, IconChevronRight, IconChevronUp, IconChevronUpDown,
   IconDrive, IconEdit, IconEye, IconGitHub, IconGlobo, IconLink, IconMarcoAndamento, IconMarcoBloqueado,
-  IconAgrupar, IconCalendario, IconCheck, IconExternal, IconOrdenar, IconSearch,
+  IconAgrupar, IconArrastar, IconCalendario, IconCheck, IconExternal, IconOrdenar, IconSearch,
   IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado, IconMarcoValidado,
   IconPlay, IconPlus, IconPrioridadeAlta, IconPrioridadeBaixa, IconPrioridadeMaxima,
   IconRecolher,
@@ -297,6 +297,9 @@ export interface Projeto {
   /** Chave da página de acompanhamento do cliente. Nulo é não publicado. */
   publico_token: string | null;
   publicado_em: string | null;
+  /** Posição do projeto na reunião de planning, arrumada arrastando as
+   *  divisórias. Nula é "ainda não ordenado". */
+  planning_ordem?: number | null;
 }
 
 interface Cliente { id: string; nome: string }
@@ -2936,28 +2939,64 @@ function Tag({ texto, cor = NEUTRO }: { texto: string; cor?: string }) {
   );
 }
 
-/** Um card do quadro. Mostra e arrasta - editar é trabalho de mesa e mora no
- *  modal, que abre no clique. Edição no lugar convivia mal com o arraste: o
- *  mesmo gesto ora movia, ora entrava no campo. */
-function CardDaSemana({ tarefa: t, equipe, feita, podeArrastar, podeMarcar, arrastando,
-  onAbrir, onMarcar, onArrastar, onSoltar }: {
+/**
+ * Um cartão do quadro da semana, no mesmo desenho do cartão do kanban das
+ * entregas: título, a entrega de onde a tarefa veio, e o pé com a prioridade,
+ * o prazo e quem cuida. O fio da esquerda é a cor da etapa em que a tarefa está.
+ *
+ * Eram dois cartões diferentes para a mesma tarefa - um na ficha do projeto,
+ * outro na Planning -, e a mesma coisa desenhada de dois jeitos obriga a
+ * reaprender o que já se sabe. As ações que só a semana tem - marcar feita -
+ * aparecem no pé, com o ponteiro em cima, como a lixeira do kanban.
+ */
+function CardDaSemana({ tarefa: t, pessoas, cor, entrega, feita, mostrarPrazo, podeArrastar,
+  podeMarcar, podeExcluir, arrastando, onAbrir, onMarcar, onExcluir, onArrastar, onSoltar }: {
   tarefa: Tarefa;
-  equipe: Membro[];
+  /** Quem pode aparecer como responsável: as pessoas da casa, e não só a equipe
+   *  do projeto - como no kanban das entregas. */
+  pessoas: Pessoa[];
+  /** A cor da etapa em que a tarefa está. */
+  cor: string;
+  /** O título da entrega, quando a tarefa pertence a uma. */
+  entrega: string | null;
   feita: boolean;
+  /** Num dia da semana o prazo é o próprio dia da coluna, e repeti-lo no
+   *  cartão seria ruído. No backlog ele é o que a sala pesa. */
+  mostrarPrazo: boolean;
   podeArrastar: boolean;
   /** Falso enquanto a configuração de etapas não chegou: sem ela não há para
    *  onde levar a tarefa ao marcar. */
   podeMarcar: boolean;
+  podeExcluir: boolean;
   arrastando: boolean;
   onAbrir: (t: Tarefa) => void;
   onMarcar: (t: Tarefa, feita: boolean) => void;
+  onExcluir: (t: Tarefa) => void;
   onArrastar: (id: number) => void;
   onSoltar: () => void;
 }) {
+  const prioridade = t.prioridade ?? PRIORIDADE_PADRAO;
+  const prazo = (t.prazo ?? '').slice(0, 10);
   return (
+    // Abrir a tarefa é leitura, e não edição: quem não pode editar continua
+    // podendo ler o que foi combinado. O que a permissão barra é arrastar,
+    // marcar e excluir, que são os gestos que mudam alguma coisa.
     <div
-      className={`nt-card${feita ? ' feita' : ' planejada'}${arrastando ? ' arrastando' : ''}`}
+      className={`kanban-card nt-cartao${feita ? ' feita' : ''}`}
+      role="button"
+      tabIndex={0}
+      aria-label={`${feita ? 'Concluída' : 'Aberta'}: ${t.titulo}`}
       draggable={podeArrastar}
+      style={{
+        ['--col-color' as string]: cor,
+        cursor: 'pointer',
+        opacity: arrastando ? 0.45 : undefined,
+      }}
+      onClick={() => onAbrir(t)}
+      onKeyDown={e => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAbrir(t); }
+      }}
       onDragStart={e => {
         e.dataTransfer.effectAllowed = 'move';
         // Sem carga o Firefox nem começa o arraste; o id vai junto por garantia,
@@ -2967,31 +3006,47 @@ function CardDaSemana({ tarefa: t, equipe, feita, podeArrastar, podeMarcar, arra
       }}
       onDragEnd={onSoltar}
     >
-      <div className="nt-card-topo">
-        <input
-          type="checkbox"
-          className="form-checkbox nt-card-marca"
-          checked={feita}
-          disabled={!podeMarcar}
-          aria-label={feita ? `Reabrir "${t.titulo}"` : `Marcar "${t.titulo}" como feita`}
-          title={feita ? 'Reabrir' : 'Marcar como feita'}
-          onChange={e => onMarcar(t, e.target.checked)}
-        />
-        <button type="button" className="nt-card-abrir" onClick={() => onAbrir(t)}
-          title={`${feita ? 'Concluída' : 'Planejada'}: ${t.titulo}`}>
-          <p>{t.titulo}</p>
-        </button>
-      </div>
-      {(t.responsaveis ?? []).length > 0 && (
-        <span className="nt-card-pe">
-          {t.responsaveis.map(id => {
-            const m = equipe.find(x => x.id === id);
-            return (
-              <PessoaFoto key={id} nome={m?.nome ?? null} id={id} equipe={equipe} tamanho={16} />
-            );
-          })}
+      <p className="kanban-card-title">{t.titulo}</p>
+      {entrega && <p className="kanban-card-entrega" title={entrega}>{entrega}</p>}
+      <div className="painel-kanban-pe">
+        {/* O ícone de prioridade explica a ordem do backlog, que de outro modo
+            pareceria arbitrária. Mesma marca do kanban das entregas. */}
+        <span className="painel-kanban-prio"
+          style={{ color: COR_PRIORIDADE[prioridade] ?? 'var(--gray2)' }}
+          title={`Prioridade: ${prioridade}`}>
+          {ICONE_PRIORIDADE[prioridade]?.({ size: 12 })}
         </span>
-      )}
+        {mostrarPrazo && prazo && (
+          // Vencido em vermelho: é o motivo de a tarefa estar no alto do
+          // backlog, e sem a cor a ordem pareceria arbitrária.
+          <span className={!feita && prazo < hojeIso() ? 'nt-card-vencido' : undefined}>
+            {fmtData(prazo)}
+          </span>
+        )}
+        {(t.responsaveis ?? []).length > 0 && (
+          <span style={{ marginLeft: 'auto' }}>
+            <DonosDaTarefa ids={t.responsaveis} pessoas={pessoas} size={16} />
+          </span>
+        )}
+        {podeMarcar && (
+          <button type="button"
+            className={`kanban-card-acao${feita ? ' nt-cartao-feito' : ''}`}
+            style={(t.responsaveis ?? []).length ? undefined : { marginLeft: 'auto' }}
+            title={feita ? 'Reabrir' : 'Marcar como feita'}
+            aria-label={feita ? `Reabrir ${t.titulo}` : `Marcar ${t.titulo} como feita`}
+            onClick={ev => { ev.stopPropagation(); onMarcar(t, !feita); }}>
+            <IconCheck size={12} />
+          </button>
+        )}
+        {podeExcluir && (
+          <button type="button" className="kanban-card-acao perigo"
+            style={!podeMarcar && !(t.responsaveis ?? []).length ? { marginLeft: 'auto' } : undefined}
+            title="Excluir tarefa" aria-label={`Excluir ${t.titulo}`}
+            onClick={ev => { ev.stopPropagation(); onExcluir(t); }}>
+            <IconTrash size={11} />
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -3010,8 +3065,15 @@ function CardDaSemana({ tarefa: t, equipe, feita, podeArrastar, podeMarcar, arra
  * prazo, e a tarefa sai da semana sem sumir do projeto.
  */
 function QuadroDaSemana({ projeto: p, itens, backlog, dias: diasIso, etapaDeEntrada,
-  etapaDeConclusao, podeEditar, onAbrirTarefa, onSalvarTarefa }: {
+  etapaDeConclusao, podeEditar, podeExcluir, pessoas, etapas, onAbrirTarefa, onSalvarTarefa,
+  onExcluirTarefa, onCriar }: {
   projeto: Projeto;
+  /** Excluir é `tarefas:excluir`, que é outra permissão além de editar. */
+  podeExcluir: boolean;
+  pessoas: Pessoa[];
+  /** As etapas, para o fio de cada cartão ter a cor da etapa da tarefa. */
+  etapas: EtapaTarefa[];
+  onExcluirTarefa: (t: Tarefa) => void;
   itens: ItemDaSemana[];
   /** Abertas que não caíram em nenhum dia desta semana. */
   backlog: Tarefa[];
@@ -3025,10 +3087,40 @@ function QuadroDaSemana({ projeto: p, itens, backlog, dias: diasIso, etapaDeEntr
   podeEditar: boolean;
   onAbrirTarefa: (t: Tarefa) => void;
   onSalvarTarefa: (t: Tarefa, mudancas: Record<string, unknown>) => void;
+  /** Cria a tarefa já na coluna e abre o painel dela para definir o resto:
+   *  prazo naquele dia, ou sem prazo no backlog. Ausente para quem não cria
+   *  tarefa. */
+  onCriar?: (prazo: string | null) => void;
 }) {
   const [arrastando, setArrastando] = useState<number | null>(null);
   const [sobre, setSobre] = useState<string | null>(null);
   const { toast } = useToast();
+
+  const corDaEtapa = new Map(etapas.map(e => [e.nome, e.cor]));
+  const tituloDaEntrega = new Map((p.entregas ?? []).map(e => [e.id, e.titulo]));
+  /** O que todo cartão do quadro recebe igual, venha do backlog ou de um dia. */
+  const doCartao = (t: Tarefa) => ({
+    tarefa: t,
+    pessoas,
+    cor: corDaEtapa.get(t.status) ?? 'var(--gray3)',
+    entrega: t.entrega_id ? tituloDaEntrega.get(t.entrega_id) ?? null : null,
+    podeExcluir,
+    onAbrir: onAbrirTarefa,
+    onExcluir: onExcluirTarefa,
+    onArrastar: setArrastando,
+    onSoltar: () => { setArrastando(null); setSobre(null); },
+    arrastando: arrastando === t.id,
+  });
+
+  /** O botão de nova tarefa do cabeçalho de uma coluna. Abre o mesmo painel da
+   *  tela de Tarefas, com o prazo da coluna já preenchido: é ali que se define
+   *  quem cuida, a prioridade e o que precisa ser feito. */
+  const botaoCriar = (prazo: string | null, rotulo: string) => onCriar && (
+    <button type="button" className="nt-dia-mais" title={`Nova tarefa ${rotulo}`}
+      aria-label={`Nova tarefa ${rotulo}`} onClick={() => onCriar(prazo)}>
+      <IconPlus size={12} />
+    </button>
+  );
   const hoje = hojeIso();
 
   const dias = diasIso.map(iso => {
@@ -3148,27 +3240,32 @@ function QuadroDaSemana({ projeto: p, itens, backlog, dias: diasIso, etapaDeEntr
         <div className="nt-dia-cabeca">
           <span className="nt-dia-nome">backlog</span>
           {backlog.length > 0 && <span className="nt-dia-conta">{backlog.length}</span>}
+          {botaoCriar(null, 'no backlog')}
         </div>
         <div className="nt-dia-corpo">
           {backlog.map(t => (
             <CardDaSemana
               key={t.id}
-              tarefa={t}
-              equipe={p.equipe}
+              {...doCartao(t)}
               feita={false}
+              mostrarPrazo
               podeArrastar={podeEditar}
-              podeMarcar={false}
-              arrastando={arrastando === t.id}
-              onAbrir={onAbrirTarefa}
-              onMarcar={() => {}}
-              onArrastar={setArrastando}
-              onSoltar={() => { setArrastando(null); setSobre(null); }}
+              podeMarcar={podeEditar && !!etapaDeConclusao && !!etapaDeEntrada}
+              onMarcar={(x, feita) => { if (feita) onSalvarTarefa(x, { status: etapaDeConclusao, concluida_em: new Date().toISOString() }); }}
             />
           ))}
           {backlog.length === 0 && (
-            <p className="nt-dia-alvo">
-              {aceitaNoBacklog ? 'Soltar aqui' : 'Nada em aberto fora da semana'}
-            </p>
+            aceitaNoBacklog || !onCriar ? (
+              <p className="nt-dia-alvo">
+                {aceitaNoBacklog ? 'Soltar aqui' : 'Nada em aberto fora da semana'}
+              </p>
+            ) : (
+              // Backlog vazio convida a criar: é o lugar onde a planning
+              // costuma começar, e um texto de "nada aqui" não diz o que fazer.
+              <button type="button" className="nt-dia-alvo nt-dia-convite" onClick={() => onCriar(null)}>
+                <IconPlus size={11} /> Nova tarefa
+              </button>
+            )
           )}
         </div>
       </div>
@@ -3200,21 +3297,20 @@ function QuadroDaSemana({ projeto: p, itens, backlog, dias: diasIso, etapaDeEntr
             <span className="nt-dia-nome">{d.nome}</span>
             <span className="nt-dia-numero">{d.numero}</span>
             {d.cards.length > 0 && <span className="nt-dia-conta">{d.cards.length}</span>}
+            {botaoCriar(d.iso, `para ${d.nome} ${d.numero}`)}
           </div>
           <div className="nt-dia-corpo">
             {d.cards.map(x => (
               <CardDaSemana
                 key={x.tarefa.id}
-                tarefa={x.tarefa}
-                equipe={p.equipe}
+                {...doCartao(x.tarefa)}
                 feita={x.feita}
+                // A concluída mostra o prazo quando ele não é o dia da coluna:
+                // ela está no dia em que ficou pronta, e o prazo era outro.
+                mostrarPrazo={!!x.tarefa.prazo && x.tarefa.prazo.slice(0, 10) !== d.iso}
                 podeArrastar={podeEditar}
                 podeMarcar={podeEditar && !!etapaDeConclusao && !!etapaDeEntrada}
-                arrastando={arrastando === x.tarefa.id}
-                onAbrir={onAbrirTarefa}
                 onMarcar={(_, feita) => marcar(x, feita)}
-                onArrastar={setArrastando}
-                onSoltar={() => { setArrastando(null); setSobre(null); }}
               />
             ))}
             {d.cards.length === 0 && aceita(d.futuro) && (
@@ -3241,8 +3337,8 @@ function QuadroDaSemana({ projeto: p, itens, backlog, dias: diasIso, etapaDeEntr
  * do lugar, que é o assunto que sobra quando a semana já foi fechada.
  */
 function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEditar,
-  podeEditarTarefa, etapaDeEntrada, etapaDeConclusao, onAbrir, onAbrirTarefa,
-  onSalvarTarefa, onMudarPlanning }: {
+  podeEditarTarefa, podeExcluirTarefa, etapas, etapaDeEntrada, etapaDeConclusao, onAbrir,
+  onAbrirTarefa, onSalvarTarefa, onExcluirTarefa, onMudarPlanning, onCriarTarefa }: {
   projeto: Projeto;
   /** A segunda-feira da semana em foco. */
   semana: Date;
@@ -3253,12 +3349,16 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
   podeEditar: boolean;
   /** Puxar tarefa para a semana é `tarefas:editar`, que é outra. */
   podeEditarTarefa: boolean;
+  podeExcluirTarefa: boolean;
+  etapas: EtapaTarefa[];
+  onExcluirTarefa: (t: Tarefa) => void;
   etapaDeEntrada: string;
   etapaDeConclusao: string;
   onAbrir: (p: Projeto) => void;
   onAbrirTarefa: (t: Tarefa, p: Projeto) => void;
   onSalvarTarefa: (t: Tarefa, mudancas: Record<string, unknown>) => void;
   onMudarPlanning: (dados: { destaques: string[]; reunioes: string[] }) => void;
+  onCriarTarefa: (prazo: string | null) => void;
 }) {
   const itens = tarefasDaSemana(p, dias);
   const pontos = pontosDeAtencao(p);
@@ -3306,23 +3406,56 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
     <div className="pl-folha troca" key={`${p.id}|${iso10(semana)}`}>
       <header className="pl-cabeca">
         <div className="pl-quem">
+          {p.codigo && <p className="painel-rotulo">Projeto {p.codigo}</p>}
           <h2>
             <button type="button" onClick={() => onAbrir(p)} title="Abrir a ficha do projeto">
               {p.nome}
             </button>
           </h2>
-          <p>
+          <p className="pl-meta">
             {p.cliente_nome ?? 'Sem cliente'}
             <span className="nt-sep">·</span>
             {gestor
               ? <PessoaFoto nome={gestor.nome} id={gestor.id} equipe={p.equipe} tamanho={17} />
               : <span className="nt-vazio">Sem gestor</span>}
+            {/* O resto do time em pilha, ao lado do gestor: na planning eles
+                sao a conferencia de quem esta na sala, e a pilha diz isso sem
+                ocupar uma linha propria no pe da folha. */}
+            {p.equipe.some(m => m.id !== gestor?.id) && (
+              <>
+                <span className="nt-sep">·</span>
+                <DonosDaTarefa ids={p.equipe.filter(m => m.id !== gestor?.id).map(m => m.id)}
+                  pessoas={p.equipe} size={20} />
+              </>
+            )}
           </p>
         </div>
-        <span className="pl-progresso" title="Entregas validadas">
-          <span className="nt-progresso-barra"><span style={{ width: `${progressoDe(p)}%` }} /></span>
-          {progressoDe(p)}%
-        </span>
+
+        {/* Os numeros que a sala pergunta antes de comecar: quanto ja esta na
+            semana, quanto espera no backlog e quanto esta para tras. O
+            progresso fica junto, como mais um numero, e nao sozinho no canto. */}
+        <div className="pl-numeros">
+          <span className="pl-numero">
+            <strong>{itens.filter(x => !x.feita).length}</strong>
+            <small>na semana</small>
+          </span>
+          <span className="pl-numero">
+            <strong>{itens.filter(x => x.feita).length}</strong>
+            <small>feitas</small>
+          </span>
+          <span className="pl-numero">
+            <strong>{backlog.length}</strong>
+            <small>no backlog</small>
+          </span>
+          <span className={`pl-numero${atrasadas.length ? ' alerta' : ''}`}>
+            <strong>{atrasadas.length}</strong>
+            <small>atrasadas</small>
+          </span>
+          <span className="pl-numero pl-numero-progresso" title="Entregas validadas">
+            <strong>{progressoDe(p)}%</strong>
+            <span className="nt-progresso-barra"><span style={{ width: `${progressoDe(p)}%` }} /></span>
+          </span>
+        </div>
       </header>
 
       <section className="pl-secao">
@@ -3338,8 +3471,15 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
           etapaDeEntrada={etapaDeEntrada}
           etapaDeConclusao={etapaDeConclusao}
           podeEditar={podeEditarTarefa}
+          podeExcluir={podeExcluirTarefa}
+          pessoas={pessoas}
+          etapas={etapas}
           onAbrirTarefa={x => onAbrirTarefa(x, p)}
-          onSalvarTarefa={onSalvarTarefa} />
+          onSalvarTarefa={onSalvarTarefa}
+          onExcluirTarefa={onExcluirTarefa}
+          // Sem etapa de entrada não há onde a tarefa nascer: o botão só existe
+          // quando a configuração das etapas já chegou.
+          onCriar={podeEditarTarefa && etapaDeEntrada ? onCriarTarefa : undefined} />
       </section>
 
       <div className="pl-combinado">
@@ -3360,6 +3500,16 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
             placeholder="Com quem, sobre o quê, quando"
             onChange={v => onMudarPlanning({ destaques: planning.destaques, reunioes: v })} />
         </section>
+
+        {/* Quem combinou fica no pe do combinado, e nao no fim da folha: e a
+            assinatura daquilo, e la embaixo ela parecia ser dos pontos de
+            atencao. */}
+        {planning.atualizado_por_nome && (
+          <p className="pl-assinatura">
+            Combinado por {planning.atualizado_por_nome}
+            {planning.atualizado_em ? `, ${fmtData(planning.atualizado_em.slice(0, 10))}` : ''}.
+          </p>
+        )}
       </div>
 
       <section className="pl-secao">
@@ -3404,22 +3554,6 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
         )}
       </section>
 
-      {planning.atualizado_por_nome && (
-        <p className="pl-assinatura">
-          Combinado por {planning.atualizado_por_nome}
-          {planning.atualizado_em ? `, ${fmtData(planning.atualizado_em.slice(0, 10))}` : ''}.
-        </p>
-      )}
-
-      {/* Pessoas do projeto ficam no rodapé da folha: na planning elas são a
-          conferência de quem está na sala, e não o assunto. */}
-      <p className="pl-equipe">
-        {p.equipe.length === 0
-          ? <span className="nt-vazio">Sem equipe definida</span>
-          : p.equipe.map(m => (
-            <PessoaFoto key={m.id} nome={m.nome} id={m.id} equipe={p.equipe} tamanho={17} />
-          ))}
-      </p>
     </div>
   );
 }
@@ -3477,7 +3611,7 @@ function LinhasDaPlanning({ valores, placeholder, somenteLeitura, onChange }: {
           <span className="pl-linha-marca" aria-hidden="true" />
           <input
             ref={el => { campos.current[i] = el; }}
-            className="form-input"
+            className="pl-linha-campo"
             value={v}
             placeholder={placeholder}
             onChange={e => trocar(i, e.target.value)}
@@ -3494,14 +3628,17 @@ function LinhasDaPlanning({ valores, placeholder, somenteLeitura, onChange }: {
             }}
             // Linha em branco não vira item: sair dela é desistir de escrevê-la.
             onBlur={() => { if (v.trim() === '' && valores.length > 0) remover(i); }} />
-          <button type="button" className="pl-linha-x" aria-label="Remover esta linha"
-            onMouseDown={e => e.preventDefault()} onClick={() => remover(i)}>
-            <IconX size={12} />
+          <button type="button" className="checklist-tirar" aria-label="Remover esta linha"
+            title="Remover" onMouseDown={e => e.preventDefault()} onClick={() => remover(i)}>
+            <IconX size={11} />
           </button>
         </div>
       ))}
-      <button type="button" className="secao-add pl-add" onClick={() => inserir(valores.length - 1)}>
-        <IconPlus size={13} /> Adicionar
+      {/* O mesmo "+" discreto do checklist da tarefa: em repouso a lista termina
+          no ultimo item, e uma caixa com moldura pesava mais que os itens. */}
+      <button type="button" className="checklist-add" onClick={() => inserir(valores.length - 1)}>
+        <IconPlus size={12} />
+        {valores.length ? 'Outro item' : 'Adicionar'}
       </button>
     </div>
   );
@@ -3516,45 +3653,235 @@ function LinhasDaPlanning({ valores, placeholder, somenteLeitura, onChange }: {
  * de cada vez, e o que interessa é saber em qual se está e quantos faltam. Por
  * isso a aba ativa se funde com a folha, como a divisória que se puxa para
  * frente - e as outras ficam recuadas, atrás dela.
+ *
+ * A ordem é a da sala, e se arruma arrastando: clicar escolhe o projeto, clicar
+ * e arrastar muda o lugar dele. É o mesmo gesto das etapas em Configurações, com
+ * a mesma linha amarela dizendo onde a divisória vai cair.
  */
-function AbasDeCaderno({ lista, ativo, contagem, onEscolher }: {
+function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onReordenar }: {
   lista: Projeto[];
   ativo: string | null;
   /** Quantas tarefas cada projeto tem na semana em foco. */
   contagem: (p: Projeto) => number;
+  /** Mudar a ordem é `projetos:editar`: quem só olha a reunião não a reorganiza. */
+  podeReordenar: boolean;
   onEscolher: (id: string) => void;
+  /** A lista inteira de ids, na ordem nova. */
+  onReordenar: (ids: string[]) => void;
 }) {
-  const botoes = useRef<Array<HTMLButtonElement | null>>([]);
+  const abas = useRef<Array<HTMLDivElement | null>>([]);
+  /** As mesmas abas, por id: a posição na lista muda justamente no gesto que
+   *  precisa achar cada uma de novo. */
+  const porId = useRef(new Map<string, HTMLDivElement>());
+  const nav = useRef<HTMLElement>(null);
 
-  /** Seta sobe e desce entre as abas, como em toda lista de abas do sistema. */
+  /** Onde esta a divisoria puxada para frente. Medida do botao de verdade, e nao
+   *  calculada por posicao na lista: nome de projeto quebra, a aba cresce, e
+   *  uma conta por altura fixa deixaria a marca torta - o mesmo motivo do traco
+   *  das abas do sistema. */
+  const [marca, setMarca] = useState<{ x: number; y: number; w: number; h: number; deitada: boolean } | null>(null);
+  /** A marca so anima depois da primeira medida. Sem isso ela nasceria no canto
+   *  e deslizaria ate a aba ativa ao abrir a tela, que e movimento sem gesto.
+   *
+   *  Liga na segunda medida, e nao num quadro de animacao: o transition vale
+   *  pelo estilo de depois da mudanca, entao a classe e a posicao nova chegando
+   *  juntas ja deslizam - e nao depende de o navegador estar pintando a aba. */
+  const [pronta, setPronta] = useState(false);
+  const jaMediu = useRef(false);
+  const chave = lista.map(p => p.id).join('|');
+
+  /** A divisória que está sendo levada, e onde ela cairia se soltasse agora. */
+  const [arrastando, setArrastando] = useState<string | null>(null);
+  const [sobre, setSobre] = useState<{ id: string; pos: 'antes' | 'depois' } | null>(null);
+
+  /** Onde cada aba estava antes de a ordem mudar. É o ponto de partida do
+   *  deslize: sem ele as divisórias pulariam para o lugar novo, e numa lista de
+   *  nove ninguém veria qual trocou com qual. */
+  const antes = useRef<Map<string, DOMRect> | null>(null);
+
+  // Antes da pintura: medida depois, a marca apareceria uma vez no lugar errado.
+  useLayoutEffect(() => {
+    const el = nav.current;
+    if (!el) return;
+    function medir() {
+      const i = lista.findIndex(p => p.id === ativo);
+      const b = abas.current[i];
+      if (!b || !el) return;
+      setMarca({
+        x: b.offsetLeft,
+        y: b.offsetTop,
+        w: b.offsetWidth,
+        h: b.offsetHeight,
+        // Abaixo de 1000px as divisorias viram abas de cima, e a marca passa a
+        // cobrir o fio de cima da folha em vez do da esquerda.
+        deitada: getComputedStyle(el).flexDirection === 'row',
+      });
+      if (jaMediu.current) setPronta(true);
+      jaMediu.current = true;
+    }
+    medir();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(medir);
+    ro.observe(el);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ativo, chave]);
+
+  // O deslize das divisórias quando a ordem muda: cada uma nasce onde estava,
+  // deslocada, e volta a zero no tempo de movimento da casa. Posição inversa e
+  // não animação de layout, porque é o transform que o navegador anda sem
+  // refazer a lista a cada quadro.
+  useLayoutEffect(() => {
+    const velhas = antes.current;
+    antes.current = null;
+    if (!velhas) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    for (const [id, el] of porId.current) {
+      const de = velhas.get(id);
+      if (!de) continue;
+      const para = el.getBoundingClientRect();
+      const dx = de.left - para.left;
+      const dy = de.top - para.top;
+      if (!dx && !dy) continue;
+      el.style.transition = 'none';
+      el.style.transform = `translate(${dx}px, ${dy}px)`;
+      // Lê o layout para o navegador registrar o ponto de partida antes de o
+      // transform voltar a zero; sem isso as duas escritas viram uma só.
+      void el.offsetHeight;
+      el.style.transition = 'transform var(--transition-spring)';
+      el.style.transform = '';
+      const limpar = () => { el.style.transition = ''; el.removeEventListener('transitionend', limpar); };
+      el.addEventListener('transitionend', limpar);
+    }
+  }, [chave]);
+
+  /** Guarda onde cada aba está e manda a ordem nova. */
+  const reordenar = (ids: string[]) => {
+    if (ids.join('|') === chave) return;
+    antes.current = new Map([...porId.current].map(([id, el]) => [id, el.getBoundingClientRect()]));
+    onReordenar(ids);
+  };
+
+  const soltar = (alvoId: string) => {
+    const origem = arrastando;
+    const pos = sobre?.pos ?? 'antes';
+    setArrastando(null);
+    setSobre(null);
+    if (!origem || origem === alvoId) return;
+    const ids = lista.map(p => p.id).filter(id => id !== origem);
+    const para = ids.indexOf(alvoId);
+    ids.splice(pos === 'antes' ? para : para + 1, 0, origem);
+    reordenar(ids);
+  };
+
+  /** Seta sobe e desce entre as abas, como em toda lista de abas do sistema.
+   *  Com Alt, a seta leva a aba junto: arrastar não pode ser o único jeito de
+   *  arrumar a ordem. */
   const porTecla = (e: React.KeyboardEvent, i: number) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onEscolher(lista[i].id);
+      return;
+    }
     const passo = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
     if (!passo) return;
     e.preventDefault();
+    if (e.altKey) {
+      if (!podeReordenar) return;
+      const destino = i + passo;
+      if (destino < 0 || destino >= lista.length) return;
+      const ids = lista.map(p => p.id);
+      [ids[i], ids[destino]] = [ids[destino], ids[i]];
+      reordenar(ids);
+      return;
+    }
     const alvo = (i + passo + lista.length) % lista.length;
-    botoes.current[alvo]?.focus();
+    abas.current[alvo]?.focus();
     onEscolher(lista[alvo].id);
   };
 
   return (
-    <nav className="pl-abas" role="tablist" aria-orientation="vertical"
-      aria-label="Projetos da planning">
+    <nav ref={nav} className={`pl-abas${arrastando ? ' reordenando' : ''}`} role="tablist"
+      aria-orientation="vertical" aria-label="Projetos da planning">
+      {/* A divisoria puxada para frente e uma peca so, que desliza ate a aba
+          escolhida - e nao um fundo que apaga numa aba e acende na outra. Com o
+          corte seco, trocar de projeto numa lista de nove nao dizia de onde para
+          onde a sala tinha ido. Um pixel a mais do lado da folha cobre o fio
+          dela, que e o que funde a aba com a folha. */}
+      {marca && (
+        <span
+          aria-hidden="true"
+          className={`pl-aba-marca${pronta ? ' pronta' : ''}${marca.deitada ? ' deitada' : ''}`}
+          style={{
+            transform: `translate(${marca.x}px, ${marca.y}px)`,
+            width: marca.w + (marca.deitada ? 0 : 1),
+            height: marca.h + (marca.deitada ? 1 : 0),
+          }} />
+      )}
       {lista.map((p, i) => {
         const quantas = contagem(p);
+        const prioridade = p.prioridade ?? PRIORIDADE_PADRAO;
+        const alvo = sobre?.id === p.id && arrastando !== p.id ? sobre.pos : null;
         return (
-          <button
+          // Div com papel de aba, e não botão: o Firefox não começa arraste num
+          // `button`, e aqui a mesma peça precisa ser clicada e arrastada.
+          <div
             key={p.id}
-            ref={el => { botoes.current[i] = el; }}
-            type="button"
+            ref={el => {
+              abas.current[i] = el;
+              if (el) porId.current.set(p.id, el); else porId.current.delete(p.id);
+            }}
             role="tab"
             aria-selected={ativo === p.id}
             tabIndex={ativo === p.id ? 0 : -1}
-            className={`pl-aba${ativo === p.id ? ' ativa' : ''}`}
-            style={{ ['--cor-aba' as string]: COR_PRIORIDADE[p.prioridade ?? PRIORIDADE_PADRAO] ?? 'var(--gray3)' }}
+            draggable={podeReordenar}
+            title={podeReordenar ? 'Clique para abrir, arraste para mudar a ordem' : undefined}
+            className={[
+              'pl-aba',
+              ativo === p.id ? 'ativa' : '',
+              arrastando === p.id ? 'levada' : '',
+              alvo ? `cai-${alvo}` : '',
+            ].filter(Boolean).join(' ')}
+            style={{ ['--cor-aba' as string]: COR_PRIORIDADE[prioridade] ?? 'var(--gray3)' }}
             onClick={() => onEscolher(p.id)}
             onKeyDown={e => porTecla(e, i)}
+            onDragStart={e => {
+              e.dataTransfer.effectAllowed = 'move';
+              // Sem carga o Firefox nem começa o arraste.
+              e.dataTransfer.setData('text/plain', p.id);
+              setArrastando(p.id);
+            }}
+            onDragEnd={() => { setArrastando(null); setSobre(null); }}
+            onDragOver={e => {
+              if (!arrastando) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+              const r = e.currentTarget.getBoundingClientRect();
+              const deitada = marca?.deitada ?? false;
+              const pos = (deitada ? e.clientX < r.left + r.width / 2 : e.clientY < r.top + r.height / 2)
+                ? 'antes' : 'depois';
+              if (sobre?.id !== p.id || sobre.pos !== pos) setSobre({ id: p.id, pos });
+            }}
+            onDragLeave={e => {
+              if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+              setSobre(x => (x?.id === p.id ? null : x));
+            }}
+            onDrop={e => { e.preventDefault(); soltar(p.id); }}
           >
-            <span className="pl-aba-num">{String(i + 1).padStart(2, '0')}</span>
+            {/* O número dá lugar ao punho no hover: é onde a mão procura o que
+                arrastar, e dois ícones lado a lado apertariam o nome. */}
+            <span className="pl-aba-num">
+              <span className="pl-aba-num-texto">{String(i + 1).padStart(2, '0')}</span>
+              {podeReordenar && (
+                <span className="pl-aba-punho" aria-hidden="true"><IconArrastar size={13} /></span>
+              )}
+            </span>
+            {/* A urgência no desenho de barras da casa, na cor dela: é o que se
+                lê de relance numa coluna de nove projetos, antes do nome. */}
+            <span className="pl-aba-prio" style={{ color: COR_PRIORIDADE[prioridade] ?? 'var(--gray2)' }}
+              title={`Prioridade: ${prioridade}`} aria-label={`Prioridade ${prioridade}`}>
+              {ICONE_PRIORIDADE[prioridade]?.({ size: 14 })}
+            </span>
             <span className="pl-aba-texto">
               <strong>{p.nome}</strong>
               <small>{p.cliente_nome ?? 'Sem cliente'}</small>
@@ -3562,10 +3889,219 @@ function AbasDeCaderno({ lista, ativo, contagem, onEscolher }: {
             {/* O número da semana na aba: é o que diz, sem entrar no projeto,
                 se ele já tem semana montada ou se a sala ainda vai montá-la. */}
             <span className={`pl-aba-conta${quantas === 0 ? ' vazia' : ''}`}>{quantas}</span>
-          </button>
+          </div>
         );
       })}
     </nav>
+  );
+}
+
+/**
+ * A semana em foco na Planning.
+ *
+ * Mora no cabeçalho da página, no lugar em que a aba Geral tem o "Novo
+ * projeto": é o controle da página inteira - troca a semana de todos os
+ * projetos de uma vez.
+ *
+ * Três peças: as setas redondas, uma de cada lado, para andar de uma em uma, e
+ * o chip do meio com o número da semana, as datas e a situação dela. Clicar no
+ * chip abre a lista das semanas do mês, com o mês navegável - é o caminho para
+ * saltar três semanas sem clicar três vezes, e para voltar a esta de qualquer
+ * lugar.
+ */
+type SituacaoDaSemana = 'atual' | 'planejada' | 'encerrada';
+
+const ROTULO_DA_SITUACAO: Record<SituacaoDaSemana, string> = {
+  atual: 'Atual',
+  planejada: 'Planejada',
+  encerrada: 'Encerrada',
+};
+
+/** Em que ponto do tempo uma semana está, pela segunda-feira dela. */
+function situacaoDaSemana(segunda: Date): SituacaoDaSemana {
+  const alvo = iso10(segundaDaSemana(segunda));
+  const hoje = iso10(segundaDaSemana());
+  return alvo === hoje ? 'atual' : alvo > hoje ? 'planejada' : 'encerrada';
+}
+
+/** O número ISO da semana: a primeira do ano é a que tem a primeira quinta.
+ *  É o "Sem 37" que a casa usa quando fala de sprint. */
+function numeroDaSemana(d: Date): number {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const diaDaSemana = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - diaDaSemana);
+  const inicioDoAno = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return Math.ceil(((t.getTime() - inicioDoAno.getTime()) / 86400000 + 1) / 7);
+}
+
+/** "07/09 - 13/09": segunda a domingo, sem o ano, que é quase sempre o mesmo. */
+function intervaloDaSemana(segunda: Date): string {
+  const inicio = segundaDaSemana(segunda);
+  const fim = new Date(inicio);
+  fim.setDate(fim.getDate() + 6);
+  const curto = (d: Date) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+  return `${curto(inicio)} - ${curto(fim)}`;
+}
+
+/** As semanas de um mês: as que começam nele. A que atravessa a virada fica no
+ *  mês da segunda-feira dela, para nenhuma semana aparecer em dois meses. */
+function semanasDoMes(mes: Date): Date[] {
+  const semanas: Date[] = [];
+  const d = new Date(mes.getFullYear(), mes.getMonth(), 1);
+  while (d.getDay() !== 1) d.setDate(d.getDate() + 1);
+  while (d.getMonth() === mes.getMonth()) {
+    semanas.push(new Date(d));
+    d.setDate(d.getDate() + 7);
+  }
+  return semanas;
+}
+
+const LARGURA_DA_LISTA = 250;
+
+function SeletorDeSemana({ semana, onMudar }: {
+  semana: Date;
+  onMudar: (d: Date) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  /** O mês que a lista mostra. Nasce no mês da semana em foco a cada abertura,
+   *  e as setas da lista andam só nele, sem mexer na semana. */
+  const [mes, setMes] = useState(() => new Date(semana.getFullYear(), semana.getMonth(), 1));
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const gatilho = useRef<HTMLButtonElement>(null);
+  const lista = useRef<HTMLDivElement>(null);
+
+  useDropdownDismiss(aberto, [gatilho, lista], () => setAberto(false));
+
+  const situacao = situacaoDaSemana(semana);
+  const focoIso = iso10(segundaDaSemana(semana));
+
+  const andar = (passo: number) => {
+    const d = new Date(semana);
+    d.setDate(d.getDate() + passo * 7);
+    onMudar(d);
+  };
+
+  /** Mede o chip e abre a lista centrada embaixo dele. O gatilho alterna, como
+   *  todo dropdown da casa: o segundo clique fecha. */
+  const alternar = () => {
+    if (aberto) { setAberto(false); return; }
+    const r = gatilho.current!.getBoundingClientRect();
+    const left = Math.min(
+      Math.max(8, r.left + r.width / 2 - LARGURA_DA_LISTA / 2),
+      window.innerWidth - LARGURA_DA_LISTA - 8,
+    );
+    setPos({ top: r.bottom + 8, left });
+    const inicio = segundaDaSemana(semana);
+    setMes(new Date(inicio.getFullYear(), inicio.getMonth(), 1));
+    setAberto(true);
+  };
+
+  const escolher = (d: Date) => {
+    onMudar(d);
+    setAberto(false);
+    gatilho.current?.focus();
+  };
+
+  const andarMes = (passo: number) =>
+    setMes(m => new Date(m.getFullYear(), m.getMonth() + passo, 1));
+
+  const nomeDoMes = mes.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+    .replace(' de ', ' ')
+    .replace(/^./, c => c.toUpperCase());
+
+  return (
+    <div className="pl-barra">
+      <div className="pl-semana">
+        <button type="button" className="pl-seta" aria-label="Semana anterior" title="Semana anterior"
+          onClick={() => andar(-1)}>
+          <IconChevronRight size={14} />
+        </button>
+
+        <button
+          ref={gatilho}
+          type="button"
+          className={`pl-semana-chip ${situacao}${aberto ? ' aberto' : ''}`}
+          aria-haspopup="listbox"
+          aria-expanded={aberto}
+          onClick={alternar}
+          onKeyDown={e => { if (e.key === 'Escape') setAberto(false); }}
+        >
+          <span className="pl-semana-ponto" aria-hidden="true" />
+          {/* A troca de semana muda o texto no lugar: `.troca` só mexe na
+              opacidade, e o chip não pula de posição. */}
+          <span className="pl-semana-texto troca" key={focoIso}>
+            <small>Sem {numeroDaSemana(segundaDaSemana(semana))}</small>
+            <span className="pl-semana-sep" aria-hidden="true">·</span>
+            {intervaloDaSemana(semana)}
+          </span>
+          <span className="pl-semana-situacao">{ROTULO_DA_SITUACAO[situacao]}</span>
+          <span className="pl-semana-seta" aria-hidden="true"><IconChevronDown size={13} /></span>
+        </button>
+
+        <button type="button" className="pl-seta" aria-label="Próxima semana" title="Próxima semana"
+          onClick={() => andar(1)}>
+          <IconChevronRight size={14} />
+        </button>
+      </div>
+
+      {aberto && createPortal(
+        <div
+          ref={lista}
+          className="pl-semana-lista surge"
+          role="listbox"
+          aria-label="Semanas do mês"
+          style={{ top: pos.top, left: pos.left, width: LARGURA_DA_LISTA }}
+          onKeyDown={e => { if (e.key === 'Escape') { setAberto(false); gatilho.current?.focus(); } }}
+        >
+          <div className="pl-semana-mes">
+            <button type="button" className="pl-semana-mes-seta" aria-label="Mês anterior"
+              onClick={() => andarMes(-1)}>
+              <IconChevronRight size={12} />
+            </button>
+            <span className="troca" key={iso10(mes)}>{nomeDoMes}</span>
+            <button type="button" className="pl-semana-mes-seta" aria-label="Próximo mês"
+              onClick={() => andarMes(1)}>
+              <IconChevronRight size={12} />
+            </button>
+          </div>
+
+          <div className="pl-semana-opcoes lista-anima" key={iso10(mes)}>
+            {semanasDoMes(mes).map(s => {
+              const sit = situacaoDaSemana(s);
+              const escolhida = iso10(s) === focoIso;
+              return (
+                <button
+                  key={iso10(s)}
+                  type="button"
+                  role="option"
+                  aria-selected={escolhida}
+                  className={`pl-semana-opcao ${sit}${escolhida ? ' escolhida' : ''}`}
+                  title={`Semana ${numeroDaSemana(s)}`}
+                  onClick={() => escolher(s)}
+                >
+                  <span className="pl-semana-ponto" aria-hidden="true" />
+                  <span className="pl-semana-opcao-datas">{intervaloDaSemana(s)}</span>
+                  <span className="pl-semana-situacao">{ROTULO_DA_SITUACAO[sit]}</span>
+                  <span className="pl-semana-visto" aria-hidden="true">
+                    {escolhida && <IconCheck size={12} />}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* O atalho de volta mora na lista, e só quando a semana em foco não
+              é esta: de outro mês, a semana atual não aparece nas opções. */}
+          {situacao !== 'atual' && (
+            <button type="button" className="pl-semana-voltar" onClick={() => escolher(segundaDaSemana())}>
+              <IconArrowLeft size={12} />
+              Voltar para esta semana
+            </button>
+          )}
+        </div>,
+        document.body,
+      )}
+    </div>
   );
 }
 
@@ -3592,9 +4128,9 @@ const PLANNING_VAZIA: PlanningDaSemana = { destaques: [], reunioes: [] };
  * com os pausados obrigaria a escolher entre eles a cada segunda-feira.
  */
 function AbaPlanning({
-  projetos, pessoas, planning, semana, onMudarSemana, onSalvarPlanning,
-  onAbrir, onSalvarTarefa, onAbrirTarefa,
-  etapaDeEntrada, etapaDeConclusao, podeEditar, podeEditarTarefa,
+  projetos, pessoas, planning, semana, onMudarSemana, onSalvarPlanning, onReordenar,
+  onAbrir, onSalvarTarefa, onAbrirTarefa, onCriarTarefa, onExcluirTarefa,
+  etapas, etapaDeEntrada, etapaDeConclusao, podeEditar, podeEditarTarefa, podeExcluirTarefa,
 }: {
   projetos: Projeto[];
   pessoas: Pessoa[];
@@ -3603,24 +4139,42 @@ function AbaPlanning({
   semana: Date;
   onMudarSemana: (d: Date) => void;
   onSalvarPlanning: (projetoId: string, dados: PlanningDaSemana) => void;
+  /** A ordem nova das divisórias, com todos os ids. */
+  onReordenar: (ids: string[]) => void;
+  /** Cria uma tarefa no projeto, com prazo no dia ou sem prazo, e abre o painel. */
+  onCriarTarefa: (p: Projeto, prazo: string | null) => void;
   onAbrir: (p: Projeto) => void;
   onSalvarTarefa: (t: Tarefa, mudancas: Record<string, unknown>) => void;
   onAbrirTarefa: (t: Tarefa, p: Projeto) => void;
+  /** Pede a exclusão: quem confirma é o diálogo da página. */
+  onExcluirTarefa: (t: Tarefa) => void;
+  etapas: EtapaTarefa[];
   etapaDeEntrada: string;
   etapaDeConclusao: string;
   podeEditar: boolean;
   podeEditarTarefa: boolean;
+  podeExcluirTarefa: boolean;
 }) {
   const dias = useMemo(() => diasUteisDaSemana(semana), [semana]);
 
-  // A ordem da reunião: prioridade primeiro, porque é a decisão que a casa já
-  // tomou sobre o que importa mais. No empate vale a ordem da listagem.
+  // A ordem da reunião é a que a sala arrumou arrastando as divisórias. Projeto
+  // que ainda não foi posto em lugar nenhum - um recém-criado, por exemplo -
+  // entra depois dos arrumados, pela prioridade, que é a decisão que a casa já
+  // tomou sobre o que importa mais.
   const lista = useMemo(() => {
-    const ordem = (p: Projeto) => {
+    const urgencia = (p: Projeto) => {
       const i = PRIORIDADES.indexOf((p.prioridade ?? PRIORIDADE_PADRAO) as typeof PRIORIDADES[number]);
       return i < 0 ? PRIORIDADES.length : i;
     };
-    return projetos.filter(p => p.status === 'Em andamento').sort((a, b) => ordem(a) - ordem(b));
+    const posicao = (p: Projeto) => (p.planning_ordem == null ? null : Number(p.planning_ordem));
+    return projetos.filter(p => p.status === 'Em andamento').sort((a, b) => {
+      const pa = posicao(a);
+      const pb = posicao(b);
+      if (pa != null && pb != null && pa !== pb) return pa - pb;
+      if (pa != null && pb == null) return -1;
+      if (pa == null && pb != null) return 1;
+      return urgencia(a) - urgencia(b);
+    });
   }, [projetos]);
 
   const [ativo, setAtivo] = useState<string | null>(null);
@@ -3631,15 +4185,6 @@ function AbaPlanning({
 
   const naSemana = useCallback(
     (p: Projeto) => tarefasDaSemana(p, dias).length, [dias]);
-
-  const estaSemana = iso10(segundaDaSemana());
-  const emFoco = iso10(semana);
-
-  const andar = (passo: number) => {
-    const d = new Date(semana);
-    d.setDate(d.getDate() + passo * 7);
-    onMudarSemana(d);
-  };
 
   if (lista.length === 0) {
     return (
@@ -3652,28 +4197,13 @@ function AbaPlanning({
 
   return (
     <>
-      <div className="pl-barra">
-        <div className="pl-semana">
-          <button type="button" className="pl-seta" aria-label="Semana anterior"
-            onClick={() => andar(-1)}><IconChevronRight size={14} /></button>
-          <span className="pl-semana-texto">
-            <strong>{fmtData(dias[0])} a {fmtData(dias[4])}</strong>
-            <small>{emFoco === estaSemana ? 'Esta semana' : 'Outra semana'}</small>
-          </span>
-          <button type="button" className="pl-seta" aria-label="Próxima semana"
-            onClick={() => andar(1)}><IconChevronRight size={14} /></button>
-        </div>
-        {emFoco !== estaSemana && (
-          <button type="button" className="modal-acao surge"
-            onClick={() => onMudarSemana(segundaDaSemana())}>
-            Voltar para esta semana
-          </button>
-        )}
-      </div>
-
       <div className="pl-pagina">
         <AbasDeCaderno lista={lista} ativo={atual?.id ?? null} contagem={naSemana}
-          onEscolher={setAtivo} />
+          podeReordenar={podeEditar} onEscolher={setAtivo}
+          // Antes de mudar a ordem, a folha aberta fica presa pelo id. Sem
+          // clique nenhum ela e "a primeira da lista", e arrastar outro projeto
+          // para o topo trocaria o projeto aberto sem ninguem ter escolhido.
+          onReordenar={ids => { if (!ativo && atual) setAtivo(atual.id); onReordenar(ids); }} />
 
         <div className="pl-sheet" role="tabpanel">
           {atual && (
@@ -3685,11 +4215,15 @@ function AbaPlanning({
               planning={planning[atual.id] ?? PLANNING_VAZIA}
               podeEditar={podeEditar}
               podeEditarTarefa={podeEditarTarefa}
+              podeExcluirTarefa={podeExcluirTarefa}
+              etapas={etapas}
               etapaDeEntrada={etapaDeEntrada}
               etapaDeConclusao={etapaDeConclusao}
               onAbrir={onAbrir}
               onAbrirTarefa={onAbrirTarefa}
               onSalvarTarefa={onSalvarTarefa}
+              onExcluirTarefa={onExcluirTarefa}
+              onCriarTarefa={prazo => onCriarTarefa(atual, prazo)}
               onMudarPlanning={dados => onSalvarPlanning(atual.id, {
                 ...planning[atual.id],
                 ...dados,
@@ -4708,6 +5242,20 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     }, 700));
   }, [api, semanaIso, toast]);
 
+  /** Arruma a ordem das divisórias. Pinta na hora - a divisória já está no
+   *  lugar novo quando o dedo sai do mouse - e desfaz se o servidor recusar. */
+  const reordenarPlanning = useCallback((ids: string[]) => {
+    const antes = projetos;
+    const posicao = new Map(ids.map((id, i) => [id, i + 1]));
+    setProjetos(ps => ps.map(p => (posicao.has(p.id) ? { ...p, planning_ordem: posicao.get(p.id)! } : p)));
+    mudancasRef.current++;
+    void api('', 'POST', { action: 'ordenar_planning', ids }).then(r => {
+      if (!r?.error) return;
+      setProjetos(antes);
+      toast('error', 'Não foi possível mudar a ordem', r.error);
+    });
+  }, [api, projetos, toast]);
+
   // A gravação pendente não pode morrer com a tela: quem fecha a página logo
   // depois de escrever perderia a última frase.
   useEffect(() => () => { for (const t of gravando.current.values()) clearTimeout(t); }, []);
@@ -4846,11 +5394,15 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
    *  clicou como responsável. */
   /** Cria a tarefa já gravada e abre o painel dela. `entregaId` nulo é tarefa
    *  do projeto, sem entrega - o que a aba Tarefas cria. */
-  const criarTarefaNoProjeto = useCallback((p: Projeto, entregaId: number | null, status?: string) => {
+  const criarTarefaNoProjeto = useCallback((
+    p: Projeto, entregaId: number | null, status?: string, prazo?: string | null,
+  ) => {
     const base: RascunhoTarefa = {
       projeto_id: p.id, entrega_id: entregaId == null ? '' : String(entregaId), titulo: TITULO_PADRAO,
       descricao: '', status: status || etapaDeEntrada, prioridade: PRIORIDADE_PADRAO,
-      responsaveis: usuario?.id ? [usuario.id] : [], prazo: '', etiquetas: [],
+      // O prazo vem da coluna da Planning em que o mais foi clicado: a tarefa
+      // nasce no dia em que a sala a pôs, e o painel abre com ele preenchido.
+      responsaveis: usuario?.id ? [usuario.id] : [], prazo: prazo ?? '', etiquetas: [],
     };
     setRascunhoTarefa(base);
     criandoTarefa.current = api('', 'POST', {
@@ -5602,7 +6154,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
         opcoes={[{ valor: 'geral', label: 'Geral' }, { valor: 'planning', label: 'Planning' }]}
       />
 
-      <div className="admin-page-header">
+      <div className={`admin-page-header${aba === 'planning' ? ' com-semana' : ''}`}>
         <div>
           <h1 className="admin-page-title">Projetos</h1>
           <p className="admin-page-desc">
@@ -5616,6 +6168,9 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
             onClick={novoProjeto}>
             + Novo projeto
           </button>
+        )}
+        {aba === 'planning' && (
+          <SeletorDeSemana semana={semanaDaPlanning} onMudar={setSemanaDaPlanning} />
         )}
       </div>
 
@@ -5932,12 +6487,17 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           semana={semanaDaPlanning}
           onMudarSemana={setSemanaDaPlanning}
           onSalvarPlanning={salvarPlanning}
+          onReordenar={reordenarPlanning}
+          onCriarTarefa={(p, prazo) => criarTarefaNoProjeto(p, null, undefined, prazo)}
           onSalvarTarefa={salvarTarefa}
           onAbrirTarefa={abrirTarefa}
+          onExcluirTarefa={setExcluindoTarefa}
+          etapas={etapasTarefa}
           etapaDeEntrada={etapaDeEntrada}
           etapaDeConclusao={etapaDeConclusao}
           podeEditar={podeEditar}
           podeEditarTarefa={pode('tarefas:editar')}
+          podeExcluirTarefa={pode('tarefas:excluir')}
           onAbrir={p => setForm({ editando: p })}
         />
       )}

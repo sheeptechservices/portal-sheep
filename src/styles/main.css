@@ -3324,15 +3324,37 @@ body.arrastando-painel {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.painel-kanban .kanban-card {
+/* O cartao do quadro da semana da Planning tem as mesmas medidas: e o mesmo
+   cartao, e a regra vale para os dois em vez de existir uma copia dela. */
+.painel-kanban .kanban-card,
+.nt-semana .kanban-card {
   padding: 7px 8px 7px 7px;
   border-radius: 8px;
   gap: 5px;
 }
-.painel-kanban .kanban-card-title {
+.painel-kanban .kanban-card-title,
+.nt-semana .kanban-card-title {
   font-size: 11.5px;
   -webkit-line-clamp: 3;
 }
+
+/* Feita, na semana: sai do caminho sem sumir - continua legivel e arrastavel,
+   mas para de competir com o que ainda falta. Volta ao normal no hover, para
+   quando a sala for reler ou reabrir. */
+/* O cartao do kanban entra com `fadeUp` preenchendo `both`, e o fim da animacao
+   segura opacidade 1 por cima de qualquer regra: sem trocar o preenchimento, a
+   feita nunca apagava. */
+/* Com `.kanban-card` junto: a regra dele vem depois neste arquivo, e com a mesma
+   forca venceria. */
+.kanban-card.nt-cartao { animation-fill-mode: backwards; }
+.nt-cartao.feita { opacity: .55; }
+.nt-cartao.feita:hover,
+.nt-cartao.feita:focus-visible { opacity: 1; }
+.nt-cartao.feita .kanban-card-title { text-decoration: line-through; text-decoration-color: var(--gray3); }
+/* O visto da feita fica aceso, em verde, mesmo sem o ponteiro: e o estado do
+   cartao, e nao so uma acao escondida. */
+.painel-kanban-pe .kanban-card-acao.nt-cartao-feito { opacity: 1; color: var(--green); }
+.nt-cartao:focus-visible { outline: none; border-color: var(--gray2); }
 /* O pe do card: prazo a esquerda, quem cuida e a lixeira a direita. A lixeira
    so aparece com o ponteiro no card - uma por cartao numa coluna cheia seria
    lixo, e o clique que interessa no card e o de abrir. */
@@ -6371,49 +6393,252 @@ button.checklist-texto:focus-visible {
    divisorias: as abas empilhadas na borda esquerda, e a folha do projeto
    escolhido encostada nelas. */
 
-/* A barra de cima: que semana esta em foco, e como sair dela. */
+/* O seletor de semana, no cabecalho da pagina: que semana esta em foco, e
+   como sair dela. O atalho de volta nasce a esquerda, para as setas nao
+   mudarem de lugar quando ele aparece. */
 .pl-barra {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 14px;
+  gap: 10px;
+  flex-shrink: 0;
 }
+
+/* No cabecalho da Planning o seletor fica no meio, e nao no canto: e o assunto
+   da pagina inteira - de que semana a reuniao esta falando -, e no canto ele
+   lia como mais um botao ao lado do titulo.
+
+   Grade de tres colunas, e nao posicao absoluta: as duas laterais tem o mesmo
+   peso, entao o chip cai no meio exato - e quando o titulo precisa de mais
+   lugar ele empurra a coluna em vez de passar por baixo do chip. A barra some
+   da conta (`display: contents`) para o seletor ocupar a coluna do meio. */
+.admin-page-header.com-semana {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  column-gap: 16px;
+}
+.com-semana > div:first-child { grid-column: 1; min-width: 0; }
+.com-semana .pl-barra { display: contents; }
+.com-semana .pl-semana { grid-column: 2; grid-row: 1; }
+/* Estreito, o seletor desce para baixo do titulo. */
+@media (max-width: 700px) {
+  .admin-page-header.com-semana {
+    grid-template-columns: auto 1fr;
+    row-gap: 10px;
+  }
+  .com-semana > div:first-child { grid-column: 1 / -1; }
+  .com-semana .pl-semana { grid-column: 1; grid-row: 2; }
+}
+/* O seletor de semana: setas redondas nas pontas e o chip do meio, que abre a
+   lista das semanas do mes. As cores dizem a situacao da semana - verde e a
+   atual, azul e plano, cinza e passado -, no ponto, na etiqueta e, aberto, na
+   moldura do chip. */
 .pl-semana {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--gray3);
-  border-radius: var(--radius-pill);
-  background: var(--white);
+  gap: 10px;
 }
-.pl-semana-texto {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.15;
-  padding: 0 10px;
-  text-align: center;
-  min-width: 168px;
-}
-.pl-semana-texto strong { font-size: 12.5px; font-weight: 700; color: var(--black); }
-.pl-semana-texto small { font-size: 10px; font-weight: 600; color: var(--gray2); }
+
+/* A cor de cada situacao mora numa variavel so, e todas as pecas leem dela: o
+   ponto, a etiqueta e a lavagem da opcao escolhida. */
+.pl-semana-chip.atual,
+.pl-semana-opcao.atual { --sit: var(--green-light); }
+.pl-semana-chip.planejada,
+.pl-semana-opcao.planejada { --sit: var(--link); }
+.pl-semana-chip.encerrada,
+.pl-semana-opcao.encerrada { --sit: var(--gray2); }
+
 .pl-seta {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--cristal-borda, var(--gray3));
+  border-radius: 50%;
+  background: var(--white);
+  color: var(--gray);
+  box-shadow: inset 0 1px 0 var(--cristal-luz, transparent), var(--cristal-sombra, none);
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition),
+    box-shadow var(--transition-spring), transform var(--transition-spring);
+}
+.pl-seta:hover {
+  border-color: var(--cristal-borda-forte, var(--gray2));
+  color: var(--black);
+  box-shadow: inset 0 1px 0 var(--cristal-luz, transparent), var(--shadow-card-hover);
+}
+.pl-seta:active { transform: scale(.92); }
+.pl-seta:focus-visible { outline: none; border-color: var(--gray2); color: var(--black); }
+/* A seta da esquerda e a mesma da direita, virada: um icone so para o par, como
+   no resto da casa. */
+.pl-seta:first-child svg { transform: rotate(180deg); }
+
+.pl-semana-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 12px 0 14px;
+  border: 1px solid var(--cristal-borda, var(--gray3));
+  border-radius: var(--radius-md);
+  background: var(--white);
+  box-shadow: inset 0 1px 0 var(--cristal-luz, transparent), var(--cristal-sombra, none);
+  font-family: inherit;
+  color: var(--black);
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition),
+    box-shadow var(--transition-spring);
+}
+.pl-semana-chip:hover {
+  border-color: var(--cristal-borda-forte, var(--gray2));
+  box-shadow: inset 0 1px 0 var(--cristal-luz, transparent), var(--shadow-card-hover);
+}
+.pl-semana-chip:focus-visible { outline: none; border-color: var(--gray2); }
+/* Aberto, o chip toma a cor da situacao: a moldura e uma lavagem leve, que e o
+   que liga o chip a lista que nasceu embaixo dele. */
+.pl-semana-chip.aberto {
+  border-color: var(--sit);
+  background: color-mix(in srgb, var(--sit) 9%, var(--white));
+}
+
+.pl-semana-ponto {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sit, var(--gray3));
+}
+.pl-semana-chip.atual .pl-semana-ponto {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sit) 20%, transparent);
+}
+
+.pl-semana-texto {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -.005em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.pl-semana-texto small { font-size: inherit; font-weight: inherit; }
+.pl-semana-sep { color: var(--gray2); font-weight: 600; }
+
+.pl-semana-situacao {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sit, var(--gray2));
+  white-space: nowrap;
+}
+.pl-semana-seta {
+  display: inline-flex;
+  color: var(--gray2);
+  transition: transform var(--transition-spring), color var(--transition);
+}
+.pl-semana-chip:hover .pl-semana-seta { color: var(--gray); }
+/* A seta gira, nunca troca de icone: e a mesma peca mudando de sentido. */
+.pl-semana-chip.aberto .pl-semana-seta { transform: rotate(180deg); color: var(--sit); }
+
+/* ── A lista das semanas ─────────────────────────────
+   Menu flutuante: a elevacao de quem paira, e nao o cristal de quem repousa.
+   No portal do `body`, acima de qualquer painel. */
+.pl-semana-lista {
+  position: fixed;
+  z-index: 10050;
+  padding: 8px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-lg);
+  background: var(--white);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.pl-semana-mes {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 2px 10px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--gray3);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--black);
+}
+.pl-semana-mes-seta {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 26px;
   height: 26px;
-  border: none;
+  border: 1px solid var(--gray3);
   border-radius: 50%;
-  background: transparent;
-  color: var(--gray2);
+  background: var(--white);
+  color: var(--gray);
   cursor: pointer;
-  transition: background var(--transition), color var(--transition);
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
 }
-.pl-seta:hover { background: var(--gray4); color: var(--black); }
-/* A seta da esquerda e a mesma da direita, virada: um icone so para o par, como
-   no resto da casa. */
-.pl-seta:first-child svg { transform: rotate(180deg); }
+.pl-semana-mes-seta:hover { border-color: var(--gray2); color: var(--black); background: var(--gray4); }
+.pl-semana-mes-seta:focus-visible { outline: none; border-color: var(--gray2); color: var(--black); }
+.pl-semana-mes-seta:first-child svg { transform: rotate(180deg); }
+
+.pl-semana-opcoes { display: flex; flex-direction: column; gap: 2px; }
+
+.pl-semana-opcao {
+  display: grid;
+  grid-template-columns: auto 1fr auto 14px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px 9px 12px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.pl-semana-opcao:hover { background: var(--gray4); }
+.pl-semana-opcao:focus-visible { outline: none; background: var(--gray4); }
+.pl-semana-opcao-datas {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--black);
+  font-variant-numeric: tabular-nums;
+}
+.pl-semana-opcao .pl-semana-situacao { font-size: 11.5px; font-weight: 600; }
+.pl-semana-opcao.encerrada .pl-semana-opcao-datas { color: var(--gray); }
+.pl-semana-visto { display: inline-flex; color: var(--sit); }
+
+/* A escolhida: lavada na cor da situacao, com as datas na mesma cor e o visto. */
+.pl-semana-opcao.escolhida,
+.pl-semana-opcao.escolhida:hover { background: color-mix(in srgb, var(--sit) 12%, var(--white)); }
+.pl-semana-opcao.escolhida .pl-semana-opcao-datas { color: color-mix(in srgb, var(--sit) 75%, var(--black)); font-weight: 700; }
+
+.pl-semana-voltar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 9px 10px;
+  border: none;
+  border-top: 1px solid var(--gray3);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  background: none;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray);
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+}
+.pl-semana-voltar:hover { color: var(--black); background: var(--gray4); }
+.pl-semana-voltar:focus-visible { outline: none; color: var(--black); background: var(--gray4); }
 
 /* ── A pagina: divisorias e folha ────────────────────── */
 .pl-pagina {
@@ -6451,10 +6676,26 @@ button.checklist-texto:focus-visible {
   text-align: left;
   cursor: pointer;
   color: var(--gray);
-  transition: background var(--transition), color var(--transition),
-    transform var(--transition-spring);
+  /* No tempo da marca, e nao no do realce: o texto escurecendo antes de a marca
+     chegar lia como duas coisas acontecendo. */
+  transition: background var(--transition-spring), color var(--transition-spring);
 }
 .pl-aba:last-child { border-bottom: 1px solid var(--gray3); }
+
+/* Em cristal: a divisoria recuada ganha o degrade e o fio de luz das
+   superficies da casa. A ativa continua branca, porque e da cor da folha que
+   ela precisa ser - cristal ali abriria uma costura entre a aba e a folha. */
+.pagina-cristal .pl-aba {
+  background: var(--cristal);
+  border-color: var(--cristal-borda);
+  box-shadow: inset 0 1px 0 var(--cristal-luz);
+}
+.pagina-cristal .pl-aba:last-child { border-bottom-color: var(--cristal-borda); }
+.pagina-cristal .pl-aba:not(.ativa):hover {
+  background: var(--cristal);
+  border-color: var(--cristal-borda-forte);
+}
+.pagina-cristal .pl-aba.ativa { box-shadow: none; }
 /* A cor da prioridade no fio de fora, que e a beira exposta da divisoria. */
 .pl-aba::before {
   content: '';
@@ -6466,38 +6707,100 @@ button.checklist-texto:focus-visible {
   border-radius: var(--radius-md) 0 0 var(--radius-md);
   background: var(--cor-aba, var(--gray3));
   opacity: .45;
-  transition: opacity var(--transition);
+  transition: opacity var(--transition-spring), width var(--transition-spring);
 }
 .pl-aba:hover { background: var(--gray4); color: var(--black); }
 .pl-aba:hover::before { opacity: .8; }
 .pl-aba:focus-visible { outline: none; background: var(--gray4); }
 
-/* A ativa e a divisoria puxada para frente: branca como a folha, sem o fio que
-   as separa, e um fio a mais para cobrir a borda da folha. */
-.pl-aba.ativa {
-  background: var(--white);
+/* A ativa e a divisoria puxada para frente. Quem a pinta de branco e a
+   `.pl-aba-marca`, que desliza entre as abas: o botao ativo so fica sem fundo
+   proprio, para ela aparecer por tras do texto. */
+.pl-aba.ativa,
+.pl-aba.ativa:hover,
+.pl-aba.ativa:focus-visible {
+  background: transparent;
   color: var(--black);
-  box-shadow: -1px 0 0 0 var(--gray3);
-}
-.pl-aba.ativa::after {
-  content: '';
-  position: absolute;
-  right: -1px;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: var(--white);
 }
 .pl-aba.ativa::before { opacity: 1; width: 4px; }
 
+/* O texto e o fio da prioridade passam por cima da marca; o fundo do botao fica
+   por baixo dela. */
+.pl-aba > *,
+.pl-aba::before { z-index: 2; }
+.pl-aba > * { position: relative; }
+
+/* A marca: uma folha branca do tamanho da aba, com o mesmo contorno, que anda
+   ate a escolhida no tempo de movimento da casa. Transform, e nao top: e o que
+   o navegador desliza sem refazer o layout da lista a cada quadro. */
+.pl-aba-marca {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: var(--white);
+  border: 1px solid var(--cristal-borda, var(--gray3));
+  border-right: none;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+.pl-aba-marca.pronta {
+  transition: transform var(--transition-spring), width var(--transition-spring),
+    height var(--transition-spring);
+}
+
 .pl-aba-num {
   flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
   font-size: 10px;
   font-weight: 800;
   color: var(--gray2);
   font-variant-numeric: tabular-nums;
   letter-spacing: .04em;
 }
+/* Numero e punho no mesmo lugar, um por cima do outro: o hover so troca qual
+   aparece, e nada ao lado se mexe. */
+.pl-aba-num > * {
+  grid-area: 1 / 1;
+  transition: opacity var(--transition);
+}
+.pl-aba-punho { display: inline-flex; opacity: 0; color: var(--gray2); }
+.pl-aba[draggable="true"]:hover .pl-aba-punho,
+.pl-aba[draggable="true"]:focus-visible .pl-aba-punho { opacity: 1; }
+.pl-aba[draggable="true"]:hover .pl-aba-num-texto,
+.pl-aba[draggable="true"]:focus-visible .pl-aba-num-texto { opacity: 0; }
+
+/* A urgencia, antes do nome. */
+.pl-aba-prio { flex: none; display: inline-flex; align-items: center; }
+
+/* Clicavel e arrastavel ao mesmo tempo, como o cartao do quadro: a mao aberta
+   diz que da para levar, e o clique continua abrindo. */
+.pl-aba { user-select: none; }
+.pl-aba[draggable="true"] { cursor: grab; }
+.pl-aba[draggable="true"]:active { cursor: grabbing; }
+/* A que esta sendo levada fica apagada, e nao some: sumir abriria um buraco na
+   lista no meio do gesto, e o resto pularia para cima. */
+.pl-aba.levada { opacity: .4; }
+
+/* A linha amarela de onde a divisoria vai cair, a mesma das etapas em
+   Configuracoes. Por cima do fio da aba, para nao depender de qual das duas
+   bordas esta desenhada ali. */
+.pl-aba.cai-antes::after,
+.pl-aba.cai-depois::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--yellow);
+  z-index: 3;
+  pointer-events: none;
+}
+.pl-aba.cai-antes::after { top: -2px; }
+.pl-aba.cai-depois::after { bottom: -2px; }
 .pl-aba-texto {
   display: flex;
   flex-direction: column;
@@ -6536,15 +6839,20 @@ button.checklist-texto:focus-visible {
   font-weight: 700;
   color: var(--gray2);
   font-variant-numeric: tabular-nums;
+  transition: background var(--transition-spring), color var(--transition-spring);
 }
 .pl-aba.ativa .pl-aba-conta { background: var(--yellow); color: var(--on-yellow); }
 .pl-aba-conta.vazia { background: transparent; color: var(--gray3); }
 
 /* A folha. Encostada nas divisorias: sem canto arredondado do lado delas. */
+/* A folha fica branca - e a folha, e nao um objeto sobre ela -, mas ganha o
+   acabamento de cristal: a borda leve e a sombra larga que a descolam do fundo
+   da pagina, as mesmas do painel lateral. */
 .pl-sheet {
   background: var(--white);
-  border: 1px solid var(--gray3);
+  border: 1px solid var(--cristal-borda, var(--gray3));
   border-radius: 0 var(--radius-lg) var(--radius-lg) var(--radius-lg);
+  box-shadow: inset 0 1px 0 var(--cristal-luz, transparent), var(--cristal-sombra, none);
   padding: 22px 26px 24px;
   min-height: 420px;
   min-width: 0;
@@ -6554,12 +6862,15 @@ button.checklist-texto:focus-visible {
 
 .pl-cabeca {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
-  padding-bottom: 16px;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding-bottom: 18px;
   border-bottom: 1px solid var(--gray4);
 }
+.pl-quem { min-width: 0; }
+.pl-quem .painel-rotulo { margin-bottom: 4px; }
 .pl-quem h2 { margin: 0; font-size: 21px; font-weight: 800; letter-spacing: -.01em; }
 .pl-quem h2 button {
   border: none;
@@ -6573,25 +6884,61 @@ button.checklist-texto:focus-visible {
 }
 .pl-quem h2 button:hover { border-bottom-color: var(--yellow); }
 .pl-quem h2 button:focus-visible { outline: none; border-bottom-color: var(--yellow); }
-.pl-quem p {
+.pl-meta {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 7px;
-  margin: 5px 0 0;
+  margin: 6px 0 0;
   font-size: 12px;
   font-weight: 600;
   color: var(--gray2);
 }
-.pl-progresso {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+
+/* Os numeros da semana, lado a lado, no desenho dos cartoes de KPI em miniatura:
+   o numero grande e a legenda embaixo. Separados por fio, e nao por caixa -
+   cinco caixas no cabecalho disputariam com o titulo do projeto. */
+.pl-numeros {
+  display: flex;
+  align-items: stretch;
   flex: none;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--gray);
-  font-variant-numeric: tabular-nums;
+  padding: 10px 16px;
+  border: 1px solid var(--cristal-borda, var(--gray4));
+  border-radius: var(--radius-md);
+  background: var(--cristal, transparent);
+  box-shadow: inset 0 1px 0 var(--cristal-luz, transparent),
+    inset 0 -1px 0 var(--cristal-base, transparent),
+    var(--cristal-sombra, none);
 }
+.pl-numero {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 0 16px;
+  border-left: 1px solid var(--cristal-borda, var(--gray4));
+  min-width: 62px;
+}
+.pl-numero:first-child { border-left: none; padding-left: 0; }
+.pl-numero:last-child { padding-right: 0; }
+.pl-numero strong {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--black);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em;
+}
+.pl-numero small {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--gray2);
+  white-space: nowrap;
+}
+/* Atrasada e o unico numero que pede acao, e so ganha cor quando existe. */
+.pl-numero.alerta strong { color: var(--red); }
+.pl-numero-progresso { min-width: 118px; }
+.pl-numero-progresso .nt-progresso-barra { flex: none; width: 100%; margin-top: 5px; }
 
 .pl-secao { min-width: 0; }
 .pl-secao-titulo {
@@ -6606,45 +6953,73 @@ button.checklist-texto:focus-visible {
   color: var(--gray2);
 }
 
-/* Destaques e reunioes lado a lado: sao as duas metades do mesmo combinado, e
-   uma embaixo da outra empurrava os pontos de atencao para fora da tela. */
+/* Destaques e reunioes lado a lado, num painel so: sao as duas metades do
+   mesmo combinado, e o fundo de papel e o que as le como uma coisa so - soltas
+   na folha, pareciam duas secoes sem relacao. */
 .pl-combinado {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 22px;
+  gap: 8px 28px;
+  padding: 16px 18px 12px;
+  border: 1px solid var(--cristal-borda, transparent);
+  border-radius: var(--radius-md);
+  background: var(--cristal, var(--bg));
+  box-shadow: inset 0 1px 0 var(--cristal-luz, transparent),
+    inset 0 -1px 0 var(--cristal-base, transparent),
+    var(--cristal-sombra, none);
+}
+.pl-combinado .pl-secao-titulo { margin-bottom: 4px; }
+.pl-combinado .pl-assinatura {
+  grid-column: 1 / -1;
+  padding-top: 8px;
+  border-top: 1px solid var(--gray4);
+  text-align: right;
 }
 
-/* ── As linhas do combinado ─────────────────────────── */
-.pl-linhas { display: flex; flex-direction: column; gap: 5px; }
-.pl-linha { display: flex; align-items: center; gap: 7px; }
+/* ── As linhas do combinado ───────────────────────────
+   No desenho do checklist da tarefa: o item e texto em repouso, a linha acende
+   no hover, e o campo so ganha o fio de baixo quando esta sendo escrito. Era um
+   campo de formulario por linha, com moldura e 38px de altura - numa lista de
+   frases curtas, a moldura pesava mais que o que estava escrito. */
+.pl-linhas { display: flex; flex-direction: column; gap: 1px; }
+.pl-linha {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px 3px 6px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition);
+}
+.pl-linha:hover,
+.pl-linha:focus-within { background: var(--gray4); }
 /* O ponto da lista, que e o que faz a linha ler como item e nao como campo. */
 .pl-linha-marca {
   flex: none;
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--gray3);
+  background: var(--gray2);
 }
-.pl-linha .form-input { flex: 1; min-width: 0; }
-.pl-linha-x {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
+.pl-linha-campo {
+  flex: 1;
+  min-width: 0;
   height: 24px;
+  padding: 0;
   border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--gray2);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity var(--transition), background var(--transition), color var(--transition);
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  background: none;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--black);
+  outline: none;
+  transition: border-color var(--transition);
 }
-.pl-linha:hover .pl-linha-x,
-.pl-linha-x:focus-visible { opacity: 1; }
-.pl-linha-x:hover { background: var(--gray4); color: var(--red); }
-.pl-add { align-self: flex-start; gap: 6px; padding: 0 10px; font-size: 11.5px; }
+.pl-linha-campo::placeholder { color: var(--gray3); }
+.pl-linha-campo:focus { border-bottom-color: var(--gray2); }
+.pl-linha:hover .checklist-tirar,
+.pl-linha:focus-within .checklist-tirar { opacity: 1; }
+.pl-linhas .checklist-add { align-self: flex-start; margin-top: 2px; }
 
 .pl-linhas-leitura { margin: 0; padding-left: 16px; }
 .pl-linhas-leitura li {
@@ -6659,16 +7034,56 @@ button.checklist-texto:focus-visible {
   font-weight: 600;
   color: var(--gray2);
 }
-.pl-equipe { display: flex; align-items: center; gap: 7px; margin: 0; flex-wrap: wrap; }
 /* O ponto que separa cliente de gestor na linha de baixo do titulo. Mais claro
    que o texto: ele e pontuacao, e nao mais uma informacao na fila. */
 .nt-sep { color: var(--gray3); }
+
+/* O quadro na folha da planning. O backlog e mais largo que um dia: e onde
+   estao mais cartoes, e e de onde a sala tira o que vai para a semana - apertado
+   do tamanho de um dia, o titulo cortava na segunda linha e ninguem sabia o
+   que estava arrastando. */
+.pl-folha .nt-semana {
+  grid-auto-flow: row;
+  grid-template-columns: minmax(200px, 1.45fr) repeat(5, minmax(118px, 1fr));
+  margin-top: 0;
+}
+/* Em notebook as divisorias e a margem da folha cedem um pouco: e o que faz a
+   sexta-feira caber sem rolagem lateral. O quadro rola de lado sem barra, e um
+   dia escondido atras dessa rolagem e um dia que a sala nao ve. */
+@media (max-width: 1320px) {
+  .pl-pagina { grid-template-columns: 196px minmax(0, 1fr); }
+  .pl-sheet { padding: 20px 20px 22px; }
+  .pl-numero { padding: 0 12px; min-width: 54px; }
+  .pl-numero-progresso { min-width: 96px; }
+}
+/* A coluna rola por dentro e tem teto: sem ele, um backlog de vinte tarefas
+   empurrava o combinado e os pontos de atencao para fora da tela, e a reuniao
+   montava a semana sem ver o que tinha acabado de combinar. */
+.pl-folha .nt-dia-corpo {
+  max-height: min(40vh, 380px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--gray3) transparent;
+  /* A rolagem recorta tudo o que passa da caixa, inclusive o cartao que sobe
+     2px no hover: sem folga, a borda de cima dele sumia. A folga fica por
+     dentro e a margem negativa a devolve, entao a coluna nao muda de lugar nem
+     de tamanho - so ganha espaco para o cartao subir e a sombra aparecer. */
+  padding: 5px 6px 10px;
+  margin: -5px -6px -10px;
+}
+/* As colunas dos dias ficam lisas - sao o chao onde os cartoes repousam, e
+   cristal sobre cristal vira sujeira -, so com o fio de cristal no lugar do
+   cinza chapado. */
+.pagina-cristal .pl-folha .nt-dia.futuro { box-shadow: inset 0 0 0 1px var(--cristal-borda); }
+
+/* Prazo vencido no pe do cartao do backlog. */
+.nt-card-vencido { color: var(--red); }
 
 /* O backlog e coluna do quadro da semana, a primeira. Fundo de papel e fio
    tracejado: e a pilha de onde as coisas saem, e nao um dia. */
 .nt-dia.nt-backlog {
   background: transparent;
-  box-shadow: inset 0 0 0 1px var(--gray3);
+  box-shadow: inset 0 0 0 1px var(--cristal-borda, var(--gray3));
   border-right: none;
 }
 .nt-dia.nt-backlog .nt-dia-nome { color: var(--gray2); }
@@ -6688,14 +7103,40 @@ button.checklist-texto:focus-visible {
     border-bottom: none;
     border-radius: var(--radius-md) var(--radius-md) 0 0;
   }
-  .pl-aba.ativa { box-shadow: 0 1px 0 0 var(--white); }
-  .pl-aba.ativa::after { display: none; }
+  .pl-aba.cai-antes::after,
+  .pl-aba.cai-depois::after { top: 0; bottom: 0; width: 3px; height: auto; right: auto; }
+  .pl-aba.cai-antes::after { left: -2px; }
+  .pl-aba.cai-depois::after { left: auto; right: -2px; }
+  .pl-aba-marca.deitada {
+    border: 1px solid var(--gray3);
+    border-bottom: none;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    box-shadow: none;
+  }
   .pl-sheet { border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
   .pl-combinado { grid-template-columns: 1fr; }
+  .pl-numeros { width: 100%; }
+  .pl-folha .nt-semana { grid-template-columns: repeat(6, minmax(160px, 1fr)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pl-aba { transition: none; }
+  .pl-linha,
+  .pl-linha-campo { transition: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pl-aba,
+  .pl-aba::before,
+  .pl-aba-conta,
+  .pl-aba-num > *,
+  .pl-aba-marca.pronta,
+  .pl-seta,
+  .pl-semana-chip,
+  .pl-semana-seta,
+  .pl-semana-mes-seta,
+  .pl-semana-opcao,
+  .pl-semana-voltar { transition: none; }
+  .pl-seta:active { transform: none; }
 }
 
 .nt-tag {
@@ -7245,94 +7686,54 @@ button.checklist-texto:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
+/* O mais do cabecalho da coluna, no desenho do mais das colunas do kanban:
+   sempre a vista, mas quieto. Sem contagem ao lado ele empurra sozinho para a
+   direita. */
+.nt-dia-mais {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin: -3px -3px -3px auto;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.nt-dia-conta + .nt-dia-mais { margin-left: 2px; }
+.nt-dia-mais:hover { background: var(--gray4); color: var(--black); }
+.nt-dia-mais:focus-visible { outline: none; background: var(--gray4); color: var(--black); }
+
+/* O convite do backlog vazio: o mesmo tracejado do "soltar aqui", clicavel. */
+button.nt-dia-convite {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
+}
+button.nt-dia-convite:hover { border-color: var(--gray2); color: var(--black); background: var(--white); }
+button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2); color: var(--black); }
+
+@media (prefers-reduced-motion: reduce) {
+  .nt-dia-mais,
+  button.nt-dia-convite { transition: none; }
+}
+
 .nt-dia-corpo {
   display: flex;
   flex-direction: column;
   gap: 5px;
   min-height: 26px;
-}
-
-.nt-card {
-  background: var(--white);
-  border: 1px solid var(--gray3);
-  border-left: 3px solid var(--green, #23A455);
-  border-radius: var(--radius-sm);
-  padding: 7px 8px;
-  /* A opacidade entra aqui: marcar como feita esmaece o card, e o corte seco
-     no meio do clique lia como o card tendo sumido. */
-  transition: border-color var(--transition), opacity var(--transition),
-    box-shadow var(--transition-spring);
-}
-.nt-card:hover { box-shadow: var(--shadow-card); }
-/* Planejada, não registrada: o traço na borda diz que o dia é intenção e não
-   fato, sem precisar de uma segunda cor no quadro. */
-.nt-card.planejada { border-left-style: dashed; border-left-color: var(--gray2); }
-
-/* Feita sai do caminho: continua legível e continua arrastável, mas para de
-   competir com o que ainda falta. Volta ao normal no hover, para quando a
-   pessoa for reler ou reabrir. */
-.nt-card.feita { opacity: .55; }
-.nt-card.feita:hover,
-.nt-card.feita:focus-within { opacity: 1; }
-.nt-card.feita .nt-card-abrir p { text-decoration: line-through; }
-
-/* A caixa e o título na mesma linha, com o título ocupando o resto. */
-.nt-card-topo {
-  display: flex;
-  align-items: flex-start;
-  gap: 7px;
-}
-.nt-card-marca {
-  width: 14px;
-  height: 14px;
-  /* Alinha com a primeira linha do título, e não com o bloco todo. */
-  margin-top: 1px;
-}
-.nt-card-marca:focus-visible { outline: none; }
-.nt-card-marca:disabled { opacity: .4; cursor: default; }
-.nt-card[draggable="true"] { cursor: grab; }
-.nt-card[draggable="true"]:active { cursor: grabbing; }
-/* O card que está sendo levado fica apagado, e não sumido: some, e a coluna
-   de origem colapsa no meio do gesto. */
-.nt-card.arrastando { opacity: .4; }
-
-
-/* O título do card abre o detalhe. Botão, e não parágrafo com clique: é assim
-   que o teclado chega nele. */
-.nt-card-abrir {
-  display: block;
-  flex: 1;
-  min-width: 0;
-  border: none;
-  background: none;
-  padding: 0;
-  margin: 0;
-  font-family: inherit;
-  text-align: left;
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-}
-.nt-card-abrir:focus-visible { outline: none; }
-
-.nt-card p {
-  margin: 0;
-  font-size: 11.5px;
-  font-weight: 600;
-  line-height: 1.35;
-  color: var(--black);
-  /* Duas linhas: um título comprido não pode esticar a coluna do dia. */
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.nt-card-pe {
-  display: flex;
-  align-items: center;
-  margin-top: 7px;
-  font-size: 10.5px;
-  color: var(--gray2);
-  min-width: 0;
 }
 
 /* ── Tabela ───────────────────────────────────────────
@@ -7408,7 +7809,6 @@ button.checklist-texto:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   .nt-pagina { opacity: 1; transform: none; transition: none; }
-  .nt-card { transition: none; }
   .nt-triangulo,
   .nt-toggle-corpo,
   .nt-toggle.aberto .nt-toggle-corpo { transition: none; }

@@ -256,6 +256,7 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   // que e o que decide quais projetos aparecem na tela.
   planning_semana: 'projetos:ver',
   salvar_planning_semana: 'projetos:editar',
+  ordenar_planning: 'projetos:editar',
   despublicar_projeto: 'projetos:editar',
   salvar_tarefa: 'tarefas:editar',
   excluir_tarefa: 'tarefas:excluir',

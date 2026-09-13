@@ -1292,6 +1292,11 @@ async function migrarSchema(db: Client) {
   // As pastas do Drive, pelo mesmo desenho dos repositorios: JSON aqui, e a
   // coluna `drive` de cima virando reserva com a primeira da lista.
   try { await ddl(`ALTER TABLE projetos ADD COLUMN drives TEXT`); } catch {}
+  // A posicao do projeto na reuniao de planning, escolhida arrastando as
+  // divisorias. Uma so para a casa inteira, e nao por pessoa: e a sequencia em
+  // que a sala percorre os projetos, e todo mundo na sala precisa ver a mesma.
+  // Nula e "ainda nao ordenado", que entra depois dos ordenados, por prioridade.
+  try { await ddl(`ALTER TABLE projetos ADD COLUMN planning_ordem INTEGER`); } catch {}
 
   // Clientes atendidos. Registro próprio, e não `cedentes`: aquele é cadastro de
   // crédito, com CNPJ e limite; aqui basta quem é o cliente do projeto.
@@ -6082,6 +6087,23 @@ function faltaEmProjeto(p: any): string | null {
         sql: 'UPDATE projetos SET atualizado_por_id=?, atualizado_por_nome=?, atualizado_em=? WHERE id=?',
         args: [autorId, autorNome, new Date().toISOString(), projetoId],
       });
+      return { status: 200, body: { ok: true } };
+    }
+
+    // A ordem das divisorias da Planning. Recebe a lista inteira, na ordem nova,
+    // e numera de 1 em diante numa ida so ao banco: arrastar um projeto muda a
+    // posicao de todos os que estavam entre a origem e o destino.
+    if (action === 'ordenar_planning') {
+      const ids = Array.isArray(body.ids) ? (body.ids as unknown[]).map(String).filter(Boolean) : [];
+      if (ids.length === 0) return { status: 400, body: { error: 'Lista de projetos vazia.' } };
+      for (const id of ids) {
+        const barrado = await guardaDaEquipe(db, usuario, id);
+        if (barrado) return barrado;
+      }
+      await db.batch(ids.map((id, i) => ({
+        sql: 'UPDATE projetos SET planning_ordem = ? WHERE id = ?',
+        args: [i + 1, id],
+      })), 'write');
       return { status: 200, body: { ok: true } };
     }
 
