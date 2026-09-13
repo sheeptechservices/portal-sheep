@@ -6870,7 +6870,6 @@ button.checklist-texto:focus-visible {
   border-bottom: 1px solid var(--gray4);
 }
 .pl-quem { min-width: 0; }
-.pl-quem .painel-rotulo { margin-bottom: 4px; }
 .pl-quem h2 { margin: 0; font-size: 21px; font-weight: 800; letter-spacing: -.01em; }
 .pl-quem h2 button {
   border: none;

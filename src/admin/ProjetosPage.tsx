@@ -3406,7 +3406,6 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
     <div className="pl-folha troca" key={`${p.id}|${iso10(semana)}`}>
       <header className="pl-cabeca">
         <div className="pl-quem">
-          {p.codigo && <p className="painel-rotulo">Projeto {p.codigo}</p>}
           <h2>
             <button type="button" onClick={() => onAbrir(p)} title="Abrir a ficha do projeto">
               {p.nome}
