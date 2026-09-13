@@ -12372,6 +12372,10 @@ button.checklist-texto:focus-visible {
   min-width: 0;
   margin: 0;
 }
+/* A linha da senha embaixo da dos campos obrigatorios. O `gap` so separa o que
+   quebra dentro de uma mesma linha; entre duas linhas irmas nao havia nada, e o
+   rotulo da senha encostava no campo de cima. */
+.usuarios-convite-campos + .usuarios-convite-campos { margin-top: 16px; }
 /* Os tres controles com a mesma caixa: o seletor da casa nasce com 34px, que e
    a medida da lista de contas, e ao lado de um campo de formulario ele ficava
    uma cabeca mais baixo. */
