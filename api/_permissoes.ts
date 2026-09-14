@@ -269,6 +269,8 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   tarefa_comentario_anexo_base64: 'tarefas:ver',
   add_tarefa_comentario: 'tarefas:comentar',
   excluir_tarefa_comentario: 'tarefas:comentar',
+  // O joinha e participar da conversa, como comentar.
+  joinha_tarefa_comentario: 'tarefas:comentar',
   salvar_entrega: 'projetos:editar',
   excluir_entrega: 'projetos:editar',
   add_entrega_evidencia: 'projetos:editar',

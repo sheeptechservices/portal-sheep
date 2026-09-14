@@ -1635,6 +1635,18 @@ async function migrarSchema(db: Client) {
   `);
 
   await ddl(`
+    -- O joinha num comentário: quem concordou, e quando. Um por pessoa - a
+    -- chave é o par -, e tirar o joinha apaga a linha. O \`criado_em\` é o que
+    -- põe o aviso de joinha na ordem certa do inbox de quem escreveu.
+    CREATE TABLE IF NOT EXISTS tarefa_comentario_joinhas (
+      comentario_id INTEGER NOT NULL,
+      usuario_id    TEXT NOT NULL,
+      criado_em     TEXT NOT NULL,
+      PRIMARY KEY (comentario_id, usuario_id)
+    )
+  `);
+
+  await ddl(`
     -- Anexo do comentário. Mesmo formato das evidências de entrega: o conteúdo
     -- mora no banco em base64, que é o que este portal já faz em toda parte.
     CREATE TABLE IF NOT EXISTS tarefa_comentario_anexos (
@@ -4028,7 +4040,7 @@ async function despacharAdminData(
       const barrado = await guardaDaEquipe(db, usuario, id, 'tarefa');
       if (barrado) return barrado;
 
-      const [eventos, comentarios, mencoes, anexos] = await Promise.all([
+      const [eventos, comentarios, mencoes, anexos, joinhas] = await Promise.all([
         db.execute({
           sql: `SELECT id, usuario_id, usuario_nome, acao, campo, de, para, criado_em
                 FROM tarefa_eventos WHERE tarefa_id = ? ORDER BY id DESC`,
@@ -4060,6 +4072,14 @@ async function despacharAdminData(
                 WHERE c.tarefa_id = ? ORDER BY a.id`,
           args: [id],
         }),
+        db.execute({
+          sql: `SELECT j.comentario_id, j.usuario_id, u.nome
+                FROM tarefa_comentario_joinhas j
+                JOIN tarefa_comentarios c ON c.id = j.comentario_id
+                LEFT JOIN usuarios u ON u.id = j.usuario_id
+                WHERE c.tarefa_id = ? ORDER BY j.criado_em`,
+          args: [id],
+        }),
       ]);
 
       const porComentario = <T,>(linhas: T[], chave: (l: T) => number) => {
@@ -4073,6 +4093,7 @@ async function despacharAdminData(
       };
       const marcados = porComentario(mencoes.rows, r => Number(r.comentario_id));
       const arquivos = porComentario(anexos.rows, r => Number(r.comentario_id));
+      const curtidas = porComentario(joinhas.rows, r => Number(r.comentario_id));
 
       return {
         status: 200,
@@ -4084,6 +4105,9 @@ async function despacharAdminData(
               usuario_id: String(m.usuario_id), nome: m.nome ?? null,
             })),
             anexos: arquivos.get(Number(c.id)) ?? [],
+            joinhas: (curtidas.get(Number(c.id)) ?? []).map(j => ({
+              usuario_id: String(j.usuario_id), nome: j.nome ?? null,
+            })),
           })),
         },
       };
@@ -5638,6 +5662,7 @@ function faltaEmProjeto(p: any): string | null {
       });
       for (const c of conversas.rows) {
         await db.execute({ sql: 'DELETE FROM tarefa_comentario_mencoes WHERE comentario_id = ?', args: [c.id as never] });
+        await db.execute({ sql: 'DELETE FROM tarefa_comentario_joinhas WHERE comentario_id = ?', args: [c.id as never] });
         await db.execute({ sql: 'DELETE FROM tarefa_comentario_anexos WHERE comentario_id = ?', args: [c.id as never] });
       }
       await db.execute({ sql: 'DELETE FROM tarefa_comentarios WHERE tarefa_id = ?', args: [body.id] });
@@ -5804,8 +5829,35 @@ function faltaEmProjeto(p: any): string | null {
       });
       for (const c of [...filhas.rows.map(r => Number(r.id)), id]) {
         await db.execute({ sql: 'DELETE FROM tarefa_comentario_mencoes WHERE comentario_id = ?', args: [c] });
+        await db.execute({ sql: 'DELETE FROM tarefa_comentario_joinhas WHERE comentario_id = ?', args: [c] });
         await db.execute({ sql: 'DELETE FROM tarefa_comentario_anexos WHERE comentario_id = ?', args: [c] });
         await db.execute({ sql: 'DELETE FROM tarefa_comentarios WHERE id = ?', args: [c] });
+      }
+      return { status: 200, body: { ok: true } };
+    }
+
+    // Da ou tira o joinha de quem clicou. `ligar` diz o que a tela pintou, e
+    // nao "inverta": dois cliques rapidos mandariam dois "inverta" e o
+    // resultado dependeria da ordem de chegada.
+    if (action === 'joinha_tarefa_comentario') {
+      if (!usuario?.id) return { status: 400, body: { error: 'Sessão sem identidade não dá joinha.' } };
+      const id = Number(body?.id);
+      const alvo = await db.execute({
+        sql: 'SELECT tarefa_id FROM tarefa_comentarios WHERE id = ?', args: [id],
+      });
+      if (!alvo.rows[0]) return { status: 404, body: { error: 'Comentário não encontrado.' } };
+      { const barrado = await guardaDaEquipe(db, usuario, alvo.rows[0].tarefa_id, 'tarefa'); if (barrado) return barrado; }
+      if (body?.ligar === false) {
+        await db.execute({
+          sql: 'DELETE FROM tarefa_comentario_joinhas WHERE comentario_id = ? AND usuario_id = ?',
+          args: [id, usuario.id],
+        });
+      } else {
+        await db.execute({
+          sql: `INSERT OR IGNORE INTO tarefa_comentario_joinhas (comentario_id, usuario_id, criado_em)
+                VALUES (?,?,?)`,
+          args: [id, usuario.id, new Date().toISOString()],
+        });
       }
       return { status: 200, body: { ok: true } };
     }

@@ -79,6 +79,7 @@ export function AtividadeDaTarefa({ tarefaId, pessoas, usuarioId, podeComentar, 
     }),
     excluir: (id: number) => api('', 'POST', { action: 'excluir_tarefa_comentario', id }),
     anexo: (id: number) => api(`?action=tarefa_comentario_anexo_base64&id=${id}`),
+    joinha: (id: number, ligar: boolean) => api('', 'POST', { action: 'joinha_tarefa_comentario', id, ligar }),
   }), [api, tarefaId]);
 
   return (

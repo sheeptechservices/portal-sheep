@@ -7543,6 +7543,44 @@ button.checklist-texto:focus-visible {
 }
 .ativ-link:hover { color: var(--black); }
 .ativ-link:focus-visible { outline: none; }
+
+/* O joinha no pe do comentario. Sem joinha nenhum ele e so o desenho, apagado;
+   com conta, vira pilula; o seu fica aceso no amarelo das marcacoes, que e a
+   cor de "isto tem a ver com voce" nesta conversa. */
+.ativ-reacoes { display: flex; gap: 6px; margin-top: 5px; }
+.ativ-joinha {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: none;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gray2);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  transition: background var(--transition), border-color var(--transition), color var(--transition),
+    transform var(--transition-spring);
+}
+.ativ-joinha.com-conta { border-color: var(--gray3); }
+.ativ-joinha:hover:not(:disabled) { background: var(--gray4); color: var(--black); }
+.ativ-joinha:active:not(:disabled) { transform: scale(.94); }
+.ativ-joinha:focus-visible { outline: none; border-color: var(--gray2); }
+.ativ-joinha:disabled { cursor: default; }
+.ativ-joinha.meu {
+  border-color: transparent;
+  background: var(--yd);
+  color: var(--on-yellow);
+}
+.ativ-joinha.meu:hover:not(:disabled) { background: var(--yd); color: var(--on-yellow); filter: brightness(.97); }
+@media (prefers-reduced-motion: reduce) {
+  .ativ-joinha { transition: none; }
+  .ativ-joinha:active:not(:disabled) { transform: none; }
+}
 .ativ-responder { margin: 8px 0 0 36px; }
 
 /* ── Anexos ───────────────────────────────────────── */

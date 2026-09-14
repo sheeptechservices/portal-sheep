@@ -226,6 +226,15 @@ export function IconRefresh({ size = 14 }: { size?: number }) {
 export function IconReply({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M8 5v6.5a3 3 0 003 3h8" /><path d="M15.5 11l4 3.5-4 3.5" /></Ico>;
 }
+// Joinha: concordar com um comentario sem escrever outro.
+export function IconJoinha({ size = 14 }: { size?: number }) {
+  return (
+    <Ico size={size}>
+      <path d="M7 10v11" />
+      <path d="M15 5.9L14 10h5.8a2 2 0 011.9 2.6l-2.3 8a2 2 0 01-1.9 1.4H4a2 2 0 01-2-2v-8a2 2 0 012-2h2.8a2 2 0 001.8-1.1L12 2a3.1 3.1 0 013 3.9z" />
+    </Ico>
+  );
+}
 // Enviar o que se acabou de escrever - o botao do campo de comentario.
 export function IconEnviar({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M21.5 2.5L10.8 13.2" /><path d="M21.5 2.5l-6.8 19-3.9-8.3-8.3-3.9 19-6.8z" /></Ico>;

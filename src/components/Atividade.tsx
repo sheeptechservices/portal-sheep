@@ -13,7 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  IconAlert, IconChevronRight, IconClip, IconDownload, IconEye, IconTrash, IconX,
+  IconAlert, IconChevronRight, IconClip, IconDownload, IconEye, IconJoinha, IconTrash, IconX,
 } from './icons';
 import { PreviaArquivo } from './PreviaArquivo';
 import { quando, tamanho as fmtTamanho } from '../lib/datas';
@@ -56,6 +56,8 @@ export interface ComentarioAtividade {
   editado_em: string | null;
   mencoes: { usuario_id: string; nome: string | null }[];
   anexos: AnexoDoComentario[];
+  /** Quem deu joinha. Ausente onde a conversa não tem joinha - o funil. */
+  joinhas?: { usuario_id: string; nome: string | null }[];
 }
 
 /** Uma etapa que pode ser marcada no texto com `#`. Só o funil tem: numa
@@ -376,8 +378,37 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, enviando, permiteAne
   );
 }
 
+/** O joinha do comentário: o desenho e a conta, e os nomes na dica. Quem já deu
+ *  vê o botão aceso, e clicar de novo tira. */
+function Joinha({ c, usuarioId, pode, onAlternar }: {
+  c: ComentarioAtividade;
+  usuarioId: string | undefined;
+  pode: boolean;
+  onAlternar: (c: ComentarioAtividade, ligar: boolean) => void;
+}) {
+  const lista = c.joinhas ?? [];
+  const meu = !!usuarioId && lista.some(j => j.usuario_id === usuarioId);
+  const nomes = lista.map(j => (j.usuario_id === usuarioId ? 'você' : j.nome ?? 'alguém'));
+  const dica = lista.length
+    ? `Joinha de ${nomes.join(', ')}`
+    : 'Dar joinha';
+  return (
+    <button type="button" className={`ativ-joinha${meu ? ' meu' : ''}${lista.length ? ' com-conta' : ''}`}
+      title={pode ? (meu ? `${dica}. Clique para tirar o seu.` : dica) : dica}
+      aria-label={meu ? 'Tirar joinha' : 'Dar joinha'} aria-pressed={meu}
+      // Comentário ainda subindo (id negativo) não tem onde gravar o joinha.
+      disabled={!pode || c.id < 0}
+      onClick={() => onAlternar(c, !meu)}>
+      <IconJoinha size={12} />
+      {lista.length > 0 && <span className="ativ-joinha-conta troca" key={lista.length}>{lista.length}</span>}
+    </button>
+  );
+}
+
 function Comentario({ c, respostas, pessoas, etapas, usuarioId, podeComentar, enviando, permiteAnexo,
-  respondendo, onResponder, onEnviarResposta, onExcluir, onBaixar, onVer }: {
+  respondendo, onResponder, onEnviarResposta, onExcluir, onBaixar, onVer, onJoinha }: {
+  /** Ausente onde a conversa não tem joinha. */
+  onJoinha?: (c: ComentarioAtividade, ligar: boolean) => void;
   c: ComentarioAtividade;
   respostas: ComentarioAtividade[];
   etapas?: EtapaMarcavel[];
@@ -433,6 +464,13 @@ function Comentario({ c, respostas, pessoas, etapas, usuarioId, podeComentar, en
               </li>
             ))}
           </ul>
+        )}
+        {/* O joinha no pé da fala, e não no cabeçalho com o nome: é a resposta
+            de quem leu ao que foi dito, e mora embaixo do que foi dito. */}
+        {onJoinha && (x.id > 0 || (x.joinhas ?? []).length > 0) && (
+          <div className="ativ-reacoes">
+            <Joinha c={x} usuarioId={usuarioId} pode={podeComentar && !!usuarioId} onAlternar={onJoinha} />
+          </div>
         )}
       </div>
     </div>
@@ -509,6 +547,9 @@ export interface DonoDaAtividade {
   /** O conteúdo do anexo, na hora de ver ou baixar. Ausente onde comentário não
    *  leva anexo - e aí o clipe também não aparece na caixa de escrita. */
   anexo?: (id: number) => Promise<{ nome: string; tipo: string; base64: string } | null>;
+  /** Dá (`ligar`) ou tira o joinha de quem está vendo. Ausente onde a conversa
+   *  não tem joinha - e aí o botão não aparece. */
+  joinha?: (id: number, ligar: boolean) => Promise<{ error?: string } | null>;
 }
 
 export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
@@ -605,6 +646,21 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
     if (r?.error) await carregar();
   }
 
+  /** Dá ou tira o joinha. O botão acende no clique e apaga de volta se o
+   *  servidor recusar: concordar com alguém não pode esperar a ida e a volta. */
+  async function alternarJoinha(c: ComentarioAtividade, ligar: boolean) {
+    if (!dono.joinha || !usuarioId) return;
+    const eu = pessoas.find(p => p.id === usuarioId);
+    const pintar = (ativo: boolean) => setComentarios(cs => cs.map(x => {
+      if (x.id !== c.id) return x;
+      const sem = (x.joinhas ?? []).filter(j => j.usuario_id !== usuarioId);
+      return { ...x, joinhas: ativo ? [...sem, { usuario_id: usuarioId, nome: eu?.nome ?? null }] : sem };
+    }));
+    pintar(ligar);
+    const r = await dono.joinha(c.id, ligar);
+    if (r?.error) pintar(!ligar);
+  }
+
   /** Anexo aberto na janela de prévia. */
   const [vendo, setVendo] = useState<AnexoDoComentario | null>(null);
 
@@ -673,6 +729,7 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
                 onExcluir={c2 => void excluir(c2)}
                 onBaixar={a => void baixar(a)}
                 onVer={setVendo}
+                onJoinha={dono.joinha ? (c2, ligar) => void alternarJoinha(c2, ligar) : undefined}
               />
             ))}
           {podeComentar && (
