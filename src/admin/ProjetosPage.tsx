@@ -5244,7 +5244,16 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
             : [],
         };
       }
-      setPlanning(mapa);
+      // O que ainda espera a pausa da digitação fica como está na tela: a
+      // leitura saiu antes de a gravação chegar, e apagaria a frase recém-escrita.
+      setPlanning(atual => {
+        const junto = { ...mapa };
+        for (const chave of gravando.current.keys()) {
+          const [id, semana] = chave.split('|');
+          if (semana === semanaIso && atual[id]) junto[id] = atual[id];
+        }
+        return junto;
+      });
     });
     return () => { vivo = false; };
   }, [aba, api, semanaIso]);
@@ -5252,22 +5261,27 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
   /** Grava o combinado de um projeto. Pinta na hora e manda depois, juntando as
    *  teclas: numa reunião se digita a frase inteira, e uma gravação por letra
    *  seria uma ida ao servidor a cada tecla de quem está falando. */
-  const gravando = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const gravando = useRef(new Map<string, { timer: ReturnType<typeof setTimeout>; enviar: () => void }>());
   const salvarPlanning = useCallback((projetoId: string, dados: PlanningDaSemana) => {
     setPlanning(atual => ({ ...atual, [projetoId]: { ...atual[projetoId], ...dados } }));
     const chave = `${projetoId}|${semanaIso}`;
-    clearTimeout(gravando.current.get(chave));
-    gravando.current.set(chave, setTimeout(() => {
+    const corpo = {
+      action: 'salvar_planning_semana',
+      projeto_id: projetoId,
+      semana: semanaIso,
+      objetivos: (dados.objetivos ?? []).map(o => ({ texto: o.texto, feito: o.feito })),
+    };
+    const enviar = () => {
       gravando.current.delete(chave);
-      void api('', 'POST', {
-        action: 'salvar_planning_semana',
-        projeto_id: projetoId,
-        semana: semanaIso,
-        objetivos: (dados.objetivos ?? []).map(o => ({ texto: o.texto, feito: o.feito })),
-      }).then(r => {
-        if (r?.error) toast('error', 'Não foi possível gravar os objetivos', r.error);
-      });
-    }, 700));
+      // Queda de rede ou resposta que não é JSON rejeitam a promessa, e sem o
+      // `catch` a falha era muda: a frase ficava na tela e não chegava ao banco.
+      void api('', 'POST', corpo)
+        .then(r => { if (r?.error) toast('error', 'Não foi possível gravar os objetivos', r.error); })
+        .catch(() => toast('error', 'Não foi possível gravar os objetivos',
+          'A conexão caiu antes de a gravação chegar. Escreva de novo quando voltar.'));
+    };
+    clearTimeout(gravando.current.get(chave)?.timer);
+    gravando.current.set(chave, { timer: setTimeout(enviar, 700), enviar });
   }, [api, semanaIso, toast]);
 
   /** Arruma a ordem das divisórias. Pinta na hora - a divisória já está no
@@ -5284,9 +5298,12 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     });
   }, [api, projetos, toast]);
 
-  // A gravação pendente não pode morrer com a tela: quem fecha a página logo
-  // depois de escrever perderia a última frase.
-  useEffect(() => () => { for (const t of gravando.current.values()) clearTimeout(t); }, []);
+  // A gravação pendente não pode morrer com a tela: quem troca de página logo
+  // depois de escrever perderia a última frase. Ao sair, o que estava esperando
+  // a pausa da digitação vai na hora, em vez de ser cancelado.
+  useEffect(() => () => {
+    for (const { timer, enviar } of [...gravando.current.values()]) { clearTimeout(timer); enviar(); }
+  }, []);
 
   // Abriu um projeto, chegam os resumos das reuniões dele - uma vez por
   // projeto, e não a cada recarregamento da listagem.
