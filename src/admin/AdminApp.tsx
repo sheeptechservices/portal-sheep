@@ -381,15 +381,20 @@ function Topbar({ onToggle, onLogout, onQuickSearch, usuario, onAbrirPerfil, inb
           <img src="/favicon.png" alt="Sheep Technology" className="brand-logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
         </div>
 
-        {/* Brand text */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+        {/* Brand text. A altura de linha abre espaço para as pernas das letras:
+            com `lineHeight: 1` e o `overflow: hidden` das reticências, a caixa
+            tinha a altura exata do corpo da letra, e o "g" de "geral" e o "p" de
+            "Portal" saíam cortados embaixo. As medidas vêm da Plus Jakarta Sans,
+            que tem perna longa: com menos que isso, a perna ainda perde um
+            pedaço. O vão entre as linhas sai, porque a entrelinha já separa. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 0, minWidth: 0 }}>
           <div className="topbar-marca-nome"
-            style={{ fontSize: 15, fontWeight: 700, color: 'var(--black)', lineHeight: 1,
+            style={{ fontSize: 15, fontWeight: 700, color: 'var(--black)', lineHeight: 1.35,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             Portal Sheep
           </div>
           <div className="topbar-marca-sub"
-            style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 500, lineHeight: 1,
+            style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 500, lineHeight: 1.5,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             Gestão geral dos projetos
           </div>
