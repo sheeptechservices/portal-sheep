@@ -1040,7 +1040,11 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
                 valor={rascunho.projeto_id}
                 onChange={v => onMudar({ ...rascunho, projeto_id: v, entrega_id: '' })}
                 placeholder="Escolher projeto"
-                opcoes={projetos.map(p => ({ valor: p.id, label: p.nome }))}
+                // O cliente embaixo do nome: dois projetos chamados "SDR IA" só
+                // se distinguem por ele, e a busca do seletor alcança essa linha.
+                opcoes={projetos.map(p => ({
+                  valor: p.id, label: p.nome, descricao: p.cliente_nome ?? 'Sem cliente',
+                }))}
               />
             </div>
             <div className="form-group" style={{ minWidth: 0 }}>
