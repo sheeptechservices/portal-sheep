@@ -4,8 +4,8 @@
 //  Uma janela só para todo anexo do sistema: anexo de projeto, evidência de
 //  entrega, arquivo de comentário, print de chamado e anexo de oportunidade.
 //  Quem chama diz como buscar o conteúdo - o `api` da tela é que carrega o
-//  token da sessão -, e a janela cuida do resto: imagem e PDF abrem aqui
-//  dentro, o resto oferece o download.
+//  token da sessão -, e a janela cuida do resto: imagem, PDF e planilha (Excel
+//  e CSV) abrem aqui dentro, o resto oferece o download.
 //
 //  Ela é tela cheia, e não uma caixa branca no meio da página. Um print de
 //  chamado é lido para se achar o detalhe que quem escreveu não soube nomear, e
@@ -22,6 +22,74 @@ import { createPortal } from 'react-dom';
 import { IconArrowLeft, IconArrowRight, IconDownload, IconX } from './icons';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
+import { MAX_LINHAS, lerPlanilha, nomeDaColuna, tipoDePlanilha, type AbaDaPlanilha } from '../lib/planilha';
+
+/**
+ * A planilha na prévia, no desenho de uma planilha: letra das colunas em cima,
+ * número das linhas à esquerda, os dois presos enquanto a tabela rola, e as abas
+ * no pé, como no Excel. Aberta na primeira aba que tem conteúdo - muita planilha
+ * nasce com uma "Planilha1" vazia na frente.
+ */
+function TabelaDaPlanilha({ abas, onBaixar }: { abas: AbaDaPlanilha[]; onBaixar: () => void }) {
+  const [atual, setAtual] = useState(() => Math.max(0, abas.findIndex(a => a.linhas.length > 0)));
+  const aba = abas[atual];
+  const colunas = Array.from({ length: Math.max(aba?.colunas ?? 0, 1) }, (_, i) => i);
+
+  return (
+    <div className="previa-planilha">
+      {/* A troca de aba troca o conteúdo no mesmo lugar: `.troca` só mexe na
+          opacidade, e a moldura não pula. */}
+      <div className="previa-planilha-corpo troca" key={atual}>
+        {!aba || aba.linhas.length === 0 ? (
+          <div className="previa-planilha-vazia">Esta aba está vazia.</div>
+        ) : (
+          <table className="previa-planilha-tabela">
+            <thead>
+              <tr>
+                <th className="previa-planilha-canto" aria-hidden="true" />
+                {colunas.map(c => <th key={c} scope="col">{nomeDaColuna(c)}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {aba.linhas.map((linha, i) => (
+                <tr key={i}>
+                  <th scope="row">{i + 1}</th>
+                  {colunas.map(c => (
+                    <td key={c} title={linha[c] && linha[c].length > 40 ? linha[c] : undefined}>
+                      {linha[c] ?? ''}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="previa-planilha-pe">
+        {abas.length > 1 && (
+          <div className="previa-planilha-abas" role="tablist" aria-label="Abas da planilha">
+            {abas.map((a, i) => (
+              <button key={i} type="button" role="tab" aria-selected={i === atual}
+                className={`previa-planilha-aba${i === atual ? ' ativa' : ''}`}
+                onClick={() => setAtual(i)}>
+                {a.nome}
+              </button>
+            ))}
+          </div>
+        )}
+        {/* Planilha longa: a prévia mostra o começo e diz quanto ficou de fora,
+            em vez de travar a tela desenhando dez mil linhas. */}
+        {aba && aba.total > MAX_LINHAS && (
+          <span className="previa-planilha-corte">
+            Mostrando {MAX_LINHAS.toLocaleString('pt-BR')} de {aba.total.toLocaleString('pt-BR')} linhas.
+            <button type="button" onClick={onBaixar}>Baixar para ver tudo</button>
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /** Serve a qualquer anexo do sistema: todos são arquivo com id, e o que muda é
  *  só de onde o conteúdo vem. */
@@ -55,6 +123,9 @@ export function PreviaArquivo({ arquivo, onCarregar, onBaixar, onFechar, camada,
   };
 }) {
   const [conteudo, setConteudo] = useState<{ tipo: string; url: string } | null>(null);
+  /** As abas, quando o anexo é planilha. Lidas aqui mesmo: o navegador não
+   *  mostra .xlsx sozinho, como faz com imagem e PDF. */
+  const [abas, setAbas] = useState<AbaDaPlanilha[] | null>(null);
   const [erro, setErro] = useState('');
   const { saindo, fechar } = useSaidaSuave(onFechar);
   const fundo = useFecharNoFundo(fechar);
@@ -62,12 +133,20 @@ export function PreviaArquivo({ arquivo, onCarregar, onBaixar, onFechar, camada,
   useEffect(() => {
     let vivo = true;
     let criada = '';
+    setAbas(null);
+    setConteudo(null);
+    setErro('');
     (async () => {
       try {
         const r = await onCarregar();
         if (!vivo) return;
         if (!r?.base64) { setErro('O arquivo não veio.'); return; }
         const bytes = Uint8Array.from(atob(r.base64), c => c.charCodeAt(0));
+        const formato = tipoDePlanilha(r.tipo, arquivo.nome);
+        if (formato) {
+          setAbas(lerPlanilha(bytes, formato));
+          return;
+        }
         criada = URL.createObjectURL(new Blob([bytes], { type: r.tipo }));
         setConteudo({ tipo: r.tipo, url: criada });
       } catch {
@@ -120,7 +199,8 @@ export function PreviaArquivo({ arquivo, onCarregar, onBaixar, onFechar, camada,
 
       <div className="previa-palco" onClick={e => e.stopPropagation()}>
         {erro && <div className="previa-recado"><p>{erro}</p></div>}
-        {!erro && !conteudo && <div className="dux-spinner-row"><span className="dux-spinner" /></div>}
+        {!erro && !conteudo && !abas && <div className="dux-spinner-row"><span className="dux-spinner" /></div>}
+        {abas && <TabelaDaPlanilha abas={abas} onBaixar={onBaixar} />}
         {conteudo && imagem && (
           <img src={conteudo.url} alt={arquivo.nome} className="previa-img" />
         )}

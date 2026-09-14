@@ -11110,6 +11110,144 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   padding: 40px;
 }
 
+/* A planilha, como o PDF, precisa de folha: a tabela sobre o escuro seria
+   ilegivel. A folha segue o tema, porque e o sistema desenhando, e nao o
+   arquivo de alguem. */
+.previa-planilha {
+  display: flex;
+  flex-direction: column;
+  width: 92vw;
+  max-width: 1400px;
+  height: 84vh;
+  border-radius: var(--radius-md);
+  background: var(--white);
+  overflow: hidden;
+}
+.previa-planilha-corpo {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--gray3) transparent;
+}
+.previa-planilha-vazia {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  font-size: 13px;
+  color: var(--gray2);
+}
+.previa-planilha-tabela {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12.5px;
+  color: var(--black);
+  font-variant-numeric: tabular-nums;
+}
+.previa-planilha-tabela td {
+  max-width: 320px;
+  min-width: 64px;
+  padding: 5px 10px;
+  border-right: 1px solid var(--gray4);
+  border-bottom: 1px solid var(--gray4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background var(--transition);
+}
+.previa-planilha-tabela tbody tr:hover td { background: var(--gray4); }
+/* A letra das colunas e o numero das linhas presos, como no Excel: numa tabela
+   larga, sem eles, a pessoa perde qual coluna e qual linha esta lendo. */
+.previa-planilha-tabela thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 5px 10px;
+  border-right: 1px solid var(--gray3);
+  border-bottom: 1px solid var(--gray3);
+  background: var(--bg);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gray2);
+  text-align: center;
+}
+.previa-planilha-tabela tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 44px;
+  padding: 5px 8px;
+  border-right: 1px solid var(--gray3);
+  border-bottom: 1px solid var(--gray4);
+  background: var(--bg);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray2);
+  text-align: right;
+}
+.previa-planilha-tabela thead th.previa-planilha-canto { left: 0; z-index: 3; }
+
+.previa-planilha-pe {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  border-top: 1px solid var(--gray3);
+  background: var(--bg);
+}
+.previa-planilha-pe:not(:has(> *)) { display: none; }
+.previa-planilha-abas {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.previa-planilha-aba {
+  flex: none;
+  padding: 5px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+.previa-planilha-aba:hover { background: var(--gray4); color: var(--black); }
+.previa-planilha-aba:focus-visible { outline: none; border-color: var(--gray2); }
+.previa-planilha-aba.ativa {
+  border-color: var(--gray3);
+  background: var(--white);
+  color: var(--black);
+  box-shadow: var(--shadow-card);
+}
+.previa-planilha-corte {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--gray2);
+}
+.previa-planilha-corte button {
+  margin-left: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 700;
+  color: var(--black);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--gray3);
+  text-underline-offset: 2px;
+  transition: text-decoration-color var(--transition);
+}
+.previa-planilha-corte button:hover { text-decoration-color: var(--black); }
+
 /* A legenda e o folheador, no pe e sobre o escuro. */
 .previa-legenda {
   position: absolute;
@@ -11164,7 +11302,10 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   .previa-tela,
   .previa-tela.saindo { animation: none; }
   .previa-botao,
-  .previa-folheador button { transition: none; }
+  .previa-folheador button,
+  .previa-planilha-aba,
+  .previa-planilha-tabela td,
+  .previa-planilha-corte button { transition: none; }
 }
 
 /* ── File tags ──────────────────────────────────────── */

@@ -21,6 +21,7 @@ import { TextoRico } from '../components/TextoRico';
 import { CartaoKpi, CartoesKpiEsqueleto } from '../components/CartaoKpi';
 import { CategoriaTag, ANEXO_CATEGORIAS, normalizaCategoria } from '../components/CategoriaTag';
 import { PreviaArquivo } from '../components/PreviaArquivo';
+import { tipoDePlanilha } from '../lib/planilha';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { useLarguraPainel } from '../lib/painelLateral';
@@ -1633,7 +1634,10 @@ export function DetailPanel({
     else toast('error', 'Link indisponível');
   }
 
-  const canPreviewPipeline = (tipo: string) => tipo.startsWith('image/') || tipo === 'application/pdf';
+  // A planilha também abre na prévia, e o nome entra porque o tipo de planilha
+  // nem sempre vem certo no upload.
+  const canPreviewPipeline = (tipo: string, nome: string) =>
+    tipo.startsWith('image/') || tipo === 'application/pdf' || tipoDePlanilha(tipo, nome) !== null;
 
   function openPipelinePreview(f: { id: number; nome: string; tipo: string }, isForm = false) {
     setPipelinePreviewAlvo({ id: f.id, nome: pipelineLocalNames[f.id] ?? f.nome, tipo: f.tipo, isForm });
@@ -2242,7 +2246,7 @@ export function DetailPanel({
                       <p style={{ fontSize: 11, color: 'var(--gray2)', marginTop: 1 }}>{formatSize(f.tamanho)}</p>
                     </div>
                     <CatSelect f={f} isStage={false} />
-                    {canPreviewPipeline(f.tipo) && (
+                    {canPreviewPipeline(f.tipo, f.nome) && (
                       <button className="file-eye-btn" title="Visualizar" onClick={() => openPipelinePreview(f, true)}>
                         <IconEye size={14} />
                       </button>
@@ -2288,7 +2292,7 @@ export function DetailPanel({
                     <p style={{ fontSize: 11, color: 'var(--gray2)', marginTop: 1 }}>{formatSize(f.tamanho)}</p>
                   </div>
                   <CatSelect f={f} isStage={true} />
-                  {canPreviewPipeline(f.tipo) && (
+                  {canPreviewPipeline(f.tipo, f.nome) && (
                     <button className="file-eye-btn" title="Visualizar" onClick={() => openPipelinePreview(f)}>
                       <IconEye size={14} />
                     </button>
