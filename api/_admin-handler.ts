@@ -5882,10 +5882,11 @@ function faltaEmProjeto(p: any): string | null {
       const linha = alvo.rows[0];
       if (!linha) return { status: 404, body: { error: 'Comentário não encontrado.' } };
       { const barrado = await guardaDaEquipe(db, usuario, linha.tarefa_id, 'tarefa'); if (barrado) return barrado; }
-      // Comentário é fala de alguém: só o autor apaga a própria, e quem manda no
-      // sistema apaga qualquer uma. Ninguém edita a fala de outro.
-      const dono = String(linha.usuario_id ?? '') === String(usuario?.id ?? '');
-      if (!dono && papelEfetivo(usuario?.email, usuario?.papel) === 'membro') {
+      // Comentário é fala de alguém: só o autor apaga a própria, e isso vale
+      // para todo papel - admin e master também não apagam a fala de outro.
+      // Sessão sem identidade não é autora de nada, então não apaga.
+      const dono = !!usuario?.id && String(linha.usuario_id ?? '') === String(usuario.id);
+      if (!dono) {
         return { status: 403, body: { error: 'Só quem escreveu pode apagar este comentário.' } };
       }
       // As respostas vão junto: sem o começo, elas ficam sem assunto.
@@ -7359,7 +7360,18 @@ function faltaEmProjeto(p: any): string | null {
     }
 
     if (action === 'delete_comment') {
-      // Delete replies first, then the comment itself
+      // A mesma regra da conversa da tarefa: só o autor apaga o próprio
+      // comentário, qualquer que seja o papel. A tela já escondia a lixeira dos
+      // alheios, mas quem decide é aqui - esconder na tela não impede o pedido.
+      const alvo = await db.execute({
+        sql: `SELECT autor_id FROM oportunidade_eventos WHERE id = ? AND tipo = 'comentario'`,
+        args: [body.id],
+      });
+      if (!alvo.rows[0]) return { status: 404, body: { error: 'Comentário não encontrado.' } };
+      if (!usuario?.id || String(alvo.rows[0].autor_id ?? '') !== String(usuario.id)) {
+        return { status: 403, body: { error: 'Só quem escreveu pode apagar este comentário.' } };
+      }
+      // As respostas vão junto, e depois o comentário.
       await db.execute({ sql: `DELETE FROM oportunidade_eventos WHERE parent_id = ? AND tipo = 'comentario'`, args: [body.id] });
       await db.execute({ sql: `DELETE FROM oportunidade_eventos WHERE id = ? AND tipo = 'comentario'`, args: [body.id] });
       return { status: 200, body: { ok: true } };

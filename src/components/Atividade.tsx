@@ -448,7 +448,9 @@ function Comentario({ c, respostas, pessoas, etapas, usuarioId, podeComentar, pe
         <p className="ativ-cabeca">
           <strong>{x.usuario_nome}</strong>
           <span title={fmtDataHora(x.criado_em)}>{quando(x.criado_em)}</span>
-          {(!!usuarioId && x.usuario_id === usuarioId) && (
+          {/* Só o autor apaga o próprio comentário, e só quem pode comentar: é a
+              mesma regra do servidor, e a lixeira não aparece onde ele recusaria. */}
+          {podeComentar && !!usuarioId && x.usuario_id === usuarioId && (
             <button type="button" className="ativ-apagar" title="Apagar comentário"
               aria-label="Apagar comentário" onClick={() => onExcluir(x)}>
               <IconTrash size={12} />

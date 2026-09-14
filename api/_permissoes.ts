@@ -59,7 +59,6 @@ export const CATALOGO: PermGrupo[] = [
       { chave: 'oportunidades:editar', label: 'Editar dados da oportunidade' },
       { chave: 'oportunidades:mover', label: 'Mover de etapa' },
       { chave: 'oportunidades:comentar', label: 'Comentar' },
-      { chave: 'oportunidades:comentario_excluir', label: 'Excluir comentário' },
       { chave: 'oportunidades:anexar', label: 'Anexar arquivo ou link, renomear e categorizar' },
       { chave: 'oportunidades:anexo_excluir', label: 'Excluir anexo' },
       { chave: 'oportunidades:pendencias', label: 'Abrir e resolver pendências' },
@@ -261,8 +260,8 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   salvar_tarefa: 'tarefas:editar',
   excluir_tarefa: 'tarefas:excluir',
   // O diário e a conversa do card: ler é leitura de tarefa, escrever é a
-  // permissão própria. Apagar entra em `comentar` porque o servidor já limita a
-  // quem escreveu - quem manda no sistema passa por cima disso lá dentro.
+  // permissão própria. Apagar entra em `comentar` porque o servidor limita a
+  // quem escreveu, para todo papel.
   tarefa_atividade: 'tarefas:ver',
   tarefas_comentarios: 'tarefas:ver',
   tarefas_subtarefas: 'tarefas:ver',
@@ -364,7 +363,8 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   patch_submission: 'oportunidades:editar',
   move: 'oportunidades:mover',
   comment: 'oportunidades:comentar',
-  delete_comment: 'oportunidades:comentario_excluir',
+  // Apagar o próprio comentário é parte de comentar: o servidor limita ao autor.
+  delete_comment: 'oportunidades:comentar',
   upload_file: 'oportunidades:anexar',
   rename_file: 'oportunidades:anexar',
   rename_form_file: 'oportunidades:anexar',
