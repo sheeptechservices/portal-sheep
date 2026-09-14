@@ -1,13 +1,14 @@
 import { useState, useRef, useLayoutEffect, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
+import { IconPlus, IconSpinner } from './icons';
 
 // Select PADRÃO do sistema (substitui o <select> nativo) - gatilho .liquidez-trigger
 // + dropdown .status-select-dropdown num portal (não é cortado por overflow).
 // Sem opção vazia: o campo é obrigatório.
 export function SelectSistema<T extends string>({
   valor, onChange, opcoes, minWidth, placeholder, estiloGatilho, classeLista,
-  desabilitado,
+  desabilitado, criar,
 }: {
   valor: T;
   onChange: (v: T) => void;
@@ -51,9 +52,18 @@ export function SelectSistema<T extends string>({
    * justamente para quem não pode conferir de outro jeito.
    */
   desabilitado?: boolean;
+  /**
+   * Deixa criar a opção que não existe, sem sair do campo. A busca passa a
+   * aparecer sempre - ela é também onde se escreve o nome da nova - e o pé da
+   * lista oferece criar o que foi digitado. `onCriar` devolve se criou: a
+   * lista fecha no sucesso e fica aberta, com o texto, na recusa.
+   */
+  criar?: { rotulo: string; onCriar: (texto: string) => Promise<boolean> };
 }) {
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState('');
+  const [criando, setCriando] = useState(false);
+  const campoBusca = useRef<HTMLInputElement>(null);
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -72,7 +82,7 @@ export function SelectSistema<T extends string>({
   const ALTURA_OPCAO = comDescricao ? 55 : 36;
   const semAcento = (t: string) =>
     t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLocaleLowerCase('pt-BR');
-  const buscando = opcoes.length > BUSCA_A_PARTIR_DE;
+  const buscando = opcoes.length > BUSCA_A_PARTIR_DE || !!criar;
   const q = semAcento(busca.trim());
   // A busca alcança também a descrição da opção. Onde ela existe, é dado de
   // identificação e não enfeite: na lista de projetos do inbox a descrição é o
@@ -81,12 +91,24 @@ export function SelectSistema<T extends string>({
   const filtradas = q
     ? opcoes.filter(o => semAcento(`${o.label} ${o.descricao ?? ''}`).includes(q))
     : opcoes;
+  /** Criar só se oferece para nome que ainda não existe: com a opção igual na
+   *  lista, criar outra seria duplicar o que se estava procurando. */
+  const novoNome = busca.trim();
+  const podeCriarNome = !!criar && !!novoNome && !opcoes.some(o => semAcento(o.label) === q);
+
+  async function criarOpcao() {
+    if (!criar || !podeCriarNome || criando) return;
+    setCriando(true);
+    const ok = await criar.onCriar(novoNome).catch(() => false);
+    setCriando(false);
+    if (ok) { setBusca(''); setAberto(false); }
+  }
 
   function abrir() {
     const rect = triggerRef.current!.getBoundingClientRect();
     // O campo de busca ocupa uma linha a mais: sem contar com ele, o cálculo de
     // abrir para cima erra por 36px justo perto do rodapé.
-    const altura = Math.min(8 + opcoes.length * ALTURA_OPCAO + (buscando ? 36 : 0), 320);
+    const altura = Math.min(8 + opcoes.length * ALTURA_OPCAO + (buscando ? 36 : 0) + (criar ? 40 : 0), 320);
     const espacoAbaixo = window.innerHeight - rect.bottom - 8;
     const paraCima = espacoAbaixo < altura && rect.top > altura;
     paraCimaRef.current = paraCima;
@@ -220,21 +242,26 @@ export function SelectSistema<T extends string>({
         <div ref={dropRef} className={`status-select-dropdown${classeLista ? ` ${classeLista}` : ''}`}
           style={{ top: pos.top, left: pos.left, minWidth: pos.width, zIndex: 10050 }}>
           {buscando && (
-            <input autoFocus className="form-input" value={busca}
-              onChange={e => setBusca(e.target.value)} placeholder="Buscar"
+            <input ref={campoBusca} autoFocus className="form-input" value={busca}
+              onChange={e => setBusca(e.target.value)}
+              placeholder={criar ? 'Buscar ou criar' : 'Buscar'}
               onKeyDown={e => {
                 if (e.key === 'Escape') { setBusca(''); setAberto(false); }
                 // Enter escolhe a única que sobrou: com a lista já reduzida a
-                // uma linha, obrigar o clique é passo a mais sem ganho.
+                // uma linha, obrigar o clique é passo a mais sem ganho. Sem
+                // nenhuma com esse nome, e podendo criar, Enter cria.
                 if (e.key === 'Enter' && filtradas.length === 1) {
                   e.preventDefault();
                   onChange(filtradas[0].valor);
                   setAberto(false);
+                } else if (e.key === 'Enter' && filtradas.length === 0 && podeCriarNome) {
+                  e.preventDefault();
+                  void criarOpcao();
                 }
               }}
               style={{ height: 32, fontSize: 12.5, marginBottom: 4 }} />
           )}
-          {filtradas.length === 0 && (
+          {filtradas.length === 0 && !podeCriarNome && (
             <p style={{ fontSize: 12, color: 'var(--gray2)', margin: 0, padding: '6px 8px' }}>
               Nada com esse nome.
             </p>
@@ -253,6 +280,20 @@ export function SelectSistema<T extends string>({
               )}
             </div>
           ))}
+          {/* Criar mora no pé, separado das opções por um fio: é uma ação, e não
+              mais uma escolha da lista. Sem nada digitado ela convida a
+              escrever; com um nome novo, ela diz o que vai criar. */}
+          {criar && (
+            <button type="button"
+              className={`select-criar${podeCriarNome ? ' pronto' : ''}`}
+              disabled={criando}
+              onClick={() => (podeCriarNome ? void criarOpcao() : campoBusca.current?.focus())}>
+              {criando ? <IconSpinner size={13} /> : <IconPlus size={13} />}
+              <span className="select-criar-texto">
+                {podeCriarNome ? <>{criar.rotulo} <strong>"{novoNome}"</strong></> : criar.rotulo}
+              </span>
+            </button>
+          )}
         </div>,
         document.body,
       )}

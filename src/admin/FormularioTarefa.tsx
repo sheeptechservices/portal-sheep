@@ -33,7 +33,7 @@ import { diaCurto as fmtDataCurta } from '../lib/datas';
 // saiu para os componentes quando as outras telas passaram a usar a mesma caixa.
 export { ConfirmarExclusao } from '../components/Dialogo';
 import { DESCRICAO_PRIORIDADE, ICONE_PRIORIDADE, PRIORIDADES } from '../lib/prioridades';
-import type { Projeto, Reuniao, Tarefa } from './ProjetosPage';
+import type { Entrega, Projeto, Reuniao, Tarefa } from './ProjetosPage';
 import { PROJETO_GERAL } from '../lib/projetoGeral';
 
 /** A data da reunião no chip: dia e mês, que é o que cabe ali e o que basta
@@ -757,7 +757,11 @@ function PilulaEtapa({ valor, etapas, desabilitado, onChange }: {
 
 export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etiquetaPorPapel,
   usuarioId, etq, pessoas, salvando, somenteLeitura, podeComentar, api,
-  onMudar, onFechar, onSalvar, onExcluir, onDuplicar }: {
+  onMudar, onFechar, onSalvar, onExcluir, onDuplicar, onEntregaCriada }: {
+  /** Recebe a entrega que acabou de nascer pelo seletor, para a tela a pôr na
+   *  lista do projeto. Ausente para quem não edita projeto - e aí o seletor não
+   *  oferece criar, porque o servidor recusaria. */
+  onEntregaCriada?: (projetoId: string, entrega: Entrega) => void;
   rascunho: Rascunho;
   projetos: Projeto[];
   etapas: EtapaTarefa[];
@@ -784,6 +788,33 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
 }) {
   const set = <K extends keyof Rascunho>(k: K, v: Rascunho[K]) => onMudar({ ...rascunho, [k]: v });
   const projeto = projetos.find(p => p.id === rascunho.projeto_id);
+  /** O rascunho de agora, para o que termina depois de uma ida ao servidor não
+   *  gravar por cima do que se digitou enquanto ela ia e voltava. */
+  const rascunhoVivo = useRef(rascunho);
+  rascunhoVivo.current = rascunho;
+
+  /** Cria a entrega pelo seletor e já a põe na tarefa. Espera o id: a tarefa
+   *  grava sozinha logo depois, e sem o id de verdade ela gravaria a ligação a
+   *  uma entrega que não existe. */
+  async function criarEntrega(titulo: string): Promise<boolean> {
+    if (!api || !projeto || !onEntregaCriada) return false;
+    const r = await api('', 'POST', {
+      action: 'salvar_entrega', projeto_id: projeto.id, titulo,
+      descricao: '', marcador: '', submarcador: '', status: 'Planejada', prazo: '', responsaveis: [],
+    });
+    if (!r?.id) {
+      toast('error', 'Não foi possível criar a entrega', r?.error ?? 'Tente de novo.');
+      return false;
+    }
+    onEntregaCriada(projeto.id, {
+      id: Number(r.id), projeto_id: projeto.id, titulo, descricao: null,
+      marcador: null, submarcador: null, status: String(r.status ?? 'Planejada'),
+      prazo: null, responsaveis: [], links: [], ordem: Number(r.ordem ?? 0),
+      evidencias: [], arquivos: [], tarefas_total: 0, tarefas_feitas: 0, progresso: 0,
+    });
+    onMudar({ ...rascunhoVivo.current, entrega_id: String(r.id) });
+    return true;
+  }
   /** As reuniões da entrega a que esta tarefa pertence. Tarefa solta não herda
    *  nada: não há entrega de onde. */
   const reunioesDaEntrega = rascunho.entrega_id
@@ -1058,6 +1089,11 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
                   { valor: '', label: 'Sem entrega' },
                   ...(projeto?.entregas ?? []).map(e => ({ valor: String(e.id), label: e.titulo })),
                 ]}
+                // A entrega que falta nasce daqui, sem sair da tarefa. A Geral não
+                // tem entrega: ela não é projeto.
+                criar={onEntregaCriada && api && projeto && projeto.id !== PROJETO_GERAL
+                  ? { rotulo: 'Criar entrega', onCriar: criarEntrega }
+                  : undefined}
               />
             </div>
           </div>

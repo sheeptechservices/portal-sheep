@@ -6757,6 +6757,13 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
             const alvo = projetos.flatMap(p => p.tarefas ?? []).find(x => x.id === rascunhoTarefa.id);
             if (alvo) void duplicarTarefa(alvo);
           } : undefined}
+          // Criar entrega é editar projeto: sem essa permissão o seletor não
+          // oferece, em vez de oferecer e o servidor recusar.
+          onEntregaCriada={podeEditar ? (projetoId, entrega) => {
+            mudancasRef.current++;
+            setProjetos(ps => ps.map(x => (x.id === projetoId
+              ? { ...x, entregas: [...(x.entregas ?? []), entrega] } : x)));
+          } : undefined}
         />
       )}
 

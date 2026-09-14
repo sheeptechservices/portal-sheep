@@ -1094,6 +1094,13 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
             const alvo = tarefas.find(x => x.id === form.id);
             if (alvo) void duplicar(alvo);
           } : undefined}
+          // Criar entrega é editar projeto: sem essa permissão o seletor não
+          // oferece, em vez de oferecer e o servidor recusar.
+          onEntregaCriada={pode('projetos:editar') ? (projetoId, entrega) => {
+            mudancasRef.current++;
+            setProjetos(ps => ps.map(x => (x.id === projetoId
+              ? { ...x, entregas: [...(x.entregas ?? []), entrega] } : x)));
+          } : undefined}
         />
       )}
 

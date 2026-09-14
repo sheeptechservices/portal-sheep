@@ -5099,6 +5099,36 @@ body.arrastando-painel {
   background: var(--bg);
 }
 
+/* O "Criar" no pe da lista do seletor. Separado por um fio: e acao, e nao mais
+   uma opcao. Apagado enquanto so convida a escrever; com um nome novo digitado,
+   ganha a cor do texto e diz o que vai criar. */
+.select-criar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  margin-top: 4px;
+  padding: 9px 10px 7px;
+  border: none;
+  border-top: 1px solid var(--gray3);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  background: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--gray2);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.select-criar:hover:not(:disabled),
+.select-criar:focus-visible { outline: none; background: var(--bg); color: var(--black); }
+.select-criar.pronto { color: var(--black); }
+.select-criar:disabled { cursor: default; }
+.select-criar-texto { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-criar-texto strong { font-weight: 800; }
+
 .admin-modal-close {
   width: 32px;
   height: 32px;
