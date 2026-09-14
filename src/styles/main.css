@@ -7413,6 +7413,9 @@ button.checklist-texto:focus-visible {
 }
 .ativ-botao:hover { filter: brightness(0.95); }
 .ativ-botao:disabled { opacity: .5; cursor: default; filter: none; }
+/* Enviando, o botao fica inteiro: o giro ao lado do rotulo e o que diz que o
+   comentario esta indo, e apagado ele leria como "nao da para enviar". */
+.ativ-botao[aria-busy="true"]:disabled { opacity: 1; cursor: progress; }
 .ativ-botao-fraco {
   border: 1px solid var(--gray3);
   background: none;
@@ -7429,25 +7432,6 @@ button.checklist-texto:focus-visible {
   margin: 8px 0 0;
   font-size: 11.5px;
   color: var(--red);
-}
-
-/* O comentário que o servidor recusou, com o texto de volta embaixo: perder o
-   que se escreveu porque a gravação falhou é o pior desfecho possível. */
-.ativ-falha {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  margin: 0 0 8px;
-  font-size: 11.5px;
-  color: var(--red);
-  line-height: 1.5;
-}
-.ativ-falha svg { flex-shrink: 0; margin-top: 2px; }
-.ativ-falha em {
-  display: block;
-  margin-top: 3px;
-  font-style: normal;
-  color: var(--gray);
 }
 
 /* ── Conversa ─────────────────────────────────────── */

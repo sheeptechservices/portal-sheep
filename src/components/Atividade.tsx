@@ -13,7 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  IconAlert, IconChevronRight, IconClip, IconDownload, IconEye, IconJoinha, IconTrash, IconX,
+  IconAlert, IconChevronRight, IconClip, IconDownload, IconEye, IconJoinha, IconSpinner, IconTrash, IconX,
 } from './icons';
 import { PreviaArquivo } from './PreviaArquivo';
 import { quando, tamanho as fmtTamanho } from '../lib/datas';
@@ -162,7 +162,7 @@ function TextoDoComentario({ texto, etapas }: { texto: string; etapas?: EtapaMar
 }
 
 /** Caixa de escrita, com marcação por `@` e anexos. */
-function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, enviando, permiteAnexo, onEnviar, onCancelar }: {
+function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnviar, onCancelar }: {
   pessoas: Pessoa[];
   /** Quando existem, `#` abre a lista delas. Só o funil as tem. */
   etapas?: EtapaMarcavel[];
@@ -171,13 +171,15 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, enviando, permiteAne
    *  promete o que o outro lado não faz é pior que a ausência dele. */
   permiteAnexo?: boolean;
   rotuloEnvio: string;
-  enviando: boolean;
-  onEnviar: (texto: string, anexos: AnexoPendente[]) => void;
+  /** Envia e espera. Devolve o erro do servidor, ou `null` quando gravou - e só
+   *  então a caixa se esvazia. */
+  onEnviar: (texto: string, anexos: AnexoPendente[]) => Promise<string | null>;
   onCancelar?: () => void;
 }) {
   const [texto, setTexto] = useState('');
   const [anexos, setAnexos] = useState<AnexoPendente[]>([]);
   const [erro, setErro] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
   /** Busca aberta pelo `@`: o trecho digitado depois dele e onde ele começa. */
   /** A marcação sendo escrita. `paraCima` e `altura` são medidos na hora de
    *  abrir: a caixa de comentário fica no pé do painel, e a lista para baixo
@@ -281,13 +283,25 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, enviando, permiteAne
     if (arquivo.current) arquivo.current.value = '';
   }
 
-  function enviar() {
+  /**
+   * O comentário só aparece na conversa depois de gravado e relido.
+   *
+   * Ele subia no gesto, com um id provisório, e o anexo dele não tinha de onde
+   * ser aberto até a releitura trazer o id de verdade: o print aparecia, o
+   * clique no olho não fazia nada, e um segundo depois abria. Enquanto vai e
+   * volta, o botão gira e o texto fica na caixa - se o servidor recusar, nada
+   * do que se escreveu se perde.
+   */
+  async function enviar() {
     const limpo = texto.trim();
-    if (!limpo && anexos.length === 0) return;
-    onEnviar(comMarcacoes(limpo), anexos);
+    if ((!limpo && anexos.length === 0) || enviando) return;
+    setEnviando(true);
+    setErro(null);
+    const falha = await onEnviar(comMarcacoes(limpo), anexos);
+    setEnviando(false);
+    if (falha) { setErro(falha); return; }
     setTexto('');
     setAnexos([]);
-    setErro(null);
   }
 
   return (
@@ -307,7 +321,7 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, enviando, permiteAne
             if (e.key === 'Escape' && busca) { e.preventDefault(); setBusca(null); return; }
             // Enter envia, Shift+Enter quebra linha: é o que a mão já espera de
             // uma caixa de comentário.
-            if (e.key === 'Enter' && !e.shiftKey && !busca) { e.preventDefault(); enviar(); }
+            if (e.key === 'Enter' && !e.shiftKey && !busca) { e.preventDefault(); void enviar(); }
           }}
           onBlur={() => setTimeout(() => setBusca(null), 120)}
         />
@@ -352,7 +366,7 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, enviando, permiteAne
         </ul>
       )}
 
-      {erro && <p className="ativ-erro"><IconAlert size={12} />{erro}</p>}
+      {erro && <p className="ativ-erro surge"><IconAlert size={12} />{erro}</p>}
 
       <div className="ativ-acoes">
         {permiteAnexo && (
@@ -370,8 +384,9 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, enviando, permiteAne
           <button type="button" className="ativ-botao-fraco" onClick={onCancelar}>Cancelar</button>
         )}
         <button type="button" className="ativ-botao" disabled={enviando || (!texto.trim() && !anexos.length)}
-          onClick={enviar}>
-          {enviando ? 'Enviando…' : rotuloEnvio}
+          aria-busy={enviando} onClick={() => void enviar()}>
+          {enviando && <IconSpinner size={13} />}
+          {rotuloEnvio}
         </button>
       </div>
     </div>
@@ -396,8 +411,7 @@ function Joinha({ c, usuarioId, pode, onAlternar }: {
     <button type="button" className={`ativ-joinha${meu ? ' meu' : ''}${lista.length ? ' com-conta' : ''}`}
       title={pode ? (meu ? `${dica}. Clique para tirar o seu.` : dica) : dica}
       aria-label={meu ? 'Tirar joinha' : 'Dar joinha'} aria-pressed={meu}
-      // Comentário ainda subindo (id negativo) não tem onde gravar o joinha.
-      disabled={!pode || c.id < 0}
+      disabled={!pode}
       onClick={() => onAlternar(c, !meu)}>
       <IconJoinha size={12} />
       {lista.length > 0 && <span className="ativ-joinha-conta troca" key={lista.length}>{lista.length}</span>}
@@ -405,7 +419,7 @@ function Joinha({ c, usuarioId, pode, onAlternar }: {
   );
 }
 
-function Comentario({ c, respostas, pessoas, etapas, usuarioId, podeComentar, enviando, permiteAnexo,
+function Comentario({ c, respostas, pessoas, etapas, usuarioId, podeComentar, permiteAnexo,
   respondendo, onResponder, onEnviarResposta, onExcluir, onBaixar, onVer, onJoinha }: {
   /** Ausente onde a conversa não tem joinha. */
   onJoinha?: (c: ComentarioAtividade, ligar: boolean) => void;
@@ -415,11 +429,10 @@ function Comentario({ c, respostas, pessoas, etapas, usuarioId, podeComentar, en
   pessoas: Pessoa[];
   usuarioId: string | undefined;
   podeComentar: boolean;
-  enviando: boolean;
   permiteAnexo: boolean;
   respondendo: boolean;
   onResponder: (id: number | null) => void;
-  onEnviarResposta: (texto: string, anexos: AnexoPendente[]) => void;
+  onEnviarResposta: (texto: string, anexos: AnexoPendente[]) => Promise<string | null>;
   onExcluir: (c: ComentarioAtividade) => void;
   onBaixar: (a: AnexoDoComentario) => void;
   onVer: (a: AnexoDoComentario) => void;
@@ -467,7 +480,7 @@ function Comentario({ c, respostas, pessoas, etapas, usuarioId, podeComentar, en
         )}
         {/* O joinha no pé da fala, e não no cabeçalho com o nome: é a resposta
             de quem leu ao que foi dito, e mora embaixo do que foi dito. */}
-        {onJoinha && (x.id > 0 || (x.joinhas ?? []).length > 0) && (
+        {onJoinha && (
           <div className="ativ-reacoes">
             <Joinha c={x} usuarioId={usuarioId} pode={podeComentar && !!usuarioId} onAlternar={onJoinha} />
           </div>
@@ -507,9 +520,16 @@ function Comentario({ c, respostas, pessoas, etapas, usuarioId, podeComentar, en
         respondendo
           ? (
             <div className="ativ-responder">
-              <Escrever pessoas={pessoas} etapas={etapas} autoFoco rotuloEnvio="Responder" enviando={enviando}
+              <Escrever pessoas={pessoas} etapas={etapas} autoFoco rotuloEnvio="Responder"
                 permiteAnexo={permiteAnexo}
-                onEnviar={onEnviarResposta} onCancelar={() => onResponder(null)} />
+                // A resposta gravada aparece com as respostas abertas: recolhidas,
+                // ela entraria escondida e pareceria que não foi.
+                onEnviar={async (t, a) => {
+                  const falha = await onEnviarResposta(t, a);
+                  if (!falha) setAbertas(true);
+                  return falha;
+                }}
+                onCancelar={() => onResponder(null)} />
             </div>
           )
           : (
@@ -567,10 +587,7 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
   const [eventos, setEventos] = useState<EventoAtividade[]>(guardada?.eventos ?? []);
   const [comentarios, setComentarios] = useState<ComentarioAtividade[]>(guardada?.comentarios ?? []);
   const [carregando, setCarregando] = useState(!guardada);
-  const [enviando, setEnviando] = useState(false);
   const [respondendo, setRespondendo] = useState<number | null>(null);
-  /** O que o servidor recusou, com o texto de volta para não se perder. */
-  const [falhou, setFalhou] = useState<{ texto: string; erro: string } | null>(null);
 
   // A função de ler muda a cada render de quem chama; a identidade do dono
   // não. É ela que decide quando reler - com a função na dependência, isto
@@ -595,47 +612,23 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
     void carregar();
   }, [carregar, chave]);
 
-  // O que a tela mostra é o que fica guardado, inclusive o comentário que
-  // acabou de subir e ainda não voltou do servidor: reabrir a tarefa não pode
-  // mostrar a conversa de antes dele.
+  // O que a tela mostra é o que fica guardado: reabrir a tarefa não pode
+  // mostrar a conversa de antes do último comentário.
   useEffect(() => { lidas.set(chave, { eventos, comentarios }); }, [chave, eventos, comentarios]);
 
-  async function enviar(texto: string, anexos: AnexoPendente[], paiId: number | null) {
-    // O balão sobe no gesto. Antes eram duas idas ao servidor antes de aparecer
-    // qualquer coisa - gravar e depois reler a conversa inteira -, e o que se
-    // escreveu ficava sumido nesse meio tempo.
-    const eu = pessoas.find(p => p.id === usuarioId);
-    const provisorio: ComentarioAtividade = {
-      // Id negativo: não colide com nenhum do servidor, e some quando a
-      // conversa é relida com o id de verdade.
-      id: -Date.now(),
-      pai_id: paiId,
-      usuario_id: usuarioId ?? null,
-      usuario_nome: eu?.nome ?? 'Você',
-      foto_url: eu?.foto_url ?? null,
-      texto,
-      criado_em: new Date().toISOString(),
-      editado_em: null,
-      mencoes: [],
-      anexos: anexos.map((a, i) => ({
-        id: -Date.now() - i, nome: a.nome, tipo: a.tipo, tamanho: a.tamanho,
-      })),
-    };
-    setComentarios(cs => [...cs, provisorio]);
-    setRespondendo(null);
-    setFalhou(null);
-
-    const r = await dono.enviar(texto, anexos, paiId);
-    if (r?.error) {
-      // Tira o balão e devolve o texto: quem escreveu não perde o que escreveu
-      // porque o servidor recusou.
-      setComentarios(cs => cs.filter(c => c.id !== provisorio.id));
-      setFalhou({ texto, erro: String(r.error) });
-      return;
+  /** Grava e relê, e só então o comentário entra na conversa - com o id, as
+   *  menções conferidas e os anexos já prontos para abrir. Devolve o erro do
+   *  servidor para a caixa mostrar embaixo do texto, que continua lá. */
+  async function enviar(texto: string, anexos: AnexoPendente[], paiId: number | null): Promise<string | null> {
+    try {
+      const r = await dono.enviar(texto, anexos, paiId);
+      if (r?.error) return String(r.error);
+      await carregar();
+      setRespondendo(null);
+      return null;
+    } catch {
+      return 'A conexão caiu antes de o comentário chegar. Tente de novo.';
     }
-    // Troca o provisório pelo gravado: id de verdade, menções conferidas e
-    // anexos com o id com que serão baixados.
-    void carregar();
   }
 
   async function excluir(c: ComentarioAtividade) {
@@ -721,11 +714,10 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
                 etapas={etapas}
                 usuarioId={usuarioId}
                 podeComentar={podeComentar}
-                enviando={enviando}
                 permiteAnexo={!!dono.anexo}
                 respondendo={respondendo === c.id}
                 onResponder={setRespondendo}
-                onEnviarResposta={(t, a) => void enviar(t, a, c.id)}
+                onEnviarResposta={(t, a) => enviar(t, a, c.id)}
                 onExcluir={c2 => void excluir(c2)}
                 onBaixar={a => void baixar(a)}
                 onVer={setVendo}
@@ -734,18 +726,9 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
             ))}
           {podeComentar && (
             <div className="ativ-escrever-pe">
-              {falhou && (
-                <p className="ativ-falha surge">
-                  <IconAlert size={13} />
-                  <span>
-                    {falhou.erro}
-                    <em>{falhou.texto}</em>
-                  </span>
-                </p>
-              )}
-              <Escrever pessoas={pessoas} etapas={etapas} rotuloEnvio="Comentar" enviando={enviando}
+              <Escrever pessoas={pessoas} etapas={etapas} rotuloEnvio="Comentar"
                 permiteAnexo={!!dono.anexo}
-                onEnviar={(t, a) => void enviar(t, a, null)} />
+                onEnviar={(t, a) => enviar(t, a, null)} />
             </div>
           )}
         </>
