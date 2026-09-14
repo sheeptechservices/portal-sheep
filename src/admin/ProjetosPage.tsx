@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { createPortal } from 'react-dom';
 import { iniciais, useAuth, useToast } from './AdminApp';
 import {
-  IconAlert, IconArrowLeft, IconArrowRight, IconClip, IconClipboard, IconDoc, IconDownload,
+  IconAlert, IconArrowLeft, IconArrowRight, IconBuilding, IconClip, IconClipboard, IconDoc, IconDownload,
   IconImage, IconInbox,
   IconChevronDown, IconChevronRight, IconChevronUp, IconChevronUpDown,
   IconDrive, IconEdit, IconEye, IconGitHub, IconGlobo, IconLink, IconMarcoAndamento, IconMarcoBloqueado,
@@ -15,6 +15,7 @@ import {
   IconX, IconZip,
 } from '../components/icons';
 import FilterDropdown from '../components/FilterDropdown';
+import { PROJETO_GERAL } from '../lib/projetoGeral';
 import { logoDoCliente } from '../lib/marcas';
 import { PAPEIS_EQUIPE, porNivelDeContato } from '../lib/papeisDeEquipe';
 import { SkeletonCards, SkeletonTabela } from '../components/Skeleton';
@@ -3351,10 +3352,19 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
 
   const atrasadas = (p.tarefas ?? [])
     .filter(t => !t.concluida_em && t.prazo && t.prazo < hoje);
+  const ehGeral = p.id === PROJETO_GERAL;
 
   return (
     <div className="pl-folha troca" key={`${p.id}|${iso10(semana)}`}>
       <header className="pl-cabeca">
+        {/* A Geral não é projeto: sem ficha para abrir, sem cliente e sem time. O
+            que ela diz no alto é para que serve. */}
+        {ehGeral ? (
+          <div className="pl-quem">
+            <h2>{p.nome}</h2>
+            <p className="pl-meta">Demandas da casa que não são de um projeto</p>
+          </div>
+        ) : (
         <div className="pl-quem">
           <h2>
             <button type="button" onClick={() => onAbrir(p)} title="Abrir a ficha do projeto">
@@ -3379,6 +3389,7 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
             )}
           </p>
         </div>
+        )}
 
         {/* Os numeros que a sala pergunta antes de comecar: quanto ja esta na
             semana, quanto espera no backlog e quanto esta para tras. O
@@ -3400,10 +3411,13 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
             <strong>{atrasadas.length}</strong>
             <small>atrasadas</small>
           </span>
-          <span className="pl-numero pl-numero-progresso" title="Entregas validadas">
-            <strong>{progressoDe(p)}%</strong>
-            <span className="nt-progresso-barra"><span style={{ width: `${progressoDe(p)}%` }} /></span>
-          </span>
+          {/* O progresso é das entregas, e a Geral não tem entrega. */}
+          {!ehGeral && (
+            <span className="pl-numero pl-numero-progresso" title="Entregas validadas">
+              <strong>{progressoDe(p)}%</strong>
+              <span className="nt-progresso-barra"><span style={{ width: `${progressoDe(p)}%` }} /></span>
+            </span>
+          )}
         </div>
       </header>
 
@@ -3813,6 +3827,8 @@ function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onRe
       if (!podeReordenar) return;
       const destino = i + passo;
       if (destino < 0 || destino >= lista.length) return;
+      // A Geral fica presa no alto: nem sai de lá, nem deixa outra tomar o lugar.
+      if (lista[i].id === PROJETO_GERAL || lista[destino].id === PROJETO_GERAL) return;
       const ids = lista.map(p => p.id);
       [ids[i], ids[destino]] = [ids[destino], ids[i]];
       reordenar(ids);
@@ -3845,6 +3861,10 @@ function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onRe
         const quantas = contagem(p);
         const prioridade = p.prioridade ?? PRIORIDADE_PADRAO;
         const alvo = sobre?.id === p.id && arrastando !== p.id ? sobre.pos : null;
+        const ehGeral = p.id === PROJETO_GERAL;
+        const arrastavel = podeReordenar && !ehGeral;
+        // A numeração é dos projetos: a Geral, presa no alto, não conta.
+        const numero = lista.slice(0, i + 1).filter(x => x.id !== PROJETO_GERAL).length;
         return (
           // Div com papel de aba, e não botão: o Firefox não começa arraste num
           // `button`, e aqui a mesma peça precisa ser clicada e arrastada.
@@ -3857,15 +3877,16 @@ function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onRe
             role="tab"
             aria-selected={ativo === p.id}
             tabIndex={ativo === p.id ? 0 : -1}
-            draggable={podeReordenar}
-            title={podeReordenar ? 'Clique para abrir, arraste para mudar a ordem' : undefined}
+            draggable={arrastavel}
+            title={arrastavel ? 'Clique para abrir, arraste para mudar a ordem' : undefined}
             className={[
               'pl-aba',
+              ehGeral ? 'pl-aba-geral' : '',
               ativo === p.id ? 'ativa' : '',
               arrastando === p.id ? 'levada' : '',
               alvo ? `cai-${alvo}` : '',
             ].filter(Boolean).join(' ')}
-            style={{ ['--cor-aba' as string]: COR_PRIORIDADE[prioridade] ?? 'var(--gray3)' }}
+            style={{ ['--cor-aba' as string]: ehGeral ? 'var(--gray2)' : COR_PRIORIDADE[prioridade] ?? 'var(--gray3)' }}
             onClick={() => onEscolher(p.id)}
             onKeyDown={e => porTecla(e, i)}
             onDragStart={e => {
@@ -3876,7 +3897,8 @@ function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onRe
             }}
             onDragEnd={() => { setArrastando(null); setSobre(null); }}
             onDragOver={e => {
-              if (!arrastando) return;
+              // Sobre a Geral nada cai: o lugar dela é o primeiro, e de ninguém mais.
+              if (!arrastando || ehGeral) return;
               e.preventDefault();
               e.dataTransfer.dropEffect = 'move';
               const r = e.currentTarget.getBoundingClientRect();
@@ -3894,20 +3916,28 @@ function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onRe
             {/* O número dá lugar ao punho no hover: é onde a mão procura o que
                 arrastar, e dois ícones lado a lado apertariam o nome. */}
             <span className="pl-aba-num">
-              <span className="pl-aba-num-texto">{String(i + 1).padStart(2, '0')}</span>
-              {podeReordenar && (
+              {ehGeral ? (
+                <span className="pl-aba-num-texto" aria-hidden="true"><IconBuilding size={13} /></span>
+              ) : (
+                <span className="pl-aba-num-texto">{String(numero).padStart(2, '0')}</span>
+              )}
+              {arrastavel && (
                 <span className="pl-aba-punho" aria-hidden="true"><IconArrastar size={13} /></span>
               )}
             </span>
             {/* A urgência no desenho de barras da casa, na cor dela: é o que se
-                lê de relance numa coluna de nove projetos, antes do nome. */}
-            <span className="pl-aba-prio" style={{ color: COR_PRIORIDADE[prioridade] ?? 'var(--gray2)' }}
-              title={`Prioridade: ${prioridade}`} aria-label={`Prioridade ${prioridade}`}>
-              {ICONE_PRIORIDADE[prioridade]?.({ size: 14 })}
-            </span>
+                lê de relance numa coluna de nove projetos, antes do nome. A Geral
+                não tem urgência própria: o lugar fica, vazio, para o nome dela
+                alinhar com o dos projetos. */}
+            {ehGeral ? <span className="pl-aba-prio" aria-hidden="true" style={{ width: 14 }} /> : (
+              <span className="pl-aba-prio" style={{ color: COR_PRIORIDADE[prioridade] ?? 'var(--gray2)' }}
+                title={`Prioridade: ${prioridade}`} aria-label={`Prioridade ${prioridade}`}>
+                {ICONE_PRIORIDADE[prioridade]?.({ size: 14 })}
+              </span>
+            )}
             <span className="pl-aba-texto">
               <strong>{p.nome}</strong>
-              <small>{p.cliente_nome ?? 'Sem cliente'}</small>
+              <small>{ehGeral ? 'Demandas da casa' : p.cliente_nome ?? 'Sem cliente'}</small>
             </span>
             {/* O número da semana na aba: é o que diz, sem entrar no projeto,
                 se ele já tem semana montada ou se a sala ainda vai montá-la. */}
@@ -4202,14 +4232,20 @@ function AbaPlanning({
       return i < 0 ? PRIORIDADES.length : i;
     };
     const posicao = (p: Projeto) => (p.planning_ordem == null ? null : Number(p.planning_ordem));
-    return projetos.filter(p => p.status === 'Em andamento').sort((a, b) => {
-      const pa = posicao(a);
-      const pb = posicao(b);
-      if (pa != null && pb != null && pa !== pb) return pa - pb;
-      if (pa != null && pb == null) return -1;
-      if (pa == null && pb != null) return 1;
-      return urgencia(a) - urgencia(b);
-    });
+    const ordenados = projetos
+      .filter(p => p.id !== PROJETO_GERAL && p.status === 'Em andamento')
+      .sort((a, b) => {
+        const pa = posicao(a);
+        const pb = posicao(b);
+        if (pa != null && pb != null && pa !== pb) return pa - pb;
+        if (pa != null && pb == null) return -1;
+        if (pa == null && pb != null) return 1;
+        return urgencia(a) - urgencia(b);
+      });
+    // A Geral abre a reunião, presa no alto e fora do arraste: o que é da casa
+    // inteira vem antes de passar projeto por projeto.
+    const geral = projetos.find(p => p.id === PROJETO_GERAL);
+    return geral ? [geral, ...ordenados] : ordenados;
   }, [projetos]);
 
   const [ativo, setAtivo] = useState<string | null>(null);
@@ -4238,7 +4274,10 @@ function AbaPlanning({
           // Antes de mudar a ordem, a folha aberta fica presa pelo id. Sem
           // clique nenhum ela e "a primeira da lista", e arrastar outro projeto
           // para o topo trocaria o projeto aberto sem ninguem ter escolhido.
-          onReordenar={ids => { if (!ativo && atual) setAtivo(atual.id); onReordenar(ids); }} />
+          onReordenar={ids => {
+            if (!ativo && atual) setAtivo(atual.id);
+            onReordenar(ids.filter(id => id !== PROJETO_GERAL));
+          }} />
 
         <div className="pl-sheet" role="tabpanel">
           {atual && (
@@ -4259,7 +4298,7 @@ function AbaPlanning({
               onSalvarTarefa={onSalvarTarefa}
               onExcluirTarefa={onExcluirTarefa}
               onCriarTarefa={prazo => onCriarTarefa(atual, prazo)}
-              entregas={entregasDe(atual)}
+              entregas={atual.id === PROJETO_GERAL ? null : entregasDe(atual)}
               onMudarPlanning={dados => onSalvarPlanning(atual.id, {
                 ...planning[atual.id],
                 ...dados,
@@ -6104,16 +6143,20 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
 
   /** Opções vêm do que existe, não de uma lista fixa: filtro que oferece valor
    *  sem resultado é ruído. */
+  /** Os projetos de verdade, sem a Geral: é o que a aba Geral lista, conta e
+   *  filtra. A Geral só existe na Planning e nas tarefas. */
+  const daCasa = useMemo(() => projetos.filter(p => p.id !== PROJETO_GERAL), [projetos]);
+
   const opcoes = useMemo(() => {
     const uniq = (vs: (string | null)[]) =>
       [...new Set(vs.filter((v): v is string => !!v))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
     return {
-      status: uniq(projetos.map(p => p.status)).map(v => ({ value: v, label: v })),
-      cliente: uniq(projetos.map(p => p.cliente_nome)).map(v => ({ value: v, label: v })),
-      gestor: uniq(projetos.map(p => gestorDe(p)?.nome ?? null)).map(v => ({ value: v, label: v })),
-      tipo: uniq(projetos.map(p => p.tipo)).map(v => ({ value: v, label: v })),
+      status: uniq(daCasa.map(p => p.status)).map(v => ({ value: v, label: v })),
+      cliente: uniq(daCasa.map(p => p.cliente_nome)).map(v => ({ value: v, label: v })),
+      gestor: uniq(daCasa.map(p => gestorDe(p)?.nome ?? null)).map(v => ({ value: v, label: v })),
+      tipo: uniq(daCasa.map(p => p.tipo)).map(v => ({ value: v, label: v })),
     };
-  }, [projetos]);
+  }, [daCasa]);
 
   // Sem coluna escolhida vale a ordem do servidor, do mais novo para o mais
   // velho - é a que responde "o que entrou por último".
@@ -6131,7 +6174,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     // O que se digita procura em nome, código, cliente e descrição: é por um
     // desses quatro que alguém se lembra de um projeto.
     const q = busca.trim().toLocaleLowerCase('pt-BR');
-    return projetos.filter(p =>
+    return daCasa.filter(p =>
       (fStatus.length === 0 || fStatus.includes(p.status)) &&
       (fCliente.length === 0 || (p.cliente_nome && fCliente.includes(p.cliente_nome))) &&
       (fGestor.length === 0 || fGestor.includes(gestorDe(p)?.nome ?? '')) &&
@@ -6139,7 +6182,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
       (!q || [p.nome, p.codigo, p.cliente_nome, p.descricao].some(v =>
         (v ?? '').toLocaleLowerCase('pt-BR').includes(q)))
     );
-  }, [projetos, fStatus, fCliente, fGestor, fTipo, busca]);
+  }, [daCasa, fStatus, fCliente, fGestor, fTipo, busca]);
 
   const ordenados = useMemo(() => {
     if (!ordemCol) return filtrados;
@@ -6230,7 +6273,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           senão a tela prometeria uma faixa que não vem. */}
       {aba === 'planning' ? null : carregando ? (
         <CartoesKpiEsqueleto cartoes={5} />
-      ) : projetos.length > 0 && (
+      ) : daCasa.length > 0 && (
         <div className="admin-stats" style={{ marginBottom: 18 }}>
           <CartaoKpi rotulo="Projetos" valor={resumo.total}
             nota={temFiltro ? 'no filtro atual' : 'cadastrados'}
@@ -6251,7 +6294,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
       {/* A barra de filtros é da aba Geral. Na Planning a reunião percorre a
           carteira inteira: recortá-la por cliente ou por tipo deixaria projeto
           de fora da conversa sem ninguém perceber. */}
-      {aba === 'geral' && !carregando && projetos.length > 0 && (
+      {aba === 'geral' && !carregando && daCasa.length > 0 && (
         <div className="admin-toolbar">
           <span className="admin-toolbar-label">Filtrar</span>
           <FilterDropdown label="Status" values={fStatus} options={opcoes.status} onChange={setFStatus} />
@@ -6286,7 +6329,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
       {/* A busca fica à vista, e não atrás de um botão: é a mesma faixa da tela
           de Tarefas e da página do cliente. Os filtros ficam acima porque
           estreitam o conjunto; a busca varre o que sobrou. */}
-      {aba === 'geral' && !carregando && projetos.length > 0 && (
+      {aba === 'geral' && !carregando && daCasa.length > 0 && (
         <div className="secao-busca">
           <span className="secao-busca-campo">
             <IconSearch size={13} />

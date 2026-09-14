@@ -34,6 +34,7 @@ import { diaCurto as fmtDataCurta } from '../lib/datas';
 export { ConfirmarExclusao } from '../components/Dialogo';
 import { DESCRICAO_PRIORIDADE, ICONE_PRIORIDADE, PRIORIDADES } from '../lib/prioridades';
 import type { Projeto, Reuniao, Tarefa } from './ProjetosPage';
+import { PROJETO_GERAL } from '../lib/projetoGeral';
 
 /** A data da reunião no chip: dia e mês, que é o que cabe ali e o que basta
  *  para situar a conversa. */
@@ -1043,7 +1044,8 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
                 // O cliente embaixo do nome: dois projetos chamados "SDR IA" só
                 // se distinguem por ele, e a busca do seletor alcança essa linha.
                 opcoes={projetos.map(p => ({
-                  valor: p.id, label: p.nome, descricao: p.cliente_nome ?? 'Sem cliente',
+                  valor: p.id, label: p.nome,
+                  descricao: p.id === PROJETO_GERAL ? 'Demandas da casa' : p.cliente_nome ?? 'Sem cliente',
                 }))}
               />
             </div>

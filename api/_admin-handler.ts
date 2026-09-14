@@ -147,6 +147,17 @@ function listaDeTexto(v: unknown): string[] {
   return cru.map(x => String(x ?? '').trim()).filter(Boolean).slice(0, 50);
 }
 
+/**
+ * O "projeto" das demandas gerais da Planning: as que nao sao de projeto
+ * nenhum. Existe como linha de `projetos` para as tarefas dele serem tarefas
+ * como as outras - mesma gaveta, mesmo quadro, mesma tela de Tarefas.
+ *
+ * A linha nasce com `ativo = 0`, e e isso que a mantem fora de toda lista de
+ * projetos (a casa filtra `ativo = 1` em todo canto), inclusive na versao que
+ * estiver no ar quando ela for criada. Quem precisa dela a pede pelo id.
+ */
+const PROJETO_GERAL = 'geral';
+
 async function guardaDaEquipe(
   db: Client,
   usuario: UsuarioAdmin | null | undefined,
@@ -171,6 +182,9 @@ async function guardaDaEquipe(
   const dono = await db.execute({ sql: ORIGEM[de], args: [id as never] });
   const projetoId = dono.rows[0]?.projeto_id;
   if (!projetoId) return FORA_DA_EQUIPE;
+  // A Geral e da casa inteira: nao tem equipe, e toda pessoa pode cuidar das
+  // demandas que nao sao de projeto nenhum.
+  if (projetoId === PROJETO_GERAL) return null;
 
   const membro = await db.execute({
     sql: 'SELECT 1 FROM projeto_equipe WHERE projeto_id = ? AND usuario_id = ?',
@@ -3549,15 +3563,15 @@ async function despacharAdminData(
           SELECT t.id, t.titulo, t.status, t.projeto_id, p.nome AS projeto_nome
           FROM projeto_tarefas t
           JOIN projetos p ON p.id = t.projeto_id
-          WHERE p.ativo = 1
-            AND (? = 0 OR EXISTS (
+          WHERE (p.ativo = 1 OR p.id = ?)
+            AND (? = 0 OR p.id = ? OR EXISTS (
               SELECT 1 FROM projeto_equipe e
               WHERE e.projeto_id = p.id AND e.usuario_id = ?
             ))
           ORDER BY t.id DESC
           LIMIT 1000
         `,
-        args: [soDaEquipeAqui ? 1 : 0, usuario?.id ?? ''],
+        args: [PROJETO_GERAL, soDaEquipeAqui ? 1 : 0, PROJETO_GERAL, usuario?.id ?? ''],
       });
       const tarefasAchadas = tarefas.rows
         .filter(r => foldTerm(String(r.titulo ?? '')).includes(alvo)).slice(0, LIMIT);
@@ -3777,14 +3791,16 @@ async function despacharAdminData(
             SELECT p.*, c.nome AS cliente_nome
             FROM projetos p
             LEFT JOIN clientes c ON c.id = p.cliente_id
-            WHERE p.ativo = 1
-              AND (? = 0 OR EXISTS (
+            WHERE (p.ativo = 1 OR p.id = ?)
+              AND (? = 0 OR p.id = ? OR EXISTS (
                 SELECT 1 FROM projeto_equipe e
                 WHERE e.projeto_id = p.id AND e.usuario_id = ?
               ))
-            ORDER BY p.criado_em DESC
+            -- A Geral por ultimo: quem abre uma tarefa nova sem escolher cai
+            -- no primeiro da lista, e esse tem de ser um projeto de verdade.
+            ORDER BY p.id = ?, p.criado_em DESC
           `,
-          args: [soDaEquipe ? 1 : 0, usuario?.id ?? ''],
+          args: [PROJETO_GERAL, soDaEquipe ? 1 : 0, PROJETO_GERAL, usuario?.id ?? '', PROJETO_GERAL],
         }),
         db.execute(`
           SELECT e.projeto_id, e.usuario_id, e.papel, u.nome, u.email, u.foto_url
@@ -3849,7 +3865,24 @@ async function despacharAdminData(
       ]);
       const nComentarios = new Map(conversas.rows.map(r => [Number(r.tarefa_id), Number(r.n)]));
       const nAnexos = new Map(anexosDaConversa.rows.map(r => [Number(r.tarefa_id), Number(r.n)]));
-      const projetos = projs.rows.map(p => ({
+      // A Geral nasce na primeira leitura que nao a encontra, e nao no
+      // `migrarSchema`: la ela custaria uma ida ao banco a cada processo novo,
+      // e aqui custa uma so, na vida inteira da base.
+      const linhasDeProjeto = [...projs.rows] as Record<string, unknown>[];
+      if (!linhasDeProjeto.some(p => p.id === PROJETO_GERAL)) {
+        const criadoEm = new Date().toISOString();
+        await db.execute({
+          sql: `INSERT OR IGNORE INTO projetos (id, nome, status, prioridade, ativo, criado_em)
+                VALUES (?, 'Geral', 'Em andamento', 'Média', 0, ?)`,
+          args: [PROJETO_GERAL, criadoEm],
+        });
+        linhasDeProjeto.push({
+          id: PROJETO_GERAL, codigo: null, nome: 'Geral', cliente_id: null, cliente_nome: null,
+          status: 'Em andamento', prioridade: 'Média', progresso: 0, ativo: 0, criado_em: criadoEm,
+          planning_ordem: null,
+        });
+      }
+      const projetos = linhasDeProjeto.map(p => ({
         ...p,
         // O banco guarda JSON; a tela quer a lista pronta, como nas tarefas.
         repositorios: linksDoProjeto(p.repositorios, p.repositorio, MAX_REPOSITORIOS),
