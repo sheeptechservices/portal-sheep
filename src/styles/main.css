@@ -3289,6 +3289,12 @@ body.arrastando-painel {
   min-height: 0;
   padding-bottom: 0;
 }
+/* Os filtros entre o titulo e o quadro, com a altura deles: e o quadro que
+   estica para ocupar o resto, e nao a barra. */
+.painel-kanban-filtros {
+  flex: none;
+  margin-bottom: 12px;
+}
 /* As colunas sobem todas a mesma altura, como no quadro grande: com a altura
    vinda do conteudo, uma coluna cheia ao lado de uma vazia desenhava um degrau,
    e o espaco de soltar da vazia ficava do tamanho do titulo dela. */

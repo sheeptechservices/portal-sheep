@@ -1401,8 +1401,39 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
   onMover: (t: Tarefa, status: string) => void;
   onFixarRecolhida?: (etapaId: number) => void;
 }) {
-  const tarefas = projeto.tarefas ?? [];
+  const todas = projeto.tarefas ?? [];
   const tituloDaEntrega = new Map((projeto.entregas ?? []).map(e => [e.id, e.titulo]));
+
+  // Os mesmos filtros da tela de Tarefas, com o mesmo desenho, só que dentro
+  // deste projeto: com trinta tarefas no quadro, "o que é do Rafael" e "o que é
+  // desta entrega" são as duas perguntas de quem abre a aba.
+  const [fResponsavel, setFResponsavel] = useState<string[]>([]);
+  const [fEntrega, setFEntrega] = useState<string[]>([]);
+  const temFiltro = fResponsavel.length > 0 || fEntrega.length > 0;
+
+  /** As opções vêm do que existe nas tarefas, e não de listas fixas: filtro que
+   *  oferece valor sem resultado é ruído. O valor é o id, e o nome é só o
+   *  rótulo - duas pessoas ou duas entregas podem ter o mesmo nome. */
+  const opcoes = useMemo(() => {
+    const porNome = (a: { label: string }, b: { label: string }) => a.label.localeCompare(b.label, 'pt-BR');
+    const donos = [...new Set(todas.flatMap(t => t.responsaveis ?? []))]
+      .map(id => ({ value: id, label: pessoas.find(p => p.id === id)?.nome ?? '' }))
+      .filter(o => o.label)
+      .sort(porNome);
+    const titulos = new Map((projeto.entregas ?? []).map(e => [e.id, e.titulo]));
+    const entregas = [...new Set(todas.map(t => t.entrega_id).filter((id): id is number => id != null))]
+      .map(id => ({ value: String(id), label: titulos.get(id) ?? '' }))
+      .filter(o => o.label)
+      .sort(porNome);
+    return { responsavel: donos, entrega: entregas };
+  }, [todas, pessoas, projeto.entregas]);
+
+  const tarefas = useMemo(() => todas.filter(t =>
+    // Basta um dos donos casar: quem filtra por uma pessoa quer as tarefas
+    // dela, inclusive as que ela divide com outra.
+    (fResponsavel.length === 0 || (t.responsaveis ?? []).some(id => fResponsavel.includes(id))) &&
+    (fEntrega.length === 0 || fEntrega.includes(String(t.entrega_id)))
+  ), [todas, fResponsavel, fEntrega]);
 
   return (
     <section>
@@ -1411,19 +1442,37 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
           Tarefas
           {/* A mesma bolha do cabeçalho das colunas, logo abaixo: é o mesmo
               subtotal, e dois desenhos para a mesma coisa na mesma tela se leem
-              como duas coisas. */}
-          <span className="kanban-conta-bolha">{tarefas.length}</span>
+              como duas coisas. Com filtro, ela diz quantas sobraram de quantas. */}
+          <span className="kanban-conta-bolha">
+            {temFiltro ? `${tarefas.length}/${todas.length}` : todas.length}
+          </span>
         </p>
         {/* Com tarefa na tela o quadro se explica sozinho: contar quantas estão
             em aberto e ensinar a arrastar era dizer em texto o que as colunas
             já mostram. A frase fica só para o quadro vazio, onde não há coluna
             com conteúdo que aponte para o mais. */}
-        {tarefas.length === 0 && (
+        {todas.length === 0 && (
           <p className="form-hint">
             Nenhuma tarefa ainda. O mais dentro de uma coluna cria a primeira.
           </p>
         )}
       </div>
+
+      {todas.length > 0 && (
+        <div className="admin-toolbar painel-kanban-filtros">
+          <span className="admin-toolbar-label">Filtrar</span>
+          <FilterDropdown label="Responsável" values={fResponsavel} options={opcoes.responsavel}
+            onChange={setFResponsavel} />
+          <FilterDropdown label="Entrega" values={fEntrega} options={opcoes.entrega}
+            onChange={setFEntrega} />
+          {temFiltro && (
+            <button type="button" className="admin-toolbar-limpar surge"
+              onClick={() => { setFResponsavel([]); setFEntrega([]); }}>
+              Limpar
+            </button>
+          )}
+        </div>
+      )}
 
       <QuadroDeTarefas
         alto
