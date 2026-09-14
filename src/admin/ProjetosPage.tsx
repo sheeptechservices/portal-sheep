@@ -43,7 +43,7 @@ export {
 export { useFecharNoFundo } from '../lib/useFecharNoFundo';
 export type { Reuniao } from '../components/SecaoReunioes';
 import {
-  COR_PRIORIDADE, DESCRICAO_PRIORIDADE, ICONE_PRIORIDADE, PRIORIDADES, PRIORIDADE_PADRAO,
+  COR_PRIORIDADE, DESCRICAO_PRIORIDADE, ICONE_PRIORIDADE, PRIORIDADES, PRIORIDADE_PADRAO, porUrgencia,
 } from '../lib/prioridades';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
@@ -1337,17 +1337,9 @@ function QuadroDeTarefas({ tarefas, etapas, pessoas, podeEditar, onAbrir, onCria
 }) {
   const [arrastando, setArrastando] = useState<number | null>(null);
 
-  // Urgente, Alta, Média, Baixa - a posição na escala, e não o nome: em ordem
-  // alfabética "Baixa" viria antes de "Urgente". Prioridade que o catálogo não
-  // conhece vai para o fim, em vez de para a frente por acaso.
-  const urgencia = (t: Tarefa) => {
-    const i = PRIORIDADES.indexOf((t.prioridade ?? PRIORIDADE_PADRAO) as typeof PRIORIDADES[number]);
-    return i < 0 ? PRIORIDADES.length : i;
-  };
-  // `sort` é estável, então tarefas de mesma prioridade continuam na ordem em
-  // que já estavam.
+  // A ordem padrão de toda lista de tarefas: prioridade, e o prazo dentro dela.
   const daColuna = (nome: string) =>
-    tarefas.filter(x => x.status === nome).sort((a, b) => urgencia(a) - urgencia(b));
+    tarefas.filter(x => x.status === nome).sort(porUrgencia);
 
   return (
     <div className={`kanban-board painel-kanban${alto ? ' painel-kanban-alto' : ''}`}>
@@ -3151,7 +3143,10 @@ function QuadroDaSemana({ projeto: p, itens, backlog, dias: diasIso, etapaDeEntr
       // O que ainda não chegou fica apagado: coluna vazia na quinta, numa
       // terça, é calendário e não falta de trabalho.
       futuro: iso > hoje,
-      cards: itens.filter(x => x.dia === iso),
+      // Em aberto na frente, na ordem padrão das tarefas; as feitas no fim do
+      // dia, onde já não pedem atenção.
+      cards: itens.filter(x => x.dia === iso)
+        .sort((a, b) => Number(a.feita) - Number(b.feita) || porUrgencia(a.tarefa, b.tarefa)),
     };
   });
 
@@ -3386,18 +3381,12 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
   // O backlog da folha: o que está aberto e não caiu em nenhum dia desta
   // semana. É de onde as tarefas são puxadas, e para onde elas voltam.
   //
-  // Atrasada primeiro, e depois por urgência: numa planning a primeira pergunta
-  // sobre o que ficou para trás é "isso entra nesta semana?".
+  // Na ordem padrão de toda lista de tarefas: prioridade, e o prazo dentro
+  // dela - a atrasada fica na frente das outras da mesma prioridade, porque o
+  // prazo dela é o mais antigo.
   const backlog = (p.tarefas ?? [])
     .filter(t => !t.concluida_em && !dias.includes((t.prazo ?? '').slice(0, 10)))
-    .sort((a, b) => {
-      const va = a.prazo && a.prazo < hoje ? 0 : 1;
-      const vb = b.prazo && b.prazo < hoje ? 0 : 1;
-      if (va !== vb) return va - vb;
-      const pa = PRIORIDADES.indexOf((a.prioridade ?? PRIORIDADE_PADRAO) as typeof PRIORIDADES[number]);
-      const pb = PRIORIDADES.indexOf((b.prioridade ?? PRIORIDADE_PADRAO) as typeof PRIORIDADES[number]);
-      return (pa < 0 ? PRIORIDADES.length : pa) - (pb < 0 ? PRIORIDADES.length : pb);
-    });
+    .sort(porUrgencia);
 
   const atrasadas = (p.tarefas ?? [])
     .filter(t => !t.concluida_em && t.prazo && t.prazo < hoje);

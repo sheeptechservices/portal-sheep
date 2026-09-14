@@ -34,7 +34,7 @@ import {
 // importa o formulário de tarefa.
 import type { Projeto, Tarefa } from './ProjetosPage';
 import {
-  COR_PRIORIDADE, ICONE_PRIORIDADE, PRIORIDADES, PRIORIDADE_PADRAO,
+  COR_PRIORIDADE, ICONE_PRIORIDADE, PRIORIDADES, PRIORIDADE_PADRAO, porUrgencia,
 } from '../lib/prioridades';
 // O formulário e o vocabulário de tarefa moram fora desta tela: o relatório de
 // Gestão abre o mesmo modal, e duas cópias divergiriam no primeiro campo novo.
@@ -67,9 +67,11 @@ const FORMATOS = [
   { valor: 'md', label: 'Markdown (contexto para IA)' },
 ] as const;
 
+/** Prioridade é a primeira porque é a padrão: a tela abre com o mais urgente
+ *  na frente, e o prazo desempata dentro de cada prioridade. */
 const ORDENS = [
-  { valor: 'prazo', label: 'Prazo' },
   { valor: 'prioridade', label: 'Prioridade' },
+  { valor: 'prazo', label: 'Prazo' },
   { valor: 'projeto', label: 'Projeto' },
   { valor: 'titulo', label: 'Título' },
 ] as const;
@@ -292,7 +294,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
   // Guardado por id: dois projetos podem ter entregas de mesmo nome.
   const [fEntrega, setFEntrega] = useState<string[]>([]);
   const [busca, setBusca] = useState('');
-  const [ordem, setOrdem] = useState<string>('prazo');
+  const [ordem, setOrdem] = useState<string>('prioridade');
   const [agrupamento, setAgrupamento] = useState<string>('status');
 
   const et = useMemo(() => indexar(etapas), [etapas]);
@@ -463,17 +465,20 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
       (!q || semAcento(t.titulo).includes(q) || semAcento(t.descricao ?? '').includes(q)
         || semAcento(entregaDe(t)).includes(q))
     );
+    // Prioridade é a ordem padrão de toda lista de tarefas da casa, com o prazo
+    // desempatando dentro dela - e é também o desempate das outras ordens: duas
+    // tarefas do mesmo projeto saem da mais urgente para a menos.
+    if (ordem === 'prioridade') return [...lista].sort((a, b) => porUrgencia(a, b) || a.id - b.id);
     const chave: Record<string, (t: TarefaComProjeto) => string | number> = {
       // Sem prazo vai para o fim: o que tem data é o que cobra decisão hoje.
       prazo: t => t.prazo ?? '9999-12-31',
-      prioridade: t => PRIORIDADES.indexOf((t.prioridade ?? PRIORIDADE_PADRAO) as typeof PRIORIDADES[number]),
       projeto: t => semAcento(t.projeto.nome),
       titulo: t => semAcento(t.titulo),
     };
     const de = chave[ordem] ?? chave.prazo;
     return [...lista].sort((a, b) => {
       const va = de(a), vb = de(b);
-      return va < vb ? -1 : va > vb ? 1 : a.id - b.id;
+      return va < vb ? -1 : va > vb ? 1 : porUrgencia(a, b) || a.id - b.id;
     });
   }, [tarefas, fProjeto, fStatus, fResponsavel, fEtiqueta, fEntrega, busca, ordem]);
 

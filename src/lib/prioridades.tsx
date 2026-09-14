@@ -16,6 +16,30 @@ import {
 export const PRIORIDADES = ['Urgente', 'Alta', 'Média', 'Baixa'] as const;
 export const PRIORIDADE_PADRAO = 'Média';
 
+/** A posição na escala - Urgente é 0 -, e não o nome: em ordem alfabética
+ *  "Baixa" viria antes de "Urgente". Sem prioridade vale a padrão, e a que o
+ *  catálogo não conhece vai para o fim, em vez de para a frente por acaso. */
+export function posicaoDaPrioridade(p: string | null | undefined): number {
+  const i = PRIORIDADES.indexOf((p ?? PRIORIDADE_PADRAO) as typeof PRIORIDADES[number]);
+  return i < 0 ? PRIORIDADES.length : i;
+}
+
+/**
+ * A ordem padrão de toda lista de tarefas da casa: a mais urgente primeiro e,
+ * dentro da mesma prioridade, o prazo mais próximo. Sem prazo vai para o fim da
+ * sua prioridade - ela não compete por data.
+ *
+ * Empate completo devolve 0: o `sort` é estável, então quem já estava na frente
+ * continua na frente.
+ */
+export function porUrgencia(
+  a: { prioridade?: string | null; prazo?: string | null },
+  b: { prioridade?: string | null; prazo?: string | null },
+): number {
+  return posicaoDaPrioridade(a.prioridade) - posicaoDaPrioridade(b.prioridade)
+    || (a.prazo || '9999-12-31').localeCompare(b.prazo || '9999-12-31');
+}
+
 export const COR_PRIORIDADE: Record<string, string> = {
   'Urgente': '#D93025',
   'Alta': '#C2410C',
