@@ -2819,15 +2819,17 @@ function chavesDoInbox(body: any): string[] {
   const cruas = Array.isArray(body?.chaves) ? body.chaves : [body?.chave];
   return [...new Set(cruas
     .map((c: unknown) => String(c ?? '').trim())
-    .filter((c: string) => /^(reporte|tarefa|reuniao):.{1,80}$/.test(c)))] as string[];
+    .filter((c: string) => /^(reporte|tarefa|reuniao|mencao):.{1,80}$/.test(c)))] as string[];
 }
 
 /** Um aviso do inbox. O mesmo formato para as tres fontes: a gaveta desenha
  *  uma linha so, e quem sabe de onde o aviso veio e o `tipo`. */
 interface ItemDoInbox {
-  /** `reporte:12`, `tarefa:87`, `reuniao:01JABC` - tipo e id da coisa. */
+  /** `reporte:12`, `tarefa:87`, `reuniao:01JABC`, `mencao:340` - tipo e id da
+   *  coisa. A menção leva o id do comentário: duas marcações na mesma tarefa
+   *  são dois avisos. */
   chave: string;
-  tipo: 'chamado' | 'pedido' | 'reuniao';
+  tipo: 'chamado' | 'pedido' | 'reuniao' | 'mencao';
   titulo: string;
   descricao: string;
   /** O canto direito da linha: urgencia do chamado, projeto do pedido. */
@@ -4763,6 +4765,12 @@ async function despacharAdminData(
      *   - Pedidos de cliente: quem enxerga o projeto. Membro so ve projeto em
      *     que esta na equipe, como no resto do sistema.
      *   - Reunioes do Fireflies: quem edita projeto, que e quem as atrela.
+     *   - Mencoes em comentario de tarefa: quem foi marcado, e so se enxerga a
+     *     tarefa - membro fora da equipe do projeto nao conseguiria abri-la.
+     *
+     * Com `leve=1` o Fireflies fica de fora. E a leitura que a tela repete de
+     * tempos em tempos para acender o balao: ela nao pode custar uma ida a uma
+     * API de fora a cada minuto de cada pessoa com o portal aberto.
      *
      * A janela e de 30 dias. Aviso de mes passado nao e aviso, e a lista
      * precisa caber numa gaveta - o que passou disso se procura na fila, no
@@ -4773,8 +4781,9 @@ async function despacharAdminData(
       const cuidaDaFila = podeGerenciarUsuarios(usuario);
       const soDaEquipe = papelEfetivo(usuario?.email, usuario?.papel) === 'membro';
       const podeAtrelar = podeAcao(permissoes, 'vincular_reuniao');
+      const leve = query.get('leve') === '1';
 
-      const [chamados, pedidos, lidos] = await Promise.all([
+      const [chamados, pedidos, lidos, mencoes] = await Promise.all([
         cuidaDaFila
           ? db.execute({
             // Sem filtro de andamento: chamado resolvido continua no inbox, com
@@ -4806,6 +4815,24 @@ async function despacharAdminData(
         db.execute({
           sql: 'SELECT chave, limpo_em FROM inbox_lidos WHERE usuario_id = ?',
           args: [usuario?.id ?? ''],
+        }),
+        // Quem marcou a si mesmo nao e avisado: a pessoa ja sabe o que escreveu.
+        db.execute({
+          sql: `SELECT c.id, c.tarefa_id, c.texto, c.usuario_nome, c.criado_em,
+                       t.titulo AS tarefa_titulo, p.nome AS projeto_nome
+                FROM tarefa_comentario_mencoes m
+                JOIN tarefa_comentarios c ON c.id = m.comentario_id
+                JOIN projeto_tarefas t ON t.id = c.tarefa_id
+                JOIN projetos p ON p.id = t.projeto_id
+                WHERE m.usuario_id = ?
+                  AND c.criado_em >= ?
+                  AND (c.usuario_id IS NULL OR c.usuario_id <> ?)
+                  AND (? = 0 OR p.id = ? OR EXISTS (
+                    SELECT 1 FROM projeto_equipe e
+                    WHERE e.projeto_id = p.id AND e.usuario_id = ?
+                  ))
+                ORDER BY c.criado_em DESC LIMIT 40`,
+          args: [usuario?.id ?? '', desde, usuario?.id ?? '', soDaEquipe ? 1 : 0, PROJETO_GERAL, usuario?.id ?? ''],
         }),
       ]);
 
@@ -4849,10 +4876,30 @@ async function despacharAdminData(
         });
       }
 
+      for (const c of mencoes.rows) {
+        const chave = `mencao:${c.id}`;
+        if (jaLimpo.has(chave)) continue;
+        // A marcacao vem gravada como `@[Nome](id)`: na gaveta ela vira so o
+        // nome, que e o que quem escreveu leu na tela.
+        const texto = String(c.texto ?? '').replace(/@\[([^\]]+)\]\([^)]+\)/g, '@$1').trim();
+        itens.push({
+          chave,
+          tipo: 'mencao',
+          titulo: `${c.usuario_nome ?? 'Alguém'} mencionou você`,
+          descricao: texto.length > 160 ? `${texto.slice(0, 160)}…` : texto,
+          etiqueta: String(c.tarefa_titulo ?? ''),
+          quando: String(c.criado_em),
+          lido: jaLido.has(chave),
+          // A tarefa, que e onde a conversa mora: a gaveta dela abre na tela de
+          // Tarefas, pelo mesmo caminho do pedido de cliente.
+          alvo: String(c.tarefa_id),
+        });
+      }
+
       // O Fireflies e o unico que mora fora do banco, e por isso e o unico que
-      // pode falhar. Falha dele nao derruba o inbox: as outras duas fontes ja
-      // estao na mao, e um aviso a menos e melhor que uma gaveta que nao abre.
-      if (podeAtrelar) {
+      // pode falhar. Falha dele nao derruba o inbox: as outras fontes ja estao
+      // na mao, e um aviso a menos e melhor que uma gaveta que nao abre.
+      if (podeAtrelar && !leve) {
         const cred = await getIntegrationCredential(db, FIREFLIES_KEY).catch(() => null);
         if (cred?.value) {
           const r = await listarReunioesFireflies(cred.value, '', 20).catch(() => null);

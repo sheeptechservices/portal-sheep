@@ -1168,9 +1168,9 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
   const [filaDeChamados, setFilaDeChamados] =
     useState<{ nonce: number; chamado?: number } | null>(null);
 
-  const listarInbox = useCallback(async () => {
+  const listarInbox = useCallback(async (leve?: boolean) => {
     try {
-      return await lerAdmin('action=inbox') ?? { error: 'Não foi possível carregar os avisos.' };
+      return await lerAdmin(`action=inbox${leve ? '&leve=1' : ''}`) ?? { error: 'Não foi possível carregar os avisos.' };
     } catch {
       return { error: 'Erro de conexão. Tente de novo.' };
     }

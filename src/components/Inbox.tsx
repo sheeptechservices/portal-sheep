@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  IconBalao, IconCheck, IconInbox, IconMegafone, IconPlay, IconX,
+  IconBalao, IconCheck, IconComentario, IconInbox, IconMegafone, IconPlay, IconX,
 } from './icons';
 import { Dialogo } from './Dialogo';
 import { SelectSistema } from './SelectSistema';
@@ -26,10 +26,10 @@ import { ancorarCaixa } from '../lib/ancorar';
 import { instante, tempoRelativo } from '../lib/datas';
 import { useToast } from '../lib/toast';
 
-/** Um aviso, no formato que o servidor manda para as três fontes. */
+/** Um aviso, no formato que o servidor manda para todas as fontes. */
 export interface ItemDoInbox {
   chave: string;
-  tipo: 'chamado' | 'pedido' | 'reuniao';
+  tipo: 'chamado' | 'pedido' | 'reuniao' | 'mencao';
   titulo: string;
   descricao: string;
   etiqueta: string;
@@ -60,10 +60,18 @@ const FONTES = {
   chamado: { icone: IconMegafone, nome: 'Chamado do time' },
   pedido: { icone: IconBalao, nome: 'Pedido de cliente' },
   reuniao: { icone: IconPlay, nome: 'Reunião no Fireflies' },
+  mencao: { icone: IconComentario, nome: 'Menção em tarefa' },
 } as const;
 
+/** De quanto em quanto tempo a gaveta pergunta de novo, com a aba à vista. Uma
+ *  menção é aviso para agora: sem essa volta, o balão só acenderia na próxima
+ *  vez que a página fosse recarregada. */
+const RELEITURA_MS = 60_000;
+
 export function Inbox({ listar, marcarLido, limpar, vincularReuniao, onIr }: {
-  listar: () => Promise<{
+  /** `leve` deixa o Fireflies de fora: é a leitura repetida em segundo plano,
+   *  que não pode custar uma ida a uma API de fora a cada minuto. */
+  listar: (leve?: boolean) => Promise<{
     itens?: ItemDoInbox[];
     naoLidos?: number;
     /** Os projetos a que uma reunião pode ser atrelada, já filtrados por quem
@@ -93,21 +101,41 @@ export function Inbox({ listar, marcarLido, limpar, vincularReuniao, onIr }: {
   const gaveta = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ top: 0, left: 0 });
 
-  const buscar = useCallback(async () => {
+  const buscar = useCallback(async (leve = false) => {
     try {
-      const r = await listar();
-      if (r?.error) { setErro(r.error); return; }
+      const r = await listar(leve);
+      if (r?.error) { if (!leve) setErro(r.error); return; }
       setErro('');
-      setItens(r?.itens ?? []);
-      setProjetos(r?.projetos ?? []);
+      const chegaram = r?.itens ?? [];
+      // A leitura leve não traz as reuniões do Fireflies: as que a última
+      // leitura inteira trouxe continuam na gaveta, em vez de sumirem a cada
+      // minuto e voltarem na próxima abertura.
+      setItens(atual => (!leve ? chegaram : [
+        ...chegaram,
+        ...(atual ?? []).filter(i => i.tipo === 'reuniao'),
+      ].sort((a, b) => (a.quando < b.quando ? 1 : a.quando > b.quando ? -1 : 0))));
+      if (!leve) setProjetos(r?.projetos ?? []);
     } catch {
-      setErro('Não foi possível carregar os avisos.');
+      if (!leve) setErro('Não foi possível carregar os avisos.');
     }
   }, [listar]);
 
   // A primeira leitura acontece com a casca, e não na abertura: é ela que
   // acende o balão, e um balão que só aparece depois do clique não avisa nada.
   useEffect(() => { void buscar(); }, [buscar]);
+
+  // Depois, a cada minuto com a aba à vista, e logo que a aba volta a ficar à
+  // vista: aba escondida não precisa de balão, e quem volta a ela quer o
+  // balão certo na hora.
+  useEffect(() => {
+    const talvez = () => { if (document.visibilityState === 'visible') void buscar(true); };
+    const intervalo = window.setInterval(talvez, RELEITURA_MS);
+    document.addEventListener('visibilitychange', talvez);
+    return () => {
+      window.clearInterval(intervalo);
+      document.removeEventListener('visibilitychange', talvez);
+    };
+  }, [buscar]);
 
   // Reabrir busca de novo. A gaveta fica aberta enquanto se lê, e o que chegou
   // nesse meio tempo entra na próxima abertura.
@@ -197,8 +225,9 @@ export function Inbox({ listar, marcarLido, limpar, vincularReuniao, onIr }: {
                 <p style={{ color: 'var(--gray2)', marginBottom: 6 }}><IconInbox size={26} /></p>
                 <p>Nada novo por aqui.</p>
                 <p className="inbox-vazio-nota">
-                  Reunião gravada, pedido de cliente e chamado do time aparecem nesta
-                  gaveta assim que chegam, e ficam até você limpar.
+                  Reunião gravada, pedido de cliente, chamado do time e menção a você
+                  num comentário de tarefa aparecem nesta gaveta assim que chegam, e
+                  ficam até você limpar.
                 </p>
               </div>
             ) : (
