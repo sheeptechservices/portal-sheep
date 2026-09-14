@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  IconBalao, IconCheck, IconComentario, IconInbox, IconMegafone, IconPlay, IconX,
+  IconBalao, IconCheck, IconComentario, IconInbox, IconJoinha, IconMegafone, IconPlay, IconReply, IconX,
 } from './icons';
 import { Dialogo } from './Dialogo';
 import { SelectSistema } from './SelectSistema';
@@ -29,7 +29,7 @@ import { useToast } from '../lib/toast';
 /** Um aviso, no formato que o servidor manda para todas as fontes. */
 export interface ItemDoInbox {
   chave: string;
-  tipo: 'chamado' | 'pedido' | 'reuniao' | 'mencao';
+  tipo: 'chamado' | 'pedido' | 'reuniao' | 'mencao' | 'resposta' | 'joinha';
   titulo: string;
   descricao: string;
   etiqueta: string;
@@ -61,6 +61,8 @@ const FONTES = {
   pedido: { icone: IconBalao, nome: 'Pedido de cliente' },
   reuniao: { icone: IconPlay, nome: 'Reunião no Fireflies' },
   mencao: { icone: IconComentario, nome: 'Menção em tarefa' },
+  resposta: { icone: IconReply, nome: 'Resposta em tarefa' },
+  joinha: { icone: IconJoinha, nome: 'Joinha em tarefa' },
 } as const;
 
 /** De quanto em quanto tempo a gaveta pergunta de novo, com a aba à vista. Uma
@@ -225,9 +227,9 @@ export function Inbox({ listar, marcarLido, limpar, vincularReuniao, onIr }: {
                 <p style={{ color: 'var(--gray2)', marginBottom: 6 }}><IconInbox size={26} /></p>
                 <p>Nada novo por aqui.</p>
                 <p className="inbox-vazio-nota">
-                  Reunião gravada, pedido de cliente, chamado do time e menção a você
-                  num comentário de tarefa aparecem nesta gaveta assim que chegam, e
-                  ficam até você limpar.
+                  Reunião gravada, pedido de cliente, chamado do time e, nos comentários
+                  de tarefa, menção, resposta e joinha a você aparecem nesta gaveta
+                  assim que chegam, e ficam até você limpar.
                 </p>
               </div>
             ) : (

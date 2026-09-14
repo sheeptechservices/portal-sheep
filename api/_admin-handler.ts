@@ -2831,17 +2831,18 @@ function chavesDoInbox(body: any): string[] {
   const cruas = Array.isArray(body?.chaves) ? body.chaves : [body?.chave];
   return [...new Set(cruas
     .map((c: unknown) => String(c ?? '').trim())
-    .filter((c: string) => /^(reporte|tarefa|reuniao|mencao):.{1,80}$/.test(c)))] as string[];
+    .filter((c: string) => /^(reporte|tarefa|reuniao|mencao|resposta|joinha):.{1,80}$/.test(c)))] as string[];
 }
 
 /** Um aviso do inbox. O mesmo formato para as tres fontes: a gaveta desenha
  *  uma linha so, e quem sabe de onde o aviso veio e o `tipo`. */
 interface ItemDoInbox {
-  /** `reporte:12`, `tarefa:87`, `reuniao:01JABC`, `mencao:340` - tipo e id da
-   *  coisa. A menção leva o id do comentário: duas marcações na mesma tarefa
-   *  são dois avisos. */
+  /** `reporte:12`, `tarefa:87`, `reuniao:01JABC`, `mencao:340`, `resposta:341`,
+   *  `joinha:340:<usuario>` - tipo e id da coisa. Menção e resposta levam o id
+   *  do comentário: duas na mesma tarefa são dois avisos. O joinha leva também
+   *  quem deu, porque cada pessoa que concorda é um aviso. */
   chave: string;
-  tipo: 'chamado' | 'pedido' | 'reuniao' | 'mencao';
+  tipo: 'chamado' | 'pedido' | 'reuniao' | 'mencao' | 'resposta' | 'joinha';
   titulo: string;
   descricao: string;
   /** O canto direito da linha: urgencia do chamado, projeto do pedido. */
@@ -4791,6 +4792,8 @@ async function despacharAdminData(
      *   - Reunioes do Fireflies: quem edita projeto, que e quem as atrela.
      *   - Mencoes em comentario de tarefa: quem foi marcado, e so se enxerga a
      *     tarefa - membro fora da equipe do projeto nao conseguiria abri-la.
+     *   - Respostas e joinhas nos comentarios de tarefa: quem escreveu o
+     *     comentario, com o mesmo corte de equipe.
      *
      * Com `leve=1` o Fireflies fica de fora. E a leitura que a tela repete de
      * tempos em tempos para acender o balao: ela nao pode custar uma ida a uma
@@ -4807,7 +4810,15 @@ async function despacharAdminData(
       const podeAtrelar = podeAcao(permissoes, 'vincular_reuniao');
       const leve = query.get('leve') === '1';
 
-      const [chamados, pedidos, lidos, mencoes] = await Promise.all([
+      // O mesmo corte de equipe das tres fontes de conversa de tarefa: membro so
+      // e avisado do que consegue abrir.
+      const daEquipe = `(? = 0 OR p.id = ? OR EXISTS (
+                    SELECT 1 FROM projeto_equipe e
+                    WHERE e.projeto_id = p.id AND e.usuario_id = ?
+                  ))`;
+      const argsDaEquipe = [soDaEquipe ? 1 : 0, PROJETO_GERAL, usuario?.id ?? ''];
+
+      const [chamados, pedidos, lidos, mencoes, respostas, joinhas] = await Promise.all([
         cuidaDaFila
           ? db.execute({
             // Sem filtro de andamento: chamado resolvido continua no inbox, com
@@ -4851,12 +4862,46 @@ async function despacharAdminData(
                 WHERE m.usuario_id = ?
                   AND c.criado_em >= ?
                   AND (c.usuario_id IS NULL OR c.usuario_id <> ?)
-                  AND (? = 0 OR p.id = ? OR EXISTS (
-                    SELECT 1 FROM projeto_equipe e
-                    WHERE e.projeto_id = p.id AND e.usuario_id = ?
-                  ))
+                  AND ${daEquipe}
                 ORDER BY c.criado_em DESC LIMIT 40`,
-          args: [usuario?.id ?? '', desde, usuario?.id ?? '', soDaEquipe ? 1 : 0, PROJETO_GERAL, usuario?.id ?? ''],
+          args: [usuario?.id ?? '', desde, usuario?.id ?? '', ...argsDaEquipe],
+        }),
+        // Resposta na conversa que a pessoa abriu. A resposta que ja a marca fica
+        // de fora: o aviso de mencao ja diz a mesma coisa, e dois avisos para um
+        // comentario so viram ruido.
+        db.execute({
+          sql: `SELECT r.id, r.tarefa_id, r.texto, r.usuario_nome, r.criado_em,
+                       t.titulo AS tarefa_titulo
+                FROM tarefa_comentarios r
+                JOIN tarefa_comentarios pai ON pai.id = r.pai_id
+                JOIN projeto_tarefas t ON t.id = r.tarefa_id
+                JOIN projetos p ON p.id = t.projeto_id
+                WHERE pai.usuario_id = ?
+                  AND r.criado_em >= ?
+                  AND (r.usuario_id IS NULL OR r.usuario_id <> ?)
+                  AND NOT EXISTS (
+                    SELECT 1 FROM tarefa_comentario_mencoes m
+                    WHERE m.comentario_id = r.id AND m.usuario_id = ?
+                  )
+                  AND ${daEquipe}
+                ORDER BY r.criado_em DESC LIMIT 40`,
+          args: [usuario?.id ?? '', desde, usuario?.id ?? '', usuario?.id ?? '', ...argsDaEquipe],
+        }),
+        // Joinha no comentario da pessoa, de outra pessoa.
+        db.execute({
+          sql: `SELECT j.comentario_id, j.usuario_id, j.criado_em, u.nome AS quem,
+                       c.tarefa_id, c.texto, t.titulo AS tarefa_titulo
+                FROM tarefa_comentario_joinhas j
+                JOIN tarefa_comentarios c ON c.id = j.comentario_id
+                JOIN projeto_tarefas t ON t.id = c.tarefa_id
+                JOIN projetos p ON p.id = t.projeto_id
+                LEFT JOIN usuarios u ON u.id = j.usuario_id
+                WHERE c.usuario_id = ?
+                  AND j.usuario_id <> ?
+                  AND j.criado_em >= ?
+                  AND ${daEquipe}
+                ORDER BY j.criado_em DESC LIMIT 40`,
+          args: [usuario?.id ?? '', usuario?.id ?? '', desde, ...argsDaEquipe],
         }),
       ]);
 
@@ -4900,24 +4945,44 @@ async function despacharAdminData(
         });
       }
 
-      for (const c of mencoes.rows) {
-        const chave = `mencao:${c.id}`;
-        if (jaLimpo.has(chave)) continue;
-        // A marcacao vem gravada como `@[Nome](id)`: na gaveta ela vira so o
-        // nome, que e o que quem escreveu leu na tela.
-        const texto = String(c.texto ?? '').replace(/@\[([^\]]+)\]\([^)]+\)/g, '@$1').trim();
+      // A marcacao vem gravada como `@[Nome](id)`: na gaveta ela vira so o
+      // nome, que e o que quem escreveu leu na tela.
+      const trecho = (bruto: unknown) => {
+        const texto = String(bruto ?? '').replace(/@\[([^\]]+)\]\([^)]+\)/g, '@$1').trim();
+        return texto.length > 160 ? `${texto.slice(0, 160)}…` : texto;
+      };
+      // As tres fontes de conversa de tarefa levam a tarefa como alvo, que e
+      // onde a conversa mora: a gaveta dela abre na tela de Tarefas, pelo mesmo
+      // caminho do pedido de cliente.
+      const daConversa = (
+        chave: string, tipo: 'mencao' | 'resposta' | 'joinha', titulo: string,
+        texto: unknown, tarefaTitulo: unknown, quando: unknown, tarefaId: unknown,
+      ) => {
+        if (jaLimpo.has(chave)) return;
         itens.push({
-          chave,
-          tipo: 'mencao',
-          titulo: `${c.usuario_nome ?? 'Alguém'} mencionou você`,
-          descricao: texto.length > 160 ? `${texto.slice(0, 160)}…` : texto,
-          etiqueta: String(c.tarefa_titulo ?? ''),
-          quando: String(c.criado_em),
+          chave, tipo, titulo,
+          descricao: trecho(texto),
+          etiqueta: String(tarefaTitulo ?? ''),
+          quando: String(quando),
           lido: jaLido.has(chave),
-          // A tarefa, que e onde a conversa mora: a gaveta dela abre na tela de
-          // Tarefas, pelo mesmo caminho do pedido de cliente.
-          alvo: String(c.tarefa_id),
+          alvo: String(tarefaId),
         });
+      };
+
+      for (const c of mencoes.rows) {
+        daConversa(`mencao:${c.id}`, 'mencao', `${c.usuario_nome ?? 'Alguém'} mencionou você`,
+          c.texto, c.tarefa_titulo, c.criado_em, c.tarefa_id);
+      }
+      for (const r of respostas.rows) {
+        daConversa(`resposta:${r.id}`, 'resposta', `${r.usuario_nome ?? 'Alguém'} respondeu seu comentário`,
+          r.texto, r.tarefa_titulo, r.criado_em, r.tarefa_id);
+      }
+      for (const j of joinhas.rows) {
+        // O trecho e do comentario que recebeu o joinha: e o que diz a quem
+        // escreveu de qual das suas falas se trata.
+        daConversa(`joinha:${j.comentario_id}:${j.usuario_id}`, 'joinha',
+          `${j.quem ?? 'Alguém'} deu joinha no seu comentário`,
+          j.texto, j.tarefa_titulo, j.criado_em, j.tarefa_id);
       }
 
       // O Fireflies e o unico que mora fora do banco, e por isso e o unico que
