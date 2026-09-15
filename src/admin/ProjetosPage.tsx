@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { iniciais, useAuth, useToast } from './AdminApp';
 import {
   IconAlert, IconArrowLeft, IconArrowRight, IconBuilding, IconClip, IconClipboard, IconDoc, IconDownload,
+  IconFunil,
   IconImage, IconInbox,
   IconChevronDown, IconChevronRight, IconChevronUp, IconChevronUpDown,
   IconDrive, IconEdit, IconEye, IconGitHub, IconGlobo, IconLink, IconMarcoAndamento, IconMarcoBloqueado,
@@ -15,7 +16,8 @@ import {
   IconX, IconZip,
 } from '../components/icons';
 import FilterDropdown from '../components/FilterDropdown';
-import { PROJETO_GERAL } from '../lib/projetoGeral';
+import { SegSwitch } from '../components/SegSwitch';
+import { PLANNING_FUNIL, PROJETO_GERAL } from '../lib/projetoGeral';
 import { logoDoCliente } from '../lib/marcas';
 import { PAPEIS_EQUIPE, porNivelDeContato } from '../lib/papeisDeEquipe';
 import { SkeletonCards, SkeletonTabela } from '../components/Skeleton';
@@ -3511,6 +3513,217 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
   );
 }
 
+// ── A folha do Funil ────────────────────────────────────────────────────────
+
+/** Uma oportunidade, no recorte que a folha do Funil desenha. Vem da mesma
+ *  leitura do quadro do Funil (`board`). */
+export interface OportunidadeDoFunil {
+  id: string;
+  empresa: string | null;
+  contato_nome: string | null;
+  interesse: string | null;
+  valor_estimado: number | null;
+  parcelas: number | null;
+  responsavel_nome: string | null;
+  responsavel_foto: string | null;
+  proxima_acao: string | null;
+  proxima_acao_em: string | null;
+  created_at: string;
+  current_status_id: number | null;
+  status_since: string | null;
+}
+
+/** Uma etapa do funil. `is_conversion` é a de ganho e `is_excluded` a de perda. */
+export interface EtapaDoFunil {
+  id: number;
+  nome: string;
+  cor: string;
+  ordem: number;
+  descricao?: string | null;
+  is_conversion?: number | null;
+  is_excluded?: number | null;
+}
+
+/** As duas reuniões da Planning: a dos projetos e a do comercial. */
+type SecaoDaPlanning = 'projetos' | 'comercial';
+
+/** O que a página leu do funil. `carregando` enquanto a leitura vai; `erro`
+ *  quando ela não veio. */
+export interface FunilDaPlanning {
+  carregando: boolean;
+  erro?: string;
+  etapas: EtapaDoFunil[];
+  oportunidades: OportunidadeDoFunil[];
+}
+
+const valorEmReais = (v: number | null | undefined) => (v == null ? '-'
+  : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }));
+
+/** As contas da semana sobre o funil, que servem à folha e ao número da aba. */
+function contasDoFunil(funil: FunilDaPlanning, dias: string[]) {
+  const inicio = dias[0];
+  const fim = domingoDepoisDe(dias);
+  const hoje = hojeIso();
+  const fechada = new Set(funil.etapas
+    .filter(e => Number(e.is_conversion) === 1 || Number(e.is_excluded) === 1).map(e => Number(e.id)));
+  const ganho = new Set(funil.etapas.filter(e => Number(e.is_conversion) === 1).map(e => Number(e.id)));
+  // A data da próxima ação é só dia, sem hora: compara como texto. O resto é
+  // carimbo com hora, e vira o dia local antes de comparar.
+  const naSemana = (dia: string | null | undefined) => !!dia && dia >= inicio && dia <= fim;
+  const abertas = funil.oportunidades.filter(o => !fechada.has(Number(o.current_status_id)));
+  return {
+    fechada,
+    abertas,
+    novas: funil.oportunidades.filter(o => naSemana(diaLocal(o.created_at))).length,
+    acoesNaSemana: abertas.filter(o => naSemana(o.proxima_acao_em)).length,
+    atrasadas: abertas.filter(o => !!o.proxima_acao_em && o.proxima_acao_em < hoje).length,
+    ganhas: funil.oportunidades
+      .filter(o => ganho.has(Number(o.current_status_id)) && naSemana(diaLocal(o.status_since))).length,
+    valorAberto: abertas.reduce((soma, o) => soma + (Number(o.valor_estimado) || 0), 0),
+    /** Chegou à etapa de ganho ou de perda nesta semana: é o resultado que a
+     *  sala confere, e o que ficou para trás já foi conferido antes. */
+    fechouNaSemana: (o: OportunidadeDoFunil) => naSemana(diaLocal(o.status_since)),
+  };
+}
+
+/**
+ * A folha do Funil na Planning: o combinado comercial da semana.
+ *
+ * Os objetivos são os mesmos das folhas de projeto, gravados por semana. O
+ * quadro é o do Funil, só para ler: as etapas abertas com todas as
+ * oportunidades, e as de ganho e perda só com o que chegou lá nesta semana.
+ * Mexer num card é trabalho do Funil, e o clique leva até lá com ele aberto -
+ * duas telas movendo o mesmo card seriam dois lugares para desencontrar.
+ */
+function FolhaDoFunil({ semana, dias, funil, planning, podeEditar, onMudarPlanning, onAbrirOportunidade }: {
+  semana: Date;
+  dias: string[];
+  funil: FunilDaPlanning;
+  planning: PlanningDaSemana;
+  podeEditar: boolean;
+  onMudarPlanning: (dados: PlanningDaSemana) => void;
+  onAbrirOportunidade?: (id: string) => void;
+}) {
+  const contas = contasDoFunil(funil, dias);
+  const hoje = hojeIso();
+  const etapas = [...funil.etapas].sort((a, b) => a.ordem - b.ordem);
+
+  return (
+    <div className="pl-folha troca" key={`funil|${iso10(semana)}`}>
+      <header className="pl-cabeca">
+        <div className="pl-quem">
+          <h2>Funil</h2>
+          <p className="pl-meta">
+            As oportunidades comerciais, {valorEmReais(contas.valorAberto)} em aberto
+          </p>
+        </div>
+        <div className="pl-numeros">
+          <span className="pl-numero"><strong>{contas.abertas.length}</strong><small>em aberto</small></span>
+          <span className="pl-numero"><strong>{contas.novas}</strong><small>novas</small></span>
+          <span className="pl-numero"><strong>{contas.acoesNaSemana}</strong><small>ações na semana</small></span>
+          <span className={`pl-numero${contas.atrasadas ? ' alerta' : ''}`}>
+            <strong>{contas.atrasadas}</strong><small>ações atrasadas</small>
+          </span>
+          <span className="pl-numero"><strong>{contas.ganhas}</strong><small>ganhas</small></span>
+        </div>
+      </header>
+
+      <section className="pl-secao pl-combinado">
+        <p className="pl-secao-titulo">
+          Objetivos da semana
+          {planning.objetivos.length > 0 && (
+            <span className="kanban-conta-bolha">
+              {planning.objetivos.filter(o => o.feito).length}/{planning.objetivos.length}
+            </span>
+          )}
+        </p>
+        <ObjetivosDaPlanning
+          valores={planning.objetivos}
+          somenteLeitura={!podeEditar}
+          placeholder="O que o comercial precisa fazer andar nesta semana"
+          onChange={v => onMudarPlanning({ objetivos: v })} />
+      </section>
+
+      <section className="pl-secao">
+        <p className="pl-secao-titulo">
+          O funil
+          <span className="kanban-conta-bolha">{contas.abertas.length}</span>
+        </p>
+        {funil.carregando && funil.oportunidades.length === 0 ? (
+          <div className="dux-spinner-row"><span className="dux-spinner sm" /></div>
+        ) : funil.erro ? (
+          <p className="nt-vazio">{funil.erro}</p>
+        ) : (
+          <div className="kanban-board painel-kanban pl-funil">
+            {etapas.map(etapa => {
+              const fechada = contas.fechada.has(Number(etapa.id));
+              const cards = funil.oportunidades
+                .filter(o => Number(o.current_status_id) === Number(etapa.id)
+                  && (!fechada || contas.fechouNaSemana(o)))
+                // A ação mais próxima na frente, e sem ação no fim: é a ordem em
+                // que a sala passa pelos cards.
+                .sort((a, b) => (a.proxima_acao_em || '9999-12-31').localeCompare(b.proxima_acao_em || '9999-12-31'));
+              return (
+                <div key={etapa.id} className="kanban-column" style={{ ['--col-color' as string]: etapa.cor }}>
+                  <div className="kanban-column-header">
+                    <div className="kanban-column-title" title={etapa.descricao ?? undefined}>
+                      <span className="kanban-dot" style={{ background: etapa.cor }} />
+                      {etapa.nome}
+                    </div>
+                    <span className="kanban-conta-bolha">{cards.length}</span>
+                  </div>
+                  {fechada && <p className="pl-funil-nota">Só as desta semana</p>}
+                  <div className="kanban-column-body">
+                    {cards.map(o => {
+                      const atrasada = !!o.proxima_acao_em && o.proxima_acao_em < hoje && !fechada;
+                      return (
+                        <button key={o.id} type="button" className="kanban-card pl-funil-card"
+                          style={{ ['--col-color' as string]: etapa.cor }}
+                          title={onAbrirOportunidade ? 'Abrir no Funil' : undefined}
+                          disabled={!onAbrirOportunidade}
+                          onClick={() => onAbrirOportunidade?.(o.id)}>
+                          <p className="kanban-card-title">{o.empresa ?? '-'}</p>
+                          {(o.contato_nome || o.interesse) && (
+                            <p className="kanban-card-sub">
+                              {[o.contato_nome, o.interesse].filter(Boolean).join(' · ')}
+                            </p>
+                          )}
+                          <div className="kanban-card-meta">
+                            <span className="kanban-card-value">
+                              {valorEmReais(o.valor_estimado)}
+                              {o.parcelas != null && o.parcelas > 0 && (
+                                <span className="kanban-card-parcelas">
+                                  {o.parcelas === 1 ? 'à vista' : `${o.parcelas}x`}
+                                </span>
+                              )}
+                            </span>
+                            {o.responsavel_nome && (
+                              <span className="kanban-card-meta-fim" title={o.responsavel_nome}>
+                                <Avatar nome={o.responsavel_nome} foto={o.responsavel_foto} size={20} />
+                              </span>
+                            )}
+                          </div>
+                          {o.proxima_acao && (
+                            <p className={`oportunidade-proxima${atrasada ? ' atrasada' : ''}`}>
+                              <IconCalendario size={11} />
+                              <span>{o.proxima_acao}</span>
+                              {o.proxima_acao_em && <em>{fmtData(o.proxima_acao_em).slice(0, 5)}</em>}
+                            </p>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 /**
  * Os objetivos da semana, em checklist: uma linha por objetivo, Enter abre a
  * seguinte, a linha vazia sai sozinha ao perder o foco, e a caixinha marca o
@@ -3719,6 +3932,9 @@ function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, onChange }:
   );
 }
 
+/** As folhas presas no alto da Planning, fora do arraste e da numeração. */
+const FOLHAS_FIXAS = new Set([PROJETO_GERAL, PLANNING_FUNIL]);
+
 /**
  * As abas laterais da Planning, no desenho das divisórias de uma agenda: uma
  * aba por projeto, empilhadas na borda esquerda, e a folha do projeto escolhido
@@ -3865,8 +4081,8 @@ function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onRe
       if (!podeReordenar) return;
       const destino = i + passo;
       if (destino < 0 || destino >= lista.length) return;
-      // A Geral fica presa no alto: nem sai de lá, nem deixa outra tomar o lugar.
-      if (lista[i].id === PROJETO_GERAL || lista[destino].id === PROJETO_GERAL) return;
+      // As folhas presas ficam no alto: nem saem de lá, nem deixam outra tomar o lugar.
+      if (FOLHAS_FIXAS.has(lista[i].id) || FOLHAS_FIXAS.has(lista[destino].id)) return;
       const ids = lista.map(p => p.id);
       [ids[i], ids[destino]] = [ids[destino], ids[i]];
       reordenar(ids);
@@ -3900,9 +4116,12 @@ function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onRe
         const prioridade = p.prioridade ?? PRIORIDADE_PADRAO;
         const alvo = sobre?.id === p.id && arrastando !== p.id ? sobre.pos : null;
         const ehGeral = p.id === PROJETO_GERAL;
-        const arrastavel = podeReordenar && !ehGeral;
-        // A numeração é dos projetos: a Geral, presa no alto, não conta.
-        const numero = lista.slice(0, i + 1).filter(x => x.id !== PROJETO_GERAL).length;
+        const ehFunil = p.id === PLANNING_FUNIL;
+        // Geral e Funil ficam presas no alto: não arrastam, não recebem quem é
+        // arrastado e não entram na numeração, que é a dos projetos.
+        const ehFixa = FOLHAS_FIXAS.has(p.id);
+        const arrastavel = podeReordenar && !ehFixa;
+        const numero = lista.slice(0, i + 1).filter(x => !FOLHAS_FIXAS.has(x.id)).length;
         return (
           // Div com papel de aba, e não botão: o Firefox não começa arraste num
           // `button`, e aqui a mesma peça precisa ser clicada e arrastada.
@@ -3919,12 +4138,12 @@ function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onRe
             title={arrastavel ? 'Clique para abrir, arraste para mudar a ordem' : undefined}
             className={[
               'pl-aba',
-              ehGeral ? 'pl-aba-geral' : '',
+              ehFixa ? 'pl-aba-fixa' : '',
               ativo === p.id ? 'ativa' : '',
               arrastando === p.id ? 'levada' : '',
               alvo ? `cai-${alvo}` : '',
             ].filter(Boolean).join(' ')}
-            style={{ ['--cor-aba' as string]: ehGeral ? 'var(--gray2)' : COR_PRIORIDADE[prioridade] ?? 'var(--gray3)' }}
+            style={{ ['--cor-aba' as string]: ehFixa ? 'var(--gray2)' : COR_PRIORIDADE[prioridade] ?? 'var(--gray3)' }}
             onClick={() => onEscolher(p.id)}
             onKeyDown={e => porTecla(e, i)}
             onDragStart={e => {
@@ -3935,8 +4154,8 @@ function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onRe
             }}
             onDragEnd={() => { setArrastando(null); setSobre(null); }}
             onDragOver={e => {
-              // Sobre a Geral nada cai: o lugar dela é o primeiro, e de ninguém mais.
-              if (!arrastando || ehGeral) return;
+              // Sobre as folhas presas nada cai: o lugar delas é o do alto.
+              if (!arrastando || ehFixa) return;
               e.preventDefault();
               e.dataTransfer.dropEffect = 'move';
               const r = e.currentTarget.getBoundingClientRect();
@@ -3954,8 +4173,10 @@ function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onRe
             {/* O número dá lugar ao punho no hover: é onde a mão procura o que
                 arrastar, e dois ícones lado a lado apertariam o nome. */}
             <span className="pl-aba-num">
-              {ehGeral ? (
-                <span className="pl-aba-num-texto" aria-hidden="true"><IconBuilding size={13} /></span>
+              {ehFixa ? (
+                <span className="pl-aba-num-texto" aria-hidden="true">
+                  {ehFunil ? <IconFunil size={13} /> : <IconBuilding size={13} />}
+                </span>
               ) : (
                 <span className="pl-aba-num-texto">{String(numero).padStart(2, '0')}</span>
               )}
@@ -3964,10 +4185,10 @@ function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onRe
               )}
             </span>
             {/* A urgência no desenho de barras da casa, na cor dela: é o que se
-                lê de relance numa coluna de nove projetos, antes do nome. A Geral
-                não tem urgência própria: o lugar fica, vazio, para o nome dela
-                alinhar com o dos projetos. */}
-            {ehGeral ? <span className="pl-aba-prio" aria-hidden="true" style={{ width: 14 }} /> : (
+                lê de relance numa coluna de nove projetos, antes do nome. As
+                folhas presas não têm urgência própria: o lugar fica, vazio, para
+                o nome delas alinhar com o dos projetos. */}
+            {ehFixa ? <span className="pl-aba-prio" aria-hidden="true" style={{ width: 14 }} /> : (
               <span className="pl-aba-prio" style={{ color: COR_PRIORIDADE[prioridade] ?? 'var(--gray2)' }}
                 title={`Prioridade: ${prioridade}`} aria-label={`Prioridade ${prioridade}`}>
                 {ICONE_PRIORIDADE[prioridade]?.({ size: 14 })}
@@ -3975,7 +4196,9 @@ function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onRe
             )}
             <span className="pl-aba-texto">
               <strong>{p.nome}</strong>
-              <small>{ehGeral ? 'Demandas da casa' : p.cliente_nome ?? 'Sem cliente'}</small>
+              <small>
+                {ehGeral ? 'Demandas da casa' : ehFunil ? 'Oportunidades comerciais' : p.cliente_nome ?? 'Sem cliente'}
+              </small>
             </span>
             {/* O número da semana na aba: é o que diz, sem entrar no projeto,
                 se ele já tem semana montada ou se a sala ainda vai montá-la. */}
@@ -4231,7 +4454,7 @@ function AbaPlanning({
   projetos, pessoas, planning, semana, onMudarSemana, onSalvarPlanning, onReordenar,
   onAbrir, onSalvarTarefa, onAbrirTarefa, onCriarTarefa, onExcluirTarefa,
   etapas, etapaDeEntrada, etapaDeConclusao, podeEditar, podeEditarTarefa, podeExcluirTarefa,
-  entregasDe,
+  entregasDe, funil, secao, onAbrirOportunidade,
 }: {
   /** Monta a seção de entregas de um projeto. */
   entregasDe: (p: Projeto) => React.ReactNode;
@@ -4257,6 +4480,14 @@ function AbaPlanning({
   podeEditar: boolean;
   podeEditarTarefa: boolean;
   podeExcluirTarefa: boolean;
+  /** As oportunidades para a folha do Funil. Nulo para quem não vê o funil - e
+   *  aí a aba não aparece. */
+  funil: FunilDaPlanning | null;
+  /** Qual reunião está na tela: os projetos, com as divisórias, ou o comercial,
+   *  com a folha do funil em largura inteira. */
+  secao: SecaoDaPlanning;
+  /** Leva à tela do Funil com a oportunidade aberta. */
+  onAbrirOportunidade?: (id: string) => void;
 }) {
   const dias = useMemo(() => diasUteisDaSemana(semana), [semana]);
 
@@ -4281,9 +4512,10 @@ function AbaPlanning({
         return urgencia(a) - urgencia(b);
       });
     // A Geral abre a reunião, presa no alto e fora do arraste: o que é da casa
-    // inteira vem antes de passar projeto por projeto.
+    // inteira vem antes de passar projeto por projeto. O Funil não entra aqui:
+    // ele é a outra reunião, a do comercial, com a folha dele.
     const geral = projetos.find(p => p.id === PROJETO_GERAL);
-    return geral ? [geral, ...ordenados] : ordenados;
+    return [...(geral ? [geral] : []), ...ordenados];
   }, [projetos]);
 
   const [ativo, setAtivo] = useState<string | null>(null);
@@ -4294,6 +4526,26 @@ function AbaPlanning({
 
   const naSemana = useCallback(
     (p: Projeto) => tarefasDaSemana(p, dias).length, [dias]);
+
+  // O comercial: a folha do funil sozinha, em largura inteira. Não há
+  // divisória a escolher - é uma reunião só, sobre o funil inteiro.
+  if (secao === 'comercial' && funil) {
+    return (
+      <div className="pl-sheet pl-sheet-inteira">
+        <FolhaDoFunil
+          semana={semana}
+          dias={dias}
+          funil={funil}
+          planning={planning[PLANNING_FUNIL] ?? PLANNING_VAZIA}
+          podeEditar={podeEditar}
+          onAbrirOportunidade={onAbrirOportunidade}
+          onMudarPlanning={dados => onSalvarPlanning(PLANNING_FUNIL, {
+            ...planning[PLANNING_FUNIL],
+            ...dados,
+          })} />
+      </div>
+    );
+  }
 
   if (lista.length === 0) {
     return (
@@ -4314,7 +4566,7 @@ function AbaPlanning({
           // para o topo trocaria o projeto aberto sem ninguem ter escolhido.
           onReordenar={ids => {
             if (!ativo && atual) setAtivo(atual.id);
-            onReordenar(ids.filter(id => id !== PROJETO_GERAL));
+            onReordenar(ids.filter(id => id !== PROJETO_GERAL && id !== PLANNING_FUNIL));
           }} />
 
         <div className="pl-sheet" role="tabpanel">
@@ -5164,8 +5416,11 @@ function FormularioProjeto({
 
 type Aba = 'geral' | 'planning';
 
-export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAbriu }: {
+export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAbriu, onAbrirOportunidade }: {
   token: string;
+  /** Leva à tela do Funil com a oportunidade aberta: é de lá que um card é
+   *  mexido, e a folha do Funil na Planning só o mostra. */
+  onAbrirOportunidade?: (id: string) => void;
   /** Entregue pelo painel: leva à tela de Tarefas já filtrada numa entrega. */
   onVerTarefasDaEntrega?: (projetoId: string, entregaId: number) => void;
   /** O projeto que a busca rápida escolheu. O `nonce` faz o mesmo projeto
@@ -5301,6 +5556,38 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
   }, [api, toast]);
 
   useEffect(() => { void carregar(); }, [carregar]);
+
+  // As oportunidades da folha do Funil, pela mesma leitura do quadro do Funil.
+  // Só com a Planning à vista e só para quem vê o funil: para os outros a aba
+  // nem existe. Cada volta à Planning relê, porque o comercial anda entre uma
+  // reunião e outra; enquanto relê, a folha mostra o que já tinha.
+  const veFunil = pode('oportunidades:ver');
+  const [funil, setFunil] = useState<FunilDaPlanning>({ carregando: true, etapas: [], oportunidades: [] });
+  /** Qual das duas reuniões está na tela. Guardada no navegador de quem usa: o
+   *  comercial abre a Planning no comercial, e o time de projetos, nos projetos. */
+  const [secaoPlanning, setSecaoPlanning] = useState<SecaoDaPlanning>(() => {
+    try { return localStorage.getItem('planning:secao') === 'comercial' ? 'comercial' : 'projetos'; } catch { return 'projetos'; }
+  });
+  const mudarSecaoPlanning = useCallback((s: SecaoDaPlanning) => {
+    setSecaoPlanning(s);
+    try { localStorage.setItem('planning:secao', s); } catch { /* sem armazenamento, só não lembra */ }
+  }, []);
+  useEffect(() => {
+    if (aba !== 'planning' || !veFunil) return;
+    let vivo = true;
+    setFunil(f => ({ ...f, carregando: true, erro: undefined }));
+    api('?action=board')
+      .then(r => {
+        if (!vivo) return;
+        if (!r || r.error) {
+          setFunil(f => ({ ...f, carregando: false, erro: r?.error ?? 'O funil não veio. Tente de novo.' }));
+          return;
+        }
+        setFunil({ carregando: false, etapas: r.statuses ?? [], oportunidades: r.submissions ?? [] });
+      })
+      .catch(() => { if (vivo) setFunil(f => ({ ...f, carregando: false, erro: 'O funil não veio. Tente de novo.' })); });
+    return () => { vivo = false; };
+  }, [aba, api, veFunil]);
 
   // O combinado da semana vem por ação própria, e só quando a Planning está à
   // vista: é um pedido a mais, e quem abre Projetos na aba Geral não o usa.
@@ -6286,7 +6573,9 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           <p className="admin-page-desc">
             {aba === 'geral'
               ? 'Cadastro dos projetos da casa'
-              : 'A semana de cada projeto, montada com o time'}
+              : secaoPlanning === 'comercial' && veFunil
+                ? 'A semana do comercial: os leads do funil e os objetivos'
+                : 'A semana de cada projeto, montada com o time'}
           </p>
         </div>
         {aba === 'geral' && podeCriar && (
@@ -6297,6 +6586,18 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
         )}
         {aba === 'planning' && (
           <SeletorDeSemana semana={semanaDaPlanning} onMudar={setSemanaDaPlanning} />
+        )}
+        {/* As duas reuniões da semana, cada uma com a sua folha: a de projetos,
+            com a Geral e os projetos, e a do comercial, com os leads do funil.
+            Só quem vê o funil tem as duas - para os outros não há o que trocar. */}
+        {aba === 'planning' && veFunil && (
+          <div className="pl-secoes">
+            <SegSwitch valor={secaoPlanning} onChange={mudarSecaoPlanning}
+              opcoes={[
+                { valor: 'projetos', label: 'Projetos' },
+                { valor: 'comercial', label: 'Comercial' },
+              ]} />
+          </div>
         )}
       </div>
 
@@ -6625,6 +6926,9 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           podeEditarTarefa={pode('tarefas:editar')}
           podeExcluirTarefa={pode('tarefas:excluir')}
           onAbrir={p => setForm({ editando: p })}
+          funil={veFunil ? funil : null}
+          secao={veFunil ? secaoPlanning : 'projetos'}
+          onAbrirOportunidade={onAbrirOportunidade}
           // A mesma seção da ficha, ligada aos mesmos gestos da página: o que
           // se faz numa entrega aqui é o que se faria abrindo o projeto.
           entregasDe={p => (

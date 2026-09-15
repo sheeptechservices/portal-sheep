@@ -158,6 +158,10 @@ function listaDeTexto(v: unknown): string[] {
  */
 const PROJETO_GERAL = 'geral';
 
+/** A chave da folha do Funil na Planning, em `planning_semana`. Nao e linha de
+ *  projeto: so identifica o combinado da semana sobre as oportunidades. */
+const PLANNING_FUNIL = 'funil';
+
 async function guardaDaEquipe(
   db: Client,
   usuario: UsuarioAdmin | null | undefined,
@@ -6318,7 +6322,16 @@ function faltaEmProjeto(p: any): string | null {
     // escreve numa planning esta corrigindo o que a sala combinou, e nao
     // acrescentando uma segunda versao do mesmo combinado.
     if (action === 'salvar_planning_semana') {
-      { const barrado = await guardaDaEquipe(db, usuario, body.projeto_id); if (barrado) return barrado; }
+      // A folha do Funil nao e projeto e nao tem equipe: o que a guarda e ver o
+      // funil, a mesma permissao que mostra a aba. Projeto passa pela equipe.
+      if (body.projeto_id === PLANNING_FUNIL) {
+        if (!pode(permissoes, 'oportunidades:ver')) {
+          return { status: 403, body: { error: 'Seu perfil não enxerga o funil.' } };
+        }
+      } else {
+        const barrado = await guardaDaEquipe(db, usuario, body.projeto_id);
+        if (barrado) return barrado;
+      }
       const projetoId = String(body.projeto_id ?? '');
       const semana = String(body.semana ?? '').slice(0, 10);
       if (!projetoId) return { status: 400, body: { error: 'projeto_id ausente.' } };

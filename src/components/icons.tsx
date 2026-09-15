@@ -226,6 +226,10 @@ export function IconRefresh({ size = 14 }: { size?: number }) {
 export function IconReply({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M8 5v6.5a3 3 0 003 3h8" /><path d="M15.5 11l4 3.5-4 3.5" /></Ico>;
 }
+// Funil: as oportunidades comerciais, o mesmo desenho do item do menu.
+export function IconFunil({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><path d="M3 4h18l-7 8.5V19l-4 2v-8.5L3 4z" /></Ico>;
+}
 // Joinha: concordar com um comentario sem escrever outro.
 export function IconJoinha({ size = 14 }: { size?: number }) {
   return (

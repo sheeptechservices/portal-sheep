@@ -6485,6 +6485,9 @@ button.checklist-texto:focus-visible {
 .com-semana > div:first-child { grid-column: 1; min-width: 0; }
 .com-semana .pl-barra { display: contents; }
 .com-semana .pl-semana { grid-column: 2; grid-row: 1; }
+/* Projetos ou Comercial, na coluna da direita, que na Planning estava vazia: o
+   seletor de semana fica no meio e nao anda quando a troca aparece. */
+.com-semana .pl-secoes { grid-column: 3; grid-row: 1; justify-self: end; }
 /* Estreito, o seletor desce para baixo do titulo. */
 @media (max-width: 700px) {
   .admin-page-header.com-semana {
@@ -6493,6 +6496,7 @@ button.checklist-texto:focus-visible {
   }
   .com-semana > div:first-child { grid-column: 1 / -1; }
   .com-semana .pl-semana { grid-column: 1; grid-row: 2; }
+  .com-semana .pl-secoes { grid-column: 1 / -1; grid-row: 3; justify-self: start; }
 }
 /* O seletor de semana: setas redondas nas pontas e o chip do meio, que abre a
    lista das semanas do mes. As cores dizem a situacao da semana - verde e a
@@ -6923,6 +6927,9 @@ button.checklist-texto:focus-visible {
   min-width: 0;
 }
 
+/* A folha do comercial nao tem divisoria encostada: os quatro cantos arredondam. */
+.pl-sheet.pl-sheet-inteira { border-radius: var(--radius-lg); }
+
 .pl-folha { display: flex; flex-direction: column; gap: 22px; }
 
 .pl-cabeca {
@@ -7147,6 +7154,46 @@ button.checklist-texto:focus-visible {
 /* A coluna rola por dentro e tem teto: sem ele, um backlog de vinte tarefas
    empurrava as entregas para fora da tela, e a reuniao montava a semana sem
    ver o que o projeto tinha de entregar. */
+/* O quadro do funil na folha da Planning. As colunas na largura do quadro do
+   Funil, e nao na miuda do quadro de uma entrega: o card comercial carrega
+   empresa, contato, valor e proxima acao, e numa coluna de 170px ele virava uma
+   torre. O quadro rola de lado; cada coluna rola por dentro, com teto, para a
+   folha nao crescer ate o fim da tela com o funil inteiro. */
+.pl-funil {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--gray3) transparent;
+  padding-bottom: 8px;
+}
+.painel-kanban.pl-funil .kanban-column:not(.kanban-column-collapsible) {
+  flex: 0 0 250px;
+  min-width: 230px;
+}
+.painel-kanban.pl-funil .kanban-column-body {
+  max-height: min(46vh, 440px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--gray3) transparent;
+}
+/* As etapas de ganho e perda so mostram o que chegou nesta semana: a nota diz
+   isso, senao a coluna vazia leria como "ninguem nunca ganhou nada". */
+.pl-funil-nota {
+  margin: -2px 8px 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--gray2);
+}
+/* O card e botao - abre o Funil com ele -, com o desenho do card do Funil. */
+button.kanban-card.pl-funil-card {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+button.kanban-card.pl-funil-card:disabled { cursor: default; }
+button.kanban-card.pl-funil-card:focus-visible { outline: none; border-color: var(--gray2); }
+
 .pl-folha .nt-dia-corpo {
   max-height: min(40vh, 380px);
   overflow-y: auto;

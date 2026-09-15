@@ -1658,6 +1658,12 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
                 token={token}
                 abrir={openCard?.page === 'projetos' ? openCard : undefined}
                 onAbriu={() => { setOpenCard(null); avisarFichaAberta(); }}
+                // O card clicado na folha do Funil da Planning abre no Funil, que é
+                // onde ele se mexe - o mesmo caminho da busca rápida.
+                onAbrirOportunidade={(id: string) => {
+                  setPage('oportunidades');
+                  setOpenCard({ page: 'oportunidades', id, nonce: Date.now() });
+                }}
                 onVerTarefasDaEntrega={(projeto: string, entrega: number) => {
                   setTarefasDaEntrega({ projeto, entrega, nonce: Date.now() });
                   setPage('tarefas');
