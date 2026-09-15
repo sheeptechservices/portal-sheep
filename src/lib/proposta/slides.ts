@@ -190,7 +190,7 @@ function slideCronograma(d: DadosProposta): string {
 
 function cardDeOpcao(o: OpcaoInvestimento): string {
   const moldura = o.recomendada
-    ? 'background:rgba(190,255,1,0.05);border:2px solid var(--yellow);box-shadow:0 0 clamp(28px,3vw,44px) rgba(190,255,1,0.09)'
+    ? 'background:rgba(0,201,167,0.05);border:2px solid var(--yellow);box-shadow:0 0 clamp(28px,3vw,44px) rgba(0,201,167,0.09)'
     : 'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.13)';
   const etiqueta = o.recomendada
     ? 'background:var(--yellow);color:var(--black)'
@@ -198,7 +198,7 @@ function cardDeOpcao(o: OpcaoInvestimento): string {
   const cifrao = o.recomendada ? 'var(--yellow)' : 'rgba(255,255,255,0.45)';
   const corUnidade = o.recomendada ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.5)';
   const bullet = o.recomendada
-    ? 'background:rgba(190,255,1,0.06);border-color:rgba(190,255,1,0.28);color:rgba(255,255,255,0.9)'
+    ? 'background:rgba(0,201,167,0.06);border-color:rgba(0,201,167,0.28);color:rgba(255,255,255,0.9)'
     : 'background:rgba(255,255,255,0.045);border-color:rgba(255,255,255,0.11);color:rgba(255,255,255,0.82)';
 
   const molduraDestaque = o.recomendada
