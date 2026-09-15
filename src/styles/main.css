@@ -6760,26 +6760,20 @@ button.checklist-texto:focus-visible {
   box-shadow: inset 0 1px 0 var(--cristal-luz);
 }
 .pagina-cristal .pl-aba:last-child { border-bottom-color: var(--cristal-borda); }
+/* A divisoria nao tem borda de baixo: o fio dali e o de cima da vizinha. No
+   hover a borda realcada ficava sem o lado de baixo, e a vizinha, que vem
+   depois na pagina, cobria o que sobrava. A sombra de 1px desenha esse lado
+   seguindo a curva do canto, e o z-index poe a aba por cima da vizinha. */
 .pagina-cristal .pl-aba:not(.ativa):hover {
+  z-index: 1;
   background: var(--cristal);
   border-color: var(--cristal-borda-forte);
+  box-shadow: inset 0 1px 0 var(--cristal-luz), 0 1px 0 var(--cristal-borda-forte);
 }
+.pagina-cristal .pl-aba:not(.ativa):last-child:hover { box-shadow: inset 0 1px 0 var(--cristal-luz); }
 .pagina-cristal .pl-aba.ativa { box-shadow: none; }
-/* A cor da prioridade no fio de fora, que e a beira exposta da divisoria. */
-.pl-aba::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  border-radius: var(--radius-md) 0 0 var(--radius-md);
-  background: var(--cor-aba, var(--gray3));
-  opacity: .45;
-  transition: opacity var(--transition-spring), width var(--transition-spring);
-}
+/* Sem fio de cor na beira: a prioridade ja aparece no icone ao lado do numero. */
 .pl-aba:hover { background: var(--gray4); color: var(--black); }
-.pl-aba:hover::before { opacity: .8; }
 .pl-aba:focus-visible { outline: none; background: var(--gray4); }
 
 /* A ativa e a divisoria puxada para frente. Quem a pinta de branco e a
@@ -6791,12 +6785,9 @@ button.checklist-texto:focus-visible {
   background: transparent;
   color: var(--black);
 }
-.pl-aba.ativa::before { opacity: 1; width: 4px; }
 
-/* O texto e o fio da prioridade passam por cima da marca; o fundo do botao fica
-   por baixo dela. */
-.pl-aba > *,
-.pl-aba::before { z-index: 2; }
+/* O texto passa por cima da marca; o fundo do botao fica por baixo dela. */
+.pl-aba > * { z-index: 2; }
 .pl-aba > * { position: relative; }
 
 /* A marca: uma folha branca do tamanho da aba, com o mesmo contorno, que anda
@@ -6844,11 +6835,10 @@ button.checklist-texto:focus-visible {
 /* A urgencia, antes do nome. */
 .pl-aba-prio { flex: none; display: inline-flex; align-items: center; }
 
-/* Clicavel e arrastavel ao mesmo tempo, como o cartao do quadro: a mao aberta
-   diz que da para levar, e o clique continua abrindo. */
+/* Clicavel e arrastavel ao mesmo tempo, mas o gesto principal e abrir: o
+   cursor e o do clique. A mao fechada so aparece com uma aba ja sendo levada. */
 .pl-aba { user-select: none; }
-.pl-aba[draggable="true"] { cursor: grab; }
-.pl-aba[draggable="true"]:active { cursor: grabbing; }
+.pl-abas.reordenando .pl-aba { cursor: grabbing; }
 /* A que esta sendo levada fica apagada, e nao some: sumir abriria um buraco na
    lista no meio do gesto, e o resto pularia para cima. */
 .pl-aba.levada { opacity: .4; }
@@ -7238,6 +7228,9 @@ button.kanban-card.pl-funil-card:focus-visible { outline: none; border-color: va
     border-bottom: none;
     border-radius: var(--radius-md) var(--radius-md) 0 0;
   }
+  /* Deitada, a aba tem as bordas dos lados e a de baixo e a da folha: o fio
+     extra do hover da lista em pe sobraria embaixo dela. */
+  .pagina-cristal .pl-aba:not(.ativa):hover { box-shadow: inset 0 1px 0 var(--cristal-luz); }
   .pl-aba.cai-antes::after,
   .pl-aba.cai-depois::after { top: 0; bottom: 0; width: 3px; height: auto; right: auto; }
   .pl-aba.cai-antes::after { left: -2px; }
@@ -7261,7 +7254,6 @@ button.kanban-card.pl-funil-card:focus-visible { outline: none; border-color: va
 
 @media (prefers-reduced-motion: reduce) {
   .pl-aba,
-  .pl-aba::before,
   .pl-aba-conta,
   .pl-aba-num > *,
   .pl-aba-marca.pronta,

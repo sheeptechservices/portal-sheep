@@ -4143,7 +4143,6 @@ function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onRe
               arrastando === p.id ? 'levada' : '',
               alvo ? `cai-${alvo}` : '',
             ].filter(Boolean).join(' ')}
-            style={{ ['--cor-aba' as string]: ehFixa ? 'var(--gray2)' : COR_PRIORIDADE[prioridade] ?? 'var(--gray3)' }}
             onClick={() => onEscolher(p.id)}
             onKeyDown={e => porTecla(e, i)}
             onDragStart={e => {
