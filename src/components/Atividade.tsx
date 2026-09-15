@@ -17,6 +17,7 @@ import {
 } from './icons';
 import { PreviaArquivo } from './PreviaArquivo';
 import { quando, tamanho as fmtTamanho } from '../lib/datas';
+import { arquivosColados } from '../lib/colarArquivos';
 import { Avatar, type Pessoa } from '../admin/FormularioTarefa';
 
 /** Uma linha do diário, já em português.
@@ -264,7 +265,7 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
     });
   }
 
-  async function escolherArquivos(lista: FileList | null) {
+  async function escolherArquivos(lista: FileList | File[] | null) {
     setErro(null);
     const novos: AnexoPendente[] = [];
     for (const f of Array.from(lista ?? [])) {
@@ -324,6 +325,15 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
             if (e.key === 'Enter' && !e.shiftKey && !busca) { e.preventDefault(); void enviar(); }
           }}
           onBlur={() => setTimeout(() => setBusca(null), 120)}
+          // O print colado entra como anexo, igual ao que o clipe traria. Texto
+          // colado segue sendo texto: o evento só é engolido quando veio arquivo.
+          onPaste={e => {
+            if (!permiteAnexo) return;
+            const colados = arquivosColados(e.clipboardData);
+            if (!colados.length) return;
+            e.preventDefault();
+            void escolherArquivos(colados);
+          }}
         />
         {busca && (candidatos.length > 0 || candidatasEtapas.length > 0) && (
           <ul className={`ativ-mencoes${busca.paraCima ? ' para-cima' : ''}`}
@@ -373,7 +383,8 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
           <>
             <input ref={arquivo} type="file" multiple hidden
               onChange={e => void escolherArquivos(e.target.files)} />
-            <button type="button" className="ativ-botao-fraco" onClick={() => arquivo.current?.click()}>
+            <button type="button" className="ativ-botao-fraco" onClick={() => arquivo.current?.click()}
+              title="Anexar arquivo, ou cole um print com Ctrl+V no campo">
               <IconClip size={13} />
               Anexar
             </button>

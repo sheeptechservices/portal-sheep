@@ -33,6 +33,7 @@ import type { Transcricao } from '../components/BotaoTranscricao';
 import { Dialogo } from '../components/Dialogo';
 import { dia as fmtData, diaCurto as fmtDataCurta, tamanho as fmtTamanho } from '../lib/datas';
 import { ancorar } from '../lib/ancorar';
+import { arquivosColados } from '../lib/colarArquivos';
 import {
   DIMENSOES, chavesDe, comparadorDe, marcaDaLinha as marcaFora, type Dimensao,
 } from '../lib/agrupamento';
@@ -2570,6 +2571,27 @@ function DialogoEvidencia({ entrega, alvo, salvando, onConcluir, onFechar }: {
   const input = useRef<HTMLInputElement>(null);
   const nomes = Array.from(escolhidos ?? []);
 
+  /* O print da conversa com o cliente, colado com Ctrl+V, entra junto dos que
+     já estavam escolhidos - é a prova mais comum, e abrir o explorador para
+     achar um recorte que acabou de ser feito é volta à toa. O ouvinte fica no
+     documento enquanto o diálogo vive: ele é modal, e o foco pode estar no
+     botão e não no comentário. Texto colado no comentário segue sendo texto. */
+  useEffect(() => {
+    const aoColar = (e: ClipboardEvent) => {
+      const colados = arquivosColados(e.clipboardData);
+      if (!colados.length) return;
+      e.preventDefault();
+      setEscolhidos(atual => {
+        // FileList não se monta à mão; o DataTransfer é o que devolve uma.
+        const juntos = new DataTransfer();
+        for (const f of [...Array.from(atual ?? []), ...colados]) juntos.items.add(f);
+        return juntos.files;
+      });
+    };
+    document.addEventListener('paste', aoColar);
+    return () => document.removeEventListener('paste', aoColar);
+  }, []);
+
   return (
     <Dialogo
       titulo={alvo === ENTREGA_ENTREGUE ? 'Marcar como entregue' : 'Marcar como validada'}
@@ -2594,6 +2616,9 @@ function DialogoEvidencia({ entrega, alvo, salvando, onConcluir, onFechar }: {
           <IconPlus size={14} />
           {nomes.length ? 'Trocar arquivo' : 'Escolher evidência'}
         </button>
+        <p style={{ fontSize: 11, color: 'var(--gray2)', margin: '6px 0 0', textAlign: 'center' }}>
+          ou cole um print com Ctrl+V
+        </p>
 
         {nomes.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
