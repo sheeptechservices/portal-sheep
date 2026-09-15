@@ -58,7 +58,14 @@ export function SelectSistema<T extends string>({
    * lista oferece criar o que foi digitado. `onCriar` devolve se criou: a
    * lista fecha no sucesso e fica aberta, com o texto, na recusa.
    */
-  criar?: { rotulo: string; onCriar: (texto: string) => Promise<boolean> };
+  criar?: {
+    rotulo: string;
+    onCriar: (texto: string) => Promise<boolean>;
+    /** Criar sem nome digitado: o clique vai direto ao `onCriar` com o texto
+     *  vazio. É para quando criar abre um cadastro próprio, que pergunta o nome
+     *  lá dentro - e aí obrigar a digitar antes seria perguntar duas vezes. */
+    semNome?: boolean;
+  };
 }) {
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState('');
@@ -97,7 +104,7 @@ export function SelectSistema<T extends string>({
   const podeCriarNome = !!criar && !!novoNome && !opcoes.some(o => semAcento(o.label) === q);
 
   async function criarOpcao() {
-    if (!criar || !podeCriarNome || criando) return;
+    if (!criar || criando || (!podeCriarNome && !(criar.semNome && !novoNome))) return;
     setCriando(true);
     const ok = await criar.onCriar(novoNome).catch(() => false);
     setCriando(false);
@@ -285,9 +292,11 @@ export function SelectSistema<T extends string>({
               escrever; com um nome novo, ela diz o que vai criar. */}
           {criar && (
             <button type="button"
-              className={`select-criar${podeCriarNome ? ' pronto' : ''}`}
+              className={`select-criar${podeCriarNome || criar.semNome ? ' pronto' : ''}`}
               disabled={criando}
-              onClick={() => (podeCriarNome ? void criarOpcao() : campoBusca.current?.focus())}>
+              onClick={() => (podeCriarNome || (criar.semNome && !novoNome)
+                ? void criarOpcao()
+                : campoBusca.current?.focus())}>
               {criando ? <IconSpinner size={13} /> : <IconPlus size={13} />}
               <span className="select-criar-texto">
                 {podeCriarNome ? <>{criar.rotulo} <strong>"{novoNome}"</strong></> : criar.rotulo}

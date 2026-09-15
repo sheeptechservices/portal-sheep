@@ -59,6 +59,13 @@ export interface ReuniaoDoCard {
   fireflies: number;
 }
 
+/** Uma proposta gerada para o lead, como o chip do card a desenha. */
+export interface PropostaDoCard {
+  id: number;
+  subtitulo: string;
+  atualizado_em: string;
+}
+
 export interface Submission {
   id: string;
   created_at: string;
@@ -116,6 +123,9 @@ export interface Submission {
    *  tópicos ficam no servidor: são parágrafos por reunião, e o quadro inteiro
    *  os carregaria para desenhar um chip. */
   reunioes?: ReuniaoDoCard[];
+  /** As propostas geradas para o lead, no mínimo que o chip do card mostra. Os
+   *  campos da apresentação descem quando a prévia é aberta. */
+  propostas?: PropostaDoCard[];
   current_status_id: number | null;
   status_since: string | null;
   cedente_id?: string | null;

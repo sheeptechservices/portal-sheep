@@ -293,6 +293,12 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   // O gerador de contratos. Registrar e ver o historico sao a mesma porta de
   // abrir o gerador: quem gera contrato pela casa ve o que a casa ja gerou, e
   // registrar e consequencia de gerar, nao um segundo poder.
+  // O gerador de propostas: a lista de leads e o historico sao da porta do
+  // gerador. Os campos de uma proposta abrem tambem pelo chip no card do funil.
+  propostas_leads: 'propostas:ver',
+  propostas_geradas: 'propostas:ver',
+  registrar_proposta: 'propostas:ver',
+  proposta_dados: ['propostas:ver', 'oportunidades:ver'],
   contratos_gerados: 'gerador:ver',
   registrar_contrato: 'gerador:ver',
 

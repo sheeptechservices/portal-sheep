@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef, typ
 import { createPortal } from 'react-dom';
 import type {
   Submission, StatusConfig, SubmissionDetail, Evento, EtapaArquivo, FormArquivo,
-  Pendencia, ReuniaoDoCard,
+  Pendencia, ReuniaoDoCard, PropostaDoCard,
 } from './types';
+import type { DadosProposta } from '../lib/proposta/tipos';
 import { useToast, useAuth } from './AdminApp';
 import { DatePicker } from '../components/DatePicker';
 import { ExecutionDateModal } from '../components/ExecutionDateModal';
@@ -35,7 +36,7 @@ import {
   Atividade, type ComentarioAtividade, type EventoAtividade,
 } from '../components/Atividade';
 import { SecaoReunioes, type Reuniao } from '../components/SecaoReunioes';
-import { ChipReuniao } from '../components/VinculoReuniao';
+import { Chip, ChipReuniao } from '../components/VinculoReuniao';
 import { ReuniaoModal } from '../components/ReuniaoModal';
 import { Avatar, type Pessoa } from './FormularioTarefa';
 
@@ -1073,18 +1074,23 @@ function usePessoasDoPortal(token: string): Pessoa[] {
   return pessoas;
 }
 
-function CreateModal({ statuses, etapaInicial, token, onClose, onCreated }: {
+/** O cadastro de oportunidade. Exportado porque o gerador de propostas abre o
+ *  mesmo cadastro para criar o lead da proposta sem sair dela - um lead
+ *  cadastrado de dois jeitos seriam dois jeitos de faltar campo. */
+export function CreateModal({ statuses, etapaInicial, token, inicial, onClose, onCreated }: {
   statuses: StatusConfig[];
   /** A etapa de onde o cadastro foi aberto. Sem ela, vale a etapa de entrada. */
   etapaInicial?: number;
   token: string;
+  /** O que já se sabe do lead: a empresa digitada na busca, por exemplo. */
+  inicial?: Partial<RascunhoOportunidade>;
   onClose: () => void;
   onCreated: (sub: Submission) => void;
 }) {
   const api = useApi(token);
   const { toast } = useToast();
   const pessoas = usePessoasDoPortal(token);
-  const [r, setR] = useState<RascunhoOportunidade>(OPORTUNIDADE_VAZIA);
+  const [r, setR] = useState<RascunhoOportunidade>(() => ({ ...OPORTUNIDADE_VAZIA, ...inicial }));
   const set = <K extends keyof RascunhoOportunidade>(k: K, v: RascunhoOportunidade[K]) =>
     setR(p => ({ ...p, [k]: v }));
   // A etapa de onde o `+` foi clicado manda; sem ela, a etapa de entrada
@@ -2707,6 +2713,66 @@ function ChipsDeReuniao({ reunioes, onAbrirOportunidade }: {
   );
 }
 
+/**
+ * As propostas geradas para o lead, como chips no card: a mesma peça do chip de
+ * reunião, com o documento como marca, o subtítulo da proposta e a data.
+ *
+ * Clicar abre a apresentação na prévia da casa, montada de novo a partir dos
+ * campos guardados - o servidor guarda os campos, e não o arquivo.
+ */
+function ChipsDeProposta({ propostas, empresa }: { propostas: PropostaDoCard[]; empresa: string | null }) {
+  const [vendo, setVendo] = useState<PropostaDoCard | null>(null);
+  /** A apresentação montada de novo. O montador entra sob demanda: o quadro do
+   *  funil inteiro não precisa dele para desenhar um chip. */
+  async function montar(id: number): Promise<string | null> {
+    const [{ htmlDaProposta }, r] = await Promise.all([
+      import('../lib/proposta/gerar'),
+      pedir(`?action=proposta_dados&id=${id}`),
+    ]);
+    return r?.dados ? htmlDaProposta(r.dados as DadosProposta) : null;
+  }
+  // A mais recente na frente: é a que está na mesa com o cliente.
+  const ordenadas = [...propostas].sort((a, b) => (b.atualizado_em ?? '').localeCompare(a.atualizado_em ?? ''));
+
+  return (
+    <div className="vinculo-chips kanban-card-reunioes" onClick={e => e.stopPropagation()}>
+      {ordenadas.map(p => (
+        <Chip key={p.id}
+          icone={<IconDoc size={12} />}
+          nome="Proposta"
+          nota={p.subtitulo}
+          titulo={`Ver a proposta "${p.subtitulo}"`}
+          onAbrir={() => setVendo(p)} />
+      ))}
+      {vendo && (
+        <PreviaArquivo
+          arquivo={{ nome: `Proposta ${empresa ?? ''} - ${vendo.subtitulo}`.replace(/\s+-\s+$/, ''), chave: vendo.id }}
+          camada={1080}
+          onCarregar={async () => {
+            const html = await montar(vendo.id);
+            if (!html) return null;
+            const { emBase64 } = await import('../lib/proposta/gerar');
+            return { tipo: 'text/html', base64: emBase64(html) };
+          }}
+          onBaixar={() => {
+            void (async () => {
+              const html = await montar(vendo.id);
+              if (!html) return;
+              const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `Proposta_${(empresa ?? 'Cliente').replace(/[^\p{L}\p{N}\- ]+/gu, '').trim().replace(/\s+/g, '_')}.html`;
+              a.click();
+              setTimeout(() => URL.revokeObjectURL(url), 10_000);
+            })();
+          }}
+          onFechar={() => setVendo(null)}
+        />
+      )}
+    </div>
+  );
+}
+
 /** Uma leitura curta do servidor, com a sessão que está na janela. Mesmo
  *  caminho do modal de anexos aqui do lado: o card é folha da árvore, e passar
  *  o token por três componentes só para chegar nele não paga. */
@@ -2808,6 +2874,9 @@ function KanbanCard({
       )}
       {(sub.reunioes?.length ?? 0) > 0 && (
         <ChipsDeReuniao reunioes={sub.reunioes!} onAbrirOportunidade={() => onClick(sub.id)} />
+      )}
+      {(sub.propostas?.length ?? 0) > 0 && (
+        <ChipsDeProposta propostas={sub.propostas!} empresa={sub.empresa} />
       )}
       {(sub.arquivo_count > 0 || (sub.comentario_count ?? 0) > 0 || (sub.pendencia_total_count ?? 0) > 0) && (
         <div className="kanban-card-footer">

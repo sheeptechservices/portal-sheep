@@ -11202,6 +11202,9 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   border-radius: var(--radius-sm);
   background: #fff;
 }
+/* A proposta e uma apresentacao 16:9: a moldura larga, sem o teto de 1100px do
+   PDF, que e folha em pe. */
+.previa-iframe.previa-html { max-width: 1600px; width: 94vw; }
 .previa-recado {
   text-align: center;
   color: rgba(255, 255, 255, .8);

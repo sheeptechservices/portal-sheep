@@ -1684,7 +1684,14 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
             {paginaNaTela === 'configuracoes' && <ConfiguracoesPage token={token} />}
             {paginaNaTela === 'ferramentas'   && <FerramentasPage onNavigate={p => setPage(p as Page)} />}
             {paginaNaTela === 'gerador-documentos' && <GeradorContratos token={token} />}
-            {paginaNaTela === 'gerador-propostas' && <GeradorPropostas />}
+            {paginaNaTela === 'gerador-propostas' && (
+              <GeradorPropostas token={token}
+                // A proposta vive presa a um lead: o histórico leva até ele no Funil.
+                onAbrirOportunidade={pode('oportunidades:ver') ? (id: string) => {
+                  setPage('oportunidades');
+                  setOpenCard({ page: 'oportunidades', id, nonce: Date.now() });
+                } : undefined} />
+            )}
             {paginaNaTela === 'cofre' && <CofreSenhas token={token} />}
             {paginaNaTela === 'talentos'      && <TalentosPage      token={token} />}
             {paginaNaTela === 'perfil'        && <PerfilPage token={token} />}

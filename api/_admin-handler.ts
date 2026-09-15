@@ -1964,6 +1964,34 @@ async function migrarSchema(db: Client) {
   await ddl(`CREATE INDEX IF NOT EXISTS idx_contratos_modelo
              ON contratos_gerados (modelo, atualizado_em DESC)`);
 
+  // ── Propostas geradas ────────────────────────────────────────────────────
+  //
+  //  Toda proposta que sai do gerador, presa ao lead do funil de onde ela veio:
+  //  e o que faz o chip dela aparecer no card do lead, e o que faz o historico
+  //  do gerador dizer para quem foi cada uma.
+  //
+  //  Guarda os campos, e nao o arquivo: a apresentacao sai do template com eles,
+  //  como o contrato sai do modelo. A mesma proposta refeita - mesmo lead, mesmo
+  //  subtitulo - atualiza a linha em vez de virar outra, pela `chave`.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS propostas_geradas (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      oportunidade_id TEXT NOT NULL,
+      cliente         TEXT NOT NULL,
+      subtitulo       TEXT NOT NULL,
+      chave           TEXT NOT NULL,
+      dados           TEXT NOT NULL,
+      slides          INTEGER,
+      autor_id        TEXT,
+      autor_nome      TEXT NOT NULL,
+      criado_em       TEXT NOT NULL,
+      atualizado_em   TEXT NOT NULL
+    )
+  `);
+  await ddl(`CREATE UNIQUE INDEX IF NOT EXISTS idx_propostas_chave ON propostas_geradas (chave)`);
+  await ddl(`CREATE INDEX IF NOT EXISTS idx_propostas_oportunidade
+             ON propostas_geradas (oportunidade_id, atualizado_em DESC)`);
+
   // Índices nas chaves estrangeiras. Sem eles, cada busca por `oportunidade_id`
   // (etc.) vira full table scan: o board roda subqueries correlacionadas por
   // linha e cada abertura de detalhe varre as tabelas filhas inteiras, o que
@@ -3474,6 +3502,11 @@ async function despacharAdminData(
               'id', r.id, 'assunto', r.assunto, 'data', r.data,
               'fireflies', CASE WHEN r.fireflies_id IS NULL THEN 0 ELSE 1 END))
            FROM projeto_reunioes r WHERE r.oportunidade_id = s.id) AS reunioes,
+          -- As propostas geradas para o lead, para o chip do card. So o que o
+          -- chip mostra; os campos da apresentacao descem ao abrir a previa.
+          (SELECT json_group_array(json_object(
+              'id', pg.id, 'subtitulo', pg.subtitulo, 'atualizado_em', pg.atualizado_em))
+           FROM propostas_geradas pg WHERE pg.oportunidade_id = s.id) AS propostas,
           curr.status_id AS current_status_id,
           curr.criado_em  AS status_since
         FROM oportunidades s
@@ -3502,6 +3535,7 @@ async function despacharAdminData(
           submissions: subs.rows.map(r => ({
             ...r,
             reunioes: JSON.parse(String(r.reunioes ?? '[]')) as unknown[],
+            propostas: JSON.parse(String(r.propostas ?? '[]')) as unknown[],
           })),
         },
       };
@@ -5054,6 +5088,93 @@ async function despacharAdminData(
       return {
         status: 200,
         body: { itens, naoLidos: itens.filter(i => !i.lido).length, projetos },
+      };
+    }
+
+    /**
+     * Os leads do funil a que uma proposta pode ser presa: o seletor do gerador.
+     *
+     * Enxuto - id, empresa, contato e etapa -, e para quem abre o gerador, e nao
+     * so para quem ve o funil: sem a lista, quem monta propostas nao conseguiria
+     * cumprir a regra de que toda proposta tem um lead. A perdida fica de fora:
+     * proposta nova para lead perdido e reabrir o lead, e isso se faz no funil.
+     */
+    if (action === 'propostas_leads') {
+      const r = await db.execute(`
+        SELECT s.id, s.empresa, s.contato_nome, sc.nome AS etapa
+        FROM oportunidades s
+        LEFT JOIN (
+          SELECT e.oportunidade_id, e.status_id
+          FROM oportunidade_eventos e
+          WHERE e.tipo = 'status_change'
+            AND e.id = (SELECT MAX(e2.id) FROM oportunidade_eventos e2
+                        WHERE e2.oportunidade_id = e.oportunidade_id AND e2.tipo = 'status_change')
+        ) curr ON curr.oportunidade_id = s.id
+        LEFT JOIN status_configs sc ON sc.id = curr.status_id
+        WHERE s.deleted_at IS NULL AND COALESCE(sc.is_excluded, 0) = 0
+        ORDER BY s.empresa COLLATE NOCASE
+      `);
+      // As etapas vao junto: o gerador abre o cadastro de lead, que pergunta a
+      // etapa, e quem monta proposta nem sempre enxerga o funil para busca-las.
+      const etapas = await db.execute(
+        'SELECT id, nome, cor, ordem, is_entrada, is_conversion, is_excluded FROM status_configs WHERE ativo = 1 ORDER BY ordem');
+      return {
+        status: 200,
+        body: {
+          etapas: etapas.rows,
+          leads: r.rows.map(x => ({
+            id: String(x.id),
+            empresa: x.empresa == null ? null : String(x.empresa),
+            contato: x.contato_nome == null ? null : String(x.contato_nome),
+            etapa: x.etapa == null ? null : String(x.etapa),
+          })),
+        },
+      };
+    }
+
+    /** O historico do gerador de propostas: todas as que sairam, da mais nova
+     *  para a mais velha, com o lead de cada uma. Sem os dados - eles descem por
+     *  `proposta_dados` quando alguem pede aquela. */
+    if (action === 'propostas_geradas') {
+      const r = await db.execute(`
+        SELECT p.id, p.oportunidade_id, p.cliente, p.subtitulo, p.slides, p.autor_nome,
+               p.criado_em, p.atualizado_em, s.empresa AS lead_empresa
+        FROM propostas_geradas p
+        LEFT JOIN oportunidades s ON s.id = p.oportunidade_id
+        ORDER BY p.atualizado_em DESC
+        LIMIT 300
+      `);
+      return {
+        status: 200,
+        body: {
+          propostas: r.rows.map(x => ({
+            id: Number(x.id),
+            oportunidade_id: String(x.oportunidade_id),
+            lead_empresa: x.lead_empresa == null ? null : String(x.lead_empresa),
+            cliente: String(x.cliente),
+            subtitulo: String(x.subtitulo),
+            slides: x.slides == null ? null : Number(x.slides),
+            autor_nome: String(x.autor_nome),
+            criado_em: String(x.criado_em),
+            atualizado_em: String(x.atualizado_em),
+          })),
+        },
+      };
+    }
+
+    /** Os campos de uma proposta, para montar a apresentacao de novo: a previa
+     *  do chip no card do lead e a segunda via do historico. */
+    if (action === 'proposta_dados') {
+      const id = Number(query.get('id'));
+      if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };
+      const r = await db.execute({
+        sql: 'SELECT id, cliente, subtitulo, dados FROM propostas_geradas WHERE id = ?', args: [id],
+      });
+      const x = r.rows[0];
+      if (!x) return { status: 404, body: { error: 'Proposta não encontrada.' } };
+      return {
+        status: 200,
+        body: { id: Number(x.id), cliente: String(x.cliente), subtitulo: String(x.subtitulo), dados: comoObjeto(x.dados) },
       };
     }
 
@@ -7320,6 +7441,66 @@ function faltaEmProjeto(p: any): string | null {
      * nunca passam por aqui. O que sobe e o que a tela preencheu, que e o que
      * o modelo precisa para gerar o mesmo documento outra vez.
      */
+    /**
+     * A proposta acabou de sair do gerador, e o lead dela passa a saber.
+     *
+     * O lead e obrigatorio: toda proposta tem um card no funil, e e la que a
+     * casa acompanha o que foi mandado para quem. Os campos vao junto porque sao
+     * eles que montam a apresentacao de novo - no chip do card e no historico.
+     */
+    if (action === 'registrar_proposta') {
+      const oportunidadeId = String(body?.oportunidade_id ?? '').trim();
+      const cliente = String(body?.cliente ?? '').trim().slice(0, 200);
+      const subtitulo = String(body?.subtitulo ?? '').trim().slice(0, 300);
+      const dados = body?.dados;
+      if (!oportunidadeId) {
+        return { status: 400, body: { error: 'Escolha o lead do funil a que esta proposta pertence.' } };
+      }
+      if (!cliente || !subtitulo || !dados || typeof dados !== 'object') {
+        return { status: 400, body: { error: 'Proposta sem dados para registrar.' } };
+      }
+      const lead = await db.execute({
+        sql: 'SELECT id FROM oportunidades WHERE id = ? AND deleted_at IS NULL', args: [oportunidadeId],
+      });
+      if (!lead.rows[0]) return { status: 404, body: { error: 'O lead escolhido não está mais no funil.' } };
+      const texto = JSON.stringify(dados);
+      if (texto.length > 200000) {
+        return { status: 413, body: { error: 'Os dados desta proposta não cabem no histórico.' } };
+      }
+      const agora = new Date().toISOString();
+      const chave = `${oportunidadeId}|${subtitulo.toLocaleLowerCase('pt-BR')}`;
+      const slides = Number(body?.slides);
+      const r = await db.execute({
+        sql: `INSERT INTO propostas_geradas
+                (oportunidade_id, cliente, subtitulo, chave, dados, slides, autor_id, autor_nome,
+                 criado_em, atualizado_em)
+              VALUES (?,?,?,?,?,?,?,?,?,?)
+              ON CONFLICT(chave) DO UPDATE SET
+                cliente = excluded.cliente,
+                dados = excluded.dados,
+                slides = excluded.slides,
+                autor_id = excluded.autor_id,
+                autor_nome = excluded.autor_nome,
+                atualizado_em = excluded.atualizado_em
+              RETURNING id, criado_em, atualizado_em`,
+        args: [
+          oportunidadeId, cliente, subtitulo, chave, texto,
+          Number.isFinite(slides) ? slides : null,
+          autorId ?? null, autorNome ?? 'alguém do time', agora, agora,
+        ],
+      });
+      const linha = r.rows[0];
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          id: Number(linha?.id ?? 0),
+          criado_em: String(linha?.criado_em ?? agora),
+          atualizado_em: String(linha?.atualizado_em ?? agora),
+        },
+      };
+    }
+
     if (action === 'registrar_contrato') {
       const modelo = String(body?.modelo ?? '').trim();
       const titulo = String(body?.titulo ?? '').trim().slice(0, 200);

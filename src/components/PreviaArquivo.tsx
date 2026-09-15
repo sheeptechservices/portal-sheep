@@ -4,8 +4,8 @@
 //  Uma janela só para todo anexo do sistema: anexo de projeto, evidência de
 //  entrega, arquivo de comentário, print de chamado e anexo de oportunidade.
 //  Quem chama diz como buscar o conteúdo - o `api` da tela é que carrega o
-//  token da sessão -, e a janela cuida do resto: imagem, PDF e planilha (Excel
-//  e CSV) abrem aqui dentro, o resto oferece o download.
+//  token da sessão -, e a janela cuida do resto: imagem, PDF, planilha (Excel
+//  e CSV) e página HTML abrem aqui dentro, o resto oferece o download.
 //
 //  Ela é tela cheia, e não uma caixa branca no meio da página. Um print de
 //  chamado é lido para se achar o detalhe que quem escreveu não soube nomear, e
@@ -174,6 +174,7 @@ export function PreviaArquivo({ arquivo, onCarregar, onBaixar, onFechar, camada,
 
   const imagem = conteudo?.tipo.startsWith('image/');
   const pdf = conteudo?.tipo === 'application/pdf';
+  const html = !!conteudo?.tipo.startsWith('text/html');
 
   return createPortal(
     // O fundo é a própria tela: clicar nele fecha, e o arquivo no meio segura o
@@ -207,7 +208,14 @@ export function PreviaArquivo({ arquivo, onCarregar, onBaixar, onFechar, camada,
         {conteudo && pdf && (
           <iframe src={conteudo.url} className="previa-iframe" title={arquivo.nome} />
         )}
-        {conteudo && !imagem && !pdf && (
+        {/* Página HTML - a proposta da casa é uma apresentação assim - abre numa
+            moldura isolada: roda o próprio script (as setas dos slides), mas
+            sem acesso ao portal em volta, porque o arquivo pode vir de fora. */}
+        {conteudo && html && (
+          <iframe src={conteudo.url} className="previa-iframe previa-html" title={arquivo.nome}
+            sandbox="allow-scripts" />
+        )}
+        {conteudo && !imagem && !pdf && !html && (
           <div className="previa-recado">
             <p>Visualização não disponível para este formato.</p>
             <button type="button" className="btn btn-primary" style={{ marginTop: 16 }}
