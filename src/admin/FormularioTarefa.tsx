@@ -809,7 +809,7 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
     onEntregaCriada(projeto.id, {
       id: Number(r.id), projeto_id: projeto.id, titulo, descricao: null,
       marcador: null, submarcador: null, status: String(r.status ?? 'Planejada'),
-      prazo: null, responsaveis: [], links: [], ordem: Number(r.ordem ?? 0),
+      prazo: null, prioridade: null, responsaveis: [], links: [], ordem: Number(r.ordem ?? 0),
       evidencias: [], arquivos: [], tarefas_total: 0, tarefas_feitas: 0, progresso: 0,
     });
     onMudar({ ...rascunhoVivo.current, entrega_id: String(r.id) });

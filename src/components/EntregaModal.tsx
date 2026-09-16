@@ -30,6 +30,8 @@ export interface EntregaAberta {
   prazo: string | null;
   marcador: string | null;
   submarcador: string | null;
+  /** A fila da area do cliente. Nulo: ainda nao priorizada. */
+  prioridade?: number | null;
   links: { label: string; url: string }[];
   progresso: number;
 }
@@ -85,6 +87,7 @@ export function EntregaModal({
               {entrega.status}
               {entrega.prazo ? ` · ${fmtData(entrega.prazo)}` : ''}
               {marca ? ` · ${marca}` : ''}
+              {entrega.prioridade != null ? ` · prioridade ${entrega.prioridade}` : ''}
             </span>
           </p>
           <button type="button" className="admin-modal-close" onClick={fechar}

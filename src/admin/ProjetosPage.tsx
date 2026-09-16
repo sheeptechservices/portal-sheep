@@ -101,6 +101,7 @@ const COR_STATUS: Record<string, string> = {
  *  porque as entregas são cadastradas na sequência em que devem acontecer. */
 const ORDENS_ENTREGA = [
   { valor: 'criacao', label: 'Ordem de criação' },
+  { valor: 'prioridade', label: 'Prioridade' },
   { valor: 'titulo', label: 'Título (A a Z)' },
   { valor: 'prazo', label: 'Prazo mais próximo' },
   { valor: 'status', label: 'Etapa' },
@@ -208,6 +209,10 @@ export interface Entrega {
   submarcador: string | null;
   status: string;
   prazo: string | null;
+  /** A fila da area do cliente: 1 e o que vem primeiro. Nao e unica - cada area
+   *  monta a sua, entao duas entregas de areas diferentes podem ser 1 ao mesmo
+   *  tempo. Nulo e "ainda nao priorizada". */
+  prioridade: number | null;
   responsaveis: string[];
   /** Saíram da tela em favor dos anexos, mas continuam na coluna: uma tela que
    *  não conhece mais o campo não pode apagar o que foi guardado antes dela. */
@@ -265,6 +270,8 @@ export interface EntregaPendente {
   submarcador: string;
   status: string;
   prazo: string;
+  /** Ver `Entrega.prioridade`. Vazio no formulário vira nulo. */
+  prioridade: number | null;
   responsaveis: string[];
 }
 
@@ -372,7 +379,7 @@ function entregasDePartida(): EntregaPendente[] {
     marcador: MARCADOR_DE_PARTIDA,
     submarcador: '',
     status: ENTREGA_PLANEJADA,
-    prazo: '', responsaveis: [], links: [],
+    prazo: '', prioridade: null, responsaveis: [], links: [],
   }));
 }
 
@@ -1518,6 +1525,11 @@ function EditorEntrega({ inicial, pessoas, marcadores, submarcadores, salvando, 
   const [submarcador, setSubmarcador] = useState(inicial?.submarcador ?? '');
   const status = inicial?.status ?? ENTREGA_PLANEJADA;
   const [prazo, setPrazo] = useState(inicial?.prazo ?? '');
+  // Texto, e nao numero: o campo precisa poder ficar vazio enquanto se digita, e
+  // vazio vira nulo na gravacao.
+  const [prioridade, setPrioridade] = useState(
+    inicial?.prioridade == null ? '' : String(inicial.prioridade),
+  );
   const [responsaveis, setResponsaveis] = useState<string[]>(inicial?.responsaveis ?? []);
   const [erros, setErros] = useState<Record<string, string>>({});
 
@@ -1528,9 +1540,14 @@ function EditorEntrega({ inicial, pessoas, marcadores, submarcadores, salvando, 
     }
     // Sem `links`: o campo saiu da tela, e o servidor só reescreve a coluna
     // quando ela vem no corpo.
+    const posicao = Number(prioridade);
     onSalvar({ titulo: titulo.trim(), descricao,
       marcador: marcador.trim(), submarcador: submarcador.trim(),
-      status, prazo, responsaveis });
+      status, prazo,
+      prioridade: prioridade.trim() && Number.isFinite(posicao) && posicao >= 1
+        ? Math.round(posicao)
+        : null,
+      responsaveis });
   }
 
   return (
@@ -1569,10 +1586,19 @@ function EditorEntrega({ inicial, pessoas, marcadores, submarcadores, salvando, 
           não cresce com o conteúdo; quem fica com a sobra é a lista de
           pessoas, que cresce. */}
       <div className="campos-2" style={{ display: 'grid',
-        gridTemplateColumns: '220px minmax(0, 1fr)', gap: 10 }}>
+        gridTemplateColumns: '220px 120px minmax(0, 1fr)', gap: 10 }}>
         <div className="form-group">
           <label className="form-label">Prazo</label>
           <DatePicker compact allowPast value={prazo} onChange={setPrazo} />
+        </div>
+        {/* A fila que o cliente definiu para a area: 1 e o que vem primeiro. Se
+            repete entre areas de proposito - cada uma prioriza a sua. */}
+        <div className="form-group">
+          <label className="form-label" htmlFor="entrega-prioridade">Prioridade</label>
+          <input id="entrega-prioridade" className="form-input" type="number" min={1} max={999}
+            inputMode="numeric" value={prioridade} placeholder="1"
+            title="A ordem dentro da area do cliente. Vazio: ainda nao priorizada."
+            onChange={e => setPrioridade(e.target.value.replace(/[^0-9]/g, ''))} />
         </div>
         <div className="form-group">
           <label className="form-label">Responsáveis</label>
@@ -1600,6 +1626,104 @@ function EditorEntrega({ inicial, pessoas, marcadores, submarcadores, salvando, 
 
 /** Lista de entregas. Num projeto já criado cada mudança grava na hora; num
  *  projeto novo elas ficam em memória até o projeto existir. */
+/** A prioridade da entrega, editada na propria linha.
+ *
+ *  E o numero que o cliente manda por planilha e muda de semana em semana:
+ *  abrir a ficha da entrega para trocar um digito e caro demais para um gesto
+ *  tao repetido. Clicar troca o chip pelo campo, no mesmo lugar e do mesmo
+ *  tamanho - e a `.troca` da casa, so opacidade, porque a peca nao nasce nem
+ *  some, muda de cara.
+ *
+ *  Enter grava, Escape desiste, e sair do campo grava tambem: quem digita e
+ *  clica na proxima linha nao esta cancelando, esta seguindo. Campo vazio grava
+ *  nulo, que e "ainda nao priorizada".
+ *
+ *  Sem prioridade, o chip so aparece quando o mouse entra na linha: uma lista de
+ *  oitenta entregas sem fila nao precisa de oitenta lugares vazios pedindo
+ *  numero. Quem le pelo teclado chega nele pelo Tab, que e o que o `:focus`
+ *  tambem revela. */
+function PrioridadeDaEntrega({ entrega, somenteLeitura, onDefinir }: {
+  entrega: Entrega;
+  somenteLeitura: boolean;
+  onDefinir: (prioridade: number | null) => void;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [texto, setTexto] = useState('');
+  /** O mesmo texto, para o `onBlur` ler. Sair do campo no mesmo quadro em que a
+   *  ultima tecla entrou fazia a gravacao ver o valor anterior, e o numero
+   *  recem-digitado se perdia. */
+  const digitado = useRef('');
+  const campo = useRef<HTMLInputElement>(null);
+
+  // O foco vai para o campo quando ele nasce, e o texto ja entra marcado: a
+  // primeira tecla troca o numero, em vez de escrever ao lado dele.
+  useEffect(() => { if (editando) { campo.current?.focus(); campo.current?.select(); } }, [editando]);
+
+  function gravar() {
+    if (!editando) return;
+    setEditando(false);
+    const valor = digitado.current;
+    const numero = Number(valor);
+    const novo = valor.trim() && Number.isFinite(numero) && numero >= 1 ? Math.round(numero) : null;
+    if (novo !== entrega.prioridade) onDefinir(novo);
+  }
+
+  if (somenteLeitura) {
+    return entrega.prioridade != null ? (
+      <span className="entrega-prioridade" title={`Prioridade ${entrega.prioridade} dentro da área`}>
+        {entrega.prioridade}
+      </span>
+    ) : null;
+  }
+
+  if (editando) {
+    return (
+      <input
+        ref={campo}
+        className="entrega-prioridade entrega-prioridade-campo troca"
+        type="text"
+        inputMode="numeric"
+        maxLength={3}
+        value={texto}
+        aria-label={`Prioridade de ${entrega.titulo}`}
+        onClick={ev => ev.stopPropagation()}
+        onChange={ev => {
+          const limpo = ev.target.value.replace(/[^0-9]/g, '');
+          digitado.current = limpo;
+          setTexto(limpo);
+        }}
+        onBlur={gravar}
+        onKeyDown={ev => {
+          if (ev.key === 'Enter') { ev.preventDefault(); gravar(); }
+          if (ev.key === 'Escape') { ev.preventDefault(); setEditando(false); }
+        }}
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className={`entrega-prioridade entrega-prioridade-botao troca${entrega.prioridade == null ? ' vazia' : ''}`}
+      title={entrega.prioridade == null
+        ? 'Definir a prioridade desta entrega na fila da área'
+        : `Prioridade ${entrega.prioridade} dentro da área. Clique para trocar.`}
+      aria-label={entrega.prioridade == null
+        ? `Definir a prioridade de ${entrega.titulo}`
+        : `Prioridade ${entrega.prioridade} de ${entrega.titulo}`}
+      onClick={ev => {
+        ev.stopPropagation();
+        const atual = entrega.prioridade == null ? '' : String(entrega.prioridade);
+        digitado.current = atual;
+        setTexto(atual);
+        setEditando(true);
+      }}
+    >
+      {entrega.prioridade ?? <IconPlus size={10} />}
+    </button>
+  );
+}
+
 function SecaoEntregas({
   entregas, pendentes, tarefas, onVerTarefasDaEntrega, onCriarTarefa, onAbrirTarefa,
   onExcluirTarefa, onMoverTarefa, onFixarRecolhida, podeEditarTarefa, etapasTarefa,
@@ -1700,8 +1824,14 @@ function SecaoEntregas({
     return {
       titulo: e.titulo, descricao: e.descricao ?? '',
       marcador: e.marcador ?? '', submarcador: e.submarcador ?? '', status,
-      prazo: e.prazo ?? '', responsaveis: e.responsaveis,
+      prazo: e.prazo ?? '', prioridade: e.prioridade, responsaveis: e.responsaveis,
     };
+  }
+
+  /** Troca só a prioridade, preservando o resto - `salvar_entrega` regrava a
+   *  linha inteira, como no `comStatus`. */
+  function comPrioridade(e: Entrega, prioridade: number | null): EntregaPendente {
+    return { ...comStatus(e, e.status), prioridade };
   }
 
   async function escolherStatus(e: Entrega, status: string) {
@@ -1738,6 +1868,11 @@ function SecaoEntregas({
     const copia = [...filtradas];
     if (ordem === 'titulo') copia.sort((a, b) => a.titulo.localeCompare(b.titulo, 'pt-BR'));
     // Entrega sem prazo vai para o fim: ela não compete por urgência.
+    // Sem prioridade vai para o fim: a entrega que o cliente ainda nao colocou
+    // na fila nao se mistura com a primeira dela.
+    if (ordem === 'prioridade') {
+      copia.sort((a, b) => (a.prioridade ?? 9999) - (b.prioridade ?? 9999) || a.ordem - b.ordem);
+    }
     if (ordem === 'prazo') copia.sort((a, b) => (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999'));
     if (ordem === 'status') copia.sort((a, b) => posicao(a) - posicao(b) || a.ordem - b.ordem);
     return copia;
@@ -2022,6 +2157,11 @@ function SecaoEntregas({
                       <IconChevronRight size={12} />
                     </span>
                   </button>
+
+                  {/* A fila que o cliente definiu para a area desta entrega,
+                      trocada na propria linha. */}
+                  <PrioridadeDaEntrega entrega={e} somenteLeitura={somenteLeitura}
+                    onDefinir={n => onSalvarEntrega(comPrioridade(e, n), e.id)} />
 
                   {marcaDaLinha(e) && (
                     <span className="entrega-marca" title="Marcador e submarcador">
@@ -6234,6 +6374,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
         marcador: dados.marcador || null,
         submarcador: dados.submarcador || null,
         prazo: dados.prazo || null,
+        prioridade: dados.prioridade ?? null,
         status: String(r.status ?? 'Planejada'),
         ordem: Number(r.ordem ?? 0),
         evidencias: [],

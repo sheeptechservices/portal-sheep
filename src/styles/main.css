@@ -12,6 +12,10 @@
   --on-yellow: #121316;
   --yd:     rgba(0, 201, 167, 0.12);
   --yb:     rgba(0, 201, 167, 0.40);
+  /* O verde para TEXTO sobre o `--yd`. O `--yellow` cheio e claro demais para
+     numero e rotulo pequenos sobre fundo claro; este e o mesmo tom, dois
+     degraus mais fundo, que e o que da contraste sem sair da cor da casa. */
+  --yellow-tinta: #00806B;
   /* Cor do arco que gira nos carregamentos. Token próprio e não `--yellow`
      porque o amarelo também pinta badge, gráfico e relatório: o carregamento
      mudar de cor não deve arrastar o resto do sistema junto. */
@@ -126,6 +130,9 @@
   --grafico-faixa-forte: var(--gray3);
   --yd:     rgba(0, 201, 167, 0.16);
   --yb:     rgba(0, 201, 167, 0.45);
+  /* No escuro o caminho e o contrario: o texto sobe de luminosidade para
+     aparecer sobre a chapa verde escura. */
+  --yellow-tinta: #3FE0C2;
   --shadow-card: 0 2px 10px rgba(0,0,0,0.55);
   --shadow-card-hover: 0 8px 32px rgba(0,0,0,0.65), 0 2px 8px rgba(0,0,0,0.5);
   /* O azul do tema claro fica escuro demais sobre a folha quase preta: aqui
@@ -14725,6 +14732,59 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 .visao-donos { display: flex; gap: 3px; }
 /* Marcador e submarcador na linha da entrega. Mesmo desenho do cartão do
    quadro: é a mesma informação, vista em outra visão. */
+/* A prioridade da entrega: numero so, no verde da casa, antes do marcador. E a
+   fila que o cliente definiu para aquela area, e por isso nao se compara com a
+   de outra area. */
+.entrega-prioridade {
+  flex: none;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-sm);
+  background: var(--yd);
+  color: var(--yellow-tinta);
+  font-size: 10.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Clicavel: o numero vira campo no proprio lugar. O hover e o da casa para
+   chip - a borda acende, sem mover a linha. */
+.entrega-prioridade-botao {
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition), opacity var(--transition);
+}
+.entrega-prioridade-botao:hover { border-color: var(--yellow); }
+.entrega-prioridade-botao:focus-visible { outline: none; border-color: var(--yellow); }
+/* Sem prioridade, o lugar so aparece quando o mouse entra na linha ou o teclado
+   chega nele: numa lista de oitenta entregas, oitenta quadrinhos vazios pedindo
+   numero seriam ruido. */
+.entrega-prioridade-botao.vazia {
+  opacity: 0;
+  background: var(--gray4);
+  color: var(--gray2);
+}
+.entrega-linha:hover .entrega-prioridade-botao.vazia,
+.entrega-prioridade-botao.vazia:focus-visible { opacity: 1; }
+/* O campo tem o tamanho do chip, para a troca nao mexer na linha. */
+.entrega-prioridade-campo {
+  width: 34px;
+  border-color: var(--yellow);
+  background: var(--white);
+  color: var(--black);
+  font-family: inherit;
+  text-align: center;
+}
+.entrega-prioridade-campo:focus { outline: none; }
+@media (prefers-reduced-motion: reduce) {
+  .entrega-prioridade-botao { transition: none; }
+}
+
 .entrega-marca {
   flex-shrink: 0;
   max-width: 30%;

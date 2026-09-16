@@ -1844,6 +1844,13 @@ async function migrarSchema(db: Client) {
     await ddl(`ALTER TABLE projeto_entregas DROP COLUMN categoria`);
   } catch { /* já saiu, ou nunca existiu nesta base */ }
 
+  // A prioridade da entrega, acrescentada depois. Numero livre, sem unicidade:
+  // cada area do cliente monta a propria fila, entao duas entregas de areas
+  // diferentes podem ser 1 ao mesmo tempo. Nulo e "ainda nao priorizada".
+  try {
+    await ddl(`ALTER TABLE projeto_entregas ADD COLUMN prioridade INTEGER`);
+  } catch { /* coluna já existe */ }
+
   // Etapa da evidência, acrescentada depois. As que já existiam provam a
   // entrega: era o único estado que pedia prova quando foram anexadas.
   try {
@@ -3883,7 +3890,7 @@ async function despacharAdminData(
         db.execute(`SELECT reuniao_id, tipo, alvo_id FROM reuniao_vinculos`),
         db.execute(`
           SELECT id, projeto_id, titulo, descricao, marcador, submarcador, status, prazo,
-                 responsaveis, links, ordem
+                 responsaveis, links, ordem, prioridade
           FROM projeto_entregas ORDER BY ordem, id
         `),
         // Sem o base64: a listagem carregaria o conteúdo de todo arquivo de
@@ -6075,6 +6082,14 @@ function faltaEmProjeto(p: any): string | null {
       // faria a lista de sugestões oferecer um item em branco.
       const marcador = String(e.marcador ?? '').trim() || null;
       const submarcador = String(e.submarcador ?? '').trim() || null;
+      // A prioridade e a fila da area do cliente: inteiro de 1 para cima, que se
+      // repete entre areas. Campo em branco volta a nulo, que e "ainda nao
+      // priorizada" - diferente de 0, que seria uma posicao.
+      const numeroPrioridade = Number(e.prioridade);
+      const prioridade = e.prioridade === null || e.prioridade === undefined || e.prioridade === ''
+        || !Number.isFinite(numeroPrioridade) || numeroPrioridade < 1
+        ? null
+        : Math.min(999, Math.round(numeroPrioridade));
 
       // O status só é uma escolha quando é resolução de alguém: planejada,
       // entregue, validada ou cancelada. "Em andamento" e "Bloqueada" são
@@ -6099,11 +6114,11 @@ function faltaEmProjeto(p: any): string | null {
           };
         }
         const campos = [titulo, e.descricao ?? null, marcador, submarcador,
-          e.prazo || null, responsaveis, ...(mudaLinks ? [links] : [])];
+          e.prazo || null, responsaveis, prioridade, ...(mudaLinks ? [links] : [])];
         await db.execute({
           sql: `UPDATE projeto_entregas
                 SET titulo=?, descricao=?, marcador=?, submarcador=?, prazo=?,
-                    responsaveis=?${mudaLinks ? ', links=?' : ''}${mudaStatus ? ', status=?' : ''}
+                    responsaveis=?, prioridade=?${mudaLinks ? ', links=?' : ''}${mudaStatus ? ', status=?' : ''}
                 WHERE id=?`,
           args: mudaStatus ? [...campos, e.status, e.id] : [...campos, e.id],
         });
@@ -6116,15 +6131,16 @@ function faltaEmProjeto(p: any): string | null {
         const inserida = await db.execute({
           sql: `INSERT INTO projeto_entregas
                   (projeto_id, titulo, descricao, marcador, submarcador, status, prazo, responsaveis,
-                   links, ordem, criado_em, criado_por_id, criado_por_nome)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                   links, ordem, prioridade, criado_em, criado_por_id, criado_por_nome)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
           args: [
             e.projeto_id, titulo, e.descricao ?? null, marcador, submarcador,
             // Entrega nova nasce planejada: concluir exige prova, que ainda não
             // tem onde se prender.
             e.status === ENTREGA_CANCELADA ? ENTREGA_CANCELADA : 'Planejada',
             e.prazo || null, responsaveis, links,
-            Number(ordem.rows[0].proxima), new Date().toISOString(), autorId, autorNome,
+            Number(ordem.rows[0].proxima), prioridade,
+            new Date().toISOString(), autorId, autorNome,
           ],
         });
         // O que a tela não teria como saber: o id e a posição na lista. Com
