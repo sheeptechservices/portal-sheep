@@ -7,17 +7,22 @@
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Avatar, type Pessoa } from '../admin/FormularioTarefa';
+import { IconUser } from './icons';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { ancorar } from '../lib/ancorar';
 
 /** Seleção múltipla de pessoas num campo só. Com a lista de usuários crescendo,
  *  espalhar um botão por pessoa na tela ocupava mais espaço a cada cadastro
  *  novo; aqui o campo tem altura fixa e a lista mora no dropdown. */
-export function SeletorPessoas({ pessoas, valor, onChange, vazio = 'Escolher pessoas' }: {
+export function SeletorPessoas({ pessoas, valor, onChange, vazio = 'Escolher pessoas', compacto }: {
   pessoas: Pessoa[];
   valor: string[];
   onChange: (v: string[]) => void;
   vazio?: string;
+  /** Dentro de uma linha de lista, onde o campo inteiro não cabe: o gatilho vira
+   *  um botão do tamanho das fotos, sem moldura de campo e sem a seta. A lista
+   *  que abre é a mesma. */
+  compacto?: boolean;
 }) {
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState('');
@@ -42,6 +47,69 @@ export function SeletorPessoas({ pessoas, valor, onChange, vazio = 'Escolher pes
   const escolhidas = valor
     .map(id => pessoas.find(p => p.id === id))
     .filter((p): p is Pessoa => !!p);
+
+  /** A lista que abre, igual nas duas formas do seletor. */
+  const lista = createPortal(
+    <div ref={dropRef} className="status-select-dropdown"
+      style={{ top: pos.top, left: pos.left, width: pos.width, zIndex: 10000 }}>
+      {pessoas.length > 6 && (
+        <input autoFocus className="form-input" value={busca}
+          onChange={e => setBusca(e.target.value)} placeholder="Buscar pessoa"
+          style={{ height: 32, fontSize: 12.5, marginBottom: 4 }} />
+      )}
+      {filtradas.length === 0 ? (
+        <p style={{ fontSize: 12, color: 'var(--gray2)', margin: 0, padding: '6px 8px' }}>
+          Ninguém com esse nome.
+        </p>
+      ) : filtradas.map(p => {
+        const ativo = valor.includes(p.id);
+        return (
+          // O dropdown não fecha ao escolher: seleção múltipla quase sempre
+          // marca mais de um, e reabrir a cada clique seria um castigo.
+          <div key={p.id} className={`status-select-option${ativo ? ' active' : ''}`}
+            onClick={() => onChange(ativo ? valor.filter(x => x !== p.id) : [...valor, p.id])}>
+            <Avatar nome={p.nome} foto={p.foto_url} size={20} />
+            <span style={{ minWidth: 0, overflow: 'hidden' }}>
+              <span style={{ display: 'block', overflow: 'hidden',
+                textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nome}</span>
+              <span style={{ display: 'block', fontSize: 10.5, color: 'var(--gray2)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.email}</span>
+            </span>
+            {ativo && (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                style={{ marginLeft: 'auto', flexShrink: 0, color: 'var(--yellow)' }}>
+                <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.2"
+                  strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </div>
+        );
+      })}
+    </div>,
+document.body,
+  );
+
+  if (compacto) {
+    return (
+      <>
+        <button ref={triggerRef} type="button" onClick={abrir}
+          className={`pessoas-compacto${aberto ? ' aberto' : ''}`}
+          aria-expanded={aberto}
+          title={escolhidas.length ? escolhidas.map(p => p.nome).join(', ') : vazio}
+          aria-label={escolhidas.length ? `${vazio}: ${escolhidas.map(p => p.nome).join(', ')}` : vazio}>
+          {escolhidas.length === 0 ? (
+            <IconUser size={12} />
+          ) : (
+            escolhidas.slice(0, 3).map(p => (
+              <Avatar key={p.id} nome={p.nome} foto={p.foto_url} size={18} />
+            ))
+          )}
+          {escolhidas.length > 3 && <span className="pessoas-compacto-mais">+{escolhidas.length - 3}</span>}
+        </button>
+        {aberto && lista}
+      </>
+    );
+  }
 
   return (
     <>
@@ -79,45 +147,7 @@ export function SeletorPessoas({ pessoas, valor, onChange, vazio = 'Escolher pes
         </svg>
       </button>
 
-      {aberto && createPortal(
-        <div ref={dropRef} className="status-select-dropdown"
-          style={{ top: pos.top, left: pos.left, width: pos.width, zIndex: 10000 }}>
-          {pessoas.length > 6 && (
-            <input autoFocus className="form-input" value={busca}
-              onChange={e => setBusca(e.target.value)} placeholder="Buscar pessoa"
-              style={{ height: 32, fontSize: 12.5, marginBottom: 4 }} />
-          )}
-          {filtradas.length === 0 ? (
-            <p style={{ fontSize: 12, color: 'var(--gray2)', margin: 0, padding: '6px 8px' }}>
-              Ninguém com esse nome.
-            </p>
-          ) : filtradas.map(p => {
-            const ativo = valor.includes(p.id);
-            return (
-              // O dropdown não fecha ao escolher: seleção múltipla quase sempre
-              // marca mais de um, e reabrir a cada clique seria um castigo.
-              <div key={p.id} className={`status-select-option${ativo ? ' active' : ''}`}
-                onClick={() => onChange(ativo ? valor.filter(x => x !== p.id) : [...valor, p.id])}>
-                <Avatar nome={p.nome} foto={p.foto_url} size={20} />
-                <span style={{ minWidth: 0, overflow: 'hidden' }}>
-                  <span style={{ display: 'block', overflow: 'hidden',
-                    textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nome}</span>
-                  <span style={{ display: 'block', fontSize: 10.5, color: 'var(--gray2)',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.email}</span>
-                </span>
-                {ativo && (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                    style={{ marginLeft: 'auto', flexShrink: 0, color: 'var(--yellow)' }}>
-                    <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.2"
-                      strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                )}
-              </div>
-            );
-          })}
-        </div>,
-        document.body,
-      )}
+      {aberto && lista}
     </>
   );
 }

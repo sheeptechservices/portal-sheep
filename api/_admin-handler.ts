@@ -148,6 +148,37 @@ function listaDeTexto(v: unknown): string[] {
   return cru.map(x => String(x ?? '').trim()).filter(Boolean).slice(0, 50);
 }
 
+/** Um objetivo da semana como ele fica gravado: a frase, se ja foi cumprido, e
+ *  o que veio depois - prazo e quem responde. */
+interface ObjetivoGravado {
+  texto: string;
+  feito: boolean;
+  prazo: string | null;
+  responsaveis: string[];
+}
+
+/** Os objetivos da coluna `objetivos`, quando ela existe e tem conteudo valido.
+ *  Devolve nulo quando nao ha o que ler - e ai quem chama remonta das duas
+ *  listas de frases, que e como as linhas antigas foram gravadas. */
+function objetivosGravados(v: unknown): ObjetivoGravado[] | null {
+  if (typeof v !== 'string' || !v.trim()) return null;
+  let cru: unknown;
+  try { cru = JSON.parse(v); } catch { return null; }
+  if (!Array.isArray(cru)) return null;
+  const lista = cru
+    .map((o: any) => ({
+      texto: String(o?.texto ?? '').trim(),
+      feito: o?.feito === true,
+      prazo: /^\d{4}-\d{2}-\d{2}$/.test(String(o?.prazo ?? '')) ? String(o.prazo) : null,
+      responsaveis: (Array.isArray(o?.responsaveis) ? o.responsaveis : [])
+        .map((id: unknown) => String(id ?? '').trim())
+        .filter(Boolean),
+    }))
+    .filter(o => o.texto)
+    .slice(0, 50);
+  return lista.length ? lista : null;
+}
+
 /**
  * O "projeto" das demandas gerais da Planning: as que nao sao de projeto
  * nenhum. Existe como linha de `projetos` para as tarefas dele serem tarefas
@@ -1389,6 +1420,11 @@ async function migrarSchema(db: Client) {
   // como lista de frases, e seguir assim a mantem de pe ate o deploy. Um
   // objetivo reescrito volta a ficar em aberto, que e o certo - virou outro.
   try { await ddl(`ALTER TABLE planning_semana ADD COLUMN objetivos_feitos TEXT NOT NULL DEFAULT '[]'`); } catch {}
+  // O objetivo inteiro - texto, prazo e responsaveis - em JSON, ao lado das duas
+  // listas de frases. As duas continuam gravadas: a versao no ar le `destaques`
+  // e `objetivos_feitos`, e so sabe ler frase. Quem tiver esta coluna le daqui,
+  // que e onde prazo e responsavel cabem; quem nao tiver remonta das frases.
+  try { await ddl(`ALTER TABLE planning_semana ADD COLUMN objetivos TEXT`); } catch {}
 
   await ddl(`
     -- Etapas do quadro de tarefas. Mesma estrutura das etapas do funil
@@ -3676,7 +3712,8 @@ async function despacharAdminData(
         return { status: 400, body: { error: 'Semana ausente ou fora do formato AAAA-MM-DD.' } };
       }
       const r = await db.execute({
-        sql: `SELECT projeto_id, destaques, objetivos_feitos, atualizado_em, atualizado_por_nome
+        sql: `SELECT projeto_id, destaques, objetivos_feitos, objetivos,
+                     atualizado_em, atualizado_por_nome
               FROM planning_semana WHERE semana = ?`,
         args: [semana],
       });
@@ -3686,9 +3723,15 @@ async function despacharAdminData(
           semana,
           planning: r.rows.map(x => {
             const feitos = new Set(listaDeTexto(x.objetivos_feitos));
+            // O JSON completo quando ele existe; as duas listas de frases quando
+            // a linha foi gravada antes desta coluna.
+            const completos = objetivosGravados(x.objetivos);
             return {
               projeto_id: String(x.projeto_id),
-              objetivos: listaDeTexto(x.destaques).map(texto => ({ texto, feito: feitos.has(texto) })),
+              objetivos: completos
+                ?? listaDeTexto(x.destaques).map(texto => ({
+                  texto, feito: feitos.has(texto), prazo: null, responsaveis: [],
+                })),
               atualizado_em: x.atualizado_em,
               atualizado_por_nome: x.atualizado_por_nome,
             };
@@ -6480,26 +6523,39 @@ function faltaEmProjeto(p: any): string | null {
         return { status: 400, body: { error: 'Semana ausente ou fora do formato AAAA-MM-DD.' } };
       }
       const objetivos = (Array.isArray(body.objetivos) ? body.objetivos : [])
-        .map((o: any) => ({ texto: String(o?.texto ?? '').trim(), feito: o?.feito === true }))
+        .map((o: any) => ({
+          texto: String(o?.texto ?? '').trim(),
+          feito: o?.feito === true,
+          // Data fora do formato vira nulo, e nao erro: o objetivo sem prazo e
+          // caso normal, e recusar a gravacao inteira por causa dele perderia a
+          // frase que alguem acabou de escrever na reuniao.
+          prazo: /^\d{4}-\d{2}-\d{2}$/.test(String(o?.prazo ?? '')) ? String(o.prazo) : null,
+          responsaveis: (Array.isArray(o?.responsaveis) ? o.responsaveis : [])
+            .map((id: unknown) => String(id ?? '').trim())
+            .filter(Boolean)
+            .slice(0, 20),
+        }))
         .filter((o: { texto: string }) => o.texto)
         .slice(0, 50);
       const destaques = JSON.stringify(objetivos.map((o: { texto: string }) => o.texto));
       const feitos = JSON.stringify(objetivos
         .filter((o: { feito: boolean }) => o.feito)
         .map((o: { texto: string }) => o.texto));
+      const completos = JSON.stringify(objetivos);
       const agora = new Date().toISOString();
       await db.execute({
         sql: `INSERT INTO planning_semana
-                (projeto_id, semana, destaques, objetivos_feitos, atualizado_em,
+                (projeto_id, semana, destaques, objetivos_feitos, objetivos, atualizado_em,
                  atualizado_por_id, atualizado_por_nome)
-              VALUES (?,?,?,?,?,?,?)
+              VALUES (?,?,?,?,?,?,?,?)
               ON CONFLICT(projeto_id, semana) DO UPDATE SET
                 destaques = excluded.destaques,
                 objetivos_feitos = excluded.objetivos_feitos,
+                objetivos = excluded.objetivos,
                 atualizado_em = excluded.atualizado_em,
                 atualizado_por_id = excluded.atualizado_por_id,
                 atualizado_por_nome = excluded.atualizado_por_nome`,
-        args: [projetoId, semana, destaques, feitos, agora, autorId, autorNome],
+        args: [projetoId, semana, destaques, feitos, completos, agora, autorId, autorNome],
       });
       return { status: 200, body: { ok: true, atualizado_em: agora, atualizado_por_nome: autorNome } };
     }

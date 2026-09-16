@@ -85,11 +85,19 @@ interface DatePickerProps {
   disabled?: boolean
   compact?: boolean    // non-floating label style, matches form-input
   allowPast?: boolean  // permite datas passadas (ex.: registrar data de execução já ocorrida)
+  /**
+   * Dentro de uma linha de lista, onde o campo inteiro não cabe: o gatilho vira
+   * um chip do tamanho do texto - só o ícone enquanto não há data, a data
+   * escrita depois que ela existe. O calendário que abre é o mesmo.
+   */
+  chip?: boolean
+  /** O que o leitor de tela e a dica dizem, já que o chip não tem rótulo. */
+  titulo?: string
 }
 
 type DropPos = { top?: number; bottom?: number; left: number; width: number }
 
-export function DatePicker({ value, onChange, label, required, error, disabled, compact, allowPast }: DatePickerProps) {
+export function DatePicker({ value, onChange, label, required, error, disabled, compact, allowPast, chip, titulo }: DatePickerProps) {
   const now = new Date()
   const todayY = now.getFullYear()
   const todayM = now.getMonth()
@@ -345,6 +353,33 @@ export function DatePicker({ value, onChange, label, required, error, disabled, 
     document.body
   )
 
+  if (chip) {
+    return (
+      <span ref={triggerRef} style={{ position: 'relative', display: 'inline-flex' }}>
+        <button
+          type="button"
+          className={`campo-data-chip${open ? ' aberto' : ''}${display ? ' com-data' : ''}`}
+          disabled={disabled}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          title={titulo ?? (display ? `Para ${display}` : 'Escolher a data')}
+          aria-label={titulo ?? (display ? `Data: ${display}` : 'Escolher a data')}
+          onClick={toggle}
+        >
+          <CalendarIcon active={open} semMargem />
+          {display && <span className="campo-data-chip-texto">{display}</span>}
+        </button>
+        {/* Limpar fica fora do botão que abre: um botão dentro do outro não é
+            marcação válida, e o clique de um viraria o do outro. */}
+        {display && !disabled && (
+          <button type="button" className="campo-data-chip-limpar" onClick={clear}
+            title="Tirar a data" aria-label="Tirar a data">×</button>
+        )}
+        {dropdown}
+      </span>
+    )
+  }
+
   if (compact) {
     return (
       <div ref={triggerRef} style={{ position: 'relative', width: '100%' }}>
@@ -580,10 +615,11 @@ function LegendItem({ color, label }: { color: string; label: string }) {
   )
 }
 
-function CalendarIcon({ active }: { active: boolean }) {
+function CalendarIcon({ active, semMargem }: { active: boolean; semMargem?: boolean }) {
   return (
     <svg width="15" height="15" viewBox="0 0 16 16" fill="none"
-      style={{ flexShrink: 0, color: active ? 'var(--black)' : 'var(--gray2)', marginLeft: 6, transition: 'color .2s' }}>
+      style={{ flexShrink: 0, color: active ? 'var(--black)' : 'currentColor',
+        marginLeft: semMargem ? 0 : 6, transition: 'color .2s' }}>
       <rect x="1" y="2" width="14" height="13" rx="2" stroke="currentColor" strokeWidth="1.5" />
       <path d="M1 6h14" stroke="currentColor" strokeWidth="1.5" />
       <path d="M5 1v2M11 1v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />

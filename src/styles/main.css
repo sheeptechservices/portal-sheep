@@ -7131,6 +7131,105 @@ button.checklist-texto:focus-visible {
 .pl-linha.cai-antes::after { top: -2px; }
 .pl-linha.cai-depois::after { bottom: -2px; }
 .pl-linha-texto { display: flex; align-items: center; border-bottom: none; }
+
+/* O combinado de cada objetivo: para quando, e com quem. Fica no fim da linha,
+   depois da frase, porque e o detalhe dela - a frase e o que a sala le. */
+.pl-linha-combinado {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* ── Todos os objetivos, por cliente ─────────────────────────────────────
+   A leitura de cima da mesma reuniao: um bloco por cliente, e dentro dele um
+   subtitulo por projeto. Dois projetos do mesmo cliente ficam juntos, que e
+   como o cliente cobra. */
+   Preenchidos, ficam sempre visiveis - ali eles sao informacao. */
+.pl-linha-opcional { display: inline-flex; opacity: 0; transition: opacity var(--transition); }
+.pl-linha:hover .pl-linha-opcional,
+.pl-linha:focus-within .pl-linha-opcional,
+.pl-linha-opcional:focus-within { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .pl-linha-opcional { transition: none; }
+}
+/* Em leitura, prazo e donos sao so informacao ao lado da frase. */
+.pl-linha-prazo {
+  flex: none;
+  font-size: 11px;
+  color: var(--gray2);
+  font-variant-numeric: tabular-nums;
+}
+.pl-linha-donos { flex: none; display: flex; gap: 3px; }
+
+/* O gatilho de data em formato de chip: so o calendario enquanto nao ha data, a
+   data escrita depois dela. Mesma altura e mesma moldura do chip de pessoas ao
+   lado - os dois sao o mesmo tipo de peca. */
+.campo-data-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  padding: 2px 8px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-pill);
+  background: var(--white);
+  color: var(--gray2);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+.campo-data-chip:hover,
+.campo-data-chip:focus-visible,
+.campo-data-chip.aberto { outline: none; border-color: var(--gray2); color: var(--black); }
+.campo-data-chip.com-data { color: var(--black); }
+.campo-data-chip:disabled { cursor: default; opacity: .6; }
+/* O X de tirar a data encosta no chip, e some junto com ela. */
+.campo-data-chip-limpar {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 2px;
+  padding: 0 2px;
+  border: none;
+  background: none;
+  color: var(--gray2);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.campo-data-chip-limpar:hover,
+.campo-data-chip-limpar:focus-visible { outline: none; color: var(--black); }
+@media (prefers-reduced-motion: reduce) {
+  .campo-data-chip, .campo-data-chip-limpar { transition: none; }
+}
+
+/* O seletor de pessoas compacto: as fotos como gatilho, sem moldura de campo.
+   Vazio, e o contorno de uma pessoa - e o convite a escolher alguem. */
+.pessoas-compacto {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 26px;
+  padding: 2px 6px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-pill);
+  background: var(--white);
+  color: var(--gray2);
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+.pessoas-compacto:hover,
+.pessoas-compacto:focus-visible,
+.pessoas-compacto.aberto { outline: none; border-color: var(--gray2); color: var(--black); }
+.pessoas-compacto-mais { font-size: 10.5px; font-weight: 700; }
+@media (prefers-reduced-motion: reduce) {
+  .pessoas-compacto { transition: none; }
+}
 /* Cumprido continua legivel, como o passo feito da tarefa: e o registro do que
    a semana entregou, e a planning seguinte vem conferir. */
 .pl-linha.feito .pl-linha-campo,

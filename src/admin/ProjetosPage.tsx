@@ -3641,6 +3641,7 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
         <ObjetivosDaPlanning
           valores={planning.objetivos}
           somenteLeitura={!podeEditar}
+          pessoas={pessoas}
           placeholder="O que precisa acontecer nesta semana"
           onChange={v => onMudarPlanning({ objetivos: v })} />
       </section>
@@ -3760,11 +3761,14 @@ function contasDoFunil(funil: FunilDaPlanning, dias: string[]) {
  * Mexer num card é trabalho do Funil, e o clique leva até lá com ele aberto -
  * duas telas movendo o mesmo card seriam dois lugares para desencontrar.
  */
-function FolhaDoFunil({ semana, dias, funil, planning, podeEditar, onMudarPlanning, onAbrirOportunidade }: {
+function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
+  onMudarPlanning, onAbrirOportunidade }: {
   semana: Date;
   dias: string[];
   funil: FunilDaPlanning;
   planning: PlanningDaSemana;
+  /** Quem pode responder por um objetivo da semana do comercial. */
+  pessoas: Pessoa[];
   podeEditar: boolean;
   onMudarPlanning: (dados: PlanningDaSemana) => void;
   onAbrirOportunidade?: (id: string) => void;
@@ -3805,6 +3809,7 @@ function FolhaDoFunil({ semana, dias, funil, planning, podeEditar, onMudarPlanni
         <ObjetivosDaPlanning
           valores={planning.objetivos}
           somenteLeitura={!podeEditar}
+          pessoas={pessoas}
           placeholder="O que o comercial precisa fazer andar nesta semana"
           onChange={v => onMudarPlanning({ objetivos: v })} />
       </section>
@@ -3898,10 +3903,13 @@ function FolhaDoFunil({ semana, dias, funil, planning, podeEditar, onMudarPlanni
  * que se combina numa planning é uma lista de coisas, e a planning seguinte
  * abre esta semana para conferir o que andou - a marca é essa conferência.
  */
-function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, onChange }: {
+function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, pessoas, onChange }: {
   valores: ObjetivoDaSemana[];
   placeholder: string;
   somenteLeitura: boolean;
+  /** Quem pode responder por um objetivo. Na folha do projeto é o time dele; na
+   *  do comercial, quem tem acesso ao painel. */
+  pessoas: Pessoa[];
   onChange: (v: ObjetivoDaSemana[]) => void;
 }) {
   const campos = useRef<Array<HTMLInputElement | null>>([]);
@@ -3946,7 +3954,9 @@ function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, onChange }:
 
   const inserir = (depoisDe: number) => {
     const lista = [...valores];
-    lista.splice(depoisDe + 1, 0, { id: novoIdDeObjetivo(), texto: '', feito: false });
+    lista.splice(depoisDe + 1, 0, {
+      id: novoIdDeObjetivo(), texto: '', feito: false, prazo: null, responsaveis: [],
+    });
     nova.current = depoisDe + 1;
     onChange(lista);
   };
@@ -3993,6 +4003,19 @@ function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, onChange }:
               <input type="checkbox" className="form-checkbox" checked={v.feito} disabled
                 aria-label={v.texto} />
               <span className="pl-linha-texto">{v.texto}</span>
+              {v.prazo && <span className="pl-linha-prazo">{fmtDataCurta(v.prazo)}</span>}
+              {v.responsaveis.length > 0 && (
+                <span className="pl-linha-donos">
+                  {v.responsaveis.map(id => {
+                    const p = pessoas.find(x => x.id === id);
+                    return (
+                      <span key={id} title={p?.nome ?? 'Usuário removido'}>
+                        <Avatar nome={p?.nome ?? '?'} foto={p?.foto_url} size={18} />
+                      </span>
+                    );
+                  })}
+                </span>
+              )}
             </div>
           ))}
         </div>
@@ -4080,6 +4103,23 @@ function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, onChange }:
             }}
             // Linha em branco não vira item: sair dela é desistir de escrevê-la.
             onBlur={() => { if (v.texto.trim() === '' && valores.length > 0) remover(i); }} />
+          {/* Para quando, e com quem. Só aparecem na linha que já tem frase:
+              numa linha em branco não há o que combinar ainda, e dois controles
+              ali dentro seriam ruído no meio da digitação. */}
+          {v.texto.trim() !== '' && (
+            <span className="pl-linha-combinado">
+              <span className={v.prazo ? undefined : 'pl-linha-opcional'}>
+                <DatePicker chip allowPast value={v.prazo ?? ''}
+                  titulo={v.prazo ? undefined : 'Para quando é este objetivo'}
+                  onChange={d => trocar(i, { prazo: d || null })} />
+              </span>
+              <span className={v.responsaveis.length ? undefined : 'pl-linha-opcional'}>
+                <SeletorPessoas compacto pessoas={pessoas} valor={v.responsaveis}
+                  vazio="Quem responde por este objetivo"
+                  onChange={r => trocar(i, { responsaveis: r })} />
+              </span>
+            </span>
+          )}
           <button type="button" className="checklist-tirar" aria-label="Remover esta linha"
             title="Remover" onMouseDown={e => e.preventDefault()} onClick={() => remover(i)}>
             <IconX size={11} />
@@ -4634,6 +4674,10 @@ interface ObjetivoDaSemana {
   id: string;
   texto: string;
   feito: boolean;
+  /** Para quando o objetivo foi combinado. Nulo: a semana inteira. */
+  prazo: string | null;
+  /** Quem respondeu por ele na reunião. Vazio: é do time. */
+  responsaveis: string[];
 }
 
 let ultimoIdDeObjetivo = 0;
@@ -4745,6 +4789,7 @@ function AbaPlanning({
           dias={dias}
           funil={funil}
           planning={planning[PLANNING_FUNIL] ?? PLANNING_VAZIA}
+          pessoas={pessoas}
           podeEditar={podeEditar}
           onAbrirOportunidade={onAbrirOportunidade}
           onMudarPlanning={dados => onSalvarPlanning(PLANNING_FUNIL, {
@@ -5811,7 +5856,11 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
         mapa[String(x.projeto_id)] = {
           objetivos: Array.isArray(x.objetivos)
             ? x.objetivos.map((o: any) => ({
-              id: novoIdDeObjetivo(), texto: String(o?.texto ?? ''), feito: o?.feito === true,
+              id: novoIdDeObjetivo(),
+              texto: String(o?.texto ?? ''),
+              feito: o?.feito === true,
+              prazo: o?.prazo ? String(o.prazo) : null,
+              responsaveis: Array.isArray(o?.responsaveis) ? o.responsaveis.map(String) : [],
             }))
             : [],
         };
@@ -5841,7 +5890,9 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
       action: 'salvar_planning_semana',
       projeto_id: projetoId,
       semana: semanaIso,
-      objetivos: (dados.objetivos ?? []).map(o => ({ texto: o.texto, feito: o.feito })),
+      objetivos: (dados.objetivos ?? []).map(o => ({
+        texto: o.texto, feito: o.feito, prazo: o.prazo, responsaveis: o.responsaveis,
+      })),
     };
     const enviar = () => {
       gravando.current.delete(chave);
