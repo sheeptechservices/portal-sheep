@@ -3302,6 +3302,66 @@ body.arrastando-painel {
   flex: none;
   margin-bottom: 12px;
 }
+/* ── O campo de busca da casa ──────────────────────────
+   Lupa, campo e o X de desistir, no material cristal: o mesmo fio de luz e a
+   mesma borda leve das superficies, para o campo pousar sobre a pagina em vez
+   de recortar um buraco branco nela. */
+.campo-busca {
+  flex: 1 1 260px;
+  min-width: 150px;
+  max-width: 360px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--cristal-borda, var(--gray3));
+  border-radius: var(--radius-md);
+  background: var(--cristal, var(--white));
+  box-shadow: inset 0 1px 0 var(--cristal-luz, transparent);
+  color: var(--gray2);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.campo-busca:hover { border-color: var(--cristal-borda-forte, var(--gray2)); }
+.campo-busca:focus-within {
+  border-color: var(--cristal-borda-forte, var(--gray2));
+  box-shadow: inset 0 1px 0 var(--cristal-luz, transparent), 0 0 0 3px var(--gray4);
+}
+.campo-busca-campo {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--black);
+}
+.campo-busca-campo::placeholder { color: var(--gray2); }
+/* O X so existe com busca escrita, e some com ela. */
+.campo-busca-limpar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.campo-busca-limpar:hover,
+.campo-busca-limpar:focus-visible { outline: none; background: var(--gray4); color: var(--black); }
+@media (prefers-reduced-motion: reduce) {
+  .campo-busca, .campo-busca-limpar { transition: none; }
+}
+
+/* Na barra do quadro, a busca fecha a linha, depois dos filtros. */
+.painel-kanban-filtros .campo-busca { margin-left: auto; }
 /* As colunas sobem todas a mesma altura, como no quadro grande: com a altura
    vinda do conteudo, uma coluna cheia ao lado de uma vazia desenhava um degrau,
    e o espaco de soltar da vazia ficava do tamanho do titulo dela. */
