@@ -3974,6 +3974,50 @@ const FOLHAS_FIXAS = new Set([PROJETO_GERAL, PLANNING_FUNIL]);
  * e arrastar muda o lugar dele. É o mesmo gesto das etapas em Configurações, com
  * a mesma linha amarela dizendo onde a divisória vai cair.
  */
+/** A marca do cliente na divisória da planning, no lugar onde a Geral leva a da
+ *  casa. Segue a mesma regra do seletor de cliente: logo de uma cor só é máscara
+ *  pintada na cor da marca, e as demais entram como imagem, escurecidas quando
+ *  foram desenhadas em branco. Cliente sem logo cadastrada mostra a urgência, que
+ *  era o que ocupava este lugar antes.
+ *
+ *  A altura é fixa e a largura tem teto: a tabela óptica das marcas vai de selo
+ *  quadrado a assinatura larga, e sem o teto a assinatura comeria o nome do
+ *  projeto ao lado. */
+function LogoDaAba({ cliente, prioridade }: { cliente: string | null | undefined; prioridade: string }) {
+  const marca = logoDoCliente(cliente);
+  if (!marca) {
+    return (
+      <span className="pl-aba-prio" style={{ color: COR_PRIORIDADE[prioridade] ?? 'var(--gray2)' }}
+        title={`Prioridade: ${prioridade}`} aria-label={`Prioridade ${prioridade}`}>
+        {ICONE_PRIORIDADE[prioridade]?.({ size: 14 })}
+      </span>
+    );
+  }
+  const nome = cliente ?? 'Cliente';
+  const altura = 15;
+  if (marca.cor && marca.proporcao) {
+    return (
+      <span className="pl-aba-prio">
+        <span className="marca-tingida" role="img" aria-label={nome} title={nome}
+          style={{
+            height: altura,
+            width: Math.min(40, Math.round(altura * marca.proporcao)),
+            ['--marca' as string]: `url(${marca.src})`,
+            ['--marca-cor' as string]: marca.cor,
+            ['--marca-cor-escura' as string]: marca.corEscura,
+          }} />
+      </span>
+    );
+  }
+  return (
+    <span className="pl-aba-prio">
+      <img className="pl-aba-logo" src={marca.src} alt={nome} title={nome}
+        data-escurecer={marca.escurecer ? '' : undefined}
+        style={{ height: altura }} />
+    </span>
+  );
+}
+
 function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onReordenar }: {
   lista: Projeto[];
   ativo: string | null;
@@ -4199,7 +4243,9 @@ function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onRe
             <span className="pl-aba-num">
               {ehFixa ? (
                 <span className="pl-aba-num-texto" aria-hidden="true">
-                  {ehFunil ? <IconFunil size={13} /> : <IconBuilding size={13} />}
+                  {ehFunil
+                    ? <IconFunil size={13} />
+                    : <img className="pl-aba-marca-sheep" src="/favicon.png" alt="" />}
                 </span>
               ) : (
                 <span className="pl-aba-num-texto">{String(numero).padStart(2, '0')}</span>
@@ -4208,15 +4254,13 @@ function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onRe
                 <span className="pl-aba-punho" aria-hidden="true"><IconArrastar size={13} /></span>
               )}
             </span>
-            {/* A urgência no desenho de barras da casa, na cor dela: é o que se
-                lê de relance numa coluna de nove projetos, antes do nome. As
-                folhas presas não têm urgência própria: o lugar fica, vazio, para
-                o nome delas alinhar com o dos projetos. */}
+            {/* A marca do cliente, que é como o projeto é chamado em voz alta na
+                planning. Cliente sem logo cadastrada cai na urgência, no desenho
+                de barras da casa: o lugar nunca fica vazio. As folhas presas não
+                têm cliente, e ali o espaço fica em branco para o nome delas
+                alinhar com o dos projetos. */}
             {ehFixa ? <span className="pl-aba-prio" aria-hidden="true" style={{ width: 14 }} /> : (
-              <span className="pl-aba-prio" style={{ color: COR_PRIORIDADE[prioridade] ?? 'var(--gray2)' }}
-                title={`Prioridade: ${prioridade}`} aria-label={`Prioridade ${prioridade}`}>
-                {ICONE_PRIORIDADE[prioridade]?.({ size: 14 })}
-              </span>
+              <LogoDaAba cliente={p.cliente_nome} prioridade={prioridade} />
             )}
             <span className="pl-aba-texto">
               <strong>{p.nome}</strong>

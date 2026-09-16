@@ -6834,6 +6834,20 @@ button.checklist-texto:focus-visible {
 
 /* A urgencia, antes do nome. */
 .pl-aba-prio { flex: none; display: inline-flex; align-items: center; }
+/* A marca do cliente no lugar da urgencia: altura fixa, largura com teto, para
+   assinatura larga nao comer o nome do projeto ao lado. */
+.pl-aba-logo {
+  max-width: 40px;
+  object-fit: contain;
+  background: var(--logo-fundo);
+  padding: var(--logo-respiro);
+  border-radius: 3px;
+}
+/* A desenhada em branco, para fundo escuro, some sobre claro: escurecer devolve
+   o desenho. No tema escuro ela vem sobre a chapa clara de `--logo-fundo`. */
+.pl-aba-logo[data-escurecer] { filter: brightness(0); }
+/* A marca da casa na folha Geral, no lugar do numero. */
+.pl-aba-marca-sheep { width: 16px; height: 16px; object-fit: contain; }
 
 /* Clicavel e arrastavel ao mesmo tempo, mas o gesto principal e abrir: o
    cursor e o do clique. A mao fechada so aparece com uma aba ja sendo levada. */
