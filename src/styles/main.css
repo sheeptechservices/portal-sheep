@@ -6853,8 +6853,15 @@ button.checklist-texto:focus-visible {
 /* A desenhada em branco, para fundo escuro, some sobre claro: escurecer devolve
    o desenho. No tema escuro ela vem sobre a chapa clara de `--logo-fundo`. */
 .pl-aba-logo[data-escurecer] { filter: brightness(0); }
-/* A marca da casa na folha Geral, no lugar do numero. */
-.pl-aba-marca-sheep { width: 16px; height: 16px; object-fit: contain; }
+/* A assinatura da casa na divisoria Geral, na mesma coluna das logos de cliente.
+   Ela e desenhada em preto: no tema escuro inverte, como o desenho pede. */
+.pl-aba-marca-sheep {
+  width: 56px;
+  max-width: 56px;
+  height: auto;
+  object-fit: contain;
+}
+:root[data-theme="dark"] .pl-aba-marca-sheep { filter: invert(1); }
 
 /* Clicavel e arrastavel ao mesmo tempo, mas o gesto principal e abrir: o
    cursor e o do clique. A mao fechada so aparece com uma aba ja sendo levada. */
@@ -6921,7 +6928,10 @@ button.checklist-texto:focus-visible {
   font-variant-numeric: tabular-nums;
   transition: background var(--transition-spring), color var(--transition-spring);
 }
-.pl-aba.ativa .pl-aba-conta { background: var(--yellow); color: var(--on-yellow); }
+/* Na divisoria aberta a conta acende, mas no tom leve do verde - o mesmo fundo
+   do item de menu escolhido -, com o numero no verde cheio. O verde chapado com
+   texto escuro puxava o olho para a contagem em vez do nome do projeto. */
+.pl-aba.ativa .pl-aba-conta { background: var(--yd); color: var(--yellow-tinta); }
 .pl-aba-conta.vazia { background: transparent; color: var(--gray3); }
 
 /* A folha. Encostada nas divisorias: sem canto arredondado do lado delas. */
@@ -7144,6 +7154,65 @@ button.checklist-texto:focus-visible {
    A leitura de cima da mesma reuniao: um bloco por cliente, e dentro dele um
    subtitulo por projeto. Dois projetos do mesmo cliente ficam juntos, que e
    como o cliente cobra. */
+.pl-obj-grupos { display: flex; flex-direction: column; gap: 22px; }
+.pl-obj-grupo { display: flex; flex-direction: column; }
+/* O chip do cliente: a seta, a marca, o nome e a conta de cumpridos. E o painel
+   inteiro que abre e recolhe por ele, entao ele ocupa a largura toda. */
+.pl-obj-cabeca {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: var(--gray2);
+  transition: color var(--transition);
+}
+/* O nome do projeto nao reage ao ponteiro: ele e o titulo do bloco, e nao um
+   link. Quem responde ao hover e a seta, que e o que abre e recolhe. */
+.pl-obj-cabeca .pl-aba-texto strong { color: var(--black); }
+.pl-obj-cabeca:focus-visible { outline: none; }
+.pl-obj-cabeca:hover .entrega-seta,
+.pl-obj-cabeca:focus-visible .entrega-seta { color: var(--black); }
+/* O texto do chip e o da divisoria: nome em cima, cliente embaixo. */
+.pl-obj-cabeca .pl-aba-texto { flex: 1; min-width: 0; }
+.pl-obj-cabeca .pl-aba-marca-sheep { width: 50px; }
+/* O conteudo recolhido nao deixa o painel com o fundo vazio embaixo do chip. */
+.pl-obj-grupo .revelar.aberto > div { padding-top: 10px; }
+/* Dentro do painel, cada projeto tem o nome e as linhas dele. */
+.pl-obj-grupo .pl-obj-projeto + .pl-obj-projeto { margin-top: 10px; }
+@media (prefers-reduced-motion: reduce) {
+  .pl-obj-cabeca { transition: none; }
+}
+.pl-obj-projeto { display: flex; flex-direction: column; gap: 4px; padding-left: 2px; }
+/* O nome do projeto leva a folha dele: e onde o objetivo se escreve. */
+.pl-obj-nome {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.pl-obj-nome:hover,
+.pl-obj-nome:focus-visible { outline: none; color: var(--yellow-tinta); }
+@media (prefers-reduced-motion: reduce) {
+  .pl-obj-nome { transition: none; }
+}
+
+/* Enquanto o objetivo nao tem data nem dono, os dois chips esperam apagados e
+   so acendem com o mouse na linha (ou o teclado neles): nove linhas com dois
+   controles vazios cada uma viravam uma coluna de caixas pedindo preenchimento.
    Preenchidos, ficam sempre visiveis - ali eles sao informacao. */
 .pl-linha-opcional { display: inline-flex; opacity: 0; transition: opacity var(--transition); }
 .pl-linha:hover .pl-linha-opcional,

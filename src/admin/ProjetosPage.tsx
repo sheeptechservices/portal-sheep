@@ -3543,7 +3543,6 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
 }) {
   const itens = tarefasDaSemana(p, dias);
   const gestor = p.equipe.find(m => m.papel === 'Gestor');
-  const hoje = hojeIso();
 
   // O backlog da folha: o que está aberto e não caiu em nenhum dia desta
   // semana. É de onde as tarefas são puxadas, e para onde elas voltam.
@@ -3555,8 +3554,6 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
     .filter(t => !t.concluida_em && !dias.includes((t.prazo ?? '').slice(0, 10)))
     .sort(porUrgencia);
 
-  const atrasadas = (p.tarefas ?? [])
-    .filter(t => !t.concluida_em && t.prazo && t.prazo < hoje);
   const ehGeral = p.id === PROJETO_GERAL;
 
   return (
@@ -3596,34 +3593,20 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
         </div>
         )}
 
-        {/* Os numeros que a sala pergunta antes de comecar: quanto ja esta na
-            semana, quanto espera no backlog e quanto esta para tras. O
-            progresso fica junto, como mais um numero, e nao sozinho no canto. */}
-        <div className="pl-numeros">
-          <span className="pl-numero">
-            <strong>{itens.filter(x => !x.feita).length}</strong>
-            <small>na semana</small>
-          </span>
-          <span className="pl-numero">
-            <strong>{itens.filter(x => x.feita).length}</strong>
-            <small>feitas</small>
-          </span>
-          <span className="pl-numero">
-            <strong>{backlog.length}</strong>
-            <small>no backlog</small>
-          </span>
-          <span className={`pl-numero${atrasadas.length ? ' alerta' : ''}`}>
-            <strong>{atrasadas.length}</strong>
-            <small>atrasadas</small>
-          </span>
-          {/* O progresso é das entregas, e a Geral não tem entrega. */}
-          {!ehGeral && (
+        {/* Só o progresso. As contagens de tarefas saíram: quem está na
+            reunião tem o quadro da semana logo abaixo, com as mesmas tarefas
+            à vista, e quatro números repetindo o que se vê ali eram peso sem
+            resposta nova. O progresso fica, porque ele é das entregas e não
+            está desenhado em lugar nenhum da folha.
+            A Geral não tem entrega, e aí não sobra número nenhum. */}
+        {!ehGeral && (
+          <div className="pl-numeros">
             <span className="pl-numero pl-numero-progresso" title="Entregas validadas">
               <strong>{progressoDe(p)}%</strong>
               <span className="nt-progresso-barra"><span style={{ width: `${progressoDe(p)}%` }} /></span>
             </span>
-          )}
-        </div>
+          </div>
+        )}
       </header>
 
       {/* Os objetivos vêm antes do quadro: a planning começa pelo que a semana
@@ -3711,7 +3694,7 @@ export interface EtapaDoFunil {
 }
 
 /** As duas reuniões da Planning: a dos projetos e a do comercial. */
-type SecaoDaPlanning = 'projetos' | 'comercial';
+type SecaoDaPlanning = 'projetos' | 'objetivos' | 'comercial';
 
 /** O que a página leu do funil. `carregando` enquanto a leitura vai; `erro`
  *  quando ela não veio. */
@@ -4137,6 +4120,169 @@ function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, pessoas, on
   );
 }
 
+/** A logo de um cliente pelo nome, no tamanho de chip. Sem logo cadastrada fica
+ *  só o nome, que o chip já mostra ao lado. */
+function LogoDoCliente({ cliente }: { cliente: string }) {
+  const marca = logoDoCliente(cliente);
+  if (!marca) return null;
+  const altura = 16;
+  if (marca.cor && marca.proporcao) {
+    return (
+      <span className="marca-tingida" role="img" aria-label={cliente}
+        style={{
+          height: altura,
+          width: Math.min(46, Math.round(altura * marca.proporcao)),
+          ['--marca' as string]: `url(${marca.src})`,
+          ['--marca-cor' as string]: marca.cor,
+          ['--marca-cor-escura' as string]: marca.corEscura,
+        }} />
+    );
+  }
+  return (
+    <img className="pl-aba-logo" src={marca.src} alt={cliente}
+      data-escurecer={marca.escurecer ? '' : undefined}
+      style={{ height: altura, maxWidth: 46 }} />
+  );
+}
+
+/**
+ * Todos os objetivos da semana numa folha só, agrupados por cliente.
+ *
+ * As divisórias mostram um projeto por vez, que é como a reunião acontece; esta
+ * é a leitura de cima: o que a casa combinou para a semana, cliente a cliente.
+ * Dois projetos do mesmo cliente aparecem juntos, que é como o cliente cobra.
+ *
+ * Escreve-se aqui também, com a mesma lista da folha do projeto: quem está
+ * passando cliente a cliente não deveria ter de trocar de tela para acrescentar
+ * um objetivo, pôr prazo ou dizer quem responde. Clicar no nome do projeto leva
+ * à folha dele, que é onde o quadro da semana dá o contexto.
+ */
+function FolhaDosObjetivos({ lista, planning, pessoas, podeEditar, onMudarObjetivos, onVerProjeto }: {
+  /** Os projetos da reunião, na ordem da sala. */
+  lista: Projeto[];
+  planning: Record<string, PlanningDaSemana>;
+  pessoas: Pessoa[];
+  podeEditar: boolean;
+  onMudarObjetivos: (projetoId: string, objetivos: ObjetivoDaSemana[]) => void;
+  onVerProjeto: (projetoId: string) => void;
+}) {
+  /** Um bloco por cliente, na ordem em que os projetos aparecem na reunião: a
+   *  ordem da sala vale aqui também. */
+  const grupos = useMemo(() => {
+    const porCliente = new Map<string, { cliente: string; projetos: Projeto[] }>();
+    // Projeto sem nenhum objetivo entra igual: é aqui que o primeiro deles
+    // nasce, e esconder o projeto esconderia justamente o que falta combinar.
+    for (const p of lista) {
+      const cliente = p.id === PROJETO_GERAL
+        ? 'Sheep'
+        : p.cliente_nome ?? 'Sem cliente';
+      const grupo = porCliente.get(cliente) ?? { cliente, projetos: [] };
+      grupo.projetos.push(p);
+      porCliente.set(cliente, grupo);
+    }
+    return [...porCliente.values()];
+  }, [lista, planning]);
+
+  const todos = grupos.flatMap(g => g.projetos.flatMap(p => planning[p.id]?.objetivos ?? []));
+  const feitos = todos.filter(o => o.feito).length;
+  /** Os clientes recolhidos. Todos nascem abertos: a folha existe para ser lida
+   *  de cima a baixo, e recolher e o que se faz depois de passar por um. */
+  const [recolhidos, setRecolhidos] = useState<Set<string>>(new Set());
+
+  return (
+    <div className="pl-folha troca">
+      <header className="pl-cabeca">
+        <div className="pl-quem">
+          <h2>Objetivos da semana</h2>
+          <p className="pl-meta">
+            O que a casa combinou, por cliente
+            {todos.length > 0 && <><span className="nt-sep">·</span>{feitos} de {todos.length} cumpridos</>}
+          </p>
+        </div>
+      </header>
+
+      {grupos.length === 0 ? (
+        <p className="nt-vazio">Nenhum projeto em andamento para combinar a semana.</p>
+      ) : (
+        <div className="pl-obj-grupos">
+          {grupos.map(g => {
+            const quantos = g.projetos.reduce((n, p) => n + (planning[p.id]?.objetivos ?? []).length, 0);
+            const cumpridos = g.projetos
+              .reduce((n, p) => n + (planning[p.id]?.objetivos ?? []).filter(o => o.feito).length, 0);
+            const aberto = !recolhidos.has(g.cliente);
+            const daCasa = g.projetos.every(p => p.id === PROJETO_GERAL);
+            return (
+            // Um cliente por chip, e o chip inteiro abre e recolhe: numa semana
+            // com dez clientes, o que a sala quer e passar por um de cada vez.
+            <section key={g.cliente} className="pl-secao pl-combinado pl-obj-grupo">
+              <button type="button" className="pl-obj-cabeca" aria-expanded={aberto}
+                onClick={() => setRecolhidos(atual => {
+                  const outro = new Set(atual);
+                  if (outro.has(g.cliente)) outro.delete(g.cliente); else outro.add(g.cliente);
+                  return outro;
+                })}>
+                <span className={`entrega-seta${aberto ? ' aberta' : ''}`}>
+                  <IconChevronRight size={12} />
+                </span>
+                {daCasa ? (
+                  <img className="pl-aba-marca-sheep" src="/logo-lockup.png" alt="Sheep Technology" />
+                ) : (
+                  <LogoDoCliente cliente={g.cliente} />
+                )}
+                {/* Com um projeto só, o chip é a etiqueta dele: nome em cima e
+                    cliente embaixo, como na divisória. Com mais de um, o chip é
+                    do cliente, e os projetos aparecem nomeados aqui dentro. */}
+                <span className="pl-aba-texto">
+                  <strong>{g.projetos.length === 1 ? g.projetos[0].nome : g.cliente}</strong>
+                  <small>
+                    {g.projetos.length > 1
+                      ? `${g.projetos.length} projetos`
+                      : daCasa
+                        ? 'Demandas da casa'
+                        : g.projetos[0].cliente_nome ?? 'Sem cliente'}
+                  </small>
+                </span>
+                <span className="kanban-conta-bolha">{cumpridos}/{quantos}</span>
+              </button>
+
+              {/* O conteúdo fica montado e a altura é que anima: montado só
+                  enquanto aberto, o bloco animaria de nada para nada. */}
+              <div className={`revelar${aberto ? ' aberto' : ''}`}>
+              <div>
+              {g.projetos.map(p => (
+                <div key={p.id} className="pl-obj-projeto">
+                  {/* O nome do projeto só quando o cliente tem mais de um: com um
+                      só, ele repetiria o que o chip acima já diz. */}
+                  {g.projetos.length > 1 && (
+                    <button type="button" className="pl-obj-nome" onClick={() => onVerProjeto(p.id)}
+                      title="Abrir a folha deste projeto">
+                      {p.nome}
+                    </button>
+                  )}
+                  {/* A mesma lista da folha do projeto: escrever, marcar, pôr
+                      prazo e dizer quem responde, sem trocar de tela. */}
+                  <ObjetivosDaPlanning
+                    valores={planning[p.id]?.objetivos ?? []}
+                    somenteLeitura={!podeEditar}
+                    pessoas={pessoas}
+                    placeholder={p.id === PROJETO_GERAL
+                      ? 'O que a casa precisa resolver nesta semana'
+                      : 'O que precisa acontecer nesta semana'}
+                    onChange={objetivos => onMudarObjetivos(p.id, objetivos)} />
+                </div>
+              ))}
+              </div>
+              </div>
+            </section>
+            );
+          })}
+        </div>
+      )}
+
+    </div>
+  );
+}
+
 /** As folhas presas no alto da Planning, fora do arraste e da numeração. */
 const FOLHAS_FIXAS = new Set([PROJETO_GERAL, PLANNING_FUNIL]);
 
@@ -4201,7 +4347,7 @@ function LogoDaAba({ cliente, prioridade }: { cliente: string | null | undefined
 function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onReordenar }: {
   lista: Projeto[];
   ativo: string | null;
-  /** Quantas tarefas cada projeto tem na semana em foco. */
+  /** Quantos objetivos cada projeto tem combinados para a semana em foco. */
   contagem: (p: Projeto) => number;
   /** Mudar a ordem é `projetos:editar`: quem só olha a reunião não a reorganiza. */
   podeReordenar: boolean;
@@ -4420,12 +4566,14 @@ function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onRe
           >
             {/* O número dá lugar ao punho no hover: é onde a mão procura o que
                 arrastar, e dois ícones lado a lado apertariam o nome. */}
+            {/* A Geral nao ocupa a coluna do numero: ela nao tem numero nem
+                icone aqui, e a coluna vazia empurrava a marca e o nome para a
+                direita, desalinhados de quem le a lista de cima a baixo. */}
+            {!ehGeral && (
             <span className="pl-aba-num">
               {ehFixa ? (
                 <span className="pl-aba-num-texto" aria-hidden="true">
-                  {ehFunil
-                    ? <IconFunil size={13} />
-                    : <img className="pl-aba-marca-sheep" src="/favicon.png" alt="" />}
+                  {ehFunil ? <IconFunil size={13} /> : null}
                 </span>
               ) : (
                 <span className="pl-aba-num-texto">{String(numero).padStart(2, '0')}</span>
@@ -4434,12 +4582,19 @@ function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onRe
                 <span className="pl-aba-punho" aria-hidden="true"><IconArrastar size={13} /></span>
               )}
             </span>
+            )}
             {/* A marca do cliente, que é como o projeto é chamado em voz alta na
                 planning. Cliente sem logo cadastrada cai na urgência, no desenho
                 de barras da casa: o lugar nunca fica vazio. As folhas presas não
                 têm cliente, e ali o espaço fica em branco para o nome delas
                 alinhar com o dos projetos. */}
-            {ehFixa ? <span className="pl-aba-prio" aria-hidden="true" style={{ width: 14 }} /> : (
+            {ehGeral ? (
+              // A assinatura da casa, a mesma do login: a Geral e da Sheep, e na
+              // coluna das marcas isso se le sem precisar de rotulo.
+              <span className="pl-aba-prio">
+                <img className="pl-aba-marca-sheep" src="/logo-lockup.png" alt="Sheep Technology" />
+              </span>
+            ) : ehFixa ? <span className="pl-aba-prio" aria-hidden="true" style={{ width: 14 }} /> : (
               <LogoDaAba cliente={p.cliente_nome} prioridade={prioridade} />
             )}
             <span className="pl-aba-texto">
@@ -4448,9 +4603,14 @@ function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onRe
                 {ehGeral ? 'Demandas da casa' : ehFunil ? 'Oportunidades comerciais' : p.cliente_nome ?? 'Sem cliente'}
               </small>
             </span>
-            {/* O número da semana na aba: é o que diz, sem entrar no projeto,
-                se ele já tem semana montada ou se a sala ainda vai montá-la. */}
-            <span className={`pl-aba-conta${quantas === 0 ? ' vazia' : ''}`}>{quantas}</span>
+            {/* Os objetivos combinados para a semana: é o que diz, sem entrar no
+                projeto, se ele já foi discutido ou se a sala ainda vai discuti-lo. */}
+            <span className={`pl-aba-conta${quantas === 0 ? ' vazia' : ''}`}
+              title={quantas === 0
+                ? 'Nenhum objetivo combinado para esta semana'
+                : `${quantas} objetivo(s) para esta semana`}>
+              {quantas}
+            </span>
           </div>
         );
       })}
@@ -4706,7 +4866,7 @@ function AbaPlanning({
   projetos, pessoas, planning, semana, onMudarSemana, onSalvarPlanning, onReordenar,
   onAbrir, onSalvarTarefa, onAbrirTarefa, onCriarTarefa, onExcluirTarefa,
   etapas, etapaDeEntrada, etapaDeConclusao, podeEditar, podeEditarTarefa, podeExcluirTarefa,
-  entregasDe, funil, secao, onAbrirOportunidade,
+  entregasDe, funil, secao, onVerProjeto, onAbrirOportunidade,
 }: {
   /** Monta a seção de entregas de um projeto. */
   entregasDe: (p: Projeto) => React.ReactNode;
@@ -4735,9 +4895,11 @@ function AbaPlanning({
   /** As oportunidades para a folha do Funil. Nulo para quem não vê o funil - e
    *  aí a aba não aparece. */
   funil: FunilDaPlanning | null;
-  /** Qual reunião está na tela: os projetos, com as divisórias, ou o comercial,
-   *  com a folha do funil em largura inteira. */
+  /** Qual reunião está na tela: os projetos, com as divisórias; todos os
+   *  objetivos juntos, por cliente; ou o comercial, com a folha do funil. */
   secao: SecaoDaPlanning;
+  /** Volta para a folha de um projeto a partir da visão de objetivos. */
+  onVerProjeto: (id: string) => void;
   /** Leva à tela do Funil com a oportunidade aberta. */
   onAbrirOportunidade?: (id: string) => void;
 }) {
@@ -4776,8 +4938,31 @@ function AbaPlanning({
   // não pode trocar de projeto por causa disso.
   const atual = lista.find(p => p.id === ativo) ?? lista[0] ?? null;
 
-  const naSemana = useCallback(
-    (p: Projeto) => tarefasDaSemana(p, dias).length, [dias]);
+  /** O número na divisória: quantos objetivos aquele projeto tem combinados para
+   *  esta semana. Era a contagem de tarefas do quadro, que a folha já mostra
+   *  logo abaixo; o que a sala quer saber antes de entrar é se o projeto já tem
+   *  semana combinada, e é o objetivo que diz isso. */
+  const objetivosDaSemana = useCallback(
+    (p: Projeto) => (planning[p.id]?.objetivos ?? []).length, [planning]);
+
+  // Todos os objetivos juntos, por cliente: a leitura de cima da mesma reunião.
+  // Largura inteira, como o comercial - não há divisória a escolher.
+  if (secao === 'objetivos') {
+    return (
+      <div className="pl-sheet pl-sheet-inteira">
+        <FolhaDosObjetivos
+          lista={lista}
+          planning={planning}
+          pessoas={pessoas}
+          podeEditar={podeEditar}
+          onMudarObjetivos={(projetoId, objetivos) => onSalvarPlanning(projetoId, {
+            ...planning[projetoId],
+            objetivos,
+          })}
+          onVerProjeto={id => { setAtivo(id); onVerProjeto(id); }} />
+      </div>
+    );
+  }
 
   // O comercial: a folha do funil sozinha, em largura inteira. Não há
   // divisória a escolher - é uma reunião só, sobre o funil inteiro.
@@ -4812,7 +4997,7 @@ function AbaPlanning({
   return (
     <>
       <div className="pl-pagina">
-        <AbasDeCaderno lista={lista} ativo={atual?.id ?? null} contagem={naSemana}
+        <AbasDeCaderno lista={lista} ativo={atual?.id ?? null} contagem={objetivosDaSemana}
           podeReordenar={podeEditar} onEscolher={setAtivo}
           // Antes de mudar a ordem, a folha aberta fica presa pelo id. Sem
           // clique nenhum ela e "a primeira da lista", e arrastar outro projeto
@@ -5819,7 +6004,10 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
   /** Qual das duas reuniões está na tela. Guardada no navegador de quem usa: o
    *  comercial abre a Planning no comercial, e o time de projetos, nos projetos. */
   const [secaoPlanning, setSecaoPlanning] = useState<SecaoDaPlanning>(() => {
-    try { return localStorage.getItem('planning:secao') === 'comercial' ? 'comercial' : 'projetos'; } catch { return 'projetos'; }
+    try {
+      const guardada = localStorage.getItem('planning:secao');
+      return guardada === 'comercial' || guardada === 'objetivos' ? guardada : 'projetos';
+    } catch { return 'projetos'; }
   });
   const mudarSecaoPlanning = useCallback((s: SecaoDaPlanning) => {
     setSecaoPlanning(s);
@@ -6835,7 +7023,9 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
               ? 'Cadastro dos projetos da casa'
               : secaoPlanning === 'comercial' && veFunil
                 ? 'A semana do comercial: os leads do funil e os objetivos'
-                : 'A semana de cada projeto, montada com o time'}
+                : secaoPlanning === 'objetivos'
+                  ? 'Tudo o que a casa combinou para esta semana, por cliente'
+                  : 'A semana de cada projeto, montada com o time'}
           </p>
         </div>
         {aba === 'geral' && podeCriar && (
@@ -6847,15 +7037,16 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
         {aba === 'planning' && (
           <SeletorDeSemana semana={semanaDaPlanning} onMudar={setSemanaDaPlanning} />
         )}
-        {/* As duas reuniões da semana, cada uma com a sua folha: a de projetos,
-            com a Geral e os projetos, e a do comercial, com os leads do funil.
-            Só quem vê o funil tem as duas - para os outros não há o que trocar. */}
-        {aba === 'planning' && veFunil && (
+        {/* As leituras da mesma semana: projeto por projeto, nas divisórias;
+            todos os objetivos juntos, por cliente; e a reunião do comercial,
+            que só quem vê o funil alcança. */}
+        {aba === 'planning' && (
           <div className="pl-secoes">
             <SegSwitch valor={secaoPlanning} onChange={mudarSecaoPlanning}
               opcoes={[
                 { valor: 'projetos', label: 'Projetos' },
-                { valor: 'comercial', label: 'Comercial' },
+                { valor: 'objetivos', label: 'Objetivos' },
+                ...(veFunil ? [{ valor: 'comercial' as const, label: 'Comercial' }] : []),
               ]} />
           </div>
         )}
@@ -7187,7 +7378,8 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           podeExcluirTarefa={pode('tarefas:excluir')}
           onAbrir={p => setForm({ editando: p })}
           funil={veFunil ? funil : null}
-          secao={veFunil ? secaoPlanning : 'projetos'}
+          secao={veFunil || secaoPlanning !== 'comercial' ? secaoPlanning : 'projetos'}
+          onVerProjeto={() => mudarSecaoPlanning('projetos')}
           onAbrirOportunidade={onAbrirOportunidade}
           // A mesma seção da ficha, ligada aos mesmos gestos da página: o que
           // se faz numa entrega aqui é o que se faria abrindo o projeto.
