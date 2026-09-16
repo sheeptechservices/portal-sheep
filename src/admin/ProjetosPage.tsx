@@ -33,6 +33,7 @@ import type { Transcricao } from '../components/BotaoTranscricao';
 import { Dialogo } from '../components/Dialogo';
 import { dia as fmtData, diaCurto as fmtDataCurta, tamanho as fmtTamanho } from '../lib/datas';
 import { ancorar } from '../lib/ancorar';
+import { contemTermo } from '../lib/texto';
 import { arquivosColados } from '../lib/colarArquivos';
 import {
   DIMENSOES, chavesDe, comparadorDe, marcaDaLinha as marcaFora, type Dimensao,
@@ -67,6 +68,7 @@ import {
 } from './FormularioTarefa';
 import { PreviaArquivo } from '../components/PreviaArquivo';
 import { SelectSistema } from '../components/SelectSistema';
+import { CampoBusca } from '../components/CampoBusca';
 import { DatePicker } from '../components/DatePicker';
 import { COR_ENTREGA, ICONE_ENTREGA } from '../lib/etapasEntrega';
 import { DonosDaTarefa } from '../components/DonosDaTarefa';
@@ -1411,7 +1413,11 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
   // desta entrega" são as duas perguntas de quem abre a aba.
   const [fResponsavel, setFResponsavel] = useState<string[]>([]);
   const [fEntrega, setFEntrega] = useState<string[]>([]);
-  const temFiltro = fResponsavel.length > 0 || fEntrega.length > 0;
+  const [fEtiqueta, setFEtiqueta] = useState<string[]>([]);
+  const [fPrioridade, setFPrioridade] = useState<string[]>([]);
+  const [busca, setBusca] = useState('');
+  const temFiltro = fResponsavel.length > 0 || fEntrega.length > 0
+    || fEtiqueta.length > 0 || fPrioridade.length > 0 || busca.trim() !== '';
 
   /** As opções vêm do que existe nas tarefas, e não de listas fixas: filtro que
    *  oferece valor sem resultado é ruído. O valor é o id, e o nome é só o
@@ -1427,15 +1433,29 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
       .map(id => ({ value: String(id), label: titulos.get(id) ?? '' }))
       .filter(o => o.label)
       .sort(porNome);
-    return { responsavel: donos, entrega: entregas };
+    const etiquetas = [...new Set(todas.flatMap(t => t.etiquetas ?? []))]
+      .map(nome => ({ value: nome, label: nome }))
+      .sort(porNome);
+    // A prioridade vem da escala da casa, e não do que está nas tarefas: a
+    // ordem dela quer dizer alguma coisa, e por nome ela sairia embaralhada.
+    const prioridades = PRIORIDADES
+      .filter(nivel => todas.some(t => (t.prioridade ?? PRIORIDADE_PADRAO) === nivel))
+      .map(nivel => ({ value: nivel as string, label: nivel as string }));
+    return { responsavel: donos, entrega: entregas, etiqueta: etiquetas, prioridade: prioridades };
   }, [todas, pessoas, projeto.entregas]);
 
   const tarefas = useMemo(() => todas.filter(t =>
     // Basta um dos donos casar: quem filtra por uma pessoa quer as tarefas
     // dela, inclusive as que ela divide com outra.
     (fResponsavel.length === 0 || (t.responsaveis ?? []).some(id => fResponsavel.includes(id))) &&
-    (fEntrega.length === 0 || fEntrega.includes(String(t.entrega_id)))
-  ), [todas, fResponsavel, fEntrega]);
+    (fEntrega.length === 0 || fEntrega.includes(String(t.entrega_id))) &&
+    (fEtiqueta.length === 0 || (t.etiquetas ?? []).some(e => fEtiqueta.includes(e))) &&
+    (fPrioridade.length === 0 || fPrioridade.includes(t.prioridade ?? PRIORIDADE_PADRAO)) &&
+    // A busca alcança o título, o descritivo e o nome da entrega: é por esses
+    // três que se procura uma tarefa em voz alta.
+    (contemTermo(t.titulo, busca) || contemTermo(t.descricao, busca)
+      || contemTermo(t.entrega_id != null ? tituloDaEntrega.get(t.entrega_id) : null, busca))
+  ), [todas, fResponsavel, fEntrega, fEtiqueta, fPrioridade, busca, tituloDaEntrega]);
 
   return (
     <section>
@@ -1467,12 +1487,24 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
             onChange={setFResponsavel} />
           <FilterDropdown label="Entrega" values={fEntrega} options={opcoes.entrega}
             onChange={setFEntrega} />
+          {opcoes.etiqueta.length > 0 && (
+            <FilterDropdown label="Etiqueta" values={fEtiqueta} options={opcoes.etiqueta}
+              onChange={setFEtiqueta} />
+          )}
+          <FilterDropdown label="Prioridade" values={fPrioridade} options={opcoes.prioridade}
+            onChange={setFPrioridade} />
           {temFiltro && (
             <button type="button" className="admin-toolbar-limpar surge"
-              onClick={() => { setFResponsavel([]); setFEntrega([]); }}>
+              onClick={() => {
+                setFResponsavel([]); setFEntrega([]); setFEtiqueta([]); setFPrioridade([]); setBusca('');
+              }}>
               Limpar
             </button>
           )}
+          {/* A busca depois dos filtros: eles estreitam o conjunto, e ela varre
+              o que sobrou. */}
+          <CampoBusca className="painel-kanban-busca" valor={busca} onMudar={setBusca}
+            placeholder="Buscar por título, descritivo ou entrega" rotulo="Buscar tarefa" />
         </div>
       )}
 
@@ -3065,27 +3097,6 @@ function diasUteisDaSemana(segunda: Date): string[] {
   });
 }
 
-type ItemDaSemana = { tarefa: Tarefa; dia: string; feita: boolean };
-
-/** Os cards do quadro: as concluídas na semana, no dia em que foram concluídas,
- *  e as abertas com prazo na semana, no dia do prazo.
- *
- *  Sem as abertas o quadro só olhava para trás, e numa segunda-feira não havia
- *  para onde arrastar nada - a semana inteira estava no futuro. Com elas, o
- *  bloco vira o plano da semana e o arraste passa a servir para montá-lo. */
-function tarefasDaSemana(p: Projeto, dias: string[]): ItemDaSemana[] {
-  const itens: ItemDaSemana[] = [];
-  for (const t of p.tarefas ?? []) {
-    const feito = diaLocal(t.concluida_em);
-    if (feito && dentroDaSemana(t.concluida_em, dias)) {
-      itens.push({ tarefa: t, dia: feito, feita: true });
-    } else if (!t.concluida_em && t.prazo && dias.includes(t.prazo.slice(0, 10))) {
-      itens.push({ tarefa: t, dia: t.prazo.slice(0, 10), feita: false });
-    }
-  }
-  return itens;
-}
-
 /** Pessoa com foto. Nome sozinho obriga a lembrar quem é; a foto resolve isso
  *  antes da leitura. Quando o registro só guardou o nome - leituras antigas,
  *  antes de o id ser gravado - as iniciais entram no lugar. */
@@ -3105,405 +3116,6 @@ function PessoaFoto({ nome, id, equipe, tamanho = 20 }: {
         {nome}
       </span>
     </span>
-  );
-}
-
-// ── A folha de cada projeto ─────────────────────────────────────────────────
-//
-//  Papel de agenda: a folha encostada na divisória, com o nome do projeto no
-//  alto e o que a sala precisa ver enquanto fala dele: os objetivos, o quadro
-//  da semana e as entregas do projeto.
-
-/**
- * Um cartão do quadro da semana, no mesmo desenho do cartão do kanban das
- * entregas: título, a entrega de onde a tarefa veio, e o pé com a prioridade,
- * o prazo e quem cuida. O fio da esquerda é a cor da etapa em que a tarefa está.
- *
- * Eram dois cartões diferentes para a mesma tarefa - um na ficha do projeto,
- * outro na Planning -, e a mesma coisa desenhada de dois jeitos obriga a
- * reaprender o que já se sabe. As ações que só a semana tem - marcar feita -
- * aparecem no pé, com o ponteiro em cima, como a lixeira do kanban.
- */
-function CardDaSemana({ tarefa: t, pessoas, cor, entrega, feita, mostrarPrazo, podeArrastar,
-  podeMarcar, podeExcluir, arrastando, onAbrir, onMarcar, onExcluir, onArrastar, onSoltar }: {
-  tarefa: Tarefa;
-  /** Quem pode aparecer como responsável: as pessoas da casa, e não só a equipe
-   *  do projeto - como no kanban das entregas. */
-  pessoas: Pessoa[];
-  /** A cor da etapa em que a tarefa está. */
-  cor: string;
-  /** O título da entrega, quando a tarefa pertence a uma. */
-  entrega: string | null;
-  feita: boolean;
-  /** Num dia da semana o prazo é o próprio dia da coluna, e repeti-lo no
-   *  cartão seria ruído. No backlog ele é o que a sala pesa. */
-  mostrarPrazo: boolean;
-  podeArrastar: boolean;
-  /** Falso enquanto a configuração de etapas não chegou: sem ela não há para
-   *  onde levar a tarefa ao marcar. */
-  podeMarcar: boolean;
-  podeExcluir: boolean;
-  arrastando: boolean;
-  onAbrir: (t: Tarefa) => void;
-  onMarcar: (t: Tarefa, feita: boolean) => void;
-  onExcluir: (t: Tarefa) => void;
-  onArrastar: (id: number) => void;
-  onSoltar: () => void;
-}) {
-  const prioridade = t.prioridade ?? PRIORIDADE_PADRAO;
-  const prazo = (t.prazo ?? '').slice(0, 10);
-  return (
-    // Abrir a tarefa é leitura, e não edição: quem não pode editar continua
-    // podendo ler o que foi combinado. O que a permissão barra é arrastar,
-    // marcar e excluir, que são os gestos que mudam alguma coisa.
-    <div
-      className={`kanban-card nt-cartao${feita ? ' feita' : ''}`}
-      role="button"
-      tabIndex={0}
-      aria-label={`${feita ? 'Concluída' : 'Aberta'}: ${t.titulo}`}
-      draggable={podeArrastar}
-      style={{
-        ['--col-color' as string]: cor,
-        cursor: 'pointer',
-        opacity: arrastando ? 0.45 : undefined,
-      }}
-      onClick={() => onAbrir(t)}
-      onKeyDown={e => {
-        if (e.target !== e.currentTarget) return;
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAbrir(t); }
-      }}
-      onDragStart={e => {
-        e.dataTransfer.effectAllowed = 'move';
-        // Sem carga o Firefox nem começa o arraste; o id vai junto por garantia,
-        // ainda que quem lê de fato seja o estado do quadro.
-        e.dataTransfer.setData('text/plain', String(t.id));
-        onArrastar(t.id);
-      }}
-      onDragEnd={onSoltar}
-    >
-      <p className="kanban-card-title">{t.titulo}</p>
-      {entrega && <p className="kanban-card-entrega" title={entrega}>{entrega}</p>}
-      <div className="painel-kanban-pe">
-        {/* O ícone de prioridade explica a ordem do backlog, que de outro modo
-            pareceria arbitrária. Mesma marca do kanban das entregas. */}
-        <span className="painel-kanban-prio"
-          style={{ color: COR_PRIORIDADE[prioridade] ?? 'var(--gray2)' }}
-          title={`Prioridade: ${prioridade}`}>
-          {ICONE_PRIORIDADE[prioridade]?.({ size: 12 })}
-        </span>
-        {mostrarPrazo && prazo && (
-          // Vencido em vermelho: é o motivo de a tarefa estar no alto do
-          // backlog, e sem a cor a ordem pareceria arbitrária.
-          <span className={!feita && prazo < hojeIso() ? 'nt-card-vencido' : undefined}>
-            {fmtData(prazo)}
-          </span>
-        )}
-        {(t.responsaveis ?? []).length > 0 && (
-          <span style={{ marginLeft: 'auto' }}>
-            <DonosDaTarefa ids={t.responsaveis} pessoas={pessoas} size={16} />
-          </span>
-        )}
-        {podeMarcar && (
-          <button type="button"
-            className={`kanban-card-acao${feita ? ' nt-cartao-feito' : ''}`}
-            style={(t.responsaveis ?? []).length ? undefined : { marginLeft: 'auto' }}
-            title={feita ? 'Reabrir' : 'Marcar como feita'}
-            aria-label={feita ? `Reabrir ${t.titulo}` : `Marcar ${t.titulo} como feita`}
-            onClick={ev => { ev.stopPropagation(); onMarcar(t, !feita); }}>
-            <IconCheck size={12} />
-          </button>
-        )}
-        {podeExcluir && (
-          <button type="button" className="kanban-card-acao perigo"
-            style={!podeMarcar && !(t.responsaveis ?? []).length ? { marginLeft: 'auto' } : undefined}
-            title="Excluir tarefa" aria-label={`Excluir ${t.titulo}`}
-            onClick={ev => { ev.stopPropagation(); onExcluir(t); }}>
-            <IconTrash size={11} />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/**
- * O quadro da semana: o backlog do projeto à esquerda e os cinco dias úteis à
- * direita, com as tarefas indo de um lado para o outro no arrasto.
- *
- * É a peça central da planning. Puxar uma tarefa do backlog para um dia é o
- * gesto que a sala faz enquanto conversa, e ele grava o prazo naquele dia -
- * não existe um segundo conceito de "semana planejada" por trás, justamente
- * para o compromisso assumido aqui ser o mesmo que a tela de Tarefas, o painel
- * do cliente e a conta de atrasadas enxergam.
- *
- * O caminho de volta é o mesmo gesto: arrastar de um dia para o backlog tira o
- * prazo, e a tarefa sai da semana sem sumir do projeto.
- */
-function QuadroDaSemana({ projeto: p, itens, backlog, dias: diasIso, etapaDeEntrada,
-  etapaDeConclusao, podeEditar, podeExcluir, pessoas, etapas, onAbrirTarefa, onSalvarTarefa,
-  onExcluirTarefa, onCriar }: {
-  projeto: Projeto;
-  /** Excluir é `tarefas:excluir`, que é outra permissão além de editar. */
-  podeExcluir: boolean;
-  pessoas: Pessoa[];
-  /** As etapas, para o fio de cada cartão ter a cor da etapa da tarefa. */
-  etapas: EtapaTarefa[];
-  onExcluirTarefa: (t: Tarefa) => void;
-  itens: ItemDaSemana[];
-  /** Abertas que não caíram em nenhum dia desta semana. */
-  backlog: Tarefa[];
-  /** Segunda a sexta da semana em foco, em ISO. */
-  dias: string[];
-  /** Onde a tarefa volta a nascer quando é reaberta. Vazio enquanto a
-   *  configuração de etapas não chegou. */
-  etapaDeEntrada: string;
-  /** A etapa de conversão, para onde a tarefa vai ao ser marcada como feita. */
-  etapaDeConclusao: string;
-  podeEditar: boolean;
-  onAbrirTarefa: (t: Tarefa) => void;
-  onSalvarTarefa: (t: Tarefa, mudancas: Record<string, unknown>) => void;
-  /** Cria a tarefa já na coluna e abre o painel dela para definir o resto:
-   *  prazo naquele dia, ou sem prazo no backlog. Ausente para quem não cria
-   *  tarefa. */
-  onCriar?: (prazo: string | null) => void;
-}) {
-  const [arrastando, setArrastando] = useState<number | null>(null);
-  const [sobre, setSobre] = useState<string | null>(null);
-  const { toast } = useToast();
-
-  const corDaEtapa = new Map(etapas.map(e => [e.nome, e.cor]));
-  const tituloDaEntrega = new Map((p.entregas ?? []).map(e => [e.id, e.titulo]));
-  /** O que todo cartão do quadro recebe igual, venha do backlog ou de um dia. */
-  const doCartao = (t: Tarefa) => ({
-    tarefa: t,
-    pessoas,
-    cor: corDaEtapa.get(t.status) ?? 'var(--gray3)',
-    entrega: t.entrega_id ? tituloDaEntrega.get(t.entrega_id) ?? null : null,
-    podeExcluir,
-    onAbrir: onAbrirTarefa,
-    onExcluir: onExcluirTarefa,
-    onArrastar: setArrastando,
-    onSoltar: () => { setArrastando(null); setSobre(null); },
-    arrastando: arrastando === t.id,
-  });
-
-  /** O botão de nova tarefa do cabeçalho de uma coluna. Abre o mesmo painel da
-   *  tela de Tarefas, com o prazo da coluna já preenchido: é ali que se define
-   *  quem cuida, a prioridade e o que precisa ser feito. */
-  const botaoCriar = (prazo: string | null, rotulo: string) => onCriar && (
-    <button type="button" className="nt-dia-mais" title={`Nova tarefa ${rotulo}`}
-      aria-label={`Nova tarefa ${rotulo}`} onClick={() => onCriar(prazo)}>
-      <IconPlus size={12} />
-    </button>
-  );
-  const hoje = hojeIso();
-
-  const dias = diasIso.map(iso => {
-    const d = new Date(`${iso}T12:00:00`);
-    return {
-      iso,
-      // "seg", "ter": o dia da semana em três letras, sem o ponto que o
-      // navegador põe em algumas plataformas.
-      nome: d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '').slice(0, 3),
-      numero: d.getDate(),
-      hoje: iso === hoje,
-      // O que ainda não chegou fica apagado: coluna vazia na quinta, numa
-      // terça, é calendário e não falta de trabalho.
-      futuro: iso > hoje,
-      // Em aberto na frente, na ordem padrão das tarefas; as feitas no fim do
-      // dia, onde já não pedem atenção.
-      cards: itens.filter(x => x.dia === iso)
-        .sort((a, b) => Number(a.feita) - Number(b.feita) || porUrgencia(a.tarefa, b.tarefa)),
-    };
-  });
-
-  // Sábado e domingo não têm coluna, mas o trabalho feito neles existe e não
-  // pode sumir da conta sem aviso.
-  const noFimDeSemana = itens.filter(x => !dias.some(d => d.iso === x.dia)).length;
-
-  /** O que está na mão, venha do backlog ou de um dia. */
-  const emArraste: ItemDaSemana | null =
-    itens.find(x => x.tarefa.id === arrastando)
-    ?? (backlog.find(t => t.id === arrastando)
-      ? { tarefa: backlog.find(t => t.id === arrastando)!, dia: '', feita: false }
-      : null);
-
-  /**
-   *  Marca ou desmarca a tarefa pela caixa do card.
-   *
-   *  Marcar leva à etapa de conversão e carimba a conclusão agora - o card
-   *  anda para a coluna de hoje, porque é hoje que a tarefa ficou pronta.
-   *  Desmarcar devolve à etapa de entrada e deixa a tarefa planejada para o dia
-   *  em que ela estava, senão ela sumiria do quadro se o prazo fosse de outra
-   *  semana.
-   */
-  const marcar = (item: ItemDaSemana, feita: boolean) => {
-    if (feita) {
-      onSalvarTarefa(item.tarefa, {
-        status: etapaDeConclusao,
-        concluida_em: new Date().toISOString(),
-      });
-    } else {
-      onSalvarTarefa(item.tarefa, {
-        concluida_em: null, prazo: item.dia || null, status: etapaDeEntrada,
-      });
-    }
-  };
-
-  /** Todo dia da semana recebe card. O que muda é o que o gesto grava: para
-   *  trás vira registro de conclusão, para frente vira plano. Uma concluída
-   *  levada para o futuro é reaberta, porque conclusão em data que não chegou
-   *  o servidor recusaria de todo jeito. */
-  const aceita = (futuro: boolean) =>
-    podeEditar && !!emArraste && (!futuro || !emArraste.feita || !!etapaDeEntrada);
-
-  /** O backlog recebe o que tem dia. Concluída não volta para lá: tirar o prazo
-   *  de uma tarefa já feita não a tira da semana, porque o que a põe na coluna
-   *  é o carimbo de conclusão. */
-  const aceitaNoBacklog = podeEditar && !!emArraste && !emArraste.feita && !!emArraste.dia;
-
-  const soltarNoDia = (d: typeof dias[number]) => {
-    const item = emArraste;
-    setArrastando(null);
-    if (!item || !aceita(d.futuro) || item.dia === d.iso) return;
-    if (item.feita && !d.futuro) {
-      // Mantém a hora do dia e troca só a data, tudo no fuso local: o carimbo
-      // vai para o servidor em UTC, e é `diaLocal` que o traz de volta para a
-      // coluna certa.
-      const antes = item.tarefa.concluida_em ? new Date(item.tarefa.concluida_em) : new Date();
-      const quando = new Date(`${d.iso}T00:00:00`);
-      quando.setHours(antes.getHours(), antes.getMinutes(), antes.getSeconds(), 0);
-      onSalvarTarefa(item.tarefa, { concluida_em: quando.toISOString() });
-    } else if (item.feita) {
-      // Reabre: quem leva uma concluída para depois de hoje está dizendo que
-      // ela não estava pronta, e agora tem data para ficar. O aviso é
-      // obrigatório - o gesto foi "mudar de dia", e o efeito é maior.
-      onSalvarTarefa(item.tarefa, {
-        concluida_em: null, prazo: d.iso, status: etapaDeEntrada,
-      });
-      toast('info', 'Tarefa reaberta',
-        `Deixou de constar concluída e ficou planejada para ${d.nome} ${d.numero}, em "${etapaDeEntrada}".`);
-    } else {
-      onSalvarTarefa(item.tarefa, { prazo: d.iso });
-    }
-  };
-
-  return (
-    <>
-    <div className="nt-semana">
-      {/* O backlog é coluna do quadro, e não uma lista à parte: é de onde os
-          cards saem, e o caminho mais curto entre pegar e soltar é ficarem
-          lado a lado. */}
-      <div
-        className={`nt-dia nt-backlog${sobre === 'backlog' ? ' alvo' : ''}`}
-        onDragOver={e => {
-          if (!aceitaNoBacklog) return;
-          e.preventDefault();
-          e.dataTransfer.dropEffect = 'move';
-          setSobre('backlog');
-        }}
-        onDragLeave={e => {
-          if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-          setSobre(x => (x === 'backlog' ? null : x));
-        }}
-        onDrop={e => {
-          e.preventDefault();
-          setSobre(null);
-          const item = emArraste;
-          setArrastando(null);
-          if (!item || !aceitaNoBacklog) return;
-          onSalvarTarefa(item.tarefa, { prazo: null });
-        }}
-      >
-        <div className="nt-dia-cabeca">
-          <span className="nt-dia-nome">backlog</span>
-          {backlog.length > 0 && <span className="nt-dia-conta">{backlog.length}</span>}
-          {botaoCriar(null, 'no backlog')}
-        </div>
-        <div className="nt-dia-corpo">
-          {backlog.map(t => (
-            <CardDaSemana
-              key={t.id}
-              {...doCartao(t)}
-              feita={false}
-              mostrarPrazo
-              podeArrastar={podeEditar}
-              podeMarcar={podeEditar && !!etapaDeConclusao && !!etapaDeEntrada}
-              onMarcar={(x, feita) => { if (feita) onSalvarTarefa(x, { status: etapaDeConclusao, concluida_em: new Date().toISOString() }); }}
-            />
-          ))}
-          {backlog.length === 0 && (
-            aceitaNoBacklog || !onCriar ? (
-              <p className="nt-dia-alvo">
-                {aceitaNoBacklog ? 'Soltar aqui' : 'Nada em aberto fora da semana'}
-              </p>
-            ) : (
-              // Backlog vazio convida a criar: é o lugar onde a planning
-              // costuma começar, e um texto de "nada aqui" não diz o que fazer.
-              <button type="button" className="nt-dia-alvo nt-dia-convite" onClick={() => onCriar(null)}>
-                <IconPlus size={11} /> Nova tarefa
-              </button>
-            )
-          )}
-        </div>
-      </div>
-
-      {dias.map(d => (
-        <div
-          key={d.iso}
-          // Não se conclui coisa amanhã: dia futuro não recebe card concluído.
-          className={`nt-dia${d.hoje ? ' hoje' : ''}${d.futuro ? ' futuro' : ''}${sobre === d.iso ? ' alvo' : ''}`}
-          onDragOver={e => {
-            if (!aceita(d.futuro)) return;
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-            setSobre(d.iso);
-          }}
-          onDragLeave={e => {
-            // Passar por cima de um card dispara `dragleave` na coluna; sem
-            // esta guarda o destaque piscava a cada card atravessado.
-            if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-            setSobre(x => (x === d.iso ? null : x));
-          }}
-          onDrop={e => {
-            e.preventDefault();
-            setSobre(null);
-            soltarNoDia(d);
-          }}
-        >
-          <div className="nt-dia-cabeca">
-            <span className="nt-dia-nome">{d.nome}</span>
-            <span className="nt-dia-numero">{d.numero}</span>
-            {d.cards.length > 0 && <span className="nt-dia-conta">{d.cards.length}</span>}
-            {botaoCriar(d.iso, `para ${d.nome} ${d.numero}`)}
-          </div>
-          <div className="nt-dia-corpo">
-            {d.cards.map(x => (
-              <CardDaSemana
-                key={x.tarefa.id}
-                {...doCartao(x.tarefa)}
-                feita={x.feita}
-                // A concluída mostra o prazo quando ele não é o dia da coluna:
-                // ela está no dia em que ficou pronta, e o prazo era outro.
-                mostrarPrazo={!!x.tarefa.prazo && x.tarefa.prazo.slice(0, 10) !== d.iso}
-                podeArrastar={podeEditar}
-                podeMarcar={podeEditar && !!etapaDeConclusao && !!etapaDeEntrada}
-                onMarcar={(_, feita) => marcar(x, feita)}
-              />
-            ))}
-            {d.cards.length === 0 && aceita(d.futuro) && (
-              <p className="nt-dia-alvo">Soltar aqui</p>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
-    {noFimDeSemana > 0 && (
-      <p className="nt-vazio" style={{ marginTop: 8 }}>
-        Mais {noFimDeSemana} concluída(s) no fim de semana.
-      </p>
-    )}
-    </>
   );
 }
 
@@ -3539,21 +3151,9 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
   onAbrirTarefa: (t: Tarefa, p: Projeto) => void;
   onSalvarTarefa: (t: Tarefa, mudancas: Record<string, unknown>) => void;
   onMudarPlanning: (dados: PlanningDaSemana) => void;
-  onCriarTarefa: (prazo: string | null) => void;
+  onCriarTarefa: (status: string) => void;
 }) {
-  const itens = tarefasDaSemana(p, dias);
   const gestor = p.equipe.find(m => m.papel === 'Gestor');
-
-  // O backlog da folha: o que está aberto e não caiu em nenhum dia desta
-  // semana. É de onde as tarefas são puxadas, e para onde elas voltam.
-  //
-  // Na ordem padrão de toda lista de tarefas: prioridade, e o prazo dentro
-  // dela - a atrasada fica na frente das outras da mesma prioridade, porque o
-  // prazo dela é o mais antigo.
-  const backlog = (p.tarefas ?? [])
-    .filter(t => !t.concluida_em && !dias.includes((t.prazo ?? '').slice(0, 10)))
-    .sort(porUrgencia);
-
   const ehGeral = p.id === PROJETO_GERAL;
 
   return (
@@ -3629,28 +3229,20 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
           onChange={v => onMudarPlanning({ objetivos: v })} />
       </section>
 
-      <section className="pl-secao">
-        <p className="pl-secao-titulo">
-          A semana
-          <span className="kanban-conta-bolha">{itens.length}</span>
-        </p>
-        <QuadroDaSemana
+      {/* O quadro do projeto, nas etapas do quadro de tarefas - o mesmo da ficha,
+          com a mesma busca e os mesmos filtros. Eram as colunas dos cinco dias,
+          e o que a sala pergunta olhando para a semana e em que pe esta cada
+          tarefa, que e o que a etapa responde. Arrastar aqui muda a etapa. */}
+      <section className="pl-secao pl-secao-quadro">
+        <TarefasDoProjeto
           projeto={p}
-          itens={itens}
-          backlog={backlog}
-          dias={dias}
-          etapaDeEntrada={etapaDeEntrada}
-          etapaDeConclusao={etapaDeConclusao}
-          podeEditar={podeEditarTarefa}
-          podeExcluir={podeExcluirTarefa}
-          pessoas={pessoas}
           etapas={etapas}
-          onAbrirTarefa={x => onAbrirTarefa(x, p)}
-          onSalvarTarefa={onSalvarTarefa}
-          onExcluirTarefa={onExcluirTarefa}
-          // Sem etapa de entrada não há onde a tarefa nascer: o botão só existe
-          // quando a configuração das etapas já chegou.
-          onCriar={podeEditarTarefa && etapaDeEntrada ? onCriarTarefa : undefined} />
+          pessoas={pessoas}
+          podeEditar={podeEditarTarefa}
+          onAbrir={x => onAbrirTarefa(x, p)}
+          onCriar={status => onCriarTarefa(status)}
+          onExcluir={onExcluirTarefa}
+          onMover={(t, status) => onSalvarTarefa(t, { status })} />
       </section>
 
       {/* As entregas do projeto, a mesma seção da ficha, com tudo o que ela
@@ -4880,7 +4472,7 @@ function AbaPlanning({
   /** A ordem nova das divisórias, com todos os ids. */
   onReordenar: (ids: string[]) => void;
   /** Cria uma tarefa no projeto, com prazo no dia ou sem prazo, e abre o painel. */
-  onCriarTarefa: (p: Projeto, prazo: string | null) => void;
+  onCriarTarefa: (p: Projeto, status: string) => void;
   onAbrir: (p: Projeto) => void;
   onSalvarTarefa: (t: Tarefa, mudancas: Record<string, unknown>) => void;
   onAbrirTarefa: (t: Tarefa, p: Projeto) => void;
@@ -5025,7 +4617,7 @@ function AbaPlanning({
               onAbrirTarefa={onAbrirTarefa}
               onSalvarTarefa={onSalvarTarefa}
               onExcluirTarefa={onExcluirTarefa}
-              onCriarTarefa={prazo => onCriarTarefa(atual, prazo)}
+              onCriarTarefa={status => onCriarTarefa(atual, status)}
               entregas={atual.id === PROJETO_GERAL ? null : entregasDe(atual)}
               onMudarPlanning={dados => onSalvarPlanning(atual.id, {
                 ...planning[atual.id],
@@ -7366,7 +6958,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           onMudarSemana={setSemanaDaPlanning}
           onSalvarPlanning={salvarPlanning}
           onReordenar={reordenarPlanning}
-          onCriarTarefa={(p, prazo) => criarTarefaNoProjeto(p, null, undefined, prazo)}
+          onCriarTarefa={(p, status) => criarTarefaNoProjeto(p, null, status)}
           onSalvarTarefa={salvarTarefa}
           onAbrirTarefa={abrirTarefa}
           onExcluirTarefa={setExcluindoTarefa}
