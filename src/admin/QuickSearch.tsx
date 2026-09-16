@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { DESTINOS, buscarDestinos, type Page, type Destino } from './destinos';
 import { useAuth } from './AdminApp';
-import { podeAbrirPagina, podeGerenciarUsuarios } from './papeis';
+import { podeAbrirPagina, podeVerUsuarios } from './papeis';
 
 // Alvo de navegação devolvido ao shell. Um alvo é ou um card (abre a página e
 // destaca o card) ou um destino de navegação (só troca de página).
@@ -118,8 +118,10 @@ export default function QuickSearch({ token, onClose, onSelect }: {
   const { pode, usuario } = useAuth();
   // Página que a pessoa não alcança não aparece na busca: oferecer um caminho que
   // volta 403 é pior do que não oferecer. Os cards já vêm filtrados do servidor.
-  const admin = podeGerenciarUsuarios(usuario);
-  const visivel = useCallback((d: Destino) => podeAbrirPagina(pode, d.page, admin), [pode, admin]);
+  const veUsuarios = podeVerUsuarios(usuario);
+  const visivel = useCallback(
+    (d: Destino) => podeAbrirPagina(pode, d.page, veUsuarios), [pode, veUsuarios],
+  );
 
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(false);

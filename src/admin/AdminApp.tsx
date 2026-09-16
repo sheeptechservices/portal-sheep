@@ -2,7 +2,7 @@
 import type { ReactNode } from 'react';
 import { IconAcessos, IconAlert, IconArrowRight, IconDashboard, IconGoogle, IconSpinner } from '../components/icons';
 import {
-  criarPode, podeAbrirPagina, podeGerenciarUsuarios, PERMISSAO_DA_PAGINA,
+  criarPode, podeAbrirPagina, podeGerenciarUsuarios, podeVerUsuarios, PERMISSAO_DA_PAGINA,
   type Permissoes, type Pode,
 } from './papeis';
 import { createPortal, flushSync } from 'react-dom';
@@ -533,13 +533,13 @@ function NavInferior({ page, setPage, onMais }: {
   onMais: () => void;
 }) {
   const { pode, usuario } = useAuth();
-  const admin = podeGerenciarUsuarios(usuario);
+  const veUsuarios = podeVerUsuarios(usuario);
 
   // A ordem é a da sidebar, filtrada pelo que a pessoa alcança: sem isso a
   // barra ofereceria uma tela que devolve "sem acesso".
   const candidatos = NAV_SECTIONS
     .flatMap(g => g.items)
-    .filter(i => i.page && !i.disabled && podeAbrirPagina(pode, i.page, admin));
+    .filter(i => i.page && !i.disabled && podeAbrirPagina(pode, i.page, veUsuarios));
 
   const principais = candidatos.slice(0, 4);
   const sobra = candidatos.length > principais.length;
@@ -644,12 +644,15 @@ function Sidebar({
   // uma seção que fique sem item nenhum não deixa o título órfão. Esconder é
   // cortesia - a trava é o servidor, em cada ação.
   const { pode, usuario } = useAuth();
+  // Duas perguntas diferentes: quem abre a tela de Usuários (o master abre, para
+  // ler) e quem cuida da fila de chamados (só o dono do painel).
+  const veUsuarios = podeVerUsuarios(usuario);
   const admin = podeGerenciarUsuarios(usuario);
   const secoes = NAV_SECTIONS
     .map(g => ({
       ...g,
       items: g.items.filter(i =>
-        (!i.page || podeAbrirPagina(pode, i.page, admin)) && (!i.perm || pode(i.perm))),
+        (!i.page || podeAbrirPagina(pode, i.page, veUsuarios)) && (!i.perm || pode(i.perm))),
     }))
     .filter(g => g.items.length > 0);
 
@@ -1435,12 +1438,13 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
   }, [token]);
 
   const pode = useMemo(() => criarPode(permissoes), [permissoes]);
-  // A página de Usuários não entra na matriz: a trava dela é o e-mail do
-  // administrador, conferido no servidor. Ver `PAGINAS_SO_ADMIN`.
-  const admin = podeGerenciarUsuarios(usuario);
+  // A página de Usuários não entra na matriz: a trava dela é o papel, conferido
+  // no servidor. O master abre para ler; mexer continua sendo do administrador
+  // do sistema. Ver `PAGINAS_SO_ADMIN`.
+  const veUsuarios = podeVerUsuarios(usuario);
   const paginaLiberada = useCallback(
-    (p: Page) => podeAbrirPagina(pode, p, admin),
-    [pode, admin],
+    (p: Page) => podeAbrirPagina(pode, p, veUsuarios),
+    [pode, veUsuarios],
   );
 
   // Quando as permissões chegam e a página aberta não é alcançável, vai para a

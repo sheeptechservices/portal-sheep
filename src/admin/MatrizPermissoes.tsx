@@ -43,7 +43,13 @@ interface Resposta {
   error?: string;
 }
 
-export default function MatrizPermissoes({ token }: { token: string }) {
+export default function MatrizPermissoes({ token, somenteLeitura = false }: {
+  token: string;
+  /** Master lendo: os quadradinhos ficam travados e a barra de salvar sai. A
+   *  matriz continua sendo a resposta a "o que o papel Membro alcanca", que e
+   *  o que ele vem conferir aqui. */
+  somenteLeitura?: boolean;
+}) {
   const { onSessionExpired } = useAuth();
   const { toast } = useToast();
   const [catalogo, setCatalogo] = useState<PermGrupo[] | null>(null);
@@ -218,17 +224,19 @@ export default function MatrizPermissoes({ token }: { token: string }) {
             )}
           </p>
         </div>
-        <div className="perm-barra-acoes">
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => marcarTodas(true)} disabled={salvando}>
-            Marcar tudo
-          </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => marcarTodas(false)} disabled={salvando}>
-            Desmarcar tudo
-          </button>
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => void salvar()} disabled={salvando || !sujo}>
-            {salvando ? <IconSpinner size={13} /> : sujo ? 'Salvar permissões' : 'Salvo'}
-          </button>
-        </div>
+        {!somenteLeitura && (
+          <div className="perm-barra-acoes">
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => marcarTodas(true)} disabled={salvando}>
+              Marcar tudo
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => marcarTodas(false)} disabled={salvando}>
+              Desmarcar tudo
+            </button>
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => void salvar()} disabled={salvando || !sujo}>
+              {salvando ? <IconSpinner size={13} /> : sujo ? 'Salvar permissões' : 'Salvo'}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="perm-lista">
@@ -267,7 +275,7 @@ export default function MatrizPermissoes({ token }: { token: string }) {
             type="checkbox"
             className="perm-check"
             checked={aberto}
-            disabled={salvando}
+            disabled={salvando || somenteLeitura}
             aria-label={`Acesso a ${grupo.label}`}
             onChange={() => alternarGrupo(grupo)}
           />
@@ -303,7 +311,7 @@ export default function MatrizPermissoes({ token }: { token: string }) {
                       checked={marcadas.has(a.chave)}
                       // Ação de um local fechado não é marcável: seria uma
                       // permissão sem a porta de entrada.
-                      disabled={salvando || !aberto}
+                      disabled={salvando || somenteLeitura || !aberto}
                       onChange={() => alternar(a.chave)}
                     />
                     <span className="perm-acao-nome">

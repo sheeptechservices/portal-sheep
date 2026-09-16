@@ -14,7 +14,7 @@ import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import {
   PAPEIS_ATRIBUIVEIS, PAPEL_DESCRICAO, PAPEL_LABEL,
-  podeGerenciarUsuarios, rotuloPapel, type Papel,
+  podeGerenciarUsuarios, podeVerUsuarios, rotuloPapel, type Papel,
 } from './papeis';
 import MatrizPermissoes from './MatrizPermissoes';
 
@@ -345,6 +345,9 @@ export default function UsuariosPage({ token }: { token: string }) {
   const [usuarios, setUsuarios] = useState<UsuarioLinha[] | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [negado, setNegado] = useState(false);
+  /** Mexer é do dono do painel. O master abre a tela, mas só para ler: os
+   *  controles de escrita nem aparecem, e o servidor recusa cada um deles. */
+  const podeMexer = podeGerenciarUsuarios(eu);
   /** Id da linha com uma gravação em voo - trava só aquela linha. */
   const [salvando, setSalvando] = useState<string | null>(null);
   const [aDesativar, setADesativar] = useState<UsuarioLinha | null>(null);
@@ -436,7 +439,7 @@ export default function UsuariosPage({ token }: { token: string }) {
 
   // Menu escondido não é permissão: quem chegar por outro caminho para aqui vê a
   // mesma recusa que o servidor deu.
-  if (negado || (usuarios === null && !carregando && !podeGerenciarUsuarios(eu))) {
+  if (negado || (usuarios === null && !carregando && !podeVerUsuarios(eu))) {
     return (
       <div className="admin-content-wrap">
         <div className="admin-page-header">
@@ -503,15 +506,21 @@ export default function UsuariosPage({ token }: { token: string }) {
       <div className="admin-page-header">
         <div>
           <h1 className="admin-page-title">Usuários</h1>
-          <p className="admin-page-desc">Quem tem acesso ao painel, o papel de cada um e o que cada papel alcança</p>
+          <p className="admin-page-desc">
+            {podeMexer
+              ? 'Quem tem acesso ao painel, o papel de cada um e o que cada papel alcança'
+              : 'Quem tem acesso ao painel, o papel de cada um e o que cada papel alcança. Só o administrador do sistema altera.'}
+          </p>
         </div>
         {/* O botão fica: ele é o gatilho, e sumir no clique seria mais uma
             troca de estalo na mesma tela. */}
-        <button type="button" className="btn btn-primary btn-sm"
-          aria-expanded={convitePronto}
-          onClick={() => setConvitePronto(v => !v)}>
-          + Convidar alguém de fora
-        </button>
+        {podeMexer && (
+          <button type="button" className="btn btn-primary btn-sm"
+            aria-expanded={convitePronto}
+            onClick={() => setConvitePronto(v => !v)}>
+            + Convidar alguém de fora
+          </button>
+        )}
       </div>
 
       {/* Fora do cabeçalho: o formulário ocupa a linha inteira, e espremido ao
@@ -587,9 +596,12 @@ export default function UsuariosPage({ token }: { token: string }) {
                     </td>
                     <td className="usuarios-email">{u.email}</td>
                     <td>
-                      {dono ? (
-                        <span className="usuarios-papel-fixo" title="O papel de administrador vem do e-mail, fixado no servidor">
-                          {PAPEL_LABEL.admin}
+                      {dono || !podeMexer ? (
+                        <span className="usuarios-papel-fixo"
+                          title={dono
+                            ? 'O papel de administrador vem do e-mail, fixado no servidor'
+                            : 'Só o administrador do sistema troca o papel'}>
+                          {rotuloPapel(u.papel)}
                         </span>
                       ) : (
                         <SelectPapel
@@ -613,7 +625,7 @@ export default function UsuariosPage({ token }: { token: string }) {
                         {/* Só de convidado: quem é da casa entra pelo Workspace, e
                             uma senha ali seria uma segunda porta para uma conta
                             que já tem dono. */}
-                        {u.convidado && salvando !== u.id && (
+                        {podeMexer && u.convidado && salvando !== u.id && (
                           <button
                             type="button"
                             className="usuarios-btn-acesso"
@@ -627,7 +639,7 @@ export default function UsuariosPage({ token }: { token: string }) {
                         )}
                         {salvando === u.id
                           ? <span className="usuarios-salvando"><IconSpinner size={13} /></span>
-                          : !dono && (
+                          : podeMexer && !dono && (
                             <button
                               type="button"
                               className={`usuarios-btn-acesso${u.ativo ? ' remover' : ''}`}
@@ -673,7 +685,7 @@ export default function UsuariosPage({ token }: { token: string }) {
         <p className="admin-section-title">
           Acessos do papel {rotuloPapel('membro')}
         </p>
-        <MatrizPermissoes token={token} />
+        <MatrizPermissoes token={token} somenteLeitura={!podeMexer} />
       </div>
 
       {aDesativar && (

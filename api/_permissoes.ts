@@ -168,7 +168,7 @@ export const CATALOGO: PermGrupo[] = [
     chave: 'configuracoes',
     label: 'Configurações',
     page: 'configuracoes',
-    nota: 'A aba Usuários é exclusiva do administrador do sistema e não entra nesta matriz.',
+    nota: 'A aba Usuários é do administrador do sistema, e o master só a lê. Não entra nesta matriz.',
     acoes: [
       { chave: 'configuracoes:ver', label: 'Abrir Configurações', acesso: true },
       { chave: 'configuracoes:etapas', label: 'Criar, editar, reordenar e excluir etapas dos pipelines' },
@@ -190,6 +190,12 @@ export const PERMISSAO_DA_PAGINA: Record<string, string> = Object.fromEntries(
 export const LIVRE = '@livre';
 /** Ação que só o administrador do sistema chama - a trava dela é o e-mail. */
 export const SO_ADMIN = '@admin';
+/**
+ * Leitura da tela de Usuarios, que o master tambem alcanca: ele acompanha quem
+ * tem acesso e o que cada papel abrange, sem poder mexer. Escrever continua
+ * sendo so do dono do painel, pelo `SO_ADMIN`.
+ */
+export const SO_ADMIN_LEITURA = '@admin-leitura';
 
 /**
  * Ação do servidor → permissão exigida. Array significa "qualquer uma delas"
@@ -318,13 +324,13 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   quick_search: LIVRE, // o resultado é filtrado por permissão dentro do handler
 
   // ── Gestão de usuários e acessos ──────────────────────────────────────────
-  usuarios: SO_ADMIN,
+  usuarios: SO_ADMIN_LEITURA,
   convidar_usuario: SO_ADMIN,
   definir_senha_usuario: SO_ADMIN,
   enviar_link_senha: SO_ADMIN,
   set_papel: SO_ADMIN,
   set_usuario_ativo: SO_ADMIN,
-  permissoes: SO_ADMIN,
+  permissoes: SO_ADMIN_LEITURA,
   set_permissoes_papel: SO_ADMIN,
 
   // ── Oportunidades ──────────────────────────────────────────────────────────
@@ -537,7 +543,7 @@ export function podeAcao(perm: Permissoes, acao: string): boolean {
   if (perm === TUDO) return true;
   const exigida = PERMISSAO_DA_ACAO[acao];
   if (exigida === LIVRE) return true;
-  if (exigida === undefined || exigida === SO_ADMIN) return false;
+  if (exigida === undefined || exigida === SO_ADMIN || exigida === SO_ADMIN_LEITURA) return false;
   return pode(perm, exigida);
 }
 

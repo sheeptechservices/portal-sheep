@@ -54,3 +54,18 @@ export function papelEfetivo(email: string | null | undefined, papelGravado: unk
 export function podeGerenciarUsuarios(usuario: { email?: string } | null | undefined): boolean {
   return ehEmailAdmin(usuario?.email);
 }
+
+/**
+ * Ler a tela de Usuários: o dono do painel e o master.
+ *
+ * O master responde pela operação, e para isso precisa saber quem tem acesso e
+ * o que o papel `membro` alcança. Mexer continua sendo só do dono: quem separa
+ * as duas coisas é `podeGerenciarUsuarios`, e toda ação de escrita passa por
+ * ele.
+ */
+export function podeVerUsuarios(
+  usuario: { email?: string; papel?: string } | null | undefined,
+): boolean {
+  if (podeGerenciarUsuarios(usuario)) return true;
+  return String(usuario?.papel ?? '').trim().toLowerCase() === 'master';
+}

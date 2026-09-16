@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuth, useToast } from './AdminApp';
-import { podeAbrirPagina, podeGerenciarUsuarios } from './papeis';
+import { podeAbrirPagina, podeVerUsuarios } from './papeis';
 
 /** Área da operação que é dona da ferramenta - vira uma coluna no hub. */
 type AreaId = 'juridico' | 'comercial' | 'tecnologia';
@@ -252,8 +252,8 @@ export default function FerramentasPage({ onNavigate }: { onNavigate?: (page: st
   // ferramenta que devolve "sem acesso" no clique, e o card vira um convite
   // para uma porta trancada.
   const { pode, usuario } = useAuth();
-  const admin = podeGerenciarUsuarios(usuario);
-  const liberada = (f: { page?: string }) => !f.page || podeAbrirPagina(pode, f.page, admin);
+  const veUsuarios = podeVerUsuarios(usuario);
+  const liberada = (f: { page?: string }) => !f.page || podeAbrirPagina(pode, f.page, veUsuarios);
 
   return (
     <div className="admin-content-wrap">

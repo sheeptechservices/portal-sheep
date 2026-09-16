@@ -33,6 +33,12 @@ export function podeGerenciarUsuarios(usuario: { papel?: string } | null | undef
   return String(usuario?.papel ?? '').toLowerCase() === 'admin';
 }
 
+/** Abrir a tela de Usuários: o dono do painel, e o master em modo leitura. */
+export function podeVerUsuarios(usuario: { papel?: string } | null | undefined): boolean {
+  const p = String(usuario?.papel ?? '').toLowerCase();
+  return p === 'admin' || p === 'master';
+}
+
 // ── Permissões ───────────────────────────────────────────────────────────────
 
 /** `'*'` = pode tudo (master, admin, ou matriz do papel nunca configurada). */
@@ -65,7 +71,8 @@ export const PAGINAS_DE_FERRAMENTA = ['gerador-documentos', 'gerador-propostas',
 
 /**
  * Páginas que não entram na matriz de permissões porque a trava delas é outra:
- * o e-mail do administrador do sistema, conferido no servidor.
+ * o papel, conferido no servidor. Usuários abre para o administrador do sistema
+ * e, só para ler, para o master.
  */
 export const PAGINAS_SO_ADMIN = ['usuarios'];
 
@@ -95,8 +102,8 @@ export type Pode = ReturnType<typeof criarPode>;
  * A página é alcançável? Duas travas diferentes num teste só: a matriz de
  * permissões, e a lista de páginas que são do administrador do sistema.
  */
-export function podeAbrirPagina(pode: Pode, page: string, admin = false): boolean {
-  if (PAGINAS_SO_ADMIN.includes(page)) return admin;
+export function podeAbrirPagina(pode: Pode, page: string, veUsuarios = false): boolean {
+  if (PAGINAS_SO_ADMIN.includes(page)) return veUsuarios;
   if (PAGINAS_DE_FERRAMENTA.includes(page) && !pode('ferramentas:ver')) return false;
   const chave = PERMISSAO_DA_PAGINA[page];
   return !chave || pode(chave);

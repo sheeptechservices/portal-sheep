@@ -19,11 +19,12 @@ import {
   statusDeduzido, type EtapasDeTarefa,
 } from './_entregas.js';
 import {
-  emailAdmin, ehEmailAdmin, ordemPapel, papelEfetivo, podeGerenciarUsuarios,
+  emailAdmin, ehEmailAdmin, ordemPapel, papelEfetivo, podeGerenciarUsuarios, podeVerUsuarios,
   PAPEIS_ATRIBUIVEIS, type Papel,
 } from './_papeis.js';
 import {
-  CATALOGO, CHAVES as CHAVES_TODAS, PERMISSAO_DA_ACAO, LIVRE, SO_ADMIN, TUDO as TUDO_PERM,
+  CATALOGO, CHAVES as CHAVES_TODAS, PERMISSAO_DA_ACAO, LIVRE, SO_ADMIN, SO_ADMIN_LEITURA,
+  TUDO as TUDO_PERM,
   ensurePermissoesSchema, permissoesDoUsuario, podeAcao, pode,
   matrizDoPapel, salvarMatrizPapel, negado,
 } from './_permissoes.js';
@@ -3064,6 +3065,9 @@ async function despacharAdminData(
     const exigida = PERMISSAO_DA_ACAO[acaoPedida];
     if (exigida === SO_ADMIN) {
       if (!podeGerenciarUsuarios(usuario)) return NEGADO_USUARIOS;
+    } else if (exigida === SO_ADMIN_LEITURA) {
+      // A leitura da tela de Usuarios o master tambem alcanca; mexer, nao.
+      if (!podeVerUsuarios(usuario)) return NEGADO_USUARIOS;
     } else if (exigida !== LIVRE && !podeAcao(permissoes, acaoPedida)) {
       return negado(exigida);
     }
@@ -3354,7 +3358,7 @@ async function despacharAdminData(
     // checkboxes a partir daqui, e não de uma cópia própria: assim não existe
     // checkbox sem permissão real nem permissão sem checkbox.
     if (action === 'permissoes') {
-      if (!podeGerenciarUsuarios(usuario)) return NEGADO_USUARIOS;
+      if (!podeVerUsuarios(usuario)) return NEGADO_USUARIOS;
       const matriz = await matrizDoPapel(db, 'membro');
       return {
         status: 200,
@@ -3421,7 +3425,7 @@ async function despacharAdminData(
     // Gestão de usuários: a lista inteira, com papel, acesso e sessões abertas.
     // Só o dono do painel enxerga - ver `podeGerenciarUsuarios`.
     if (action === 'usuarios') {
-      if (!podeGerenciarUsuarios(usuario)) return NEGADO_USUARIOS;
+      if (!podeVerUsuarios(usuario)) return NEGADO_USUARIOS;
       const agora = new Date().toISOString();
       const [lista, sessoes] = await Promise.all([
         // A ordem final é dada em JS, pelo papel *efetivo* - ver o sort abaixo.
