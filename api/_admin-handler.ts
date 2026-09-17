@@ -4194,7 +4194,13 @@ async function despacharAdminData(
       for (let i = 0; i < ids.length; i += 400) {
         const lote = ids.slice(i, i + 400);
         const r = await db.execute({
-          sql: `SELECT c.tarefa_id, c.pai_id, c.usuario_nome, c.texto, c.criado_em
+          sql: `SELECT c.id, c.tarefa_id, c.pai_id, c.usuario_nome, c.texto, c.criado_em,
+                       -- Os nomes do que veio preso, numa coluna so: metade da
+                       -- conversa da casa e um print, e sem isto a fala saia
+                       -- vazia do arquivo.
+                       (SELECT GROUP_CONCAT(a.nome, '|')
+                        FROM tarefa_comentario_anexos a
+                        WHERE a.comentario_id = c.id) AS anexos
                 FROM tarefa_comentarios c
                 JOIN projeto_tarefas t ON t.id = c.tarefa_id
                 WHERE c.tarefa_id IN (${lote.map(() => '?').join(',')})

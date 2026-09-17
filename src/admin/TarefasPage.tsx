@@ -729,6 +729,10 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
             prazo: t.prazo ?? null,
             etiquetas: t.etiquetas ?? [],
             concluida_em: t.concluida_em ?? null,
+            // A caixa do arquivo é a mesma coluna do quadro: quem decide se a
+            // tarefa está concluída é a etapa dela, e não o carimbo - uma
+            // arrastada para "Concluída" antes de o carimbo existir não tem um.
+            feita: et.fecha(t.status),
             entrega_titulo: (p.entregas ?? []).find(e => e.id === t.entrega_id)?.titulo ?? null,
             subtarefas: passos.get(t.id) ?? [],
             comentarios: conversas.get(t.id) ?? [],
@@ -751,10 +755,15 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
         const id = Number(c.tarefa_id);
         const lista = mapa.get(id) ?? [];
         lista.push({
+          id: Number(c.id),
+          pai: c.pai_id == null ? null : Number(c.pai_id),
           autor: String(c.usuario_nome ?? 'Alguém'),
           em: String(c.criado_em ?? ''),
           texto: String(c.texto ?? ''),
           resposta: c.pai_id != null,
+          // O servidor manda os nomes numa string só, separados por barra: uma
+          // linha por anexo faria a conversa vir multiplicada.
+          anexos: String(c.anexos ?? '').split('|').filter(Boolean),
         });
         mapa.set(id, lista);
       }

@@ -19,16 +19,21 @@ import { zipSync, strToU8 } from 'fflate';
 
 export type Formato = 'csv' | 'xlsx' | 'md' | 'pdf';
 
-/** Um comentário do card, já achatado: quem escreveu, quando e o quê. Sem
- *  menções - o que vira documento é o texto. */
+/** Um comentário do card, já achatado: quem escreveu, quando, o quê e o que veio
+ *  preso junto. */
 export interface ComentarioExport {
+  /** Identidade da fala, para a resposta achar a que responde. Ausente onde
+   *  quem monta não a tem - e aí a conversa sai na ordem em que chegou. */
+  id?: number;
+  /** A fala respondida. */
+  pai?: number | null;
   autor: string;
   em: string;
   texto: string;
   /** Resposta dentro de uma conversa, e não um comentário de primeiro nível. */
   resposta: boolean;
-  /** Os nomes dos arquivos presos ao comentário. Só a ficha de uma tarefa os
-   *  usa: no diretório inteiro eles virariam ruído linha após linha. */
+  /** Os nomes dos arquivos presos ao comentário. Sem eles, a fala que era só um
+   *  print sai vazia do arquivo, como se alguém tivesse mandado nada. */
   anexos?: string[];
 }
 
@@ -47,6 +52,11 @@ export interface TarefaExport {
   prazo: string | null;
   etiquetas: string[];
   concluida_em: string | null;
+  /** Se o quadro a considera concluída. Vem de quem monta o pacote, porque quem
+   *  decide isso é a etapa em que ela está, e não o carimbo: uma tarefa arrastada
+   *  para "Concluída" antes de este campo existir não tem carimbo nenhum, e
+   *  saía do arquivo como se estivesse aberta. Ausente, vale o carimbo. */
+  feita?: boolean;
   entrega_titulo: string | null;
   subtarefas: SubtarefaExport[];
   comentarios: ComentarioExport[];
@@ -85,13 +95,61 @@ const COLUNAS = [
   'Checklist', 'Passos feitos', 'Comentários',
 ] as const;
 
-const dia = (v: string | null | undefined) => (v ? String(v).slice(0, 10) : '');
+/**
+ * O dia de uma data, como a tela mostra.
+ *
+ * Fatiar os dez primeiros caracteres do ISO parecia bastar, e não bastava: o
+ * carimbo é gravado em UTC, e o que aconteceu às 21h de uma segunda no Brasil
+ * é terça em UTC. O arquivo dizia um dia e o card, ao lado, dizia outro.
+ *
+ * Prazo e data de início já são o dia puro (`AAAA-MM-DD`), sem hora e sem fuso:
+ * esses passam direto, porque lê-los como instante os empurraria um dia para
+ * trás.
+ */
+const dia = (v: string | null | undefined) => {
+  const texto = String(v ?? '').trim();
+  if (!texto) return '';
+  if (!texto.includes('T')) return texto.slice(0, 10);
+  const d = new Date(texto);
+  if (Number.isNaN(d.getTime())) return texto.slice(0, 10);
+  const dd = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${dd(d.getMonth() + 1)}-${dd(d.getDate())}`;
+};
+
+/** A marcação gravada é `@[Nome](id)`. Fora da tela o id não liga para lugar
+ *  nenhum e ainda parece um link quebrado, então sobra o nome. */
+const semMarcacao = (texto: string) => texto.replace(/@\[([^\]]+)\]\([^)]*\)/g, '@$1');
+
+/** O texto de um comentário como ele deve sair: sem a marcação crua e com os
+ *  anexos nomeados. Comentário que era só um print aparecia vazio no arquivo. */
+function falaDoComentario(c: ComentarioExport): string {
+  const texto = semMarcacao(c.texto ?? '').trim();
+  const anexos = c.anexos?.length ? `[anexos: ${c.anexos.join(', ')}]` : '';
+  return [texto, anexos].filter(Boolean).join('\n');
+}
+
+/** A conversa na ordem em que se lê: cada resposta logo abaixo da fala que ela
+ *  responde, e não no fim da lista. O servidor devolve por id, e uma resposta
+ *  escrita hoje a um comentário da semana passada saía longe dele. */
+function conversaOrdenada(cs: ComentarioExport[] | undefined): ComentarioExport[] {
+  const lista = cs ?? [];
+  const saida: ComentarioExport[] = [];
+  for (const c of lista) {
+    if (c.resposta) continue;
+    saida.push(c);
+    if (c.id != null) saida.push(...lista.filter(r => r.resposta && r.pai === c.id));
+  }
+  // Resposta cujo pai não veio no recorte não pode sumir do arquivo.
+  saida.push(...lista.filter(r => !saida.includes(r)));
+  return saida;
+}
 
 /** A conversa inteira numa célula. Planilha não tem onde aninhar resposta,
  *  então cada comentário vira uma linha do texto, com o autor na frente e a
  *  resposta marcada com um recuo. */
 const conversaEmTexto = (cs: ComentarioExport[] | undefined) =>
-  (cs ?? []).map(c => `${c.resposta ? '> ' : ''}${c.autor} (${dia(c.em)}): ${c.texto}`)
+  conversaOrdenada(cs)
+    .map(c => `${c.resposta ? '> ' : ''}${c.autor} (${dia(c.em)}): ${falaDoComentario(c).replace(/\n/g, ' ')}`)
     .join('\n');
 
 /** O checklist numa célula, um passo por linha e com a marca do que está feito
@@ -305,7 +363,9 @@ function markdown(pacote: Pacote): string {
     for (const [entrega, tarefas] of porEntrega) {
       L.push(`#### ${entrega}`, '');
       for (const t of tarefas) {
-        const feita = !!t.concluida_em;
+        // O que o quadro diz, e não só o carimbo: a caixa marcada aqui precisa
+        // querer dizer a mesma coisa que a coluna "Concluída" lá.
+        const feita = t.feita ?? !!t.concluida_em;
         L.push(`- [${feita ? 'x' : ' '}] **${t.titulo}**`);
         const meta = [
           `status: ${t.status}`,
@@ -334,9 +394,9 @@ function markdown(pacote: Pacote): string {
         // onde costuma estar a decisão que o título não conta.
         if (t.comentarios?.length) {
           L.push(`  - Comentários (${t.comentarios.length}):`);
-          for (const c of t.comentarios) {
+          for (const c of conversaOrdenada(t.comentarios)) {
             L.push(`    - **${c.autor}**${c.resposta ? ' (resposta)' : ''} - ${dia(c.em)}`);
-            L.push(...c.texto.trim().split('\n').map(x => `      ${x}`));
+            L.push(...falaDoComentario(c).split('\n').map(x => `      ${x}`));
           }
         }
       }
@@ -358,9 +418,6 @@ export interface FichaDaTarefa extends TarefaExport {
   link?: string | null;
 }
 
-/** A marcação gravada é `@[Nome](id)`. Fora da tela o id não liga para lugar
- *  nenhum e ainda parece um link quebrado, então sobra o nome. */
-const semMarcacao = (texto: string) => texto.replace(/@\[([^\]]+)\]\([^)]*\)/g, '@$1');
 
 /**
  * Uma tarefa sozinha, em markdown, para colar num chat com uma IA.
@@ -407,7 +464,7 @@ export function markdownDaTarefa(t: FichaDaTarefa): string {
 
   if (t.comentarios?.length) {
     L.push(`## Comentários (${t.comentarios.length})`, '');
-    for (const c of t.comentarios) {
+    for (const c of conversaOrdenada(t.comentarios)) {
       // A resposta desce um nível: quem lê precisa saber a que fala ela
       // responde, e o recuo é como a conversa se lê na tela.
       L.push(`${c.resposta ? '####' : '###'} ${c.autor}${c.resposta ? ' (resposta)' : ''} - ${dia(c.em)}`, '');
@@ -471,10 +528,10 @@ function exportarPdf(pacote: Pacote) {
       }
       if (t.comentarios?.length) {
         abaixo.push('<div class="t-conversa">'
-          + t.comentarios.map(c =>
+          + conversaOrdenada(t.comentarios).map(c =>
             `<p><b>${escHtml(c.autor)}</b>${c.resposta ? ' <i>(resposta)</i>' : ''}`
             + ` <span class="t-quando">${escHtml(dia(c.em))}</span><br>`
-            + `${escHtml(c.texto.trim())}</p>`).join('')
+            + `${escHtml(falaDoComentario(c))}</p>`).join('')
           + '</div>');
       }
       partes.push('<tr>'
