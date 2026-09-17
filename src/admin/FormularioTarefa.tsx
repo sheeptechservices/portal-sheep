@@ -47,8 +47,9 @@ export interface EtapaTarefa {
   id: number;
   nome: string;
   cor: string;
-  /** Papéis da equipe a quem a etapa é oferecida. Vazio é "todo mundo". */
-  papeis?: string[];
+  /** Papéis da equipe avisados quando uma tarefa chega nesta etapa. Vazio é
+   *  "não avisa ninguém". Quem vê a etapa é todo mundo. */
+  notificar_papeis?: string[];
   /** O que a etapa quer dizer, escrito em Configurações. Vira a dica na hora
    *  de escolher. */
   descricao?: string | null;
@@ -127,28 +128,6 @@ export interface EtiquetaTarefa {
  *
  *  Isto governa o que a tela oferece, não o que o servidor aceita: etiqueta já
  *  aplicada continua na tarefa e continua aparecendo nas visões. */
-/** Quais etapas oferecer a quem move a tarefa.
- *
- *  Mesma regra da etiqueta, e pelo mesmo motivo: o papel é o daquele projeto, e
- *  quem está de fora da equipe continua vendo tudo. A etapa em que a tarefa
- *  está nunca some da lista - esconder o lugar onde ela se encontra faria o
- *  seletor mentir sobre o estado atual.
- *
- *  Isto governa o que a tela oferece, não o que o servidor aceita, e não mexe
- *  em nenhuma visão: a coluna continua no quadro, com as tarefas que estão
- *  nela. */
-export function etapasParaOPapel(
-  todas: EtapaTarefa[], projeto: Projeto | undefined, usuarioId: string | undefined,
-  atual?: string,
-): EtapaTarefa[] {
-  if (!projeto || !usuarioId) return todas;
-  const papel = projeto.equipe.find(m => m.id === usuarioId)?.papel;
-  if (!papel) return todas;
-  return todas.filter(e => (
-    e.nome === atual || !e.papeis?.length || e.papeis.includes(papel)
-  ));
-}
-
 export function etiquetasParaOPapel(
   todas: EtiquetaTarefa[], porPapel: boolean, projeto: Projeto | undefined, usuarioId: string | undefined,
 ): EtiquetaTarefa[] {
@@ -997,8 +976,12 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
               />
             )}
             <div style={{ marginTop: 6 }}>
+              {/* Todas as etapas, para todo mundo: o quadro mostra a coluna a
+                  quem abre a tarefa de qualquer jeito, e uma lista que escondia
+                  etapas fazia o seletor mentir sobre para onde ela podia ir. O
+                  papel diz quem é avisado, e isso o servidor resolve. */}
               <PilulaEtapa valor={rascunho.status}
-                etapas={etapasParaOPapel(etapas, projeto, usuarioId, rascunho.status)}
+                etapas={etapas}
                 desabilitado={somenteLeitura} onChange={v => set('status', v)} />
             </div>
           </div>

@@ -17,7 +17,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  IconBalao, IconCheck, IconComentario, IconInbox, IconJoinha, IconMegafone, IconPlay, IconReply, IconX,
+  IconBalao, IconCheck, IconComentario, IconInbox, IconJoinha, IconMegafone, IconPlay, IconReply,
+  IconVisaoQuadro, IconX,
 } from './icons';
 import { Dialogo } from './Dialogo';
 import { SelectSistema } from './SelectSistema';
@@ -29,7 +30,7 @@ import { useToast } from '../lib/toast';
 /** Um aviso, no formato que o servidor manda para todas as fontes. */
 export interface ItemDoInbox {
   chave: string;
-  tipo: 'chamado' | 'pedido' | 'reuniao' | 'mencao' | 'resposta' | 'joinha';
+  tipo: 'chamado' | 'pedido' | 'reuniao' | 'mencao' | 'resposta' | 'joinha' | 'etapa';
   titulo: string;
   descricao: string;
   etiqueta: string;
@@ -63,6 +64,7 @@ const FONTES = {
   mencao: { icone: IconComentario, nome: 'Menção em tarefa' },
   resposta: { icone: IconReply, nome: 'Resposta em tarefa' },
   joinha: { icone: IconJoinha, nome: 'Joinha em tarefa' },
+  etapa: { icone: IconVisaoQuadro, nome: 'Tarefa mudou de etapa' },
 } as const;
 
 /** De quanto em quanto tempo a gaveta pergunta de novo, com a aba à vista. Uma
@@ -228,7 +230,8 @@ export function Inbox({ listar, marcarLido, limpar, vincularReuniao, onIr }: {
                 <p>Nada novo por aqui.</p>
                 <p className="inbox-vazio-nota">
                   Reunião gravada, pedido de cliente, chamado do time e, nos comentários
-                  de tarefa, menção, resposta e joinha a você aparecem nesta gaveta
+                  de tarefa, menção, resposta, joinha e tarefa que chegou numa etapa
+                  que o seu papel acompanha aparecem nesta gaveta
                   assim que chegam, e ficam até você limpar.
                 </p>
               </div>

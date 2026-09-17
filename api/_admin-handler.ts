@@ -1455,6 +1455,34 @@ async function migrarSchema(db: Client) {
   `);
 
   // As duas últimas colunas chegaram depois da tabela.
+  // Quem e avisado quando uma tarefa chega na etapa, por papel na equipe do
+  // projeto (Gestor, Dev, QA...). Substitui a lista de pessoas: papel se mantem
+  // sozinho quando alguem entra ou sai do time, e a lista de nomes nao.
+  //
+  // A coluna `papeis` continua onde esta, e nao vira esta: ela governava quem
+  // enxergava a etapa, e a versao que esta no ar ainda le aquilo. Aqui a etapa
+  // passa a ser de todo mundo, e este campo so diz quem recebe o aviso.
+  try {
+    await ddl(`ALTER TABLE tarefa_status_configs ADD COLUMN notificar_papeis TEXT`);
+  } catch { /* coluna ja existe */ }
+
+  // O aviso de etapa no inbox: uma linha por pessoa avisada, para a gaveta
+  // saber o que ja foi lido e o que ainda nao.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS tarefa_avisos (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      tarefa_id  INTEGER NOT NULL,
+      usuario_id TEXT NOT NULL,
+      etapa      TEXT NOT NULL,
+      autor_nome TEXT,
+      criado_em  TEXT NOT NULL
+    )
+  `);
+  try {
+    await ddl(`CREATE INDEX IF NOT EXISTS idx_tarefa_aviso_dono
+               ON tarefa_avisos (usuario_id, criado_em DESC)`);
+  } catch { /* indice ja existe */ }
+
   try {
     await ddl(`ALTER TABLE tarefa_status_configs ADD COLUMN is_excluded INTEGER NOT NULL DEFAULT 0`);
   } catch { /* coluna já existe */ }
@@ -2918,7 +2946,7 @@ interface ItemDoInbox {
    *  do comentário: duas na mesma tarefa são dois avisos. O joinha leva também
    *  quem deu, porque cada pessoa que concorda é um aviso. */
   chave: string;
-  tipo: 'chamado' | 'pedido' | 'reuniao' | 'mencao' | 'resposta' | 'joinha';
+  tipo: 'chamado' | 'pedido' | 'reuniao' | 'mencao' | 'resposta' | 'joinha' | 'etapa';
   titulo: string;
   descricao: string;
   /** O canto direito da linha: urgencia do chamado, projeto do pedido. */
@@ -3741,22 +3769,19 @@ async function despacharAdminData(
     }
 
     if (action === 'tarefa_status_configs') {
-      const [etapas, inscritos] = await Promise.all([
-        db.execute('SELECT * FROM tarefa_status_configs WHERE ativo = 1 ORDER BY ordem, id'),
-        db.execute(`SELECT n.*, u.nome AS usuario_nome, u.email AS usuario_email,
-                           u.foto_url AS usuario_foto
-                    FROM tarefa_status_notificacoes n JOIN usuarios u ON u.id = n.usuario_id
-                    ORDER BY u.nome`),
-      ]);
+      // Sem a lista de inscritos: quem a etapa avisa e dito por papel, na
+      // propria linha dela.
+      const etapas = await db.execute(
+        'SELECT * FROM tarefa_status_configs WHERE ativo = 1 ORDER BY ordem, id');
       return {
         status: 200,
         body: {
           statuses: etapas.rows.map(e => ({
             ...e,
-            // A lista de papéis chega pronta, como na etiqueta: a tela não
+            // As duas listas chegam prontas, como na etiqueta: a tela não
             // deveria precisar saber que isto mora como JSON.
             papeis: JSON.parse(String(e.papeis ?? '[]')) as string[],
-            notificacoes: inscritos.rows.filter(n => Number(n.status_id) === Number(e.id)),
+            notificar_papeis: JSON.parse(String(e.notificar_papeis ?? '[]')) as string[],
           })),
         },
       };
@@ -4910,7 +4935,7 @@ async function despacharAdminData(
                   ))`;
       const argsDaEquipe = [soDaEquipe ? 1 : 0, PROJETO_GERAL, usuario?.id ?? ''];
 
-      const [chamados, pedidos, lidos, mencoes, respostas, joinhas] = await Promise.all([
+      const [chamados, pedidos, lidos, mencoes, respostas, joinhas, etapas] = await Promise.all([
         cuidaDaFila
           ? db.execute({
             // Sem filtro de andamento: chamado resolvido continua no inbox, com
@@ -4995,6 +5020,21 @@ async function despacharAdminData(
                 ORDER BY j.criado_em DESC LIMIT 40`,
           args: [usuario?.id ?? '', usuario?.id ?? '', desde, ...argsDaEquipe],
         }),
+        // Tarefa que chegou numa etapa que o papel da pessoa acompanha. O
+        // aviso e gravado no momento do gesto: quem o recebe ja estava na
+        // equipe naquele instante, e mudar de time depois nao reescreve o que
+        // aconteceu.
+        db.execute({
+          sql: `SELECT a.id, a.tarefa_id, a.etapa, a.autor_nome, a.criado_em,
+                       t.titulo AS tarefa_titulo, p.nome AS projeto_nome
+                FROM tarefa_avisos a
+                JOIN projeto_tarefas t ON t.id = a.tarefa_id
+                JOIN projetos p ON p.id = t.projeto_id
+                WHERE a.usuario_id = ?
+                  AND a.criado_em >= ?
+                ORDER BY a.criado_em DESC LIMIT 40`,
+          args: [usuario?.id ?? '', desde],
+        }),
       ]);
 
       const jaLido = new Set(lidos.rows.map(x => String(x.chave)));
@@ -5069,6 +5109,21 @@ async function despacharAdminData(
         daConversa(`resposta:${r.id}`, 'resposta', `${r.usuario_nome ?? 'Alguém'} respondeu seu comentário`,
           r.texto, r.tarefa_titulo, r.criado_em, r.tarefa_id);
       }
+      for (const e of etapas.rows) {
+        const chave = `etapa:${e.id}`;
+        if (jaLimpo.has(chave)) continue;
+        itens.push({
+          chave,
+          tipo: 'etapa',
+          titulo: `${e.autor_nome ?? 'Alguém'} moveu para "${e.etapa}"`,
+          descricao: String(e.tarefa_titulo ?? ''),
+          etiqueta: String(e.projeto_nome ?? ''),
+          quando: String(e.criado_em),
+          lido: jaLido.has(chave),
+          alvo: String(e.tarefa_id),
+        });
+      }
+
       for (const j of joinhas.rows) {
         // O trecho e do comentario que recebeu o joinha: e o que diz a quem
         // escreveu de qual das suas falas se trata.
@@ -5810,17 +5865,42 @@ function faltaEmProjeto(p: any): string | null {
         await registrarEventosDaTarefa(db, novaId, autorId, autorNome,
           null, depois, { antes: false, depois: fecha });
       }
-      // Avisa por e-mail quem acompanha a etapa de destino, como no funil.
+      // Avisa quem a etapa de destino manda avisar: os papeis dela na equipe
+      // daquele projeto. O aviso vai ao inbox e ao e-mail - a gaveta acende
+      // para quem esta com o portal aberto, e o e-mail alcanca quem nao esta.
       if (mudouDeEtapa) {
         const etapa = await db.execute({
-          sql: 'SELECT id FROM tarefa_status_configs WHERE ativo = 1 AND nome = ?',
+          sql: `SELECT id, notificar_papeis FROM tarefa_status_configs
+                WHERE ativo = 1 AND nome = ?`,
           args: [statusPedido],
         });
         const etapaId = etapa.rows[0]?.id;
         if (etapaId != null) {
-          const inscritos = await emailsDosInscritos(
-            db, 'tarefa_status_notificacoes', { coluna: 'status_id', valor: etapaId },
-          );
+          const papeisAvisados = listaDeTexto(etapa.rows[0]?.notificar_papeis);
+          // Quem esta na equipe do projeto com um dos papeis, menos quem moveu:
+          // o proprio gesto ja e o aviso de quem o fez.
+          const equipe = papeisAvisados.length === 0 ? { rows: [] as any[] } : await db.execute({
+            sql: `SELECT u.id, u.nome, u.email
+                  FROM projeto_equipe pe
+                  JOIN usuarios u ON u.id = pe.usuario_id
+                  WHERE pe.projeto_id = ?
+                    AND pe.papel IN (${papeisAvisados.map(() => '?').join(',')})
+                    AND u.ativo = 1`,
+            args: [t.projeto_id, ...papeisAvisados],
+          });
+          const inscritos = equipe.rows
+            .filter(x => String(x.id) !== String(autorId ?? ''))
+            .map(x => ({ id: String(x.id), nome: String(x.nome), email: String(x.email) }))
+            .filter(x => x.email);
+          if (inscritos.length > 0) {
+            const agoraAviso = new Date().toISOString();
+            const alvoDaTarefa = novaId ?? Number(t.id);
+            await db.batch(inscritos.map(dest => ({
+              sql: `INSERT INTO tarefa_avisos (tarefa_id, usuario_id, etapa, autor_nome, criado_em)
+                    VALUES (?,?,?,?,?)`,
+              args: [alvoDaTarefa, dest.id, statusPedido, autorNome, agoraAviso],
+            })));
+          }
           if (inscritos.length > 0) {
             const [projeto, resp] = await Promise.all([
               db.execute({ sql: 'SELECT nome FROM projetos WHERE id = ?', args: [t.projeto_id] }),
@@ -5843,7 +5923,8 @@ function faltaEmProjeto(p: any): string | null {
               notifyEmail(db, dest.email, `Tarefa "${titulo}" chegou em "${statusPedido}"`, corpo, 'etapa_tarefa',
                 {
                   previa: `${titulo} - ${statusPedido}`,
-                  rodape: `Você recebe este aviso porque acompanha a etapa "${statusPedido}" das tarefas.`,
+                  rodape: `Você recebe este aviso pelo seu papel na equipe deste projeto,`
+                    + ` que a etapa "${statusPedido}" avisa.`,
                 });
             }
           }
@@ -7775,18 +7856,24 @@ function faltaEmProjeto(p: any): string | null {
       const max = await db.execute('SELECT MAX(ordem) as m FROM tarefa_status_configs');
       const ordem = Number(max.rows[0]?.m ?? 0) + 1;
       const descricao = String(body.descricao ?? '').trim() || null;
-      const papeis = JSON.stringify(Array.isArray(body.papeis) ? body.papeis : []);
+      // Etapa nova nasce sem avisar ninguem: quem a cria escolhe depois quais
+      // papeis ela chama, e um aviso que ninguem pediu e pior que nenhum.
+      const notificar = JSON.stringify(
+        Array.isArray(body.notificar_papeis) ? body.notificar_papeis : [],
+      );
       const r = await db.execute({
-        sql: `INSERT INTO tarefa_status_configs (nome, cor, ordem, ativo, descricao, papeis)
+        sql: `INSERT INTO tarefa_status_configs
+                (nome, cor, ordem, ativo, descricao, notificar_papeis)
               VALUES (?,?,?,1,?,?)`,
-        args: [nome, body.cor ?? '#6E6F69', ordem, descricao, papeis],
+        args: [nome, body.cor ?? '#6E6F69', ordem, descricao, notificar],
       });
       return {
         status: 200,
         body: {
           status: {
             id: Number(r.lastInsertRowid), nome, cor: body.cor ?? '#6E6F69',
-            ordem, ativo: 1, is_entrada: 0, is_conclusao: 0, descricao, papeis: [],
+            ordem, ativo: 1, is_entrada: 0, is_conclusao: 0, descricao,
+            papeis: [], notificar_papeis: [],
           },
         },
       };
@@ -7806,9 +7893,12 @@ function faltaEmProjeto(p: any): string | null {
       });
       if (repetida.rows[0]) return { status: 400, body: { error: 'Já existe uma etapa com esse nome.' } };
       await db.execute({
-        sql: 'UPDATE tarefa_status_configs SET nome = ?, cor = ?, descricao = ?, papeis = ? WHERE id = ?',
+        sql: `UPDATE tarefa_status_configs
+              SET nome = ?, cor = ?, descricao = ?, notificar_papeis = ?
+              WHERE id = ?`,
         args: [nome, body.cor ?? '#6E6F69', String(body.descricao ?? '').trim() || null,
-          JSON.stringify(Array.isArray(body.papeis) ? body.papeis : []), body.id],
+          JSON.stringify(Array.isArray(body.notificar_papeis) ? body.notificar_papeis : []),
+          body.id],
       });
       // As tarefas apontam pelo nome: sem isto, renomear as deixaria órfãs de
       // uma coluna que não existe mais.
@@ -7921,26 +8011,6 @@ function faltaEmProjeto(p: any): string | null {
         args: [era ? 0 : 1, body.id],
       });
       return { status: 200, body: { ok: true, always_collapsed: era ? 0 : 1 } };
-    }
-
-    // Quem acompanha a etapa. Mesma dupla de ações do funil.
-    if (action === 'add_tarefa_status_notif') {
-      const r = await db.execute({
-        sql: 'INSERT OR IGNORE INTO tarefa_status_notificacoes (status_id, usuario_id) VALUES (?, ?)',
-        args: [body.status_id, body.usuario_id],
-      });
-      const notif = {
-        ...await inscritoCriado(db, Number(r.lastInsertRowid), body.usuario_id),
-        status_id: body.status_id,
-      };
-      return { status: 200, body: { notificacao: notif } };
-    }
-
-    if (action === 'remove_tarefa_status_notif') {
-      await db.execute({
-        sql: 'DELETE FROM tarefa_status_notificacoes WHERE id = ?', args: [body.id],
-      });
-      return { status: 200, body: { ok: true } };
     }
 
     // ── Etiquetas de tarefa ─────────────────────────────────────────────────

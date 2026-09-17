@@ -252,8 +252,6 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   reorder_tarefa_etiquetas: 'configuracoes:etapas',
   set_etiquetas_por_papel: 'configuracoes:etapas',
   toggle_bloqueio_tarefa_etiqueta: 'configuracoes:etapas',
-  add_tarefa_status_notif: 'configuracoes:etapas',
-  remove_tarefa_status_notif: 'configuracoes:etapas',
   // Publicar é decidir o que o cliente vê: mesma permissão de editar o projeto.
   publicar_projeto: 'projetos:editar',
   // O combinado da planning e do projeto: quem ve o projeto le, quem edita

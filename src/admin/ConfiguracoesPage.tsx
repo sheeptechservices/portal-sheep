@@ -1856,8 +1856,13 @@ function ConfiguracoesSkeleton() {
 // ── Etapas do quadro de tarefas ───────────────────────────────
 //
 //  Mesma estrutura das etapas do funil - arrastar para ordenar, clicar no nome
-//  para renomear, ponto colorido para trocar a cor - sem o que é do funil e não
-//  existe aqui: notificação por etapa, pendência, conversão.
+//  para renomear, ponto colorido para trocar a cor.
+//
+//  A diferença é quem a etapa avisa: no funil são pessoas, escolhidas uma a uma;
+//  aqui são papéis da equipe do projeto (Gestor, Dev, QA...). Papel se mantém
+//  sozinho quando alguém entra ou sai do time, e uma lista de nomes envelhece
+//  sozinha. Ver a etapa é de todo mundo: esconder coluna fazia o quadro mentir
+//  sobre onde a tarefa estava.
 //
 //  As duas marcações que sobram são as que a entrega lê. A de entrada diz onde
 //  a tarefa nasce e o que ainda não começou; a de conclusão diz o que conta no
@@ -1869,15 +1874,19 @@ interface EtapaTarefa {
   cor: string;
   /** O que a etapa quer dizer. Vira a dica na hora de escolher. */
   descricao: string | null;
-  /** Papéis da equipe a quem a etapa é oferecida. Vazio é "todo mundo". */
-  papeis: string[];
+  /** Papéis da equipe que são avisados quando uma tarefa chega nesta etapa -
+   *  no inbox e por e-mail. Vazio é "ninguém": a etapa não avisa.
+   *
+   *  Todo mundo vê todas as etapas: esconder coluna fazia o quadro mentir sobre
+   *  onde a tarefa estava, e quem não podia mexer continuava vendo o card de
+   *  qualquer jeito. O papel aqui governa quem é chamado, e não quem enxerga. */
+  notificar_papeis: string[];
   ordem: number;
   is_entrada: number;
   /** A estrela de conversão: a etapa que quer dizer "feito". */
   is_conclusao: number;
   is_excluded: number;
   always_collapsed: number;
-  notificacoes?: Notificacao[];
 }
 
 function EtapaTarefaRow({
@@ -1913,25 +1922,12 @@ function EtapaTarefaRow({
   const [descricao, setDescricao] = useState(etapa.descricao ?? '');
   const [paletaPos, setPaletaPos] = useState<{ top: number; left: number } | null>(null);
 
-  const [inscritos, setInscritos] = useState<Notificacao[]>(etapa.notificacoes ?? []);
   const [confirmar, setConfirmar] = useState(false);
   const [mover, setMover] = useState<{ count: number } | null>(null);
   const [destino, setDestino] = useState<number | ''>('');
   const [excluindo, setExcluindo] = useState(false);
 
   useEffect(() => { setNome(etapa.nome); setCor(etapa.cor); }, [etapa.nome, etapa.cor]);
-
-  async function inscrever(u: UsuarioNotificavel) {
-    const r = await api('', 'POST', {
-      action: 'add_tarefa_status_notif', status_id: etapa.id, usuario_id: u.id,
-    });
-    if (r?.notificacao) setInscritos(prev => [...prev, r.notificacao]);
-  }
-
-  async function desinscrever(id: number) {
-    setInscritos(prev => prev.filter(n => n.id !== id));
-    await api('', 'POST', { action: 'remove_tarefa_status_notif', id });
-  }
 
   useEffect(() => {
     if (!paletaPos) return;
@@ -1945,20 +1941,20 @@ function EtapaTarefaRow({
   }, [paletaPos]);
 
   async function salvar(novoNome: string, novaCor: string, novaDesc = descricao,
-    papeis = etapa.papeis) {
+    papeis = etapa.notificar_papeis) {
     const limpo = novoNome.trim();
     const desc = novaDesc.trim();
     if (!limpo) { setNome(etapa.nome); return; }
-    const mudouPapel = papeis !== etapa.papeis;
+    const mudouPapel = papeis !== etapa.notificar_papeis;
     if (!mudouPapel && limpo === etapa.nome && novaCor === etapa.cor
       && desc === (etapa.descricao ?? '')) return;
     // A linha muda na hora e a gravação vai atrás. Esperar a resposta para
     // marcar o papel deixava o tique aparecer meio segundo depois do clique, e
     // quem escolhe papel escolhe vários seguidos.
-    onUpdate({ ...etapa, nome: limpo, cor: novaCor, descricao: desc || null, papeis });
+    onUpdate({ ...etapa, nome: limpo, cor: novaCor, descricao: desc || null, notificar_papeis: papeis });
     const r = await api('', 'POST', {
       action: 'update_tarefa_status', id: etapa.id, nome: limpo, cor: novaCor,
-      descricao: desc, papeis,
+      descricao: desc, notificar_papeis: papeis,
     });
     if (r?.error) {
       toast('error', 'Não foi possível salvar', r.error);
@@ -2084,34 +2080,17 @@ function EtapaTarefaRow({
         </div>
 
         <div className="status-row-right" onClick={e => e.stopPropagation()}>
-          {/* A quem esta etapa é oferecida. Vazio é todo mundo - "Triagem" pode
-              ser só do gestor sem que ninguém deixe de ver onde a tarefa está:
-              o que a regra governa é o que a lista oferece, não o que a tela
-              mostra. */}
-          <SeletorPapeis valor={etapa.papeis}
+          {/* Quem é avisado quando uma tarefa chega aqui, por papel na equipe do
+              projeto: no inbox e por e-mail. Papel, e não pessoa - o time de um
+              projeto muda, e uma lista de nomes envelhece sozinha. Vazio é uma
+              etapa que não avisa ninguém.
+
+              Ver a etapa é de todo mundo: o quadro mostra onde a tarefa está
+              para quem a abre, e esconder coluna fazia ele mentir. */}
+          <SeletorPapeis valor={etapa.notificar_papeis}
+            rotuloVazio="Não avisa"
+            titulo="Quem é avisado quando uma tarefa chega nesta etapa"
             onChange={p => void salvar(nome, cor, descricao, p)} />
-
-          {/* Quem acompanha a etapa, igual ao funil: recebe e-mail quando uma
-              tarefa chega aqui. */}
-          <div className="status-notif-chips-inline">
-            {inscritos.map(n => (
-              <div key={n.id} className="notif-chip">
-                <RostoInscrito nome={n.usuario_nome} foto={n.usuario_foto} />
-                <span title={n.usuario_email}>{n.usuario_nome}</span>
-                <button aria-label={`Remover ${n.usuario_nome}`}
-                  onClick={() => void desinscrever(n.id)}>
-                  <IconX size={10} />
-                </button>
-              </div>
-            ))}
-          </div>
-
-          <UsuarioDropdown
-            token={token}
-            onSelect={u => void inscrever(u)}
-            exclude={inscritos.map(n => n.usuario_id)}
-            compact
-          />
 
           <button
             className="status-action-btn"
@@ -2405,9 +2384,14 @@ interface EtiquetaTarefa {
  *  Como as etapas, este dropdown não fecha ao escolher - papel quase sempre vem
  *  em conjunto - e por isso tem dispensa própria: rolagem recoloca a lista em
  *  vez de fechá-la. */
-function SeletorPapeis({ valor, onChange }: {
+function SeletorPapeis({ valor, onChange, rotuloVazio = 'Todos', titulo }: {
   valor: string[];
   onChange: (v: string[]) => void;
+  /** O que dizer sem nenhum papel escolhido. Na etiqueta, vazio é "todos veem";
+   *  na etapa, é "não avisa ninguém" - a mesma peça, duas perguntas. */
+  rotuloVazio?: string;
+  /** A dica do gatilho, também com a pergunta de quem chama. */
+  titulo?: string;
 }) {
   const [aberto, setAberto] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
@@ -2449,7 +2433,7 @@ function SeletorPapeis({ valor, onChange }: {
 
   // O rótulo diz o estado sem precisar abrir: quem vê, ou "todos".
   const rotulo = valor.length === 0
-    ? 'Todos'
+    ? rotuloVazio
     : valor.length <= 2 ? valor.join(', ') : `${valor[0]} +${valor.length - 1}`;
 
   return (
@@ -2459,9 +2443,11 @@ function SeletorPapeis({ valor, onChange }: {
         type="button"
         className="status-action-btn"
         aria-expanded={aberto}
-        title={valor.length === 0
-          ? 'Quem vê esta etiqueta: todos os papéis da equipe'
-          : `Quem vê esta etiqueta: ${valor.join(', ')}`}
+        title={titulo
+          ? `${titulo}${valor.length ? `: ${valor.join(', ')}` : `: ${rotuloVazio.toLocaleLowerCase('pt-BR')}`}`
+          : valor.length === 0
+            ? 'Quem vê esta etiqueta: todos os papéis da equipe'
+            : `Quem vê esta etiqueta: ${valor.join(', ')}`}
         onClick={() => { setPos(medir()); setAberto(a => !a); }}
         style={valor.length > 0
           ? { borderColor: 'var(--yellow)', color: 'var(--black)' }
@@ -3151,7 +3137,7 @@ export default function ConfiguracoesPage({ token }: { token: string }) {
               ? 'Conecte ferramentas externas ao sistema.'
               : escopo === 'funil'
               ? 'Gerencie as etapas do funil e as notificações de cada uma.'
-              : 'Gerencie as colunas e as etiquetas do quadro de tarefas.'}
+              : 'Gerencie as colunas do quadro de tarefas, quem cada uma avisa, e as etiquetas.'}
           </p>
         </div>
         {activeTab === 'etapas' && (
