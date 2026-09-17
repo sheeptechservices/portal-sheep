@@ -10,13 +10,29 @@
 // (membro, master, admin). Este é o papel no **projeto**.
 //
 // A ordem da lista é a mesma dos degraus abaixo: uma ordem só, para o seletor e
-// a exibição não discordarem. `Outro` fica por último de propósito - é o escape
-// para o que a lista não prevê, e escape no meio convida a parar de procurar.
+// a exibição não discordarem.
+//
+// São quatro, e de propósito: a casa trabalha com esses papéis, e uma lista
+// maior do que a operação convida a inventar categoria que ninguém consulta
+// depois. Papel gravado antes disto - `Designer`, `Analista`, `Outro` - continua
+// aparecendo onde está: some da lista de escolha, não da equipe já montada.
 export const PAPEIS_EQUIPE = [
-  'Comercial', 'Gestor', 'Dev', 'Designer', 'Analista', 'QA', 'Outro',
+  'Comercial', 'Gestor', 'Dev', 'QA',
 ] as const;
 
 export type PapelEquipe = typeof PAPEIS_EQUIPE[number];
+
+/** O que cada papel quer dizer, para quem está escolhendo.
+ *
+ *  A mesma ideia da régua de urgência: o nome sozinho deixa a escolha no gosto
+ *  de cada um, e duas pessoas chamam de coisas diferentes o mesmo trabalho. A
+ *  frase é a diferença entre os papéis, e não a descrição do cargo. */
+export const DESCRICAO_PAPEL: Record<PapelEquipe, string> = {
+  Comercial: 'Abre a conversa e negocia o que vai ser feito',
+  Gestor: 'Conduz o projeto e responde por ele ao cliente',
+  Dev: 'Constrói o que foi combinado',
+  QA: 'Confere antes de ir ao cliente',
+};
 
 /**
  * Degraus de proximidade com o cliente, do mais perto ao mais longe.
@@ -29,9 +45,12 @@ export type PapelEquipe = typeof PAPEIS_EQUIPE[number];
 export const NIVEIS_DE_CONTATO: { rotulo: string; papeis: PapelEquipe[] }[] = [
   { rotulo: 'Fala com o cliente', papeis: ['Comercial'] },
   { rotulo: 'Conduz o projeto', papeis: ['Gestor'] },
-  { rotulo: 'Executa', papeis: ['Dev', 'Designer', 'Analista'] },
+  { rotulo: 'Executa', papeis: ['Dev'] },
   { rotulo: 'Valida', papeis: ['QA'] },
-  { rotulo: 'Apoio', papeis: ['Outro'] },
+  // O degrau sem papel nenhum é onde cai o que a lista não prevê: um papel
+  // gravado por uma versão anterior continua tendo lugar na tela em vez de
+  // sumir dela. Degrau vazio não aparece - ver `porNivelDeContato`.
+  { rotulo: 'Apoio', papeis: [] },
 ];
 
 /** Em que degrau está o papel. Papel desconhecido - de uma versão antiga, ou

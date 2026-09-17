@@ -19,7 +19,7 @@ import FilterDropdown from '../components/FilterDropdown';
 import { SegSwitch } from '../components/SegSwitch';
 import { PLANNING_FUNIL, PROJETO_GERAL } from '../lib/projetoGeral';
 import { logoDoCliente } from '../lib/marcas';
-import { PAPEIS_EQUIPE, porNivelDeContato } from '../lib/papeisDeEquipe';
+import { DESCRICAO_PAPEL, PAPEIS_EQUIPE, porNivelDeContato } from '../lib/papeisDeEquipe';
 import { SkeletonCards, SkeletonTabela } from '../components/Skeleton';
 import { CartaoKpi, CartoesKpiEsqueleto } from '../components/CartaoKpi';
 import { Abas, AbaPainel } from '../components/Abas';
@@ -561,12 +561,15 @@ function iconeArquivo(nome: string, tipo: string) {
 /** Gatilho compacto para trocar a classificação dentro de uma linha, no mesmo
  *  desenho que o Funil usa nos anexos. Serve a etiqueta do arquivo e ao papel
  *  da pessoa: as duas listas são curtas e moram do lado direito da linha. */
-function SeletorCompacto({ valor, opcoes, titulo, icones, onChange }: {
+function SeletorCompacto({ valor, opcoes, titulo, icones, descricoes, onChange }: {
   valor: string;
   opcoes: readonly string[];
   titulo: string;
   /** Desenho por opção. Sem isto o seletor mostra só o texto. */
   icones?: Record<string, (p: { size?: number }) => JSX.Element>;
+  /** O que a opção quer dizer, como na régua de urgência: o nome sozinho deixa
+   *  a escolha no gosto de cada um. */
+  descricoes?: Record<string, string>;
   onChange: (v: string) => void;
 }) {
   const [aberto, setAberto] = useState(false);
@@ -575,7 +578,12 @@ function SeletorCompacto({ valor, opcoes, titulo, icones, onChange }: {
   const dropRef = useRef<HTMLDivElement>(null);
 
   function abrir() {
-    setPos(ancorar(triggerRef.current!, opcoes.length));
+    // Com descrição cada linha ocupa duas: sem contar isso, a lista abria
+    // medindo metade da altura que ia ter.
+    // Com descrição, cada linha ocupa duas e a caixa precisa de largura para a
+    // frase caber: sem isso ela nasce do tamanho do gatilho, que é um chip.
+    setPos(ancorar(triggerRef.current!, opcoes.length * (descricoes ? 2 : 1),
+      descricoes ? 250 : undefined));
     setAberto(a => !a);
   }
   useDropdownDismiss(aberto, [triggerRef, dropRef], () => setAberto(false));
@@ -596,7 +604,12 @@ function SeletorCompacto({ valor, opcoes, titulo, icones, onChange }: {
             <div key={o} className={`status-select-option${o === valor ? ' active' : ''}`}
               onClick={() => { onChange(o); setAberto(false); }}>
               {icones?.[o]?.({ size: 13 })}
-              <span>{o}</span>
+              <span style={{ minWidth: 0 }}>
+                {o}
+                {descricoes?.[o] && (
+                  <span className="select-opcao-descricao">{descricoes[o]}</span>
+                )}
+              </span>
             </div>
           ))}
         </div>,
@@ -2989,6 +3002,7 @@ function SecaoEquipe({ titulo, pessoas, valor, somenteLeitura, onChange }: {
                     <SeletorCompacto
                       valor={m.papel}
                       opcoes={PAPEIS_EQUIPE}
+                      descricoes={DESCRICAO_PAPEL}
                       titulo="Papel na equipe"
                       onChange={v => onChange(valor.map(x => x.usuario_id === m.usuario_id ? { ...x, papel: v } : x))}
                     />

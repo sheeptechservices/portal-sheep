@@ -15,7 +15,7 @@ import { Chave } from '../components/Chave';
 import { Dialogo } from '../components/Dialogo';
 import { Abas, AbaPainel } from '../components/Abas';
 import EstiloPage from './EstiloPage';
-import { PAPEIS_EQUIPE } from '../lib/papeisDeEquipe';
+import { DESCRICAO_PAPEL, PAPEIS_EQUIPE } from '../lib/papeisDeEquipe';
 
 // ── Move target dropdown ─────────────────────────────
 function MoveTargetSelect({
@@ -2398,8 +2398,10 @@ function SeletorPapeis({ valor, onChange, rotuloVazio = 'Todos', titulo }: {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
 
-  const LARGURA = 190;
-  const ALTURA = 8 + PAPEIS_EQUIPE.length * 36;
+  const LARGURA = 230;
+  // Com a descricao cada papel ocupa duas linhas: a conta da altura segue isso,
+  // senao a lista abre medindo metade do que vai ter.
+  const ALTURA = 8 + PAPEIS_EQUIPE.length * 52;
 
   const medir = useCallback(() => {
     const r = triggerRef.current!.getBoundingClientRect();
@@ -2476,7 +2478,10 @@ function SeletorPapeis({ valor, onChange, rotuloVazio = 'Todos', titulo }: {
               <div key={p} role="option" aria-selected={ativo}
                 className={`status-select-option${ativo ? ' active' : ''}`}
                 onClick={() => onChange(ativo ? valor.filter(x => x !== p) : [...valor, p])}>
-                <span style={{ flex: 1 }}>{p}</span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  {p}
+                  <span className="select-opcao-descricao">{DESCRICAO_PAPEL[p]}</span>
+                </span>
                 <span aria-hidden="true" style={{
                   display: 'inline-flex', color: 'var(--yellow)',
                   visibility: ativo ? 'visible' : 'hidden',
