@@ -425,6 +425,10 @@ const gestorDe = (p: Projeto) => p.equipe.find(m => m.papel === 'Gestor') ?? nul
 /** Fração de entregas concluídas. O servidor guarda o mesmo número em
  *  `progresso`; calcular aqui evita a tela mostrar valor velho entre a gravação
  *  de uma entrega e o recarregamento. */
+/** O teto de uma prova de objetivo, igual ao do anexo de comentário. O mesmo
+ *  número está no servidor, que é quem recusa de verdade. */
+const LIMITE_DE_PROVA = 8 * 1024 * 1024;
+
 /** Conteúdo do arquivo em base64, sem o prefixo `data:`. Serve tanto ao anexo
  *  do projeto quanto à evidência de entrega. */
 function lerBase64(f: File): Promise<string> {
@@ -3142,7 +3146,10 @@ function PessoaFoto({ nome, id, equipe, tamanho = 20 }: {
  */
 function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEditar,
   podeEditarTarefa, podeExcluirTarefa, etapas, etapaDeEntrada, etapaDeConclusao, onAbrir,
-  onAbrirTarefa, onSalvarTarefa, onExcluirTarefa, onMudarPlanning, onCriarTarefa, entregas }: {
+  onAbrirTarefa, onSalvarTarefa, onExcluirTarefa, onMudarPlanning, onCriarTarefa, entregas,
+  provas }: {
+  /** Como prender um print a um objetivo desta folha. */
+  provas?: ProvasDosObjetivos;
   projeto: Projeto;
   /** A seção de entregas do projeto, montada pela página, que é quem tem os
    *  gestos de gravar entrega, evidência e anexo. */
@@ -3164,7 +3171,9 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
   onAbrir: (p: Projeto) => void;
   onAbrirTarefa: (t: Tarefa, p: Projeto) => void;
   onSalvarTarefa: (t: Tarefa, mudancas: Record<string, unknown>) => void;
-  onMudarPlanning: (dados: PlanningDaSemana) => void;
+  /** Só os objetivos: a prova entra por caminho próprio, e a folha não a
+   *  regrava a cada tecla. */
+  onMudarPlanning: (dados: { objetivos: ObjetivoDaSemana[] }) => void;
   onCriarTarefa: (status: string) => void;
 }) {
   const gestor = p.equipe.find(m => m.papel === 'Gestor');
@@ -3240,6 +3249,7 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
           somenteLeitura={!podeEditar}
           pessoas={pessoas}
           placeholder="O que precisa acontecer nesta semana"
+          provas={podeEditar ? provas : undefined}
           onChange={v => onMudarPlanning({ objetivos: v })} />
       </section>
 
@@ -3351,7 +3361,9 @@ function contasDoFunil(funil: FunilDaPlanning, dias: string[]) {
  * duas telas movendo o mesmo card seriam dois lugares para desencontrar.
  */
 function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
-  onMudarPlanning, onAbrirOportunidade }: {
+  onMudarPlanning, onAbrirOportunidade, provas }: {
+  /** Como prender um print a um objetivo desta folha. */
+  provas?: ProvasDosObjetivos;
   semana: Date;
   dias: string[];
   funil: FunilDaPlanning;
@@ -3359,7 +3371,9 @@ function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
   /** Quem pode responder por um objetivo da semana do comercial. */
   pessoas: Pessoa[];
   podeEditar: boolean;
-  onMudarPlanning: (dados: PlanningDaSemana) => void;
+  /** Só os objetivos: a prova entra por caminho próprio, e a folha não a
+   *  regrava a cada tecla. */
+  onMudarPlanning: (dados: { objetivos: ObjetivoDaSemana[] }) => void;
   onAbrirOportunidade?: (id: string) => void;
 }) {
   const contas = contasDoFunil(funil, dias);
@@ -3400,6 +3414,7 @@ function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
           somenteLeitura={!podeEditar}
           pessoas={pessoas}
           placeholder="O que o comercial precisa fazer andar nesta semana"
+          provas={podeEditar ? provas : undefined}
           onChange={v => onMudarPlanning({ objetivos: v })} />
       </section>
 
@@ -3492,16 +3507,25 @@ function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
  * que se combina numa planning é uma lista de coisas, e a planning seguinte
  * abre esta semana para conferir o que andou - a marca é essa conferência.
  */
-function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, pessoas, onChange }: {
+function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, pessoas, provas, onChange }: {
   valores: ObjetivoDaSemana[];
   placeholder: string;
   somenteLeitura: boolean;
   /** Quem pode responder por um objetivo. Na folha do projeto é o time dele; na
    *  do comercial, quem tem acesso ao painel. */
   pessoas: Pessoa[];
+  /** Como prender um print à linha. Ausente em folha que não grava. */
+  provas?: ProvasDosObjetivos;
   onChange: (v: ObjetivoDaSemana[]) => void;
 }) {
   const campos = useRef<Array<HTMLInputElement | null>>([]);
+  /** O seletor de arquivo, um só para a lista inteira: qual linha vai receber é
+   *  dito na hora de abrir. Um `input` por linha encheria a folha de campos
+   *  invisíveis. */
+  const escolher = useRef<HTMLInputElement | null>(null);
+  const linhaDoAnexo = useRef<string | null>(null);
+  const provasDe = (objetivoId: string) =>
+    (provas?.lista ?? []).filter(e => e.objetivo_id === objetivoId);
   /** A linha que acabou de nascer, para o foco ir até ela depois da pintura. */
   const nova = useRef<number | null>(null);
   /** A linha levada pelo punho, e onde ela vai cair. */
@@ -3605,6 +3629,13 @@ function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, pessoas, on
                   })}
                 </span>
               )}
+              {provasDe(v.id).map(e => (
+                <button key={e.id} type="button" className="pl-linha-prova"
+                  title={`Abrir ${e.nome}`} onClick={() => provas?.abrir(e)}>
+                  <IconClip size={11} />
+                  <span>{e.nome}</span>
+                </button>
+              ))}
             </div>
           ))}
         </div>
@@ -3690,6 +3721,17 @@ function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, pessoas, on
                 remover(i);
               }
             }}
+            // Print recém-tirado entra por Ctrl+V, como no comentário da tarefa:
+            // a mão que acabou de recortar a tela não quer procurar o arquivo
+            // no explorador. Texto colado continua sendo texto - `arquivosColados`
+            // só devolve arquivo quando é só isso que veio.
+            onPaste={e => {
+              if (!provas || !v.texto.trim()) return;
+              const colados = arquivosColados(e.clipboardData);
+              if (colados.length === 0) return;
+              e.preventDefault();
+              provas.anexar(v.id, colados);
+            }}
             // Linha em branco não vira item: sair dela é desistir de escrevê-la.
             onBlur={() => { if (v.texto.trim() === '' && valores.length > 0) remover(i); }} />
           {/* Para quando, e com quem. Só aparecem na linha que já tem frase:
@@ -3707,6 +3749,36 @@ function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, pessoas, on
                   vazio="Quem responde por este objetivo"
                   onChange={r => trocar(i, { responsaveis: r })} />
               </span>
+              {/* A prova do que foi feito: o print, o arquivo. Opcional como o
+                  prazo e o responsável, e no mesmo lugar deles - é o que se põe
+                  na linha depois que ela acontece. */}
+              {provas && (
+                <span className={`pl-linha-provas${provasDe(v.id).length ? '' : ' pl-linha-opcional'}`}>
+                  {provasDe(v.id).map(e => (
+                    <span key={e.id} className="chip-com-x">
+                      <button type="button" className="pl-linha-prova"
+                        title={`Abrir ${e.nome}`} onClick={() => provas.abrir(e)}>
+                        <IconClip size={11} />
+                        <span>{e.nome}</span>
+                      </button>
+                      {/* O X dentro da pílula, como no chip de data, e só no
+                          hover: em repouso a linha mostra o que tem, e não os
+                          botões de desfazer. */}
+                      <button type="button" className="chip-x pl-linha-prova-tirar"
+                        aria-label={`Tirar ${e.nome}`} title="Tirar o anexo"
+                        onClick={() => provas.remover(e)}>
+                        <IconX size={11} />
+                      </button>
+                    </span>
+                  ))}
+                  <button type="button" className="pl-linha-anexar"
+                    title="Anexar um print ou arquivo como prova do que foi feito"
+                    aria-label="Anexar prova deste objetivo"
+                    onClick={() => { linhaDoAnexo.current = v.id; escolher.current?.click(); }}>
+                    <IconClip size={12} />
+                  </button>
+                </span>
+              )}
             </span>
           )}
           <button type="button" className="checklist-tirar" aria-label="Remover esta linha"
@@ -3722,6 +3794,18 @@ function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, pessoas, on
         <IconPlus size={12} />
         {valores.length ? 'Outro item' : 'Adicionar'}
       </button>
+      {provas && (
+        <input ref={escolher} type="file" multiple hidden
+          onChange={e => {
+            const escolhidos = [...(e.target.files ?? [])];
+            const linha = linhaDoAnexo.current;
+            // O valor é zerado para escolher o MESMO arquivo de novo disparar
+            // outra vez: sem isto, anexar, tirar e reanexar não faz nada.
+            e.target.value = '';
+            linhaDoAnexo.current = null;
+            if (linha && escolhidos.length) provas.anexar(linha, escolhidos);
+          }} />
+      )}
     </div>
   );
 }
@@ -3763,7 +3847,10 @@ function LogoDoCliente({ cliente }: { cliente: string }) {
  * um objetivo, pôr prazo ou dizer quem responde. Clicar no nome do projeto leva
  * à folha dele, que é onde o quadro da semana dá o contexto.
  */
-function FolhaDosObjetivos({ lista, planning, pessoas, podeEditar, onMudarObjetivos, onVerProjeto }: {
+function FolhaDosObjetivos({ lista, planning, pessoas, podeEditar, onMudarObjetivos,
+  onVerProjeto, provasDe }: {
+  /** Como prender um print a um objetivo, projeto por projeto. */
+  provasDe?: (projetoId: string) => ProvasDosObjetivos;
   /** Os projetos da reunião, na ordem da sala. */
   lista: Projeto[];
   planning: Record<string, PlanningDaSemana>;
@@ -3874,6 +3961,7 @@ function FolhaDosObjetivos({ lista, planning, pessoas, podeEditar, onMudarObjeti
                     placeholder={p.id === PROJETO_GERAL
                       ? 'O que a casa precisa resolver nesta semana'
                       : 'O que precisa acontecer nesta semana'}
+                    provas={podeEditar ? provasDe?.(p.id) : undefined}
                     onChange={objetivos => onMudarObjetivos(p.id, objetivos)} />
                 </div>
               ))}
@@ -4446,15 +4534,48 @@ interface ObjetivoDaSemana {
   responsaveis: string[];
 }
 
-let ultimoIdDeObjetivo = 0;
-const novoIdDeObjetivo = () => `objetivo-${++ultimoIdDeObjetivo}`;
+/** O id de um objetivo é gravado junto dele, e é por ele que a prova se
+ *  prende à linha. Por isso ele não pode ser um contador: dois objetivos
+ *  criados em sessões diferentes cairiam no mesmo número, e a prova de um
+ *  apareceria no outro. */
+const novoIdDeObjetivo = () =>
+  `o${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
-/** O combinado de um projeto numa semana: os objetivos dela. */
-interface PlanningDaSemana {
-  objetivos: ObjetivoDaSemana[];
+/** Um id que já veio gravado, quando ele veio. Linha escrita antes desta coluna
+ *  chega sem, e ganha um aqui - que fica na próxima gravação. */
+const idDoObjetivo = (v: unknown) => {
+  const s = String(v ?? '').trim();
+  return /^[A-Za-z0-9_-]{1,40}$/.test(s) ? s : novoIdDeObjetivo();
+};
+
+/** A prova de que um objetivo foi cumprido: o print, o arquivo. Opcional, e de
+ *  quem quiser deixar claro o que foi feito - não é condição de nada. */
+interface EvidenciaDoObjetivo {
+  id: number;
+  objetivo_id: string;
+  nome: string;
+  tipo: string;
+  tamanho: number;
 }
 
-const PLANNING_VAZIA: PlanningDaSemana = { objetivos: [] };
+/** O que a linha do objetivo precisa para carregar prova, já preso ao projeto
+ *  daquela folha. Ausente onde a folha é só leitura. */
+interface ProvasDosObjetivos {
+  /** Todas as do projeto, na semana em foco. */
+  lista: EvidenciaDoObjetivo[];
+  anexar: (objetivoId: string, arquivos: File[]) => void;
+  remover: (e: EvidenciaDoObjetivo) => void;
+  abrir: (e: EvidenciaDoObjetivo) => void;
+}
+
+/** O combinado de um projeto numa semana: os objetivos dela, e a prova do que
+ *  foi cumprido. */
+interface PlanningDaSemana {
+  objetivos: ObjetivoDaSemana[];
+  evidencias: EvidenciaDoObjetivo[];
+}
+
+const PLANNING_VAZIA: PlanningDaSemana = { objetivos: [], evidencias: [] };
 
 /**
  * Aba Planning: a reunião de planejamento da semana, projeto por projeto.
@@ -4469,7 +4590,7 @@ const PLANNING_VAZIA: PlanningDaSemana = { objetivos: [] };
  * com os pausados obrigaria a escolher entre eles a cada segunda-feira.
  */
 function AbaPlanning({
-  projetos, pessoas, planning, semana, onMudarSemana, onSalvarPlanning, onReordenar,
+  projetos, pessoas, planning, semana, onMudarSemana, onSalvarPlanning, onReordenar, provasDe,
   onAbrir, onSalvarTarefa, onAbrirTarefa, onCriarTarefa, onExcluirTarefa,
   etapas, etapaDeEntrada, etapaDeConclusao, podeEditar, podeEditarTarefa, podeExcluirTarefa,
   entregasDe, funil, secao, onVerProjeto, onAbrirOportunidade,
@@ -4508,6 +4629,9 @@ function AbaPlanning({
   onVerProjeto: (id: string) => void;
   /** Leva à tela do Funil com a oportunidade aberta. */
   onAbrirOportunidade?: (id: string) => void;
+  /** Como prender um print a um objetivo, projeto por projeto. Ausente para
+   *  quem não edita. */
+  provasDe?: (projetoId: string) => ProvasDosObjetivos;
 }) {
   const dias = useMemo(() => diasUteisDaSemana(semana), [semana]);
 
@@ -4561,8 +4685,9 @@ function AbaPlanning({
           planning={planning}
           pessoas={pessoas}
           podeEditar={podeEditar}
+          provasDe={provasDe}
           onMudarObjetivos={(projetoId, objetivos) => onSalvarPlanning(projetoId, {
-            ...planning[projetoId],
+            ...(planning[projetoId] ?? PLANNING_VAZIA),
             objetivos,
           })}
           onVerProjeto={id => { setAtivo(id); onVerProjeto(id); }} />
@@ -4583,8 +4708,9 @@ function AbaPlanning({
           pessoas={pessoas}
           podeEditar={podeEditar}
           onAbrirOportunidade={onAbrirOportunidade}
+          provas={provasDe?.(PLANNING_FUNIL)}
           onMudarPlanning={dados => onSalvarPlanning(PLANNING_FUNIL, {
-            ...planning[PLANNING_FUNIL],
+            ...(planning[PLANNING_FUNIL] ?? PLANNING_VAZIA),
             ...dados,
           })} />
       </div>
@@ -4633,8 +4759,9 @@ function AbaPlanning({
               onExcluirTarefa={onExcluirTarefa}
               onCriarTarefa={status => onCriarTarefa(atual, status)}
               entregas={atual.id === PROJETO_GERAL ? null : entregasDe(atual)}
+              provas={provasDe?.(atual.id)}
               onMudarPlanning={dados => onSalvarPlanning(atual.id, {
-                ...planning[atual.id],
+                ...(planning[atual.id] ?? PLANNING_VAZIA),
                 ...dados,
               })} />
           )}
@@ -5518,6 +5645,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     { fonte: 'anexo'; item: Arquivo }
     | { fonte: 'evidencia'; item: Evidencia }
     | { fonte: 'entrega_arquivo'; item: ArquivoDaEntrega }
+    | { fonte: 'objetivo'; item: EvidenciaDoObjetivo }
     | null
   >(null);
   /** A segunda-feira da semana em foco na Planning. Uma data, e não um texto:
@@ -5648,9 +5776,16 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
       const mapa: Record<string, PlanningDaSemana> = {};
       for (const x of r.planning) {
         mapa[String(x.projeto_id)] = {
+          evidencias: (Array.isArray(x.evidencias) ? x.evidencias : []).map((e: any) => ({
+            id: Number(e.id),
+            objetivo_id: String(e.objetivo_id ?? ''),
+            nome: String(e.nome ?? ''),
+            tipo: String(e.tipo ?? ''),
+            tamanho: Number(e.tamanho ?? 0),
+          })),
           objetivos: Array.isArray(x.objetivos)
             ? x.objetivos.map((o: any) => ({
-              id: novoIdDeObjetivo(),
+              id: idDoObjetivo(o?.id),
               texto: String(o?.texto ?? ''),
               feito: o?.feito === true,
               prazo: o?.prazo ? String(o.prazo) : null,
@@ -5673,6 +5808,80 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     return () => { vivo = false; };
   }, [aba, api, semanaIso]);
 
+  /** Prende uma prova a um objetivo. A linha mostra o chip na hora, com id
+   *  provisório, e o id de verdade chega da gravação - recarregar a semana
+   *  inteira para ver aparecer o print que se acabou de colar seria esperar
+   *  duas vezes pela mesma coisa. */
+  const anexarProva = useCallback((projetoId: string, objetivoId: string, arquivos: File[]) => {
+    for (const arquivo of arquivos) {
+      if (arquivo.size > LIMITE_DE_PROVA) {
+        toast('error', 'Arquivo grande demais',
+          `"${arquivo.name}" passa de 8 MB. Mande um recorte ou um link.`);
+        continue;
+      }
+      const provisorio = -Date.now() - Math.floor(Math.random() * 1000);
+      const linha: EvidenciaDoObjetivo = {
+        id: provisorio, objetivo_id: objetivoId, nome: arquivo.name,
+        tipo: arquivo.type || 'application/octet-stream', tamanho: arquivo.size,
+      };
+      const pintar = (f: (lista: EvidenciaDoObjetivo[]) => EvidenciaDoObjetivo[]) =>
+        setPlanning(atual => ({
+          ...atual,
+          [projetoId]: {
+            ...(atual[projetoId] ?? PLANNING_VAZIA),
+            evidencias: f(atual[projetoId]?.evidencias ?? []),
+          },
+        }));
+      pintar(lista => [...lista, linha]);
+      void lerBase64(arquivo)
+        .then(base64 => api('', 'POST', {
+          action: 'add_planning_evidencia',
+          projeto_id: projetoId, semana: semanaIso, objetivo_id: objetivoId,
+          nome: arquivo.name, tipo: linha.tipo, tamanho: arquivo.size, base64,
+        }))
+        .then(r => {
+          if (!r?.id) throw new Error(String(r?.error ?? 'sem id'));
+          pintar(lista => lista.map(e => (e.id === provisorio ? { ...e, id: Number(r.id) } : e)));
+        })
+        .catch(() => {
+          pintar(lista => lista.filter(e => e.id !== provisorio));
+          toast('error', 'Não foi possível anexar', `"${arquivo.name}" não chegou ao servidor.`);
+        });
+    }
+  }, [api, semanaIso, toast]);
+
+  /** Tira a prova da linha. Some na hora e volta se o servidor recusar - por
+   *  isso a lista de antes vem de quem chamou, que é quem a tem à mão. */
+  const removerProva = useCallback((
+    projetoId: string, prova: EvidenciaDoObjetivo, antes: EvidenciaDoObjetivo[],
+  ) => {
+    setPlanning(atual => ({
+      ...atual,
+      [projetoId]: {
+        ...(atual[projetoId] ?? PLANNING_VAZIA),
+        evidencias: (atual[projetoId]?.evidencias ?? []).filter(e => e.id !== prova.id),
+      },
+    }));
+    void api('', 'POST', { action: 'excluir_planning_evidencia', id: prova.id })
+      .then(r => { if (r?.error) throw new Error(String(r.error)); })
+      .catch(() => {
+        setPlanning(atual => ({
+          ...atual,
+          [projetoId]: { ...(atual[projetoId] ?? PLANNING_VAZIA), evidencias: antes },
+        }));
+        toast('error', 'Não foi possível tirar o anexo', `"${prova.nome}" continua lá.`);
+      });
+  }, [api, toast]);
+
+  /** As provas daquele projeto, com o que fazer com elas. Preso ao projeto para
+   *  a lista de objetivos não precisar saber de que folha ela é. */
+  const provasDe = useCallback((projetoId: string): ProvasDosObjetivos => ({
+    lista: planning[projetoId]?.evidencias ?? [],
+    anexar: (objetivoId, arquivos) => anexarProva(projetoId, objetivoId, arquivos),
+    remover: prova => removerProva(projetoId, prova, planning[projetoId]?.evidencias ?? []),
+    abrir: prova => setPrevia({ fonte: 'objetivo', item: prova }),
+  }), [planning, anexarProva, removerProva]);
+
   /** Grava o combinado de um projeto. Pinta na hora e manda depois, juntando as
    *  teclas: numa reunião se digita a frase inteira, e uma gravação por letra
    *  seria uma ida ao servidor a cada tecla de quem está falando. */
@@ -5685,7 +5894,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
       projeto_id: projetoId,
       semana: semanaIso,
       objetivos: (dados.objetivos ?? []).map(o => ({
-        texto: o.texto, feito: o.feito, prazo: o.prazo, responsaveis: o.responsaveis,
+        id: o.id, texto: o.texto, feito: o.feito, prazo: o.prazo, responsaveis: o.responsaveis,
       })),
     };
     const enviar = () => {
@@ -6325,6 +6534,17 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
   async function baixarAnexoDaEntrega(a: ArquivoDaEntrega) {
     const r = await api(`?action=entrega_arquivo_base64&id=${a.id}`);
     if (!r?.base64) { toast('error', 'Não deu', 'O anexo não veio.'); return; }
+    const link = document.createElement('a');
+    link.href = `data:${r.tipo};base64,${r.base64}`;
+    link.download = r.nome;
+    link.click();
+  }
+
+  /** Baixa o que estiver naquele endereço. O de sempre - o servidor devolve
+   *  nome, tipo e conteúdo -, sem uma função por tabela. */
+  async function baixarArquivo(endereco: string) {
+    const r = await api(endereco);
+    if (!r?.base64) { toast('error', 'Não deu', 'O arquivo não veio.'); return; }
     const link = document.createElement('a');
     link.href = `data:${r.tipo};base64,${r.base64}`;
     link.download = r.nome;
@@ -6971,6 +7191,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           semana={semanaDaPlanning}
           onMudarSemana={setSemanaDaPlanning}
           onSalvarPlanning={salvarPlanning}
+          provasDe={podeEditar ? provasDe : undefined}
           onReordenar={reordenarPlanning}
           onCriarTarefa={(p, status) => criarTarefaNoProjeto(p, null, status)}
           onSalvarTarefa={salvarTarefa}
@@ -7131,17 +7352,22 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           arquivo={{
             nome: previa.item.nome,
             comentario: previa.fonte === 'evidencia' ? previa.item.comentario : null,
+            chave: `${previa.fonte}:${previa.item.id}`,
           }}
           onCarregar={() => api(previa.fonte === 'evidencia'
             ? `?action=entrega_evidencia_base64&id=${previa.item.id}`
             : previa.fonte === 'entrega_arquivo'
               ? `?action=entrega_arquivo_base64&id=${previa.item.id}`
-              : `?action=projeto_arquivo_base64&id=${previa.item.id}`)}
+              : previa.fonte === 'objetivo'
+                ? `?action=planning_evidencia_base64&id=${previa.item.id}`
+                : `?action=projeto_arquivo_base64&id=${previa.item.id}`)}
           onBaixar={() => (previa.fonte === 'evidencia'
             ? void baixarEvidencia(previa.item)
             : previa.fonte === 'entrega_arquivo'
               ? void baixarAnexoDaEntrega(previa.item)
-              : void baixarAnexo(previa.item))}
+              : previa.fonte === 'objetivo'
+                ? void baixarArquivo(`?action=planning_evidencia_base64&id=${previa.item.id}`)
+                : void baixarAnexo(previa.item))}
           onFechar={() => setPrevia(null)}
         />
       )}

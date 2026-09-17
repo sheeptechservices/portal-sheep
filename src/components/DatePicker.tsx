@@ -355,7 +355,7 @@ export function DatePicker({ value, onChange, label, required, error, disabled, 
 
   if (chip) {
     return (
-      <span ref={triggerRef} style={{ position: 'relative', display: 'inline-flex' }}>
+      <span ref={triggerRef} className="chip-com-x" style={{ position: 'relative' }}>
         <button
           type="button"
           className={`campo-data-chip${open ? ' aberto' : ''}${display ? ' com-data' : ''}`}
@@ -369,10 +369,12 @@ export function DatePicker({ value, onChange, label, required, error, disabled, 
           <CalendarIcon active={open} semMargem />
           {display && <span className="campo-data-chip-texto">{display}</span>}
         </button>
-        {/* Limpar fica fora do botão que abre: um botão dentro do outro não é
+        {/* Dentro da moldura, e não solto ao lado dela: solto, ele encostava no
+            chip vizinho e a fileira virava uma sopa de símbolos. Continua sendo
+            irmão do gatilho, e não filho - um botão dentro do outro não é
             marcação válida, e o clique de um viraria o do outro. */}
         {display && !disabled && (
-          <button type="button" className="campo-data-chip-limpar" onClick={clear}
+          <button type="button" className="chip-x campo-data-chip-limpar" onClick={clear}
             title="Tirar a data" aria-label="Tirar a data">×</button>
         )}
         {dropdown}

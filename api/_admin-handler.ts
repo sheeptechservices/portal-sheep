@@ -151,11 +151,26 @@ function listaDeTexto(v: unknown): string[] {
 /** Um objetivo da semana como ele fica gravado: a frase, se ja foi cumprido, e
  *  o que veio depois - prazo e quem responde. */
 interface ObjetivoGravado {
+  /** Identidade da linha, gravada junto: e por ela que a prova da entrega se
+   *  prende ao objetivo. Sem isto a unica chave seria a frase, e reescrever a
+   *  frase soltaria o print que a acompanha. */
+  id: string;
   texto: string;
   feito: boolean;
   prazo: string | null;
   responsaveis: string[];
 }
+
+/** Id de objetivo aceitavel: o que a tela gera, e nada alem disso. */
+const idDeObjetivo = (v: unknown) => {
+  const s = String(v ?? '').trim();
+  return /^[A-Za-z0-9_-]{1,40}$/.test(s) ? s : '';
+};
+
+/** Um id novo, para o objetivo que chega sem ele - linha gravada antes desta
+ *  coluna, ou tela antiga ainda no ar. */
+const novoIdDeObjetivo = () =>
+  `o${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
 /** Os objetivos da coluna `objetivos`, quando ela existe e tem conteudo valido.
  *  Devolve nulo quando nao ha o que ler - e ai quem chama remonta das duas
@@ -167,6 +182,7 @@ function objetivosGravados(v: unknown): ObjetivoGravado[] | null {
   if (!Array.isArray(cru)) return null;
   const lista = cru
     .map((o: any) => ({
+      id: idDeObjetivo(o?.id),
       texto: String(o?.texto ?? '').trim(),
       feito: o?.feito === true,
       prazo: /^\d{4}-\d{2}-\d{2}$/.test(String(o?.prazo ?? '')) ? String(o.prazo) : null,
@@ -1427,6 +1443,30 @@ async function migrarSchema(db: Client) {
   try { await ddl(`ALTER TABLE planning_semana ADD COLUMN objetivos TEXT`); } catch {}
 
   await ddl(`
+    -- A prova de que o objetivo da semana foi cumprido: o print, o arquivo.
+    --
+    -- Tabela propria, e nao uma coluna no JSON dos objetivos: o JSON e lido
+    -- inteiro a cada abertura da Planning, e um base64 la dentro faria a folha
+    -- de uma semana trafegar megabytes para mostrar nove frases.
+    --
+    -- Nao confundir com \`entrega_evidencias\`: aquela e condicao para concluir
+    -- uma entrega e nao se apaga; esta e voluntaria, e existe so para a linha
+    -- deixar claro o que foi feito.
+    CREATE TABLE IF NOT EXISTS planning_evidencias (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      projeto_id      TEXT NOT NULL,
+      semana          TEXT NOT NULL,
+      objetivo_id     TEXT NOT NULL,
+      nome            TEXT NOT NULL,
+      tipo            TEXT NOT NULL,
+      tamanho         INTEGER NOT NULL,
+      base64          TEXT NOT NULL,
+      criado_em       TEXT NOT NULL,
+      criado_por_nome TEXT
+    )
+  `);
+
+  await ddl(`
     -- Etapas do quadro de tarefas. Mesma estrutura das etapas do funil
     -- (\`status_configs\`): nome, cor e ordem editáveis em Configurações. As duas
     -- marcações existem porque a entrega lê o andamento daqui - \`is_entrada\` é
@@ -2083,6 +2123,7 @@ async function migrarSchema(db: Client) {
     `CREATE INDEX IF NOT EXISTS idx_tarefa_etiqueta_ordem ON tarefa_etiquetas (ordem)`,
     `CREATE INDEX IF NOT EXISTS idx_tarefa_entrega ON projeto_tarefas (entrega_id)`,
     `CREATE INDEX IF NOT EXISTS idx_evidencia_entrega ON entrega_evidencias (entrega_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_planning_evidencia ON planning_evidencias (semana, projeto_id)`,
     // Autoria. A tela de Perfil filtra por pessoa (`autor_id`, `criado_por_id`,
     // `usuario_id`) e nenhum dos índices acima começa por essas colunas, então
     // cada contagem varria a tabela inteira. Índice por coluna consultada, e
@@ -3744,12 +3785,22 @@ async function despacharAdminData(
       if (!/^\d{4}-\d{2}-\d{2}$/.test(semana)) {
         return { status: 400, body: { error: 'Semana ausente ou fora do formato AAAA-MM-DD.' } };
       }
-      const r = await db.execute({
-        sql: `SELECT projeto_id, destaques, objetivos_feitos, objetivos,
-                     atualizado_em, atualizado_por_nome
-              FROM planning_semana WHERE semana = ?`,
-        args: [semana],
-      });
+      const [r, provas] = await Promise.all([
+        db.execute({
+          sql: `SELECT projeto_id, destaques, objetivos_feitos, objetivos,
+                       atualizado_em, atualizado_por_nome
+                FROM planning_semana WHERE semana = ?`,
+          args: [semana],
+        }),
+        // Sem o `base64`: a folha mostra o chip, e o conteudo so e buscado
+        // quando alguem abre o arquivo.
+        db.execute({
+          sql: `SELECT id, projeto_id, objetivo_id, nome, tipo, tamanho, criado_em,
+                       criado_por_nome
+                FROM planning_evidencias WHERE semana = ? ORDER BY id`,
+          args: [semana],
+        }),
+      ]);
       return {
         status: 200,
         body: {
@@ -3763,8 +3814,9 @@ async function despacharAdminData(
               projeto_id: String(x.projeto_id),
               objetivos: completos
                 ?? listaDeTexto(x.destaques).map(texto => ({
-                  texto, feito: feitos.has(texto), prazo: null, responsaveis: [],
+                  id: '', texto, feito: feitos.has(texto), prazo: null, responsaveis: [],
                 })),
+              evidencias: provas.rows.filter(e => String(e.projeto_id) === String(x.projeto_id)),
               atualizado_em: x.atualizado_em,
               atualizado_por_nome: x.atualizado_por_nome,
             };
@@ -4278,6 +4330,22 @@ async function despacharAdminData(
       });
       if (!r.rows[0]) return { status: 404, body: { error: 'Evidência não encontrada.' } };
       return { status: 200, body: r.rows[0] };
+    }
+
+    if (action === 'planning_evidencia_base64') {
+      const id = Number(query.get('id'));
+      if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };
+      const r = await db.execute({
+        sql: 'SELECT projeto_id, nome, tipo, base64 FROM planning_evidencias WHERE id = ?',
+        args: [id],
+      });
+      const linha = r.rows[0];
+      if (!linha) return { status: 404, body: { error: 'Evidência não encontrada.' } };
+      if (String(linha.projeto_id) !== PLANNING_FUNIL) {
+        const barrado = await guardaDaEquipe(db, usuario, linha.projeto_id);
+        if (barrado) return barrado;
+      }
+      return { status: 200, body: { nome: linha.nome, tipo: linha.tipo, base64: linha.base64 } };
     }
 
     if (action === 'projeto_arquivo_base64') {
@@ -6610,6 +6678,9 @@ function faltaEmProjeto(p: any): string | null {
       }
       const objetivos = (Array.isArray(body.objetivos) ? body.objetivos : [])
         .map((o: any) => ({
+          // O id vem da tela e fica; sem ele - linha gravada antes desta coluna
+          // ou versao antiga ainda no ar -, nasce um aqui.
+          id: idDeObjetivo(o?.id) || novoIdDeObjetivo(),
           texto: String(o?.texto ?? '').trim(),
           feito: o?.feito === true,
           // Data fora do formato vira nulo, e nao erro: o objetivo sem prazo e
@@ -6643,7 +6714,83 @@ function faltaEmProjeto(p: any): string | null {
                 atualizado_por_nome = excluded.atualizado_por_nome`,
         args: [projetoId, semana, destaques, feitos, completos, agora, autorId, autorNome],
       });
+      // Objetivo apagado leva a prova junto: ela existia para dizer que aquela
+      // linha foi cumprida, e sem a linha ela nao diz nada a ninguem.
+      //
+      // So quando a tela mandou os ids. Uma aba aberta antes deste deploy grava
+      // a lista sem eles, ganha ids novos aqui, e a limpeza levaria junto a
+      // prova que outra pessoa acabou de anexar. Sem os ids, a linha orfa fica -
+      // ela nao aparece em lugar nenhum, e a proxima gravacao de verdade a tira.
+      const todosComId = (Array.isArray(body.objetivos) ? body.objetivos : [])
+        .every((o: any) => idDeObjetivo(o?.id));
+      if (todosComId) {
+        const vivos = objetivos.map((o: { id: string }) => o.id);
+        await db.execute({
+          sql: `DELETE FROM planning_evidencias
+                WHERE projeto_id = ? AND semana = ?
+                  AND objetivo_id NOT IN (${vivos.map(() => '?').join(',') || "''"})`,
+          args: [projetoId, semana, ...vivos],
+        });
+      }
       return { status: 200, body: { ok: true, atualizado_em: agora, atualizado_por_nome: autorNome } };
+    }
+
+    if (action === 'add_planning_evidencia') {
+      // A mesma porta do combinado da semana: quem pode escrever o objetivo
+      // pode dizer que ele foi cumprido.
+      if (body.projeto_id === PLANNING_FUNIL) {
+        if (!pode(permissoes, 'oportunidades:ver')) {
+          return { status: 403, body: { error: 'Seu perfil não enxerga o funil.' } };
+        }
+      } else {
+        const barrado = await guardaDaEquipe(db, usuario, body.projeto_id);
+        if (barrado) return barrado;
+      }
+      const semana = String(body.semana ?? '').slice(0, 10);
+      const objetivo = idDeObjetivo(body.objetivo_id);
+      const tamanho = Number(body.tamanho ?? 0);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(semana)) {
+        return { status: 400, body: { error: 'Semana ausente ou fora do formato AAAA-MM-DD.' } };
+      }
+      if (!objetivo) return { status: 400, body: { error: 'objetivo_id ausente.' } };
+      if (!body.nome || !body.base64) return { status: 400, body: { error: 'Arquivo ausente.' } };
+      if (tamanho > LIMITE_ANEXO) {
+        return { status: 400, body: { error: `"${String(body.nome)}" passa do limite de anexo.` } };
+      }
+      const agora = new Date().toISOString();
+      const r = await db.execute({
+        sql: `INSERT INTO planning_evidencias
+                (projeto_id, semana, objetivo_id, nome, tipo, tamanho, base64, criado_em,
+                 criado_por_nome)
+              VALUES (?,?,?,?,?,?,?,?,?)`,
+        args: [String(body.projeto_id), semana, objetivo, String(body.nome),
+          String(body.tipo ?? 'application/octet-stream'), tamanho, String(body.base64),
+          agora, autorNome],
+      });
+      // So o que a tela nao sabe: o id da linha e o carimbo.
+      return {
+        status: 200,
+        body: { id: Number(r.lastInsertRowid), criado_em: agora, criado_por_nome: autorNome },
+      };
+    }
+
+    if (action === 'excluir_planning_evidencia') {
+      const alvo = await db.execute({
+        sql: 'SELECT projeto_id FROM planning_evidencias WHERE id = ?',
+        args: [body.id],
+      });
+      const dona = alvo.rows[0];
+      if (!dona) return { status: 404, body: { error: 'Evidência não encontrada.' } };
+      if (String(dona.projeto_id) === PLANNING_FUNIL) {
+        if (!pode(permissoes, 'oportunidades:ver')) {
+          return { status: 403, body: { error: 'Seu perfil não enxerga o funil.' } };
+        }
+      } else {
+        const barrado = await guardaDaEquipe(db, usuario, dona.projeto_id);
+        if (barrado) return barrado;
+      }
+      await db.execute({ sql: 'DELETE FROM planning_evidencias WHERE id = ?', args: [body.id] });
+      return { status: 200, body: { ok: true } };
     }
 
     if (action === 'etiquetar_projeto_arquivo') {

@@ -7297,49 +7297,143 @@ button.checklist-texto:focus-visible {
 }
 .pl-linha-donos { flex: none; display: flex; gap: 3px; }
 
+/* ── Pilula com X dentro ──────────────────────────────
+   O chip que carrega um valor e pode ser tirado - a data do objetivo, o anexo
+   que prova que ele foi feito.
+
+   O X mora DENTRO da moldura, e nao solto ao lado dela. Solto, ele vira uma
+   peca a mais na linha: encosta no vizinho, disputa o clique com ele e faz a
+   fileira parecer uma sopa de simbolos. Dentro, a linha em repouso mostra o
+   valor e mais nada.
+
+   O lugar dele fica guardado desde o repouso, e o que muda e so a opacidade:
+   aparecer empurrando o vizinho seria trocar um embolado por um pulo. */
+.chip-com-x {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-pill);
+  background: var(--white);
+  transition: border-color var(--transition);
+}
+.chip-com-x:hover,
+.chip-com-x:focus-within { border-color: var(--gray2); }
+.chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  margin-right: 5px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--gray2);
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+  transition: opacity var(--transition), color var(--transition);
+}
+.chip-com-x:hover .chip-x,
+.chip-com-x:focus-within .chip-x { opacity: 1; pointer-events: auto; }
+.chip-x:hover,
+.chip-x:focus-visible { outline: none; color: var(--black); }
+@media (prefers-reduced-motion: reduce) {
+  .chip-com-x, .chip-x { transition: none; }
+}
+
 /* O gatilho de data em formato de chip: so o calendario enquanto nao ha data, a
-   data escrita depois dela. Mesma altura e mesma moldura do chip de pessoas ao
-   lado - os dois sao o mesmo tipo de peca. */
+   data escrita depois dela. A moldura vem da pilula em volta; aqui fica o
+   conteudo. */
 .campo-data-chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  min-height: 26px;
+  min-height: 24px;
   padding: 2px 8px;
-  border: 1px solid var(--gray3);
-  border-radius: var(--radius-pill);
-  background: var(--white);
+  border: none;
+  background: none;
   color: var(--gray2);
   font-family: inherit;
   font-size: 11.5px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
-  transition: border-color var(--transition), color var(--transition);
+  transition: color var(--transition);
 }
 .campo-data-chip:hover,
 .campo-data-chip:focus-visible,
-.campo-data-chip.aberto { outline: none; border-color: var(--gray2); color: var(--black); }
+.campo-data-chip.aberto { outline: none; color: var(--black); }
 .campo-data-chip.com-data { color: var(--black); }
 .campo-data-chip:disabled { cursor: default; opacity: .6; }
-/* O X de tirar a data encosta no chip, e some junto com ela. */
-.campo-data-chip-limpar {
+/* O X da data: a pilula em volta guarda o lugar dele. */
+.campo-data-chip-limpar { font-size: 14px; }
+@media (prefers-reduced-motion: reduce) {
+  .campo-data-chip { transition: none; }
+}
+
+/* A prova do objetivo: a pilula do que foi anexado, e o clipe de anexar mais.
+   Mesma moldura e mesma altura do chip de data e do de pessoas - os tres sao a
+   mesma peca na mesma linha, e um desenho proprio aqui faria a linha parecer
+   tres coisas diferentes. */
+.pl-linha-provas {
+  flex: none;
   display: inline-flex;
   align-items: center;
-  margin-left: 2px;
-  padding: 0 2px;
+  gap: 6px;
+}
+.pl-linha-prova {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 150px;
+  min-height: 24px;
+  padding: 2px 8px;
   border: none;
   background: none;
-  color: var(--gray2);
-  font-size: 14px;
-  line-height: 1;
+  color: var(--black);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
   cursor: pointer;
-  transition: color var(--transition);
 }
-.campo-data-chip-limpar:hover,
-.campo-data-chip-limpar:focus-visible { outline: none; color: var(--black); }
+.pl-linha-prova:focus-visible { outline: none; text-decoration: underline; }
+/* O nome do arquivo corta, e nao empurra a linha: o que importa no chip e que
+   ha prova ali, e o nome inteiro esta na dica e na previa. */
+.pl-linha-prova > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Em leitura a prova e so a pilula, sem X: a moldura vem da propria pilula. */
+.pl-linha > .pl-linha-prova {
+  min-height: 26px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-pill);
+  background: var(--white);
+}
+/* O clipe de anexar: so o icone, como o calendario da data vazia. */
+.pl-linha-anexar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 2px 8px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-pill);
+  background: var(--white);
+  color: var(--gray2);
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+.pl-linha-anexar:hover,
+.pl-linha-anexar:focus-visible { outline: none; border-color: var(--gray2); color: var(--black); }
 @media (prefers-reduced-motion: reduce) {
-  .campo-data-chip, .campo-data-chip-limpar { transition: none; }
+  .pl-linha-anexar { transition: none; }
 }
 
 /* O seletor de pessoas compacto: as fotos como gatilho, sem moldura de campo.

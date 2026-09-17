@@ -260,6 +260,11 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   planning_semana: 'projetos:ver',
   salvar_planning_semana: 'projetos:editar',
   ordenar_planning: 'projetos:editar',
+  // A prova de que o objetivo da semana foi cumprido segue a mesma porta do
+  // combinado: quem escreve o objetivo diz que ele foi feito.
+  add_planning_evidencia: 'projetos:editar',
+  excluir_planning_evidencia: 'projetos:editar',
+  planning_evidencia_base64: 'projetos:ver',
   despublicar_projeto: 'projetos:editar',
   salvar_tarefa: 'tarefas:editar',
   excluir_tarefa: 'tarefas:excluir',
