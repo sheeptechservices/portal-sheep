@@ -13,7 +13,8 @@ import { AtividadeDaTarefa } from './AtividadeDaTarefa';
 import { createPortal } from 'react-dom';
 import { iniciais, useToast } from './AdminApp';
 import {
-  IconAlert, IconCheck, IconChevronDown, IconDuplicar, IconPlus, IconTrash, IconUser, IconX,
+  IconAlert, IconCheck, IconChevronDown, IconDuplicar, IconLink, IconPlus, IconTrash, IconUser,
+  IconX,
 } from '../components/icons';
 import { SelectSistema } from '../components/SelectSistema';
 import { SeletorPessoas } from '../components/SeletorPessoas';
@@ -772,6 +773,25 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
   const rascunhoVivo = useRef(rascunho);
   rascunhoVivo.current = rascunho;
 
+  /** Feedback do botão de copiar o link: o ícone vira um certo por dois
+   *  segundos, que é como a ficha do projeto responde ao mesmo gesto. */
+  const [copiado, setCopiado] = useState(false);
+
+  /** Link que abre esta tarefa direto, para quem já tem acesso ao portal. É o
+   *  mesmo formato do `?projeto=` da tela de Projetos, e o `prompt` é o plano
+   *  B: sem HTTPS ou com a permissão negada não existe área de transferência. */
+  async function copiarLink() {
+    if (!rascunho.id) return;
+    const url = `${window.location.origin}/?tarefa=${rascunho.id}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiado(true);
+      window.setTimeout(() => setCopiado(false), 2000);
+    } catch {
+      window.prompt('Copie o link da tarefa:', url);
+    }
+  }
+
   /** Cria a entrega pelo seletor e já a põe na tarefa. Espera o id: a tarefa
    *  grava sozinha logo depois, e sem o id de verdade ela gravaria a ligação a
    *  uma entrega que não existe.
@@ -986,6 +1006,16 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
             </div>
           </div>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            {/* Só depois de existir: tarefa que ainda não foi gravada não tem
+                id, e o link apontaria para lugar nenhum. */}
+            {!!rascunho.id && (
+              <button type="button" className="secao-add" style={{ width: 30, height: 30 }}
+                title={copiado ? 'Link copiado' : 'Copiar link da tarefa'}
+                aria-label="Copiar link para compartilhar a tarefa"
+                onClick={() => void copiarLink()}>
+                {copiado ? <IconCheck size={15} /> : <IconLink size={15} />}
+              </button>
+            )}
             <button type="button" className="admin-modal-close" aria-label="Fechar"
               onClick={fecharGravando}>
               <IconX size={16} />

@@ -1476,6 +1476,16 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
       window.history.replaceState({}, '', window.location.pathname + window.location.hash);
       return;
     }
+    // `?tarefa=<id>` abre a gaveta da tarefa, pelo mesmo caminho da busca
+    // rápida e do inbox: a tela de Tarefas guarda o alvo e abre quando a
+    // listagem chega.
+    const tid = params.get('tarefa');
+    if (tid) {
+      setPage('tarefas');
+      setOpenCard({ page: 'tarefas', id: tid, nonce: 1 });
+      window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+      return;
+    }
     // `?projeto=` só troca de página: quem abre o card é a própria tela de
     // Projetos, que precisa da lista carregada para achar o projeto.
     if (params.get('projeto')) setPage('projetos');

@@ -907,7 +907,18 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
   useEffect(() => {
     if (alvoDaBusca == null) return;
     const t = tarefas.find(x => x.id === alvoDaBusca);
-    if (!t) return;
+    if (!t) {
+      // A listagem já chegou e a tarefa não está nela: o link aponta para uma
+      // tarefa excluída, ou para um projeto que esta pessoa não enxerga.
+      // Esperar calado deixaria a tela parada sem dizer por quê.
+      if (!carregando) {
+        setAlvoDaBusca(null);
+        onAbriu?.();
+        toast('error', 'Tarefa não encontrada',
+          'O link aponta para uma tarefa que não existe mais ou que você não pode ver.');
+      }
+      return;
+    }
     setAlvoDaBusca(null);
     setFProjeto([]);
     setFStatus([]);
@@ -916,7 +927,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
     setFEntrega([]);
     abrirEdicao(t);
     onAbriu?.();
-  }, [alvoDaBusca, tarefas]);
+  }, [alvoDaBusca, tarefas, carregando]);
 
   if (!pode('tarefas:ver')) {
     return (
