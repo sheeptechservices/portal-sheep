@@ -4906,6 +4906,13 @@ body.arrastando-painel {
   background: var(--white);
   border: 1.5px solid var(--gray3);
   border-radius: var(--radius-lg);
+  /* A tabela inteira, e a página rolando por ela. Sem isto ela some pela
+     borda de baixo sem jeito de chegar lá: rolar de lado faz do envoltório um
+     contêiner de rolagem, e contêiner de rolagem pode encolher abaixo do
+     próprio conteúdo dentro de uma coluna flex. Ele era espremido na altura
+     que sobrava e o resto das linhas ficava recortado, com o `overflow-y`
+     fechado. */
+  flex-shrink: 0;
 }
 
 .admin-table {
