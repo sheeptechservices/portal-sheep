@@ -795,9 +795,14 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
 
   /** Cria a entrega pelo seletor e já a põe na tarefa. Espera o id: a tarefa
    *  grava sozinha logo depois, e sem o id de verdade ela gravaria a ligação a
-   *  uma entrega que não existe. */
-  async function criarEntrega(titulo: string): Promise<boolean> {
+   *  uma entrega que não existe.
+   *
+   *  Sem nome digitado, a entrega nasce como "Sem título", que é título válido
+   *  na casa e se troca na ficha do projeto. Antes o clique com o campo em
+   *  branco só devolvia o foco, e como o foco já estava lá ele parecia morto. */
+  async function criarEntrega(pedido: string): Promise<boolean> {
     if (!api || !projeto || !onEntregaCriada) return false;
+    const titulo = pedido.trim() || TITULO_PADRAO;
     const r = await api('', 'POST', {
       action: 'salvar_entrega', projeto_id: projeto.id, titulo,
       descricao: '', marcador: '', submarcador: '', status: 'Planejada', prazo: '', responsaveis: [],
@@ -806,6 +811,7 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
       toast('error', 'Não foi possível criar a entrega', r?.error ?? 'Tente de novo.');
       return false;
     }
+    toast('success', 'Entrega criada', `"${titulo}" entrou em ${projeto.nome}.`);
     onEntregaCriada(projeto.id, {
       id: Number(r.id), projeto_id: projeto.id, titulo, descricao: null,
       marcador: null, submarcador: null, status: String(r.status ?? 'Planejada'),
@@ -1092,7 +1098,10 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
                 // A entrega que falta nasce daqui, sem sair da tarefa. A Geral não
                 // tem entrega: ela não é projeto.
                 criar={onEntregaCriada && api && projeto && projeto.id !== PROJETO_GERAL
-                  ? { rotulo: 'Criar entrega', onCriar: criarEntrega }
+                  // `semNome` deixa criar com o campo em branco: a entrega nasce
+                  // como "Sem título" e se renomeia depois, em vez de o clique
+                  // não fazer nada.
+                  ? { rotulo: 'Criar entrega', semNome: true, onCriar: criarEntrega }
                   : undefined}
               />
             </div>
