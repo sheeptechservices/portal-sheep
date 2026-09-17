@@ -20,13 +20,16 @@ import { zipSync, strToU8 } from 'fflate';
 export type Formato = 'csv' | 'xlsx' | 'md' | 'pdf';
 
 /** Um comentário do card, já achatado: quem escreveu, quando e o quê. Sem
- *  menções nem anexos - o que vira documento é o texto. */
+ *  menções - o que vira documento é o texto. */
 export interface ComentarioExport {
   autor: string;
   em: string;
   texto: string;
   /** Resposta dentro de uma conversa, e não um comentário de primeiro nível. */
   resposta: boolean;
+  /** Os nomes dos arquivos presos ao comentário. Só a ficha de uma tarefa os
+   *  usa: no diretório inteiro eles virariam ruído linha após linha. */
+  anexos?: string[];
 }
 
 /** Um passo do checklist da tarefa. */
@@ -341,6 +344,80 @@ function markdown(pacote: Pacote): string {
     }
   }
   return L.join('\n');
+}
+
+// ── A ficha de uma tarefa ───────────────────────────────────────────────────
+
+/** A tarefa que está aberta na gaveta, com o contexto que só a tela conhece:
+ *  de que projeto ela é e por que endereço se volta a ela. */
+export interface FichaDaTarefa extends TarefaExport {
+  projeto: string;
+  codigo: string | null;
+  cliente: string | null;
+  /** Endereço que reabre a tarefa no portal. Ausente quando não há. */
+  link?: string | null;
+}
+
+/** A marcação gravada é `@[Nome](id)`. Fora da tela o id não liga para lugar
+ *  nenhum e ainda parece um link quebrado, então sobra o nome. */
+const semMarcacao = (texto: string) => texto.replace(/@\[([^\]]+)\]\([^)]*\)/g, '@$1');
+
+/**
+ * Uma tarefa sozinha, em markdown, para colar num chat com uma IA.
+ *
+ * Não é o mesmo texto do diretório: lá a tarefa é um item de lista dentro do
+ * projeto, e aqui ela é o assunto inteiro. Por isso os campos viram ficha, a
+ * descrição vira seção e a conversa vira diálogo - o formato que um modelo lê
+ * sem precisar adivinhar o que é contexto e o que é pedido.
+ *
+ * A conversa vai junto de propósito, e é quase sempre o que decide a resposta:
+ * o enunciado diz o que era para ser feito, e os comentários dizem o que
+ * mudou desde então.
+ */
+export function markdownDaTarefa(t: FichaDaTarefa): string {
+  const L: string[] = [];
+  L.push(`# ${t.titulo}`, '');
+
+  const projeto = [t.codigo ? `${t.codigo} - ` : '', t.projeto].join('');
+  const campos: [string, string | null][] = [
+    ['Projeto', t.cliente ? `${projeto} (${t.cliente})` : projeto],
+    ['Entrega', t.entrega_titulo],
+    ['Etapa', t.status],
+    ['Prioridade', t.prioridade],
+    ['Responsáveis', t.responsavel_nome],
+    ['Prazo', dia(t.prazo) || null],
+    ['Etiquetas', t.etiquetas?.length ? t.etiquetas.join(', ') : null],
+    ['Concluída em', dia(t.concluida_em) || null],
+    ['Link', t.link ?? null],
+  ];
+  for (const [k, v] of campos) if (v) L.push(`- **${k}:** ${v}`);
+  L.push('');
+
+  // A descrição sai como foi escrita: o campo já guarda texto puro com as
+  // marcas de markdown, então não há o que converter.
+  L.push('## Descrição', '');
+  L.push(t.descricao?.trim() ? t.descricao.trim() : '_Sem descrição._', '');
+
+  if (t.subtarefas?.length) {
+    const feitos = t.subtarefas.filter(x => x.feita).length;
+    L.push(`## Checklist (${feitos}/${t.subtarefas.length})`, '');
+    for (const p of t.subtarefas) L.push(`- [${p.feita ? 'x' : ' '}] ${p.titulo}`);
+    L.push('');
+  }
+
+  if (t.comentarios?.length) {
+    L.push(`## Comentários (${t.comentarios.length})`, '');
+    for (const c of t.comentarios) {
+      // A resposta desce um nível: quem lê precisa saber a que fala ela
+      // responde, e o recuo é como a conversa se lê na tela.
+      L.push(`${c.resposta ? '####' : '###'} ${c.autor}${c.resposta ? ' (resposta)' : ''} - ${dia(c.em)}`, '');
+      const texto = semMarcacao(c.texto ?? '').trim();
+      if (texto) L.push(texto, '');
+      if (c.anexos?.length) L.push(`Anexos: ${c.anexos.join(', ')}`, '');
+    }
+  }
+
+  return `${L.join('\n').trimEnd()}\n`;
 }
 
 function exportarMd(pacote: Pacote) {

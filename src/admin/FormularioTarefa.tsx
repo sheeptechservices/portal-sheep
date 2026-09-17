@@ -13,12 +13,13 @@ import { AtividadeDaTarefa } from './AtividadeDaTarefa';
 import { createPortal } from 'react-dom';
 import { iniciais, useToast } from './AdminApp';
 import {
-  IconAlert, IconCheck, IconChevronDown, IconDuplicar, IconLink, IconPlus, IconTrash, IconUser,
-  IconX,
+  IconAlert, IconCheck, IconChevronDown, IconClipboard, IconDuplicar, IconLink, IconPlus,
+  IconSpinner, IconTrash, IconUser, IconX,
 } from '../components/icons';
 import { SelectSistema } from '../components/SelectSistema';
 import { SeletorPessoas } from '../components/SeletorPessoas';
 import { DatePicker } from '../components/DatePicker';
+import { markdownDaTarefa, type ComentarioExport } from '../lib/exportarTarefas';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { ancorar } from '../lib/ancorar';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
@@ -214,6 +215,18 @@ export function tarefaGravada(
     comentarios: 0,
     anexos: 0,
   };
+}
+
+/** Um comentário como o servidor o devolve, no recorte que a ficha em markdown
+ *  usa. O tipo completo mora em `components/Atividade`, que é quem desenha a
+ *  conversa; aqui só se lê o que vai para o texto. */
+interface ComentarioCru {
+  id: number;
+  pai_id: number | null;
+  usuario_nome: string;
+  texto: string;
+  criado_em: string;
+  anexos?: { nome: string }[];
 }
 
 // ── Checklist ─────────────────────────────────────────────────────────────────
@@ -792,6 +805,69 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
     }
   }
 
+  const [copiandoMd, setCopiandoMd] = useState(false);
+  const [copiadoMd, setCopiadoMd] = useState(false);
+
+  /** A tarefa inteira em markdown, para colar num chat com uma IA.
+   *
+   *  A conversa e o checklist são lidos na hora: eles não moram no rascunho, e
+   *  o que se cola tem de ser o que está lá agora, não o que a tela leu quando
+   *  abriu. As duas leituras vão juntas - uma fila de dois pedidos faria
+   *  esperar o dobro por nada.
+   *
+   *  As respostas descem logo abaixo da fala que responderam, e não no fim da
+   *  lista: é a ordem em que a conversa se lê, e é dela que sai o contexto. */
+  async function copiarMarkdown() {
+    if (!rascunho.id || !api || copiandoMd) return;
+    setCopiandoMd(true);
+    try {
+      const [atividade, passos] = await Promise.all([
+        api(`?action=tarefa_atividade&id=${rascunho.id}`),
+        api(`?action=tarefa_subtarefas&id=${rascunho.id}`),
+      ]);
+      const crus = (atividade?.comentarios ?? []) as ComentarioCru[];
+      const achatar = (c: ComentarioCru, resposta: boolean): ComentarioExport => ({
+        autor: c.usuario_nome, em: c.criado_em, texto: c.texto ?? '', resposta,
+        anexos: (c.anexos ?? []).map(a => a.nome),
+      });
+      const conversa: ComentarioExport[] = [];
+      for (const c of crus.filter(x => x.pai_id == null)) {
+        conversa.push(achatar(c, false));
+        for (const r of crus.filter(x => x.pai_id === c.id)) conversa.push(achatar(r, true));
+      }
+      const entrega = (projeto?.entregas ?? []).find(e => String(e.id) === rascunho.entrega_id);
+      const texto = markdownDaTarefa({
+        titulo: rascunho.titulo || TITULO_PADRAO,
+        descricao: rascunho.descricao,
+        status: rascunho.status,
+        prioridade: rascunho.prioridade,
+        responsavel_nome: rascunho.responsaveis
+          .map(id => pessoas.find(p => p.id === id)?.nome).filter(Boolean).join(', ') || null,
+        prazo: rascunho.prazo || null,
+        etiquetas: rascunho.etiquetas,
+        concluida_em: null,
+        entrega_titulo: entrega?.titulo ?? null,
+        subtarefas: ((passos?.subtarefas ?? []) as Subtarefa[])
+          .map(s => ({ titulo: s.titulo, feita: !!s.feita })),
+        comentarios: conversa,
+        projeto: projeto?.nome ?? '',
+        codigo: projeto?.codigo ?? null,
+        cliente: projeto?.cliente_nome ?? null,
+        link: `${window.location.origin}/?tarefa=${rascunho.id}`,
+      });
+      await navigator.clipboard.writeText(texto);
+      setCopiadoMd(true);
+      window.setTimeout(() => setCopiadoMd(false), 2000);
+    } catch {
+      // Sem área de transferência não adianta oferecer o texto num `prompt`: a
+      // ficha inteira não cabe numa caixinha de uma linha.
+      toast('error', 'Não foi possível copiar a tarefa',
+        'O navegador negou a área de transferência, ou a leitura falhou.');
+    } finally {
+      setCopiandoMd(false);
+    }
+  }
+
   /** Cria a entrega pelo seletor e já a põe na tarefa. Espera o id: a tarefa
    *  grava sozinha logo depois, e sem o id de verdade ela gravaria a ligação a
    *  uma entrega que não existe.
@@ -1014,6 +1090,23 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
                 aria-label="Copiar link para compartilhar a tarefa"
                 onClick={() => void copiarLink()}>
                 {copiado ? <IconCheck size={15} /> : <IconLink size={15} />}
+              </button>
+            )}
+            {/* Ao lado do link, e pelo mesmo motivo: os dois tiram a tarefa
+                daqui. Um leva a pessoa de volta, o outro leva a tarefa junto -
+                a ficha inteira em markdown, para colar num chat com uma IA sem
+                ter de recontar o que já está escrito aqui. */}
+            {!!rascunho.id && !!api && (
+              <button type="button" className="secao-add" style={{ width: 30, height: 30 }}
+                disabled={copiandoMd}
+                title={copiadoMd
+                  ? 'Tarefa copiada'
+                  : 'Copiar a tarefa em markdown, com checklist e comentários'}
+                aria-label="Copiar a tarefa inteira em markdown"
+                onClick={() => void copiarMarkdown()}>
+                {copiandoMd
+                  ? <IconSpinner size={15} />
+                  : copiadoMd ? <IconCheck size={15} /> : <IconClipboard size={15} />}
               </button>
             )}
             <button type="button" className="admin-modal-close" aria-label="Fechar"
