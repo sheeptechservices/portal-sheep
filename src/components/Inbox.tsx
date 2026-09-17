@@ -271,11 +271,10 @@ export function Inbox({ listar, marcarLido, limpar, vincularReuniao, onIr }: {
               <div className="admin-empty" style={{ padding: '28px 0' }}>
                 <p style={{ color: 'var(--gray2)', marginBottom: 6 }}><IconInbox size={26} /></p>
                 <p>Nada novo por aqui.</p>
+                {/* A lista do que cai aqui saiu: quem abre a gaveta vazia quer
+                    saber se perdeu algo, não a enumeração das sete origens. */}
                 <p className="inbox-vazio-nota">
-                  Reunião gravada, pedido de cliente, chamado do time e, nos comentários
-                  de tarefa, menção, resposta, joinha e tarefa que chegou numa etapa
-                  que o seu papel acompanha aparecem nesta gaveta
-                  assim que chegam, e ficam até você limpar.
+                  O que chegar aparece aqui e fica até você limpar.
                 </p>
               </div>
             ) : (
