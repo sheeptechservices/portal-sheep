@@ -404,6 +404,44 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
   );
 }
 
+/** Quanto dura a abertura. Espelha o `--transition-spring` do `.revelar`, com
+ *  uma folga para as classes só saírem depois de a animação terminar. */
+const ABERTURA_MS = 260;
+
+/** A fala que acabou de chegar entra abrindo espaço, em vez de aparecer pronta.
+ *
+ *  Um comentário novo empurra o campo de escrever para baixo, e o que empurra o
+ *  resto da coluna anima a altura: é o `.revelar` da casa, aberto um quadro
+ *  depois de montar, que é o que dá à animação de onde sair. A fala que já
+ *  estava na tela quando a conversa abriu não passa por aqui - só o que chega
+ *  depois.
+ *
+ *  Terminada a abertura, as classes saem e sobra um `div` pelado: o
+ *  `overflow: hidden` do `.revelar` recortaria a sombra do cartão, e a conversa
+ *  ficaria com um chip mais chato que os vizinhos para sempre. */
+function Chegando({ novo, children }: { novo: boolean; children: React.ReactNode }) {
+  const [fase, setFase] = useState<'fechado' | 'abrindo' | 'pronto'>(novo ? 'fechado' : 'pronto');
+
+  useEffect(() => {
+    if (fase === 'fechado') {
+      const q = requestAnimationFrame(() => setFase('abrindo'));
+      return () => cancelAnimationFrame(q);
+    }
+    if (fase === 'abrindo') {
+      const t = window.setTimeout(() => setFase('pronto'), ABERTURA_MS);
+      return () => window.clearTimeout(t);
+    }
+  }, [fase]);
+
+  return (
+    <div className={fase === 'pronto'
+      ? 'ativ-item'
+      : `ativ-item revelar${fase === 'abrindo' ? ' aberto' : ''}`}>
+      <div>{children}</div>
+    </div>
+  );
+}
+
 /** O joinha do comentário: o desenho e a conta, e os nomes na dica. Quem já deu
  *  vê o botão aceso, e clicar de novo tira. */
 function Joinha({ c, usuarioId, pode, onAlternar }: {
@@ -431,7 +469,8 @@ function Joinha({ c, usuarioId, pode, onAlternar }: {
 }
 
 function Comentario({ c, respostas, pessoas, etapas, usuarioId, podeComentar, permiteAnexo,
-  respondendo, onResponder, onEnviarResposta, onExcluir, onBaixar, onVer, onJoinha }: {
+  respondendo, onResponder, onEnviarResposta, onExcluir, onBaixar, onVer, onJoinha,
+  ehNovo }: {
   /** Ausente onde a conversa não tem joinha. */
   onJoinha?: (c: ComentarioAtividade, ligar: boolean) => void;
   c: ComentarioAtividade;
@@ -447,6 +486,9 @@ function Comentario({ c, respostas, pessoas, etapas, usuarioId, podeComentar, pe
   onExcluir: (c: ComentarioAtividade) => void;
   onBaixar: (a: AnexoDoComentario) => void;
   onVer: (a: AnexoDoComentario) => void;
+  /** Se a fala acabou de chegar - a resposta que entra numa conversa que já
+   *  está na tela abre espaço, em vez de nascer pronta. */
+  ehNovo: (id: number) => boolean;
 }) {
   const meu = !!usuarioId && c.usuario_id === usuarioId;
   /** Respostas à vista. Nascem fechadas. */
@@ -524,7 +566,9 @@ function Comentario({ c, respostas, pessoas, etapas, usuarioId, podeComentar, pe
           </button>
           <div className={`revelar${abertas ? ' aberto' : ''}`}>
             <div>
-              {respostas.map(r => bloco(r, true))}
+              {respostas.map(r => (
+                <Chegando key={r.id} novo={ehNovo(r.id)}>{bloco(r, true)}</Chegando>
+              ))}
             </div>
           </div>
         </>
@@ -682,6 +726,23 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
   const conversas = comentarios.filter(c => c.pai_id == null);
   const respostasDe = (id: number) => comentarios.filter(c => c.pai_id === id);
 
+  /** As falas que já estavam na tela no quadro anterior. O que não está aqui
+   *  chegou agora - o comentário que se acabou de escrever, ou o de outra
+   *  pessoa que veio na releitura - e entra abrindo espaço.
+   *
+   *  A conversa inteira da primeira leitura não conta como novidade: ela já
+   *  entra junto com o painel, que tem a animação dele. Por isso o registro só
+   *  começa quando o esqueleto sai. */
+  const vistos = useRef<Set<number> | null>(null);
+  const ehNovo = (id: number) => vistos.current !== null && !vistos.current.has(id);
+  // Depois da pintura, e não durante: escrever a referência no meio do render
+  // faria a segunda passada do modo estrito ver a fala nova como velha, e a
+  // animação nunca tocaria em desenvolvimento.
+  useEffect(() => {
+    if (carregando) return;
+    vistos.current = new Set(comentarios.map(c => c.id));
+  }, [carregando, comentarios]);
+
   return (
     <div className="ativ">
       <div className="ativ-abas" role="tablist">
@@ -699,10 +760,12 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
         </button>
       </div>
 
-      {/* A chave é a aba: trocá-la remonta o conteúdo, e é a remontagem que faz
-          a entrada tocar. É o mesmo `.aba-painel` das abas do painel de
-          projeto - trocar de aba num quadro só não é lido, é notado. */}
-      <div className="aba-painel" key={aba}>
+      {/* A chave é a aba, e também a espera: trocá-la remonta o conteúdo, e é a
+          remontagem que faz a entrada tocar. É o mesmo `.aba-painel` das abas do
+          painel de projeto - trocar de aba num quadro só não é lido, é notado.
+          A espera entra na chave para a conversa lida substituir o esqueleto
+          entrando, e não trocando de estalo no lugar dele. */}
+      <div className="aba-painel" key={`${aba}|${carregando}`}>
       {carregando ? (
         // Esqueleto no formato do que vem, e não um giro no meio do vazio: o
         // bloco já ocupa o tamanho da conversa, então nada pula quando ela
@@ -719,23 +782,25 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
           {conversas.length === 0
             ? <p className="ativ-vazio">Nenhum comentário ainda.</p>
             : conversas.map(c => (
-              <Comentario
-                key={c.id}
-                c={c}
-                respostas={respostasDe(c.id)}
-                pessoas={pessoas}
-                etapas={etapas}
-                usuarioId={usuarioId}
-                podeComentar={podeComentar}
-                permiteAnexo={!!dono.anexo}
-                respondendo={respondendo === c.id}
-                onResponder={setRespondendo}
-                onEnviarResposta={(t, a) => enviar(t, a, c.id)}
-                onExcluir={c2 => void excluir(c2)}
-                onBaixar={a => void baixar(a)}
-                onVer={setVendo}
-                onJoinha={dono.joinha ? (c2, ligar) => void alternarJoinha(c2, ligar) : undefined}
-              />
+              <Chegando key={c.id} novo={ehNovo(c.id)}>
+                <Comentario
+                  c={c}
+                  respostas={respostasDe(c.id)}
+                  pessoas={pessoas}
+                  etapas={etapas}
+                  usuarioId={usuarioId}
+                  podeComentar={podeComentar}
+                  permiteAnexo={!!dono.anexo}
+                  respondendo={respondendo === c.id}
+                  onResponder={setRespondendo}
+                  onEnviarResposta={(t, a) => enviar(t, a, c.id)}
+                  onExcluir={c2 => void excluir(c2)}
+                  onBaixar={a => void baixar(a)}
+                  onVer={setVendo}
+                  onJoinha={dono.joinha ? (c2, ligar) => void alternarJoinha(c2, ligar) : undefined}
+                  ehNovo={ehNovo}
+                />
+              </Chegando>
             ))}
           {podeComentar && (
             <div className="ativ-escrever-pe">

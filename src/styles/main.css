@@ -7735,7 +7735,12 @@ button.kanban-card.pl-funil-card:focus-visible { outline: none; border-color: va
     var(--cristal-sombra, none);
   transition: border-color var(--transition);
 }
-.ativ-thread + .ativ-thread { margin-top: 8px; }
+/* Cada fala vem dentro do próprio invólucro: é ele que abre espaço quando o
+   comentário acaba de chegar, em vez de a fala aparecer pronta e o campo de
+   escrever saltar para baixo. O respiro entre duas falas mora dentro dele, e
+   não entre um invólucro e outro, para crescer junto com a altura na abertura
+   em vez de saltar antes dela. */
+.ativ-item + .ativ-item .ativ-thread { margin-top: 8px; }
 .ativ-thread:hover { border-color: var(--cristal-borda-forte, var(--gray2)); }
 .ativ-comentario {
   display: flex;
