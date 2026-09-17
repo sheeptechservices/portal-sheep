@@ -6,7 +6,8 @@ import {
   IconFunil,
   IconImage, IconInbox,
   IconChevronDown, IconChevronRight, IconChevronUp, IconChevronUpDown,
-  IconDrive, IconEdit, IconEye, IconGitHub, IconGlobo, IconLink, IconMarcoAndamento, IconMarcoBloqueado,
+  IconDrive, IconEdit, IconEye, IconEyeOff, IconGitHub, IconGlobo, IconLink, IconMarcoAndamento,
+  IconMarcoBloqueado, IconSpinner,
   IconAgrupar, IconArrastar, IconCalendario, IconCheck, IconExternal, IconOrdenar, IconSearch,
   IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado, IconMarcoValidado,
   IconPlay, IconPlus, IconPrioridadeAlta, IconPrioridadeBaixa, IconPrioridadeMaxima,
@@ -277,6 +278,20 @@ export interface EntregaPendente {
   responsaveis: string[];
 }
 
+/** Um acesso do projeto: o login do portal entregue, do painel do cliente, do
+ *  ambiente de homologação.
+ *
+ *  A senha não vem junto: a listagem diz apenas se existe uma, e o conteúdo
+ *  desce por ação própria quando alguém pede para ver ou copiar. Ela também
+ *  não sai na página do cliente - é acesso da equipe, não do cliente. */
+export interface AcessoDoProjeto {
+  id: number;
+  rotulo: string;
+  usuario: string | null;
+  url: string | null;
+  tem_senha: boolean;
+}
+
 export interface Projeto {
   id: string;
   codigo: string | null;
@@ -306,6 +321,8 @@ export interface Projeto {
   entregas: Entrega[];
   /** Todas as do projeto, presas a uma entrega ou soltas. */
   tarefas: Tarefa[];
+  /** Os logins que a equipe usa neste projeto. Sem as senhas. */
+  acessos: AcessoDoProjeto[];
   criado_em: string;
   /** Chave da página de acompanhamento do cliente. Nulo é não publicado. */
   publico_token: string | null;
@@ -3810,6 +3827,265 @@ function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, pessoas, pr
   );
 }
 
+/** O que a seção de acessos precisa saber fazer. Um objeto só, e não três
+ *  props soltas: as funções andam juntas e nenhuma faz sentido sozinha. */
+interface AcessosDoProjeto {
+  salvar: (dados: {
+    id?: number; rotulo: string; usuario: string; url: string;
+    /** Ausente quando a edição não mexeu na senha: mandar vazio apagaria a que
+     *  está gravada, e quem edita o rótulo não tem a senha em mãos. */
+    senha?: string;
+  }, lista: AcessoDoProjeto[]) => Promise<number | null>;
+  /** A lista de agora vai junto: é dela que sai a pintura, e é para ela que a
+   *  tela volta se o servidor recusar. */
+  excluir: (a: AcessoDoProjeto, lista: AcessoDoProjeto[]) => void;
+  /** A senha decifrada, uma de cada vez. Nulo quando o servidor recusou. */
+  senha: (a: AcessoDoProjeto) => Promise<string | null>;
+}
+
+const ACESSO_EM_BRANCO = { rotulo: '', usuario: '', url: '', senha: '' };
+
+/**
+ * Os acessos do projeto: o login do portal entregue, do painel do cliente, do
+ * ambiente de homologação.
+ *
+ * Não é o Cofre da casa, e não quer ser: lá moram as senhas da empresa, atrás
+ * de um código por e-mail, porque uma sessão esquecida aberta não pode ser a
+ * única coisa entre quem senta na máquina e as senhas todas. Aqui é o acesso
+ * daquele projeto, ao lado do resto da ficha, para quem já enxerga o projeto -
+ * pedir um código de e-mail para ler o login de homologação que o time usa dez
+ * vezes por dia seria trocar o trabalho pela cerimônia.
+ *
+ * Duas regras continuam valendo, e são as que importam:
+ *
+ *  1. A senha nunca está na tela por padrão. Ela desce do servidor quando
+ *     alguém pede para ver ou para copiar, vive na linha que a pediu e some em
+ *     meio minuto - ou junto com a gaveta, o que vier primeiro.
+ *  2. Nada disto aparece na página do cliente. É acesso da equipe.
+ */
+function SecaoAcessos({ acessos, somenteLeitura, acoes }: {
+  acessos: AcessoDoProjeto[];
+  somenteLeitura: boolean;
+  acoes: AcessosDoProjeto;
+}) {
+  const { toast } = useToast();
+  /** Qual linha está sendo escrita: o id de uma existente, a nova, ou nada. */
+  const [editando, setEditando] = useState<number | 'nova' | null>(null);
+  const [campos, setCampos] = useState(ACESSO_EM_BRANCO);
+  const [gravando, setGravando] = useState(false);
+  /** As senhas que alguém pediu para ver, por id. Somem com a gaveta. */
+  const [abertas, setAbertas] = useState<Record<number, string>>({});
+  /** Qual linha espera o servidor devolver a senha. */
+  const [pedindo, setPedindo] = useState<number | null>(null);
+  const editor = useRevelar(editando !== null);
+  /** O foco vai para o primeiro campo quando o bloco abre, e não na montagem:
+   *  `autoFocus` dispara um quadro antes de o `.revelar` abrir, e a página
+   *  saltava até um campo de altura zero. */
+  const primeiro = useRef<HTMLInputElement | null>(null);
+  useEffect(() => { if (editor.aberto) primeiro.current?.focus(); }, [editor.aberto]);
+
+  /** A senha aberta se fecha sozinha. Meio minuto é o tempo de ler e digitar em
+   *  outro lugar; deixá-la até a gaveta fechar seria deixá-la à vista por cima
+   *  do ombro de quem passa. */
+  useEffect(() => {
+    if (Object.keys(abertas).length === 0) return;
+    const t = window.setTimeout(() => setAbertas({}), 30_000);
+    return () => window.clearTimeout(t);
+  }, [abertas]);
+
+  function abrirEdicao(a: AcessoDoProjeto) {
+    setEditando(a.id);
+    // A senha não vem: quem edita o rótulo não precisa dela, e o campo em
+    // branco quer dizer "deixa a que está lá".
+    setCampos({ rotulo: a.rotulo, usuario: a.usuario ?? '', url: a.url ?? '', senha: '' });
+  }
+
+  async function gravar() {
+    if (!campos.rotulo.trim() || gravando) return;
+    setGravando(true);
+    const id = await acoes.salvar({
+      id: editando === 'nova' ? undefined : editando ?? undefined,
+      rotulo: campos.rotulo.trim(),
+      usuario: campos.usuario.trim(),
+      url: campos.url.trim(),
+      // Senha em branco na edição é "não mexer"; na linha nova é acesso sem
+      // senha gravada, que é caso normal - nem todo acesso tem uma.
+      ...(campos.senha || editando === 'nova' ? { senha: campos.senha } : {}),
+    }, acessos);
+    setGravando(false);
+    if (id === null) return;
+    setEditando(null);
+    setCampos(ACESSO_EM_BRANCO);
+  }
+
+  /** Mostra ou esconde. Esconder é local; mostrar custa uma ida ao servidor,
+   *  que é o que mantém a senha fora da listagem. */
+  async function ver(a: AcessoDoProjeto) {
+    if (abertas[a.id] !== undefined) {
+      setAbertas(x => { const y = { ...x }; delete y[a.id]; return y; });
+      return;
+    }
+    setPedindo(a.id);
+    const senha = await acoes.senha(a);
+    setPedindo(null);
+    if (senha === null) return;
+    setAbertas(x => ({ ...x, [a.id]: senha }));
+  }
+
+  /** Copia sem mostrar: a senha vai para a área de transferência e não passa
+   *  pela tela. */
+  async function copiar(a: AcessoDoProjeto, valor: string | null, oQue: string) {
+    const conteudo = valor ?? await acoes.senha(a);
+    if (conteudo === null) return;
+    try {
+      await navigator.clipboard.writeText(conteudo);
+      toast('success', `${oQue} copiado`, a.rotulo);
+    } catch {
+      toast('error', 'O navegador não deixou copiar', 'Mostre o campo e copie à mão.');
+    }
+  }
+
+  return (
+    <section>
+      <p className="admin-section-title">Acessos</p>
+      <p className="acessos-dica">
+        Login e senha do que a equipe usa neste projeto. A senha fica cifrada e
+        não aparece na página do cliente.
+      </p>
+
+      {acessos.length === 0 && editando === null && (
+        <p className="nt-vazio">Nenhum acesso guardado.</p>
+      )}
+
+      <div className="acessos-lista">
+        {acessos.map(a => (
+          <div key={a.id} className="acesso-linha">
+            <span className="acesso-nome">
+              {a.url
+                ? <a href={a.url} target="_blank" rel="noopener noreferrer" title={a.url}>{a.rotulo}</a>
+                : a.rotulo}
+            </span>
+            <span className="acesso-campo" title={a.usuario ?? undefined}>
+              <span className="acesso-valor">
+                {a.usuario || <span className="acesso-sem">sem usuário</span>}
+              </span>
+              {!!a.usuario && (
+                <button type="button" className="acesso-botao" title="Copiar o usuário"
+                  aria-label={`Copiar o usuário de ${a.rotulo}`}
+                  onClick={() => void copiar(a, a.usuario, 'Usuário')}>
+                  <IconClipboard size={12} />
+                </button>
+              )}
+            </span>
+            <span className="acesso-campo">
+              {!a.tem_senha ? (
+                <span className="acesso-valor"><span className="acesso-sem">sem senha</span></span>
+              ) : (
+                <>
+                  {/* A senha revelada troca de lugar com os pontinhos, e não
+                      nasce embaixo deles: é a mesma informação, no mesmo lugar,
+                      mudando de cara. */}
+                  <span className="acesso-valor troca"
+                    key={abertas[a.id] === undefined ? 'oculta' : 'aberta'}>
+                    {abertas[a.id] === undefined ? '••••••••' : (abertas[a.id] || 'em branco')}
+                  </span>
+                  <button type="button" className="acesso-botao"
+                    title={abertas[a.id] === undefined ? 'Mostrar a senha' : 'Esconder a senha'}
+                    aria-label={`Mostrar a senha de ${a.rotulo}`}
+                    disabled={pedindo === a.id}
+                    onClick={() => void ver(a)}>
+                    {pedindo === a.id
+                      ? <IconSpinner size={12} />
+                      : abertas[a.id] === undefined ? <IconEye size={12} /> : <IconEyeOff size={12} />}
+                  </button>
+                  <button type="button" className="acesso-botao" title="Copiar a senha"
+                    aria-label={`Copiar a senha de ${a.rotulo}`}
+                    onClick={() => void copiar(a, abertas[a.id] ?? null, 'Senha')}>
+                    <IconClipboard size={12} />
+                  </button>
+                </>
+              )}
+            </span>
+            {!somenteLeitura && (
+              <span className="acesso-acoes">
+                <button type="button" className="acesso-botao" title="Editar este acesso"
+                  aria-label={`Editar ${a.rotulo}`} onClick={() => abrirEdicao(a)}>
+                  <IconEdit size={12} />
+                </button>
+                <button type="button" className="acesso-botao" title="Remover este acesso"
+                  aria-label={`Remover ${a.rotulo}`} onClick={() => acoes.excluir(a, acessos)}>
+                  <IconTrash size={12} />
+                </button>
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {!somenteLeitura && (
+        <>
+          {editor.montado && (
+            <div className={`revelar${editor.aberto ? ' aberto' : ''}`}>
+              <div>
+                <div className="acesso-editor">
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div className="form-group">
+                      <label className="form-label">Nome do acesso *</label>
+                      <input className="form-input" ref={primeiro} value={campos.rotulo}
+                        placeholder="Portal de homologação"
+                        onChange={e => setCampos(c => ({ ...c, rotulo: e.target.value }))} />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Usuário</label>
+                      <input className="form-input" value={campos.usuario} autoComplete="off"
+                        placeholder="equipe@sheeptechnology.com.br"
+                        onChange={e => setCampos(c => ({ ...c, usuario: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div className="form-group">
+                      <label className="form-label">Senha</label>
+                      <input className="form-input" type="password" value={campos.senha}
+                        autoComplete="new-password"
+                        placeholder={editando === 'nova' ? '' : 'Em branco: mantém a atual'}
+                        onChange={e => setCampos(c => ({ ...c, senha: e.target.value }))} />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Endereço</label>
+                      <input className="form-input" value={campos.url}
+                        placeholder="https://portal.cliente.com.br/admin"
+                        onChange={e => setCampos(c => ({ ...c, url: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="acesso-editor-acoes">
+                    <button type="button" className="btn btn-secondary"
+                      onClick={() => { setEditando(null); setCampos(ACESSO_EM_BRANCO); }}>
+                      Cancelar
+                    </button>
+                    <button type="button" className="btn btn-primary"
+                      disabled={!campos.rotulo.trim() || gravando}
+                      onClick={() => void gravar()}>
+                      {gravando && <IconSpinner size={13} />}
+                      {gravando ? 'Gravando' : 'Gravar'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          {editando === null && (
+            <button type="button" className="checklist-add"
+              onClick={() => { setEditando('nova'); setCampos(ACESSO_EM_BRANCO); }}>
+              <IconPlus size={12} />
+              {acessos.length ? 'Outro acesso' : 'Adicionar acesso'}
+            </button>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 /** A logo de um cliente pelo nome, no tamanho de chip. Sem logo cadastrada fica
  *  só o nome, que o chip já mostra ao lado. */
 function LogoDoCliente({ cliente }: { cliente: string }) {
@@ -4784,6 +5060,7 @@ function FormularioProjeto({
   onExcluirReuniao,
   onPublicar, onSalvarEntrega, onExcluirEntrega, onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
   onAnexarNaEntrega, onRemoverAnexoDaEntrega, onVerAnexoDaEntrega, onBaixarAnexoDaEntrega,
+  acessos,
 }: {
   editando: Projeto | null;
   /** Com que rascunho o painel abre enquanto o projeto ainda não voltou do
@@ -4834,6 +5111,9 @@ function FormularioProjeto({
   /** Publica ou tira do ar. Devolve o token novo, `null` ao despublicar, ou
    *  `undefined` quando a gravação falhou. */
   onPublicar: (p: Projeto, publicar: boolean) => Promise<string | null | undefined>;
+  /** Guardar, tirar e abrir os acessos deste projeto. Ausente enquanto ele
+   *  ainda não existe: não há a que prender um login. */
+  acessos?: AcessosDoProjeto;
   onSalvarEntrega: (p: Projeto, dados: EntregaPendente, id?: number) => Promise<void>;
   onExcluirEntrega: (e: Entrega) => void;
   onSubirEvidencia: (e: Entrega, arquivos: FileList | null, comentario?: string, etapa?: string) => Promise<void>;
@@ -5368,6 +5648,14 @@ function FormularioProjeto({
           </section>
 
           </fieldset>
+
+          {/* Fora do `fieldset`, e só com projeto gravado: cada acesso grava
+              sozinho, por ação própria, e não junto com o resto da ficha - a
+              senha passa pela cifra do servidor, e não por este formulário. */}
+          {editando && acessos && (
+            <SecaoAcessos acessos={editando.acessos ?? []} somenteLeitura={somenteLeitura}
+              acoes={acessos} />
+          )}
 
           {/* Fora do `fieldset`: abrir uma entrega, ver a prova anexada, buscar,
               agrupar e trocar de visão é leitura, e continua valendo para quem
@@ -6551,6 +6839,63 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     link.click();
   }
 
+  /** Os acessos de um projeto, ligados ao servidor. Presos ao projeto aberto,
+   *  que é o único que a gaveta mostra.
+   *
+   *  A lista pinta na hora e a senha nunca entra nela: sobe cifrada na gravação
+   *  e só desce quando alguém pede, uma de cada vez. A lista de antes vem de
+   *  quem chamou - é a seção que a tem à mão, e assim nada aqui precisa
+   *  adivinhar o estado do outro lado. */
+  const acoesDeAcesso = useCallback((projetoId: string): AcessosDoProjeto => ({
+    salvar: async (dados, lista) => {
+      const r = await api('', 'POST', {
+        action: 'salvar_projeto_acesso', projeto_id: projetoId, ...dados,
+      });
+      if (!r?.id) {
+        toast('error', 'Não foi possível gravar o acesso', r?.error ?? 'Tente de novo.');
+        return null;
+      }
+      const id = Number(r.id);
+      const linha: AcessoDoProjeto = {
+        id,
+        rotulo: dados.rotulo,
+        usuario: dados.usuario || null,
+        url: dados.url || null,
+        // Senha ausente na edição quer dizer "a de antes continua lá".
+        tem_senha: dados.senha === undefined
+          ? lista.find(a => a.id === id)?.tem_senha ?? false
+          : !!dados.senha,
+      };
+      setProjetos(ps => ps.map(x => (x.id === projetoId
+        ? {
+          ...x,
+          acessos: lista.some(a => a.id === id)
+            ? lista.map(a => (a.id === id ? linha : a))
+            : [...lista, linha],
+        }
+        : x)));
+      return id;
+    },
+    excluir: (acesso, lista) => {
+      setProjetos(ps => ps.map(x => (x.id === projetoId
+        ? { ...x, acessos: lista.filter(a => a.id !== acesso.id) } : x)));
+      void api('', 'POST', { action: 'excluir_projeto_acesso', id: acesso.id })
+        .then(r => { if (r?.error) throw new Error(String(r.error)); })
+        .catch(() => {
+          setProjetos(ps => ps.map(x => (x.id === projetoId ? { ...x, acessos: lista } : x)));
+          toast('error', 'Não foi possível remover', `"${acesso.rotulo}" continua guardado.`);
+        });
+    },
+    senha: async (acesso) => {
+      const r = await api(`?action=projeto_acesso_senha&id=${acesso.id}`);
+      if (typeof r?.senha !== 'string') {
+        toast('error', 'Não foi possível abrir a senha', r?.error ?? 'Tente de novo.');
+        return null;
+      }
+      return r.senha as string;
+    },
+  }), [api, toast]);
+
   async function baixarEvidencia(ev: Evidencia) {
     const r = await api(`?action=entrega_evidencia_base64&id=${ev.id}`);
     if (!r?.base64) { toast('error', 'Não deu', 'A evidência não veio.'); return; }
@@ -7291,6 +7636,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           onAnexarReuniaoFireflies={anexarReuniaoFireflies}
           onExcluirReuniao={excluirReuniao}
           onPublicar={publicarProjeto}
+          acessos={podeEditar && form.editando ? acoesDeAcesso(form.editando.id) : undefined}
           onSalvarEntrega={salvarEntrega}
           onExcluirEntrega={excluirEntrega}
           onSubirEvidencia={subirEvidencia}

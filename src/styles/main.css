@@ -7375,6 +7375,96 @@ button.checklist-texto:focus-visible {
   .campo-data-chip { transition: none; }
 }
 
+/* ── Acessos do projeto ─────────────────────────────────────────────────
+   O login que a equipe usa naquele projeto, na ficha dele. Uma linha por
+   acesso: o nome, o usuario, a senha escondida e as acoes - o mesmo desenho de
+   linha de lista do resto da gaveta, e nao um cartao por acesso, que faria
+   quatro logins ocuparem a tela inteira. */
+.acessos-dica {
+  margin: -4px 0 10px;
+  font-size: 11.5px;
+  color: var(--gray2);
+}
+.acessos-lista { display: flex; flex-direction: column; gap: 6px; }
+.acesso-linha {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.2fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--cristal-borda, var(--gray3));
+  border-radius: var(--radius-md);
+  background: var(--cristal, var(--white));
+  transition: border-color var(--transition);
+}
+.acesso-linha:hover { border-color: var(--cristal-borda-forte, var(--gray2)); }
+.acesso-nome {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--black);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.acesso-nome a { color: inherit; text-decoration: none; }
+.acesso-nome a:hover { text-decoration: underline; }
+.acesso-campo {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--gray);
+}
+.acesso-valor {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.acesso-sem { color: var(--gray2); font-style: italic; }
+.acesso-acoes { display: flex; align-items: center; gap: 2px; justify-content: flex-end; }
+/* Os botoes da linha sao icone-botao da casa: cinza em repouso, fundo claro no
+   hover, sem moldura propria. */
+.acesso-botao {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+}
+.acesso-botao:hover:not(:disabled),
+.acesso-botao:focus-visible { outline: none; color: var(--black); background: var(--gray4); }
+.acesso-botao:disabled { cursor: default; opacity: .6; }
+/* O formulario que abre para escrever um acesso. */
+.acesso-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-md);
+  background: var(--white);
+}
+.acesso-editor-acoes { display: flex; justify-content: flex-end; gap: 8px; }
+@media (prefers-reduced-motion: reduce) {
+  .acesso-linha, .acesso-botao { transition: none; }
+}
+@media (max-width: 640px) {
+  /* Espremida, a linha vira duas: nome em cima, o resto embaixo. */
+  .acesso-linha { grid-template-columns: minmax(0, 1fr) auto; }
+  .acesso-nome { grid-column: 1 / -1; }
+  .acesso-editor > div { grid-template-columns: 1fr !important; }
+}
+
 /* A prova do objetivo: a pilula do que foi anexado, e o clipe de anexar mais.
    Mesma moldura e mesma altura do chip de data e do de pessoas - os tres sao a
    mesma peca na mesma linha, e um desenho proprio aqui faria a linha parecer

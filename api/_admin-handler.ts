@@ -1278,6 +1278,42 @@ async function migrarSchema(db: Client) {
       atualizado_por_nome TEXT
     )
   `);
+  // Os acessos de um projeto: o login do portal entregue, do ERP do cliente, do
+  // painel que a equipe usa para tocar aquele trabalho.
+  //
+  // Nao e o Cofre. La moram as senhas da casa, uma por vez, atras de um codigo
+  // por e-mail, porque uma sessao esquecida aberta nao pode ser a unica coisa
+  // entre quem senta na maquina e as senhas todas. Aqui e o acesso daquele
+  // projeto, ao lado do resto da ficha dele, para quem ja enxerga o projeto -
+  // pedir um codigo de e-mail para ler o login de homologacao que o time usa
+  // dez vezes por dia seria trocar o trabalho pela cerimonia.
+  //
+  // Duas coisas continuam valendo, e sao as que importam:
+  //   1. A senha em repouso e cifrada (AES-256-GCM, a mesma chave do Cofre). O
+  //      banco sozinho nao devolve senha nenhuma.
+  //   2. Ela nunca sai na listagem. Desce por acao propria, uma de cada vez,
+  //      quando alguem clica para ver ou para copiar.
+  //
+  // A pagina do cliente nao le esta tabela, e nao deve passar a ler.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS projeto_acessos (
+      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+      projeto_id          TEXT NOT NULL,
+      -- Em claro: e o que a ficha mostra. "Portal de homologacao", nunca a
+      -- senha em si.
+      rotulo              TEXT NOT NULL,
+      usuario             TEXT,
+      url                 TEXT,
+      -- So a senha, cifrada.
+      segredo             TEXT,
+      ordem               INTEGER NOT NULL DEFAULT 0,
+      criado_em           TEXT NOT NULL,
+      criado_por_nome     TEXT,
+      atualizado_em       TEXT,
+      atualizado_por_nome TEXT
+    )
+  `);
+
   await ddl(`
     CREATE TABLE IF NOT EXISTS cofre_tokens (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2124,6 +2160,7 @@ async function migrarSchema(db: Client) {
     `CREATE INDEX IF NOT EXISTS idx_tarefa_entrega ON projeto_tarefas (entrega_id)`,
     `CREATE INDEX IF NOT EXISTS idx_evidencia_entrega ON entrega_evidencias (entrega_id)`,
     `CREATE INDEX IF NOT EXISTS idx_planning_evidencia ON planning_evidencias (semana, projeto_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_projeto_acesso ON projeto_acessos (projeto_id)`,
     // Autoria. A tela de Perfil filtra por pessoa (`autor_id`, `criado_por_id`,
     // `usuario_id`) e nenhum dos índices acima começa por essas colunas, então
     // cada contagem varria a tabela inteira. Índice por coluna consultada, e
@@ -3973,7 +4010,8 @@ async function despacharAdminData(
       // custavam uma ida e volta inteira ao banco em cada recarregamento - e a
       // listagem é o que roda depois de toda ação da tela.
       const [etapasTarefa, projs, equipe, arqs, clientes, reunioes, vinculos, entregas,
-        evidencias, arquivosDeEntrega, tarefas, conversas, anexosDaConversa] = await Promise.all([
+        evidencias, arquivosDeEntrega, tarefas, conversas, anexosDaConversa,
+        acessos] = await Promise.all([
         etapasDeTarefa(db),
         db.execute({
           sql: `
@@ -4051,6 +4089,14 @@ async function despacharAdminData(
           JOIN tarefa_comentarios c ON c.id = a.comentario_id
           GROUP BY c.tarefa_id
         `),
+        // A senha fica de fora, sempre: a ficha mostra o rotulo e o usuario, e
+        // o resto desce por acao propria quando alguem pede para ver.
+        db.execute(`
+          SELECT id, projeto_id, rotulo, usuario, url, ordem,
+                 segredo IS NOT NULL AND segredo <> '' AS tem_senha,
+                 criado_em, criado_por_nome, atualizado_em, atualizado_por_nome
+          FROM projeto_acessos ORDER BY ordem, id
+        `),
       ]);
       const nComentarios = new Map(conversas.rows.map(r => [Number(r.tarefa_id), Number(r.n)]));
       const nAnexos = new Map(anexosDaConversa.rows.map(r => [Number(r.tarefa_id), Number(r.n)]));
@@ -4108,6 +4154,11 @@ async function despacharAdminData(
           // Só os números: o conteúdo da conversa desce quando o card abre.
           comentarios: nComentarios.get(Number(t.id)) ?? 0,
           anexos: nAnexos.get(Number(t.id)) ?? 0,
+        })),
+        acessos: acessos.rows.filter(a => a.projeto_id === p.id).map(a => ({
+          ...a,
+          // O SQLite devolve 0/1; a tela quer a resposta.
+          tem_senha: Number(a.tem_senha) === 1,
         })),
         reunioes: reunioes.rows.filter(x => x.projeto_id === p.id).map(x => ({
           ...x,
@@ -4330,6 +4381,33 @@ async function despacharAdminData(
       });
       if (!r.rows[0]) return { status: 404, body: { error: 'Evidência não encontrada.' } };
       return { status: 200, body: r.rows[0] };
+    }
+
+    /**
+     * A senha de um acesso, decifrada. Uma de cada vez, e so para quem ja
+     * enxerga o projeto - o mesmo porteiro do resto da ficha.
+     *
+     * Por acao propria, e nao na listagem, de proposito: assim ela sai do banco
+     * quando alguem pede para ver, e nao a cada recarregamento da tela de
+     * projetos, no navegador de todo mundo.
+     */
+    if (action === 'projeto_acesso_senha') {
+      const id = Number(query.get('id'));
+      if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };
+      const r = await db.execute({
+        sql: 'SELECT projeto_id, segredo FROM projeto_acessos WHERE id = ?',
+        args: [id],
+      });
+      const linha = r.rows[0];
+      if (!linha) return { status: 404, body: { error: 'Acesso não encontrado.' } };
+      const barrado = await guardaDaEquipe(db, usuario, linha.projeto_id);
+      if (barrado) return barrado;
+      if (!linha.segredo) return { status: 200, body: { senha: '' } };
+      try {
+        return { status: 200, body: { senha: decryptSecret(String(linha.segredo)) } };
+      } catch {
+        return { status: 500, body: { error: 'Não foi possível abrir esta senha.' } };
+      }
     }
 
     if (action === 'planning_evidencia_base64') {
@@ -6733,6 +6811,60 @@ function faltaEmProjeto(p: any): string | null {
         });
       }
       return { status: 200, body: { ok: true, atualizado_em: agora, atualizado_por_nome: autorNome } };
+    }
+
+    if (action === 'salvar_projeto_acesso') {
+      { const barrado = await guardaDaEquipe(db, usuario, body.projeto_id); if (barrado) return barrado; }
+      const rotulo = String(body?.rotulo ?? '').trim();
+      if (!body?.projeto_id) return { status: 400, body: { error: 'projeto_id ausente.' } };
+      if (!rotulo) return { status: 400, body: { error: 'O acesso precisa de um nome.' } };
+      const agora = new Date().toISOString();
+      const id = Number(body?.id ?? 0);
+      // A senha so e regravada quando vem no corpo: a tela edita o rotulo sem
+      // ter a senha em maos, e mandar vazio nao pode apagar o que esta la.
+      const trocaSenha = typeof body?.senha === 'string';
+      const segredo = trocaSenha ? (body.senha ? encryptSecret(String(body.senha)) : null) : null;
+      if (id) {
+        const r = await db.execute({
+          sql: `UPDATE projeto_acessos
+                SET rotulo = ?, usuario = ?, url = ?,
+                    ${trocaSenha ? 'segredo = ?,' : ''}
+                    atualizado_em = ?, atualizado_por_nome = ?
+                WHERE id = ? AND projeto_id = ?`,
+          args: [rotulo, texto(body?.usuario), texto(body?.url),
+            ...(trocaSenha ? [segredo] : []), agora, autorNome, id, String(body.projeto_id)] as never[],
+        });
+        if (r.rowsAffected === 0) return { status: 404, body: { error: 'Acesso não encontrado.' } };
+        return { status: 200, body: { id, atualizado_em: agora, atualizado_por_nome: autorNome } };
+      }
+      const fim = await db.execute({
+        sql: 'SELECT COALESCE(MAX(ordem), -1) + 1 AS proxima FROM projeto_acessos WHERE projeto_id = ?',
+        args: [String(body.projeto_id)],
+      });
+      const novo = await db.execute({
+        sql: `INSERT INTO projeto_acessos
+                (projeto_id, rotulo, usuario, url, segredo, ordem, criado_em, criado_por_nome)
+              VALUES (?,?,?,?,?,?,?,?)`,
+        args: [String(body.projeto_id), rotulo, texto(body?.usuario), texto(body?.url),
+          segredo, Number(fim.rows[0].proxima), agora, autorNome],
+      });
+      return {
+        status: 200,
+        body: {
+          id: Number(novo.lastInsertRowid), ordem: Number(fim.rows[0].proxima),
+          criado_em: agora, criado_por_nome: autorNome,
+        },
+      };
+    }
+
+    if (action === 'excluir_projeto_acesso') {
+      const alvo = await db.execute({
+        sql: 'SELECT projeto_id FROM projeto_acessos WHERE id = ?', args: [body.id],
+      });
+      if (!alvo.rows[0]) return { status: 404, body: { error: 'Acesso não encontrado.' } };
+      { const barrado = await guardaDaEquipe(db, usuario, alvo.rows[0].projeto_id); if (barrado) return barrado; }
+      await db.execute({ sql: 'DELETE FROM projeto_acessos WHERE id = ?', args: [body.id] });
+      return { status: 200, body: { ok: true } };
     }
 
     if (action === 'add_planning_evidencia') {

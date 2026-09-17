@@ -262,6 +262,12 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   ordenar_planning: 'projetos:editar',
   // A prova de que o objetivo da semana foi cumprido segue a mesma porta do
   // combinado: quem escreve o objetivo diz que ele foi feito.
+  // Os acessos do projeto. Ler a senha e `projetos:ver` mais a equipe do
+  // projeto, que e o mesmo corte do resto da ficha - e o guarda de equipe, do
+  // outro lado, e quem recusa de verdade.
+  salvar_projeto_acesso: 'projetos:editar',
+  excluir_projeto_acesso: 'projetos:editar',
+  projeto_acesso_senha: 'projetos:ver',
   add_planning_evidencia: 'projetos:editar',
   excluir_planning_evidencia: 'projetos:editar',
   planning_evidencia_base64: 'projetos:ver',
