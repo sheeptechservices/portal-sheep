@@ -2935,16 +2935,21 @@ function chavesDoInbox(body: any): string[] {
   const cruas = Array.isArray(body?.chaves) ? body.chaves : [body?.chave];
   return [...new Set(cruas
     .map((c: unknown) => String(c ?? '').trim())
-    .filter((c: string) => /^(reporte|tarefa|reuniao|mencao|resposta|joinha):.{1,80}$/.test(c)))] as string[];
+    .filter((c: string) => /^(reporte|tarefa|reuniao|mencao|resposta|joinha|etapa):.{1,80}$/.test(c)))] as string[];
 }
 
 /** Um aviso do inbox. O mesmo formato para as tres fontes: a gaveta desenha
  *  uma linha so, e quem sabe de onde o aviso veio e o `tipo`. */
 interface ItemDoInbox {
   /** `reporte:12`, `tarefa:87`, `reuniao:01JABC`, `mencao:340`, `resposta:341`,
-   *  `joinha:340:<usuario>` - tipo e id da coisa. Menção e resposta levam o id
-   *  do comentário: duas na mesma tarefa são dois avisos. O joinha leva também
-   *  quem deu, porque cada pessoa que concorda é um aviso. */
+   *  `joinha:340:<usuario>`, `etapa:12` - tipo e id da coisa. Menção e resposta
+   *  levam o id do comentário: duas na mesma tarefa são dois avisos. O joinha
+   *  leva também quem deu, porque cada pessoa que concorda é um aviso, e a
+   *  etapa leva o id do aviso, que já é por pessoa.
+   *
+   *  Todo prefixo daqui precisa estar em `chavesDoInbox`: é ela que decide o
+   *  que pode ser marcado e limpo, e uma fonte nova que não entre lá nasce com
+   *  o gesto recusado pelo servidor. */
   chave: string;
   tipo: 'chamado' | 'pedido' | 'reuniao' | 'mencao' | 'resposta' | 'joinha' | 'etapa';
   titulo: string;
