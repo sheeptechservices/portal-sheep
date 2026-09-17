@@ -105,24 +105,52 @@ export function Inbox({ listar, marcarLido, limpar, vincularReuniao, onIr }: {
   const gaveta = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ top: 0, left: 0 });
 
+  /**
+   * O que esta tela já fez e o servidor ainda pode não ter contado de volta.
+   *
+   * A gaveta relê sozinha - a cada minuto, ao abrir e quando a aba volta -, e
+   * uma leitura que saiu antes da gravação chegar trazia o aviso de volta como
+   * não lido, ou trazia de volta o que tinha sido limpo: o gesto parecia não ter
+   * acontecido. Estas duas listas ficam por cima de tudo o que chega, até o
+   * próprio servidor dizer a mesma coisa - e aí saem daqui.
+   */
+  const lidosDaqui = useRef(new Set<string>());
+  const limposDaqui = useRef(new Set<string>());
+
+  /** A lista do servidor com o que esta tela já fez por cima. */
+  const comOGestoLocal = useCallback((lista: ItemDoInbox[]) => lista
+    .filter(i => !limposDaqui.current.has(i.chave))
+    .map(i => (lidosDaqui.current.has(i.chave) ? { ...i, lido: true } : i)), []);
+
   const buscar = useCallback(async (leve = false) => {
     try {
       const r = await listar(leve);
       if (r?.error) { if (!leve) setErro(r.error); return; }
       setErro('');
-      const chegaram = r?.itens ?? [];
+      const crus = r?.itens ?? [];
+      // O que o servidor já confirmou sai das listas locais: elas existem só
+      // para cobrir a ida e a volta, e guardá-las para sempre seria esconder
+      // um aviso que voltou a valer.
+      const chaves = new Set(crus.map(i => i.chave));
+      for (const chave of [...limposDaqui.current]) {
+        if (!chaves.has(chave)) limposDaqui.current.delete(chave);
+      }
+      for (const i of crus) {
+        if (i.lido) lidosDaqui.current.delete(i.chave);
+      }
+      const chegaram = comOGestoLocal(crus);
       // A leitura leve não traz as reuniões do Fireflies: as que a última
       // leitura inteira trouxe continuam na gaveta, em vez de sumirem a cada
       // minuto e voltarem na próxima abertura.
-      setItens(atual => (!leve ? chegaram : [
+      setItens(atual => (!leve ? chegaram : comOGestoLocal([
         ...chegaram,
         ...(atual ?? []).filter(i => i.tipo === 'reuniao'),
-      ].sort((a, b) => (a.quando < b.quando ? 1 : a.quando > b.quando ? -1 : 0))));
+      ].sort((a, b) => (a.quando < b.quando ? 1 : a.quando > b.quando ? -1 : 0)))));
       if (!leve) setProjetos(r?.projetos ?? []);
     } catch {
       if (!leve) setErro('Não foi possível carregar os avisos.');
     }
-  }, [listar]);
+  }, [listar, comOGestoLocal]);
 
   // A primeira leitura acontece com a casca, e não na abertura: é ela que
   // acende o balão, e um balão que só aparece depois do clique não avisa nada.
@@ -157,14 +185,22 @@ export function Inbox({ listar, marcarLido, limpar, vincularReuniao, onIr }: {
   const naoLidos = (itens ?? []).filter(i => !i.lido).length;
 
   /** Pinta na hora e manda depois: marcar como lido é gesto de leitura, e
-   *  esperar a volta do servidor para apagar um negrito não se justifica. */
+   *  esperar a volta do servidor para apagar um negrito não se justifica.
+   *
+   *  O gesto entra na lista local antes de a tela mudar: assim uma releitura que
+   *  chegue no meio do caminho não o desfaz. Recusado, ele sai de lá e a linha
+   *  volta a ficar por ler. */
   const marcar = useCallback(async (chaves: string[]) => {
     if (!chaves.length) return;
-    const antes = itens;
+    for (const chave of chaves) lidosDaqui.current.add(chave);
     setItens(atual => (atual ?? []).map(i => (chaves.includes(i.chave) ? { ...i, lido: true } : i)));
     const r = await marcarLido(chaves);
-    if (r?.error) setItens(antes);
-  }, [itens, marcarLido]);
+    if (r?.error) {
+      for (const chave of chaves) lidosDaqui.current.delete(chave);
+      setItens(atual => (atual ?? []).map(i => (chaves.includes(i.chave) ? { ...i, lido: false } : i)));
+      toast('error', 'Não foi possível marcar como lido', r.error);
+    }
+  }, [marcarLido, toast]);
 
   /**
    * Tira da gaveta. Some na hora e volta se o servidor recusar.
@@ -175,11 +211,18 @@ export function Inbox({ listar, marcarLido, limpar, vincularReuniao, onIr }: {
    */
   const limparAvisos = useCallback(async (chaves: string[]) => {
     if (!chaves.length) return;
-    const antes = itens;
+    const guardados = (itens ?? []).filter(i => chaves.includes(i.chave));
+    for (const chave of chaves) limposDaqui.current.add(chave);
     setItens(atual => (atual ?? []).filter(i => !chaves.includes(i.chave)));
     const r = await limpar(chaves);
-    if (r?.error) setItens(antes);
-  }, [itens, limpar]);
+    if (r?.error) {
+      // Recusado, os avisos voltam para o lugar deles, na ordem da data.
+      for (const chave of chaves) limposDaqui.current.delete(chave);
+      setItens(atual => [...(atual ?? []), ...guardados]
+        .sort((a, b) => (a.quando < b.quando ? 1 : a.quando > b.quando ? -1 : 0)));
+      toast('error', 'Não foi possível limpar', r.error);
+    }
+  }, [itens, limpar, toast]);
 
   return (
     <>
