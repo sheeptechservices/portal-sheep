@@ -33,8 +33,28 @@ export function ordemPapel(papel: Papel): number {
   return ORDEM[papel];
 }
 
+/**
+ * Quem mais é admin, além do dono.
+ *
+ * Fica no código, e não no banco, pelo mesmo motivo do dono: nenhuma escrita
+ * no banco promove ninguém a admin. O dono continua sendo um só - é para ele
+ * que vão os avisos do sistema (relato de bug, pedido de cliente sem gestor) -,
+ * e esta lista só diz quem mais tem o nível inteiro, inclusive gerenciar
+ * usuários. `ADMINS_EXTRAS` no ambiente acrescenta outros, separados por
+ * vírgula, sem precisar de deploy.
+ */
+const ADMINS_DA_CASA = ['thales.carneiro@sheeptechnology.com.br'];
+
+export function emailsAdmin(): string[] {
+  const doAmbiente = String(process.env.ADMINS_EXTRAS ?? '')
+    .split(',')
+    .map(e => e.trim().toLowerCase())
+    .filter(Boolean);
+  return [...new Set([emailAdmin(), ...ADMINS_DA_CASA, ...doAmbiente])];
+}
+
 export function ehEmailAdmin(email: string | null | undefined): boolean {
-  return !!email && email.trim().toLowerCase() === emailAdmin();
+  return !!email && emailsAdmin().includes(email.trim().toLowerCase());
 }
 
 /**

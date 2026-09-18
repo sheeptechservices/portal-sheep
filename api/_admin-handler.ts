@@ -2562,7 +2562,7 @@ export async function upsertUsuarioGoogle(
     }
   }
 
-  // O papel gravado é acertado a cada entrada: o e-mail do dono vira 'admin' e
+  // O papel gravado é acertado a cada entrada: e-mail de admin vira 'admin' e
   // qualquer outra linha que esteja com 'admin' desce para 'master'. Quem manda
   // continua sendo o `papelEfetivo`; isso aqui só mantém a coluna coerente com
   // ele, para a tela de gestão não mostrar um nível que não vale.
@@ -2583,7 +2583,9 @@ export async function upsertUsuarioGoogle(
     args: [
       randomUUID(), email, nomeDeExibicao(conta.nome, email), foto,
       papelEfetivo(email, 'membro'), agora, agora,
-      emailAdmin(),
+      // Quem está entrando, quando é admin; senão nada casa. Os admins agora
+      // são uma lista, e comparar com o e-mail do dono rebaixaria os outros.
+      ehEmailAdmin(email) ? email : '',
     ],
   });
   const res = await db.execute({
