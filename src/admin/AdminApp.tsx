@@ -1274,7 +1274,8 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
     if (item.tipo === 'chamado') {
       setFilaDeChamados(prev => ({
         nonce: (prev?.nonce ?? 0) + 1,
-        chamado: Number(item.chave.replace(/^reporte:/, '')) || undefined,
+        // `reporte:12`, ou `reporte:12:<quando reabriu>`: o id e o segundo pedaco.
+        chamado: Number(item.chave.split(':')[1]) || undefined,
       }));
       return;
     }

@@ -3021,7 +3021,7 @@ function chavesDoInbox(body: any): string[] {
 /** Um aviso do inbox. O mesmo formato para as tres fontes: a gaveta desenha
  *  uma linha so, e quem sabe de onde o aviso veio e o `tipo`. */
 interface ItemDoInbox {
-  /** `reporte:12`, `tarefa:87`, `reuniao:01JABC`, `mencao:340`, `resposta:341`,
+  /** `reporte:12` (`reporte:12:<reaberto_em>` depois de reaberto), `tarefa:87`, `reuniao:01JABC`, `mencao:340`, `resposta:341`,
    *  `joinha:340:<usuario>`, `etapa:12` - tipo e id da coisa. Menção e resposta
    *  levam o id do comentário: duas na mesma tarefa são dois avisos. O joinha
    *  leva também quem deu, porque cada pessoa que concorda é um aviso, e a
@@ -5099,11 +5099,14 @@ async function despacharAdminData(
           ? db.execute({
             // Sem filtro de andamento: chamado resolvido continua no inbox, com
             // o andamento dele na linha. Quem tira e quem limpa.
+            //
+            // A janela conta a reabertura tambem: um chamado de dois meses
+            // atras que voltou ontem e novidade de ontem.
             sql: `SELECT id, texto, tipo, urgencia, status, autor_nome, criado_em, reaberto_em
                   FROM reportes
-                  WHERE criado_em >= ?
-                  ORDER BY criado_em DESC LIMIT 40`,
-            args: [desde],
+                  WHERE criado_em >= ? OR reaberto_em >= ?
+                  ORDER BY COALESCE(reaberto_em, criado_em) DESC LIMIT 40`,
+            args: [desde, desde],
           })
           : Promise.resolve({ rows: [] as Record<string, unknown>[] }),
         db.execute({
@@ -5201,16 +5204,20 @@ async function despacharAdminData(
       const itens: ItemDoInbox[] = [];
 
       for (const c of chamados.rows) {
-        if (jaLimpo.has(`reporte:${c.id}`)) continue;
+        // Cada reabertura e um aviso novo, com chave propria. Com a chave do
+        // chamado, o lido e o limpo da primeira vez valeriam para a volta, e
+        // quem cuida da fila nunca saberia que ele voltou.
+        const chave = c.reaberto_em ? `reporte:${c.id}:${c.reaberto_em}` : `reporte:${c.id}`;
+        if (jaLimpo.has(chave)) continue;
         const texto = String(c.texto ?? '').trim();
         itens.push({
-          chave: `reporte:${c.id}`,
+          chave,
           tipo: 'chamado',
-          titulo: `${c.autor_nome} reportou${c.reaberto_em ? ' de novo' : ''}`,
+          titulo: c.reaberto_em ? `${c.autor_nome} reabriu um chamado` : `${c.autor_nome} reportou`,
           descricao: texto.length > 160 ? `${texto.slice(0, 160)}…` : texto,
           etiqueta: String(c.urgencia ?? ''),
           quando: String(c.reaberto_em ?? c.criado_em),
-          lido: jaLido.has(`reporte:${c.id}`),
+          lido: jaLido.has(chave),
           // O que ja aconteceu com ele desde que chegou. Aberto nao vira
           // situacao: e o estado de quem ainda espera, e dize-lo em toda linha
           // seria repetir "novo" numa gaveta de novidades.
