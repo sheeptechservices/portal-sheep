@@ -23,12 +23,19 @@ import type { StatusConfig, Submission } from './types';
  *  lead daqui paga pelo código da tela do Funil. */
 const CadastroDeLead = lazy(() => import('./OportunidadesPage').then(m => ({ default: m.CreateModal })));
 import {
-  IconArrowLeft, IconArrowRight, IconCheck, IconDoc, IconDownload, IconEye, IconFunil, IconInbox, IconPlus, IconTrash,
-  IconUpload,
+  IconArrowLeft, IconArrowRight, IconCheck, IconChevronRight, IconDoc, IconDownload, IconEdit, IconEye,
+  IconFunil, IconInbox, IconPlus, IconSparkles, IconSpinner, IconTrash, IconUpload,
 } from '../components/icons';
 import { AbaPainel, Abas } from '../components/Abas';
 import { SelectSistema } from '../components/SelectSistema';
 import { PreviaArquivo } from '../components/PreviaArquivo';
+import { CampoTexto } from '../components/CampoTexto';
+import { Chave } from '../components/Chave';
+import { Dialogo } from '../components/Dialogo';
+import {
+  ProgressoDaIa, usePreenchimentoPorIa, type InformadoParaIa, type PropostaDaIa,
+} from './PreenchimentoPorIa';
+import { useRevelar } from '../lib/useRevelar';
 import { useAuth, useToast } from './AdminApp';
 import { montarPrevia, montarProposta, type Conferencia } from '../lib/proposta/montar';
 import { propostaEmBranco } from '../lib/proposta/exemplo';
@@ -87,6 +94,94 @@ const PASSOS: { id: PassoId; titulo: string; secao: string | null }[] = [
   { id: 'fim', titulo: 'Gerar', secao: null },
 ];
 
+// ── Travessões: onde estão, e a troca de todos ──────────────────────────────
+
+/** Um travessão achado no formulário: em que passo, em que campo e o trecho em
+ *  volta dele, para quem vai corrigir saber o que procurar. */
+interface Travessao { passo: PassoId; campo: string; antes: string; traco: string; depois: string }
+
+/** Travessão longo e médio, pelo código de cada um: o caractere escrito no
+ *  arquivo é o que a própria regra da casa proíbe. */
+const TRACOS = /[\u2014\u2013]/g;
+
+/**
+ * Todos os travessões do formulário, campo a campo.
+ *
+ * O montador conta os travessões do arquivo inteiro e recusa, mas "6
+ * travessões no texto visível" não diz onde eles estão - e numa proposta de
+ * dezenove campos, achar à mão é ler tudo de novo. Aqui cada um vem com o
+ * passo, o nome do campo e o pedaço de texto em volta.
+ */
+function ondeHaTravessao(d: DadosProposta): Travessao[] {
+  const achados: Travessao[] = [];
+  const ver = (passo: PassoId, campo: string, texto: string | undefined | null) => {
+    const s = String(texto ?? '');
+    for (const m of s.matchAll(TRACOS)) {
+      const i = m.index ?? 0;
+      const limpar = (x: string) => x.replace(/\s+/g, ' ');
+      achados.push({
+        passo, campo,
+        antes: (i > 30 ? '...' : '') + limpar(s.slice(Math.max(0, i - 30), i)),
+        traco: m[0],
+        depois: limpar(s.slice(i + 1, i + 31)) + (i + 31 < s.length ? '...' : ''),
+      });
+    }
+  };
+  ver('capa', 'Cliente', d.cliente);
+  ver('capa', 'Subtítulo', d.subtitulo);
+  ver('projeto', 'A situação', d.projeto);
+  d.ganhos.forEach((g, i) => ver('projeto', `Ganho ${i + 1}`, g));
+  d.entregas.forEach((e, i) => {
+    ver('entregas', `Entrega ${i + 1} · Nome`, e.nome);
+    ver('entregas', `Entrega ${i + 1} · Resumo`, e.resumo);
+    e.itens.forEach((x, k) => ver('entregas', `Entrega ${i + 1} · Item ${k + 1}`, x));
+  });
+  if (d.comoFunciona) {
+    ver('operacao', 'Linha fina', d.comoFunciona.linhaFina);
+    d.comoFunciona.passos.forEach((p, i) => {
+      ver('operacao', `Passo ${i + 1} · Título`, p.titulo);
+      ver('operacao', `Passo ${i + 1} · Texto`, p.texto);
+    });
+    ver('operacao', 'A conta que sustenta o prazo', d.comoFunciona.nota);
+  }
+  d.cronograma.fases.forEach(f => {
+    f.sub.forEach((x, k) => ver('cronograma', `${f.nome} · Atividade ${k + 1}`, x));
+    f.entregas.forEach((x, k) => ver('cronograma', `${f.nome} · Entrega ${k + 1}`, x));
+  });
+  d.investimento.opcoes.forEach(o => {
+    ver('investimento', `${o.rotulo} · Linha fina`, o.titulo);
+    ver('investimento', `${o.rotulo} · Valor`, o.valor);
+    ver('investimento', `${o.rotulo} · O que o valor compra`, o.unidade);
+    ver('investimento', `${o.rotulo} · Destaque`, o.destaque?.valor);
+    ver('investimento', `${o.rotulo} · Texto do destaque`, o.destaque?.texto);
+    ver('investimento', `${o.rotulo} · Nota do destaque`, o.destaque?.nota);
+    o.bullets.forEach((b, k) => ver('investimento', `${o.rotulo} · Bullet ${k + 1}`, b));
+  });
+  d.investimento.time.forEach((p, i) => {
+    ver('investimento', `Pessoa ${i + 1} · Papel`, p.papel);
+    ver('investimento', `Pessoa ${i + 1} · Dedicação`, p.dedicacao);
+    ver('investimento', `Pessoa ${i + 1} · O que faz`, p.descricao);
+  });
+  ver('investimento', 'Memória de cálculo', d.investimento.memoria);
+  return achados;
+}
+
+/** O formulário com todo travessão trocado por hífen cercado de espaços, que é
+ *  o substituto da casa. O HTML do protótipo não entra: é arquivo de quem
+ *  subiu, e o montador não o lê como texto. */
+function semTravessao(d: DadosProposta): DadosProposta {
+  const troca = (s: string) => s.replace(/\s*[\u2014\u2013]\s*/g, ' - ');
+  const fundo = (v: any): any => {
+    if (typeof v === 'string') return troca(v);
+    if (Array.isArray(v)) return v.map(fundo);
+    if (v && typeof v === 'object') {
+      return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, k === 'prototipo' ? x : fundo(x)]));
+    }
+    return v;
+  };
+  return fundo(d) as DadosProposta;
+}
+
 // ── Peças do formulário ─────────────────────────────────────────────────────
 
 function Campo({ rotulo, valor, onChange, placeholder, dica }: {
@@ -106,6 +201,12 @@ function Campo({ rotulo, valor, onChange, placeholder, dica }: {
   );
 }
 
+/** Texto que vai para o slide. É o campo da casa: Enter quebra a linha,
+ *  Ctrl+B, Ctrl+I e Ctrl+U formatam, "- " abre uma lista - e tudo isso sai igual
+ *  na prévia e no arquivo final, em vez de juntar num bloco só.
+ *
+ *  `div` e não `label`: o campo é `contentEditable`, e um `label` em volta
+ *  mandaria o clique em qualquer lugar dele para o primeiro campo de dentro. */
 function Texto({ rotulo, valor, onChange, placeholder, linhas = 4, dica }: {
   rotulo: string;
   valor: string;
@@ -115,13 +216,12 @@ function Texto({ rotulo, valor, onChange, placeholder, linhas = 4, dica }: {
   dica?: string;
 }) {
   return (
-    <label className="gp-campo">
+    <div className="gp-campo">
       <span className="form-label">{rotulo}</span>
-      <textarea className="form-input" value={valor} placeholder={placeholder} rows={linhas}
-        style={{ resize: 'vertical', lineHeight: 1.5 }}
-        onChange={e => onChange(e.target.value)} />
+      <CampoTexto valor={valor} onMudar={onChange} placeholder={placeholder}
+        linhas={linhas} ariaLabel={rotulo} />
       {dica && <span className="gp-dica">{dica}</span>}
-    </label>
+    </div>
   );
 }
 
@@ -262,12 +362,52 @@ function LinhaDeFase({ f, meses, onChange }: {
   );
 }
 
-function CardDeOpcao({ o, onChange }: { o: OpcaoInvestimento; onChange: (v: OpcaoInvestimento) => void }) {
+/** Quantas pessoas o time alocado mostra. O time divide o slide de investimento
+ *  com as opções e a memória de cálculo, e o slide tem de caber numa tela. Da
+ *  quarta pessoa em diante o slide põe o time em duas colunas; medido no tamanho
+ *  do PDF (1280x720), com três opções e toda pessoa com descrição, seis cabem e
+ *  a sétima passa por cima do rodapé. */
+const MAX_TIME = 6;
+
+/** Quantas pessoas um papel pode ter. É o número que vai para a etiqueta do
+ *  slide, e não uma linha por pessoa: o limite é só para um erro de digitação
+ *  (um 20 no lugar de 2) não sair na proposta. */
+const MAX_POR_PAPEL = 20;
+
+/** Quantas opções cabem lado a lado no slide de investimento. Três é o teto: com
+ *  quatro, o card fica estreito demais para o preço e o destaque, e a escolha
+ *  vira uma tabela em vez de uma decisão. */
+const MAX_OPCOES = 3;
+
+/** As opções depois de uma entrar ou sair: a etiqueta segue a posição ("Opção
+ *  A", "B", "C"), e sempre há uma recomendada. Tirar a recomendada passa o
+ *  destaque para a primeira que sobrou - sem ele, o slide perde a borda que diz
+ *  ao cliente por onde começar. */
+function emOrdem(opcoes: OpcaoInvestimento[]): OpcaoInvestimento[] {
+  const temRecomendada = opcoes.some(o => o.recomendada);
+  return opcoes.map((o, i) => ({
+    ...o,
+    rotulo: `Opção ${String.fromCharCode(65 + i)}`,
+    recomendada: temRecomendada ? !!o.recomendada : i === 0,
+  }));
+}
+
+function CardDeOpcao({ o, onChange, onRemover }: {
+  o: OpcaoInvestimento;
+  onChange: (v: OpcaoInvestimento) => void;
+  /** Ausente quando é a única: proposta sem opção nenhuma não tem preço. */
+  onRemover?: () => void;
+}) {
   const d = o.destaque ?? { valor: '', texto: '', nota: '' };
   return (
     <div className={`gp-opcao${o.recomendada ? ' rec' : ''}`}>
       <div className="gp-entrega-topo">
         <span className="gp-entrega-num">{o.rotulo}{o.recomendada ? ' · recomendada' : ''}</span>
+        {onRemover && (
+          <button type="button" className="gp-x" aria-label={`Remover ${o.rotulo}`} onClick={onRemover}>
+            <IconTrash size={13} />
+          </button>
+        )}
       </div>
       <div className="gp-grade">
         <Campo rotulo="Linha fina" valor={o.titulo} onChange={v => onChange({ ...o, titulo: v })}
@@ -288,7 +428,7 @@ function CardDeOpcao({ o, onChange }: { o: OpcaoInvestimento; onChange: (v: Opca
           placeholder="os três painéis e o setup ocupam os 20 dias úteis" />
         <Lista rotulo="Bullets" itens={o.bullets} onChange={v => onChange({ ...o, bullets: v })}
           placeholder="Um ponto por linha"
-          dica="Os bullets se espelham entre as duas opções: a mesma pergunta respondida nas duas, inclusive quando a resposta é ruim." />
+          dica="Os bullets se espelham entre as opções: a mesma pergunta respondida em todas, inclusive quando a resposta é ruim." />
       </div>
     </div>
   );
@@ -357,10 +497,16 @@ function Previa({ html, secao }: { html: string | null; secao: string | null }) 
  * Cada linha abre a apresentação na prévia da casa e baixa a segunda via, as
  * duas montadas de novo a partir dos campos guardados.
  */
-function HistoricoPropostas({ lista, onVer, onBaixar, onAbrirLead }: {
+function HistoricoPropostas({ lista, onVer, onEditar, abrindo, editando, onBaixar, onAbrirLead }: {
   /** `null` enquanto a lista não chegou. */
   lista: PropostaGerada[] | null;
   onVer: (p: PropostaGerada) => void;
+  /** Abre a proposta no formulário, em modo de edição. */
+  onEditar: (p: PropostaGerada) => void;
+  /** A que está sendo aberta agora, para o botão dela girar. */
+  abrindo: number | null;
+  /** A que já está aberta no formulário. */
+  editando: number | null;
   onBaixar: (p: PropostaGerada) => void;
   onAbrirLead?: (oportunidadeId: string) => void;
 }) {
@@ -371,7 +517,7 @@ function HistoricoPropostas({ lista, onVer, onBaixar, onAbrirLead }: {
         <p style={{ color: 'var(--gray2)', marginBottom: 6 }}><IconInbox size={30} /></p>
         <p>Nenhuma proposta gerada por aqui ainda.</p>
         <p className="gp-hist-nota">
-          Toda proposta que sai do gerador entra nesta lista, presa ao lead do funil - e daqui
+          Toda proposta que sai do gerador entra nesta lista, presa à oportunidade do funil - e daqui
           ela abre de novo, sem precisar preencher tudo outra vez.
         </p>
       </div>
@@ -394,13 +540,20 @@ function HistoricoPropostas({ lista, onVer, onBaixar, onAbrirLead }: {
           <div className="gp-hist-acoes">
             {/* O lead de onde a proposta veio, que é onde ela aparece como chip. */}
             <button type="button" className="gp-hist-lead" disabled={!onAbrirLead}
-              title={onAbrirLead ? 'Abrir o lead no Funil' : undefined}
+              title={onAbrirLead ? 'Abrir a oportunidade no Funil' : undefined}
               onClick={() => onAbrirLead?.(p.oportunidade_id)}>
               <IconFunil size={12} />
-              <span>{p.lead_empresa ?? 'Lead removido'}</span>
+              <span>{p.lead_empresa ?? 'Oportunidade removida'}</span>
             </button>
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => onVer(p)}>
               <IconEye size={13} /> Ver
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm"
+              disabled={abrindo != null}
+              title={editando === p.id ? 'Esta proposta já está aberta no gerador' : 'Abrir no gerador para editar'}
+              onClick={() => onEditar(p)}>
+              {abrindo === p.id ? <IconSpinner size={13} /> : <IconEdit size={13} />}
+              {editando === p.id ? 'Em edição' : 'Editar'}
             </button>
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => onBaixar(p)}>
               <IconDownload size={13} /> Baixar
@@ -435,6 +588,17 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
   /** `null` = ainda não buscado: a aba pede a lista na primeira visita. */
   const [historico, setHistorico] = useState<PropostaGerada[] | null>(null);
   const [vendo, setVendo] = useState<PropostaGerada | null>(null);
+  /** A proposta do histórico aberta para edição. Nula: o formulário é de uma
+   *  proposta nova. `original` é o formulário como abriu, para saber se algo
+   *  mudou - salvar sem mudança nenhuma seria só um carimbo de data. */
+  const [editando, setEditando] = useState<{ id: number; linha: PropostaGerada; original: string } | null>(null);
+  /** Qual proposta está sendo aberta para edição, enquanto os campos dela vêm. */
+  const [abrindo, setAbrindo] = useState<number | null>(null);
+  /** O formulário que estava na tela antes da edição - uma proposta nova pela
+   *  metade -, para voltar a ele ao sair, em vez de perdê-lo. */
+  const guardado = useRef<{ d: DadosProposta; leadId: string } | null>(null);
+  /** A pergunta de como salvar a edição, aberta com ela já conferida. */
+  const [comoSalvar, setComoSalvar] = useState<{ final: DadosProposta; slides: number } | null>(null);
   /** O lead do funil a que a proposta pertence. Obrigatório para gerar. */
   const [leadId, setLeadId] = useState('');
   const [leads, setLeads] = useState<LeadDoFunil[] | null>(null);
@@ -444,6 +608,27 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
   const [novoLead, setNovoLead] = useState<{ empresa: string } | null>(null);
 
   const [d, setD] = useState<DadosProposta>(propostaEmBranco);
+
+  // ── A IA, opcional ──
+  /** O bloco da IA aberto. Fechado por padrão: preencher com IA é escolha, e o
+   *  primeiro passo continua sendo escolher a oportunidade. */
+  const [comIa, setComIa] = useState(false);
+  const blocoDaIa = useRevelar(comIa);
+  /** A seção inteira da IA, que só existe com a oportunidade escolhida. */
+  const secaoDaIa = useRevelar(!!leadId);
+  /** O que o operador escreve para a IA: o que não está no card nem nas
+   *  reuniões. */
+  const [contextoIa, setContextoIa] = useState('');
+  /** O que o operador já decidiu, em campo próprio: vai para a IA como decisão,
+   *  e não como sugestão misturada ao texto livre. Campo vazio não vai. */
+  const [informadoIa, setInformadoIa] = useState<InformadoParaIa>({
+    formato: '', opcoes: 0, valor: '', prazo: '', time: '',
+  });
+  const informar = (parte: Partial<InformadoParaIa>) => setInformadoIa(a => ({ ...a, ...parte }));
+  /** O formulário de antes do preenchimento, para ele poder ser desfeito
+   *  inteiro. Nulo quando não há o que desfazer. */
+  const [antesDaIa, setAntesDaIa] = useState<DadosProposta | null>(null);
+  const ia = usePreenchimentoPorIa(token, onSessionExpired);
   const [template, setTemplate] = useState<string | null>(null);
   const [passo, setPasso] = useState(0);
   const [entregaEmFoco, setEntregaEmFoco] = useState(0);
@@ -499,6 +684,39 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
 
   const editar = (parte: Partial<DadosProposta>) => setD(a => ({ ...a, ...parte }));
 
+  /** Pede a proposta à IA e põe o que voltou no formulário. O que não é dela -
+   *  quem prepara, quem apresenta, a validade - fica como estava, e campo que
+   *  ela devolveu vazio não apaga o que o operador já tinha escrito. */
+  async function preencherComIa() {
+    if (!leadId || ia.andamento) return;
+    const r = await ia.preencher(leadId, contextoIa.trim(), informadoIa);
+    if (!r.ok) {
+      if (!('cancelado' in r)) toast('error', 'A IA não preencheu a proposta', r.erro);
+      return;
+    }
+    const nova: PropostaDaIa = r.proposta;
+    setAntesDaIa(d);
+    setD(a => ({
+      ...a,
+      cliente: nova.cliente || a.cliente,
+      subtitulo: nova.subtitulo || a.subtitulo,
+      projeto: nova.projeto || a.projeto,
+      ganhos: nova.ganhos.length ? nova.ganhos : a.ganhos,
+      entregas: nova.entregas.length ? nova.entregas : a.entregas,
+      comoFunciona: nova.comoFunciona ?? undefined,
+      cronograma: nova.cronograma,
+      investimento: {
+        ...nova.investimento,
+        time: nova.investimento.time.length ? nova.investimento.time : a.investimento.time,
+      },
+    }));
+    setEntregaEmFoco(0);
+    toast('success', 'Proposta preenchida pela IA',
+      r.reunioes
+        ? `Leu o card e ${r.reunioes === 1 ? 'uma reunião' : `${r.reunioes} reuniões`}. Passe pelos passos conferindo o que ela escreveu.`
+        : 'Leu o card; não havia reunião presa à oportunidade. Passe pelos passos conferindo o que ela escreveu.');
+  }
+
   const htmlDaPrevia = useMemo(
     () => (template ? montarPrevia(template, limpar(dParaPrevia, true)) : null),
     [template, dParaPrevia],
@@ -514,13 +732,12 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
   const nomeDoArquivo = useMemo(() => nomeDoArquivoDe(d.cliente), [d.cliente]);
 
   const faltando = [
-    !leadId && 'o lead no funil',
+    !leadId && 'a oportunidade',
     !d.cliente.trim() && 'cliente',
     !d.subtitulo.trim() && 'subtítulo',
     !d.projeto.trim() && 'o texto do projeto',
     !d.entregas.some(e => e.nome.trim()) && 'ao menos uma entrega',
     !d.investimento.opcoes.some(o => o.valor.trim()) && 'o valor do investimento',
-    !d.investimento.memoria.trim() && 'a memória de cálculo',
   ].filter(Boolean) as string[];
 
   /** O passo já tem o que a geração exige dele: é o visto no chip. Só os
@@ -532,7 +749,9 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
       case 'capa': return !!leadId && !!d.cliente.trim() && !!d.subtitulo.trim();
       case 'projeto': return !!d.projeto.trim();
       case 'entregas': return d.entregas.some(e => e.nome.trim());
-      case 'investimento': return d.investimento.opcoes.some(o => o.valor.trim()) && !!d.investimento.memoria.trim();
+      // A memória de cálculo ajuda a defender o preço, mas é opcional: há
+      // proposta em que a conta não vai para o cliente.
+      case 'investimento': return d.investimento.opcoes.some(o => o.valor.trim());
       default: return false;
     }
   };
@@ -551,6 +770,11 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
       return;
     }
     baixarHtml(r.html, nomeDoArquivo);
+    // Editando, o arquivo sai e a pergunta de como salvar abre: sobrescrever
+    // regrava pelo id, e salvar como nova guarda uma cópia ao lado da original.
+    // Pelo registro comum, com o subtítulo trocado, ela viraria uma segunda
+    // proposta sem ninguém ter escolhido isso.
+    if (editando) { pedirComoSalvar(r.conferencia.slides); return; }
     toast('success', 'Proposta gerada', `${d.cliente}, ${r.conferencia.slides} slides`);
     void registrar(final, r.conferencia.slides);
   }
@@ -568,7 +792,7 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
       cliente: final.cliente, subtitulo: final.subtitulo, dados: final, slides,
     });
     if (!r?.id) {
-      toast('error', 'A proposta saiu, mas não ficou presa ao lead',
+      toast('error', 'A proposta saiu, mas não ficou presa à oportunidade',
         r?.error ?? 'Gere de novo para registrar no funil.');
       return;
     }
@@ -581,6 +805,150 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
     // Pelo id: refazer a mesma proposta atualiza a linha dela, e aqui ela sobe
     // para o topo em vez de virar uma segunda.
     setHistorico(atual => (atual == null ? atual : [linha, ...atual.filter(p => p.id !== linha.id)]));
+  }
+
+  // ── Edição de uma proposta do histórico ──
+
+  /** Os travessões do formulário, onde estão. Contados a cada mudança: é um
+   *  passeio pelos campos, e é o que deixa a lista sumir sozinha conforme a
+   *  pessoa corrige. */
+  const travessoes = useMemo(() => ondeHaTravessao(d), [d]);
+
+  /** Algo mudou desde que a proposta foi aberta. */
+  const mudou = !!editando && JSON.stringify({ d, leadId }) !== editando.original;
+
+  /** Abre uma proposta do histórico no formulário. O que estava na tela antes
+   *  fica guardado, e volta quando a edição termina - salvando ou não. */
+  async function editarDoHistorico(p: PropostaGerada) {
+    if (abrindo != null) return;
+    setAbrindo(p.id);
+    const r = await api(`?action=proposta_dados&id=${p.id}`).catch(() => null);
+    setAbrindo(null);
+    if (!r?.dados) {
+      toast('error', 'Não consegui abrir esta proposta', r?.error ?? 'Tente de novo.');
+      return;
+    }
+    // Só a primeira edição guarda o formulário: trocar de uma proposta aberta
+    // para outra não pode perder a proposta nova que ficou pela metade.
+    if (!editando) guardado.current = { d, leadId };
+    const carregado: DadosProposta = { ...propostaEmBranco(), ...(r.dados as DadosProposta) };
+    setD(carregado);
+    setLeadId(p.oportunidade_id);
+    setEditando({ id: p.id, linha: p, original: JSON.stringify({ d: carregado, leadId: p.oportunidade_id }) });
+    setPasso(0);
+    setEntregaEmFoco(0);
+    setConferencia(null);
+    setAntesDaIa(null);
+    setAba('gerador');
+  }
+
+  /** Sai da edição e devolve à tela o formulário de antes. Devolve o que estava
+   *  guardado, para quem precisar voltar à edição (a gravação que falhou). */
+  function sairDaEdicao(voltarAoHistorico = true) {
+    const g = guardado.current;
+    guardado.current = null;
+    setD(g?.d ?? { ...propostaEmBranco(), preparadoPor: usuario?.nome ?? '' });
+    setLeadId(g?.leadId ?? '');
+    setEditando(null);
+    setPasso(0);
+    setConferencia(null);
+    setAntesDaIa(null);
+    if (voltarAoHistorico) setAba('historico');
+    return g;
+  }
+
+  /**
+   * Confere a edição antes de perguntar como salvar: os mesmos campos
+   * obrigatórios e a mesma conferência do montador de quem gera. O que fica no
+   * histórico é o que abre depois, e uma proposta que o montador recusaria não
+   * deveria ficar guardada como pronta - nem perguntar "como salvar" algo que
+   * não vai poder ser salvo.
+   */
+  function conferirParaSalvar(slidesJaConferidos?: number): { final: DadosProposta; slides: number } | null {
+    if (!editando || !template) return null;
+    if (faltando.length) {
+      toast('error', 'Falta preencher', faltando.join(', '));
+      return null;
+    }
+    const final = limpar(d, false);
+    if (slidesJaConferidos != null) return { final, slides: slidesJaConferidos };
+    const r = montarProposta(template, final);
+    setConferencia(r.conferencia);
+    if (!r.ok) {
+      toast('error', 'A proposta não passou na conferência', r.conferencia.problemas[0]);
+      setPasso(PASSOS.length - 1);
+      return null;
+    }
+    return { final, slides: r.conferencia.slides };
+  }
+
+  /** Abre a pergunta de como salvar, com a edição já conferida. */
+  function pedirComoSalvar(slidesJaConferidos?: number) {
+    const pronto = conferirParaSalvar(slidesJaConferidos);
+    if (pronto) setComoSalvar(pronto);
+  }
+
+  /**
+   * Grava a edição, sobrescrevendo a proposta aberta ou guardando uma nova ao
+   * lado dela.
+   *
+   * A tela responde no gesto: a linha do histórico muda (ou nasce) na hora e a
+   * tela volta para ele. Se o servidor recusar, a linha volta a ser a de antes
+   * e a edição reabre com o que foi escrito, para nada se perder.
+   */
+  async function gravarEdicao(modo: 'sobrescrever' | 'nova', { final, slides }: { final: DadosProposta; slides: number }) {
+    if (!editando) return;
+    const alvo = editando;
+    const emEdicao = { d, leadId };
+    const lead = leads?.find(l => l.id === leadId);
+    const agora = new Date().toISOString();
+    const nova: PropostaGerada = {
+      ...alvo.linha,
+      // A cópia ganha um id provisório, negativo, até o de verdade chegar.
+      id: modo === 'nova' ? -Date.now() : alvo.id,
+      oportunidade_id: leadId,
+      lead_empresa: lead?.empresa ?? alvo.linha.lead_empresa,
+      cliente: final.cliente,
+      subtitulo: final.subtitulo,
+      slides,
+      autor_nome: usuario?.nome ?? alvo.linha.autor_nome,
+      atualizado_em: agora,
+      ...(modo === 'nova' ? { criado_em: agora } : {}),
+    };
+    setHistorico(h => (h == null ? h : modo === 'nova'
+      ? [nova, ...h]
+      : [nova, ...h.filter(x => x.id !== alvo.id)]));
+    const g = sairDaEdicao();
+
+    const resposta = await api('', 'POST', {
+      action: modo === 'nova' ? 'salvar_proposta_como_nova' : 'atualizar_proposta',
+      ...(modo === 'nova' ? {} : { id: alvo.id }),
+      oportunidade_id: leadId, cliente: final.cliente, subtitulo: final.subtitulo, dados: final, slides,
+    }).catch(() => null);
+    if (!resposta?.ok) {
+      setHistorico(h => (h == null ? h : modo === 'nova'
+        ? h.filter(x => x.id !== nova.id)
+        : h.map(x => (x.id === alvo.id ? alvo.linha : x))));
+      guardado.current = g;
+      setD(emEdicao.d);
+      setLeadId(emEdicao.leadId);
+      setEditando(alvo);
+      setAba('gerador');
+      toast('error', 'Não foi possível salvar a proposta', resposta?.error ?? 'A conexão caiu. Tente de novo.');
+      return;
+    }
+    setHistorico(h => (h == null ? h : h.map(x => (x.id === nova.id
+      ? {
+        ...x,
+        id: Number(resposta.id ?? x.id),
+        atualizado_em: String(resposta.atualizado_em ?? x.atualizado_em),
+        criado_em: modo === 'nova' ? String(resposta.criado_em ?? x.criado_em) : x.criado_em,
+      }
+      : x))));
+    toast('success', modo === 'nova' ? 'Salva como nova proposta' : 'Proposta atualizada',
+      modo === 'nova'
+        ? `${final.cliente}, ${slides} slides. A versão anterior continua no histórico.`
+        : `${final.cliente}, ${slides} slides`);
   }
 
   async function baixarDoHistorico(p: PropostaGerada) {
@@ -601,7 +969,7 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
           <p className="admin-page-desc">
             {aba === 'gerador'
               ? 'A apresentação da casa, um passo por vez'
-              : 'As propostas que já saíram, cada uma presa ao seu lead'}
+              : 'As propostas que já saíram, cada uma presa à sua oportunidade'}
           </p>
         </div>
       </div>
@@ -647,9 +1015,32 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
         <div className={aba === 'historico' ? 'aba-painel gp-card' : 'gp-fora'}>
           <HistoricoPropostas lista={historico}
             onVer={setVendo}
+            onEditar={p => { void editarDoHistorico(p); }}
+            abrindo={abrindo}
+            editando={editando?.id ?? null}
             onBaixar={p => { void baixarDoHistorico(p); }}
             onAbrirLead={onAbrirOportunidade} />
         </div>
+      )}
+
+      {comoSalvar && editando && (
+        <Dialogo
+          titulo="Como salvar esta edição?"
+          descricao={<>
+            <b>Sobrescrever</b> troca a proposta guardada por esta, e a versão anterior não volta.{' '}
+            <b>Salvar como nova</b> guarda esta ao lado da original, que continua no histórico como está.
+          </>}
+          rotuloCancelar="Voltar"
+          rotuloMeio="Salvar como nova"
+          onMeio={() => { const c = comoSalvar; setComoSalvar(null); void gravarEdicao('nova', c); }}
+          rotuloOk="Sobrescrever a atual"
+          onConfirmar={() => { const c = comoSalvar; setComoSalvar(null); void gravarEdicao('sobrescrever', c); }}
+          onFechar={() => setComoSalvar(null)}
+          largura={500} />
+      )}
+
+      {ia.andamento && (
+        <ProgressoDaIa andamento={ia.andamento} onCancelar={ia.cancelar} onFechada={ia.encerrar} />
       )}
 
       {novoLead && (
@@ -667,7 +1058,7 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
               // Entra na lista e já fica escolhido: foi para esta proposta que ele nasceu.
               setLeads(atual => [lead, ...(atual ?? []).filter(l => l.id !== lead.id)]);
               setLeadId(lead.id);
-              if (lead.empresa && !d.cliente.trim()) editar({ cliente: lead.empresa });
+              if (lead.empresa) editar({ cliente: lead.empresa });
             }}
           />
         </Suspense>
@@ -682,6 +1073,27 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
         />
       )}
 
+      {/* A faixa da edição: diz qual proposta está aberta e dá as duas saídas.
+          Fora do painel do passo, para não reanimar a cada passo. */}
+      {editando && aba === 'gerador' && (
+        <div className="gp-editando surge">
+          <span className="gp-editando-icone"><IconEdit size={14} /></span>
+          <span className="gp-editando-texto">
+            <b>Editando uma proposta do histórico</b>
+            <span>{editando.linha.cliente} · {editando.linha.subtitulo}</span>
+          </span>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => sairDaEdicao()}>
+            Descartar alterações
+          </button>
+          <button type="button" className="btn btn-primary btn-sm"
+            disabled={!mudou || !template}
+            title={mudou ? undefined : 'Nada mudou desde que a proposta foi aberta'}
+            onClick={() => pedirComoSalvar()}>
+            Salvar alterações
+          </button>
+        </div>
+      )}
+
       <div className={`gp-lado-a-lado${aba === 'gerador' ? '' : ' gp-fora'}`}>
         <AbaPainel key={atual.id}>
         <div className="gp-card">
@@ -692,8 +1104,13 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
                 {/* O lead vem primeiro e é obrigatório: toda proposta tem um card no
                     funil, e é nele que ela aparece depois de gerada. Escolher o lead
                     preenche o cliente quando ele ainda está em branco. */}
+                {/* A oportunidade e a IA num bloco só, sem o vão da grade entre os
+                    dois: a IA nasce depois da escolha, abrindo espaço, e um vão
+                    automático entre eles entraria na tela de estalo. O respiro
+                    fica dentro da parte que anima. */}
+                <div className="gp-oportunidade">
                 <div className="gp-campo">
-                  <span className="form-label">Lead no funil *</span>
+                  <span className="form-label">Oportunidade *</span>
                   {leads == null ? (
                     <div className="dux-spinner-row" style={{ justifyContent: 'flex-start', padding: '10px 0' }}>
                       <span className="dux-spinner sm" />
@@ -701,31 +1118,132 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
                   ) : (
                   <SelectSistema
                     valor={leadId}
-                    placeholder="Escolha o lead desta proposta"
+                    placeholder="Escolha a oportunidade desta proposta"
                     onChange={id => {
-                      setLeadId(id);
+                      // O cliente acompanha a oportunidade, sempre: trocar de
+                      // oportunidade é trocar de cliente. Antes ele só era
+                      // preenchido com o campo vazio, e a capa seguia com o nome
+                      // da escolhida anterior. Ajustar o nome à mão continua
+                      // valendo - depois de escolher, e para esta oportunidade.
                       const lead = leads?.find(l => l.id === id);
-                      if (lead?.empresa && !d.cliente.trim()) editar({ cliente: lead.empresa });
+                      setLeadId(id);
+                      if (lead?.empresa) editar({ cliente: lead.empresa });
                     }}
                     opcoes={(leads ?? []).map(l => ({
                       valor: l.id,
-                      label: l.empresa ?? 'Lead sem empresa',
+                      label: l.empresa ?? 'Oportunidade sem empresa',
                       descricao: [l.etapa, l.contato].filter(Boolean).join(' · ') || undefined,
                     }))}
                     // O lead que ainda não existe nasce daqui: abre o cadastro do
                     // Funil, e ao cadastrar ele já volta escolhido. Só para quem
                     // pode criar oportunidade, que é o que o cadastro exige.
                     criar={pode('oportunidades:criar') ? {
-                      rotulo: 'Novo lead',
+                      rotulo: 'Nova oportunidade',
                       semNome: true,
                       onCriar: async texto => { setNovoLead({ empresa: texto }); return true; },
                     } : undefined} />
                   )}
                   {leads != null && leads.length === 0 && (
                     <span className="gp-dica">
-                      Nenhum lead aberto no funil. Crie o card do lead no Funil antes de montar a proposta.
+                      Nenhuma oportunidade aberta no funil. Crie a oportunidade no Funil antes de montar a proposta.
                     </span>
                   )}
+                </div>
+                {/* A IA, opcional, e só depois da oportunidade escolhida: é dela
+                    que sai o material, e oferecer antes seria um botão que ainda
+                    não pode fazer nada. Aparece abrindo espaço, porque empurra o
+                    cliente e o subtítulo para baixo. */}
+                {secaoDaIa.montado && (
+                <div className={`revelar${secaoDaIa.aberto ? ' aberto' : ''}`}>
+                <div>
+                <div className={`gp-ia${comIa ? ' aberta' : ''}`}>
+                  <button type="button" className="gp-ia-gatilho" aria-expanded={comIa}
+                    onClick={() => setComIa(v => !v)}>
+                    <span className="gp-ia-icone"><IconSparkles size={14} /></span>
+                    <span className="gp-ia-textos">
+                      <b>Preencher com IA</b>
+                      <span>Opcional. A IA escreve todos os passos e você revisa.</span>
+                    </span>
+                    <span className={`entrega-seta${comIa ? ' aberta' : ''}`}><IconChevronRight size={12} /></span>
+                  </button>
+                  {blocoDaIa.montado && (
+                    <div className={`revelar${blocoDaIa.aberto ? ' aberto' : ''}`}>
+                      <div>
+                        <div className="gp-ia-corpo">
+                          <p className="gp-dica" style={{ margin: 0 }}>
+                            Ela lê o card da oportunidade, as reuniões do Fireflies presas a ela e o que
+                            você informar abaixo, e preenche todos os passos. Todos os campos são
+                            opcionais: o que você preencher vale como decisão, e o que faltar vem marcado
+                            como "[a confirmar: ...]".
+                          </p>
+                          {/* O essencial em campo próprio, cada um opcional: o que o
+                              operador já fechou vai como decisão, e o que ficar em
+                              branco a IA tira do card e das reuniões. */}
+                          <div className="gp-ia-campos">
+                            <div className="gp-campo">
+                              <span className="form-label">Formato</span>
+                              <SelectSistema<NonNullable<InformadoParaIa['formato']>>
+                                valor={informadoIa.formato ?? ''}
+                                onChange={v => informar({ formato: v })}
+                                opcoes={[
+                                  { valor: '', label: 'A IA decide', descricao: 'Pelo que o card e as reuniões indicarem' },
+                                  { valor: 'mensal', label: 'Time dedicado mensal', descricao: 'Contratação continuada, com fila de prioridades' },
+                                  { valor: 'fechado', label: 'Escopo fechado', descricao: 'Um projeto com início, meio e fim' },
+                                  { valor: 'ambos', label: 'Os dois, lado a lado', descricao: 'Uma opção mensal e uma fechada' },
+                                ]} />
+                            </div>
+                            <div className="gp-campo">
+                              <span className="form-label">Opções de preço</span>
+                              <SelectSistema<string>
+                                valor={String(informadoIa.opcoes ?? 0)}
+                                onChange={v => informar({ opcoes: Number(v) })}
+                                opcoes={[
+                                  { valor: '0', label: 'A IA decide' },
+                                  { valor: '1', label: 'Uma opção' },
+                                  { valor: '2', label: 'Duas opções' },
+                                  { valor: '3', label: 'Três opções' },
+                                ]} />
+                            </div>
+                            <Campo rotulo="Valor" valor={informadoIa.valor ?? ''}
+                              onChange={v => informar({ valor: v })}
+                              placeholder="R$ 21.600 por mês, ou R$ 80 mil fechado" />
+                            <Campo rotulo="Prazo" valor={informadoIa.prazo ?? ''}
+                              onChange={v => informar({ prazo: v })}
+                              placeholder="5 meses, começando em outubro" />
+                            <div className="gp-ia-largo">
+                              <Campo rotulo="Time" valor={informadoIa.time ?? ''}
+                                onChange={v => informar({ time: v })}
+                                placeholder="2 devs em 8h, QA meio período, gestor não cobrado" />
+                            </div>
+                          </div>
+                          <div className="gp-campo">
+                            <span className="form-label">Mais contexto</span>
+                            <CampoTexto valor={contextoIa} onMudar={setContextoIa} linhas={3}
+                              ariaLabel="Mais contexto para a IA"
+                              placeholder="O que mais a IA precisa saber: o que priorizar, o que o cliente já recusou, o tom da conversa." />
+                          </div>
+                          <div className="gp-ia-acoes">
+                            {antesDaIa && (
+                              <button type="button" className="gp-mais surge" style={{ marginTop: 0 }}
+                                onClick={() => { setD(antesDaIa); setAntesDaIa(null); }}>
+                                Desfazer o preenchimento
+                              </button>
+                            )}
+                            <button type="button" className="btn btn-primary"
+                              disabled={!!ia.andamento}
+                              onClick={() => void preencherComIa()}>
+                              <IconSparkles size={13} />
+                              {antesDaIa ? 'Preencher de novo' : 'Preencher com IA'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                </div>
+                </div>
+                )}
                 </div>
                 <Campo rotulo="Cliente" valor={d.cliente} onChange={v => editar({ cliente: v })}
                   placeholder="Laticínios Porto Alegre" />
@@ -802,14 +1320,16 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
                             passos: d.comoFunciona!.passos.map((x, k) => (k === i ? { ...x, titulo: e.target.value } : x)),
                           },
                         })} />
-                      <textarea className="form-input" value={p.texto} rows={2}
-                        style={{ resize: 'vertical', marginTop: 6 }} placeholder="O que acontece nesse passo"
-                        onChange={e => editar({
-                          comoFunciona: {
-                            ...d.comoFunciona!,
-                            passos: d.comoFunciona!.passos.map((x, k) => (k === i ? { ...x, texto: e.target.value } : x)),
-                          },
-                        })} />
+                      <div style={{ marginTop: 6 }}>
+                        <CampoTexto valor={p.texto} linhas={2} placeholder="O que acontece nesse passo"
+                          ariaLabel={`Texto do passo ${i + 1}`}
+                          onMudar={v => editar({
+                            comoFunciona: {
+                              ...d.comoFunciona!,
+                              passos: d.comoFunciona!.passos.map((x, k) => (k === i ? { ...x, texto: v } : x)),
+                            },
+                          })} />
+                      </div>
                     </div>
                   ))}
                   <Texto rotulo="A conta que sustenta o prazo" valor={d.comoFunciona.nota} linhas={2}
@@ -857,24 +1377,60 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
                       ...d.investimento,
                       opcoes: d.investimento.opcoes.map((x, k) => (k === i ? v : x)),
                     },
-                  })} />
+                  })}
+                  onRemover={d.investimento.opcoes.length > 1 ? () => editar({
+                    investimento: {
+                      ...d.investimento,
+                      opcoes: emOrdem(d.investimento.opcoes.filter((_, k) => k !== i)),
+                    },
+                  }) : undefined} />
               ))}
-              <button type="button" className="gp-mais"
-                onClick={() => editar({
-                  investimento: {
-                    ...d.investimento,
-                    opcoes: d.investimento.opcoes.length > 1
-                      ? [d.investimento.opcoes[0]]
-                      : [...d.investimento.opcoes,
-                        { rotulo: 'Opção B', titulo: '', valor: '', unidade: '', bullets: ['', '', ''] }],
-                  },
-                })}>
-                {d.investimento.opcoes.length > 1 ? 'Deixar uma opção só' : 'Comparar com uma segunda opção'}
-              </button>
+              {d.investimento.opcoes.length < MAX_OPCOES && (
+                <button type="button" className="gp-mais"
+                  onClick={() => editar({
+                    investimento: {
+                      ...d.investimento,
+                      opcoes: emOrdem([...d.investimento.opcoes,
+                        { rotulo: '', titulo: '', valor: '', unidade: '', bullets: ['', '', ''] }]),
+                    },
+                  })}>
+                  <IconPlus size={12} /> Mais uma opção
+                </button>
+              )}
 
               <p className="gp-secao">Time alocado</p>
               {d.investimento.time.map((p, i) => (
                 <div key={i} className="gp-grade gp-time">
+                  {/* Quem é o número e quem sai. Sem a lixeira, o time ficava preso
+                      às duas pessoas com que a proposta nasce. */}
+                  <div className="gp-entrega-topo">
+                    <span className="gp-entrega-num">Pessoa {i + 1}</span>
+                    {/* Sim ou não, e à vista: antes só o gestor da proposta de
+                        partida vinha como não cobrado, e não havia como tirar a
+                        etiqueta dele nem pôr em outra pessoa. */}
+                    <span className="gp-nao-cobrado">
+                      <Chave ligada={!!p.naoCobrado} rotulo="Não cobrado"
+                        dica='O papel sai com a etiqueta "Não cobrado" no lugar da dedicação'
+                        onChange={v => editar({
+                          investimento: {
+                            ...d.investimento,
+                            time: d.investimento.time.map((x, k) => (k === i
+                              ? { ...x, naoCobrado: v || undefined } : x)),
+                          },
+                        })} />
+                    </span>
+                    {d.investimento.time.length > 1 && (
+                      <button type="button" className="gp-x" aria-label={`Remover a pessoa ${i + 1}`}
+                        onClick={() => editar({
+                          investimento: {
+                            ...d.investimento,
+                            time: d.investimento.time.filter((_, k) => k !== i),
+                          },
+                        })}>
+                        <IconTrash size={13} />
+                      </button>
+                    )}
+                  </div>
                   <Campo rotulo="Papel" valor={p.papel}
                     onChange={v => editar({
                       investimento: {
@@ -882,7 +1438,23 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
                         time: d.investimento.time.map((x, k) => (k === i ? { ...x, papel: v } : x)),
                       },
                     })} />
-                  <Campo rotulo="Dedicação" valor={p.dedicacao} placeholder="1 pessoa · 8h por dia"
+                  {/* Quantas pessoas no papel: três devs são um papel com três, e
+                      não três cards iguais disputando o teto do time. */}
+                  <label className="gp-campo">
+                    <span className="form-label">Quantas pessoas</span>
+                    <input className="form-input gp-mini" value={String(p.quantidade ?? 1)}
+                      inputMode="numeric" aria-label={`Quantas pessoas em ${p.papel || 'este papel'}`}
+                      onFocus={e => e.target.select()}
+                      onChange={e => editar({
+                        investimento: {
+                          ...d.investimento,
+                          time: d.investimento.time.map((x, k) => (k === i
+                            ? { ...x, quantidade: Math.max(1, Math.min(MAX_POR_PAPEL, Number(e.target.value.replace(/\D/g, '')) || 1)) }
+                            : x)),
+                        },
+                      })} />
+                  </label>
+                  <Campo rotulo="Dedicação" valor={p.dedicacao} placeholder="8h por dia"
                     dica={p.naoCobrado ? 'Não aparece: o papel leva a etiqueta "Não cobrado".' : undefined}
                     onChange={v => editar({
                       investimento: {
@@ -899,6 +1471,17 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
                     })} />
                 </div>
               ))}
+              {d.investimento.time.length < MAX_TIME && (
+                <button type="button" className="gp-mais"
+                  onClick={() => editar({
+                    investimento: {
+                      ...d.investimento,
+                      time: [...d.investimento.time, { papel: '', dedicacao: '', descricao: '' }],
+                    },
+                  })}>
+                  <IconPlus size={12} /> Mais uma pessoa
+                </button>
+              )}
 
               <div className="gp-grade">
                 <Texto rotulo="Memória de cálculo" valor={d.investimento.memoria} linhas={3}
@@ -928,17 +1511,65 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
                 </p>
               )}
 
-              {conferencia && conferencia.problemas.length > 0 && (
+              {/* Onde está cada travessão, e não só quantos: o passo, o campo e o
+                  trecho em volta, com o traço marcado. Aparece antes de gerar,
+                  porque é o que o montador vai recusar. */}
+              {travessoes.length > 0 && (
+                <div className="gp-problemas gp-travessoes surge">
+                  <b>
+                    {travessoes.length === 1 ? 'Um travessão para trocar' : `${travessoes.length} travessões para trocar`}
+                  </b>
+                  <p className="gp-dica" style={{ marginTop: 2 }}>
+                    A casa não usa travessão, e o montador recusa a proposta que tiver um. Troque
+                    por vírgula, dois-pontos ou hífen com espaços.
+                  </p>
+                  <ul className="gp-trav-lista">
+                    {travessoes.map((x, i) => (
+                      <li key={i}>
+                        <span className="gp-trav-onde">
+                          {PASSOS.find(p => p.id === x.passo)?.titulo} · {x.campo}
+                        </span>
+                        <span className="gp-trav-trecho">
+                          {x.antes}<mark>{x.traco}</mark>{x.depois}
+                        </span>
+                        <button type="button" className="gp-trav-ir"
+                          onClick={() => setPasso(PASSOS.findIndex(p => p.id === x.passo))}>
+                          Ir <IconArrowRight size={11} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <button type="button" className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      const n = travessoes.length;
+                      setD(semTravessao(d));
+                      setConferencia(null);
+                      toast('success', n === 1 ? 'Travessão trocado' : `${n} travessões trocados`,
+                        'Viraram hífen com espaços. Confira na prévia se a frase continua boa.');
+                    }}>
+                    Trocar todos por hífen
+                  </button>
+                </div>
+              )}
+
+              {conferencia && conferencia.problemas
+                // Os travessões já estão na lista acima, um por um: repetir a
+                // contagem aqui seria dizer a mesma coisa duas vezes.
+                .filter(p => !(travessoes.length > 0 && /travess/i.test(p))).length > 0 && (
                 <div className="gp-problemas surge">
                   <b>A proposta não pode sair assim:</b>
-                  <ul>{conferencia.problemas.map(p => <li key={p}>{p}</li>)}</ul>
+                  <ul>
+                    {conferencia.problemas
+                      .filter(p => !(travessoes.length > 0 && /travess/i.test(p)))
+                      .map(p => <li key={p}>{p}</li>)}
+                  </ul>
                 </div>
               )}
 
               <div className="gp-rodape">
                 <button type="button" className="btn btn-primary" onClick={baixar}
                   disabled={faltando.length > 0 || semQuemPrepara || !template}>
-                  <IconDownload size={14} /> Baixar a proposta
+                  <IconDownload size={14} /> {editando ? 'Salvar e baixar' : 'Baixar a proposta'}
                 </button>
                 {!template && <span className="dux-spinner sm" />}
               </div>
@@ -946,10 +1577,15 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
           )}
 
           <div className="gp-andar">
-            <button type="button" className="gp-voltar" disabled={passo === 0}
-              onClick={() => setPasso(p => Math.max(0, p - 1))}>
-              <IconArrowLeft size={12} /> Voltar
-            </button>
+            {/* No primeiro passo não há para onde voltar, e o botão apagado ali
+                só ocupava o canto. O "avançar" continua à direita sozinho: é
+                a margem automática dele, e não o vizinho, que o empurra. */}
+            {passo > 0 && (
+              <button type="button" className="gp-voltar"
+                onClick={() => setPasso(p => Math.max(0, p - 1))}>
+                <IconArrowLeft size={12} /> Voltar
+              </button>
+            )}
             {passo < PASSOS.length - 1 && (
               <button type="button" className="btn btn-secondary"
                 onClick={() => setPasso(p => Math.min(PASSOS.length - 1, p + 1))}>
@@ -1141,19 +1777,107 @@ const ESTILO = `
     transition: color var(--transition);
   }
   .gp-mais { margin-top: 10px; }
-  .gp-mais:hover, .gp-anexar:hover, .gp-ligar:hover, .gp-voltar:hover:not(:disabled) { color: var(--black); }
-  .gp-voltar:disabled { color: var(--gray3); cursor: default; }
+  .gp-mais:hover, .gp-anexar:hover, .gp-ligar:hover, .gp-voltar:hover { color: var(--black); }
   .gp-ligar { margin-left: auto; text-transform: none; letter-spacing: 0; }
   .gp-entrega, .gp-fase, .gp-opcao, .gp-time {
     border: 1px solid var(--gray3); border-radius: var(--radius-md);
     padding: 14px 16px; margin-top: 10px; background: var(--bg);
   }
   .gp-opcao.rec { border-color: var(--yellow); background: var(--yd); }
+
+  /* A IA, opcional: um gatilho que abre o contexto e o botao. Ocupa a grade
+     inteira, entre a oportunidade e o cliente, que e onde a escolha acontece. */
+  /* A oportunidade e a IA juntas, sem o vao da grade entre elas. O respiro do
+     bloco da IA e margem dele, dentro da parte que anima: cresce com a altura
+     em vez de entrar de estalo. */
+  /* A faixa da edicao: qual proposta esta aberta e as duas saidas. No tom de
+     destaque da casa, porque e um modo diferente do normal e precisa ser visto
+     antes de alguem gerar achando que esta montando uma proposta nova. */
+  .gp-editando {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    margin-bottom: 12px; padding: 10px 14px;
+    border: 1px solid var(--yb, var(--yellow)); border-radius: var(--radius-md);
+    background: var(--yd);
+  }
+  .gp-editando-icone {
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    width: 28px; height: 28px; border-radius: var(--radius-pill);
+    background: var(--white); color: var(--yellow-tinta, var(--yellow));
+  }
+  .gp-editando-texto { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 180px; }
+  .gp-editando-texto b { font-size: 12.5px; font-weight: 700; color: var(--black); }
+  .gp-editando-texto span {
+    font-size: 11.5px; color: var(--gray);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .gp-hist-acoes .btn { display: inline-flex; align-items: center; gap: 5px; }
+
+  .gp-oportunidade { display: block; min-width: 0; }
+  .gp-oportunidade .gp-ia { margin-top: 12px; }
+  .gp-ia {
+    border: 1px solid var(--gray3); border-radius: var(--radius-md);
+    background: var(--bg);
+    transition: border-color var(--transition);
+  }
+  .gp-ia:hover, .gp-ia.aberta { border-color: var(--gray2); }
+  .gp-ia-gatilho {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 10px 14px; border: none; background: none; cursor: pointer;
+    font-family: inherit; text-align: left; color: var(--black);
+  }
+  .gp-ia-icone {
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    width: 28px; height: 28px; border-radius: var(--radius-pill);
+    background: var(--yd); color: var(--yellow-tinta, var(--yellow));
+  }
+  .gp-ia-textos { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+  .gp-ia-textos b { font-size: 12.5px; font-weight: 700; }
+  .gp-ia-textos span { font-size: 11.5px; color: var(--gray2); }
+  .gp-ia-gatilho .entrega-seta { color: var(--gray2); }
+  .gp-ia-corpo { display: flex; flex-direction: column; gap: 10px; padding: 2px 14px 14px; }
+  .gp-ia-acoes { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+  /* Os campos do que ja foi decidido, dois por linha; o time ocupa a linha
+     inteira, que e onde cabe "2 devs em 8h, QA meio periodo". */
+  .gp-ia-campos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
+  .gp-ia-largo { grid-column: 1 / -1; }
+  @media (max-width: 560px) { .gp-ia-campos { grid-template-columns: minmax(0, 1fr); } }
+  .gp-ia-acoes .btn { display: inline-flex; align-items: center; gap: 6px; }
+  @media (prefers-reduced-motion: reduce) { .gp-ia { transition: none; } }
   .gp-entrega-topo, .gp-fase-topo {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   }
   .gp-entrega-num, .gp-fase-nome { font-size: 11.5px; font-weight: 800; color: var(--black); }
   .gp-entrega-topo .gp-x, .gp-fase-topo .gp-x { margin-left: auto; }
+  /* A chave do "Nao cobrado" vai para a direita do topo, e a lixeira encosta
+     nela em vez de disputar o espaco. */
+  .gp-nao-cobrado { margin-left: auto; display: inline-flex; }
+
+  /* A lista dos travessoes: onde, o trecho com o traco marcado, e o atalho. */
+  .gp-travessoes .btn { margin-top: 10px; }
+  .gp-problemas .gp-trav-lista { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .gp-trav-lista li {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 10px;
+    padding: 7px 10px; border-radius: var(--radius-sm); background: var(--white);
+    border: 1px solid var(--gray3);
+  }
+  .gp-trav-onde { font-size: 11px; font-weight: 700; color: var(--black); }
+  .gp-trav-trecho {
+    grid-column: 1; font-size: 11.5px; color: var(--gray);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .gp-trav-trecho mark {
+    background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--red);
+    font-weight: 800; padding: 0 3px; border-radius: 3px;
+  }
+  .gp-trav-ir {
+    grid-column: 2; grid-row: 1 / span 2;
+    display: inline-flex; align-items: center; gap: 4px;
+    border: none; background: none; cursor: pointer; font-family: inherit;
+    font-size: 11.5px; font-weight: 700; color: var(--gray2);
+    transition: color var(--transition);
+  }
+  .gp-trav-ir:hover { color: var(--black); }
+  .gp-nao-cobrado ~ .gp-x { margin-left: 0; }
   .gp-fase-meses { margin-left: auto; display: flex; align-items: center; gap: 10px; }
   .gp-fase-meses label {
     display: inline-flex; align-items: center; gap: 5px;
