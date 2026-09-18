@@ -59,8 +59,8 @@ export interface OpcaoInvestimento {
   unidade: string;
   /** O quadro ao lado do valor: o "R$ 0 no primeiro mês" da LPA. */
   destaque?: { valor: string; texto: string; nota?: string };
-  /** Os bullets se espelham entre as duas colunas: a mesma pergunta respondida
-   *  nas duas, inclusive quando a resposta é ruim. Comparação em que uma coluna
+  /** Os bullets se espelham entre as opções: a mesma pergunta respondida em
+   *  todas, inclusive quando a resposta é ruim. Comparação em que uma coluna
    *  só tem elogio não ajuda a decidir, e o cliente percebe. */
   bullets: string[];
   recomendada?: boolean;
@@ -68,8 +68,12 @@ export interface OpcaoInvestimento {
 
 export interface PapelDoTime {
   papel: string;
-  /** "1 pessoa · 8h por dia". Fica de fora quando o papel não é cobrado: no
-   *  lugar dela entra a etiqueta. */
+  /** Quantas pessoas ocupam o papel: três devs são um papel com três, e não
+   *  três linhas iguais. Ausente vale um - é como as propostas antigas foram
+   *  gravadas. */
+  quantidade?: number;
+  /** "8h por dia". Fica de fora quando o papel não é cobrado: no lugar dela
+   *  entra a etiqueta. */
   dedicacao: string;
   /** O que essa pessoa faz no projeto. */
   descricao: string;
@@ -107,6 +111,7 @@ export interface DadosProposta {
   };
 
   investimento: {
+    /** De uma a três, lado a lado no slide. */
     opcoes: OpcaoInvestimento[];
     time: PapelDoTime[];
     /** A hora-homem, a jornada, os dias úteis e a multiplicação que chega ao

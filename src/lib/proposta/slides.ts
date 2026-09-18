@@ -14,11 +14,27 @@
 import type {
   DadosProposta, Entrega, Fase, OpcaoInvestimento, PapelDoTime,
 } from './tipos';
+import { textoEmHtml } from '../marcacao';
 
 /** Escapa o que vai para dentro do HTML da proposta. */
 export const esc = (v: string) => v
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;');
+
+/** Texto longo do formulário, com a formatação que ele carrega: a quebra de
+ *  linha, o negrito, o itálico, o sublinhado e a lista. É a mesma regra do
+ *  campo em que foi escrito (`lib/marcacao`), então o que aparece formatado ali
+ *  aparece igual aqui - na prévia e no arquivo que vai ao cliente.
+ *
+ *  Com `esc` o texto chegava inteiro num bloco só: as quebras de linha somem no
+ *  HTML, e três parágrafos viravam uma parede.
+ *
+ *  O estilo da lista vai inline: o template não tem classe para ela, e o slide
+ *  escuro do investimento pede que ela herde a cor de onde está. */
+const rico = (v: string) => textoEmHtml(v, {
+  lista: 'margin:0.35em 0;padding-left:1.2em;list-style:disc',
+  respiro: '0.55em',
+});
 
 const cabecalho = (secao: string) =>
   `<div class="sh" data-secao="${esc(secao)}"><div class="st">Sheep Technology</div>`
@@ -37,7 +53,7 @@ function slideProjeto(d: DadosProposta): string {
     <div class="title a">O projeto</div>
     <div class="rule a"></div>
     <div class="g2 a">
-      <div class="body-text" style="max-width:none">${esc(d.projeto)}</div>
+      <div class="body-text" style="max-width:none">${rico(d.projeto)}</div>
       ${lista(d.ganhos)}
     </div>
     ${rodape}
@@ -54,7 +70,7 @@ function slideEntrega(e: Entrega, n: number): string {
     <div class="title a">${esc(nome)}</div>
     <div class="rule a"></div>
     <div class="g2 a">
-      <div class="body-text" style="max-width:none">${esc(e.resumo)}</div>
+      <div class="body-text" style="max-width:none">${rico(e.resumo)}</div>
       ${lista(e.itens)}
     </div>
     ${rodape}
@@ -74,7 +90,7 @@ function slideEntregaComPrototipo(e: Entrega, n: number): string {
   return `<div class="slide sw">
     ${cabecalho(nome)}
     <div class="title sm a" style="margin-bottom:clamp(3px,0.4vh,6px)">${esc(nome)}</div>
-    <div class="body-text a" style="max-width:none;margin-bottom:clamp(6px,0.8vh,11px)">${esc(e.resumo)}</div>
+    <div class="body-text a" style="max-width:none;margin-bottom:clamp(6px,0.8vh,11px)">${rico(e.resumo)}</div>
     <div class="a" data-biframe style="position:relative;width:100%;overflow:hidden;border-radius:clamp(7px,0.8vw,12px);border:1px solid #DDE2DA;box-shadow:0 12px 34px rgba(0,0,0,0.10);background:#F5F7F4">
       <iframe data-biframe-src srcdoc="${esc(p.html)}" title="${esc(p.titulo)}" loading="lazy" scrolling="no" style="position:absolute;top:0;left:0;width:${p.largura}px;height:${p.altura}px;border:0;transform-origin:top left"></iframe>
     </div>
@@ -92,14 +108,14 @@ function slideComoFunciona(d: DadosProposta): string {
   const cards = c.passos.map((p, i) => `<div class="card ct">
         <div class="card-num">${i + 1}</div>
         <b>${esc(p.titulo)}</b>
-        <div class="body-text" style="max-width:none">${esc(p.texto)}</div>
+        <div class="body-text" style="max-width:none">${rico(p.texto)}</div>
       </div>`).join('');
   return `<div class="slide sw">
     ${cabecalho('Como funciona')}
     <div class="title sm a" style="margin-bottom:clamp(4px,0.6vh,8px)">Como funciona</div>
     <div class="body-text a" style="max-width:none;margin-bottom:clamp(12px,1.8vh,22px)">${esc(c.linhaFina)}</div>
     <div class="g3 a">${cards}</div>
-    <div class="note a" style="margin-top:clamp(12px,1.8vh,22px)">${esc(c.nota)}</div>
+    <div class="note a" style="margin-top:clamp(12px,1.8vh,22px)">${rico(c.nota)}</div>
     ${rodape}
   </div>`;
 }
@@ -205,7 +221,7 @@ function cardDeOpcao(o: OpcaoInvestimento): string {
     ? 'background:var(--yd);border:1px solid var(--yb)'
     : 'background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.14)';
   const destaque = o.destaque
-    ? `<div style="flex:1;${molduraDestaque};border-radius:clamp(7px,0.8vw,11px);padding:clamp(6px,0.7vw,10px) clamp(9px,1vw,14px)">
+    ? `<div style="flex:1 1 clamp(120px,12vw,180px);min-width:0;${molduraDestaque};border-radius:clamp(7px,0.8vw,11px);padding:clamp(6px,0.7vw,10px) clamp(9px,1vw,14px)">
             <div style="display:flex;align-items:baseline;gap:clamp(5px,0.55vw,8px)">
               <span style="font-size:clamp(14px,1.55vw,22px);font-weight:800;color:${o.recomendada ? 'var(--yellow)' : '#fff'};line-height:1;white-space:nowrap">${esc(o.destaque.valor)}</span>
               <span style="font-size:clamp(8px,0.8vw,11px);font-weight:700;color:${o.recomendada ? '#fff' : 'rgba(255,255,255,0.8)'};line-height:1.3">${esc(o.destaque.texto)}</span>
@@ -218,7 +234,7 @@ function cardDeOpcao(o: OpcaoInvestimento): string {
   return `<div style="position:relative;display:flex;flex-direction:column;${moldura};border-radius:clamp(10px,1.1vw,16px);padding:clamp(14px,1.67vw,24px)">
         <div style="position:absolute;top:calc(-1 * clamp(8px,0.85vw,12px));right:clamp(14px,1.67vw,24px);font-size:clamp(7px,0.68vw,10px);font-weight:800;letter-spacing:.12em;text-transform:uppercase;padding:clamp(3px,0.36vw,5px) clamp(9px,0.95vw,14px);border-radius:100px;white-space:nowrap;${etiqueta}">${esc(o.rotulo)}</div>
         <div class="eyebrow" style="margin:0">${esc(o.titulo)}</div>
-        <div style="display:flex;align-items:center;gap:clamp(9px,1vw,15px);margin-top:clamp(5px,0.7vh,10px)">
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:clamp(9px,1vw,15px);margin-top:clamp(5px,0.7vh,10px)">
           <div style="flex-shrink:0">
             <div class="price-figure" style="color:#fff;font-size:clamp(22px,2.5vw,36px)"><sup style="color:${cifrao}">R$</sup>${esc(o.valor)}</div>
             <div class="price-unit" style="color:${corUnidade};margin-top:clamp(2px,0.3vw,4px)">${esc(o.unidade)}</div>
@@ -231,6 +247,12 @@ function cardDeOpcao(o: OpcaoInvestimento): string {
 }
 
 function linhaDoTime(p: PapelDoTime, i: number): string {
+  // Mais de uma pessoa no papel vira uma etiqueta ao lado do nome: "3 pessoas".
+  // Uma só não diz nada que o nome já não diga, e fica de fora.
+  const n = Math.max(1, Math.floor(p.quantidade ?? 1));
+  const quantas = n > 1
+    ? `<span style="font-size:clamp(7px,0.66vw,10px);font-weight:700;color:rgba(255,255,255,0.7);background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.16);padding:clamp(1px,0.18vw,3px) clamp(6px,0.58vw,9px);border-radius:100px;white-space:nowrap">${n} pessoas</span>`
+    : '';
   const direita = p.naoCobrado
     ? '<span style="margin-left:auto;background:var(--yd);border:1px solid var(--yb);color:var(--yellow);font-size:clamp(6px,0.62vw,9px);font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:clamp(2px,0.24vw,4px) clamp(6px,0.62vw,9px);border-radius:100px;white-space:nowrap">Não cobrado</span>'
     : `<span style="margin-left:auto;font-size:clamp(7px,0.7vw,10px);color:rgba(255,255,255,0.55);font-weight:700;white-space:nowrap">${esc(p.dedicacao)}</span>`;
@@ -238,18 +260,24 @@ function linhaDoTime(p: PapelDoTime, i: number): string {
   return `<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.12);border-radius:clamp(9px,1vw,14px);padding:clamp(8px,0.85vw,13px) clamp(12px,1.3vw,19px)">
           <div style="display:flex;align-items:center;gap:clamp(6px,0.65vw,10px)">
             <span style="display:inline-block;background:var(--yellow);color:var(--black);font-weight:800;font-size:clamp(7px,0.66vw,10px);padding:clamp(2px,0.22vw,4px) clamp(6px,0.58vw,9px);border-radius:100px">${String(i + 1).padStart(2, '0')}</span>
-            <span style="font-size:clamp(10px,1vw,14px);font-weight:700;color:#fff">${esc(p.papel)}</span>
+            <span style="font-size:clamp(10px,1vw,14px);font-weight:700;color:#fff">${esc(p.papel)}</span>${quantas}
             ${direita}
           </div>
-          <div style="font-size:clamp(8px,0.8vw,11px);color:rgba(255,255,255,0.55);line-height:1.5;margin-top:clamp(5px,0.6vh,9px)">${esc(p.descricao)}</div>
+          <div style="font-size:clamp(8px,0.8vw,11px);color:rgba(255,255,255,0.55);line-height:1.5;margin-top:clamp(5px,0.6vh,9px)">${rico(p.descricao)}</div>
         </div>`;
 }
 
 function slideInvestimento(d: DadosProposta): string {
   const { opcoes, time, memoria } = d.investimento;
-  // Uma opção só mantém o mesmo layout, ocupando a largura. O time alocado e a
-  // memória de cálculo continuam: são eles que sustentam o preço.
-  const colunas = opcoes.length > 1 ? '1fr 1fr' : '1fr';
+  // Uma coluna por opção, de uma a três. Uma só mantém o mesmo layout,
+  // ocupando a largura; o time alocado e a memória de cálculo continuam em
+  // todos os casos, porque são eles que sustentam o preço.
+  const colunas = `repeat(${Math.max(1, opcoes.length)}, minmax(0, 1fr))`;
+  // O time divide o slide com as opções, e o slide tem de caber numa tela. Uma
+  // linha por pessoa cabe até três; da quarta em diante a lista passava por
+  // cima do rodapé, então ela vira duas colunas - seis pessoas ocupam a altura
+  // de três.
+  const colunasDoTime = time.length > 3 ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)';
 
   return `<div class="slide sd">
     ${cabecalho('Investimento')}
@@ -260,11 +288,15 @@ function slideInvestimento(d: DadosProposta): string {
     </div>
     <div class="a" style="margin-top:clamp(12px,1.7vh,22px)">
       <div class="eyebrow" style="margin-bottom:clamp(5px,0.6vh,9px)">Time alocado</div>
-      <div style="display:flex;flex-direction:column;gap:clamp(6px,0.7vh,10px)">
+      <div style="display:grid;grid-template-columns:${colunasDoTime};gap:clamp(6px,0.7vh,10px) clamp(8px,0.9vw,14px)">
         ${time.map(linhaDoTime).join('\n        ')}
       </div>
     </div>
-    <div class="a" style="margin-top:clamp(9px,1.3vh,16px);font-size:clamp(6px,0.62vw,9px);font-style:italic;line-height:1.6;color:rgba(255,255,255,0.42)"><b style="color:rgba(255,255,255,0.78);font-weight:700">Como se chega aos valores:</b> ${esc(memoria)}</div>
+    ${memoria.trim()
+      // Sem a conta, a linha inteira sai: o rótulo sozinho prometeria uma
+      // explicação que não vem.
+      ? `<div class="a" style="margin-top:clamp(9px,1.3vh,16px);font-size:clamp(6px,0.62vw,9px);font-style:italic;line-height:1.6;color:rgba(255,255,255,0.42)"><b style="color:rgba(255,255,255,0.78);font-weight:700">Como se chega aos valores:</b> ${rico(memoria)}</div>`
+      : ''}
     ${rodape}
   </div>`;
 }
