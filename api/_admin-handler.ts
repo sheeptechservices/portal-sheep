@@ -7897,6 +7897,129 @@ function faltaEmProjeto(p: any): string | null {
      * casa acompanha o que foi mandado para quem. Os campos vao junto porque sao
      * eles que montam a apresentacao de novo - no chip do card e no historico.
      */
+    /**
+     * Uma proposta do histórico, editada e gravada de volta.
+     *
+     * Pelo id, e não pela chave como o registro: a edição pode trocar o
+     * subtítulo, e pela chave ela viraria uma segunda proposta em vez de
+     * regravar a que foi aberta. A chave é recalculada, e se ela já for de
+     * outra proposta da mesma oportunidade a gravação é recusada - duas linhas
+     * com a mesma chave seriam a mesma proposta contada duas vezes.
+     */
+    if (action === 'atualizar_proposta') {
+      const id = Number(body?.id);
+      const oportunidadeId = String(body?.oportunidade_id ?? '').trim();
+      const cliente = String(body?.cliente ?? '').trim().slice(0, 200);
+      const subtitulo = String(body?.subtitulo ?? '').trim().slice(0, 300);
+      const dados = body?.dados;
+      if (!Number.isFinite(id) || id <= 0) return { status: 400, body: { error: 'id inválido.' } };
+      if (!oportunidadeId) {
+        return { status: 400, body: { error: 'Escolha a oportunidade a que esta proposta pertence.' } };
+      }
+      if (!cliente || !subtitulo || !dados || typeof dados !== 'object') {
+        return { status: 400, body: { error: 'Proposta sem dados para gravar.' } };
+      }
+      const texto = JSON.stringify(dados);
+      if (texto.length > 200000) {
+        return { status: 413, body: { error: 'Os dados desta proposta não cabem no histórico.' } };
+      }
+      const [existe, op] = await Promise.all([
+        db.execute({
+          sql: 'SELECT id, oportunidade_id, subtitulo, chave FROM propostas_geradas WHERE id = ?', args: [id],
+        }),
+        db.execute({
+          sql: 'SELECT id FROM oportunidades WHERE id = ? AND deleted_at IS NULL', args: [oportunidadeId],
+        }),
+      ]);
+      if (!existe.rows[0]) return { status: 404, body: { error: 'Proposta não encontrada.' } };
+      if (!op.rows[0]) return { status: 404, body: { error: 'A oportunidade escolhida não está mais no funil.' } };
+      // A mesma oportunidade e o mesmo subtítulo: a chave fica a que a linha já
+      // tem. É o que deixa editar uma versão salva "como nova" - ela divide o
+      // subtítulo com a original, e recalcular a chave a faria esbarrar nela.
+      const atual = existe.rows[0];
+      const mesmaIdentidade = String(atual.oportunidade_id) === oportunidadeId
+        && String(atual.subtitulo).toLocaleLowerCase('pt-BR') === subtitulo.toLocaleLowerCase('pt-BR');
+      const chave = mesmaIdentidade
+        ? String(atual.chave)
+        : `${oportunidadeId}|${subtitulo.toLocaleLowerCase('pt-BR')}`;
+      const outra = mesmaIdentidade ? { rows: [] as unknown[] } : await db.execute({
+        sql: 'SELECT id FROM propostas_geradas WHERE chave = ? AND id <> ?', args: [chave, id],
+      });
+      if (outra.rows[0]) {
+        return {
+          status: 409,
+          body: { error: 'Já existe outra proposta com este subtítulo para esta oportunidade. Troque o subtítulo.' },
+        };
+      }
+      const agora = new Date().toISOString();
+      const slides = Number(body?.slides);
+      await db.execute({
+        sql: `UPDATE propostas_geradas
+              SET oportunidade_id = ?, cliente = ?, subtitulo = ?, chave = ?, dados = ?,
+                  slides = COALESCE(?, slides), autor_id = ?, autor_nome = ?, atualizado_em = ?
+              WHERE id = ?`,
+        args: [
+          oportunidadeId, cliente, subtitulo, chave, texto,
+          Number.isFinite(slides) ? slides : null,
+          autorId ?? null, autorNome ?? 'alguém do time', agora, id,
+        ],
+      });
+      return { status: 200, body: { ok: true, id, atualizado_em: agora } };
+    }
+
+    /**
+     * Uma proposta do histórico, editada e guardada como uma proposta nova, ao
+     * lado da original. É a saída de quem mexeu e quer poder voltar atrás: a
+     * versão de antes continua no histórico, intacta.
+     *
+     * A chave ganha um sufixo próprio. Sem ele a cópia - que quase sempre
+     * mantém o subtítulo - bateria na chave da original e a sobrescreveria,
+     * que é justamente o que esta ação existe para evitar.
+     */
+    if (action === 'salvar_proposta_como_nova') {
+      const oportunidadeId = String(body?.oportunidade_id ?? '').trim();
+      const cliente = String(body?.cliente ?? '').trim().slice(0, 200);
+      const subtitulo = String(body?.subtitulo ?? '').trim().slice(0, 300);
+      const dados = body?.dados;
+      if (!oportunidadeId) {
+        return { status: 400, body: { error: 'Escolha a oportunidade a que esta proposta pertence.' } };
+      }
+      if (!cliente || !subtitulo || !dados || typeof dados !== 'object') {
+        return { status: 400, body: { error: 'Proposta sem dados para gravar.' } };
+      }
+      const op = await db.execute({
+        sql: 'SELECT id FROM oportunidades WHERE id = ? AND deleted_at IS NULL', args: [oportunidadeId],
+      });
+      if (!op.rows[0]) return { status: 404, body: { error: 'A oportunidade escolhida não está mais no funil.' } };
+      const texto = JSON.stringify(dados);
+      if (texto.length > 200000) {
+        return { status: 413, body: { error: 'Os dados desta proposta não cabem no histórico.' } };
+      }
+      const agora = new Date().toISOString();
+      const chave = `${oportunidadeId}|${subtitulo.toLocaleLowerCase('pt-BR')}|${randomUUID()}`;
+      const slides = Number(body?.slides);
+      const r = await db.execute({
+        sql: `INSERT INTO propostas_geradas
+                (oportunidade_id, cliente, subtitulo, chave, dados, slides, autor_id, autor_nome,
+                 criado_em, atualizado_em)
+              VALUES (?,?,?,?,?,?,?,?,?,?)
+              RETURNING id, criado_em, atualizado_em`,
+        args: [
+          oportunidadeId, cliente, subtitulo, chave, texto,
+          Number.isFinite(slides) ? slides : null,
+          autorId ?? null, autorNome ?? 'alguém do time', agora, agora,
+        ],
+      });
+      const linha = r.rows[0];
+      return {
+        status: 200,
+        body: {
+          ok: true, id: Number(linha?.id ?? 0),
+          criado_em: String(linha?.criado_em ?? agora), atualizado_em: String(linha?.atualizado_em ?? agora),
+        },
+      };
+    }
+
     if (action === 'registrar_proposta') {
       const oportunidadeId = String(body?.oportunidade_id ?? '').trim();
       const cliente = String(body?.cliente ?? '').trim().slice(0, 200);

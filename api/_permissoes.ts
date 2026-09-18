@@ -313,6 +313,9 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   propostas_leads: 'propostas:ver',
   propostas_geradas: 'propostas:ver',
   registrar_proposta: 'propostas:ver',
+  // Editar uma proposta do historico e a mesma porta de gera-la.
+  atualizar_proposta: 'propostas:ver',
+  salvar_proposta_como_nova: 'propostas:ver',
   proposta_dados: ['propostas:ver', 'oportunidades:ver'],
   contratos_gerados: 'gerador:ver',
   registrar_contrato: 'gerador:ver',
