@@ -460,7 +460,7 @@ export interface UsoDeTokens {
   cache_escrito: number;
 }
 
-const usoZerado = (): UsoDeTokens =>
+export const usoZerado = (): UsoDeTokens =>
   ({ chamadas: 0, entrada: 0, saida: 0, cache_lido: 0, cache_escrito: 0 });
 
 /** Soma o que a API informou. Vem de dois lugares - a resposta inteira, nas
@@ -473,7 +473,8 @@ function somarUso(uso: UsoDeTokens, u: any) {
   uso.cache_escrito += Number(u.cache_creation_input_tokens ?? 0);
 }
 
-interface Pedido {
+/** Exportado: o preenchimento da proposta por IA usa a mesma chamada. */
+export interface Pedido {
   apiKey: string;
   modelo: string;
   system: string;
@@ -530,7 +531,7 @@ interface Fluxo {
  * quantas pessoas já foram avaliadas, e quais - é justamente o que quem pediu
  * quer saber.
  */
-async function pedirEmFluxo(p: Pedido, aoLer: (texto: string) => void): Promise<Fluxo> {
+export async function pedirEmFluxo(p: Pedido, aoLer: (texto: string) => void): Promise<Fluxo> {
   let conteudo = p.conteudo;
   for (let volta = 0; volta < 2; volta++) {
     const aberta = await abrirChamada(p.apiKey, {
