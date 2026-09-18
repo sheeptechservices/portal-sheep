@@ -16,21 +16,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type React from 'react';
+import { INLINE, ITEM, LINK, enderecoDoLink } from '../lib/marcacao';
 
-/** As marcas que o campo entende, na ordem em que precisam ser testadas: as de
- *  dois caracteres antes das de um, senão `*` comeria a metade de `**`. */
-const INLINE = /(\*\*[^*\n]+\*\*|__[^_\n]+__|\*[^*\n]+\*)/g;
-
-/** Endereço solto no meio do texto. Aceita `http(s)://`, `www.` e o domínio
- *  cru com barra ou caminho - é assim que a maioria cola um link. A pontuação
- *  final fica de fora: "veja em site.com/a." termina a frase, não o endereço. */
-export const LINK = /((?:https?:\/\/|www\.)[^\s<>()]+[^\s<>().,;:!?]|(?:[a-z0-9-]+\.)+(?:com\.br|gov\.br|edu\.br|org\.br|com|net|org|dev|app|io|co|me)(?:\/[^\s<>()]*[^\s<>().,;:!?])?)/gi;
-
-/** O endereço com protocolo, para o `href`. O que está escrito continua como a
- *  pessoa escreveu. */
-export function enderecoDoLink(texto: string): string {
-  return /^https?:\/\//i.test(texto) ? texto : `https://${texto}`;
-}
+// A regra das marcas mora em `lib/marcacao`, junto da tradução para HTML que o
+// editor e os slides da proposta usam. Continua saindo daqui também, para quem
+// já a importava deste arquivo.
+export { ITEM, LINK, enderecoDoLink };
 
 /** Uma linha vira uma sequência de pedaços de texto, trechos marcados e links.
  *  Recursiva de propósito: negrito com um trecho em itálico dentro é o que sai
@@ -73,11 +64,6 @@ function comLinks(trecho: string, chave: string): React.ReactNode[] {
   if (ultimo < trecho.length) saida.push(trecho.slice(ultimo));
   return saida;
 }
-
-/** Começo de item de lista: hífen e um espaço. Só o hífen, e não o asterisco
- *  também: o asterisco já é a marca de itálico, e duas maneiras de escrever a
- *  mesma coisa é uma a mais do que alguém precisa lembrar. */
-export const ITEM = /^\s*-\s+/;
 
 /** O texto desenhado. Nada de HTML vindo do banco: cada pedaço vira elemento
  *  aqui, então o que estiver escrito na descrição é sempre texto. */

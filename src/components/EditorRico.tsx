@@ -21,48 +21,7 @@
 
 import { useEffect, useRef } from 'react';
 import type React from 'react';
-import { ITEM, LINK, enderecoDoLink } from './TextoRico';
-
-/** Texto vira HTML só aqui, e o que vem do banco é sempre escapado antes: o
- *  campo é `contentEditable`, então uma tag escrita na descrição não pode virar
- *  elemento. */
-function escapar(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-/** As marcas de um trecho, em HTML. Recursiva: negrito com itálico dentro é o
- *  que sai quando alguém aperta os dois. */
-function marcasEmHtml(trecho: string): string {
-  const INLINE = /(\*\*[^*\n]+\*\*|__[^_\n]+__|\*[^*\n]+\*)/g;
-  let saida = '';
-  let ultimo = 0;
-  for (const m of trecho.matchAll(INLINE)) {
-    const i = m.index ?? 0;
-    if (i > ultimo) saida += linksEmHtml(trecho.slice(ultimo, i));
-    const t = m[0];
-    if (t.startsWith('**')) saida += `<strong>${marcasEmHtml(t.slice(2, -2))}</strong>`;
-    else if (t.startsWith('__')) saida += `<u>${marcasEmHtml(t.slice(2, -2))}</u>`;
-    else saida += `<em>${marcasEmHtml(t.slice(1, -1))}</em>`;
-    ultimo = i + t.length;
-  }
-  if (ultimo < trecho.length) saida += linksEmHtml(trecho.slice(ultimo));
-  return saida;
-}
-
-/** Endereço solto vira link azul, já no campo. */
-function linksEmHtml(trecho: string): string {
-  let saida = '';
-  let ultimo = 0;
-  for (const m of trecho.matchAll(LINK)) {
-    const i = m.index ?? 0;
-    if (i > ultimo) saida += escapar(trecho.slice(ultimo, i));
-    const url = escapar(enderecoDoLink(m[0]));
-    saida += `<a href="${url}" target="_blank" rel="noopener noreferrer">${escapar(m[0])}</a>`;
-    ultimo = i + m[0].length;
-  }
-  if (ultimo < trecho.length) saida += escapar(trecho.slice(ultimo));
-  return saida;
-}
+import { ITEM, LINK, enderecoDoLink, marcasEmHtml } from '../lib/marcacao';
 
 /** O texto guardado, no HTML que o campo edita. Uma `<div>` por linha, que é o
  *  que o navegador cria sozinho ao apertar Enter - assim o que ele produz e o

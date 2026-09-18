@@ -104,6 +104,16 @@ moldura (`.form-input`), a mesma lista em portal e o mesmo comportamento de
 abrir e fechar descritos abaixo. Campo novo com desenho próprio é o começo de um
 segundo sistema dentro do primeiro.
 
+**Texto longo é `CampoTexto`.** Todo campo de várias linhas que guarda texto
+para ser lido depois usa `src/components/CampoTexto.tsx`, e não `<textarea>`: é o
+mesmo campo da descrição da tarefa, com Enter quebrando a linha, Ctrl+B, Ctrl+I e
+Ctrl+U formatando, "- " abrindo lista, e a altura acompanhando o texto entre um
+piso (`linhas`) e um teto (`alturaMaxima`). O texto sai guardado com as marcas
+leves (`**negrito**`, `*itálico*`, `__sublinhado__`, `- item`), e quem o mostra
+traduz pela regra única de `src/lib/marcacao.ts` - `TextoRico` na tela,
+`textoEmHtml` em documento. Mostrar esse texto com `{texto}` cru, ou escapado
+num bloco só, joga fora as quebras e deixa os `**` à vista.
+
 **Dropdown:** clicar no gatilho abre, clicar de novo fecha. Não existe dropdown que
 abre e no segundo clique não faz nada - o gatilho alterna (`setAberto(a => !a)`),
 mesmo quando ele também mede a posição antes. Fechar por clique fora, por rolagem e

@@ -5591,6 +5591,16 @@ body.arrastando-painel {
   word-break: break-word;
   cursor: text;
 }
+/* O campo de texto da casa (`CampoTexto`): o mesmo editor, com o piso e o teto
+   de altura escolhidos por quem monta. Entre os dois ele cresce com o texto;
+   passado o teto, rola por dentro. */
+.campo-texto > .editor-rico {
+  min-height: var(--campo-texto-min, 62px);
+  max-height: var(--campo-texto-max, 320px);
+}
+/* A lista dentro do campo tem o mesmo recuo da lista lida. */
+.campo-texto > .editor-rico ul { padding-left: 20px; }
+
 .editor-rico:empty::before {
   content: attr(data-vazio);
   color: var(--gray2);
