@@ -147,6 +147,8 @@ function faseDoCronograma(f: Fase, i: number, meses: number): string {
   const classeBarra = f.transversal ? 'gantt-bar cross' : 'gantt-bar';
   const rotulo = f.transversal ? 'contínuo' : b.dur;
   const periodo = f.de === f.ate ? `Mês ${f.de}` : `Mês ${f.de} a ${f.ate}`;
+  // A dica do clique vai só na primeira fase: ensinar o gesto uma vez basta,
+  // e repetida em toda linha ela cobre o fim das barras.
 
   return `<div class="${classeFase}" data-fase="${i}" data-nonav>
           <div class="gantt-row">
@@ -155,7 +157,7 @@ function faseDoCronograma(f: Fase, i: number, meses: number): string {
               ${num}${esc(f.nome)}
             </div>
             <div class="gantt-track"><div class="${classeBarra}" style="left:${b.esq};width:${b.larg};animation-delay:.${i + 1}0s"><span>${rotulo}</span></div></div>
-            <span class="dica-balao">Clique para ver as entregas</span>
+            ${i === 0 ? '<span class="dica-balao">Clique para ver as entregas</span>' : ''}
           </div>
           <div class="fase-exp"><div class="fase-exp-in">
             <div class="fd-head"><span class="fd-nome">${esc(f.nome)}</span><span class="fd-dur">${periodo}</span></div>
