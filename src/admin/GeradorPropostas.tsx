@@ -1170,12 +1170,6 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
                     <div className={`revelar${blocoDaIa.aberto ? ' aberto' : ''}`}>
                       <div>
                         <div className="gp-ia-corpo">
-                          <p className="gp-dica" style={{ margin: 0 }}>
-                            Ela lê o card da oportunidade, as reuniões do Fireflies presas a ela e o que
-                            você informar abaixo, e preenche todos os passos. Todos os campos são
-                            opcionais: o que você preencher vale como decisão, e o que faltar vem marcado
-                            como "[a confirmar: ...]".
-                          </p>
                           {/* O essencial em campo próprio, cada um opcional: o que o
                               operador já fechou vai como decisão, e o que ficar em
                               branco a IA tira do card e das reuniões. */}
