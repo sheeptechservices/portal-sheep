@@ -2163,7 +2163,7 @@ export function DetailPanel({
                       <div key={i} className="oportunidade-time-row">
                         <div className="oportunidade-time-name">
                           <span className="oportunidade-time-dot" style={{ background: st.cor }} />
-                          <span>{st.nome}</span>
+                          <span className="oportunidade-time-name-texto">{st.nome}</span>
                           {st.isCurrent && <span className="oportunidade-time-current">{st.frozen ? 'final' : 'atual'}</span>}
                         </div>
                         <div className="oportunidade-time-bar-wrap">

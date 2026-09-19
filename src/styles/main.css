@@ -10167,18 +10167,19 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 @keyframes deps-frame-spin { to { transform: rotate(360deg); } }
 
 /* ── Tempo por etapa ─────────────────────────────── */
+/* Uma grade só para a lista inteira, e não uma por linha: a coluna do nome
+   acompanha o nome mais longo, com o selo de "atual" ao lado, e as barras
+   continuam começando todas no mesmo ponto. Largura fixa cortava o selo de
+   quem tem nome comprido. Passada a metade do card, o nome corta com
+   reticências e o selo fica. */
 .oportunidade-time-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: fit-content(50%) 1fr auto;
+  align-items: center;
+  gap: 6px 10px;
 }
 
-.oportunidade-time-row {
-  display: grid;
-  grid-template-columns: 160px 1fr 64px;
-  align-items: center;
-  gap: 10px;
-}
+.oportunidade-time-row { display: contents; }
 
 .oportunidade-time-name {
   display: flex;
@@ -10198,6 +10199,12 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+
+.oportunidade-time-name-texto {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .oportunidade-time-current {
