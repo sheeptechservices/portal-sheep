@@ -404,13 +404,17 @@ type Aviso = (e: EventoDaAnalise) => void;
  *  processo inteiro parar de mandá-la. */
 let cacheAceito = true;
 
-type Resposta =
+export type Resposta =
   | { ok: true; res: Response }
   | { ok: false; status: number; erro: string; semCache?: boolean };
 
 /** Abre a chamada, com uma segunda tentativa quando a recusa é de fila cheia.
- *  429 e 529 são "volte já"; 401 e 400 são "não adianta insistir". */
-async function abrirChamada(apiKey: string, corpo: unknown): Promise<Resposta> {
+ *  429 e 529 são "volte já"; 401 e 400 são "não adianta insistir".
+ *
+ *  Exportada com `Resposta`: o preenchimento da proposta por IA conversa em
+ *  várias rodadas, com ferramentas, e abre cada uma por aqui. `betas` são os
+ *  cabeçalhos de recurso em teste que aquela chamada pede. */
+export async function abrirChamada(apiKey: string, corpo: unknown, betas: string[] = []): Promise<Resposta> {
   for (let tentativa = 0; tentativa < 2; tentativa++) {
     let res: Response;
     try {
@@ -420,6 +424,7 @@ async function abrirChamada(apiKey: string, corpo: unknown): Promise<Resposta> {
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
           'content-type': 'application/json',
+          ...(betas.length ? { 'anthropic-beta': betas.join(',') } : {}),
         },
         body: JSON.stringify(corpo),
       });
@@ -465,7 +470,7 @@ export const usoZerado = (): UsoDeTokens =>
 
 /** Soma o que a API informou. Vem de dois lugares - a resposta inteira, nas
  *  chamadas comuns, e os eventos `message_start` e `message_delta`, no fluxo. */
-function somarUso(uso: UsoDeTokens, u: any) {
+export function somarUso(uso: UsoDeTokens, u: any) {
   if (!u) return;
   uso.entrada += Number(u.input_tokens ?? 0);
   uso.saida += Number(u.output_tokens ?? 0);

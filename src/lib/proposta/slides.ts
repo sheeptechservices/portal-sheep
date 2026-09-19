@@ -12,8 +12,9 @@
 //  recomendada ter a borda verde-limão e o brilho.
 // ─────────────────────────────────────────────────────────────────────────────
 import type {
-  DadosProposta, Entrega, Fase, OpcaoInvestimento, PapelDoTime,
+  Cenario, DadosProposta, Entrega, Fase, InfraManutencao, OpcaoInvestimento, PapelDoTime,
 } from './tipos';
+import { CENARIOS, NOME_DO_CENARIO, numeroBr, reaisBr } from './tipos';
 import { textoEmHtml } from '../marcacao';
 
 /** Escapa o que vai para dentro do HTML da proposta. */
@@ -303,11 +304,111 @@ function slideInvestimento(d: DadosProposta): string {
   </div>`;
 }
 
+// ── Infra e manutenção ──────────────────────────────────────────────────────
+
+/** A soma de uma coluna, ou nulo se algum valor dela não for número: um
+ *  "[a confirmar]" somado como zero daria um total que parece certo e não é. */
+function somaDoCenario(inf: InfraManutencao, c: Cenario): number | null {
+  let total = 0;
+  for (const item of inf.itens) {
+    const n = numeroBr(item.valores[c]);
+    if (n == null) return null;
+    total += n;
+  }
+  return total;
+}
+
+/** Um valor em reais na tabela, ou o aviso de que ele ainda falta. */
+const celula = (n: number | null) => (n == null
+  ? '<span style="color:var(--gray2);font-weight:600">a confirmar</span>'
+  : `R$ ${reaisBr(n)}`);
+
+/**
+ * O custo de manter o sistema no ar depois da entrega.
+ *
+ * A tabela mostra os três cenários lado a lado, sempre: infra se estima, não
+ * se sabe, e um número só leria como promessa. O realista vem em destaque,
+ * porque é o que se espera. As três últimas linhas são contas, e não campos
+ * do formulário - o total que o cliente lê é a soma do que está acima dele.
+ */
+function slideInfra(inf: InfraManutencao): string {
+  const destaque = (c: Cenario) => (c === 'realista' ? 'background:var(--yd);' : '');
+  const th = 'text-align:right;padding:clamp(5px,0.6vw,9px) clamp(8px,0.8vw,12px);vertical-align:bottom';
+  const td = 'text-align:right;padding:clamp(4px,0.5vw,7px) clamp(8px,0.8vw,12px);white-space:nowrap';
+  const linhaDe = 'border-top:1px solid var(--gray3)';
+  const primeira = 'padding:clamp(4px,0.5vw,7px) clamp(8px,0.8vw,12px) clamp(4px,0.5vw,7px) 0';
+
+  const cabecalhoDaTabela = CENARIOS.map(c => `<th style="${th};${destaque(c)}">
+            <div style="font-size:clamp(8px,0.8vw,11px);font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:${c === 'realista' ? 'var(--yellow)' : 'var(--black)'}">${NOME_DO_CENARIO[c]}</div>
+            <div style="font-size:clamp(7px,0.66vw,9.5px);font-weight:500;color:var(--gray2);line-height:1.35;margin-top:2px;white-space:normal">${esc(inf.premissas[c])}</div>
+          </th>`).join('');
+
+  const linhas = inf.itens.map(item => `<tr style="${linhaDe}">
+            <td style="${primeira}">
+              <div style="font-size:clamp(9px,0.88vw,12.5px);font-weight:700;color:var(--black)">${esc(item.servico)}</div>
+              <div style="font-size:clamp(7px,0.66vw,9.5px);color:var(--gray2);line-height:1.35">${esc(item.detalhe)}</div>
+            </td>
+            ${CENARIOS.map(c => `<td style="${td};${destaque(c)};font-size:clamp(9px,0.88vw,12.5px);color:var(--black)">${celula(numeroBr(item.valores[c]))}</td>`).join('')}
+          </tr>`).join('');
+
+  const manutencao = numeroBr(inf.manutencao.valor);
+  const somas = CENARIOS.map(c => somaDoCenario(inf, c));
+  const totais = somas.map(n => (n == null || manutencao == null ? null : n + manutencao));
+  const linhaDeConta = (rotulo: string, valores: (number | null)[], forte: boolean) => `<tr style="${linhaDe}">
+            <td style="${primeira};font-size:clamp(8px,0.8vw,11px);font-weight:${forte ? 800 : 600};color:${forte ? 'var(--black)' : 'var(--gray)'};${forte ? 'text-transform:uppercase;letter-spacing:.06em' : ''}">${rotulo}</td>
+            ${CENARIOS.map((c, i) => `<td style="${td};${destaque(c)};font-size:${forte ? 'clamp(10px,1vw,14px)' : 'clamp(9px,0.84vw,12px)'};font-weight:${forte ? 800 : 600};color:${forte && c === 'realista' ? 'var(--yellow)' : 'var(--black)'}">${celula(valores[i])}</td>`).join('')}
+          </tr>`;
+
+  const rotuloDeLista = (texto: string, cor: string) =>
+    `<div style="font-size:clamp(7px,0.68vw,10px);font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:${cor};margin:clamp(8px,1vh,13px) 0 clamp(3px,0.4vh,6px)">${texto}</div>`;
+  const listaPequena = (itens: string[]) => `<ul style="margin:0;padding-left:1.1em;font-size:clamp(7.5px,0.72vw,10.5px);line-height:1.5;color:var(--gray)">${itens
+    .map(i => `<li>${esc(i)}</li>`).join('')}</ul>`;
+
+  return `<div class="slide">
+    ${cabecalho('Infra e manutenção')}
+    <div class="title sm a">Infra e manutenção</div>
+    <div class="rule a"></div>
+    <div class="a" style="display:grid;grid-template-columns:minmax(0,1.9fr) minmax(0,1fr);gap:clamp(14px,1.6vw,26px);align-items:start">
+      <div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr>
+            <th style="text-align:left;padding:0 0 clamp(5px,0.6vw,9px);vertical-align:bottom;font-size:clamp(7px,0.7vw,10px);font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--gray2)">Infra por mês</th>
+            ${cabecalhoDaTabela}
+          </tr></thead>
+          <tbody>
+            ${linhas}
+          </tbody>
+          <tfoot>
+            ${linhaDeConta('Infra', somas, false)}
+            ${linhaDeConta('Manutenção', CENARIOS.map(() => manutencao), false)}
+            ${linhaDeConta('Total por mês', totais, true)}
+          </tfoot>
+        </table>
+        ${inf.fonte.trim()
+          ? `<div style="margin-top:clamp(6px,0.8vh,10px);font-size:clamp(6.5px,0.62vw,9px);font-style:italic;color:var(--gray2);line-height:1.5">${esc(inf.fonte)}</div>`
+          : ''}
+      </div>
+      <div style="background:var(--white);border:1px solid var(--gray3);border-top:3px solid var(--yellow);border-radius:clamp(10px,1.1vw,16px);padding:clamp(12px,1.4vw,20px)">
+        <div class="eyebrow" style="margin:0">Manutenção</div>
+        <div class="price-figure" style="font-size:clamp(20px,2.2vw,32px);margin-top:clamp(4px,0.5vh,8px)"><sup style="color:var(--yellow)">R$</sup>${esc(inf.manutencao.valor)}</div>
+        <div class="price-unit" style="margin-top:clamp(2px,0.3vw,4px)">${esc(inf.manutencao.unidade)}</div>
+        ${inf.manutencao.inclui.length ? rotuloDeLista('Inclui', 'var(--black)') + listaPequena(inf.manutencao.inclui) : ''}
+        ${inf.manutencao.naoInclui.length ? rotuloDeLista('Não inclui', 'var(--gray2)') + listaPequena(inf.manutencao.naoInclui) : ''}
+      </div>
+    </div>
+    ${inf.nota.trim()
+      ? `<div class="note a" style="margin-top:clamp(10px,1.4vh,18px);font-size:clamp(9px,0.9vw,13px);line-height:1.55">${rico(inf.nota)}</div>`
+      : ''}
+    ${rodape}
+  </div>`;
+}
+
 // ── O conteúdo inteiro ──────────────────────────────────────────────────────
 
 /**
  * Os slides do projeto, na ordem que a casa fechou: o projeto, uma entrega por
- * slide, como funciona, cronograma e investimento.
+ * slide, como funciona, cronograma, investimento e, quando há sistema a manter
+ * no ar, infra e manutenção.
  */
 export function slidesDaProposta(d: DadosProposta): string {
   const partes: string[] = [slideProjeto(d)];
@@ -319,6 +420,9 @@ export function slidesDaProposta(d: DadosProposta): string {
   if (d.comoFunciona) partes.push(slideComoFunciona(d));
   partes.push(slideCronograma(d));
   partes.push(slideInvestimento(d));
+  // Logo depois do preço: é o custo que continua depois da entrega, e é a
+  // pergunta que o cliente faz em seguida.
+  if (d.infra) partes.push(slideInfra(d.infra));
 
   return partes.join('\n');
 }

@@ -58,9 +58,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const informado = req.body?.informado && typeof req.body.informado === 'object'
       ? req.body.informado : undefined;
-    const r = await preencherProposta(db, { oportunidadeId, contexto, informado },
+    // A volta de uma pergunta traz o estado que a tela guardou e as respostas.
+    // O estado tem teto: é a conversa do modelo, e não um lugar para despejar
+    // qualquer coisa.
+    const cru = req.body?.retomada;
+    const retomada = cru && typeof cru.estado === 'string' && cru.estado.length <= 2_000_000
+      && Array.isArray(cru.respostas)
+      ? {
+        estado: cru.estado,
+        respostas: cru.respostas.slice(0, 4).map((r: any) => ({
+          id: String(r?.id ?? ''),
+          resposta: r?.resposta == null ? null : String(r.resposta),
+        })),
+      }
+      : undefined;
+    const r = await preencherProposta(db, { oportunidadeId, contexto, informado, retomada },
       (e: EventoDaProposta) => mandar(e));
-    if (r.status !== 200) mandar({ tipo: 'erro', error: r.body?.error ?? 'Não foi possível preencher.' });
+    // Parou numa pergunta: o fluxo termina aqui, e a resposta volta num pedido
+    // novo, com o estado que vai junto.
+    if ('pausa' in r) mandar({ tipo: 'pergunta', ...r.pausa });
+    else if (r.status !== 200) mandar({ tipo: 'erro', error: r.body?.error ?? 'Não foi possível preencher.' });
     else mandar({ tipo: 'pronto', ...r.body });
   } catch (e: any) {
     mandar({ tipo: 'erro', error: e?.message || 'Não foi possível preencher.' });

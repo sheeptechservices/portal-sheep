@@ -82,6 +82,49 @@ export interface PapelDoTime {
   naoCobrado?: boolean;
 }
 
+/** Os três cenários de custo de infra, sempre juntos. Infra se estima, não se
+ *  sabe: mostrar uma faixa em vez de um número só deixa claro ao cliente que
+ *  o valor depende do uso, e protege a casa de um "vocês disseram 300". */
+export type Cenario = 'otimista' | 'realista' | 'pessimista';
+export const CENARIOS: Cenario[] = ['otimista', 'realista', 'pessimista'];
+export const NOME_DO_CENARIO: Record<Cenario, string> = {
+  otimista: 'Otimista', realista: 'Realista', pessimista: 'Pessimista',
+};
+
+/** Um serviço de nuvem que o sistema usa, com o custo mensal em cada cenário. */
+export interface ItemDeInfra {
+  /** O que ele é para o cliente: "Servidor da aplicação", "Banco de dados". */
+  servico: string;
+  /** O que foi precificado: "EC2 t4g.medium, São Paulo, 24h por dia". */
+  detalhe: string;
+  /** Custo por mês em reais, no formato brasileiro sem o "R$": "412,50". */
+  valores: Record<Cenario, string>;
+}
+
+/** O slide de infraestrutura e manutenção: o que custa manter o sistema no ar
+ *  depois da entrega, que é a pergunta que o cliente faz logo depois do preço. */
+export interface InfraManutencao {
+  /** O que cada cenário supõe: "até 200 usuários, 5 GB de dados". */
+  premissas: Record<Cenario, string>;
+  /** De um a seis serviços: é o que cabe na tabela do slide. */
+  itens: ItemDeInfra[];
+  /** De onde vêm os preços, para quem ler conferir: a tabela da AWS, a região,
+   *  a data e o dólar usado. */
+  fonte: string;
+  manutencao: {
+    /** Por mês, em reais, sem o "R$". O padrão da casa é 10% do valor mensal
+     *  do contrato. */
+    valor: string;
+    /** O que o valor compra: "por mês, a partir do go-live". */
+    unidade: string;
+    inclui: string[];
+    /** O que fica fora. Sem essa lista, manutenção vira escopo aberto. */
+    naoInclui: string[];
+  };
+  /** Uma nota curta sob a tabela: o que move o custo de um cenário para outro. */
+  nota: string;
+}
+
 export interface DadosProposta {
   // ── Capa e fechamento ────────────────────────────────────────────────────
   cliente: string;
@@ -118,6 +161,29 @@ export interface DadosProposta {
      *  valor. Mostrar a conta tira a conversa do "está caro". */
     memoria: string;
   };
+
+  /** Infra e manutenção. Opcional: sai quando não há sistema a manter no ar,
+   *  como numa consultoria ou em painéis dentro do Power BI do próprio
+   *  cliente. */
+  infra?: InfraManutencao;
+}
+
+/** Um número escrito no formato brasileiro ("1.234,56", "21.600"), lido como
+ *  número. Texto que não é número vale nulo, e não zero: um "[a confirmar]"
+ *  somado como zero faria um total que parece certo e não é. */
+export function numeroBr(v: string | undefined | null): number | null {
+  const s = String(v ?? '').replace(/R\$|\s/g, '');
+  if (!/^\d{1,3}(\.\d{3})*(,\d+)?$|^\d+(,\d+)?$/.test(s)) return null;
+  const n = Number(s.replace(/\./g, '').replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Um valor em reais no formato da proposta: sem centavos a partir de mil,
+ *  com centavos abaixo disso, que é onde eles ainda dizem alguma coisa. */
+export function reaisBr(n: number): string {
+  return n.toLocaleString('pt-BR', n >= 1000
+    ? { maximumFractionDigits: 0 }
+    : { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 /** O que o template pede, e que não muda de proposta para proposta. */
@@ -147,3 +213,27 @@ export const ETAPAS_PADRAO: Omit<Fase, 'de' | 'ate'>[] = [
   { nome: 'Documentação e treinamento', sub: [], entregas: [] },
   { nome: 'Mapeamento de necessidades', transversal: true, sub: [], entregas: [] },
 ];
+
+/**
+ * A manutenção que a casa sugere: 10% do valor mensal do contrato.
+ *
+ * O valor mensal é o da opção recomendada. Quando ela é por mês ("por mês ·
+ * 1 desenvolvedor"), é o próprio valor; num escopo fechado, é o total dividido
+ * pelos meses do cronograma. O resultado sobe para a dezena seguinte, que é
+ * como preço se escreve. Sem valor de contrato ainda, não há o que sugerir.
+ */
+export function manutencaoSugerida(d: DadosProposta): { valor: string; base: string } | null {
+  const opcao = d.investimento.opcoes.find(o => o.recomendada) ?? d.investimento.opcoes[0];
+  const valor = numeroBr(opcao?.valor);
+  if (!opcao || valor == null || valor <= 0) return null;
+  const mensal = /m[eê]s/i.test(opcao.unidade);
+  const meses = Math.max(1, d.cronograma.meses);
+  const porMes = mensal ? valor : valor / meses;
+  const sugerido = Math.ceil((porMes * 0.1) / 10) * 10;
+  return {
+    valor: reaisBr(sugerido),
+    base: mensal
+      ? `10% de R$ ${reaisBr(valor)} por mês`
+      : `10% de R$ ${reaisBr(valor)} em ${meses} ${meses === 1 ? 'mês' : 'meses'}`,
+  };
+}

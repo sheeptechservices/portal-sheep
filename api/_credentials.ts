@@ -113,6 +113,19 @@ export const ANTHROPIC_KEY = 'anthropic';
 export const FIREFLIES_KEY = 'fireflies';
 /** Identificador do Resend no cofre - o serviço que entrega os e-mails. */
 export const RESEND_KEY = 'resend';
+/** Identificador da AWS no cofre. É só para ler a tabela de preços: o segredo
+ *  é a Secret Access Key, e o Access Key ID, que não é segredo, vai nos
+ *  metadados. */
+export const AWS_PRECOS_KEY = 'aws_precos';
+
+/** A credencial da AWS inteira, pronta para assinar, ou nula se não houver. */
+export async function getAwsPrecosCredential(db: Client)
+  : Promise<{ accessKeyId: string; secretAccessKey: string } | null> {
+  const cred = await getIntegrationCredential(db, AWS_PRECOS_KEY).catch(() => null);
+  const id = String(cred?.meta?.accessKeyId ?? '').trim();
+  if (!cred?.value || !id) return null;
+  return { accessKeyId: id, secretAccessKey: cred.value };
+}
 // Opus 5 custa o mesmo que o 4.8 ($5/$25 por MTok) e é melhor em compreensão de
 // documento/visão - o que importa direto na leitura dos anexos da análise.
 export const DEFAULT_ANTHROPIC_MODEL = 'claude-opus-5';

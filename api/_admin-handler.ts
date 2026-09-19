@@ -8,7 +8,9 @@ import {
   validateFirefliesKey, listarModelosAnthropic, listarReunioesFireflies, obterReuniaoFireflies,
   obterTranscricaoFireflies,
   obterGravacaoFireflies,
+  AWS_PRECOS_KEY, getAwsPrecosCredential,
 } from './_credentials.js';
+import { validarChaveAws } from './_aws-precos.js';
 import {
   botaoEmail, citacaoEmail, codigoEmail, enderecoDoPortal, esc, fichaEmail, layoutEmail, notaEmail,
   notifyEmail, remetenteDeEmail, remetenteEndereco, textoEmail,
@@ -4481,6 +4483,29 @@ async function despacharAdminData(
       };
     }
 
+    // A AWS entra só para ler a tabela de preços: a IA do gerador de propostas
+    // estima o custo de infra por ela. A checagem é ao vivo, como nas outras.
+    if (action === 'aws_config') {
+      const cred = await getAwsPrecosCredential(db);
+      const salva = await getIntegrationCredential(db, AWS_PRECOS_KEY).catch(() => null);
+      if (!cred) {
+        return { status: 200, body: { has_key: false, connected: false, access_key_id: null, updated_at: null } };
+      }
+      const teste = await validarChaveAws(cred);
+      return {
+        status: 200,
+        body: {
+          has_key: true,
+          connected: teste.ok,
+          error: teste.ok ? null : (teste.error ?? 'Conexão inválida.'),
+          // Só o começo e o fim: o ID não é segredo, mas não precisa ficar
+          // inteiro na tela.
+          access_key_id: `${cred.accessKeyId.slice(0, 4)}...${cred.accessKeyId.slice(-4)}`,
+          updated_at: salva?.updatedAt ?? null,
+        },
+      };
+    }
+
     if (action === 'fireflies_config') {
       const cred = await getIntegrationCredential(db, FIREFLIES_KEY);
       if (!cred?.value) {
@@ -8683,6 +8708,30 @@ function faltaEmProjeto(p: any): string | null {
         validated_at: new Date().toISOString(),
       });
       return { status: 200, body: { ok: true, connected: true, conta: teste.conta ?? null } };
+    }
+
+    if (action === 'save_aws_key') {
+      const accessKeyId = String(body?.access_key_id ?? '').trim();
+      const secretAccessKey = String(body?.secret_access_key ?? '').trim();
+      if (!accessKeyId || !secretAccessKey) {
+        return { status: 400, body: { error: 'Informe o Access Key ID e a Secret Access Key.' } };
+      }
+      // Só grava o que funciona: a chave é testada contra a AWS antes.
+      const teste = await validarChaveAws({ accessKeyId, secretAccessKey });
+      if (!teste.ok) return { status: 400, body: { error: teste.error ?? 'Chave inválida.' } };
+      await saveIntegrationCredential(db, AWS_PRECOS_KEY, secretAccessKey, {
+        accessKeyId,
+        validated_at: new Date().toISOString(),
+      });
+      return {
+        status: 200,
+        body: { ok: true, connected: true, access_key_id: `${accessKeyId.slice(0, 4)}...${accessKeyId.slice(-4)}` },
+      };
+    }
+
+    if (action === 'remove_aws_key') {
+      await removeIntegrationCredential(db, AWS_PRECOS_KEY);
+      return { status: 200, body: { ok: true } };
     }
 
     if (action === 'remove_fireflies_key') {

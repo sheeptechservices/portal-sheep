@@ -16,12 +16,23 @@
 //  Três regras que o prompt carrega, porque são as que a casa cobra em toda
 //  proposta: nada de travessão, cronograma em meses com as cinco fases de
 //  nomes fixos, e valor só quando há base para ele.
+//
+//  A infra é a exceção ao "só o material": custo de nuvem não é especialidade
+//  da casa, então o modelo consulta a tabela de preços da AWS por ferramenta,
+//  e converte pela PTAX do dia. E quando falta um dado que muda a proposta -
+//  quantos usuários, quanto de dado -, ele pergunta ao operador no meio do
+//  caminho: o preenchimento pausa, a tela mostra a pergunta, e a resposta
+//  (ou o "não sei") retoma de onde parou.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { Client } from '@libsql/client';
 import {
-  FIREFLIES_KEY, getAnthropicCredential, getIntegrationCredential, obterTranscricaoFireflies,
+  FIREFLIES_KEY, getAnthropicCredential, getAwsPrecosCredential, getIntegrationCredential,
+  obterTranscricaoFireflies,
 } from './_credentials.js';
-import { pedirEmFluxo, usoZerado, type UsoDeTokens } from './_analise-vaga.js';
+import { abrirChamada, somarUso, usoZerado, type UsoDeTokens } from './_analise-vaga.js';
+import {
+  consultarPrecosAws, cotacaoDoDolar, valoresDeAtributoAws, type CredencialAws,
+} from './_aws-precos.js';
 
 /** O que o preenchimento conta enquanto acontece. */
 export type EventoDaProposta =
@@ -35,10 +46,26 @@ export type EventoDaProposta =
   | { tipo: 'secao'; secao: SecaoEscrita }
   /** Chegou mais texto, dentro da mesma parte: sinal de vida. */
   | { tipo: 'escrevendo'; letras: number }
+  /** Consultou a tabela de preços da AWS. `rotulo` é o serviço em português. */
+  | { tipo: 'aws'; rotulo: string; consultas: number }
   /** Terminou de escrever e está conferindo o que veio. */
   | { tipo: 'conferindo' };
 
-export type SecaoEscrita = 'capa' | 'projeto' | 'entregas' | 'operacao' | 'cronograma' | 'investimento';
+/** Uma pergunta que a IA faz ao operador no meio do preenchimento. */
+export interface PerguntaDaIa {
+  id: string;
+  pergunta: string;
+  /** Um exemplo de resposta, que vira o texto de apoio do campo. */
+  exemplo: string;
+}
+
+/** O que o operador respondeu. `resposta` nula é "não sei". */
+export interface RespostaDoOperador {
+  id: string;
+  resposta: string | null;
+}
+
+export type SecaoEscrita = 'capa' | 'projeto' | 'entregas' | 'operacao' | 'cronograma' | 'investimento' | 'infra';
 
 /** As partes na ordem em que o JSON é escrito, com a chave que abre cada uma.
  *  É por ela que o progresso sabe onde o modelo está. */
@@ -49,6 +76,7 @@ const PARTES: { secao: SecaoEscrita; chave: string }[] = [
   { secao: 'operacao', chave: '"comoFunciona"' },
   { secao: 'cronograma', chave: '"cronograma"' },
   { secao: 'investimento', chave: '"investimento"' },
+  { secao: 'infra', chave: '"infra"' },
 ];
 
 /** As fases do cronograma, com os nomes que a casa fechou. O modelo escolhe os
@@ -249,9 +277,23 @@ A estrutura:
   - Valor só com base: o valor estimado do card ou o que foi dito nas reuniões ou no contexto. Sem base, deixe valor "" e explique na memória o que falta.
   - time: os papéis alocados, de 1 a 6. papel (ex.: "Desenvolvedor"), quantidade (quantas pessoas no papel, 1 a 20), dedicacao (ex.: "8h por dia"), descricao (o que faz no projeto, 1 frase) e naoCobrado (true só para papel que a casa não cobra; o Gestor de Projetos costuma ser não cobrado).
   - memoria: a conta que chega ao valor (hora-homem, jornada, dias úteis e a multiplicação). Sem base para a conta, deixe "".
+- infra: o custo mensal de manter o sistema no ar depois do go-live, e a manutenção. Use null só quando não houver sistema hospedado a manter (consultoria, painéis dentro do Power BI do próprio cliente sem servidor, automação que roda na infraestrutura do cliente).
+  - Custo de infraestrutura não é a especialidade da casa, então nada de estimar de memória: todo valor de infra vem da tabela de preços da AWS, pela ferramenta consultar_preco_aws. Use valores_de_atributo_aws quando não souber o nome exato de um valor de filtro. Escolha a arquitetura mais simples que atende o projeto, sem superdimensionar, na região de São Paulo (sa-east-1) salvo indicação contrária.
+  - Filtros que costumam funcionar: EC2 com regionCode, instanceType, operatingSystem "Linux", tenancy "Shared", preInstalledSw "NA" e capacitystatus "Used". RDS com regionCode, instanceType (ex.: "db.t4g.micro"), databaseEngine (ex.: "PostgreSQL") e deploymentOption "Single-AZ". Preço por hora vezes 730 dá o mês. Se uma consulta voltar vazia, ajuste os filtros em vez de desistir.
+  - Converta de dólar para real pela cotação informada no material e escreva os valores no formato brasileiro, com vírgula decimal e sem "R$" (ex.: "412,50").
+  - Sempre três cenários: otimista (uso abaixo do esperado), realista (o esperado) e pessimista (pico ou crescimento acima do previsto). premissas descreve cada um em uma linha curta, de no máximo 90 caracteres, com os números que o sustentam (ex.: "80 operadoras, 250 usuários, 10 mil consultas por mês"). Ela aparece em letra pequena sob o nome do cenário, na tabela.
+  - itens: de 2 a 6 serviços, agrupados de um jeito que o cliente entenda ("Servidor da aplicação", "Banco de dados", "Armazenamento de arquivos", "Tráfego e CDN", "Backup e monitoramento"). servico é esse nome; detalhe é o que foi precificado, em no máximo 60 caracteres ("EC2 t4g.medium, 24h por dia"); valores tem o custo mensal em cada cenário.
+  - fonte: de onde vêm os preços, numa linha: "Tabela de preços da AWS consultada em DD/MM/AAAA, região São Paulo (sa-east-1), preços sob demanda. Dólar a R$ X (PTAX de DD/MM/AAAA)."
+  - manutencao: valor por mês. Se o operador informou, use o dele. Se não, o padrão da casa é 10% do valor mensal do contrato: o da opção recomendada, e num escopo fechado o valor total dividido pelos meses do cronograma, arredondado para cima na dezena. Sem valor de contrato, deixe "". unidade: "por mês, a partir do go-live". inclui: 3 a 5 pontos curtos (correções, atualizações de segurança, monitoramento e backups, suporte em horário comercial, pequenos ajustes). naoInclui: 2 a 3 pontos (funcionalidades novas, mudanças de escopo, o custo da própria infraestrutura).
+  - nota: uma ou duas frases sobre o que move o custo de um cenário para o outro. Não afirme quem paga a infraestrutura, a menos que o material diga.
 
-Responda só com o JSON, sem texto antes nem depois, exatamente neste formato:
-{"cliente":"","subtitulo":"","projeto":"","ganhos":[""],"entregas":[{"nome":"","resumo":"","itens":[""]}],"comoFunciona":{"linhaFina":"","passos":[{"titulo":"","texto":""}],"nota":""},"cronograma":{"meses":4,"fases":[{"nome":"","de":1,"ate":1,"sub":[""],"entregas":[""]}]},"investimento":{"opcoes":[{"titulo":"","valor":"","unidade":"","destaque":null,"bullets":[""]}],"time":[{"papel":"","quantidade":1,"dedicacao":"","descricao":"","naoCobrado":false}],"memoria":""}}`;
+Perguntas ao operador:
+- Quando o material não trouxer algo que muda a proposta de fato, pergunte ao operador com a ferramenta perguntar_ao_operador em vez de supor. O caso típico é a infra: número de usuários esperado, volume de dados ou de arquivos, picos de acesso, se o cliente já tem conta na nuvem. Também vale para uma dúvida decisiva de escopo ou de valor.
+- Junte tudo numa chamada só, logo no começo, antes de consultar preços: até 4 perguntas curtas, cada uma com um exemplo de resposta. Não pergunte o que já está no material nem o que o operador já informou.
+- O operador pode responder que não sabe. Nesse caso, siga com uma suposição razoável, abra mais a distância entre os três cenários e escreva nas premissas o que foi suposto.
+
+Quando terminar de consultar e perguntar, responda só com o JSON, sem texto antes nem depois, exatamente neste formato:
+{"cliente":"","subtitulo":"","projeto":"","ganhos":[""],"entregas":[{"nome":"","resumo":"","itens":[""]}],"comoFunciona":{"linhaFina":"","passos":[{"titulo":"","texto":""}],"nota":""},"cronograma":{"meses":4,"fases":[{"nome":"","de":1,"ate":1,"sub":[""],"entregas":[""]}]},"investimento":{"opcoes":[{"titulo":"","valor":"","unidade":"","destaque":null,"bullets":[""]}],"time":[{"papel":"","quantidade":1,"dedicacao":"","descricao":"","naoCobrado":false}],"memoria":""},"infra":{"premissas":{"otimista":"","realista":"","pessimista":""},"itens":[{"servico":"","detalhe":"","valores":{"otimista":"","realista":"","pessimista":""}}],"fonte":"","manutencao":{"valor":"","unidade":"","inclui":[""],"naoInclui":[""]},"nota":""}}`;
 
 // ── A resposta, conferida ───────────────────────────────────────────────────
 
@@ -326,6 +368,29 @@ export function conferirProposta(bruto: any) {
     }))
     .filter((p: any) => p.papel);
 
+  const inf = bruto?.infra;
+  const cenarios = ['otimista', 'realista', 'pessimista'] as const;
+  const porCenario = (v: any, conferir: (x: unknown) => string) =>
+    Object.fromEntries(cenarios.map(c => [c, conferir(v?.[c])])) as Record<typeof cenarios[number], string>;
+  const infra = inf && typeof inf === 'object'
+    ? {
+      premissas: porCenario(inf.premissas, x => curto(x, 200)),
+      itens: (Array.isArray(inf.itens) ? inf.itens : []).slice(0, 6).map((i: any) => ({
+        servico: limpo(i?.servico, 60),
+        detalhe: curto(i?.detalhe, 140),
+        valores: porCenario(i?.valores, valorEmReais),
+      })).filter((i: any) => i.servico),
+      fonte: limpo(inf.fonte, 300),
+      manutencao: {
+        valor: valorEmReais(inf.manutencao?.valor),
+        unidade: limpo(inf.manutencao?.unidade, 80) || 'por mês, a partir do go-live',
+        inclui: listaDe(inf.manutencao?.inclui, 5, 140),
+        naoInclui: listaDe(inf.manutencao?.naoInclui, 4, 140),
+      },
+      nota: limpo(inf.nota, 500),
+    }
+    : null;
+
   const como = bruto?.comoFunciona;
   const comoFunciona = como && typeof como === 'object'
     ? {
@@ -357,7 +422,32 @@ export function conferirProposta(bruto: any) {
       time,
       memoria: limpo(bruto?.investimento?.memoria, 1500),
     },
+    infra,
   };
+}
+
+/** Texto com teto, cortado entre palavras. O teto existe para o slide, e um
+ *  corte no meio da palavra ("dos últi") leria como erro de digitação no
+ *  arquivo que vai ao cliente. */
+function curto(v: unknown, teto: number): string {
+  const s = limpo(v, 4000);
+  if (s.length <= teto) return s;
+  const corte = s.slice(0, teto);
+  const espaco = corte.lastIndexOf(' ');
+  return (espaco > teto * 0.6 ? corte.slice(0, espaco) : corte).replace(/[\s,;:.-]+$/, '');
+}
+
+/** Um valor em reais como o formulário guarda: formato brasileiro, sem o
+ *  "R$". O modelo às vezes devolve número em vez de texto (412.5); esse vira
+ *  "412,50". Texto que não é número ("[a confirmar: ...]") passa como está,
+ *  para o operador ver o que falta. */
+function valorEmReais(v: unknown): string {
+  if (typeof v === 'number' && Number.isFinite(v)) {
+    return v.toLocaleString('pt-BR', v >= 1000
+      ? { maximumFractionDigits: 0 }
+      : { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  return limpo(v, 60).replace(/^R\$\s*/i, '');
 }
 
 /**
@@ -454,11 +544,310 @@ Estes pontos foram fechados por quem está montando a proposta. Use-os exatament
 ${linhas.join('\n')}`;
 }
 
+// ── As ferramentas ─────────────────────────────────────────────────────────
+
+/** Os serviços da AWS em português, para a janela de progresso dizer o que
+ *  está sendo consultado sem mostrar código de produto. */
+const NOME_DO_SERVICO: Record<string, string> = {
+  AmazonEC2: 'servidores (EC2)',
+  AmazonRDS: 'banco de dados (RDS)',
+  AmazonS3: 'armazenamento (S3)',
+  AWSLambda: 'funções (Lambda)',
+  AmazonCloudFront: 'CDN (CloudFront)',
+  AmazonECS: 'contêineres (ECS)',
+  AmazonElastiCache: 'cache (ElastiCache)',
+  AmazonCloudWatch: 'monitoramento (CloudWatch)',
+  AWSDataTransfer: 'tráfego de dados',
+  AmazonSES: 'e-mail (SES)',
+  AmazonApiGateway: 'API Gateway',
+  AmazonDynamoDB: 'DynamoDB',
+  AmazonVPC: 'rede (VPC)',
+  AWSELB: 'balanceador de carga',
+  AmazonEFS: 'arquivos (EFS)',
+  AWSBackup: 'backup',
+};
+
+const FERRAMENTA_PRECO = {
+  name: 'consultar_preco_aws',
+  description: 'Consulta a tabela oficial e atualizada de preços da AWS (preço sob demanda, em dólar). Use para todo valor de infraestrutura da proposta, sempre antes de escrever a seção infra: nunca estime custo de nuvem de memória. Cada filtro é igualdade exata sobre um atributo da AWS. Devolve até `limite` itens, cada um com os atributos que o identificam e o preço por unidade.',
+  eager_input_streaming: true,
+  input_schema: {
+    type: 'object',
+    properties: {
+      servico: {
+        type: 'string',
+        description: 'Código do serviço na tabela da AWS, ex.: AmazonEC2, AmazonRDS, AmazonS3, AWSLambda, AmazonCloudFront, AmazonElastiCache, AWSDataTransfer, AWSELB.',
+      },
+      filtros: {
+        type: 'array',
+        description: 'Filtros de igualdade exata, ex.: [{"campo":"regionCode","valor":"sa-east-1"},{"campo":"instanceType","valor":"t4g.medium"}].',
+        items: {
+          type: 'object',
+          properties: { campo: { type: 'string' }, valor: { type: 'string' } },
+          required: ['campo', 'valor'],
+        },
+      },
+      limite: { type: 'integer', description: 'Quantos itens devolver, de 1 a 20. Padrão 10.' },
+    },
+    required: ['servico', 'filtros'],
+  },
+};
+
+const FERRAMENTA_ATRIBUTO = {
+  name: 'valores_de_atributo_aws',
+  description: 'Lista os valores que um atributo assume num serviço da AWS (ex.: os instanceType do AmazonRDS, os databaseEngine, as storageClass do AmazonS3). Use quando não souber o nome exato de um valor antes de filtrar com consultar_preco_aws, ou quando uma consulta voltou vazia.',
+  eager_input_streaming: true,
+  input_schema: {
+    type: 'object',
+    properties: {
+      servico: { type: 'string', description: 'Código do serviço, ex.: AmazonRDS.' },
+      atributo: { type: 'string', description: 'Nome do atributo, ex.: instanceType, databaseEngine, storageClass.' },
+    },
+    required: ['servico', 'atributo'],
+  },
+};
+
+const FERRAMENTA_PERGUNTA = {
+  name: 'perguntar_ao_operador',
+  description: 'Pausa o preenchimento e pergunta ao operador o que falta no material e muda a proposta de fato: número de usuários, volume de dados, picos de acesso, se o cliente já tem nuvem, uma dúvida decisiva de escopo ou de valor. Junte tudo numa chamada só, no começo, antes de consultar preços. A resposta volta como resultado desta ferramenta; resposta nula quer dizer que o operador não sabe.',
+  eager_input_streaming: true,
+  input_schema: {
+    type: 'object',
+    properties: {
+      perguntas: {
+        type: 'array',
+        description: 'De 1 a 4 perguntas curtas.',
+        items: {
+          type: 'object',
+          properties: {
+            pergunta: { type: 'string', description: 'A pergunta, curta e direta.' },
+            exemplo: { type: 'string', description: 'Um exemplo de resposta, ex.: "cerca de 300 usuários".' },
+          },
+          required: ['pergunta'],
+        },
+      },
+    },
+    required: ['perguntas'],
+  },
+};
+
+/** Tetos do laço. Cada rodada é uma ida ao modelo; as consultas são idas à
+ *  AWS. Um preenchimento normal usa três ou quatro rodadas e umas seis
+ *  consultas - os tetos só existem para um laço torto não correr até o fim do
+ *  tempo da função. */
+const MAX_RODADAS = 12;
+const MAX_CONSULTAS = 24;
+const MAX_PERGUNTAS = 2;
+
+type Bloco = Record<string, any>;
+interface Mensagem { role: 'user' | 'assistant'; content: Bloco[] }
+
+/**
+ * O preenchimento parado numa pergunta ao operador.
+ *
+ * O servidor não guarda nada entre um pedido e outro: a conversa inteira vai
+ * para a tela junto com a pergunta e volta com a resposta. O material do card
+ * não viaja - ele é montado de novo, igual, no pedido seguinte, e o cache de
+ * prompt da Anthropic devolve o que já foi lido pela fração do preço.
+ */
+interface Pausa {
+  /** A conversa depois do material: as rodadas do modelo e os resultados. */
+  conversa: Mensagem[];
+  /** O `tool_use` da pergunta, que a resposta vai fechar. */
+  perguntaId: string;
+  /** Resultados de outras ferramentas pedidas na mesma rodada da pergunta. */
+  prontos: Bloco[];
+  consultas: number;
+  perguntas: number;
+  /** O dólar do começo: a resposta não pode chegar com outra cotação, senão o
+   *  material muda e o cache se perde. */
+  dolar: { valor: number; data: string } | null;
+}
+
+/** Valida o que o modelo pediu a uma ferramenta. Com a entrada em fluxo, a API
+ *  não confere o formato, então a conferência é daqui. */
+function entradaValida(nome: string, e: any): string | null {
+  if (!e || typeof e !== 'object') return 'entrada vazia';
+  if (nome === 'consultar_preco_aws') {
+    if (!/^[A-Za-z0-9]{2,60}$/.test(String(e.servico ?? ''))) return 'servico inválido';
+    if (!Array.isArray(e.filtros) || e.filtros.length > 12) return 'filtros deve ser uma lista de até 12';
+    if (e.filtros.some((f: any) => typeof f?.campo !== 'string' || typeof f?.valor !== 'string')) {
+      return 'cada filtro precisa de campo e valor em texto';
+    }
+    return null;
+  }
+  if (nome === 'valores_de_atributo_aws') {
+    if (!/^[A-Za-z0-9]{2,60}$/.test(String(e.servico ?? ''))) return 'servico inválido';
+    if (!/^[A-Za-z0-9]{1,60}$/.test(String(e.atributo ?? ''))) return 'atributo inválido';
+    return null;
+  }
+  if (nome === 'perguntar_ao_operador') {
+    if (!Array.isArray(e.perguntas) || !e.perguntas.length || e.perguntas.length > 4) {
+      return 'perguntas deve ter de 1 a 4 itens';
+    }
+    if (e.perguntas.some((q: any) => !String(q?.pergunta ?? '').trim())) return 'pergunta vazia';
+    return null;
+  }
+  return 'ferramenta desconhecida';
+}
+
+const resultado = (id: string, conteudo: unknown, erro = false): Bloco => ({
+  type: 'tool_result',
+  tool_use_id: id,
+  content: typeof conteudo === 'string' ? conteudo : JSON.stringify(conteudo),
+  ...(erro ? { is_error: true } : {}),
+});
+
+/** Roda uma ferramenta de consulta (a pergunta não passa por aqui). */
+async function rodarFerramenta(
+  aws: CredencialAws | null, nome: string, entrada: any,
+): Promise<{ conteudo: unknown; erro: boolean }> {
+  if (!aws) {
+    return { conteudo: 'A consulta à AWS não está configurada neste portal.', erro: true };
+  }
+  if (nome === 'consultar_preco_aws') {
+    const r = await consultarPrecosAws(aws, {
+      servico: entrada.servico,
+      filtros: entrada.filtros.map((f: any) => ({ campo: String(f.campo), valor: String(f.valor) })),
+      limite: Number(entrada.limite) || 10,
+    });
+    if (!r.ok) return { conteudo: r.erro, erro: true };
+    if (!r.itens.length) {
+      return {
+        conteudo: 'Nenhum item com esses filtros. Confira os nomes com valores_de_atributo_aws ou afrouxe um filtro.',
+        erro: false,
+      };
+    }
+    // Teto de tamanho: a resposta volta para o contexto do modelo a cada
+    // rodada seguinte, e vinte itens com a ficha inteira pesariam à toa.
+    return { conteudo: JSON.stringify({ itens: r.itens, haMais: r.haMais }).slice(0, 12000), erro: false };
+  }
+  const r = await valoresDeAtributoAws(aws, entrada.servico, entrada.atributo);
+  if (!r.ok) return { conteudo: r.erro, erro: true };
+  return { conteudo: { valores: r.valores }, erro: false };
+}
+
+// ── Uma rodada em fluxo ─────────────────────────────────────────────────────
+
+/** Tira a marca de cache dos blocos, para a segunda tentativa quando a conta
+ *  recusa o cache. */
+const semMarca = (mensagens: Mensagem[]): Mensagem[] => mensagens.map(m => ({
+  ...m,
+  content: m.content.map(b => { const { cache_control, ...resto } = b; return resto; }),
+}));
+
+/**
+ * Uma ida ao modelo, em fluxo, montando os blocos da resposta à medida que
+ * chegam.
+ *
+ * Os blocos voltam inteiros, do jeito que a API os mandou - o pensamento com a
+ * assinatura, o pedido de ferramenta com a entrada -, porque na rodada
+ * seguinte eles precisam ser devolvidos exatamente assim. O texto é contado a
+ * quem pediu enquanto chega: é por ele que a janela sabe que parte da
+ * proposta está sendo escrita.
+ */
+async function rodadaEmFluxo(p: {
+  apiKey: string;
+  corpo: Record<string, any>;
+  betas: string[];
+  uso: UsoDeTokens;
+  aoLer: (texto: string) => void;
+}): Promise<
+  | { ok: true; blocos: Bloco[]; parada: string }
+  | { ok: false; status: number; erro: string; semCache?: boolean }
+> {
+  const aberta = await abrirChamada(p.apiKey, { ...p.corpo, stream: true }, p.betas);
+  if (!aberta.ok) return aberta;
+  const leitor = aberta.res.body?.getReader();
+  if (!leitor) return { ok: false, status: 502, erro: 'A Anthropic respondeu sem corpo.' };
+  p.uso.chamadas++;
+
+  const decodificador = new TextDecoder();
+  const blocos: Bloco[] = [];
+  const entradas: Record<number, string> = {};
+  let sobra = '';
+  let texto = '';
+  let parada = '';
+
+  for (;;) {
+    const { done, value } = await leitor.read();
+    if (done) break;
+    sobra += decodificador.decode(value, { stream: true });
+    const partes = sobra.split('\n\n');
+    sobra = partes.pop() ?? '';
+    for (const parte of partes) {
+      const linhaDeDados = parte.split('\n').find(l => l.startsWith('data:'));
+      if (!linhaDeDados) continue;
+      let ev: any;
+      try { ev = JSON.parse(linhaDeDados.slice(5).trim()); } catch { continue; }
+
+      if (ev.type === 'error') {
+        return { ok: false, status: 502, erro: String(ev.error?.message ?? 'A Anthropic interrompeu o preenchimento.') };
+      }
+      if (ev.type === 'message_start') somarUso(p.uso, ev.message?.usage);
+      if (ev.type === 'message_delta') {
+        somarUso(p.uso, ev.usage);
+        if (ev.delta?.stop_reason) parada = String(ev.delta.stop_reason);
+      }
+      if (ev.type === 'content_block_start') {
+        const b = { ...(ev.content_block ?? {}) };
+        if (b.type === 'tool_use') entradas[ev.index] = '';
+        blocos[ev.index] = b;
+      }
+      if (ev.type === 'content_block_delta') {
+        const b = blocos[ev.index];
+        const d = ev.delta ?? {};
+        if (!b) continue;
+        if (d.type === 'text_delta') {
+          b.text = String(b.text ?? '') + String(d.text ?? '');
+          texto += String(d.text ?? '');
+          p.aoLer(texto);
+        } else if (d.type === 'thinking_delta') {
+          b.thinking = String(b.thinking ?? '') + String(d.thinking ?? '');
+        } else if (d.type === 'signature_delta') {
+          b.signature = String(d.signature ?? '');
+        } else if (d.type === 'input_json_delta') {
+          entradas[ev.index] = (entradas[ev.index] ?? '') + String(d.partial_json ?? '');
+        }
+      }
+      if (ev.type === 'content_block_stop') {
+        const b = blocos[ev.index];
+        if (b?.type === 'tool_use') {
+          const cru = entradas[ev.index] ?? '';
+          try {
+            b.input = cru.trim() ? JSON.parse(cru) : {};
+          } catch {
+            // Entrada que não é JSON: o bloco segue com o texto cru guardado à
+            // parte, e a rodada seguinte devolve o erro ao modelo para ele
+            // pedir de novo, em vez de derrubar o preenchimento.
+            b.input = {};
+            Object.defineProperty(b, 'entradaInvalida', { value: cru, enumerable: false });
+          }
+        }
+      }
+    }
+  }
+  return { ok: true, blocos: blocos.filter(Boolean), parada };
+}
+
+// ── A porta de entrada ──────────────────────────────────────────────────────
+
+/** O resultado de um pedido: a proposta pronta, ou a pergunta que o parou. */
+export type SaidaDoPreenchimento =
+  | { status: number; body: any }
+  | { status: 200; pausa: { perguntas: PerguntaDaIa[]; estado: string } };
+
 export async function preencherProposta(
   db: Client,
-  pedido: { oportunidadeId: string; contexto: string; informado?: Informado },
+  pedido: {
+    oportunidadeId: string;
+    contexto: string;
+    informado?: Informado;
+    /** A volta de uma pergunta: o estado que a tela guardou e as respostas. */
+    retomada?: { estado: string; respostas: RespostaDoOperador[] };
+  },
   avisar: (e: EventoDaProposta) => void = () => {},
-): Promise<{ status: number; body: any }> {
+): Promise<SaidaDoPreenchimento> {
   const cred = await getAnthropicCredential(db);
   if (!cred) {
     return {
@@ -467,11 +856,37 @@ export async function preencherProposta(
     };
   }
 
-  const material = await montarMaterial(db, pedido.oportunidadeId, avisar);
+  let pausa: Pausa | null = null;
+  if (pedido.retomada) {
+    try { pausa = JSON.parse(pedido.retomada.estado) as Pausa; } catch { pausa = null; }
+    if (!pausa || !Array.isArray(pausa.conversa) || !pausa.perguntaId) {
+      return { status: 400, body: { error: 'O preenchimento que estava parado não pôde ser retomado. Comece de novo.' } };
+    }
+  }
+
+  // Na volta de uma pergunta, o material é montado de novo sem contar nada à
+  // tela: ela já mostrou essa parte, e a janela não deve andar para trás.
+  const material = await montarMaterial(db, pedido.oportunidadeId, pausa ? () => {} : avisar);
   if (!material) return { status: 404, body: { error: 'Oportunidade não encontrada.' } };
 
+  const [aws, dolar] = await Promise.all([
+    getAwsPrecosCredential(db).catch(() => null),
+    pausa ? Promise.resolve(pausa.dolar) : cotacaoDoDolar(),
+  ]);
+
+  const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  const infraTexto = [
+    `# Para a infra\n\nHoje é ${hoje}.`,
+    dolar
+      ? `Dólar para a conversão: R$ ${dolar.valor.toLocaleString('pt-BR', { minimumFractionDigits: 4 })} (PTAX de venda do Banco Central de ${dolar.data.split('-').reverse().join('/')}).`
+      : 'A cotação do dólar não pôde ser consultada agora. Deixe os valores de infra como "[a confirmar: câmbio]" e diga isso na fonte.',
+    aws
+      ? 'A tabela de preços da AWS está disponível pelas ferramentas.'
+      : 'A consulta à tabela da AWS não está configurada neste portal. Monte a infra com a estrutura e as premissas, deixe os valores como "[a confirmar]" e diga na fonte que os preços ainda precisam ser consultados.',
+  ].join('\n');
+
   const informado = pedido.informado ? blocoDoInformado(pedido.informado) : null;
-  const conteudo = [
+  const conteudo: Bloco[] = [
     { type: 'text', text: material.texto },
     ...(informado ? [{ type: 'text', text: informado }] : []),
     {
@@ -480,38 +895,137 @@ export async function preencherProposta(
         ? `# Contexto do operador\n\nO que quem está montando a proposta quer que você leve em conta, e que vale acima do resto do material quando os dois discordarem:\n\n${pedido.contexto}`
         : '# Contexto do operador\n\nNenhum. Use só o material acima.',
     },
+    // A marca de cache fica no fim do que não muda entre as rodadas: tudo até
+    // aqui é lido do cache na segunda rodada em diante, e na volta de uma
+    // pergunta também.
+    { type: 'text', text: infraTexto, cache_control: { type: 'ephemeral' } },
   ];
+
+  const ferramentas = aws
+    ? [FERRAMENTA_PRECO, FERRAMENTA_ATRIBUTO, FERRAMENTA_PERGUNTA]
+    : [FERRAMENTA_PERGUNTA];
+
+  // Na volta, a resposta fecha a pergunta que ficou aberta, junto com o que
+  // mais tinha sido pedido naquela rodada.
+  const conversa: Mensagem[] = pausa ? [...pausa.conversa] : [];
+  let consultas = pausa?.consultas ?? 0;
+  let perguntas = pausa?.perguntas ?? 0;
+  if (pausa && pedido.retomada) {
+    const respostas = pedido.retomada.respostas.map(r => ({
+      id: r.id,
+      resposta: r.resposta == null || !String(r.resposta).trim()
+        ? 'O operador não sabe. Siga com uma suposição razoável e abra mais a distância entre os cenários.'
+        : String(r.resposta).slice(0, 1000),
+    }));
+    conversa.push({ role: 'user', content: [...pausa.prontos, resultado(pausa.perguntaId, { respostas })] });
+  }
 
   avisar({ tipo: 'pensando' });
   const uso: UsoDeTokens = usoZerado();
+  // O Opus 5 pode recusar um pedido pelos classificadores de segurança; com o
+  // `fallbacks`, a própria API refaz o pedido em outro modelo em vez de
+  // devolver a recusa. Numa proposta comercial é improvável, e por isso mesmo
+  // não vale deixar o operador sem rascunho quando acontecer.
+  const comFallback = /^claude-(opus-5|fable-5-1)/.test(cred.model);
+  let comCache = true;
   let secao: SecaoEscrita | null = null;
   let ultimoAviso = 0;
-  const fluxo = await pedirEmFluxo(
-    { apiKey: cred.apiKey, modelo: cred.model, system: INSTRUCOES, conteudo, maxTokens: 12000, uso },
-    texto => {
-      // A parte em que o modelo está é a última cuja chave já apareceu.
-      const atual = [...PARTES].reverse().find(p => texto.includes(p.chave))?.secao ?? null;
-      if (atual && atual !== secao) {
-        secao = atual;
-        avisar({ tipo: 'secao', secao: atual });
+  let textoFinal = '';
+
+  for (let rodada = 0; rodada < MAX_RODADAS; rodada++) {
+    const mensagens: Mensagem[] = [{ role: 'user', content: conteudo }, ...conversa];
+    const r = await rodadaEmFluxo({
+      apiKey: cred.apiKey,
+      betas: comFallback ? ['server-side-fallback-2026-07-01'] : [],
+      uso,
+      corpo: {
+        model: cred.model,
+        max_tokens: 32000,
+        system: INSTRUCOES,
+        tools: ferramentas,
+        messages: comCache ? mensagens : semMarca(mensagens),
+        ...(comFallback ? { fallbacks: 'default' } : {}),
+      },
+      aoLer: texto => {
+        const atual = [...PARTES].reverse().find(p => texto.includes(p.chave))?.secao ?? null;
+        if (atual && atual !== secao) {
+          secao = atual;
+          avisar({ tipo: 'secao', secao: atual });
+        }
+        if (texto.length - ultimoAviso >= 400) {
+          ultimoAviso = texto.length;
+          avisar({ tipo: 'escrevendo', letras: texto.length });
+        }
+      },
+    });
+    if (!r.ok) {
+      if (r.semCache && comCache) { comCache = false; rodada--; continue; }
+      return { status: r.status, body: { error: r.erro } };
+    }
+
+    conversa.push({ role: 'assistant', content: r.blocos });
+    if (r.parada === 'refusal') {
+      return { status: 502, body: { error: 'A IA recusou este preenchimento. Tente reescrever o contexto.' } };
+    }
+    if (r.parada === 'max_tokens') {
+      return { status: 502, body: { error: 'A resposta da IA passou do tamanho máximo. Tente de novo.' } };
+    }
+    if (r.parada !== 'tool_use') {
+      textoFinal = r.blocos.filter(b => b.type === 'text').map(b => String(b.text ?? '')).join('');
+      break;
+    }
+
+    // As ferramentas pedidas nesta rodada. A pergunta para tudo; as consultas
+    // correm em paralelo, porque três preços são três idas à AWS ao mesmo
+    // tempo, e não uma fila.
+    const pedidos = r.blocos.filter(b => b.type === 'tool_use');
+    const pergunta = pedidos.find(b => b.name === 'perguntar_ao_operador' && !(b as any).entradaInvalida);
+    const podePerguntar = !!pergunta && perguntas < MAX_PERGUNTAS
+      && !entradaValida('perguntar_ao_operador', pergunta.input);
+
+    const resultados = await Promise.all(pedidos.filter(b => b !== pergunta || !podePerguntar).map(async b => {
+      const cru = (b as any).entradaInvalida as string | undefined;
+      if (cru !== undefined) return resultado(b.id, { INVALID_JSON: cru }, true);
+      const invalida = entradaValida(b.name, b.input);
+      if (invalida) return resultado(b.id, `Entrada inválida: ${invalida}.`, true);
+      if (b.name === 'perguntar_ao_operador') {
+        return resultado(b.id, 'Já foram feitas perguntas ao operador. Siga com o que tem e com os três cenários.', true);
       }
-      if (texto.length - ultimoAviso >= 400) {
-        ultimoAviso = texto.length;
-        avisar({ tipo: 'escrevendo', letras: texto.length });
+      if (consultas >= MAX_CONSULTAS) {
+        return resultado(b.id, 'Limite de consultas atingido. Escreva a proposta com os preços que já tem.', true);
       }
-    },
-  );
-  if (!fluxo.ok || !fluxo.texto) {
-    return { status: fluxo.status ?? 502, body: { error: fluxo.erro ?? 'A IA não respondeu.' } };
+      consultas++;
+      avisar({ tipo: 'aws', rotulo: NOME_DO_SERVICO[b.input.servico] ?? String(b.input.servico), consultas });
+      const f = await rodarFerramenta(aws, b.name, b.input);
+      return resultado(b.id, f.conteudo, f.erro);
+    }));
+
+    if (pergunta && podePerguntar) {
+      perguntas++;
+      const lista: PerguntaDaIa[] = pergunta.input.perguntas.slice(0, 4).map((q: any, i: number) => ({
+        id: `p${i + 1}`,
+        pergunta: limpo(q.pergunta, 300),
+        exemplo: limpo(q.exemplo, 160),
+      }));
+      const estado: Pausa = {
+        conversa, perguntaId: pergunta.id, prontos: resultados, consultas, perguntas, dolar,
+      };
+      return { status: 200, pausa: { perguntas: lista, estado: JSON.stringify(estado) } };
+    }
+    conversa.push({ role: 'user', content: resultados });
+  }
+
+  if (!textoFinal) {
+    return { status: 502, body: { error: 'A IA não terminou o preenchimento. Tente de novo.' } };
   }
 
   avisar({ tipo: 'conferindo' });
-  const lido = recortarJson(fluxo.texto);
+  const lido = recortarJson(textoFinal);
   if ('erro' in lido) {
-    // O motivo e o começo da resposta ficam no log: sem eles, "fora do formato"
+    // O motivo e o fim da resposta ficam no log: sem eles, "fora do formato"
     // não diz por onde começar a consertar.
     console.error('[proposta-ia] resposta fora do formato:', lido.erro,
-      '| fim da resposta:', fluxo.texto.slice(-300));
+      '| fim da resposta:', textoFinal.slice(-300));
     return { status: 502, body: { error: 'A IA respondeu fora do formato. Tente de novo.' } };
   }
   return {
@@ -520,6 +1034,7 @@ export async function preencherProposta(
       proposta: conferirProposta(lido.valor),
       reunioes: material.reunioes,
       modelo: cred.model,
+      consultasAws: consultas,
       uso,
     },
   };

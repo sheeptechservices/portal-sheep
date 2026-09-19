@@ -6,7 +6,9 @@
 //  ferramenta vê o esqueleto inteiro e sobrescreve, em vez de encarar dezenove
 //  campos em branco sem saber o tamanho do que se espera.
 // ─────────────────────────────────────────────────────────────────────────────
-import { APRESENTADO_POR, VALIDADE_DIAS, type DadosProposta } from './tipos';
+import {
+  APRESENTADO_POR, VALIDADE_DIAS, type DadosProposta, type InfraManutencao,
+} from './tipos';
 
 export function propostaEmBranco(): DadosProposta {
   return {
@@ -65,5 +67,28 @@ export function propostaEmBranco(): DadosProposta {
       ],
       memoria: '',
     },
+  };
+}
+
+/** O slide de infra quando alguém o liga à mão: os dois serviços que quase todo
+ *  sistema tem, e a manutenção com o que ela costuma cobrir. Os valores ficam
+ *  em branco - infra se consulta, não se chuta -, e o de manutenção vem de fora,
+ *  sugerido pelo contrato. */
+export function infraEmBranco(manutencao = ''): InfraManutencao {
+  const vazio = { otimista: '', realista: '', pessimista: '' };
+  return {
+    premissas: { ...vazio },
+    itens: [
+      { servico: 'Servidor da aplicação', detalhe: '', valores: { ...vazio } },
+      { servico: 'Banco de dados', detalhe: '', valores: { ...vazio } },
+    ],
+    fonte: '',
+    manutencao: {
+      valor: manutencao,
+      unidade: 'por mês, a partir do go-live',
+      inclui: ['Correção de falhas', 'Atualizações de segurança', 'Monitoramento e backups'],
+      naoInclui: ['Funcionalidades novas', 'O custo da própria infraestrutura'],
+    },
+    nota: '',
   };
 }

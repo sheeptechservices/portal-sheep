@@ -11450,6 +11450,47 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   color: var(--black);
 }
 
+/* A AWS entra sem marca: é a nuvem da casa, no traço dos ícones do sistema,
+   numa chapa neutra como a do Resend. */
+.integracao-logo-aws {
+  background: var(--gray4);
+  border: 1px solid var(--gray3);
+  color: var(--black);
+}
+/* A política do usuário IAM, pronta para copiar. */
+.aws-politica { position: relative; margin-top: 8px; }
+.aws-politica pre {
+  margin: 0;
+  padding: 10px 40px 10px 12px;
+  background: var(--gray4);
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-md);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--gray);
+  overflow-x: auto;
+}
+.aws-politica-copiar {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--gray2);
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+}
+.aws-politica-copiar:hover { color: var(--black); background: var(--gray3); }
+.aws-salvar { background: var(--black); color: var(--white); gap: 6px; transition: opacity var(--transition); }
+.aws-salvar:hover:not(:disabled) { opacity: .86; }
+.aws-erro { color: var(--red); font-weight: 600; }
+
 .integracao-conta,
 .integracao-quando {
   font-size: 12px;
@@ -11584,7 +11625,25 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 }
 .ia-secao.feita { color: var(--black); background: var(--gray4); border-color: var(--gray4); }
 .ia-secao.agora { color: var(--black); border-color: var(--yellow); background: var(--yd); }
-.ia-janela-acoes { display: flex; justify-content: center; margin-top: 18px; }
+.ia-janela-acoes { display: flex; justify-content: center; gap: 8px; margin-top: 18px; }
+/* As perguntas da IA, no lugar da lista de etapas. A pergunta é uma frase
+   inteira, e não o rótulo curto de um campo: sai da caixa-alta do
+   `.form-label`, que num texto desse tamanho leria como grito. */
+.ia-perguntas { display: flex; flex-direction: column; gap: 12px; margin-top: 4px; text-align: left; }
+.ia-perguntas-intro { margin: 0; font-size: 12px; line-height: 1.5; color: var(--gray); }
+.ia-pergunta { display: flex; flex-direction: column; gap: 6px; }
+.ia-pergunta .form-label {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--black);
+}
+.ia-pergunta-linha { display: flex; align-items: center; gap: 10px; }
+.ia-pergunta-linha .form-input { flex: 1; min-width: 0; }
+.ia-pergunta-linha .form-input:disabled { opacity: .5; }
 @media (prefers-reduced-motion: reduce) {
   .ia-barra > span, .ia-secao { transition: none; }
 }

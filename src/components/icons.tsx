@@ -289,6 +289,10 @@ export function IconBug({ size = 14 }: { size?: number }) {
 export function IconSparkles({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M11 3l1.7 4.4 4.4 1.7-4.4 1.7L11 15.2 9.3 10.8 4.9 9.1l4.4-1.7z" /><path d="M18 14.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" /></Ico>;
 }
+// Nuvem / infraestrutura hospedada - a integração com a AWS e o custo de infra.
+export function IconNuvem({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><path d="M7 18.5h10.5a4 4 0 00.6-7.96A6 6 0 006.3 9.2 4.7 4.7 0 007 18.5z" /></Ico>;
+}
 // Empresa / cedente.
 export function IconBuilding({ size = 14 }: { size?: number }) {
   return <Ico size={size}><rect x="4" y="2.5" width="16" height="19" rx="2" /><path d="M9.5 21.5v-4.2h5v4.2" /><path d="M8.3 6.5h.01M12 6.5h.01M15.7 6.5h.01M8.3 10.3h.01M12 10.3h.01M15.7 10.3h.01M8.3 14.1h.01M15.7 14.1h.01" /></Ico>;

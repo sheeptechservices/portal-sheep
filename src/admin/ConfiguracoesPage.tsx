@@ -7,8 +7,8 @@ import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { ancorarCaixa } from '../lib/ancorar';
 import {
   IconAlert, IconAlertOctagon, IconArrastar, IconCheck, IconChevronDown, IconChevronRight, IconFluxo,
-  IconClipboard, IconEntrada, IconEstrela, IconEye, IconEyeOff, IconPlus, IconProibido,
-  IconTrash, IconUser, IconX,
+  IconClipboard, IconEntrada, IconEstrela, IconEye, IconEyeOff, IconNuvem, IconPlus, IconProibido,
+  IconSpinner, IconTrash, IconUser, IconX,
 } from '../components/icons';
 import { SegSwitch } from '../components/SegSwitch';
 import { Chave } from '../components/Chave';
@@ -1337,6 +1337,163 @@ function FirefliesIntegrationCard({ api, inicial, onEstado }: {
   );
 }
 
+// ── AWS (tabela de preços) ───────────────────────────
+// A AWS entra só para ler a tabela de preços: é por ela que a IA do gerador de
+// propostas estima o custo de infra, em vez de chutar. A chave é de um usuário
+// IAM com três permissões de leitura de preço e mais nada - não custa, e não
+// enxerga nada da conta. O ID vai nos metadados; o segredo, cifrado no cofre.
+
+/** A política que o usuário IAM precisa, pronta para colar no console. */
+const POLITICA_AWS = JSON.stringify({
+  Version: '2012-10-17',
+  Statement: [{
+    Effect: 'Allow',
+    Action: ['pricing:GetProducts', 'pricing:GetAttributeValues', 'pricing:DescribeServices'],
+    Resource: '*',
+  }],
+}, null, 2);
+
+function AwsIntegrationCard({ api, inicial, onEstado }: {
+  api: ReturnType<typeof useApi>;
+  inicial: EstadoIntegracao;
+  onEstado: (e: EstadoIntegracao) => void;
+}) {
+  const { toast } = useToast();
+  const [id, setId] = useState('');
+  const [segredo, setSegredo] = useState('');
+  const [verSegredo, setVerSegredo] = useState(false);
+  const [temChave, setTemChave] = useState(inicial.temChave);
+  const [conectada, setConectada] = useState(inicial.conectada);
+  const [erro, setErro] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [confirmandoRemocao, setConfirmandoRemocao] = useState(false);
+  const carregando = inicial.carregando;
+
+  useEffect(() => {
+    setTemChave(inicial.temChave);
+    setConectada(inicial.conectada);
+  }, [inicial.temChave, inicial.conectada]);
+
+  const pronto = !!id.trim() && !!segredo.trim();
+
+  async function salvar() {
+    if (!pronto || salvando) return;
+    setSalvando(true);
+    const r = await api('', 'POST', {
+      action: 'save_aws_key', access_key_id: id.trim(), secret_access_key: segredo.trim(),
+    });
+    setSalvando(false);
+    if (!r || r.error) {
+      const motivo = r?.error ?? 'A conexão caiu. Tente de novo.';
+      setErro(motivo);
+      toast('error', 'Não foi possível conectar', motivo);
+      return;
+    }
+    setTemChave(true);
+    setConectada(true);
+    setErro(null);
+    setId('');
+    setSegredo('');
+    onEstado({
+      temChave: true, conectada: true, detalhe: r.access_key_id ?? null,
+      em: new Date().toISOString(), carregando: false,
+    });
+    toast('success', 'AWS conectada', 'A IA do gerador de propostas já consulta a tabela de preços.');
+  }
+
+  // Tirar a chave muda a tela na hora e volta atrás se o servidor recusar.
+  async function remover() {
+    const antes = { temChave, conectada, detalhe: inicial.detalhe, em: inicial.em };
+    setTemChave(false);
+    setConectada(false);
+    onEstado({ temChave: false, conectada: false, detalhe: null, em: null, carregando: false });
+    const r = await api('', 'POST', { action: 'remove_aws_key' });
+    if (!r?.ok) {
+      setTemChave(antes.temChave);
+      setConectada(antes.conectada);
+      onEstado({ ...antes, carregando: false });
+      toast('error', 'Não foi possível remover', r?.error ?? 'A conexão caiu. Tente de novo.');
+    }
+  }
+
+  async function copiarPolitica() {
+    try {
+      await navigator.clipboard.writeText(POLITICA_AWS);
+      toast('success', 'Política copiada', 'Cole no editor JSON da política do usuário IAM.');
+    } catch {
+      toast('error', 'Não foi possível copiar', 'Copie a política à mão, no texto ao lado.');
+    }
+  }
+
+  return (
+    <div className="integration-card expanded">
+      <div className="integration-form">
+        <div className="integration-form-group">
+          <label className="integration-label" htmlFor="aws-id">Access Key ID</label>
+          <div className="integration-input-wrap">
+            <input id="aws-id" className="integration-input" autoComplete="off" spellCheck={false}
+              placeholder={temChave ? 'Chave salva. Informe outra para trocar' : 'AKIA...'}
+              value={id} onChange={e => setId(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && salvar()} />
+          </div>
+        </div>
+        <div className="integration-form-group">
+          <label className="integration-label" htmlFor="aws-segredo">Secret Access Key</label>
+          <div className="integration-input-wrap">
+            <input id="aws-segredo" className="integration-input" autoComplete="off" spellCheck={false}
+              type={verSegredo ? 'text' : 'password'}
+              placeholder={temChave ? '•••••••••••••••• (chave salva)' : 'Cole a Secret Access Key'}
+              value={segredo} onChange={e => setSegredo(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && salvar()} />
+            <button className="integration-eye" type="button" onClick={() => setVerSegredo(v => !v)}
+              aria-label={verSegredo ? 'Ocultar a chave' : 'Mostrar a chave'}>
+              {verSegredo ? <IconEyeOff size={14} /> : <IconEye size={14} />}
+            </button>
+          </div>
+          <p className="integration-hint">
+            Crie no IAM um usuário só para isto, com a política abaixo, e gere uma chave de acesso
+            para ele. Ela lê a tabela pública de preços e mais nada: não gera custo e não enxerga
+            os recursos da conta. Fica criptografada no banco, como as demais.
+          </p>
+          <div className="aws-politica">
+            <pre>{POLITICA_AWS}</pre>
+            <button type="button" className="aws-politica-copiar" onClick={copiarPolitica}
+              aria-label="Copiar a política">
+              <IconClipboard size={14} />
+            </button>
+          </div>
+          {!carregando && temChave && !conectada && erro && (
+            <p className="integration-hint aws-erro surge">
+              <IconAlert size={12} /> {erro}
+            </p>
+          )}
+        </div>
+
+        <div className="integration-form-actions">
+          <button className="integration-save-btn aws-salvar" onClick={salvar} disabled={salvando || !pronto}>
+            {salvando && <IconSpinner size={13} />}
+            {salvando ? 'Conferindo' : temChave ? 'Trocar a chave' : 'Salvar chave'}
+          </button>
+          {temChave && (
+            <button className="integration-remove-btn" onClick={() => setConfirmandoRemocao(true)}>
+              Remover integração
+            </button>
+          )}
+        </div>
+      </div>
+
+      {confirmandoRemocao && (
+        <Dialogo
+          titulo="Remover a integração com a AWS?"
+          descricao="A chave sai do cofre, e a IA do gerador de propostas deixa de consultar preços: a infra passa a vir com os valores a confirmar."
+          rotuloOk="Remover"
+          onFechar={() => setConfirmandoRemocao(false)}
+          onConfirmar={() => { setConfirmandoRemocao(false); void remover(); }} />
+      )}
+    </div>
+  );
+}
+
 /** O que a tabela mostra de cada integração, para as três linhas serem lidas
  *  do mesmo jeito. Quem preenche é cada cartão, que já sabe consultar o próprio
  *  endpoint - a tabela não busca nada por conta própria. */
@@ -1748,6 +1905,16 @@ function IntegracoesTab({ token: sessionToken }: { token: string }) {
         carregando: false,
       } }));
     }).catch(() => {});
+    api('?action=aws_config').then(d => {
+      if (!vivo || !d) return;
+      setEstados(m => ({ ...m, aws: {
+        temChave: !!d.has_key,
+        conectada: !!d.connected,
+        detalhe: d.access_key_id ?? null,
+        em: d.updated_at ?? null,
+        carregando: false,
+      } }));
+    }).catch(() => {});
     api('?action=fireflies_config').then(d => {
       if (!vivo || !d) return;
       setEstados(m => ({ ...m, fireflies: {
@@ -1808,6 +1975,18 @@ function IntegracoesTab({ token: sessionToken }: { token: string }) {
             onAlternar={() => alternar('fireflies')}>
             <FirefliesIntegrationCard api={api} inicial={estadoDe('fireflies')}
               onEstado={e => anotar('fireflies', e)} />
+          </LinhaIntegracao>
+
+          <LinhaIntegracao
+            nome="AWS"
+            categoria="Preços de nuvem"
+            descricao="A tabela de preços que a IA consulta para estimar a infra das propostas."
+            logo={<span className="integracao-logo integracao-logo-aws"><IconNuvem size={17} /></span>}
+            estado={estadoDe('aws')}
+            aberta={aberta === 'aws'}
+            onAlternar={() => alternar('aws')}>
+            <AwsIntegrationCard api={api} inicial={estadoDe('aws')}
+              onEstado={e => anotar('aws', e)} />
           </LinhaIntegracao>
 
           <LinhaIntegracao

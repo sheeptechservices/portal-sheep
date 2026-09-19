@@ -38,10 +38,13 @@ import {
 import { useRevelar } from '../lib/useRevelar';
 import { useAuth, useToast } from './AdminApp';
 import { montarPrevia, montarProposta, type Conferencia } from '../lib/proposta/montar';
-import { propostaEmBranco } from '../lib/proposta/exemplo';
+import { infraEmBranco, propostaEmBranco } from '../lib/proposta/exemplo';
 import { emBase64, htmlDaProposta, lerTemplate } from '../lib/proposta/gerar';
 import { instante, tempoRelativo } from '../lib/datas';
-import type { DadosProposta, Entrega, Fase, OpcaoInvestimento } from '../lib/proposta/tipos';
+import type {
+  DadosProposta, Entrega, Fase, InfraManutencao, ItemDeInfra, OpcaoInvestimento,
+} from '../lib/proposta/tipos';
+import { CENARIOS, NOME_DO_CENARIO, manutencaoSugerida } from '../lib/proposta/tipos';
 
 /** Um lead do funil, no recorte que o seletor mostra. */
 interface LeadDoFunil {
@@ -82,7 +85,7 @@ function nomeDoArquivoDe(cliente: string, data = new Date().toISOString()) {
 }
 
 /** Os passos, e qual slide a prévia mostra em cada um. */
-type PassoId = 'capa' | 'projeto' | 'entregas' | 'operacao' | 'cronograma' | 'investimento' | 'fim';
+type PassoId = 'capa' | 'projeto' | 'entregas' | 'operacao' | 'cronograma' | 'investimento' | 'infra' | 'fim';
 
 const PASSOS: { id: PassoId; titulo: string; secao: string | null }[] = [
   { id: 'capa', titulo: 'A proposta', secao: null },
@@ -91,6 +94,7 @@ const PASSOS: { id: PassoId; titulo: string; secao: string | null }[] = [
   { id: 'operacao', titulo: 'Como funciona', secao: 'Como funciona' },
   { id: 'cronograma', titulo: 'Cronograma', secao: 'Cronograma' },
   { id: 'investimento', titulo: 'Investimento', secao: 'Investimento' },
+  { id: 'infra', titulo: 'Infra', secao: 'Infra e manutenção' },
   { id: 'fim', titulo: 'Gerar', secao: null },
 ];
 
@@ -163,6 +167,19 @@ function ondeHaTravessao(d: DadosProposta): Travessao[] {
     ver('investimento', `Pessoa ${i + 1} · O que faz`, p.descricao);
   });
   ver('investimento', 'Memória de cálculo', d.investimento.memoria);
+  if (d.infra) {
+    const inf = d.infra;
+    CENARIOS.forEach(c => ver('infra', `Premissa ${NOME_DO_CENARIO[c].toLowerCase()}`, inf.premissas[c]));
+    inf.itens.forEach((x, i) => {
+      ver('infra', `Serviço ${i + 1}`, x.servico);
+      ver('infra', `Serviço ${i + 1} · O que foi precificado`, x.detalhe);
+    });
+    ver('infra', 'De onde vêm os preços', inf.fonte);
+    ver('infra', 'Manutenção · O que o valor compra', inf.manutencao.unidade);
+    inf.manutencao.inclui.forEach((x, k) => ver('infra', `Manutenção · Inclui ${k + 1}`, x));
+    inf.manutencao.naoInclui.forEach((x, k) => ver('infra', `Manutenção · Não inclui ${k + 1}`, x));
+    ver('infra', 'Nota sob a tabela', inf.nota);
+  }
   return achados;
 }
 
@@ -252,6 +269,122 @@ function Lista({ rotulo, itens, onChange, placeholder, dica }: {
         <IconPlus size={12} /> Mais um
       </button>
       {dica && <span className="gp-dica">{dica}</span>}
+    </div>
+  );
+}
+
+/**
+ * O passo de infra e manutenção.
+ *
+ * Os valores de infra vêm da tabela da AWS, pela IA, ou de quem consultou à
+ * mão: o formulário não sugere número nenhum ali. A manutenção é o contrário -
+ * tem um padrão da casa, 10% do valor mensal do contrato, e o botão o aplica
+ * com a conta à vista.
+ */
+function PassoDeInfra({ inf, sugestao, onChange }: {
+  inf: InfraManutencao;
+  sugestao: { valor: string; base: string } | null;
+  onChange: (v: InfraManutencao) => void;
+}) {
+  const trocarItem = (i: number, v: ItemDeInfra) =>
+    onChange({ ...inf, itens: inf.itens.map((x, k) => (k === i ? v : x)) });
+  const manutencao = (m: Partial<InfraManutencao['manutencao']>) =>
+    onChange({ ...inf, manutencao: { ...inf.manutencao, ...m } });
+
+  return (
+    <div className="gp-grade surge">
+      <div className="gp-campo">
+        <span className="form-label">O que cada cenário supõe</span>
+        {CENARIOS.map(c => (
+          <div key={c} className="gp-linha">
+            <span className="gp-cenario">{NOME_DO_CENARIO[c]}</span>
+            <input className="form-input" value={inf.premissas[c]}
+              aria-label={`Premissa do cenário ${NOME_DO_CENARIO[c].toLowerCase()}`}
+              placeholder={c === 'otimista' ? 'Até 100 usuários, 2 GB de dados'
+                : c === 'realista' ? 'Cerca de 300 usuários, 10 GB de dados'
+                  : 'Mil usuários em pico, 50 GB de dados'}
+              onChange={e => onChange({ ...inf, premissas: { ...inf.premissas, [c]: e.target.value } })} />
+          </div>
+        ))}
+      </div>
+
+      {inf.itens.map((item, i) => (
+        <div key={i} className="gp-time">
+          <div className="gp-entrega-topo">
+            <span className="gp-entrega-num">Serviço {i + 1}</span>
+            {inf.itens.length > 1 && (
+              <button type="button" className="gp-x" aria-label={`Remover o serviço ${i + 1}`}
+                onClick={() => onChange({ ...inf, itens: inf.itens.filter((_, k) => k !== i) })}>
+                <IconTrash size={13} />
+              </button>
+            )}
+          </div>
+          <div className="gp-grade">
+            <Campo rotulo="Serviço" valor={item.servico} placeholder="Servidor da aplicação"
+              onChange={v => trocarItem(i, { ...item, servico: v })} />
+            <Campo rotulo="O que foi precificado" valor={item.detalhe}
+              placeholder="EC2 t4g.medium, São Paulo, 24h por dia"
+              onChange={v => trocarItem(i, { ...item, detalhe: v })} />
+            <div className="gp-campo">
+              <span className="form-label">Custo por mês, em reais</span>
+              <div className="gp-infra-valores">
+                {CENARIOS.map(c => (
+                  <label key={c} className="gp-campo">
+                    <span className="gp-cenario">{NOME_DO_CENARIO[c]}</span>
+                    <input className="form-input" value={item.valores[c]} inputMode="decimal"
+                      placeholder="0,00"
+                      aria-label={`${item.servico || 'Serviço'}, cenário ${NOME_DO_CENARIO[c].toLowerCase()}`}
+                      onChange={e => trocarItem(i, { ...item, valores: { ...item.valores, [c]: e.target.value } })} />
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+      {inf.itens.length < MAX_INFRA && (
+        <button type="button" className="gp-mais"
+          onClick={() => onChange({
+            ...inf,
+            itens: [...inf.itens, { servico: '', detalhe: '', valores: { otimista: '', realista: '', pessimista: '' } }],
+          })}>
+          <IconPlus size={12} /> Mais um serviço
+        </button>
+      )}
+
+      <Campo rotulo="De onde vêm os preços" valor={inf.fonte}
+        placeholder="Tabela de preços da AWS consultada em 18/09/2026, região São Paulo, preços sob demanda."
+        onChange={v => onChange({ ...inf, fonte: v })}
+        dica="Aparece em letra pequena sob a tabela: é o que deixa o cliente conferir a conta." />
+
+      <p className="gp-secao">Manutenção</p>
+      <div className="gp-campo">
+        <span className="form-label">Valor por mês</span>
+        <div className="gp-linha">
+          <input className="form-input" value={inf.manutencao.valor} inputMode="decimal"
+            aria-label="Valor da manutenção por mês" placeholder="2.160"
+            onChange={e => manutencao({ valor: e.target.value })} />
+          {sugestao && sugestao.valor !== inf.manutencao.valor && (
+            <button type="button" className="btn btn-secondary gp-sugerir surge"
+              onClick={() => manutencao({ valor: sugestao.valor })}>
+              Usar R$ {sugestao.valor}
+            </button>
+          )}
+        </div>
+        <span className="gp-dica">
+          {sugestao
+            ? `O padrão da casa é 10% do valor mensal do contrato: ${sugestao.base} dá R$ ${sugestao.valor}.`
+            : 'O padrão da casa é 10% do valor mensal do contrato. Preencha o investimento para ver a sugestão.'}
+        </span>
+      </div>
+      <Campo rotulo="O que o valor compra" valor={inf.manutencao.unidade}
+        onChange={v => manutencao({ unidade: v })} />
+      <Lista rotulo="Inclui" itens={inf.manutencao.inclui} onChange={v => manutencao({ inclui: v })} />
+      <Lista rotulo="Não inclui" itens={inf.manutencao.naoInclui} onChange={v => manutencao({ naoInclui: v })}
+        dica="Sem essa lista, manutenção vira escopo aberto." />
+      <Texto rotulo="Nota sob a tabela" valor={inf.nota} linhas={2}
+        onChange={v => onChange({ ...inf, nota: v })}
+        placeholder="O que move o custo de um cenário para o outro." />
     </div>
   );
 }
@@ -368,6 +501,9 @@ function LinhaDeFase({ f, meses, onChange }: {
  *  do PDF (1280x720), com três opções e toda pessoa com descrição, seis cabem e
  *  a sétima passa por cima do rodapé. */
 const MAX_TIME = 6;
+/** Serviços na tabela de infra: seis linhas mais as três contas é o que cabe
+ *  no slide sem passar do rodapé. */
+const MAX_INFRA = 6;
 
 /** Quantas pessoas um papel pode ter. É o número que vai para a etiqueta do
  *  slide, e não uma linha por pessoa: o limite é só para um erro de digitação
@@ -709,12 +845,17 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
         ...nova.investimento,
         time: nova.investimento.time.length ? nova.investimento.time : a.investimento.time,
       },
+      infra: nova.infra ?? undefined,
     }));
     setEntregaEmFoco(0);
+    const leu = r.reunioes
+      ? `Leu o card e ${r.reunioes === 1 ? 'uma reunião' : `${r.reunioes} reuniões`}`
+      : 'Leu o card; não havia reunião presa à oportunidade';
+    const precos = r.consultasAws
+      ? `, e consultou ${r.consultasAws === 1 ? 'um preço' : `${r.consultasAws} preços`} na AWS`
+      : '';
     toast('success', 'Proposta preenchida pela IA',
-      r.reunioes
-        ? `Leu o card e ${r.reunioes === 1 ? 'uma reunião' : `${r.reunioes} reuniões`}. Passe pelos passos conferindo o que ela escreveu.`
-        : 'Leu o card; não havia reunião presa à oportunidade. Passe pelos passos conferindo o que ela escreveu.');
+      `${leu}${precos}. Passe pelos passos conferindo o que ela escreveu.`);
   }
 
   const htmlDaPrevia = useMemo(
@@ -730,6 +871,9 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
     : atual.secao;
 
   const nomeDoArquivo = useMemo(() => nomeDoArquivoDe(d.cliente), [d.cliente]);
+  // A manutenção que a casa sugere, a partir do investimento: muda quando o
+  // valor ou o formato da opção recomendada mudam.
+  const sugestaoDeManutencao = useMemo(() => manutencaoSugerida(d), [d.investimento, d.cronograma.meses]);
 
   const faltando = [
     !leadId && 'a oportunidade',
@@ -1040,7 +1184,8 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
       )}
 
       {ia.andamento && (
-        <ProgressoDaIa andamento={ia.andamento} onCancelar={ia.cancelar} onFechada={ia.encerrar} />
+        <ProgressoDaIa andamento={ia.andamento} onResponder={ia.responder}
+          onCancelar={ia.cancelar} onFechada={ia.encerrar} />
       )}
 
       {novoLead && (
@@ -1486,6 +1631,30 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
             </>
           )}
 
+          {atual.id === 'infra' && (
+            <>
+              <p className="gp-secao">
+                Infra e manutenção
+                <button type="button" className="gp-ligar"
+                  onClick={() => editar({
+                    infra: d.infra ? undefined : infraEmBranco(sugestaoDeManutencao?.valor ?? ''),
+                  })}>
+                  {d.infra ? 'Tirar este slide' : 'Incluir este slide'}
+                </button>
+              </p>
+              {d.infra ? (
+                <PassoDeInfra key="com" inf={d.infra} sugestao={sugestaoDeManutencao}
+                  onChange={v => editar({ infra: v })} />
+              ) : (
+                <p className="gp-dica surge" key="sem">
+                  Fora da proposta. Ele mostra o custo de manter o sistema no ar depois da entrega,
+                  em três cenários, e a manutenção. Sai quando não há sistema a hospedar, como numa
+                  consultoria ou em painéis dentro do Power BI do cliente.
+                </p>
+              )}
+            </>
+          )}
+
           {atual.id === 'fim' && (
             <>
               <p className="gp-secao">Gerar a proposta</p>
@@ -1629,6 +1798,15 @@ function limpar(d: DadosProposta, previa: boolean): DadosProposta {
         destaque: o.destaque?.valor.trim() ? o.destaque : undefined,
       })),
       time: d.investimento.time.filter(p => p.papel.trim()),
+    },
+    infra: d.infra && {
+      ...d.infra,
+      itens: d.infra.itens.filter(x => previa || x.servico.trim()),
+      manutencao: {
+        ...d.infra.manutencao,
+        inclui: semVazios(d.infra.manutencao.inclui),
+        naoInclui: semVazios(d.infra.manutencao.naoInclui),
+      },
     },
   };
 }
@@ -1878,6 +2056,11 @@ const ESTILO = `
     font-size: 11px; font-weight: 700; color: var(--gray2);
   }
   .gp-mini { width: 54px; padding: 6px 8px; text-align: center; }
+  /* Os tres cenarios lado a lado: o mesmo servico nas tres colunas, que e como
+     a tabela do slide le. */
+  .gp-infra-valores { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .gp-cenario { font-size: 11px; font-weight: 700; color: var(--gray); min-width: 70px; }
+  .gp-sugerir { flex-shrink: 0; white-space: nowrap; }
   .gp-proto {
     display: flex; align-items: center; gap: 8px;
     font-size: 11.5px; color: var(--gray);
