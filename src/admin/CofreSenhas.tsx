@@ -26,9 +26,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  IconCheck, IconClipboard, IconEye, IconEyeOff, IconInbox, IconSearch, IconSpinner,
+  IconCadeado, IconCheck, IconClipboard, IconEye, IconEyeOff, IconInbox, IconSearch, IconSpinner,
   IconTrash, IconX,
 } from '../components/icons';
+import { AbaPainel, Abas } from '../components/Abas';
+import { SegSwitch } from '../components/SegSwitch';
 import FilterDropdown from '../components/FilterDropdown';
 import { SelectSistema } from '../components/SelectSistema';
 import { useAuth, useToast } from './AdminApp';
@@ -40,10 +42,17 @@ import { PuxadorDoPainel } from '../components/PuxadorDoPainel';
 
 /** O que a prateleira mostra. O conteúdo não vem junto: é pedido por segredo, e
  *  só com o cofre aberto. */
+/** Quem vê o segredo: o cofre inteiro, ou só quem o criou. */
+type Visibilidade = 'todos' | 'so_eu';
+
 interface Segredo {
   id: string;
   titulo: string;
   categoria: string | null;
+  /** Nulo nos segredos gravados antes da escolha existir: valem como 'todos'. */
+  visibilidade: Visibilidade | null;
+  /** 1 quando quem está olhando criou o segredo. Só o dono muda quem vê. */
+  meu: number;
   criado_em: string;
   criado_por_nome: string | null;
   atualizado_em: string | null;
@@ -100,8 +109,12 @@ export default function CofreSenhas({ token }: { token: string }) {
   const [fCategoria, setFCategoria] = useState<string[]>([]);
   /** `null` na gaveta quer dizer segredo novo. */
   const [gaveta, setGaveta] = useState<{ segredo: Segredo | null } | null>(null);
+  /** Os segredos, ou o registro de quem mexeu neles. A segunda aba só existe
+   *  para quem tem a permissão de auditar. */
+  const [aba, setAba] = useState<'segredos' | 'acessos'>('segredos');
 
   const podeEditar = pode('cofre:editar');
+  const podeAuditar = pode('cofre:auditar');
   const podeExcluir = pode('cofre:excluir');
   const aberto = !!abertoAte && Date.parse(abertoAte) > Date.now();
 
@@ -153,7 +166,7 @@ export default function CofreSenhas({ token }: { token: string }) {
    *  transferência e não fica em estado nenhum. */
   async function copiarSenha(s: Segredo) {
     if (!aberto) { setPedindoCodigo(true); return; }
-    const r = await api('', 'POST', { action: 'cofre_revelar', id: s.id });
+    const r = await api('', 'POST', { action: 'cofre_revelar', id: s.id, para: 'copiar' });
     if (r?.error) {
       if (r.trancado) { setAbertoAte(null); setPedindoCodigo(true); return; }
       toast('error', 'Não foi possível ler este segredo', r.error);
@@ -181,8 +194,8 @@ export default function CofreSenhas({ token }: { token: string }) {
         <div className="admin-page-acoes">
           <span className="secao-busca-campo cofre-busca">
             <IconSearch size={13} />
-            <input value={busca} aria-label="Buscar segredo"
-              placeholder="Buscar por título ou categoria"
+            <input value={busca} aria-label={aba === 'acessos' ? 'Buscar no registro' : 'Buscar segredo'}
+              placeholder={aba === 'acessos' ? 'Buscar por pessoa ou segredo' : 'Buscar por título ou categoria'}
               onChange={e => setBusca(e.target.value)}
               onKeyDown={e => { if (e.key === 'Escape') setBusca(''); }} />
             {busca && (
@@ -191,8 +204,8 @@ export default function CofreSenhas({ token }: { token: string }) {
               </button>
             )}
           </span>
-          {podeEditar && (
-            <button type="button" className="btn btn-primary"
+          {podeEditar && aba === 'segredos' && (
+            <button type="button" className="btn btn-primary surge"
               style={{ height: 38, padding: '0 18px', fontSize: 13, flexShrink: 0 }}
               onClick={() => setGaveta({ segredo: null })}>
               + Novo segredo
@@ -201,6 +214,20 @@ export default function CofreSenhas({ token }: { token: string }) {
         </div>
       </div>
 
+      {podeAuditar && (
+        <Abas valor={aba} onChange={setAba}
+          opcoes={[
+            { valor: 'segredos', label: 'Segredos' },
+            { valor: 'acessos', label: 'Acessos' },
+          ]} />
+      )}
+
+      {aba === 'acessos' ? (
+        <AbaPainel key="acessos">
+          <RegistroDoCofre token={token} busca={busca} />
+        </AbaPainel>
+      ) : (
+      <AbaPainel key="segredos">
       <div className="admin-toolbar">
         <span className="admin-toolbar-label">Filtrar</span>
         <FilterDropdown label="Categoria" values={fCategoria} options={categorias}
@@ -266,7 +293,14 @@ export default function CofreSenhas({ token }: { token: string }) {
               {lista.map(s => (
                 <tr key={s.id} className="cofre-linha" onClick={() => setGaveta({ segredo: s })}
                   title={`Abrir ${s.titulo}`}>
-                  <td style={{ fontWeight: 600, color: 'var(--black)' }}>{s.titulo}</td>
+                  <td style={{ fontWeight: 600, color: 'var(--black)' }}>
+                    {s.titulo}
+                    {s.visibilidade === 'so_eu' && (
+                      <span className="cofre-etiqueta cofre-pessoal" title="Só você vê este segredo">
+                        <IconCadeado size={10} /> Só você
+                      </span>
+                    )}
+                  </td>
                   <td>{s.categoria
                     ? <span className="cofre-etiqueta">{s.categoria}</span>
                     : <span style={{ color: 'var(--gray2)' }}>-</span>}
@@ -291,6 +325,8 @@ export default function CofreSenhas({ token }: { token: string }) {
             </tbody>
           </table>
         </div>
+      )}
+      </AbaPainel>
       )}
 
       {pedindoCodigo && (
@@ -493,6 +529,10 @@ function GavetaDoSegredo({
   const { largura, arrastando, setArrastando, porTecla } = useLarguraPainel('cofre');
 
   const [titulo, setTitulo] = useState(segredo?.titulo ?? TITULO_PADRAO);
+  const [visibilidade, setVisibilidade] = useState<Visibilidade>(segredo?.visibilidade ?? 'todos');
+  // Quem vê é decisão de quem criou: o segredo novo é de quem o cria, e o que
+  // já existe só muda de mão pelo dono. O servidor recusa o resto do mesmo jeito.
+  const podeMudarQuemVe = !segredo || segredo.meu === 1;
   const [categoria, setCategoria] = useState(segredo?.categoria ?? '');
   const [c, setC] = useState<Conteudo>(CONTEUDO_VAZIO);
   const [aberto, setAberto] = useState(!segredo);
@@ -549,6 +589,7 @@ function GavetaDoSegredo({
       const r = await api('', 'POST', {
         action: 'salvar_segredo',
         id: segredo?.id, titulo: titulo.trim(), categoria: categoria.trim() || null, conteudo: c,
+        ...(podeMudarQuemVe ? { visibilidade } : {}),
       });
       // Sem `id` de volta não houve gravação, mesmo sem mensagem de erro: é o
       // que acontece quando a sessão caiu no meio do caminho.
@@ -561,6 +602,8 @@ function GavetaDoSegredo({
         id: r.id,
         titulo: titulo.trim(),
         categoria: categoria.trim() || null,
+        visibilidade: r.visibilidade ?? segredo?.visibilidade ?? 'todos',
+        meu: segredo ? segredo.meu : 1,
         criado_em: segredo?.criado_em ?? r.criado_em,
         criado_por_nome: segredo?.criado_por_nome ?? r.criado_por_nome ?? null,
         atualizado_em: segredo ? r.atualizado_em : null,
@@ -630,6 +673,29 @@ function GavetaDoSegredo({
             <SelectSistema valor={categoria} onChange={setCategoria}
               opcoes={opcoesDeCategoria} placeholder="Escolher categoria"
               desabilitado={somenteLeitura} />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Quem pode ver</label>
+            {podeMudarQuemVe && !somenteLeitura ? (
+              <>
+                <SegSwitch valor={visibilidade} onChange={setVisibilidade} full
+                  opcoes={[
+                    { valor: 'todos', label: 'Todos da organização' },
+                    { valor: 'so_eu', label: 'Só você' },
+                  ]} />
+                <p className="cofre-dica troca" key={visibilidade} style={{ marginTop: 6 }}>
+                  {visibilidade === 'so_eu'
+                    ? 'Ninguém mais vê este segredo, nem os administradores: ele não aparece na lista de outra pessoa.'
+                    : 'Quem tem acesso ao cofre vê e, com o código do e-mail, abre este segredo.'}
+                </p>
+              </>
+            ) : (
+              <p className="cofre-dica" style={{ fontSize: 12, color: 'var(--gray)' }}>
+                {visibilidade === 'so_eu' ? 'Só você' : 'Todos da organização'}
+                <span style={{ color: 'var(--gray2)' }}> · só quem criou o segredo muda quem vê</span>
+              </p>
+            )}
           </div>
 
           {/* Segredo que já existe e cofre trancado: a ficha fica fechada, e a
@@ -768,6 +834,110 @@ function GavetaDoSegredo({
   );
 }
 
+// ── O registro de acessos ───────────────────────────────────────────────────
+
+interface Acesso {
+  id: number;
+  acao: string;
+  segredo_id: string | null;
+  segredo_titulo: string | null;
+  pessoal: boolean;
+  detalhe: string | null;
+  usuario_nome: string;
+  usuario_email: string | null;
+  criado_em: string;
+}
+
+const O_QUE_FEZ: Record<string, string> = {
+  abriu: 'Abriu o cofre',
+  viu: 'Viu o conteúdo',
+  copiou: 'Copiou a senha',
+  criou: 'Criou',
+  editou: 'Editou',
+  excluiu: 'Excluiu',
+};
+
+/**
+ * Quem mexeu no cofre, e quando.
+ *
+ * É lido de novo a cada vez que a aba abre: um registro de auditoria parado no
+ * que era quando a página carregou esconderia justamente o acesso de agora há
+ * pouco. O segredo pessoal de outra pessoa vem do servidor sem o título, e a
+ * linha diz só que era pessoal.
+ */
+function RegistroDoCofre({ token, busca }: { token: string; busca: string }) {
+  const { toast } = useToast();
+  const api = useApi(token);
+  const [acessos, setAcessos] = useState<Acesso[] | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    void api('?action=cofre_acessos').then(r => {
+      if (!vivo) return;
+      if (r?.error) { toast('error', 'Não foi possível ler o registro', r.error); setAcessos([]); return; }
+      setAcessos(Array.isArray(r?.acessos) ? r.acessos : []);
+    });
+    return () => { vivo = false; };
+  }, [api, toast]);
+
+  const lista = useMemo(() => {
+    const q = busca.trim().toLocaleLowerCase('pt-BR');
+    if (!acessos || !q) return acessos ?? [];
+    return acessos.filter(a => [a.usuario_nome, a.usuario_email, a.segredo_titulo, O_QUE_FEZ[a.acao]]
+      .some(x => (x ?? '').toLocaleLowerCase('pt-BR').includes(q)));
+  }, [acessos, busca]);
+
+  if (acessos == null) {
+    return <div className="dux-spinner-row" style={{ padding: '40px 0' }}><span className="dux-spinner sm" /></div>;
+  }
+  if (!lista.length) {
+    return (
+      <div className="admin-empty">
+        <p style={{ color: 'var(--gray2)', marginBottom: 6 }}><IconInbox size={34} /></p>
+        <p>{busca.trim() ? 'Nada no registro para essa busca' : 'Ninguém mexeu no cofre ainda'}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="admin-table-wrap">
+      <table className="admin-table">
+        <thead>
+          <tr>
+            <th style={{ whiteSpace: 'nowrap' }}>Quando</th>
+            <th>Quem</th>
+            <th>O que fez</th>
+            <th>Segredo</th>
+          </tr>
+        </thead>
+        <tbody className="lista-anima" key={lista.map(a => a.id).join('|')}>
+          {lista.map(a => (
+            <tr key={a.id}>
+              <td style={{ fontSize: 12, color: 'var(--gray2)', whiteSpace: 'nowrap' }}>
+                {dia(a.criado_em)} · {hora(a.criado_em)}
+              </td>
+              <td>
+                <span style={{ fontWeight: 600, color: 'var(--black)' }}>{a.usuario_nome}</span>
+                {a.usuario_email && <span className="cofre-registro-email">{a.usuario_email}</span>}
+              </td>
+              <td>
+                {O_QUE_FEZ[a.acao] ?? a.acao}
+                {a.detalhe && <span className="cofre-registro-email">{a.detalhe}</span>}
+              </td>
+              <td>
+                {a.segredo_titulo
+                  ? <span style={{ color: 'var(--black)' }}>{a.segredo_titulo}</span>
+                  : a.pessoal
+                    ? <span className="cofre-etiqueta"><IconCadeado size={10} /> Segredo pessoal</span>
+                    : <span style={{ color: 'var(--gray2)' }}>-</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function dia(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? '-' : d.toLocaleDateString('pt-BR');
@@ -847,6 +1017,9 @@ const ESTILO = `
   }
   .cofre-trancado .btn { display: inline-flex; align-items: center; gap: 7px; }
   .cofre-rodape-info { margin: 4px 0 0; font-size: 10.5px; color: var(--gray2); }
+  .cofre-pessoal { margin-left: 8px; display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; }
+  .cofre-etiqueta svg { flex-shrink: 0; }
+  .cofre-registro-email { display: block; font-size: 11px; color: var(--gray2); margin-top: 1px; }
   /* O unico botao vermelho da tela, e so no momento de confirmar. */
   .cofre-excluir { background: var(--red); border-color: var(--red); }
   .cofre-confirma {

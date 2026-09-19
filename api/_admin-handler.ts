@@ -1339,6 +1339,64 @@ async function migrarSchema(db: Client) {
                ON cofre_tokens (usuario_id, criado_em)`);
   } catch { /* índice já existe */ }
 
+  // Quem vê cada segredo. Nulo ou 'todos' é o cofre inteiro, como sempre foi;
+  // 'so_eu' é só quem o criou (`criado_por_id`). Não há exceção para admin: um
+  // segredo pessoal que o admin enxergasse seria pessoal só no nome.
+  try { await ddl(`ALTER TABLE cofre_segredos ADD COLUMN visibilidade TEXT`); } catch {}
+
+  // Quem mexeu no cofre, e quando: abriu com o código, viu um segredo, copiou
+  // uma senha, gravou, excluiu. Tabela própria, e não só a auditoria geral,
+  // porque aqui o título vai junto, copiado na hora - segredo excluído continua
+  // legível no registro, e a auditoria geral só guarda o id.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS cofre_acessos (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      -- 'abriu', 'viu', 'copiou', 'criou', 'editou', 'excluiu'.
+      acao           TEXT NOT NULL,
+      segredo_id     TEXT,
+      segredo_titulo TEXT,
+      -- O segredo era pessoal na hora, e de quem: quem audita não lê o título
+      -- de um segredo pessoal alheio.
+      pessoal        INTEGER NOT NULL DEFAULT 0,
+      dono_id        TEXT,
+      -- O que mudou numa edição, em poucas palavras ("passou a ser só de quem
+      -- criou").
+      detalhe        TEXT,
+      usuario_id     TEXT,
+      usuario_nome   TEXT NOT NULL,
+      usuario_email  TEXT,
+      criado_em      TEXT NOT NULL
+    )
+  `);
+  try {
+    await ddl(`CREATE INDEX IF NOT EXISTS idx_cofre_acessos_quando ON cofre_acessos (criado_em DESC)`);
+  } catch { /* índice já existe */ }
+  // O que a auditoria geral já tinha do cofre entra uma vez, na primeira vez
+  // que a tabela nasce vazia: o registro começa com a história, e não no dia
+  // em que ele foi criado. O título vem do segredo, se ele ainda existe.
+  try {
+    const vazia = await db.execute('SELECT 1 FROM cofre_acessos LIMIT 1');
+    if (!vazia.rows.length) {
+      await db.execute(`
+        INSERT INTO cofre_acessos
+          (acao, segredo_id, segredo_titulo, pessoal, dono_id, usuario_id, usuario_nome, usuario_email, criado_em)
+        SELECT CASE a.acao
+                 WHEN 'cofre_abrir' THEN 'abriu'
+                 WHEN 'cofre_revelar' THEN 'viu'
+                 WHEN 'salvar_segredo' THEN 'editou'
+                 ELSE 'excluiu' END,
+               CASE WHEN a.acao = 'cofre_abrir' THEN NULL ELSE a.alvo END,
+               s.titulo, 0, s.criado_por_id,
+               a.usuario_id, a.usuario_nome, a.usuario_email, a.criado_em
+        FROM auditoria a
+        LEFT JOIN cofre_segredos s ON s.id = a.alvo
+        WHERE a.acao IN ('cofre_abrir', 'cofre_revelar', 'salvar_segredo', 'excluir_segredo')
+        ORDER BY a.criado_em`);
+    }
+  } catch (err) {
+    console.error('[cofre] importação do histórico:', (err as Error).message);
+  }
+
   // Autoria nas entidades editáveis. Roda depois de todos os CREATE TABLE porque
   // é ALTER: cada uma guarda o id do usuário e uma cópia do nome. O id é a
   // referência; o nome é o que a tela mostra e continua legível mesmo que a
@@ -2736,6 +2794,45 @@ export async function validateAdminSession(db: Client, token: string): Promise<b
  * Trilha de auditoria. Nunca derruba a requisição: o registro é importante, mas
  * não ao ponto de desfazer uma ação que já deu certo por causa dele.
  */
+/** O segredo como o porteiro precisa dele: o título, se é pessoal e de quem.
+ *  Nulo quando não existe - ou quando existe mas é pessoal de outra pessoa,
+ *  que para quem pergunta dá no mesmo. Responder "existe, mas não é seu"
+ *  contaria que ele existe. */
+async function segredoVisivel(db: Client, id: string, usuario?: UsuarioAdmin | null)
+  : Promise<{ titulo: string; pessoal: boolean; donoId: string | null } | null> {
+  const r = await db.execute({
+    sql: 'SELECT titulo, visibilidade, criado_por_id FROM cofre_segredos WHERE id = ?', args: [id],
+  });
+  const s = r.rows[0];
+  if (!s) return null;
+  const pessoal = String(s.visibilidade ?? '') === 'so_eu';
+  const donoId = s.criado_por_id != null ? String(s.criado_por_id) : null;
+  if (pessoal && (!usuario?.id || donoId !== usuario.id)) return null;
+  return { titulo: String(s.titulo), pessoal, donoId };
+}
+
+/** Uma linha no registro do cofre. Falhar aqui não derruba o gesto: o registro
+ *  é apoio, e quem pediu a senha já passou pelo porteiro. */
+async function registrarNoCofre(db: Client, usuario: UsuarioAdmin | null | undefined, acao: string,
+  segredo?: { id: string; titulo: string; pessoal: boolean; donoId: string | null } | null, detalhe?: string) {
+  try {
+    await db.execute({
+      sql: `INSERT INTO cofre_acessos
+              (acao, segredo_id, segredo_titulo, pessoal, dono_id, detalhe,
+               usuario_id, usuario_nome, usuario_email, criado_em)
+            VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      args: [
+        acao, segredo?.id ?? null, segredo?.titulo ?? null, segredo?.pessoal ? 1 : 0,
+        segredo?.donoId ?? null, detalhe ?? null,
+        usuario?.id ?? null, usuario?.nome ?? AUTOR_COMPARTILHADO, usuario?.email ?? null,
+        new Date().toISOString(),
+      ],
+    });
+  } catch (err) {
+    console.error('[cofre] registro:', acao, (err as Error).message);
+  }
+}
+
 export async function registrarAuditoria(
   db: Client,
   usuario: UsuarioAdmin | null | undefined,
@@ -5069,13 +5166,50 @@ async function despacharAdminData(
      * segredo, com o cofre aberto.
      */
     if (action === 'cofre') {
+      // O segredo pessoal alheio não vem nem na prateleira: o título dele é da
+      // pessoa, e o recorte é aqui, na consulta, e não na tela.
       const [itens, aberto] = await Promise.all([
-        db.execute(`SELECT id, titulo, categoria,
-                           criado_em, criado_por_nome, atualizado_em, atualizado_por_nome
-                    FROM cofre_segredos ORDER BY titulo COLLATE NOCASE`),
+        db.execute({
+          sql: `SELECT id, titulo, categoria, visibilidade,
+                       CASE WHEN criado_por_id = ? THEN 1 ELSE 0 END AS meu,
+                       criado_em, criado_por_nome, atualizado_em, atualizado_por_nome
+                FROM cofre_segredos
+                WHERE COALESCE(visibilidade, 'todos') != 'so_eu' OR criado_por_id = ?
+                ORDER BY titulo COLLATE NOCASE`,
+          args: [usuario?.id ?? '', usuario?.id ?? ''],
+        }),
         cofreAbertoAte(db, usuario?.id),
       ]);
       return { status: 200, body: { segredos: itens.rows, liberado_ate: aberto } };
+    }
+
+    /**
+     * O registro do cofre: quem abriu, viu, copiou, gravou e excluiu, e quando.
+     *
+     * Permissão própria (`cofre:auditar`): ver quem mexe nas senhas é coisa de
+     * quem responde por elas. O segredo pessoal de outra pessoa aparece sem o
+     * título - quem audita vê que houve o acesso, e não o que a pessoa guarda.
+     */
+    if (action === 'cofre_acessos') {
+      const r = await db.execute(`
+        SELECT id, acao, segredo_id, segredo_titulo, pessoal, dono_id, detalhe,
+               usuario_nome, usuario_email, criado_em
+        FROM cofre_acessos ORDER BY criado_em DESC, id DESC LIMIT 500`);
+      const acessos = r.rows.map(a => {
+        const alheio = Number(a.pessoal) === 1 && String(a.dono_id ?? '') !== (usuario?.id ?? '');
+        return {
+          id: Number(a.id),
+          acao: String(a.acao),
+          segredo_id: a.segredo_id != null ? String(a.segredo_id) : null,
+          segredo_titulo: alheio ? null : (a.segredo_titulo != null ? String(a.segredo_titulo) : null),
+          pessoal: Number(a.pessoal) === 1,
+          detalhe: a.detalhe != null ? String(a.detalhe) : null,
+          usuario_nome: String(a.usuario_nome),
+          usuario_email: a.usuario_email != null ? String(a.usuario_email) : null,
+          criado_em: String(a.criado_em),
+        };
+      });
+      return { status: 200, body: { acessos } };
     }
 
     /**
@@ -7101,6 +7235,7 @@ function faltaEmProjeto(p: any): string | null {
         sql: 'UPDATE cofre_tokens SET usado_em = ?, liberado_ate = ? WHERE id = ?',
         args: [new Date().toISOString(), ate, linha.id as never],
       });
+      await registrarNoCofre(db, usuario, 'abriu');
       return { status: 200, body: { liberado_ate: ate } };
     }
 
@@ -7116,19 +7251,29 @@ function faltaEmProjeto(p: any): string | null {
       if (!id) return { status: 400, body: { error: 'id ausente.' } };
       const ate = await cofreAbertoAte(db, usuario?.id);
       if (!ate) return { status: 403, body: { error: 'O cofre está trancado.', trancado: true } };
+      const visivel = await segredoVisivel(db, id, usuario);
+      if (!visivel) return { status: 404, body: { error: 'Segredo não encontrado.' } };
 
       const r = await db.execute({
         sql: 'SELECT segredo FROM cofre_segredos WHERE id = ?', args: [id],
       });
       if (!r.rows[0]) return { status: 404, body: { error: 'Segredo não encontrado.' } };
+      let conteudo: any;
       try {
-        return {
-          status: 200,
-          body: { conteudo: JSON.parse(decryptSecret(String(r.rows[0].segredo))), liberado_ate: ate },
-        };
+        conteudo = JSON.parse(decryptSecret(String(r.rows[0].segredo)));
       } catch {
         return { status: 500, body: { error: 'Não foi possível abrir este segredo.' } };
       }
+      // A cópia rápida da lista pede só a senha, e só ela desce: o resto da
+      // ficha não precisa sair do servidor para ir à área de transferência.
+      const soASenha = body?.para === 'copiar';
+      await registrarNoCofre(db, usuario, soASenha ? 'copiou' : 'viu', { id, ...visivel });
+      return {
+        status: 200,
+        body: soASenha
+          ? { conteudo: { senha: String(conteudo?.senha ?? '') }, liberado_ate: ate }
+          : { conteudo, liberado_ate: ate },
+      };
     }
 
     /** Grava um segredo, novo ou editado. Guardar é livre: o que custa é ver. */
@@ -7150,30 +7295,67 @@ function faltaEmProjeto(p: any): string | null {
       const categoria = texto(body?.categoria);
       const agora = new Date().toISOString();
       const id = String(body?.id ?? '').trim();
+      // Quem vê: o cofre inteiro, ou só quem criou. Sem o campo, o segredo que
+      // já existe fica como está, e o novo nasce para todos, como sempre foi.
+      const pedida = body?.visibilidade === 'so_eu' ? 'so_eu'
+        : body?.visibilidade === 'todos' ? 'todos' : null;
       if (id) {
+        const atual = await segredoVisivel(db, id, usuario);
+        if (!atual) return { status: 404, body: { error: 'Segredo não encontrado.' } };
+        const antes = atual.pessoal ? 'so_eu' : 'todos';
+        const depois = pedida ?? antes;
+        // Mudar quem vê é de quem criou. Sem esta trava, qualquer um com a
+        // permissão de gravar tornaria "só meu" o segredo que o time usa, e ele
+        // sumiria da tela de todo mundo.
+        if (depois !== antes && (!usuario?.id || atual.donoId !== usuario.id)) {
+          return { status: 403, body: { error: 'Só quem criou o segredo muda quem pode vê-lo.' } };
+        }
         const r = await db.execute({
           sql: `UPDATE cofre_segredos
-                SET titulo = ?, categoria = ?, segredo = ?,
+                SET titulo = ?, categoria = ?, segredo = ?, visibilidade = ?,
                     atualizado_em = ?, atualizado_por_id = ?, atualizado_por_nome = ?
                 WHERE id = ?`,
-          args: [titulo, categoria, segredo, agora, autorId, autorNome, id],
+          args: [titulo, categoria, segredo, depois, agora, autorId, autorNome, id],
         });
         if (r.rowsAffected === 0) return { status: 404, body: { error: 'Segredo não encontrado.' } };
-        return { status: 200, body: { id, atualizado_em: agora, atualizado_por_nome: autorNome } };
+        await registrarNoCofre(db, usuario, 'editou',
+          { id, titulo, pessoal: depois === 'so_eu', donoId: atual.donoId },
+          depois === antes ? undefined
+            : depois === 'so_eu' ? 'passou a ser só de quem criou' : 'passou a ser de todos');
+        return {
+          status: 200,
+          body: { id, visibilidade: depois, atualizado_em: agora, atualizado_por_nome: autorNome },
+        };
+      }
+      // Segredo pessoal precisa de dono. A sessão da senha compartilhada não é
+      // de ninguém, e um "só meu" sem dono não seria de ninguém também.
+      if (pedida === 'so_eu' && !usuario?.id) {
+        return { status: 400, body: { error: 'Esta sessão não tem dono: o segredo precisa ser de todos.' } };
       }
       const novo = randomUUID();
+      const visibilidade = pedida ?? 'todos';
       await db.execute({
-        sql: `INSERT INTO cofre_segredos (id, titulo, categoria, segredo, criado_em, criado_por_id, criado_por_nome)
-              VALUES (?,?,?,?,?,?,?)`,
-        args: [novo, titulo, categoria, segredo, agora, autorId, autorNome],
+        sql: `INSERT INTO cofre_segredos
+                (id, titulo, categoria, segredo, visibilidade, criado_em, criado_por_id, criado_por_nome)
+              VALUES (?,?,?,?,?,?,?,?)`,
+        args: [novo, titulo, categoria, segredo, visibilidade, agora, autorId, autorNome],
       });
-      return { status: 200, body: { id: novo, criado_em: agora, criado_por_nome: autorNome } };
+      await registrarNoCofre(db, usuario, 'criou',
+        { id: novo, titulo, pessoal: visibilidade === 'so_eu', donoId: autorId ?? null });
+      return {
+        status: 200,
+        body: { id: novo, visibilidade, meu: 1, criado_em: agora, criado_por_nome: autorNome },
+      };
     }
 
     if (action === 'excluir_segredo') {
       const id = String(body?.id ?? '').trim();
       if (!id) return { status: 400, body: { error: 'id ausente.' } };
+      // Pessoal alheio não se exclui, nem se sabe que existe.
+      const visivel = await segredoVisivel(db, id, usuario);
+      if (!visivel) return { status: 404, body: { error: 'Segredo não encontrado.' } };
       await db.execute({ sql: 'DELETE FROM cofre_segredos WHERE id = ?', args: [id] });
+      await registrarNoCofre(db, usuario, 'excluiu', { id, ...visivel });
       return { status: 200, body: { ok: true } };
     }
 

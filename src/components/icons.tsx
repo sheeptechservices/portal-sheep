@@ -289,6 +289,10 @@ export function IconBug({ size = 14 }: { size?: number }) {
 export function IconSparkles({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M11 3l1.7 4.4 4.4 1.7-4.4 1.7L11 15.2 9.3 10.8 4.9 9.1l4.4-1.7z" /><path d="M18 14.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" /></Ico>;
 }
+// Cadeado - o que é só de uma pessoa, como o segredo pessoal do cofre.
+export function IconCadeado({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><rect x="4.5" y="10.5" width="15" height="10.5" rx="2.5" /><path d="M8 10.5V7.5a4 4 0 018 0v3" /><path d="M12 14.6v2.4" /></Ico>;
+}
 // Nuvem / infraestrutura hospedada - a integração com a AWS e o custo de infra.
 export function IconNuvem({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M7 18.5h10.5a4 4 0 00.6-7.96A6 6 0 006.3 9.2 4.7 4.7 0 007 18.5z" /></Ico>;

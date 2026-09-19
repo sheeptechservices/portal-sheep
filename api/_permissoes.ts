@@ -149,6 +149,7 @@ export const CATALOGO: PermGrupo[] = [
       { chave: 'cofre:ver', label: 'Abrir o cofre e ver as senhas', acesso: true },
       { chave: 'cofre:editar', label: 'Cadastrar e editar segredos' },
       { chave: 'cofre:excluir', label: 'Apagar segredos' },
+      { chave: 'cofre:auditar', label: 'Ver quem acessou o cofre e quando' },
     ],
   },
   {
@@ -214,6 +215,7 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   cofre_enviar_token: 'cofre:ver',
   cofre_abrir: 'cofre:ver',
   cofre_revelar: 'cofre:ver',
+  cofre_acessos: 'cofre:auditar',
   salvar_segredo: 'cofre:editar',
   excluir_segredo: 'cofre:excluir',
   // Alimenta as duas telas: quem vê tarefas precisa da mesma carga, e ela já
