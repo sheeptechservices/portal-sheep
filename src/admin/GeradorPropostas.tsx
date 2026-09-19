@@ -40,6 +40,7 @@ import { useAuth, useToast } from './AdminApp';
 import { montarPrevia, montarProposta, type Conferencia } from '../lib/proposta/montar';
 import { infraEmBranco, propostaEmBranco } from '../lib/proposta/exemplo';
 import { emBase64, htmlDaProposta, lerTemplate } from '../lib/proposta/gerar';
+import { baixarPdfDaProposta } from '../lib/proposta/pdf';
 import { instante, tempoRelativo } from '../lib/datas';
 import type {
   DadosProposta, Entrega, Fase, InfraManutencao, ItemDeInfra, OpcaoInvestimento,
@@ -65,16 +66,6 @@ interface PropostaGerada {
   autor_nome: string;
   criado_em: string;
   atualizado_em: string;
-}
-
-/** Baixa um HTML como arquivo. */
-function baixarHtml(html: string, nome: string) {
-  const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${nome}.html`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 /** O nome do arquivo que sai: cliente e data, sem o que o sistema de arquivos
@@ -633,7 +624,7 @@ function Previa({ html, secao }: { html: string | null; secao: string | null }) 
  * Cada linha abre a apresentação na prévia da casa e baixa a segunda via, as
  * duas montadas de novo a partir dos campos guardados.
  */
-function HistoricoPropostas({ lista, onVer, onEditar, abrindo, editando, onBaixar, onAbrirLead }: {
+function HistoricoPropostas({ lista, onVer, onEditar, abrindo, editando, baixando, onBaixar, onAbrirLead }: {
   /** `null` enquanto a lista não chegou. */
   lista: PropostaGerada[] | null;
   onVer: (p: PropostaGerada) => void;
@@ -643,6 +634,8 @@ function HistoricoPropostas({ lista, onVer, onEditar, abrindo, editando, onBaixa
   abrindo: number | null;
   /** A que já está aberta no formulário. */
   editando: number | null;
+  /** A que está virando PDF agora, para o botão dela girar. */
+  baixando: number | null;
   onBaixar: (p: PropostaGerada) => void;
   onAbrirLead?: (oportunidadeId: string) => void;
 }) {
@@ -691,8 +684,9 @@ function HistoricoPropostas({ lista, onVer, onEditar, abrindo, editando, onBaixa
               {abrindo === p.id ? <IconSpinner size={13} /> : <IconEdit size={13} />}
               {editando === p.id ? 'Em edição' : 'Editar'}
             </button>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => onBaixar(p)}>
-              <IconDownload size={13} /> Baixar
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => onBaixar(p)}
+              disabled={baixando === p.id}>
+              {baixando === p.id ? <IconSpinner size={13} /> : <IconDownload size={13} />} Baixar PDF
             </button>
           </div>
         </li>
@@ -735,6 +729,10 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
   const guardado = useRef<{ d: DadosProposta; leadId: string } | null>(null);
   /** A pergunta de como salvar a edição, aberta com ela já conferida. */
   const [comoSalvar, setComoSalvar] = useState<{ final: DadosProposta; slides: number } | null>(null);
+  /** O PDF do formulário sendo montado no servidor. */
+  const [gerandoPdf, setGerandoPdf] = useState(false);
+  /** A proposta do histórico que está virando PDF. */
+  const [baixando, setBaixando] = useState<number | null>(null);
   /** O lead do funil a que a proposta pertence. Obrigatório para gerar. */
   const [leadId, setLeadId] = useState('');
   const [leads, setLeads] = useState<LeadDoFunil[] | null>(null);
@@ -904,8 +902,8 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
    *  senão manda voltar a um passo onde não há o que digitar. */
   const semQuemPrepara = !d.preparadoPor.trim();
 
-  function baixar() {
-    if (!template || !leadId) return;
+  async function baixar() {
+    if (!template || !leadId || gerandoPdf) return;
     const final = limpar(d, false);
     const r = montarProposta(template, final);
     setConferencia(r.conferencia);
@@ -913,7 +911,16 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
       toast('error', 'A proposta não passou na conferência', r.conferencia.problemas[0]);
       return;
     }
-    baixarHtml(r.html, nomeDoArquivo);
+    // O arquivo é PDF, montado no servidor: leva alguns segundos, e o botão
+    // gira enquanto isso. Sem o PDF, nada é registrado - o funil não pode
+    // ganhar o chip de uma proposta que não saiu.
+    setGerandoPdf(true);
+    const pdf = await baixarPdfDaProposta(r.html, nomeDoArquivo, token);
+    setGerandoPdf(false);
+    if (!pdf.ok) {
+      toast('error', 'O PDF não saiu', pdf.erro);
+      return;
+    }
     // Editando, o arquivo sai e a pergunta de como salvar abre: sobrescrever
     // regrava pelo id, e salvar como nova guarda uma cópia ao lado da original.
     // Pelo registro comum, com o subtítulo trocado, ela viraria uma segunda
@@ -1096,10 +1103,16 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
   }
 
   async function baixarDoHistorico(p: PropostaGerada) {
+    if (baixando != null) return;
+    setBaixando(p.id);
     try {
-      baixarHtml(await htmlDoHistorico(p), nomeDoArquivoDe(p.cliente, p.atualizado_em));
+      const pdf = await baixarPdfDaProposta(
+        await htmlDoHistorico(p), nomeDoArquivoDe(p.cliente, p.atualizado_em), token);
+      if (!pdf.ok) toast('error', 'O PDF não saiu', pdf.erro);
     } catch (e) {
       toast('error', 'Não consegui montar esta proposta', e instanceof Error ? e.message : undefined);
+    } finally {
+      setBaixando(null);
     }
   }
 
@@ -1162,6 +1175,7 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
             onEditar={p => { void editarDoHistorico(p); }}
             abrindo={abrindo}
             editando={editando?.id ?? null}
+            baixando={baixando}
             onBaixar={p => { void baixarDoHistorico(p); }}
             onAbrirLead={onAbrirOportunidade} />
         </div>
@@ -1730,9 +1744,10 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
               )}
 
               <div className="gp-rodape">
-                <button type="button" className="btn btn-primary" onClick={baixar}
-                  disabled={faltando.length > 0 || semQuemPrepara || !template}>
-                  <IconDownload size={14} /> {editando ? 'Salvar e baixar' : 'Baixar a proposta'}
+                <button type="button" className="btn btn-primary" onClick={() => void baixar()}
+                  disabled={faltando.length > 0 || semQuemPrepara || !template || gerandoPdf}>
+                  {gerandoPdf ? <IconSpinner size={14} /> : <IconDownload size={14} />}
+                  {' '}{gerandoPdf ? 'Gerando o PDF' : editando ? 'Salvar e baixar o PDF' : 'Baixar em PDF'}
                 </button>
                 {!template && <span className="dux-spinner sm" />}
               </div>

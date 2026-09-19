@@ -2721,6 +2721,7 @@ function ChipsDeReuniao({ reunioes, onAbrirOportunidade }: {
  * campos guardados - o servidor guarda os campos, e não o arquivo.
  */
 function ChipsDeProposta({ propostas, empresa }: { propostas: PropostaDoCard[]; empresa: string | null }) {
+  const { toast } = useToast();
   const [vendo, setVendo] = useState<PropostaDoCard | null>(null);
   /** A apresentação montada de novo. O montador entra sob demanda: o quadro do
    *  funil inteiro não precisa dele para desenhar um chip. */
@@ -2755,15 +2756,18 @@ function ChipsDeProposta({ propostas, empresa }: { propostas: PropostaDoCard[]; 
             return { tipo: 'text/html', base64: emBase64(html) };
           }}
           onBaixar={() => {
+            // A proposta sai só em PDF: a prévia daqui é HTML para ver, e o
+            // arquivo que se baixa é o que vai ao cliente.
             void (async () => {
               const html = await montar(vendo.id);
-              if (!html) return;
-              const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `Proposta_${(empresa ?? 'Cliente').replace(/[^\p{L}\p{N}\- ]+/gu, '').trim().replace(/\s+/g, '_')}.html`;
-              a.click();
-              setTimeout(() => URL.revokeObjectURL(url), 10_000);
+              if (!html) {
+                toast('error', 'Não consegui montar esta proposta', 'Tente de novo.');
+                return;
+              }
+              const { baixarPdfDaProposta } = await import('../lib/proposta/pdf');
+              const pdf = await baixarPdfDaProposta(html,
+                `Proposta_${(empresa ?? 'Cliente').replace(/[^\p{L}\p{N}\- ]+/gu, '').trim().replace(/\s+/g, '_')}`);
+              if (!pdf.ok) toast('error', 'O PDF não saiu', pdf.erro);
             })();
           }}
           onFechar={() => setVendo(null)}

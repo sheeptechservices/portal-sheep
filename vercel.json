@@ -4,6 +4,10 @@
   "framework": "vite",
   "devCommand": "npm run dev:vite",
   "functions": {
+    "api/proposta-pdf.ts": {
+      "includeFiles": "node_modules/@libsql/**,node_modules/@sparticuz/chromium/bin/**",
+      "maxDuration": 60
+    },
     "api/*.ts": {
       "includeFiles": "node_modules/@libsql/**,node_modules/pdfkit/**,node_modules/fontkit/**,node_modules/linebreak/**,api/_templates/**"
     }

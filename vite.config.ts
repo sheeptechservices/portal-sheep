@@ -378,6 +378,49 @@ export default defineConfig(({ mode }) => {
             })
           })
 
+          // /api/proposta-pdf - a proposta em PDF. A resposta e um arquivo, entao o
+          // `res` falso sabe mandar bytes (`send`), alem do JSON dos erros. Aqui
+          // quem converte e o Chrome da maquina: o Chromium do pacote e de Linux.
+          server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
+            const url = new URL(req.url ?? '/', `http://localhost`)
+            if (!url.pathname.startsWith('/api/proposta-pdf')) return next()
+
+            const pedacos: Buffer[] = []
+            req.on('data', (chunk: Buffer) => { pedacos.push(chunk) })
+            req.on('end', async () => {
+              try {
+                process.env.APP_ENCRYPTION_KEY = process.env.APP_ENCRYPTION_KEY ?? env.APP_ENCRYPTION_KEY
+                const { default: handler } = await import('./api/proposta-pdf')
+                const corpo = Buffer.concat(pedacos).toString('utf8')
+                let status = 200
+                const falso = {
+                  setHeader: (k: string, v: string) => { res.setHeader(k, v); return falso },
+                  status: (s: number) => { status = s; return falso },
+                  json: (b: unknown) => {
+                    res.statusCode = status
+                    res.setHeader('Content-Type', 'application/json')
+                    res.end(JSON.stringify(b))
+                    return falso
+                  },
+                  send: (b: Buffer) => { res.statusCode = status; res.end(b); return falso },
+                }
+                await handler(
+                  { method: req.method, headers: req.headers, query: Object.fromEntries(url.searchParams), body: corpo ? JSON.parse(corpo) : {} } as never,
+                  falso as never,
+                )
+              } catch (err) {
+                console.error('[api/proposta-pdf]', err)
+                if (!res.headersSent) {
+                  res.statusCode = 500
+                  res.setHeader('Content-Type', 'application/json')
+                  res.end(JSON.stringify({ error: 'Internal error' }))
+                } else {
+                  res.end()
+                }
+              }
+            })
+          })
+
           // /api/proposta-ia - a proposta preenchida pela IA. Mesmo desenho do
           // atalho da analise de vaga, logo abaixo: responde em fluxo, entao o
           // `res` que vai para o handler e o de verdade.

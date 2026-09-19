@@ -83,6 +83,8 @@ body{background:var(--bg);color:var(--black);font-family:'Manrope',sans-serif;he
 /* ícone quadrado verde dos cards de solução (mesmo do módulo interno) */
 .sol-icon{display:inline-flex;align-items:center;justify-content:center;width:clamp(26px,3.06vw,44px);height:clamp(26px,3.06vw,44px);border-radius:clamp(7px,0.83vw,12px);background:var(--yellow);font-size:clamp(14px,1.53vw,22px);margin-bottom:clamp(8px,0.97vw,14px);flex-shrink:0;transition:transform .28s cubic-bezier(.34,1.56,.64,1)}
 .card:hover .sol-icon{transform:scale(1.18) rotate(-8deg)}
+.sol-icon{color:var(--black)}
+.sol-icon svg{width:56%;height:56%}
 .g2{display:grid;grid-template-columns:1fr 1.3fr;gap:clamp(32px,5vw,72px);align-items:start}
 .g3{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(9px,1.11vw,16px)}
 .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:clamp(7px,0.83vw,12px)}
@@ -380,7 +382,7 @@ body{background:var(--bg);color:var(--black);font-family:'Manrope',sans-serif;he
   .a{ opacity:1 !important; transform:none !important; animation:none !important }
 
   /* controles que so fazem sentido na tela */
-  .navhint, .dica-balao, [data-biframe-dica], .ag-dica{ display:none !important }
+  .hint, .navhint, .dica-balao, [data-biframe-dica], .ag-dica{ display:none !important }
 
   /* As barras do cronograma nascem em opacity 0 e scaleX(0), e so aparecem pela
      animacao de entrada. Sem animacao no papel, elas sumiriam: aqui vao direto
@@ -650,32 +652,32 @@ body{background:var(--bg);color:var(--black);font-family:'Manrope',sans-serif;he
     <div class="rule a"></div>
     <div class="g3 a">
       <div class="card ct">
-        <div class="sol-icon">👥</div>
+        <div class="sol-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-5.8 6.5-5.8s6.5 2.2 6.5 5.8"/><path d="M16 4.8a3.3 3.3 0 010 6.4M18 14.6c2.2.6 3.5 2.6 3.5 5.4"/></svg></div>
         <div class="card-title">Teams as a Service (TaaS)</div>
         <div class="card-body">Equipe sob demanda para seus projetos digitais. Disponibilizamos profissionais especializados, gestão de projetos e entrega ágil.</div>
       </div>
       <div class="card ct">
-        <div class="sol-icon">☁️</div>
+        <div class="sol-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18.5h10.5a4 4 0 00.6-7.96A6 6 0 006.3 9.2 4.7 4.7 0 007 18.5z"/></svg></div>
         <div class="card-title">Software as a Service (SaaS)</div>
         <div class="card-body">Soluções escaláveis na nuvem. Criamos sistemas web modernos e infraestrutura em nuvem.</div>
       </div>
       <div class="card ct">
-        <div class="sol-icon">📊</div>
+        <div class="sol-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6"/><rect x="12.5" y="7" width="3" height="10"/><path d="M18 13v4"/></svg></div>
         <div class="card-title">BI (Business Intelligence)</div>
         <div class="card-body">Dashboards e insights para seu negócio. Estruturamos Power BI integrado, análise de dados e relatórios automatizados.</div>
       </div>
       <div class="card ct">
-        <div class="sol-icon">🤖</div>
+        <div class="sol-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="8" width="17" height="12.5" rx="3"/><path d="M12 8V5"/><circle cx="12" cy="3.6" r="1.4"/><path d="M8.5 13.3h.01M15.5 13.3h.01"/><path d="M9.6 16.9h4.8"/><path d="M1.5 12.6v3.3M22.5 12.6v3.3"/></svg></div>
         <div class="card-title">IA (Inteligência Artificial)</div>
         <div class="card-body">Automação e personalização inteligente. Construímos automações focadas em processos comerciais para aumentar as vendas do cliente.</div>
       </div>
       <div class="card ct">
-        <div class="sol-icon">⚡</div>
+        <div class="sol-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2.5L4.5 13.5H11l-1 8 8.5-11H12z"/></svg></div>
         <div class="card-title">Power Platform</div>
         <div class="card-body">Automação de processos e aplicações low-code com Microsoft Power Platform. Desenvolvemos fluxos com Power Automate, aplicativos com Power Apps e dashboards com Power BI integrados ao ecossistema Microsoft.</div>
       </div>
       <div class="card ct">
-        <div class="sol-icon">🌐</div>
+        <div class="sol-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18"/></svg></div>
         <div class="card-title">Websites</div>
         <div class="card-body">Desenvolvimento de sites institucionais com painel admin para personalização e administração geral do portal.</div>
       </div>
