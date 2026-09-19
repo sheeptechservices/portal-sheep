@@ -28,7 +28,7 @@ const QuickSearch = lazy(() => import('./QuickSearch'));
 import type { QuickTarget } from './QuickSearch';
 import { DESTINOS, TOOL_PAGES, TOOL_LABELS, type Page } from './destinos';
 import { CartaoReportar, type Relato } from '../components/CartaoReportar';
-import { Inbox, type ItemDoInbox } from '../components/Inbox';
+import { Inbox, type DestinoDaReuniao, type ItemDoInbox } from '../components/Inbox';
 import type { ReporteNaLista } from '../components/ListaReportes';
 import { iniciarOndas } from '../lib/ondas';
 import { ToastContext, type ToastItem } from '../lib/toast';
@@ -1220,7 +1220,30 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
    * aparecia: a reunião existia no banco e a página de Projetos, montada antes,
    * continuava com a lista de antes - era preciso recarregar para vê-la.
    */
-  const vincularReuniaoDoInbox = useCallback(async (firefliesId: string, projetoId: string) => {
+  const vincularReuniaoDoInbox = useCallback(async (firefliesId: string, destino: DestinoDaReuniao) => {
+    // A reunião de venda vai para o card da oportunidade, pela ação do funil
+    // (a permissão é a de editar oportunidade, e não a de projeto). Vinculada,
+    // a tela abre o card dela: a reunião aparece ali, junto das outras.
+    if (destino.tipo === 'oportunidade') {
+      try {
+        const r = await fetch('/api/admin-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-admin-session': token },
+          body: JSON.stringify({
+            action: 'anexar_reuniao_fireflies_oportunidade',
+            oportunidade_id: destino.id, fireflies_ids: [firefliesId],
+          }),
+        });
+        const resposta = await r.json().catch(() => null);
+        if (!resposta || resposta.error) return resposta ?? { error: 'Não foi possível vincular.' };
+        setPage('oportunidades');
+        setOpenCard({ page: 'oportunidades', id: destino.id, nonce: Date.now() });
+        return resposta;
+      } catch {
+        return { error: 'Erro de conexão. Tente de novo.' };
+      }
+    }
+    const projetoId = destino.id;
     try {
       const r = await fetch('/api/admin-data', {
         method: 'POST',

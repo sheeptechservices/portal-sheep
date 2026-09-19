@@ -22,6 +22,7 @@ import {
 } from './icons';
 import { Dialogo } from './Dialogo';
 import { SelectSistema } from './SelectSistema';
+import { SegSwitch } from './SegSwitch';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { ancorarCaixa } from '../lib/ancorar';
 import { instante, tempoRelativo } from '../lib/datas';
@@ -48,6 +49,18 @@ export interface ProjetoDoInbox {
   /** De quem é o projeto. Nulo no projeto interno, que não tem cliente. */
   cliente?: string | null;
 }
+
+/** Uma oportunidade do funil a que a reunião pode ir. */
+export interface OportunidadeDoInbox {
+  id: string;
+  /** A empresa: é o nome do card no funil. */
+  nome: string;
+  contato?: string | null;
+}
+
+/** Para onde a reunião vai: um projeto, ou uma oportunidade do funil - a
+ *  reunião de venda, antes de haver projeto. */
+export type DestinoDaReuniao = { tipo: 'projeto' | 'oportunidade'; id: string };
 
 /** A medida da gaveta, escrita uma vez: o CSS desenha com ela e o ancoramento
  *  reserva o espaço dela na janela. Em dois lugares, as duas divergem no dia em
@@ -81,14 +94,16 @@ export function Inbox({ listar, marcarLido, limpar, vincularReuniao, onIr }: {
     /** Os projetos a que uma reunião pode ser atrelada, já filtrados por quem
      *  pergunta. Vêm com a lista para a caixa de vincular abrir cheia. */
     projetos?: ProjetoDoInbox[];
+    /** As oportunidades do funil, para quem pode prender reunião nelas. */
+    oportunidades?: OportunidadeDoInbox[];
     error?: string;
   }>;
   /** Marca uma ou várias. A tela manda as chaves que está mostrando. */
   marcarLido: (chaves: string[]) => Promise<{ error?: string } | null>;
   /** Tira da gaveta - a única coisa que faz um aviso sumir. */
   limpar: (chaves: string[]) => Promise<{ error?: string } | null>;
-  /** Atrela a reunião do Fireflies ao projeto escolhido. */
-  vincularReuniao: (firefliesId: string, projetoId: string) => Promise<{ error?: string } | null>;
+  /** Atrela a reunião do Fireflies ao projeto ou à oportunidade escolhida. */
+  vincularReuniao: (firefliesId: string, destino: DestinoDaReuniao) => Promise<{ error?: string } | null>;
   /** Leva ao lugar onde o aviso se resolve. */
   onIr: (item: ItemDoInbox) => void;
 }) {
@@ -96,6 +111,9 @@ export function Inbox({ listar, marcarLido, limpar, vincularReuniao, onIr }: {
   const [aberto, setAberto] = useState(false);
   const [itens, setItens] = useState<ItemDoInbox[] | null>(null);
   const [projetos, setProjetos] = useState<ProjetoDoInbox[]>([]);
+  const [oportunidades, setOportunidades] = useState<OportunidadeDoInbox[]>([]);
+  /** Se a reunião vai para um projeto ou para uma oportunidade. */
+  const [tipoDoDestino, setTipoDoDestino] = useState<DestinoDaReuniao['tipo']>('projeto');
   /** A reunião que está sendo atrelada, e o projeto escolhido para ela. */
   const [atrelando, setAtrelando] = useState<ItemDoInbox | null>(null);
   const [projetoEscolhido, setProjetoEscolhido] = useState('');
@@ -146,7 +164,10 @@ export function Inbox({ listar, marcarLido, limpar, vincularReuniao, onIr }: {
         ...chegaram,
         ...(atual ?? []).filter(i => i.tipo === 'reuniao'),
       ].sort((a, b) => (a.quando < b.quando ? 1 : a.quando > b.quando ? -1 : 0)))));
-      if (!leve) setProjetos(r?.projetos ?? []);
+      if (!leve) {
+        setProjetos(r?.projetos ?? []);
+        setOportunidades(r?.oportunidades ?? []);
+      }
     } catch {
       if (!leve) setErro('Não foi possível carregar os avisos.');
     }
@@ -299,6 +320,9 @@ export function Inbox({ listar, marcarLido, limpar, vincularReuniao, onIr }: {
                           // pergunta. A caixa abre aqui mesmo.
                           if (item.tipo === 'reuniao') {
                             setProjetoEscolhido('');
+                            // Projeto primeiro, que é o destino mais comum;
+                            // sem projeto a escolher, a caixa já abre no funil.
+                            setTipoDoDestino(projetos.length || !oportunidades.length ? 'projeto' : 'oportunidade');
                             setAtrelando(item);
                             return;
                           }
@@ -347,56 +371,76 @@ export function Inbox({ listar, marcarLido, limpar, vincularReuniao, onIr }: {
         document.body,
       )}
 
-      {/* Vincular a reunião a um projeto: a pergunta é uma só, então ela vem na
-          caixa da casa em vez de uma tela nova. Sem projeto para escolher, a
-          caixa diz isso em vez de oferecer um seletor vazio. */}
-      {atrelando && (
-        <Dialogo
-          titulo="Vincular reunião a um projeto"
-          descricao={<><strong>{atrelando.titulo}</strong> vira nota no diário do projeto escolhido, com o resumo do Fireflies.</>}
-          rotuloOk="Vincular"
-          perigo={false}
-          ocupado={atrelado}
-          ocupadoRotulo="Vinculando"
-          largura={420}
-          onFechar={() => setAtrelando(null)}
-          onConfirmar={() => {
-            if (!projetoEscolhido || atrelado) return;
-            setAtrelado(true);
-            void (async () => {
-              const r = await vincularReuniao(atrelando.chave.replace(/^reuniao:/, ''), projetoEscolhido);
-              setAtrelado(false);
-              if (r?.error) { toast('error', 'Não consegui vincular', r.error); return; }
-              const projeto = projetos.find(p => p.id === projetoEscolhido);
-              toast('success', 'Reunião vinculada', `${atrelando.titulo} entrou em ${projeto?.nome ?? 'o projeto'}`);
-              setAtrelando(null);
-              // A lista volta do servidor com ela ainda lá, agora marcada como
-              // atrelada: o aviso vira registro do que se fez, e quem o tira da
-              // gaveta é quem limpa.
-              void buscar();
-            })();
-          }}
-        >
-          {projetos.length ? (
-            <label className="inbox-campo">
-              <span className="form-label">Projeto</span>
-              {/* O cliente vai na segunda linha da opção: dois projetos com o
-                  mesmo nome só se distinguem por ele. */}
-              <SelectSistema valor={projetoEscolhido} onChange={setProjetoEscolhido}
-                placeholder="Escolha o projeto"
-                opcoes={projetos.map(p => ({
-                  valor: p.id,
-                  label: p.nome,
-                  descricao: p.cliente ?? 'Sem cliente',
-                }))} />
-            </label>
-          ) : (
-            <p className="inbox-vazio" style={{ padding: '12px 0 0' }}>
-              Nenhum projeto ativo para vincular.
-            </p>
-          )}
-        </Dialogo>
-      )}
+      {/* Vincular a reunião a um projeto ou a uma oportunidade: a pergunta é
+          uma só, então ela vem na caixa da casa em vez de uma tela nova. O
+          seletor de destino só aparece quando os dois lados existem para quem
+          pergunta; sem nada para escolher, a caixa diz isso em vez de oferecer
+          um seletor vazio. */}
+      {atrelando && (() => {
+        const naOportunidade = tipoDoDestino === 'oportunidade';
+        const opcoes = naOportunidade
+          ? oportunidades.map(o => ({ valor: o.id, label: o.nome, descricao: o.contato ?? 'Sem contato' }))
+          // O cliente vai na segunda linha da opção: dois projetos com o
+          // mesmo nome só se distinguem por ele.
+          : projetos.map(p => ({ valor: p.id, label: p.nome, descricao: p.cliente ?? 'Sem cliente' }));
+        return (
+          <Dialogo
+            titulo="Vincular reunião"
+            descricao={naOportunidade
+              ? <><strong>{atrelando.titulo}</strong> entra nas reuniões da oportunidade escolhida, com o resumo e a transcrição do Fireflies.</>
+              : <><strong>{atrelando.titulo}</strong> vira nota no diário do projeto escolhido, com o resumo do Fireflies.</>}
+            rotuloOk="Vincular"
+            perigo={false}
+            ocupado={atrelado}
+            ocupadoRotulo="Vinculando"
+            largura={440}
+            onFechar={() => setAtrelando(null)}
+            onConfirmar={() => {
+              if (!projetoEscolhido || atrelado) return;
+              setAtrelado(true);
+              void (async () => {
+                const r = await vincularReuniao(atrelando.chave.replace(/^reuniao:/, ''),
+                  { tipo: tipoDoDestino, id: projetoEscolhido });
+                setAtrelado(false);
+                if (r?.error) { toast('error', 'Não consegui vincular', r.error); return; }
+                const nome = naOportunidade
+                  ? oportunidades.find(o => o.id === projetoEscolhido)?.nome ?? 'a oportunidade'
+                  : projetos.find(p => p.id === projetoEscolhido)?.nome ?? 'o projeto';
+                toast('success', 'Reunião vinculada', `${atrelando.titulo} entrou em ${nome}`);
+                setAtrelando(null);
+                // A lista volta do servidor com ela ainda lá, agora marcada como
+                // vinculada: o aviso vira registro do que se fez, e quem o tira
+                // da gaveta é quem limpa.
+                void buscar();
+              })();
+            }}
+          >
+            {projetos.length > 0 && oportunidades.length > 0 && (
+              <div className="inbox-campo">
+                <span className="form-label">Vincular a</span>
+                <SegSwitch full valor={tipoDoDestino}
+                  onChange={v => { setTipoDoDestino(v); setProjetoEscolhido(''); }}
+                  opcoes={[
+                    { valor: 'projeto', label: 'Projeto' },
+                    { valor: 'oportunidade', label: 'Oportunidade' },
+                  ]} />
+              </div>
+            )}
+            {opcoes.length ? (
+              <label className="inbox-campo troca" key={tipoDoDestino}>
+                <span className="form-label">{naOportunidade ? 'Oportunidade' : 'Projeto'}</span>
+                <SelectSistema valor={projetoEscolhido} onChange={setProjetoEscolhido}
+                  placeholder={naOportunidade ? 'Escolha a oportunidade' : 'Escolha o projeto'}
+                  opcoes={opcoes} />
+              </label>
+            ) : (
+              <p className="inbox-vazio" style={{ padding: '12px 0 0' }}>
+                {naOportunidade ? 'Nenhuma oportunidade para vincular.' : 'Nenhum projeto ativo para vincular.'}
+              </p>
+            )}
+          </Dialogo>
+        );
+      })()}
     </>
   );
 }

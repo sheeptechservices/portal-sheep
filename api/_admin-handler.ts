@@ -5242,7 +5242,12 @@ async function despacharAdminData(
       const desde = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
       const cuidaDaFila = podeGerenciarUsuarios(usuario);
       const soDaEquipe = papelEfetivo(usuario?.email, usuario?.papel) === 'membro';
-      const podeAtrelar = podeAcao(permissoes, 'vincular_reuniao');
+      // A reunião vai para um projeto ou para uma oportunidade, cada lado com a
+      // sua permissão: quem cuida do funil não precisa editar projeto para
+      // prender a reunião de venda no card do cliente.
+      const podeNoProjeto = podeAcao(permissoes, 'vincular_reuniao');
+      const podeNaOportunidade = podeAcao(permissoes, 'anexar_reuniao_fireflies_oportunidade');
+      const podeAtrelar = podeNoProjeto || podeNaOportunidade;
       const leve = query.get('leve') === '1';
 
       // O mesmo corte de equipe das tres fontes de conversa de tarefa: membro so
@@ -5465,9 +5470,19 @@ async function despacharAdminData(
         if (cred?.value) {
           const r = await listarReunioesFireflies(cred.value, '', 20).catch(() => null);
           if (r && r.ok) {
+            // Onde cada reunião já está: projeto e oportunidade moram na mesma
+            // tabela, e o aviso diz qual dos dois - "atrelada" sozinho não
+            // dizia onde procurar.
             const atreladas = await db.execute(
-              `SELECT DISTINCT fireflies_id FROM projeto_reunioes WHERE fireflies_id IS NOT NULL`);
-            const jaTem = new Set(atreladas.rows.map(x => String(x.fireflies_id)));
+              `SELECT fireflies_id,
+                      MAX(CASE WHEN projeto_id IS NOT NULL THEN 1 ELSE 0 END) AS em_projeto,
+                      MAX(CASE WHEN oportunidade_id IS NOT NULL THEN 1 ELSE 0 END) AS em_oportunidade
+               FROM projeto_reunioes WHERE fireflies_id IS NOT NULL GROUP BY fireflies_id`);
+            const jaTem = new Map(atreladas.rows.map(x => [
+              String(x.fireflies_id),
+              Number(x.em_projeto) && Number(x.em_oportunidade) ? 'Vinculada a um projeto e a uma oportunidade'
+                : Number(x.em_oportunidade) ? 'Vinculada a uma oportunidade' : 'Vinculada a um projeto',
+            ]));
             for (const m of r.reunioes) {
               if (jaLimpo.has(`reuniao:${m.id}`) || !m.data || m.data < desde) continue;
               itens.push({
@@ -5477,7 +5492,7 @@ async function despacharAdminData(
                 descricao: m.participantes.length
                   ? `Com ${m.participantes.slice(0, 3).join(', ')}`
                     + (m.participantes.length > 3 ? ` e mais ${m.participantes.length - 3}` : '')
-                  : 'Gravada no Fireflies, ainda sem projeto',
+                  : 'Gravada no Fireflies, ainda sem vínculo',
                 // Sem etiqueta: o nome da fonte na propria linha ja diz
                 // Fireflies, e repetir a palavra ao lado dela e ruido.
                 etiqueta: '',
@@ -5485,7 +5500,7 @@ async function despacharAdminData(
                 lido: jaLido.has(`reuniao:${m.id}`),
                 // Atrelada, ela continua na lista dizendo que ja foi: o aviso
                 // vira registro do que se fez, e nao some por conta propria.
-                situacao: jaTem.has(m.id) ? 'Atrelada a um projeto' : undefined,
+                situacao: jaTem.get(m.id),
               });
             }
           }
@@ -5499,7 +5514,7 @@ async function despacharAdminData(
       // projetos pesa cem vezes isto.
       // O cliente vem junto do nome: a casa tem dois projetos chamados "SDR IA",
       // e numa lista de nomes soltos eles sao a mesma linha duas vezes.
-      const projetos = podeAtrelar && itens.some(i => i.tipo === 'reuniao')
+      const projetos = podeNoProjeto && itens.some(i => i.tipo === 'reuniao')
         ? (await db.execute({
           sql: `SELECT p.id, p.nome, c.nome AS cliente
                 FROM projetos p
@@ -5518,10 +5533,23 @@ async function despacharAdminData(
         }))
         : [];
 
+      // As oportunidades do funil, pelo mesmo motivo: id, empresa e o contato,
+      // que é o que distingue duas empresas de nome parecido no seletor.
+      const oportunidades = podeNaOportunidade && itens.some(i => i.tipo === 'reuniao')
+        ? (await db.execute(`
+            SELECT id, empresa, contato_nome FROM oportunidades
+            WHERE deleted_at IS NULL AND COALESCE(TRIM(empresa), '') != ''
+            ORDER BY empresa COLLATE NOCASE`)).rows.map(o => ({
+          id: String(o.id),
+          nome: String(o.empresa),
+          contato: o.contato_nome == null || !String(o.contato_nome).trim() ? null : String(o.contato_nome),
+        }))
+        : [];
+
       itens.sort((a, b) => (a.quando < b.quando ? 1 : a.quando > b.quando ? -1 : 0));
       return {
         status: 200,
-        body: { itens, naoLidos: itens.filter(i => !i.lido).length, projetos },
+        body: { itens, naoLidos: itens.filter(i => !i.lido).length, projetos, oportunidades },
       };
     }
 
