@@ -260,7 +260,10 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   // escreve. A leitura vem cortada por equipe na propria consulta de projetos,
   // que e o que decide quais projetos aparecem na tela.
   planning_semana: 'projetos:ver',
+  meus_objetivos: 'projetos:ver',
   salvar_planning_semana: 'projetos:editar',
+  // Leva o objetivo para a semana da data nova: é gravar a Planning.
+  mover_objetivo_de_semana: 'projetos:editar',
   ordenar_planning: 'projetos:editar',
   // A prova de que o objetivo da semana foi cumprido segue a mesma porta do
   // combinado: quem escreve o objetivo diz que ele foi feito.
@@ -271,6 +274,10 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   excluir_projeto_acesso: 'projetos:editar',
   projeto_acesso_senha: 'projetos:ver',
   add_planning_evidencia: 'projetos:editar',
+  // A porta é ver projetos; a ação confere se quem pede é responsável pelo
+  // objetivo ou pode editar o projeto.
+  atualizar_objetivo: 'projetos:ver',
+  desdobrar_objetivo: 'projetos:ver',
   excluir_planning_evidencia: 'projetos:editar',
   planning_evidencia_base64: 'projetos:ver',
   despublicar_projeto: 'projetos:editar',

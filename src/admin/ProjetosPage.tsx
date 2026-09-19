@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { iniciais, useAuth, useToast } from './AdminApp';
 import {
@@ -14,12 +14,23 @@ import {
   IconRecolher,
   IconPrioridadeMedia, IconTrash,
   IconTriangulo, IconVisaoLista, IconVisaoQuadro,
-  IconX, IconZip,
+  IconX, IconZip, IconRamificar
 } from '../components/icons';
 import FilterDropdown from '../components/FilterDropdown';
 import { SegSwitch } from '../components/SegSwitch';
 import { PLANNING_FUNIL, PROJETO_GERAL } from '../lib/projetoGeral';
 import { logoDoCliente } from '../lib/marcas';
+import { LogoDoCliente } from '../components/LogoDoCliente';
+import { AlternarDesejavel, ChipDesejavel } from '../components/ChipDesejavel';
+import { AcaoDoObjetivo, ICONE_DA_ACAO } from '../components/AcaoDoObjetivo';
+import { MarcoDeStatus } from '../components/MarcoDeStatus';
+import {
+  SemanaDaPlanningCtx, diaEMes, segundaDaData, sextaDaSemana, type ObjetivoLevado,
+} from '../lib/semanaDoObjetivo';
+import {
+  COR_OBJETIVO, ICONE_OBJETIVO, OPCOES_DO_OBJETIVO, marcasDoStatus, statusDoObjetivo,
+  type StatusDoObjetivo,
+} from '../lib/statusDoObjetivo';
 import { DESCRICAO_PAPEL, PAPEIS_EQUIPE, porNivelDeContato } from '../lib/papeisDeEquipe';
 import { SkeletonCards, SkeletonTabela } from '../components/Skeleton';
 import { CartaoKpi, CartoesKpiEsqueleto } from '../components/CartaoKpi';
@@ -2700,64 +2711,22 @@ function SeletorLista({ valor, opcoes, icone: Icone, rotulo, onChange }: {
 }
 
 /** O marco à esquerda da entrega é o próprio seletor de status: clicar nele
- *  abre a lista, e o desenho escolhido fica ali. */
+ *  abre a lista, e o desenho escolhido fica ali. A peça é a `MarcoDeStatus`,
+ *  a mesma dos objetivos da semana; aqui ficam as escolhas da entrega. */
 function MarcoEntrega({ status, onEscolher }: {
   status: string;
   onEscolher: (v: string) => void;
 }) {
-  const [aberto, setAberto] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const dropRef = useRef<HTMLDivElement>(null);
-  const Icone = ICONE_ENTREGA[status] ?? IconMarcoPlanejado;
-
   // Estado escolhido a mão ganha uma linha a mais, para desfazer: sem ela, quem
   // pôs a entrega em triagem não teria como devolvê-la ao automático.
   const naMao = ESCOLHAS_DO_MARCO.includes(status as typeof ESCOLHAS_DO_MARCO[number]);
-  const opcoes: string[] = naMao
-    ? [...ESCOLHAS_DO_MARCO, ENTREGA_PLANEJADA]
-    : [...ESCOLHAS_DO_MARCO];
-
-  function abrir() {
-    setPos(ancorar(triggerRef.current!, opcoes.length, 200));
-    setAberto(a => !a);
-  }
-  useDropdownDismiss(aberto, [triggerRef, dropRef], () => setAberto(false));
-
+  const opcoes = [
+    ...ESCOLHAS_DO_MARCO.map(valor => ({ valor })),
+    ...(naMao ? [{ valor: ENTREGA_PLANEJADA, rotulo: 'Reabrir', nota: 'volta ao estado automático' }] : []),
+  ];
   return (
-    <>
-      <button ref={triggerRef} type="button" className="marco-entrega" onClick={abrir}
-        title={`Etapa: ${status}`} aria-label={`Etapa da entrega: ${status}`}
-        style={{ '--mc': COR_ENTREGA[status] ?? 'var(--gray2)' } as React.CSSProperties}>
-        <Icone size={14} />
-      </button>
-      {aberto && createPortal(
-        <div ref={dropRef} className="status-select-dropdown"
-          style={{ top: pos.top, left: pos.left, width: pos.width, zIndex: 10000 }}>
-          {opcoes.map(st => {
-            const Desenho = ICONE_ENTREGA[st];
-            const reabrir = naMao && st === ENTREGA_PLANEJADA;
-            return (
-              <div key={st} className={`status-select-option${st === status ? ' active' : ''}`}
-                onClick={() => { setAberto(false); onEscolher(st); }}>
-                <span className="marco-bolha" style={{ '--mc': COR_ENTREGA[st] } as React.CSSProperties}>
-                  <Desenho size={14} />
-                </span>
-                <span>
-                  {reabrir ? 'Reabrir' : st}
-                  {reabrir && (
-                    <span style={{ display: 'block', fontSize: 10.5, color: 'var(--gray2)' }}>
-                      volta ao estado automático
-                    </span>
-                  )}
-                </span>
-              </div>
-            );
-          })}
-        </div>,
-        document.body,
-      )}
-    </>
+    <MarcoDeStatus status={status} opcoes={opcoes} cores={COR_ENTREGA} icones={ICONE_ENTREGA}
+      nome="Etapa da entrega" onEscolher={onEscolher} />
   );
 }
 
@@ -3072,6 +3041,10 @@ function SecaoEquipe({ titulo, pessoas, valor, somenteLeitura, onChange }: {
  *  da atividade recente e a janela do que está planejado. */
 const DIAS_DA_SEMANA = 7;
 
+/** Avisa a quem estiver ouvindo (o quadro de objetivos do cabeçalho) que a
+ *  Planning acabou de gravar. */
+export const EVENTO_PLANNING_GRAVADA = 'planning:gravada';
+
 /** A segunda-feira da semana de uma data, ou a desta semana. A semana da casa
  *  começa na segunda, e é ela que o quadro mostra - não uma janela móvel de
  *  sete dias, que na quarta arrastaria metade da semana passada junto. */
@@ -3262,6 +3235,7 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
           )}
         </p>
         <ObjetivosDaPlanning
+          projetoId={p.id}
           valores={planning.objetivos}
           somenteLeitura={!podeEditar}
           pessoas={pessoas}
@@ -3427,6 +3401,7 @@ function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
           )}
         </p>
         <ObjetivosDaPlanning
+          projetoId={PLANNING_FUNIL}
           valores={planning.objetivos}
           somenteLeitura={!podeEditar}
           pessoas={pessoas}
@@ -3515,6 +3490,33 @@ function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
   );
 }
 
+/** O objetivo e onde ele está na lista gravada. A tela desenha em árvore - a
+ *  mãe e, logo abaixo, os filhos -, mas a lista de verdade é plana, e é pelo
+ *  índice nela que o campo, o foco e a gravação se acham. */
+interface NoDoObjetivo { v: ObjetivoDaSemana; i: number; filha: boolean }
+
+/**
+ * A lista em árvore: cada objetivo solto, na ordem gravada, e sob ele os que
+ * nasceram dele, também na ordem gravada. Filho cuja mãe sumiu (ou é ela
+ * mesma filha de alguém) é desenhado solto - é o que o servidor faz com ele na
+ * próxima gravação.
+ */
+function emArvore(valores: ObjetivoDaSemana[]): NoDoObjetivo[] {
+  const maes = new Set(valores.filter(v => !v.pai).map(v => v.id));
+  const eFilha = (v: ObjetivoDaSemana) => !!v.pai && v.pai !== v.id && maes.has(v.pai);
+  const nos: NoDoObjetivo[] = [];
+  valores.forEach((v, i) => {
+    if (eFilha(v)) return;
+    nos.push({ v, i, filha: false });
+    valores.forEach((f, k) => { if (eFilha(f) && f.pai === v.id) nos.push({ v: f, i: k, filha: true }); });
+  });
+  return nos;
+}
+
+/** A família de um objetivo solto: ele e os filhos, na ordem gravada. */
+const familiaDe = (valores: ObjetivoDaSemana[], id: string) =>
+  valores.filter(v => v.id === id || v.pai === id);
+
 /**
  * Os objetivos da semana, em checklist: uma linha por objetivo, Enter abre a
  * seguinte, a linha vazia sai sozinha ao perder o foco, e a caixinha marca o
@@ -3524,7 +3526,9 @@ function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
  * que se combina numa planning é uma lista de coisas, e a planning seguinte
  * abre esta semana para conferir o que andou - a marca é essa conferência.
  */
-function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, pessoas, provas, onChange }: {
+function ObjetivosDaPlanning({ projetoId, valores, placeholder, somenteLeitura, pessoas, provas, onChange }: {
+  /** De que folha é a lista: é para lá que a troca de semana vai. */
+  projetoId: string;
   valores: ObjetivoDaSemana[];
   placeholder: string;
   somenteLeitura: boolean;
@@ -3536,6 +3540,25 @@ function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, pessoas, pr
   onChange: (v: ObjetivoDaSemana[]) => void;
 }) {
   const campos = useRef<Array<HTMLInputElement | null>>([]);
+  /** A semana em foco: é dela a sexta com que todo objetivo nasce, e uma data
+   *  fora dela leva o objetivo embora. */
+  const semanaDaPlanning = useContext(SemanaDaPlanningCtx);
+  const sexta = semanaDaPlanning ? sextaDaSemana(semanaDaPlanning.segunda) : null;
+
+  /** A data nova da linha. Na mesma semana, é só a data; em outra, o objetivo
+   *  vai para aquela semana e sai desta - os filhos que ele tinha ficam, soltos. */
+  const mudarData = (i: number, data: string) => {
+    if (!data) return;
+    const v = valores[i];
+    if (!semanaDaPlanning || segundaDaData(data) === semanaDaPlanning.segunda) {
+      trocar(i, { prazo: data });
+      return;
+    }
+    const restante = valores
+      .filter((_, k) => k !== i)
+      .map(x => (x.pai === v.id ? { ...x, pai: null } : x));
+    semanaDaPlanning.mover(projetoId, { ...v, prazo: data, pai: null }, restante);
+  };
   /** O seletor de arquivo, um só para a lista inteira: qual linha vai receber é
    *  dito na hora de abrir. Um `input` por linha encheria a folha de campos
    *  invisíveis. */
@@ -3582,16 +3605,58 @@ function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, pessoas, pr
   const trocar = (i: number, mudanca: Partial<ObjetivoDaSemana>) =>
     onChange(valores.map((v, k) => (k === i ? { ...v, ...mudanca } : v)));
 
+  /** Uma linha nova depois de outra. Depois de um filho, nasce um irmão (o
+   *  Enter de quem está listando ajustes continua listando ajustes); depois de
+   *  uma mãe, o novo solto entra depois da família inteira, para não cair no
+   *  meio dos filhos dela. */
   const inserir = (depoisDe: number) => {
+    const base = valores[depoisDe];
+    if (base?.pai) { desdobrar(depoisDe); return; }
+    let ate = depoisDe;
+    if (base) valores.forEach((v, k) => { if (v.pai === base.id && k > ate) ate = k; });
     const lista = [...valores];
-    lista.splice(depoisDe + 1, 0, {
-      id: novoIdDeObjetivo(), texto: '', feito: false, prazo: null, responsaveis: [],
+    lista.splice(ate + 1, 0, {
+      id: novoIdDeObjetivo(), texto: '', feito: false, prazo: sexta, responsaveis: [], pai: null,
     });
-    nova.current = depoisDe + 1;
+    nova.current = ate + 1;
     onChange(lista);
   };
 
-  const remover = (i: number) => onChange(valores.filter((_, k) => k !== i));
+  /** Um objetivo que nasce de outro: o ajuste que a validação pediu. Entra
+   *  depois do último filho da mãe, com os responsáveis dela, e o foco vai
+   *  para ele. Desdobrar um filho cria um irmão: um nível só. */
+  const desdobrar = (de: number) => {
+    const origem = valores[de];
+    if (!origem) return;
+    const mae = origem.pai ? (valores.find(v => v.id === origem.pai) ?? origem) : origem;
+    let ate = valores.findIndex(v => v.id === mae.id);
+    valores.forEach((v, k) => { if (v.pai === mae.id && k > ate) ate = k; });
+    const lista = [...valores];
+    lista.splice(ate + 1, 0, {
+      id: novoIdDeObjetivo(), texto: '', feito: false, prazo: sexta,
+      responsaveis: [...mae.responsaveis], pai: mae.id,
+    });
+    nova.current = ate + 1;
+    onChange(lista);
+  };
+
+  /** O "+" do fim da lista: sempre um objetivo solto, no fim. Pelo `inserir`,
+   *  com um filho por último, ele viraria mais um desdobramento. */
+  const inserirNoFim = () => {
+    nova.current = valores.length;
+    onChange([...valores, {
+      id: novoIdDeObjetivo(), texto: '', feito: false, prazo: sexta, responsaveis: [], pai: null,
+    }]);
+  };
+
+  /** Apagar a mãe solta os filhos: eles continuam valendo, só deixam de
+   *  descer de alguém. */
+  const remover = (i: number) => {
+    const saindo = valores[i];
+    onChange(valores
+      .filter((_, k) => k !== i)
+      .map(v => (saindo && v.pai === saindo.id ? { ...v, pai: null } : v)));
+  };
 
   /** Grava a ordem nova, guardando antes onde cada linha estava. */
   const reordenar = (lista: ObjetivoDaSemana[]) => {
@@ -3600,39 +3665,82 @@ function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, pessoas, pr
     onChange(lista);
   };
 
+  /** Solta a linha levada. Um filho só troca de lugar entre os irmãos: ele é
+   *  desenhado sob a mãe, e soltá-lo em outra família não o mudaria de mãe.
+   *  Uma mãe leva a família junto, e cai antes ou depois da família de quem
+   *  estava embaixo dela. */
   const soltar = (alvoId: string) => {
     const origem = valores.find(v => v.id === arrastando);
     const pos = sobre?.pos ?? 'antes';
     setArrastando(null);
     setSobre(null);
-    if (!origem || origem.id === alvoId) return;
-    const lista = valores.filter(v => v.id !== origem.id);
-    const para = lista.findIndex(v => v.id === alvoId);
-    lista.splice(pos === 'antes' ? para : para + 1, 0, origem);
-    reordenar(lista);
+    const alvo = valores.find(v => v.id === alvoId);
+    if (!origem || !alvo || origem.id === alvoId) return;
+    if (origem.pai) {
+      if (alvo.pai !== origem.pai) return;
+      const lista = valores.filter(v => v.id !== origem.id);
+      const para = lista.findIndex(v => v.id === alvoId);
+      lista.splice(pos === 'antes' ? para : para + 1, 0, origem);
+      reordenar(lista);
+      return;
+    }
+    const maeDoAlvo = alvo.pai ?? alvo.id;
+    if (maeDoAlvo === origem.id) return;
+    const bloco = familiaDe(valores, origem.id);
+    const resto = valores.filter(v => !bloco.includes(v));
+    const familiaAlvo = familiaDe(resto, maeDoAlvo);
+    const ancora = pos === 'antes' && !alvo.pai ? familiaAlvo[0] : familiaAlvo[familiaAlvo.length - 1];
+    const para = resto.indexOf(ancora) + (pos === 'antes' && !alvo.pai ? 0 : 1);
+    resto.splice(para, 0, ...bloco);
+    reordenar(resto);
   };
 
   /** Alt com a seta leva a linha junto: arrastar não pode ser o único jeito de
    *  arrumar a ordem, e quem está escrevendo não quer largar o teclado. */
   const moverPorTecla = (i: number, passo: number) => {
-    const destino = i + passo;
-    if (destino < 0 || destino >= valores.length) return;
-    const lista = [...valores];
-    [lista[i], lista[destino]] = [lista[destino], lista[i]];
-    nova.current = destino;
-    reordenar(lista);
+    const atual = valores[i];
+    if (!atual) return;
+    // Filho troca com o irmão vizinho; mãe troca de lugar com a família
+    // vizinha, levando a dela junto.
+    if (atual.pai) {
+      const irmaos = valores.map((v, k) => ({ v, k })).filter(x => x.v.pai === atual.pai);
+      const aqui = irmaos.findIndex(x => x.k === i);
+      const outro = irmaos[aqui + passo];
+      if (!outro) return;
+      const lista = [...valores];
+      [lista[i], lista[outro.k]] = [lista[outro.k], lista[i]];
+      nova.current = outro.k;
+      reordenar(lista);
+      return;
+    }
+    const soltos = valores.filter(v => !v.pai);
+    const aqui = soltos.findIndex(v => v.id === atual.id);
+    const vizinho = soltos[aqui + passo];
+    if (!vizinho) return;
+    const bloco = familiaDe(valores, atual.id);
+    const resto = valores.filter(v => !bloco.includes(v));
+    const familiaVizinha = familiaDe(resto, vizinho.id);
+    const para = passo > 0
+      ? resto.indexOf(familiaVizinha[familiaVizinha.length - 1]) + 1
+      : resto.indexOf(familiaVizinha[0]);
+    resto.splice(para, 0, ...bloco);
+    nova.current = para;
+    reordenar(resto);
   };
+
+  const arvore = emArvore(valores);
 
   if (somenteLeitura) {
     return valores.length === 0
       ? <p className="nt-vazio">Nada combinado para esta semana.</p>
       : (
         <div className="pl-linhas">
-          {valores.map(v => (
-            <div key={v.id} className={`pl-linha${v.feito ? ' feito' : ''}`}>
-              <input type="checkbox" className="form-checkbox" checked={v.feito} disabled
-                aria-label={v.texto} />
+          {emArvore(valores).map(({ v, filha }) => (
+            <div key={v.id} className={`pl-linha${v.feito ? ' feito' : ''}${filha ? ' filha' : ''}`}>
+              <MarcoDeStatus somenteLeitura status={statusDoObjetivo(v)} opcoes={OPCOES_DO_OBJETIVO}
+                cores={COR_OBJETIVO} icones={ICONE_OBJETIVO} nome="Status do objetivo" />
               <span className="pl-linha-texto">{v.texto}</span>
+              {v.desejavel && <ChipDesejavel />}
               {v.prazo && <span className="pl-linha-prazo">{fmtDataCurta(v.prazo)}</span>}
               {v.responsaveis.length > 0 && (
                 <span className="pl-linha-donos">
@@ -3661,7 +3769,7 @@ function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, pessoas, pr
 
   return (
     <div className={`pl-linhas${arrastando ? ' reordenando' : ''}`}>
-      {valores.map((v, i) => {
+      {arvore.map(({ v, i, filha }) => {
         const alvo = sobre?.id === v.id && arrastando !== v.id ? sobre.pos : null;
         return (
         <div
@@ -3670,6 +3778,7 @@ function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, pessoas, pr
           className={[
             'pl-linha',
             v.feito ? 'feito' : '',
+            filha ? 'filha' : '',
             arrastando === v.id ? 'levada' : '',
             alvo ? `cai-${alvo}` : '',
           ].filter(Boolean).join(' ')}
@@ -3709,14 +3818,12 @@ function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, pessoas, pr
           >
             <IconArrastar size={13} />
           </span>
-          <label className="checklist-marca" title={v.feito ? 'Desmarcar' : 'Marcar como cumprido'}>
-            <input type="checkbox" className="form-checkbox"
-              checked={v.feito}
-              // Linha ainda em branco não tem o que cumprir.
-              disabled={v.texto.trim() === ''}
-              aria-label={`Marcar "${v.texto}" como cumprido`}
-              onChange={e => trocar(i, { feito: e.target.checked })} />
-          </label>
+          {/* O status no marco das entregas: fazer, fazendo, feito. Linha
+              ainda em branco não tem o que marcar. */}
+          <MarcoDeStatus status={statusDoObjetivo(v)} opcoes={OPCOES_DO_OBJETIVO}
+            cores={COR_OBJETIVO} icones={ICONE_OBJETIVO} nome="Status do objetivo"
+            desabilitado={v.texto.trim() === ''}
+            onEscolher={s => trocar(i, marcasDoStatus(s as StatusDoObjetivo))} />
           <input
             ref={el => { campos.current[i] = el; }}
             className="pl-linha-campo"
@@ -3756,10 +3863,16 @@ function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, pessoas, pr
               ali dentro seriam ruído no meio da digitação. */}
           {v.texto.trim() !== '' && (
             <span className="pl-linha-combinado">
+              {/* Desejável: não obrigatório, mas de grande valor. Ligado é o
+                  chip âmbar, à vista; desligado é a estrela vazada, que só
+                  aparece com a linha em foco, como a data e as pessoas. */}
+              <span className={v.desejavel ? undefined : 'pl-linha-opcional'}>
+                <AlternarDesejavel ligado={!!v.desejavel} onChange={d => trocar(i, { desejavel: d })} />
+              </span>
               <span className={v.prazo ? undefined : 'pl-linha-opcional'}>
-                <DatePicker chip allowPast value={v.prazo ?? ''}
-                  titulo={v.prazo ? undefined : 'Para quando é este objetivo'}
-                  onChange={d => trocar(i, { prazo: d || null })} />
+                <DatePicker chip allowPast required value={v.prazo ?? ''}
+                  titulo={v.prazo ? 'Data de entrega. Uma data de outra semana leva o objetivo para ela.' : 'Para quando é este objetivo'}
+                  onChange={d => mudarData(i, d)} />
               </span>
               <span className={v.responsaveis.length ? undefined : 'pl-linha-opcional'}>
                 <SeletorPessoas compacto pessoas={pessoas} valor={v.responsaveis}
@@ -3788,14 +3901,25 @@ function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, pessoas, pr
                       </button>
                     </span>
                   ))}
-                  <button type="button" className="pl-linha-anexar"
+                  <AcaoDoObjetivo rotulo="Anexar prova deste objetivo"
                     title="Anexar um print ou arquivo como prova do que foi feito"
-                    aria-label="Anexar prova deste objetivo"
                     onClick={() => { linhaDoAnexo.current = v.id; escolher.current?.click(); }}>
-                    <IconClip size={12} />
-                  </button>
+                    <IconClip size={ICONE_DA_ACAO} />
+                  </AcaoDoObjetivo>
                 </span>
               )}
+            </span>
+          )}
+          {/* O desdobramento: o objetivo que nasce deste - a validação que
+              pediu ajustes. Só na linha que já tem frase; num filho, cria um
+              irmão, porque a árvore tem um nível só. */}
+          {v.texto.trim() !== '' && (
+            <span className="pl-linha-opcional">
+              <AcaoDoObjetivo rotulo={`Desdobrar "${v.texto}"`}
+                title={filha ? 'Outro desdobramento do mesmo objetivo' : 'Desdobrar: criar um objetivo que nasce deste'}
+                onMouseDown={e => e.preventDefault()} onClick={() => desdobrar(i)}>
+                <IconRamificar size={ICONE_DA_ACAO} />
+              </AcaoDoObjetivo>
             </span>
           )}
           <button type="button" className="checklist-tirar" aria-label="Remover esta linha"
@@ -3807,7 +3931,7 @@ function ObjetivosDaPlanning({ valores, placeholder, somenteLeitura, pessoas, pr
       })}
       {/* O mesmo "+" discreto do checklist da tarefa: em repouso a lista termina
           no ultimo item, e uma caixa com moldura pesava mais que os itens. */}
-      <button type="button" className="checklist-add" onClick={() => inserir(valores.length - 1)}>
+      <button type="button" className="checklist-add" onClick={inserirNoFim}>
         <IconPlus size={12} />
         {valores.length ? 'Outro item' : 'Adicionar'}
       </button>
@@ -4086,31 +4210,6 @@ function SecaoAcessos({ acessos, somenteLeitura, acoes }: {
   );
 }
 
-/** A logo de um cliente pelo nome, no tamanho de chip. Sem logo cadastrada fica
- *  só o nome, que o chip já mostra ao lado. */
-function LogoDoCliente({ cliente }: { cliente: string }) {
-  const marca = logoDoCliente(cliente);
-  if (!marca) return null;
-  const altura = 16;
-  if (marca.cor && marca.proporcao) {
-    return (
-      <span className="marca-tingida" role="img" aria-label={cliente}
-        style={{
-          height: altura,
-          width: Math.min(46, Math.round(altura * marca.proporcao)),
-          ['--marca' as string]: `url(${marca.src})`,
-          ['--marca-cor' as string]: marca.cor,
-          ['--marca-cor-escura' as string]: marca.corEscura,
-        }} />
-    );
-  }
-  return (
-    <img className="pl-aba-logo" src={marca.src} alt={cliente}
-      data-escurecer={marca.escurecer ? '' : undefined}
-      style={{ height: altura, maxWidth: 46 }} />
-  );
-}
-
 /**
  * Todos os objetivos da semana numa folha só, agrupados por cliente.
  *
@@ -4231,6 +4330,7 @@ function FolhaDosObjetivos({ lista, planning, pessoas, podeEditar, onMudarObjeti
                   {/* A mesma lista da folha do projeto: escrever, marcar, pôr
                       prazo e dizer quem responde, sem trocar de tela. */}
                   <ObjetivosDaPlanning
+                    projetoId={p.id}
                     valores={planning[p.id]?.objetivos ?? []}
                     somenteLeitura={!podeEditar}
                     pessoas={pessoas}
@@ -4804,10 +4904,17 @@ interface ObjetivoDaSemana {
   id: string;
   texto: string;
   feito: boolean;
+  /** Em curso: o meio entre fazer e feito. Ver `statusDoObjetivo`. */
+  fazendo?: boolean;
   /** Para quando o objetivo foi combinado. Nulo: a semana inteira. */
   prazo: string | null;
   /** Quem respondeu por ele na reunião. Vazio: é do time. */
   responsaveis: string[];
+  /** O objetivo de que este nasceu: a validação que pediu os ajustes. Um nível
+   *  só - a mãe nunca tem mãe. */
+  pai?: string | null;
+  /** Não obrigatório, mas de grande valor se sair: o chip âmbar com a estrela. */
+  desejavel?: boolean;
 }
 
 /** O id de um objetivo é gravado junto dele, e é por ele que a prova se
@@ -4869,8 +4976,10 @@ function AbaPlanning({
   projetos, pessoas, planning, semana, onMudarSemana, onSalvarPlanning, onReordenar, provasDe,
   onAbrir, onSalvarTarefa, onAbrirTarefa, onCriarTarefa, onExcluirTarefa,
   etapas, etapaDeEntrada, etapaDeConclusao, podeEditar, podeEditarTarefa, podeExcluirTarefa,
-  entregasDe, funil, secao, onVerProjeto, onAbrirOportunidade,
+  entregasDe, funil, secao, onVerProjeto, onAbrirOportunidade, foco,
 }: {
+  /** O projeto a pôr na tela, pedido de fora da Planning. */
+  foco?: { id: string; nonce: number } | null;
   /** Monta a seção de entregas de um projeto. */
   entregasDe: (p: Projeto) => React.ReactNode;
   projetos: Projeto[];
@@ -4939,6 +5048,11 @@ function AbaPlanning({
   }, [projetos]);
 
   const [ativo, setAtivo] = useState<string | null>(null);
+  // O pedido de fora escolhe a divisória. Só vale quando o projeto está na
+  // lista; fora dela, a folha que abriria seria outra, e o clique enganaria.
+  useEffect(() => {
+    if (foco && lista.some(p => p.id === foco.id)) setAtivo(foco.id);
+  }, [foco?.nonce, lista]);
   // O projeto escolhido, ou o primeiro da lista. Guardado por id e não por
   // posição: a lista se reordena quando alguém muda uma prioridade, e a folha
   // não pode trocar de projeto por causa disso.
@@ -5887,7 +6001,13 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
    *
    *  `aba` e `reuniao` vêm do inbox, quando ele acaba de atrelar uma reunião:
    *  a ficha abre na aba de Reuniões, com aquela aberta. */
-  abrir?: { id: string; nonce: number; aba?: 'reunioes'; reuniao?: number };
+  abrir?: {
+    id: string; nonce: number; aba?: 'reunioes' | 'planning'; reuniao?: number;
+    /** Com `aba: 'planning'`: a segunda-feira da semana (AAAA-MM-DD) e se o
+     *  projeto tem divisória própria lá. Sem divisória, o objetivo aparece na
+     *  visão de todos os objetivos. */
+    semana?: string; divisoria?: boolean;
+  };
   onAbriu?: () => void;
 }) {
   const { pode, usuario, onSessionExpired } = useAuth();
@@ -5939,6 +6059,9 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
   /** A segunda-feira da semana em foco na Planning. Uma data, e não um texto:
    *  andar de semana é somar sete dias, e o texto sai dela. */
   const [semanaDaPlanning, setSemanaDaPlanning] = useState(() => segundaDaSemana());
+  /** O projeto que a Planning deve pôr na tela, pedido de fora (o alvo dos
+   *  objetivos). O `nonce` faz o mesmo pedido valer de novo. */
+  const [focoDaPlanning, setFocoDaPlanning] = useState<{ id: string; nonce: number } | null>(null);
   /** O combinado de cada projeto na semana em foco, por id de projeto. */
   const [planning, setPlanning] = useState<Record<string, PlanningDaSemana>>({});
 
@@ -6056,6 +6179,15 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
   // vista: é um pedido a mais, e quem abre Projetos na aba Geral não o usa.
   // Trocar de semana recarrega, porque cada semana tem o seu.
   const semanaIso = iso10(semanaDaPlanning);
+  // O quadro de objetivos do cabeçalho mexe num objetivo por fora da
+  // Planning. Com ela aberta, a semana é relida: sem isso a próxima gravação
+  // daqui, que regrava a lista inteira do projeto, desfaria o que mudou lá.
+  const [releituraDaPlanning, setReleituraDaPlanning] = useState(0);
+  useEffect(() => {
+    const mudou = () => setReleituraDaPlanning(n => n + 1);
+    window.addEventListener('objetivos:mudou', mudou);
+    return () => window.removeEventListener('objetivos:mudou', mudou);
+  }, []);
   useEffect(() => {
     if (aba !== 'planning') return;
     let vivo = true;
@@ -6076,8 +6208,11 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
               id: idDoObjetivo(o?.id),
               texto: String(o?.texto ?? ''),
               feito: o?.feito === true,
+              fazendo: o?.feito !== true && o?.fazendo === true,
               prazo: o?.prazo ? String(o.prazo) : null,
               responsaveis: Array.isArray(o?.responsaveis) ? o.responsaveis.map(String) : [],
+              pai: o?.pai ? String(o.pai) : null,
+              desejavel: o?.desejavel === true,
             }))
             : [],
         };
@@ -6094,7 +6229,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
       });
     });
     return () => { vivo = false; };
-  }, [aba, api, semanaIso]);
+  }, [aba, api, semanaIso, releituraDaPlanning]);
 
   /** Prende uma prova a um objetivo. A linha mostra o chip na hora, com id
    *  provisório, e o id de verdade chega da gravação - recarregar a semana
@@ -6182,7 +6317,10 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
       projeto_id: projetoId,
       semana: semanaIso,
       objetivos: (dados.objetivos ?? []).map(o => ({
-        id: o.id, texto: o.texto, feito: o.feito, prazo: o.prazo, responsaveis: o.responsaveis,
+        id: o.id, texto: o.texto, feito: o.feito, fazendo: !o.feito && o.fazendo === true,
+        prazo: o.prazo, responsaveis: o.responsaveis,
+        pai: o.pai ?? null,
+        desejavel: o.desejavel === true,
       })),
     };
     const enviar = () => {
@@ -6190,13 +6328,61 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
       // Queda de rede ou resposta que não é JSON rejeitam a promessa, e sem o
       // `catch` a falha era muda: a frase ficava na tela e não chegava ao banco.
       void api('', 'POST', corpo)
-        .then(r => { if (r?.error) toast('error', 'Não foi possível gravar os objetivos', r.error); })
+        .then(r => {
+          if (r?.error) { toast('error', 'Não foi possível gravar os objetivos', r.error); return; }
+          // O quadro de objetivos do cabeçalho relê ao ouvir isto: fixado ao
+          // lado da Planning, ele risca o objetivo no instante em que se marca.
+          window.dispatchEvent(new Event(EVENTO_PLANNING_GRAVADA));
+        })
         .catch(() => toast('error', 'Não foi possível gravar os objetivos',
           'A conexão caiu antes de a gravação chegar. Escreva de novo quando voltar.'));
     };
     clearTimeout(gravando.current.get(chave)?.timer);
     gravando.current.set(chave, { timer: setTimeout(enviar, 700), enviar });
   }, [api, semanaIso, toast]);
+
+  /** Leva um objetivo para a semana da data nova dele. Some desta Planning na
+   *  hora e volta se o servidor recusar. A gravação pendente desta folha é
+   *  cancelada: ela ainda tinha o objetivo, e chegaria depois trazendo-o de
+   *  volta - a lista que fica vai com o pedido de mudança. */
+  const moverObjetivo = useCallback((projetoId: string, objetivo: ObjetivoLevado, restante: ObjetivoLevado[]) => {
+    const chave = `${projetoId}|${semanaIso}`;
+    clearTimeout(gravando.current.get(chave)?.timer);
+    gravando.current.delete(chave);
+    let antes: PlanningDaSemana | undefined;
+    setPlanning(atual => {
+      antes = atual[projetoId];
+      const folha = atual[projetoId] ?? PLANNING_VAZIA;
+      return {
+        ...atual,
+        [projetoId]: {
+          ...folha,
+          objetivos: restante as ObjetivoDaSemana[],
+          evidencias: folha.evidencias.filter(e => e.objetivo_id !== objetivo.id),
+        },
+      };
+    });
+    const serie = (o: ObjetivoLevado) => ({
+      id: o.id, texto: o.texto, feito: o.feito, fazendo: !o.feito && o.fazendo === true,
+      prazo: o.prazo, responsaveis: o.responsaveis, pai: o.pai ?? null, desejavel: o.desejavel === true,
+    });
+    void api('', 'POST', {
+      action: 'mover_objetivo_de_semana', projeto_id: projetoId, semana: semanaIso,
+      objetivo: serie(objetivo), objetivos: restante.filter(o => o.texto.trim()).map(serie),
+    })
+      .then(r => {
+        if (!r?.ok) throw new Error(String(r?.error ?? 'sem confirmação'));
+        toast('success', 'Objetivo levado de semana',
+          `"${objetivo.texto}" foi para a semana de ${diaEMes(String(r.semana))}.`);
+        window.dispatchEvent(new Event(EVENTO_PLANNING_GRAVADA));
+      })
+      .catch(e => {
+        setPlanning(atual => ({ ...atual, [projetoId]: antes ?? atual[projetoId] }));
+        toast('error', 'Não foi possível mudar a semana', e instanceof Error ? e.message : undefined);
+      });
+  }, [api, semanaIso, toast]);
+  const contextoDaSemana = useMemo(
+    () => ({ segunda: semanaIso, mover: moverObjetivo }), [semanaIso, moverObjetivo]);
 
   /** Arruma a ordem das divisórias. Pinta na hora - a divisória já está no
    *  lugar novo quando o dedo sai do mouse - e desfaz se o servidor recusar. */
@@ -6557,6 +6743,20 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
   // abrir com o projeto dentro, em vez de abrir vazia e piscar depois.
   useEffect(() => {
     if (!abrir) return;
+    // Vindo do alvo dos objetivos: a Planning, e não a ficha. A semana e o
+    // projeto vão para ela; quem não tem divisória própria (demandas gerais,
+    // projeto parado) é achado na visão de todos os objetivos.
+    if (abrir.aba === 'planning') {
+      setAba('planning');
+      if (abrir.semana && /^\d{4}-\d{2}-\d{2}$/.test(abrir.semana)) {
+        const [a, m, d] = abrir.semana.split('-').map(Number);
+        setSemanaDaPlanning(new Date(a, m - 1, d));
+      }
+      mudarSecaoPlanning(abrir.divisoria ? 'projetos' : 'objetivos');
+      if (abrir.divisoria) setFocoDaPlanning({ id: abrir.id, nonce: abrir.nonce });
+      onAbriu?.();
+      return;
+    }
     setAlvoDaBusca(abrir.id);
     setAberturaPedida(abrir.aba || abrir.reuniao ? { aba: abrir.aba, reuniao: abrir.reuniao } : null);
     // Vindo com reunião, a listagem que está na tela é de antes de ela existir:
@@ -7529,7 +7729,9 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           </table>
         </div>
       ) : (
+        <SemanaDaPlanningCtx.Provider value={contextoDaSemana}>
         <AbaPlanning
+          foco={focoDaPlanning}
           projetos={projetos}
           pessoas={pessoas}
           planning={planning}
@@ -7597,6 +7799,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
             />
           )}
         />
+        </SemanaDaPlanningCtx.Provider>
       )}
       </AbaPainel>
 

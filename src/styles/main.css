@@ -3107,6 +3107,15 @@ body.arrastando-painel {
   outline: none;
 }
 
+/* Linha que ainda nao tem o que marcar: o marco fica, apagado, e nao abre. */
+.marco-entrega:disabled {
+  cursor: default;
+  opacity: .45;
+}
+.marco-entrega:disabled:hover {
+  background: color-mix(in srgb, var(--mc, var(--gray2)) 14%, transparent);
+}
+
 /* ── Detalhe de entrega que abre e fecha ──────────────────────────────── */
 /* `grid-template-rows` de 0fr a 1fr anima a altura sem ninguém precisar medir
    o conteúdo: `height: auto` não é animável, e altura fixa em px quebraria a
@@ -5799,7 +5808,8 @@ button.checklist-texto:focus-visible {
    viraria mancha numa area larga. */
 .pagina-cristal,
 .app-topo,
-.app-menu {
+.app-menu,
+.objetivos-coluna {
   --cristal: linear-gradient(180deg,
     color-mix(in srgb, var(--gray4) 12%, var(--white)) 0%,
     color-mix(in srgb, var(--gray4) 46%, var(--white)) 100%);
@@ -5812,7 +5822,8 @@ button.checklist-texto:focus-visible {
 }
 :root[data-theme="dark"] .pagina-cristal,
 :root[data-theme="dark"] .app-topo,
-:root[data-theme="dark"] .app-menu {
+:root[data-theme="dark"] .app-menu,
+:root[data-theme="dark"] .objetivos-coluna {
   --cristal: linear-gradient(180deg, rgba(30, 31, 36, .96) 0%,
     rgba(20, 21, 24, .86) 100%);
   --cristal-borda: rgba(255, 255, 255, .10);
@@ -5918,6 +5929,9 @@ button.checklist-texto:focus-visible {
 }
 .topo-icone:hover { background: var(--gray4); color: var(--black); }
 .topo-icone:focus-visible { outline: none; background: var(--gray4); color: var(--black); }
+/* O quadro que o icone abre esta fixado na tela: o icone fica aceso, que e
+   onde se clica para tira-lo. */
+.topo-icone.ativo { background: var(--gray4); color: var(--black); }
 
 /* O menu: a mesma folha, com o fio na borda da direita e uma sombra curta que
    o separa do conteudo. Preso, ele e coluna; solto, e painel que paira - e ai
@@ -7173,6 +7187,12 @@ button.checklist-texto:focus-visible {
   transition: border-color var(--transition);
 }
 .pl-linha-campo::placeholder { color: var(--gray3); }
+/* A frase nunca some: com a folha estreita e a linha cheia de chips (data,
+   pessoas, desejavel, provas), o campo encolhia ate zero e o objetivo ficava
+   sem texto. Com um minimo, os chips e que descem para baixo da frase. */
+.pl-linha-campo,
+.pl-linha-texto { min-width: 140px; }
+.pl-linha { flex-wrap: wrap; row-gap: 2px; }
 .pl-linha-campo:focus { border-bottom-color: var(--gray2); }
 .pl-linha:hover .checklist-tirar,
 .pl-linha:focus-within .checklist-tirar { opacity: 1; }
@@ -7181,6 +7201,22 @@ button.checklist-texto:focus-visible {
 /* O punho de arrastar mora na margem do painel, a esquerda da caixinha: aparece
    no hover sem empurrar nada. */
 .pl-linha { position: relative; }
+/* O desdobramento - o objetivo que nasceu de outro - desce recuado sob a mae,
+   ligado a ela por um traco em L, como galho. O recuo e o traco dizem a
+   relacao sem precisar de palavra. */
+.pl-linha.filha { margin-left: 26px; }
+.pl-linha.filha::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  top: -3px;
+  width: 11px;
+  height: calc(50% + 3px);
+  border-left: 1.5px solid var(--gray3);
+  border-bottom: 1.5px solid var(--gray3);
+  border-bottom-left-radius: 6px;
+  pointer-events: none;
+}
 .pl-linha-punho {
   position: absolute;
   left: -13px;
@@ -7227,6 +7263,9 @@ button.checklist-texto:focus-visible {
   align-items: center;
   gap: 6px;
 }
+/* Cada acao mora num involucro (o que a apaga enquanto vazia): em fila, e nao
+   em linha de texto, para as pilulas alinharem pelo centro, e nao pela base. */
+.pl-linha-combinado > span { display: inline-flex; align-items: center; }
 /* ── Todos os objetivos, por cliente ─────────────────────────────────────
    A leitura de cima da mesma reuniao: um bloco por cliente, e dentro dele um
    subtitulo por projeto. Dois projetos do mesmo cliente ficam juntos, que e
@@ -7292,6 +7331,78 @@ button.checklist-texto:focus-visible {
    controles vazios cada uma viravam uma coluna de caixas pedindo preenchimento.
    Preenchidos, ficam sempre visiveis - ali eles sao informacao. */
 .pl-linha-opcional { display: inline-flex; opacity: 0; transition: opacity var(--transition); }
+
+/* O objetivo desejavel: nao obrigatorio, mas de grande valor. Chip ambar com a
+   estrela cheia - ambar, e nao o `--yellow`, que no portal e o verde da marca.
+   O fundo e o ambar diluido, como os outros chips de estado, e por isso
+   funciona no tema claro e no escuro. Desligado, o alternador e so a estrela
+   vazada, cinza, no desenho dos outros chips da linha. */
+.chip-desejavel {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--amber) 38%, transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--amber) 14%, transparent);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--amber);
+  white-space: nowrap;
+}
+/* ── As acoes do objetivo ────────────────────────────────────────────────
+   Desejavel, data, responsaveis, prova e desdobramento: uma peca so
+   (`AcaoDoObjetivo`), para a fileira ler como uma familia. Vazia, e um circulo
+   de 26px com o icone de 13px; com conteudo, a mesma pilula cresce para os
+   lados sem mudar de altura. O hover e o de todos: a borda e o icone
+   escurecem. */
+.acao-objetivo {
+  flex: none;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 5px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-pill);
+  background: var(--white);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--gray2);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition), color var(--transition);
+}
+.acao-objetivo:hover,
+.acao-objetivo:focus-visible,
+.acao-objetivo.aberto { outline: none; border-color: var(--gray2); color: var(--black); }
+/* Desejavel ligado: a mesma pilula, no ambar diluido do chip de leitura. */
+.acao-objetivo.desejavel.ligado {
+  padding: 0 8px;
+  border-color: color-mix(in srgb, var(--amber) 38%, transparent);
+  background: color-mix(in srgb, var(--amber) 14%, transparent);
+  color: var(--amber);
+}
+.acao-objetivo.desejavel.ligado:hover,
+.acao-objetivo.desejavel.ligado:focus-visible { border-color: var(--amber); }
+/* A data mora no `DatePicker`, com o X da data ao lado do gatilho: a moldura e
+   a pilula em volta dos dois. Vazia, ela fecha no mesmo circulo das outras. */
+.acao-objetivo-moldura { box-sizing: border-box; height: 26px; min-height: 26px; }
+.acao-objetivo-moldura .campo-data-chip { min-height: 24px; padding: 0 8px; }
+.acao-objetivo-moldura.vazio { width: 26px; justify-content: center; }
+.acao-objetivo-moldura.vazio .campo-data-chip { width: 24px; padding: 0; justify-content: center; }
+@media (prefers-reduced-motion: reduce) { .acao-objetivo { transition: none; } }
+/* No quadro de objetivos, o chip vem logo abaixo da frase. */
+.objetivos-desejavel { display: flex; }
 .pl-linha:hover .pl-linha-opcional,
 .pl-linha:focus-within .pl-linha-opcional,
 .pl-linha-opcional:focus-within { opacity: 1; }
@@ -7379,8 +7490,26 @@ button.checklist-texto:focus-visible {
 .campo-data-chip.aberto { outline: none; color: var(--black); }
 .campo-data-chip.com-data { color: var(--black); }
 .campo-data-chip:disabled { cursor: default; opacity: .6; }
-/* O X da data: a pilula em volta guarda o lugar dele. */
-.campo-data-chip-limpar { font-size: 14px; }
+/* O X da data nao guarda lugar: em repouso a pilula termina junto com a data,
+   sem um vao a direita. No hover ele aparece por cima do fim do texto, com
+   fundo proprio e um degrade curto a esquerda, para os numeros nao brigarem
+   com ele - o que se ve ali e a acao, e nao a data, e so enquanto o mouse
+   esta em cima. */
+.chip-com-x .campo-data-chip-limpar {
+  position: absolute;
+  top: 50%;
+  right: 3px;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  transform: translateY(-50%);
+  font-size: 14px;
+  background: var(--white);
+  box-shadow: -8px 0 6px -2px var(--white);
+  transition: opacity var(--transition), color var(--transition), background var(--transition);
+}
+.chip-com-x .campo-data-chip-limpar:hover,
+.chip-com-x .campo-data-chip-limpar:focus-visible { background: var(--gray4); box-shadow: -8px 0 6px -2px var(--white); }
 @media (prefers-reduced-motion: reduce) {
   .campo-data-chip { transition: none; }
 }
@@ -7515,51 +7644,12 @@ button.checklist-texto:focus-visible {
   border-radius: var(--radius-pill);
   background: var(--white);
 }
-/* O clipe de anexar: so o icone, como o calendario da data vazia. */
-.pl-linha-anexar {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 26px;
-  padding: 2px 8px;
-  border: 1px solid var(--gray3);
-  border-radius: var(--radius-pill);
-  background: var(--white);
-  color: var(--gray2);
-  cursor: pointer;
-  transition: border-color var(--transition), color var(--transition);
-}
-.pl-linha-anexar:hover,
-.pl-linha-anexar:focus-visible { outline: none; border-color: var(--gray2); color: var(--black); }
-@media (prefers-reduced-motion: reduce) {
-  .pl-linha-anexar { transition: none; }
-}
 
-/* O seletor de pessoas compacto: as fotos como gatilho, sem moldura de campo.
-   Vazio, e o contorno de uma pessoa - e o convite a escolher alguem. */
-.pessoas-compacto {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  min-height: 26px;
-  padding: 2px 6px;
-  border: 1px solid var(--gray3);
-  border-radius: var(--radius-pill);
-  background: var(--white);
-  color: var(--gray2);
-  font-family: inherit;
-  cursor: pointer;
-  transition: border-color var(--transition), color var(--transition);
-}
-.pessoas-compacto:hover,
-.pessoas-compacto:focus-visible,
-.pessoas-compacto.aberto { outline: none; border-color: var(--gray2); color: var(--black); }
+/* O seletor de pessoas compacto: as fotos como gatilho, na moldura das acoes
+   do objetivo. Vazio, e o contorno de uma pessoa - o convite a escolher
+   alguem. */
+.pessoas-compacto { gap: 3px; padding: 0 4px; }
 .pessoas-compacto-mais { font-size: 10.5px; font-weight: 700; }
-@media (prefers-reduced-motion: reduce) {
-  .pessoas-compacto { transition: none; }
-}
 /* Cumprido continua legivel, como o passo feito da tarefa: e o registro do que
    a semana entregou, e a planning seguinte vem conferir. */
 .pl-linha.feito .pl-linha-campo,
@@ -16476,6 +16566,322 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   margin: 4px 0 20px;
   text-align: left;
 }
+
+/* ── Objetivos da semana (o alvo ao lado do inbox) ─────────────────────
+   A gaveta e a do inbox; daqui para baixo e so o que a lista de objetivos
+   tem de proprio. O balao e o vermelho do inbox: objetivo em aberto e o que
+   falta entregar na semana. */
+.objetivos-sub { margin: 2px 0 0; font-size: 11.5px; color: var(--gray2); }
+.objetivos-contagem {
+  flex: none;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gray2);
+  white-space: nowrap;
+}
+.objetivos-topo-direita { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+/* O alfinete tem o hover dos icone-botoes da casa. Ligado, fica na cor de
+   destaque e inclinado, para ler "preso" de relance. */
+.objetivos-fixar {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.objetivos-fixar svg { transition: transform var(--transition-spring); }
+.objetivos-fixar:hover { background: var(--gray4); color: var(--black); }
+.objetivos-fixar:focus-visible { outline: none; background: var(--gray4); color: var(--black); }
+.objetivos-fixar.ligado { color: var(--yellow); }
+.objetivos-fixar.ligado svg { transform: rotate(-30deg); }
+/* Fixado, o quadro fica abaixo das gavetas e dos modais: e parte da tela, e
+   nao uma caixa que pede atencao agora. */
+/* A coluna fixada: o espelho do menu preso. Mesma folha de cristal, o fio na
+   borda da esquerda (a que encosta no conteudo) e a sombra curta do menu. A
+   largura vem do grid da casca; o que esta dentro tem largura propria e e
+   recortado enquanto a coluna anima, em vez de requebrar as linhas. */
+.objetivos-coluna {
+  grid-column: 3;
+  grid-row: 2;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--cristal);
+  border-left: 1px solid transparent;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity .2s cubic-bezier(0.4, 0, 0.2, 1), border-color var(--transition),
+    visibility 0s linear .2s;
+}
+.objetivos-coluna.aberta {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  border-left-color: var(--cristal-borda);
+  box-shadow: inset 1px 0 0 var(--cristal-luz), -2px 0 3px -2px rgba(20, 22, 30, .06);
+  transition: opacity .2s cubic-bezier(0.4, 0, 0.2, 1), border-color var(--transition);
+}
+.objetivos-coluna-dentro { height: 100%; display: flex; flex-direction: column; }
+.objetivos-coluna .inbox-topo { border-bottom-color: var(--cristal-borda); padding-top: 16px; }
+.objetivos-coluna-lista { flex: 1; min-height: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .objetivos-coluna, .objetivos-coluna.aberta { transition: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .objetivos-fixar svg { transition: none; }
+}
+/* Entre um projeto e o seguinte, um fio leve: com varios projetos, a lista
+   virava um bloco so, e era preciso ler o cabecalho de cada grupo para saber
+   onde um acabava. O fio fica dentro do respiro da lista, sem tocar as bordas. */
+.objetivos-grupo + .objetivos-grupo {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--gray4);
+}
+.objetivos-projeto {
+  margin: 6px 8px 4px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--gray2);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* A logo na frente do nome: ela nao encolhe, e o texto e quem corta com
+   reticencias quando a coluna aperta. */
+.objetivos-projeto { display: flex; align-items: center; gap: 7px; }
+.objetivos-projeto > img,
+.objetivos-projeto > .marca-tingida { flex: none; }
+.objetivos-projeto-texto { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.objetivos-projeto-texto span { font-weight: 600; letter-spacing: 0; text-transform: none; }
+/* A linha do objetivo: a marca (feito ou nao), o texto, que leva a Planning,
+   e o lapis, que aparece com o mouse em cima. O hover e da linha inteira, como
+   nos itens do inbox. */
+.objetivos-linha {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--radius-md);
+  transition: background var(--transition);
+}
+.objetivos-linha:hover,
+.objetivos-linha:focus-within { background: var(--card-hover-bg, var(--gray4)); }
+/* O status do objetivo, no marco das entregas: a caixa de 26px guarda o lugar
+   que a linha espera, e o marco fica no centro dela. */
+.objetivos-marca {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.objetivos-item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  padding: 4px 4px 4px 2px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.objetivos-item:focus-visible { outline: none; text-decoration: underline; }
+.objetivos-editar {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition), background var(--transition), color var(--transition);
+}
+.objetivos-linha:hover .objetivos-editar,
+.objetivos-editar:focus-visible { opacity: 1; }
+.objetivos-editar:hover,
+.objetivos-editar:focus-visible { outline: none; background: var(--gray3); color: var(--black); }
+/* Em tela de toque nao ha mouse em cima: o lapis fica a vista. */
+@media (hover: none) { .objetivos-editar { opacity: 1; } }
+.objetivos-texto { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.objetivos-frase { font-size: 12.5px; font-weight: 600; line-height: 1.4; color: var(--black); }
+.objetivos-linha.feito .objetivos-frase { color: var(--gray2); font-weight: 500; text-decoration: line-through; }
+
+/* O desdobramento desce recuado sob a mae, com o mesmo traco em L da
+   Planning: e a mesma relacao, desenhada do mesmo jeito nos dois lugares. */
+.objetivos-linha { position: relative; }
+.objetivos-linha.filha { margin-left: 22px; }
+.objetivos-linha.filha::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: -2px;
+  width: 9px;
+  height: 17px;
+  border-left: 1.5px solid var(--gray3);
+  border-bottom: 1.5px solid var(--gray3);
+  border-bottom-left-radius: 6px;
+  pointer-events: none;
+}
+/* O ramo na linha da mae: a contagem de desdobramentos feitos, e o clique que
+   abre e recolhe a familia. Fica a vista, e nao so no hover: diz que ha
+   desdobramentos antes de alguem procurar. Aberto, fica aceso. */
+.objetivos-ramos-botao { align-self: flex-start; }
+.objetivos-ramos-botao.aberto { background: var(--gray4); border-color: var(--gray3); color: var(--black); }
+/* A familia aberta sem desdobramentos diz isso, e onde eles se criam. */
+.objetivos-ramos-vazio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px 36px;
+  padding: 4px 0;
+  font-size: 11.5px;
+  color: var(--gray2);
+}
+/* A familia recolhivel mora num item da lista sem moldura propria: quem tem
+   desenho sao as linhas de dentro. */
+.objetivos-ramos { list-style: none; }
+/* O convite para desdobrar, dentro da edicao, e o campo que ele vira. */
+.objetivos-edicao-convite {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.objetivos-edicao-convite:hover,
+.objetivos-edicao-convite:focus-visible { outline: none; color: var(--black); }
+.objetivos-edicao-ramo { display: flex; align-items: center; gap: 6px; }
+.objetivos-edicao-ramo .form-input { flex: 1; min-width: 0; }
+.objetivos-edicao-ramo-icone { flex: none; display: inline-flex; color: var(--gray2); }
+/* O filho cuja mae e de outra pessoa sobe solto, e diz de onde veio. */
+.objetivos-origem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--gray2);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* A edicao no lugar da linha: o texto num campo, a data e as duas saidas. */
+.objetivos-edicao { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; padding: 2px 2px 4px; }
+.objetivos-edicao .form-input { padding: 7px 10px; font-size: 12.5px; }
+.objetivos-edicao-linha { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.objetivos-edicao-acoes { margin-left: auto; display: inline-flex; gap: 6px; }
+.objetivos-edicao-desistir,
+.objetivos-edicao-gravar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.objetivos-edicao-desistir { border: 1px solid var(--gray3); background: var(--white); color: var(--gray); }
+.objetivos-edicao-desistir:hover { border-color: var(--gray2); color: var(--black); }
+.objetivos-edicao-gravar { border: 1px solid var(--yellow); background: var(--yellow); color: var(--on-yellow); }
+.objetivos-edicao-gravar:hover:not(:disabled) { filter: brightness(.95); }
+.objetivos-edicao-gravar:disabled { opacity: .5; cursor: not-allowed; }
+
+/* A caixa da prova: a area que recebe o arquivo e a lista do que entrou. */
+.objetivos-prova { margin-bottom: 16px; }
+.objetivos-prova-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 18px 14px;
+  border: 1.5px dashed var(--gray3);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--gray2);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition), color var(--transition);
+}
+.objetivos-prova-area b { font-size: 12.5px; color: var(--black); }
+.objetivos-prova-area span { font-size: 11.5px; }
+.objetivos-prova-area .objetivos-prova-opcional { font-size: inherit; font-weight: 500; color: var(--gray2); }
+.objetivos-prova-area:hover,
+.objetivos-prova-area:focus-visible,
+.objetivos-prova-area.arrastando { outline: none; border-color: var(--gray2); background: var(--gray4); color: var(--black); }
+.objetivos-prova-arquivos { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.objetivos-prova-arquivos li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px 5px 9px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--gray);
+}
+.objetivos-prova-nome { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--black); font-weight: 600; }
+.objetivos-prova-tamanho { flex: none; font-size: 11px; color: var(--gray2); }
+.objetivos-prova-tirar {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.objetivos-prova-tirar:hover { background: var(--gray4); color: var(--red); }
+.objetivos-prova-erro { margin: 8px 0 0; font-size: 11.5px; font-weight: 600; color: var(--red); }
+.objetivos-rodape { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--gray2); }
+.objetivos-vencido { color: var(--red); font-weight: 700; }
+.objetivos-provas { display: inline-flex; align-items: center; gap: 3px; }
+.objetivos-vazio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 26px 16px;
+  text-align: center;
+  color: var(--gray2);
+}
+.objetivos-vazio p { margin: 6px 0 0; font-size: 12.5px; font-weight: 600; color: var(--gray); }
+.objetivos-vazio span { font-size: 11.5px; line-height: 1.45; }
 
 .inbox-vazio {
   margin: 0;

@@ -8,6 +8,7 @@ import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Avatar, type Pessoa } from '../admin/FormularioTarefa';
 import { IconUser } from './icons';
+import { ICONE_DA_ACAO } from './AcaoDoObjetivo';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { ancorar } from '../lib/ancorar';
 
@@ -93,12 +94,12 @@ document.body,
     return (
       <>
         <button ref={triggerRef} type="button" onClick={abrir}
-          className={`pessoas-compacto${aberto ? ' aberto' : ''}`}
+          className={`acao-objetivo pessoas-compacto${aberto ? ' aberto' : ''}`}
           aria-expanded={aberto}
           title={escolhidas.length ? escolhidas.map(p => p.nome).join(', ') : vazio}
           aria-label={escolhidas.length ? `${vazio}: ${escolhidas.map(p => p.nome).join(', ')}` : vazio}>
           {escolhidas.length === 0 ? (
-            <IconUser size={12} />
+            <IconUser size={ICONE_DA_ACAO} />
           ) : (
             escolhidas.slice(0, 3).map(p => (
               <Avatar key={p.id} nome={p.nome} foto={p.foto_url} size={18} />

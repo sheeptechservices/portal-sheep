@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { IconCalendario } from './icons'
+import { ICONE_DA_ACAO } from './AcaoDoObjetivo'
 
 const MONTHS_PT = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -355,7 +357,10 @@ export function DatePicker({ value, onChange, label, required, error, disabled, 
 
   if (chip) {
     return (
-      <span ref={triggerRef} className="chip-com-x" style={{ position: 'relative' }}>
+      // A moldura é a das ações do objetivo: vazia, o círculo com o
+      // calendário; com data, a pílula que cresce com o texto.
+      <span ref={triggerRef} className={`chip-com-x acao-objetivo-moldura${display ? '' : ' vazio'}`}
+        style={{ position: 'relative' }}>
         <button
           type="button"
           className={`campo-data-chip${open ? ' aberto' : ''}${display ? ' com-data' : ''}`}
@@ -366,14 +371,15 @@ export function DatePicker({ value, onChange, label, required, error, disabled, 
           aria-label={titulo ?? (display ? `Data: ${display}` : 'Escolher a data')}
           onClick={toggle}
         >
-          <CalendarIcon active={open} semMargem />
+          <IconCalendario size={ICONE_DA_ACAO} />
           {display && <span className="campo-data-chip-texto">{display}</span>}
         </button>
         {/* Dentro da moldura, e não solto ao lado dela: solto, ele encostava no
             chip vizinho e a fileira virava uma sopa de símbolos. Continua sendo
             irmão do gatilho, e não filho - um botão dentro do outro não é
             marcação válida, e o clique de um viraria o do outro. */}
-        {display && !disabled && (
+        {/* Obrigatório não tem o X: a data se troca, mas não se tira. */}
+        {display && !disabled && !required && (
           <button type="button" className="chip-x campo-data-chip-limpar" onClick={clear}
             title="Tirar a data" aria-label="Tirar a data">×</button>
         )}
@@ -617,11 +623,11 @@ function LegendItem({ color, label }: { color: string; label: string }) {
   )
 }
 
-function CalendarIcon({ active, semMargem }: { active: boolean; semMargem?: boolean }) {
+function CalendarIcon({ active }: { active: boolean }) {
   return (
     <svg width="15" height="15" viewBox="0 0 16 16" fill="none"
       style={{ flexShrink: 0, color: active ? 'var(--black)' : 'currentColor',
-        marginLeft: semMargem ? 0 : 6, transition: 'color .2s' }}>
+        marginLeft: 6, transition: 'color .2s' }}>
       <rect x="1" y="2" width="14" height="13" rx="2" stroke="currentColor" strokeWidth="1.5" />
       <path d="M1 6h14" stroke="currentColor" strokeWidth="1.5" />
       <path d="M5 1v2M11 1v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />

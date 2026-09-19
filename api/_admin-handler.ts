@@ -159,8 +159,32 @@ interface ObjetivoGravado {
   id: string;
   texto: string;
   feito: boolean;
+  /** Em curso: o meio entre fazer e feito. Nunca junto com `feito` - quem
+   *  termina deixa de estar fazendo. Ausente é falso: o objetivo gravado antes
+   *  desta marca lê como "fazer" ou "feito", como sempre leu. */
+  fazendo?: boolean;
   prazo: string | null;
   responsaveis: string[];
+  /** O objetivo de que este nasceu - a validação que pediu ajustes. Um nível
+   *  só: a mãe nunca tem mãe. Ausente no objetivo que nasceu sozinho. */
+  pai?: string | null;
+  /** Não é obrigatório, mas seria de grande valor se saísse. Ausente é falso:
+   *  todo objetivo gravado antes desta marca é obrigatório, como sempre foi. */
+  desejavel?: boolean;
+}
+
+/**
+ * Confere as mães de uma lista: cada `pai` tem de ser um objetivo da mesma
+ * lista, que não seja ele mesmo filho de alguém. O que não confere vira
+ * objetivo solto, em vez de erro - a mãe apagada solta os filhos, e eles
+ * continuam valendo.
+ */
+function conferirMaes<T extends { id: string; pai?: string | null }>(lista: T[]): T[] {
+  const semMae = new Set(lista.filter(o => !o.pai).map(o => o.id));
+  return lista.map(o => {
+    const pai = o.pai && o.pai !== o.id && semMae.has(o.pai) ? o.pai : null;
+    return pai ? { ...o, pai } : { ...o, pai: null };
+  });
 }
 
 /** Id de objetivo aceitavel: o que a tela gera, e nada alem disso. */
@@ -187,14 +211,128 @@ function objetivosGravados(v: unknown): ObjetivoGravado[] | null {
       id: idDeObjetivo(o?.id),
       texto: String(o?.texto ?? '').trim(),
       feito: o?.feito === true,
+      fazendo: o?.feito !== true && o?.fazendo === true,
       prazo: /^\d{4}-\d{2}-\d{2}$/.test(String(o?.prazo ?? '')) ? String(o.prazo) : null,
       responsaveis: (Array.isArray(o?.responsaveis) ? o.responsaveis : [])
         .map((id: unknown) => String(id ?? '').trim())
         .filter(Boolean),
+      pai: o?.pai ? idDeObjetivo(o.pai) || null : null,
+      desejavel: o?.desejavel === true,
     }))
     .filter(o => o.texto)
     .slice(0, 50);
-  return lista.length ? lista : null;
+  return lista.length ? conferirMaes(lista) : null;
+}
+
+/** A lista de objetivos que chega da tela, conferida campo a campo. É a mesma
+ *  leitura da gravação da Planning e da troca de semana. */
+function objetivosDoCorpo(cru: unknown): ObjetivoGravado[] {
+  return (Array.isArray(cru) ? cru : [])
+    .map((o: any) => ({
+      // O id vem da tela e fica; sem ele - linha gravada antes desta coluna
+      // ou versao antiga ainda no ar -, nasce um aqui.
+      id: idDeObjetivo(o?.id) || novoIdDeObjetivo(),
+      texto: String(o?.texto ?? '').trim(),
+      feito: o?.feito === true,
+      fazendo: o?.feito !== true && o?.fazendo === true,
+      // Data fora do formato vira nulo, e nao erro: o objetivo sem prazo e
+      // caso normal, e recusar a gravacao inteira por causa dele perderia a
+      // frase que alguem acabou de escrever na reuniao.
+      prazo: /^\d{4}-\d{2}-\d{2}$/.test(String(o?.prazo ?? '')) ? String(o.prazo) : null,
+      responsaveis: (Array.isArray(o?.responsaveis) ? o.responsaveis : [])
+        .map((id: unknown) => String(id ?? '').trim())
+        .filter(Boolean)
+        .slice(0, 20),
+      pai: o?.pai ? idDeObjetivo(o.pai) || null : null,
+      desejavel: o?.desejavel === true,
+    }))
+    .filter(o => o.texto)
+    .slice(0, 50);
+}
+
+/** A segunda-feira da semana de uma data AAAA-MM-DD. É a chave da semana na
+ *  Planning. Em UTC, para o fuso do servidor não mudar o dia. */
+function segundaDaData(iso: string): string {
+  const [a, m, d] = iso.split('-').map(Number);
+  const dia = new Date(Date.UTC(a, m - 1, d));
+  dia.setUTCDate(dia.getUTCDate() - ((dia.getUTCDay() + 6) % 7));
+  return dia.toISOString().slice(0, 10);
+}
+
+/** A sexta da semana que começa na segunda dada: o prazo de partida de todo
+ *  objetivo novo. */
+function sextaDaSemana(segunda: string): string {
+  const [a, m, d] = segunda.split('-').map(Number);
+  return new Date(Date.UTC(a, m - 1, d + 4)).toISOString().slice(0, 10);
+}
+
+/** Grava a lista inteira de uma semana, criando a linha se ela não existe. As
+ *  duas listas de frases vão junto: a versão que ainda estiver no ar só sabe
+ *  ler as frases. */
+async function gravarObjetivosDaSemana(
+  db: Client, projetoId: string, semana: string, lista: ObjetivoGravado[],
+  autorId: string | null, autorNome: string | null,
+) {
+  const objetivos = conferirMaes(lista);
+  await db.execute({
+    sql: `INSERT INTO planning_semana
+            (projeto_id, semana, destaques, objetivos_feitos, objetivos, atualizado_em,
+             atualizado_por_id, atualizado_por_nome)
+          VALUES (?,?,?,?,?,?,?,?)
+          ON CONFLICT(projeto_id, semana) DO UPDATE SET
+            destaques = excluded.destaques,
+            objetivos_feitos = excluded.objetivos_feitos,
+            objetivos = excluded.objetivos,
+            atualizado_em = excluded.atualizado_em,
+            atualizado_por_id = excluded.atualizado_por_id,
+            atualizado_por_nome = excluded.atualizado_por_nome`,
+    args: [
+      projetoId, semana,
+      JSON.stringify(objetivos.map(o => o.texto)),
+      JSON.stringify(objetivos.filter(o => o.feito).map(o => o.texto)),
+      JSON.stringify(objetivos),
+      new Date().toISOString(), autorId, autorNome,
+    ],
+  });
+}
+
+/**
+ * Leva um objetivo para outra semana: a data dele caiu fora da semana em que
+ * ele está. Entra no fim da semana nova, sem mãe (a família fica onde está), e
+ * as provas vão junto.
+ *
+ * A ordem importa. Primeiro ele entra na semana nova - se isso falhar, nada
+ * mudou. Depois as provas trocam de semana. Por último a semana de origem é
+ * gravada sem ele: a gravação apaga as provas de quem saiu da lista, e a esta
+ * altura as dele já estão na outra semana.
+ */
+async function levarObjetivoParaSemana(
+  db: Client, projetoId: string, semana: string, novaSemana: string,
+  objetivo: ObjetivoGravado, restante: ObjetivoGravado[],
+  autorId: string | null, autorNome: string | null,
+) {
+  const linha = (await db.execute({
+    sql: 'SELECT objetivos, destaques, objetivos_feitos FROM planning_semana WHERE projeto_id = ? AND semana = ?',
+    args: [projetoId, novaSemana],
+  })).rows[0];
+  const feitas = new Set(listaDeTexto(linha?.objetivos_feitos));
+  const destino: ObjetivoGravado[] = (linha ? objetivosGravados(linha.objetivos) : null)
+    ?? listaDeTexto(linha?.destaques).map(texto => ({
+      id: novoIdDeObjetivo(), texto, feito: feitas.has(texto), prazo: null, responsaveis: [],
+    }));
+  const levado: ObjetivoGravado = { ...objetivo, pai: null };
+  const semEle = destino.filter(o => o.id !== levado.id);
+  await gravarObjetivosDaSemana(db, projetoId, novaSemana, [...semEle, levado].slice(0, 50), autorId, autorNome);
+  await db.execute({
+    sql: `UPDATE planning_evidencias SET semana = ?
+          WHERE projeto_id = ? AND semana = ? AND objetivo_id = ?`,
+    args: [novaSemana, projetoId, semana, levado.id],
+  });
+  // Os filhos que ele tinha ficam, soltos: continuam valendo nesta semana.
+  const ficam = restante
+    .filter(o => o.id !== levado.id)
+    .map(o => (o.pai === levado.id ? { ...o, pai: null } : o));
+  await gravarObjetivosDaSemana(db, projetoId, semana, ficam, autorId, autorNome);
 }
 
 /**
@@ -3963,6 +4101,67 @@ async function despacharAdminData(
       };
     }
 
+    /**
+     * Os objetivos da semana de quem pergunta: os que têm o nome dele entre os
+     * responsáveis, de todos os projetos. É o que o alvo do cabeçalho mostra.
+     *
+     * O recorte é pelo responsável, e não pela equipe do projeto: quem foi
+     * posto num objetivo precisa enxergá-lo, e quem não foi não tem por que ver
+     * a lista dos outros aqui - ela mora na Planning, para quem a abre.
+     */
+    if (action === 'meus_objetivos') {
+      const semana = String(query.get('semana') ?? '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(semana)) {
+        return { status: 400, body: { error: 'Semana ausente ou fora do formato AAAA-MM-DD.' } };
+      }
+      const eu = usuario?.id;
+      if (!eu) return { status: 200, body: { semana, objetivos: [] } };
+      const [linhas, provas] = await Promise.all([
+        db.execute({
+          sql: `SELECT ps.projeto_id, ps.objetivos, p.nome AS projeto_nome, p.status AS projeto_status,
+                       c.nome AS cliente
+                FROM planning_semana ps
+                LEFT JOIN projetos p ON p.id = ps.projeto_id
+                LEFT JOIN clientes c ON c.id = p.cliente_id
+                WHERE ps.semana = ? AND ps.objetivos IS NOT NULL`,
+          args: [semana],
+        }),
+        db.execute({
+          sql: `SELECT projeto_id, objetivo_id, COUNT(*) AS n FROM planning_evidencias
+                WHERE semana = ? GROUP BY projeto_id, objetivo_id`,
+          args: [semana],
+        }),
+      ]);
+      const quantasProvas = new Map(provas.rows.map(x => [`${x.projeto_id}|${x.objetivo_id}`, Number(x.n)]));
+      const objetivos = linhas.rows.flatMap(x => {
+        const todos = objetivosGravados(x.objetivos) ?? [];
+        return todos
+        .filter(o => o.responsaveis.includes(eu))
+        .map(o => ({
+          projeto_id: String(x.projeto_id),
+          projeto_nome: x.projeto_nome == null ? 'Projeto' : String(x.projeto_nome),
+          // Em andamento é o que a Planning lista em divisória própria; o resto
+          // (demandas gerais, projeto pausado) só aparece na visão de todos os
+          // objetivos, e é para lá que o clique leva.
+          na_divisoria: String(x.projeto_id) !== PROJETO_GERAL && String(x.projeto_status ?? '') === 'Em andamento',
+          cliente: x.cliente == null ? null : String(x.cliente),
+          id: o.id,
+          texto: o.texto,
+          feito: o.feito,
+          fazendo: o.fazendo === true,
+          prazo: o.prazo,
+          provas: quantasProvas.get(`${x.projeto_id}|${o.id}`) ?? 0,
+          // A mãe, e a frase dela: quem não responde pela mãe vê o filho
+          // sozinho na lista, e a frase diz de onde ele veio.
+          pai: o.pai ?? null,
+          pai_texto: o.pai ? (todos.find(m => m.id === o.pai)?.texto ?? null) : null,
+          responsaveis: o.responsaveis,
+          desejavel: o.desejavel === true,
+        }));
+      });
+      return { status: 200, body: { semana, objetivos } };
+    }
+
     if (action === 'tarefa_status_configs') {
       // Sem a lista de inscritos: quem a etapa avisa e dito por papel, na
       // propria linha dela.
@@ -6939,6 +7138,39 @@ function faltaEmProjeto(p: any): string | null {
     // na primeira frase escrita e regravada por cima dali em diante - quem
     // escreve numa planning esta corrigindo o que a sala combinou, e nao
     // acrescentando uma segunda versao do mesmo combinado.
+    /**
+     * A Planning pôs no objetivo uma data de outra semana: ele sai desta e
+     * entra naquela, com as provas. A tela manda o objetivo como está e a
+     * lista que fica, e é esta ação - e não a gravação da lista - que tira ele
+     * daqui: a gravação sozinha apagaria as provas dele antes de elas mudarem
+     * de semana. A porta é a mesma da gravação da Planning.
+     */
+    if (action === 'mover_objetivo_de_semana') {
+      if (body?.projeto_id === PLANNING_FUNIL) {
+        if (!pode(permissoes, 'oportunidades:ver')) {
+          return { status: 403, body: { error: 'Seu perfil não enxerga o funil.' } };
+        }
+      } else {
+        const barrado = await guardaDaEquipe(db, usuario, body?.projeto_id);
+        if (barrado) return barrado;
+      }
+      const projetoId = String(body?.projeto_id ?? '');
+      const semana = String(body?.semana ?? '').slice(0, 10);
+      if (!projetoId) return { status: 400, body: { error: 'projeto_id ausente.' } };
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(semana)) {
+        return { status: 400, body: { error: 'Semana ausente ou fora do formato AAAA-MM-DD.' } };
+      }
+      const [objetivo] = objetivosDoCorpo([body?.objetivo]);
+      if (!objetivo?.prazo || !idDeObjetivo(body?.objetivo?.id)) {
+        return { status: 400, body: { error: 'O objetivo precisa de id, texto e data.' } };
+      }
+      const novaSemana = segundaDaData(objetivo.prazo);
+      if (novaSemana === semana) return { status: 400, body: { error: 'A data é desta mesma semana.' } };
+      await levarObjetivoParaSemana(db, projetoId, semana, novaSemana, objetivo,
+        objetivosDoCorpo(body?.objetivos), autorId, autorNome);
+      return { status: 200, body: { ok: true, semana: novaSemana } };
+    }
+
     if (action === 'salvar_planning_semana') {
       // A folha do Funil nao e projeto e nao tem equipe: o que a guarda e ver o
       // funil, a mesma permissao que mostra a aba. Projeto passa pela equipe.
@@ -6956,24 +7188,9 @@ function faltaEmProjeto(p: any): string | null {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(semana)) {
         return { status: 400, body: { error: 'Semana ausente ou fora do formato AAAA-MM-DD.' } };
       }
-      const objetivos = (Array.isArray(body.objetivos) ? body.objetivos : [])
-        .map((o: any) => ({
-          // O id vem da tela e fica; sem ele - linha gravada antes desta coluna
-          // ou versao antiga ainda no ar -, nasce um aqui.
-          id: idDeObjetivo(o?.id) || novoIdDeObjetivo(),
-          texto: String(o?.texto ?? '').trim(),
-          feito: o?.feito === true,
-          // Data fora do formato vira nulo, e nao erro: o objetivo sem prazo e
-          // caso normal, e recusar a gravacao inteira por causa dele perderia a
-          // frase que alguem acabou de escrever na reuniao.
-          prazo: /^\d{4}-\d{2}-\d{2}$/.test(String(o?.prazo ?? '')) ? String(o.prazo) : null,
-          responsaveis: (Array.isArray(o?.responsaveis) ? o.responsaveis : [])
-            .map((id: unknown) => String(id ?? '').trim())
-            .filter(Boolean)
-            .slice(0, 20),
-        }))
-        .filter((o: { texto: string }) => o.texto)
-        .slice(0, 50);
+      const objetivosCrus = objetivosDoCorpo(body.objetivos);
+      // A mãe que não está mais na lista solta os filhos (ver `conferirMaes`).
+      const objetivos = conferirMaes(objetivosCrus);
       const destaques = JSON.stringify(objetivos.map((o: { texto: string }) => o.texto));
       const feitos = JSON.stringify(objetivos
         .filter((o: { feito: boolean }) => o.feito)
@@ -7067,6 +7284,194 @@ function faltaEmProjeto(p: any): string | null {
       { const barrado = await guardaDaEquipe(db, usuario, alvo.rows[0].projeto_id); if (barrado) return barrado; }
       await db.execute({ sql: 'DELETE FROM projeto_acessos WHERE id = ?', args: [body.id] });
       return { status: 200, body: { ok: true } };
+    }
+
+    /**
+     * Um objetivo da semana, mexido sozinho: o texto, o prazo, o status.
+     *
+     * É o que o quadro de objetivos do cabeçalho usa. A Planning regrava a
+     * lista inteira do projeto, e isso fora dela apagaria o que outra pessoa
+     * mudou nos outros objetivos no meio tempo; aqui a linha é lida, só aquele
+     * objetivo muda, e ela é gravada de volta.
+     *
+     * Pode quem é responsável pelo objetivo - é dele que se trata, mesmo sem a
+     * permissão de editar o projeto - ou quem já pode editar o projeto.
+     *
+     * O status chega como as duas marcas, `feito` e `fazendo`. Marcar como
+     * feito aceita provas no mesmo pedido, e elas são opcionais.
+     */
+    if (action === 'atualizar_objetivo') {
+      const projetoId = String(body?.projeto_id ?? '');
+      const semana = String(body?.semana ?? '').slice(0, 10);
+      const objetivoId = idDeObjetivo(body?.objetivo_id);
+      if (!projetoId || !objetivoId) return { status: 400, body: { error: 'Objetivo ausente.' } };
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(semana)) {
+        return { status: 400, body: { error: 'Semana ausente ou fora do formato AAAA-MM-DD.' } };
+      }
+      const linha = (await db.execute({
+        sql: 'SELECT objetivos FROM planning_semana WHERE projeto_id = ? AND semana = ?',
+        args: [projetoId, semana],
+      })).rows[0];
+      const lista = linha ? objetivosGravados(linha.objetivos) : null;
+      const alvo = lista?.find(o => o.id === objetivoId);
+      if (!lista || !alvo) return { status: 404, body: { error: 'Esse objetivo não está mais na Planning.' } };
+
+      const responsavel = !!usuario?.id && alvo.responsaveis.includes(usuario.id);
+      if (!responsavel) {
+        if (!pode(permissoes, 'projetos:editar')) {
+          return { status: 403, body: { error: 'Só quem é responsável pelo objetivo, ou edita o projeto, mexe nele.' } };
+        }
+        const barrado = await guardaDaEquipe(db, usuario, projetoId);
+        if (barrado) return barrado;
+      }
+
+      const mudou: Partial<typeof alvo> = {};
+      if (body?.texto !== undefined) {
+        const texto = String(body.texto ?? '').trim().slice(0, 500);
+        if (!texto) return { status: 400, body: { error: 'O objetivo precisa de um texto.' } };
+        mudou.texto = texto;
+      }
+      if (body?.desejavel !== undefined) mudou.desejavel = body.desejavel === true;
+      if (body?.responsaveis !== undefined) {
+        if (!Array.isArray(body.responsaveis)) return { status: 400, body: { error: 'Responsáveis fora do formato.' } };
+        mudou.responsaveis = [...new Set(body.responsaveis
+          .map((id: unknown) => String(id ?? '').trim())
+          .filter(Boolean) as string[])].slice(0, 20);
+      }
+      if (body?.prazo !== undefined) {
+        // Todo objetivo tem data: é ela que diz em que semana ele mora.
+        const prazo = String(body.prazo ?? '');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(prazo)) {
+          return { status: 400, body: { error: 'O objetivo precisa de uma data de entrega.' } };
+        }
+        mudou.prazo = prazo;
+      }
+
+      // As provas chegam junto quando o gesto é "marcar como feito", se quem
+      // marcou anexou alguma: são opcionais, e o feito vale sem elas.
+      const provasCruas = Array.isArray(body?.provas) ? body.provas.slice(0, 5) : [];
+      for (const p of provasCruas) {
+        if (!p?.nome || !p?.base64) return { status: 400, body: { error: 'Prova sem arquivo.' } };
+        if (Number(p.tamanho ?? 0) > LIMITE_ANEXO) {
+          return { status: 400, body: { error: `"${String(p.nome)}" passa do limite de anexo.` } };
+        }
+      }
+      if (body?.feito !== undefined) mudou.feito = body.feito === true;
+      if (body?.fazendo !== undefined) mudou.fazendo = body.fazendo === true;
+      // Feito e fazendo não andam juntos: quem termina deixa de estar fazendo.
+      if (mudou.feito) mudou.fazendo = false;
+      else if (mudou.fazendo && alvo.feito && mudou.feito === undefined) mudou.feito = false;
+      // Data de outra semana leva o objetivo para ela, e as provas vão junto.
+      // As que chegam neste pedido entram depois, já na semana nova.
+      const novaSemana = mudou.prazo ? segundaDaData(mudou.prazo) : semana;
+      if (novaSemana !== semana) {
+        const levado: ObjetivoGravado = { ...alvo, ...mudou };
+        await levarObjetivoParaSemana(db, projetoId, semana, novaSemana, levado,
+          lista.filter(o => o.id !== objetivoId), autorId, autorNome);
+        return { status: 200, body: { ok: true, objetivo: { ...levado, pai: null }, semana: novaSemana, provas: [] } };
+      }
+
+      const agora = new Date().toISOString();
+      const provas = await Promise.all(provasCruas.map(async (p: any) => {
+        const r = await db.execute({
+          sql: `INSERT INTO planning_evidencias
+                  (projeto_id, semana, objetivo_id, nome, tipo, tamanho, base64, criado_em, criado_por_nome)
+                VALUES (?,?,?,?,?,?,?,?,?)`,
+          args: [projetoId, semana, objetivoId, String(p.nome),
+            String(p.tipo ?? 'application/octet-stream'), Number(p.tamanho ?? 0), String(p.base64),
+            agora, autorNome],
+        });
+        return { id: Number(r.lastInsertRowid), nome: String(p.nome) };
+      }));
+
+      const novos = lista.map(o => (o.id === objetivoId ? { ...o, ...mudou } : o));
+      // As duas listas de frases vão junto, como na gravação da Planning: a
+      // versão que ainda estiver no ar só sabe ler as frases.
+      await db.execute({
+        sql: `UPDATE planning_semana
+              SET objetivos = ?, destaques = ?, objetivos_feitos = ?,
+                  atualizado_em = ?, atualizado_por_id = ?, atualizado_por_nome = ?
+              WHERE projeto_id = ? AND semana = ?`,
+        args: [
+          JSON.stringify(novos),
+          JSON.stringify(novos.map(o => o.texto)),
+          JSON.stringify(novos.filter(o => o.feito).map(o => o.texto)),
+          agora, autorId, autorNome, projetoId, semana,
+        ],
+      });
+      return { status: 200, body: { ok: true, objetivo: novos.find(o => o.id === objetivoId), provas } };
+    }
+
+    /**
+     * Um desdobramento: o objetivo novo que nasceu de outro. A validação de
+     * uma entrega pede ajustes, e os ajustes viram objetivo - preso ao da
+     * validação, para a semana contar a história inteira.
+     *
+     * Um nível só: desdobrar um desdobramento cria mais um irmão, filho da
+     * mesma mãe. O novo entra logo depois dos irmãos, com os responsáveis da
+     * mãe (quem pede é incluído, se ainda não estiver) e sem prazo.
+     *
+     * Pode quem é responsável pela mãe, ou quem já pode editar o projeto - a
+     * mesma porta de `atualizar_objetivo`.
+     */
+    if (action === 'desdobrar_objetivo') {
+      const projetoId = String(body?.projeto_id ?? '');
+      const semana = String(body?.semana ?? '').slice(0, 10);
+      const paiPedido = idDeObjetivo(body?.pai_id);
+      const texto = String(body?.texto ?? '').trim().slice(0, 500);
+      if (!projetoId || !paiPedido) return { status: 400, body: { error: 'Objetivo de origem ausente.' } };
+      if (!texto) return { status: 400, body: { error: 'O desdobramento precisa de um texto.' } };
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(semana)) {
+        return { status: 400, body: { error: 'Semana ausente ou fora do formato AAAA-MM-DD.' } };
+      }
+      const linha = (await db.execute({
+        sql: 'SELECT objetivos FROM planning_semana WHERE projeto_id = ? AND semana = ?',
+        args: [projetoId, semana],
+      })).rows[0];
+      const lista = linha ? objetivosGravados(linha.objetivos) : null;
+      const origem = lista?.find(o => o.id === paiPedido);
+      if (!lista || !origem) return { status: 404, body: { error: 'Esse objetivo não está mais na Planning.' } };
+      // Desdobrar um filho é desdobrar a mãe dele: um nível só.
+      const mae = origem.pai ? (lista.find(o => o.id === origem.pai) ?? origem) : origem;
+
+      const responsavel = !!usuario?.id && mae.responsaveis.includes(usuario.id);
+      if (!responsavel) {
+        if (!pode(permissoes, 'projetos:editar')) {
+          return { status: 403, body: { error: 'Só quem é responsável pelo objetivo, ou edita o projeto, desdobra ele.' } };
+        }
+        const barrado = await guardaDaEquipe(db, usuario, projetoId);
+        if (barrado) return barrado;
+      }
+      if (lista.length >= 50) return { status: 400, body: { error: 'A semana deste projeto já tem objetivos demais.' } };
+
+      const novo: ObjetivoGravado = {
+        id: novoIdDeObjetivo(),
+        texto,
+        feito: false,
+        // Todo objetivo nasce com data: a sexta da semana em que ele entra.
+        prazo: sextaDaSemana(semana),
+        responsaveis: [...new Set([...mae.responsaveis, ...(usuario?.id ? [usuario.id] : [])])].slice(0, 20),
+        pai: mae.id,
+        desejavel: false,
+      };
+      // Logo depois do último da família: a mãe e os filhos que já tinha.
+      let depoisDe = lista.findIndex(o => o.id === mae.id);
+      lista.forEach((o, i) => { if (o.pai === mae.id) depoisDe = i; });
+      const novos = [...lista.slice(0, depoisDe + 1), novo, ...lista.slice(depoisDe + 1)];
+      const agora = new Date().toISOString();
+      await db.execute({
+        sql: `UPDATE planning_semana
+              SET objetivos = ?, destaques = ?, objetivos_feitos = ?,
+                  atualizado_em = ?, atualizado_por_id = ?, atualizado_por_nome = ?
+              WHERE projeto_id = ? AND semana = ?`,
+        args: [
+          JSON.stringify(novos),
+          JSON.stringify(novos.map(o => o.texto)),
+          JSON.stringify(novos.filter(o => o.feito).map(o => o.texto)),
+          agora, autorId, autorNome, projetoId, semana,
+        ],
+      });
+      return { status: 200, body: { ok: true, objetivo: novo } };
     }
 
     if (action === 'add_planning_evidencia') {
