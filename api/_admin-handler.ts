@@ -336,6 +336,34 @@ async function levarObjetivoParaSemana(
 }
 
 /**
+ * Põe cada objetivo na semana da data dele. A semana é lida e o que está fora
+ * de lugar muda de semana ali mesmo: é o conserto do que foi gravado antes
+ * desta regra - e do que uma aba antiga ainda no ar grave depois dela.
+ *
+ * Objetivo sem data fica onde está: ele é de antes da data obrigatória, e não
+ * há para onde levá-lo. Devolve quantos saíram, para quem leu reler a semana.
+ */
+async function arrumarObjetivosForaDaSemana(
+  db: Client, semana: string, linhas: { projeto_id: unknown; objetivos: unknown }[],
+): Promise<number> {
+  let levados = 0;
+  for (const linha of linhas) {
+    const lista = objetivosGravados(linha.objetivos);
+    if (!lista) continue;
+    const fora = lista.filter(o => o.prazo && segundaDaData(o.prazo) !== semana);
+    if (!fora.length) continue;
+    const projetoId = String(linha.projeto_id);
+    const ficam = lista.filter(o => !fora.some(f => f.id === o.id));
+    for (const o of fora) {
+      await levarObjetivoParaSemana(db, projetoId, semana, segundaDaData(o.prazo!), o, ficam,
+        null, 'Ajuste automático');
+      levados++;
+    }
+  }
+  return levados;
+}
+
+/**
  * O "projeto" das demandas gerais da Planning: as que nao sao de projeto
  * nenhum. Existe como linha de `projetos` para as tarefas dele serem tarefas
  * como as outras - mesma gaveta, mesmo quadro, mesma tela de Tarefas.
@@ -4061,13 +4089,18 @@ async function despacharAdminData(
       if (!/^\d{4}-\d{2}-\d{2}$/.test(semana)) {
         return { status: 400, body: { error: 'Semana ausente ou fora do formato AAAA-MM-DD.' } };
       }
+      const folhas = () => db.execute({
+        sql: `SELECT projeto_id, destaques, objetivos_feitos, objetivos,
+                     atualizado_em, atualizado_por_nome
+              FROM planning_semana WHERE semana = ?`,
+        args: [semana],
+      });
+      // O objetivo com data de outra semana vai para ela antes de a folha ser
+      // montada: a semana que se abre mostra o que é dela.
+      const arrumadas = await folhas();
+      const mudou = await arrumarObjetivosForaDaSemana(db, semana, arrumadas.rows as never[]);
       const [r, provas] = await Promise.all([
-        db.execute({
-          sql: `SELECT projeto_id, destaques, objetivos_feitos, objetivos,
-                       atualizado_em, atualizado_por_nome
-                FROM planning_semana WHERE semana = ?`,
-          args: [semana],
-        }),
+        mudou ? folhas() : Promise.resolve(arrumadas),
         // Sem o `base64`: a folha mostra o chip, e o conteudo so e buscado
         // quando alguem abre o arquivo.
         db.execute({
@@ -4116,16 +4149,21 @@ async function despacharAdminData(
       }
       const eu = usuario?.id;
       if (!eu) return { status: 200, body: { semana, objetivos: [] } };
+      const doProjeto = () => db.execute({
+        sql: `SELECT ps.projeto_id, ps.objetivos, p.nome AS projeto_nome, p.status AS projeto_status,
+                     c.nome AS cliente
+              FROM planning_semana ps
+              LEFT JOIN projetos p ON p.id = ps.projeto_id
+              LEFT JOIN clientes c ON c.id = p.cliente_id
+              WHERE ps.semana = ? AND ps.objetivos IS NOT NULL`,
+        args: [semana],
+      });
+      // Como na Planning: o objetivo com data de outra semana sai desta antes
+      // de o quadro ser montado.
+      const vindas = await doProjeto();
+      const arrumou = await arrumarObjetivosForaDaSemana(db, semana, vindas.rows as never[]);
       const [linhas, provas] = await Promise.all([
-        db.execute({
-          sql: `SELECT ps.projeto_id, ps.objetivos, p.nome AS projeto_nome, p.status AS projeto_status,
-                       c.nome AS cliente
-                FROM planning_semana ps
-                LEFT JOIN projetos p ON p.id = ps.projeto_id
-                LEFT JOIN clientes c ON c.id = p.cliente_id
-                WHERE ps.semana = ? AND ps.objetivos IS NOT NULL`,
-          args: [semana],
-        }),
+        arrumou ? doProjeto() : Promise.resolve(vindas),
         db.execute({
           sql: `SELECT projeto_id, objetivo_id, COUNT(*) AS n FROM planning_evidencias
                 WHERE semana = ? GROUP BY projeto_id, objetivo_id`,
