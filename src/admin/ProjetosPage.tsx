@@ -5739,6 +5739,21 @@ function FormularioProjeto({
             </div>
           </section>
 
+          </fieldset>
+
+          {/* Os acessos logo abaixo do link: o endereço do que foi entregue e o
+              login de quem entra nele são a mesma pergunta.
+
+              Fora do `fieldset`, e só com projeto gravado: cada acesso grava
+              sozinho, por ação própria, e não junto com o resto da ficha - a
+              senha passa pela cifra do servidor, e não por este formulário. */}
+          {editando && acessos && (
+            <SecaoAcessos acessos={editando.acessos ?? []} somenteLeitura={somenteLeitura}
+              acoes={acessos} />
+          )}
+
+          <fieldset className="painel-leitura campos-travaveis" disabled={somenteLeitura}>
+
           <section>
             <p className="admin-section-title">Prazo</p>
             <div className="campos-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -5762,14 +5777,6 @@ function FormularioProjeto({
           </section>
 
           </fieldset>
-
-          {/* Fora do `fieldset`, e só com projeto gravado: cada acesso grava
-              sozinho, por ação própria, e não junto com o resto da ficha - a
-              senha passa pela cifra do servidor, e não por este formulário. */}
-          {editando && acessos && (
-            <SecaoAcessos acessos={editando.acessos ?? []} somenteLeitura={somenteLeitura}
-              acoes={acessos} />
-          )}
 
           {/* Fora do `fieldset`: abrir uma entrega, ver a prova anexada, buscar,
               agrupar e trocar de visão é leitura, e continua valendo para quem
