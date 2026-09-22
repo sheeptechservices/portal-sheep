@@ -309,29 +309,73 @@ function reuniaoDeFireflies(t: any): ReuniaoFireflies {
   };
 }
 
-/** As reunioes mais recentes da conta. O filtro por texto e feito aqui e nao na
- *  API: o `transcripts` deles filtra por titulo exato, e quem busca "weekly"
- *  quer achar "Weekly Orteconte" tambem. */
-export async function listarReunioesFireflies(
-  apiKey: string, busca: string, limite = 50,
+/** Quantas reunioes o Fireflies devolve por pedido. */
+const PAGINA_FIREFLIES = 50;
+/** Ate onde a busca desce no historico: 12 paginas, 600 reunioes. Passar disso
+ *  seria uma dezena de idas ao Fireflies para achar o que um filtro por data
+ *  acha melhor. */
+const MAX_PAGINAS_FIREFLIES = 12;
+/** Quantas paginas sao pedidas de uma vez. */
+const PAGINAS_POR_VEZ = 4;
+
+/** Uma pagina do historico, da mais recente para a mais antiga. */
+async function paginaDeReunioes(
+  apiKey: string, limite: number, pular: number,
 ): Promise<{ ok: true; reunioes: ReuniaoFireflies[] } | { ok: false; error: string }> {
-  const query = `query($limit: Int) {
-    transcripts(limit: $limit) {
+  const query = `query($limit: Int, $skip: Int) {
+    transcripts(limit: $limit, skip: $skip) {
       id title date duration transcript_url participants
       meeting_attendees { displayName name email }
     }
   }`;
-  const r = await consultarFireflies(apiKey, query, { limit: limite });
+  const r = await consultarFireflies(apiKey, query, { limit: limite, skip: pular });
   if (!r.ok) return r;
-  const lista: ReuniaoFireflies[] = (r.dados?.transcripts ?? []).map(reuniaoDeFireflies);
+  return { ok: true, reunioes: (r.dados?.transcripts ?? []).map(reuniaoDeFireflies) };
+}
+
+/** Se a reuniao responde ao que foi digitado: o titulo ou quem participou. */
+function combinaComBusca(m: ReuniaoFireflies, q: string): boolean {
+  return m.titulo.toLocaleLowerCase('pt-BR').includes(q)
+    || m.participantes.some(p => p.toLocaleLowerCase('pt-BR').includes(q));
+}
+
+/**
+ * As reunioes da conta: as mais recentes quando nao ha busca, e as que
+ * respondem ao texto quando ha.
+ *
+ * O filtro por texto e feito aqui e nao na API: o `transcripts` deles filtra
+ * por titulo exato, e quem busca "weekly" quer achar "Weekly Orteconte"
+ * tambem. Por isso a busca desce o historico de pagina em pagina, e para
+ * assim que junta o que cabe na lista - ou quando o historico acaba. Sem
+ * isso, a reuniao mais velha que as 50 ultimas nunca aparecia.
+ */
+export async function listarReunioesFireflies(
+  apiKey: string, busca: string, limite = 50,
+): Promise<{ ok: true; reunioes: ReuniaoFireflies[] } | { ok: false; error: string }> {
   const q = busca.trim().toLocaleLowerCase('pt-BR');
-  if (!q) return { ok: true, reunioes: lista };
-  return {
-    ok: true,
-    reunioes: lista.filter(m =>
-      m.titulo.toLocaleLowerCase('pt-BR').includes(q)
-      || m.participantes.some(p => p.toLocaleLowerCase('pt-BR').includes(q))),
-  };
+  if (!q) return paginaDeReunioes(apiKey, limite, 0);
+
+  const achadas: ReuniaoFireflies[] = [];
+  // Quatro paginas por vez: uma atras da outra, descer 600 reunioes levava uns
+  // cinco segundos, e quem digita no campo espera por eles.
+  for (let lote = 0; lote * PAGINAS_POR_VEZ < MAX_PAGINAS_FIREFLIES; lote++) {
+    const primeira = lote * PAGINAS_POR_VEZ;
+    const paginas = await Promise.all(
+      Array.from({ length: PAGINAS_POR_VEZ }, (_, i) =>
+        paginaDeReunioes(apiKey, PAGINA_FIREFLIES, (primeira + i) * PAGINA_FIREFLIES)));
+    for (const r of paginas) {
+      // Erro na primeira ida e erro da busca; depois dela, o que ja foi achado
+      // vale mais que a mensagem - a lista sai menor, e nao vazia.
+      if (!r.ok) return achadas.length ? { ok: true, reunioes: achadas } : r;
+      for (const m of r.reunioes) {
+        if (combinaComBusca(m, q)) achadas.push(m);
+      }
+    }
+    // A pagina incompleta e o fim do historico: nao ha mais o que descer.
+    const acabou = paginas.some(r => r.ok && r.reunioes.length < PAGINA_FIREFLIES);
+    if (acabou || achadas.length >= limite) break;
+  }
+  return { ok: true, reunioes: achadas.slice(0, limite) };
 }
 
 /** O detalhe de uma reuniao, com o resumo - e ele que vira a nota no projeto. */
