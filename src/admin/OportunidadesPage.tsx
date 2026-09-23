@@ -704,6 +704,8 @@ export interface RascunhoOportunidade {
   origem: string;
   /** Quem apontou a oportunidade. Vale sobretudo quando a origem é indicação. */
   indicado_por: string;
+  /** A comissão combinada com quem indicou, em porcento. Só com `indicado_por`. */
+  indicacao_percentual: string;
   /** Chegou por um parceiro. */
   parceria: boolean;
   /** Quanto do negócio fica com quem trouxe, em porcento. Só com `parceria`. */
@@ -733,7 +735,8 @@ export const OPORTUNIDADE_VAZIA: RascunhoOportunidade = {
   // Quase toda oportunidade é daqui; quem for de fora troca. Deixar em branco faria a
   // maioria preencher a mesma palavra toda vez.
   pais: 'Brasil',
-  origem: '', indicado_por: '', parceria: false, parceria_percentual: '',
+  origem: '', indicado_por: '', indicacao_percentual: '',
+  parceria: false, parceria_percentual: '',
   temperatura: '', tipo_projeto: '', segmento: '',
   interesse: '', briefing: '', valor_estimado: '', parcelas: '',
   responsavel_id: '', proxima_acao: '', proxima_acao_em: '', observacoes: '',
@@ -753,6 +756,10 @@ export function corpoDaOportunidade(r: RascunhoOportunidade) {
     pais: r.pais.trim() || null,
     origem: r.origem || null,
     indicado_por: r.indicado_por.trim() || null,
+    // Sem quem indicar, sem comissão: o servidor limpa de qualquer forma.
+    indicacao_percentual: r.indicado_por.trim() && r.indicacao_percentual !== ''
+      ? Number(r.indicacao_percentual)
+      : null,
     // 0 ou 1, como a coluna guarda: o mesmo corpo vira `Partial<Submission>`
     // na tela, e um booleano ali seria um tipo a mais para a ficha conferir.
     parceria: r.parceria ? 1 : 0,
@@ -923,7 +930,25 @@ function CamposDaOportunidade({ r, set, token, pessoas }: {
           <label className="form-label">Quem indicou</label>
           <input className="form-input" value={r.indicado_por}
             placeholder="Pessoa ou empresa que apontou"
-            onChange={e => set('indicado_por', e.target.value)} />
+            onChange={e => {
+              set('indicado_por', e.target.value);
+              // Apagou o nome: a comissão sai junto. Guardada escondida, ela
+              // voltaria sozinha quando outra pessoa fosse escrita ali.
+              if (!e.target.value.trim()) set('indicacao_percentual', '');
+            }} />
+        </div>
+        {/* A comissão só existe com alguém indicando, e entra pela revelação
+            da casa, como o percentual da parceria. O bloco fica montado -
+            montado só enquanto aberto, ele animaria de nada para nada. */}
+        <div className={`revelar${r.indicado_por.trim() ? ' aberto' : ''}`} style={{ flex: '0 1 150px' }}>
+          <div>
+            <div className="form-group">
+              <label className="form-label">% de comissão</label>
+              <input className="form-input" inputMode="decimal" value={r.indicacao_percentual}
+                placeholder="0"
+                onChange={e => set('indicacao_percentual', mascaraPorcento(e.target.value))} />
+            </div>
+          </div>
         </div>
       </div>
       <div className="oportunidade-campos">
@@ -1184,6 +1209,7 @@ function EditModal({ detail, token, onClose, onSaved }: {
     pais: s.pais ?? '',
     origem: s.origem ?? '',
     indicado_por: s.indicado_por ?? '',
+    indicacao_percentual: s.indicacao_percentual != null ? String(s.indicacao_percentual) : '',
     parceria: Number(s.parceria) === 1,
     segmento: s.segmento ?? '',
     interesse: s.interesse ?? '',
@@ -2016,7 +2042,12 @@ export function DetailPanel({
                       </span>
                     )}
                   </p>
-                  {s!.indicado_por && <p className="oportunidade-ficha-sub">por {s!.indicado_por}</p>}
+                  {s!.indicado_por && (
+                    <p className="oportunidade-ficha-sub">
+                      por {s!.indicado_por}
+                      {s!.indicacao_percentual != null && ` · ${s!.indicacao_percentual}% de comissão`}
+                    </p>
+                  )}
                 </div>
                 <div className="oportunidade-ficha-item">
                   <p className="admin-info-label">Temperatura</p>

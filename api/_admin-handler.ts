@@ -849,6 +849,9 @@ async function migrarSchema(db: Client) {
     // Quanto do negócio fica com quem trouxe, em porcento. Só faz sentido com
     // `parceria = 1`, e por isso o campo só aparece quando ela está marcada.
     `ALTER TABLE oportunidades ADD COLUMN parceria_percentual REAL`,
+    // A comissão combinada com quem indicou, em porcento. Anda com
+    // `indicado_por`: sem alguém indicando não há a quem comissionar.
+    `ALTER TABLE oportunidades ADD COLUMN indicacao_percentual REAL`,
   ]) {
     try { await ddl(col); } catch { /* já existe */ }
   }
@@ -9466,9 +9469,9 @@ function faltaEmProjeto(p: any): string | null {
                responsavel_id,
                proxima_acao, proxima_acao_em, observacoes,
                cidade, estado, pais, indicado_por, parceria, segmento, briefing,
-               temperatura, tipo_projeto, parceria_percentual,
+               temperatura, tipo_projeto, parceria_percentual, indicacao_percentual,
                criado_por_id, criado_por_nome)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         args: [
           id, now, empresa,
           texto(body?.cnpj), texto(body?.contato_nome), texto(body?.contato_cargo),
@@ -9484,6 +9487,9 @@ function faltaEmProjeto(p: any): string | null {
           // Sem parceria não há percentual: guardar um número solto ali deixaria
           // a conta viva depois de a marca ser desmarcada.
           marca(body?.parceria) ? numero(body?.parceria_percentual) : null,
+          // O mesmo vale para a comissão: ela é de quem indicou, e sem
+          // indicação não há de quem ser.
+          texto(body?.indicado_por) ? numero(body?.indicacao_percentual) : null,
           autorId, autorNome,
         ],
       });
@@ -9531,6 +9537,7 @@ function faltaEmProjeto(p: any): string | null {
             temperatura: texto(body?.temperatura),
             tipo_projeto: texto(body?.tipo_projeto),
             parceria_percentual: marca(body?.parceria) ? numero(body?.parceria_percentual) : null,
+            indicacao_percentual: texto(body?.indicado_por) ? numero(body?.indicacao_percentual) : null,
             arquivo_count: 0,
             comentario_count: 0,
             pendencia_aberta_count: 0,
@@ -9576,6 +9583,7 @@ function faltaEmProjeto(p: any): string | null {
         temperatura: texto,
         tipo_projeto: texto,
         parceria_percentual: numero,
+        indicacao_percentual: numero,
       };
       const sets: string[] = [];
       const args: unknown[] = [];
@@ -9589,6 +9597,12 @@ function faltaEmProjeto(p: any): string | null {
       // número que ninguém escolheu de novo.
       if (body.parceria !== undefined && !marca(body.parceria) && !sets.includes('parceria_percentual=?')) {
         sets.push('parceria_percentual=?');
+        args.push(null);
+      }
+      // Apagou quem indicou: a comissão vai junto, pelo mesmo motivo.
+      if (body.indicado_por !== undefined && !texto(body.indicado_por)
+          && !sets.includes('indicacao_percentual=?')) {
+        sets.push('indicacao_percentual=?');
         args.push(null);
       }
       if (sets.length === 0) return { status: 400, body: { error: 'Nada para gravar.' } };
