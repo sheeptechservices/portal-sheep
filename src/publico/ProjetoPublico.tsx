@@ -18,6 +18,7 @@ import { logoDoCliente } from '../lib/marcas';
 // Vive em `components/`, e não em `admin/`: dá para reusar aqui sem arrastar o
 // portal junto, e o filtro fica com o mesmo desenho dos dois lados.
 import FilterDropdown from '../components/FilterDropdown';
+import { PreviaArquivo } from '../components/PreviaArquivo';
 import {
   IconAgrupar, IconCheck, IconChevronRight, IconExternal, IconMarcoAndamento, IconMarcoBloqueado,
   IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado, IconMarcoTriagem, IconMarcoValidado,
@@ -360,7 +361,8 @@ function LinhaEntrega({ e, marca, aberta, realcada, onAlternar, onAbrirPrevia }:
    *  a linha. */
   realcada?: boolean;
   onAlternar: () => void;
-  onAbrirPrevia: (ev: Evidencia) => void;
+  /** O anexo clicado e os outros da mesma entrega, para folhear entre eles. */
+  onAbrirPrevia: (ev: Evidencia, lista: Evidencia[]) => void;
 }) {
   const cor = COR[e.status] ?? '#8A8B84';
   const Marco = ICONE[e.status] ?? IconMarcoPlanejado;
@@ -424,7 +426,7 @@ function LinhaEntrega({ e, marca, aberta, realcada, onAlternar, onAbrirPrevia }:
                     <ul>
                       {e.evidencias.map(ev => (
                         <li key={ev.id}>
-                          <button type="button" onClick={() => onAbrirPrevia(ev)}
+                          <button type="button" onClick={() => onAbrirPrevia(ev, e.evidencias)}
                             title={ehImagem(ev.tipo) ? `Ver ${ev.nome}` : `Abrir ${ev.nome}`}>
                             <span className="pub-ev-etapa">{ev.etapa}</span>
                             <span className="pub-ev-nome">{ev.nome}</span>
@@ -448,73 +450,6 @@ function LinhaEntrega({ e, marca, aberta, realcada, onAlternar, onAbrirPrevia }:
 /** Prévia da evidência. Imagem abre aqui mesmo; o resto oferece o download,
  *  porque PDF e planilha o navegador abre melhor do que qualquer visualizador
  *  que eu desenhasse. */
-function Previa({ evidencia, token, onFechar }: {
-  evidencia: Evidencia;
-  token: string;
-  onFechar: () => void;
-}) {
-  const [dados, setDados] = useState<{ nome: string; tipo: string; base64: string } | null>(null);
-  const [erro, setErro] = useState(false);
-
-  useEffect(() => {
-    let vivo = true;
-    fetch(`/api/projeto-publico?token=${encodeURIComponent(token)}&anexo=${evidencia.id}`)
-      .then(r => (r.ok ? r.json() : Promise.reject(new Error('sem acesso'))))
-      .then(d => { if (vivo) setDados(d); })
-      .catch(() => { if (vivo) setErro(true); });
-    return () => { vivo = false; };
-  }, [evidencia.id, token]);
-
-  useEffect(() => {
-    const tecla = (ev: KeyboardEvent) => { if (ev.key === 'Escape') onFechar(); };
-    document.addEventListener('keydown', tecla);
-    return () => document.removeEventListener('keydown', tecla);
-  }, [onFechar]);
-
-  function baixar() {
-    if (!dados) return;
-    const a = document.createElement('a');
-    a.href = `data:${dados.tipo};base64,${dados.base64}`;
-    a.download = dados.nome;
-    a.click();
-  }
-
-  return (
-    <div className="pub-previa" role="dialog" aria-modal="true" aria-label={evidencia.nome}
-      onClick={onFechar}>
-      <div className="pub-previa-caixa" onClick={ev => ev.stopPropagation()}>
-        <div className="pub-previa-topo">
-          <span>
-            <strong>{evidencia.nome}</strong>
-            <em>{evidencia.etapa} · {fmtTamanho(evidencia.tamanho)}</em>
-          </span>
-          <button type="button" aria-label="Fechar" onClick={onFechar}>
-            <IconX size={16} />
-          </button>
-        </div>
-
-        <div className="pub-previa-corpo">
-          {erro ? (
-            <p className="pub-nada">Não foi possível abrir este arquivo.</p>
-          ) : !dados ? (
-            <div className="pub-girando" />
-          ) : ehImagem(dados.tipo) ? (
-            <img src={`data:${dados.tipo};base64,${dados.base64}`} alt={dados.nome} />
-          ) : (
-            <p className="pub-nada">
-              Este arquivo não abre na tela. Baixe para ver no seu computador.
-            </p>
-          )}
-        </div>
-
-        <div className="pub-previa-pe">
-          <button type="button" disabled={!dados} onClick={baixar}>Baixar</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /** Os números que o cliente procura primeiro: quanto já foi aceito, o que está
  *  sendo trabalhado agora e o que já foi entregue esperando o aceite.
  *
@@ -588,7 +523,9 @@ export default function ProjetoPublico({ token }: { token: string }) {
   const [busca, setBusca] = useState('');
   /** Entregas com o detalhe aberto, e a evidência em prévia. */
   const [abertas, setAbertas] = useState<Set<number>>(new Set());
-  const [previa, setPrevia] = useState<Evidencia | null>(null);
+  /** O anexo aberto e a lista em que ele está: a prévia folheia entre os
+   *  anexos da mesma entrega, como no portal. */
+  const [previa, setPrevia] = useState<{ lista: Evidencia[]; i: number } | null>(null);
   /** Grupos recolhidos, por nome. */
   const [recolhidos, setRecolhidos] = useState<Set<string>>(new Set());
   const [ordem, setOrdem] = useState<string>('padrao');
@@ -952,7 +889,7 @@ export default function ProjetoPublico({ token }: { token: string }) {
                     if (n.has(e.id)) n.delete(e.id); else n.add(e.id);
                     return n;
                   })}
-                  onAbrirPrevia={setPrevia}
+                  onAbrirPrevia={(ev, lista) => setPrevia({ lista, i: lista.indexOf(ev) })}
                 />
               ))}
             </ul>
@@ -992,9 +929,42 @@ export default function ProjetoPublico({ token }: { token: string }) {
           olhar as entregas, e não antes. */}
       <PedidoDoCliente token={token} />
 
-      {previa && (
-        <Previa evidencia={previa} token={token} onFechar={() => setPrevia(null)} />
-      )}
+      {previa && (() => {
+        const ev = previa.lista[previa.i];
+        const anexo = (id: number) =>
+          fetch(`/api/projeto-publico?token=${encodeURIComponent(token)}&anexo=${id}`)
+            .then(r => (r.ok ? r.json() : null))
+            .catch(() => null);
+        const andar = (passo: number) => setPrevia(p => (p
+          ? { ...p, i: (p.i + passo + p.lista.length) % p.lista.length }
+          : p));
+        return (
+          <PreviaArquivo
+            arquivo={{
+              nome: ev.nome,
+              chave: ev.id,
+              comentario: `${ev.etapa} · ${fmtTamanho(ev.tamanho)}`,
+            }}
+            onCarregar={() => anexo(ev.id)}
+            onBaixar={() => {
+              void anexo(ev.id).then(d => {
+                if (!d?.base64) return;
+                const a = document.createElement('a');
+                a.href = `data:${d.tipo};base64,${d.base64}`;
+                a.download = d.nome ?? ev.nome;
+                a.click();
+              });
+            }}
+            onFechar={() => setPrevia(null)}
+            navegacao={{
+              posicao: previa.i + 1,
+              total: previa.lista.length,
+              onAnterior: () => andar(-1),
+              onProximo: () => andar(1),
+            }}
+          />
+        );
+      })()}
 
       <footer className="pub-rodape">
         <span>Sheep Technology</span>
