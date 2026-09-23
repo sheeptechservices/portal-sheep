@@ -111,11 +111,13 @@ const COR_STATUS: Record<string, string> = {
   'Cancelado': '#D93025',
 };
 
-/** Como a lista de entregas pode ser ordenada. A ordem de criação é o padrão
- *  porque as entregas são cadastradas na sequência em que devem acontecer. */
+/** Como a lista de entregas pode ser ordenada. A prioridade é o padrão: é a
+ *  fila combinada com o cliente, e é por ela que a lista deve ser lida - tanto
+ *  na visão geral quanto dentro de cada grupo. A de criação fica como escolha,
+ *  para quem quiser ver a sequência em que elas foram cadastradas. */
 const ORDENS_ENTREGA = [
-  { valor: 'criacao', label: 'Ordem de criação' },
   { valor: 'prioridade', label: 'Prioridade' },
+  { valor: 'criacao', label: 'Ordem de criação' },
   { valor: 'titulo', label: 'Título (A a Z)' },
   { valor: 'prazo', label: 'Prazo mais próximo' },
   { valor: 'status', label: 'Etapa' },
@@ -1926,7 +1928,7 @@ function SecaoEntregas({
   const total = entregas.length + pendentes.length;
 
   const [busca, setBusca] = useState('');
-  const [ordem, setOrdem] = useState<string>('criacao');
+  const [ordem, setOrdem] = useState<string>('prioridade');
   // Dois níveis, escolhidos na tela: o grupo maior e o que se reparte dentro
   // dele. Desligado por padrão - agrupar ajuda em lista longa e atrapalha em
   // lista curta.
