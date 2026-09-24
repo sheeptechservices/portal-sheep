@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useAuth, iniciais } from './AdminApp';
-import { IconAlert } from '../components/icons';
+import { useAuth, useToast, iniciais } from './AdminApp';
+import { IconAlert, IconClipboard } from '../components/icons';
 import { rotuloPapel } from './papeis';
 import { instante as formatarData, tempoRelativo } from '../lib/datas';
 
@@ -80,6 +80,147 @@ function Linha({ rotulo, valor }: { rotulo: string; valor: React.ReactNode }) {
     <div className="perfil-linha">
       <span className="perfil-linha-rotulo">{rotulo}</span>
       <span className="perfil-linha-valor">{valor}</span>
+    </div>
+  );
+}
+
+interface ConexaoMcp {
+  id: number;
+  cliente: string;
+  criado_em: string;
+  visto_em: string | null;
+}
+
+/** Tempo da saída de uma conexão da lista. Espelhado em `.mcp-conexao.saindo`. */
+const SAIDA_CONEXAO_MS = 180;
+
+/**
+ * O MCP de quem o tem ligado: o endereço para colar no aplicativo de IA e os
+ * aplicativos já conectados. Só é montado quando o `me` trouxe `mcp`, então
+ * para quem não tem ele não existe nem como bloco vazio.
+ */
+function ConectarIa({ token }: { token: string }) {
+  const { onSessionExpired } = useAuth();
+  const { toast } = useToast();
+  const [dados, setDados] = useState<{ endereco: string; conexoes: ConexaoMcp[] } | null>(null);
+  const [saindo, setSaindo] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    let vivo = true;
+    fetch('/api/admin-data?action=mcp_conexoes', { headers: { 'x-admin-session': token } })
+      .then(r => {
+        if (r.status === 401) { onSessionExpired(); throw new Error('401'); }
+        return r.ok ? r.json() : null;
+      })
+      .then(d => { if (vivo && d) setDados(d); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [token, onSessionExpired]);
+
+  async function copiar(valor: string, oQue: string) {
+    try {
+      await navigator.clipboard.writeText(valor);
+      toast('success', `${oQue} copiado`, 'Está na área de transferência.');
+    } catch {
+      toast('error', 'O navegador não deixou copiar', 'Selecione o texto e copie à mão.');
+    }
+  }
+
+  /** Some da lista no gesto; volta se o servidor recusar. */
+  async function desconectar(c: ConexaoMcp) {
+    const posicao = dados?.conexoes.findIndex(x => x.id === c.id) ?? -1;
+    const soltar = () => setSaindo(s => { const n = new Set(s); n.delete(c.id); return n; });
+    setSaindo(s => new Set(s).add(c.id));
+    const relogio = setTimeout(() => {
+      setDados(d => (d ? { ...d, conexoes: d.conexoes.filter(x => x.id !== c.id) } : d));
+      soltar();
+    }, SAIDA_CONEXAO_MS);
+    // Volta ao lugar de onde saiu, e só se já tiver saído: o erro pode chegar
+    // antes de a animação terminar.
+    const desfazer = () => {
+      clearTimeout(relogio);
+      soltar();
+      setDados(d => {
+        if (!d || d.conexoes.some(x => x.id === c.id)) return d;
+        const lista = [...d.conexoes];
+        lista.splice(Math.max(posicao, 0), 0, c);
+        return { ...d, conexoes: lista };
+      });
+    };
+    try {
+      const r = await fetch('/api/admin-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-session': token },
+        body: JSON.stringify({ action: 'mcp_desconectar', id: c.id }),
+      });
+      if (r.status === 401) { onSessionExpired(); return; }
+      if (!r.ok) throw new Error(String(r.status));
+      toast('success', 'Desconectado', `${c.cliente} não acessa mais o portal em seu nome.`);
+    } catch {
+      desfazer();
+      toast('error', 'Não desconectou', `${c.cliente} continua conectado. Tente de novo.`);
+    }
+  }
+
+  const comando = dados ? `claude mcp add --transport http portal-sheep ${dados.endereco}` : '';
+
+  return (
+    <div>
+      <p className="admin-section-title">Conectar IA</p>
+      {!dados ? (
+        <div className="perfil-cartao"><div className="dux-spinner-row"><span className="dux-spinner sm" /></div></div>
+      ) : (
+        <div className="perfil-cartao troca">
+          <div className="perfil-linha">
+            <span className="perfil-linha-rotulo">Endereço do MCP</span>
+            <span className="perfil-linha-valor mcp-valor">
+              <code>{dados.endereco}</code>
+              <button type="button" className="rodape-icone" aria-label="Copiar o endereço" title="Copiar"
+                onClick={() => void copiar(dados.endereco, 'Endereço')}>
+                <IconClipboard size={13} />
+              </button>
+            </span>
+          </div>
+          <div className="perfil-linha">
+            <span className="perfil-linha-rotulo">Claude Code</span>
+            <span className="perfil-linha-valor mcp-valor">
+              <code>{comando}</code>
+              <button type="button" className="rodape-icone" aria-label="Copiar o comando" title="Copiar"
+                onClick={() => void copiar(comando, 'Comando')}>
+                <IconClipboard size={13} />
+              </button>
+            </span>
+          </div>
+          <div className="perfil-linha mcp-conexoes">
+            <span className="perfil-linha-rotulo">Conectados</span>
+            {dados.conexoes.length === 0 ? (
+              <span className="perfil-linha-valor" style={{ color: 'var(--gray2)' }}>Nenhum aplicativo ainda</span>
+            ) : (
+              <ul className="mcp-conexoes-lista">
+                {dados.conexoes.map(c => (
+                  <li key={c.id} className={`mcp-conexao${saindo.has(c.id) ? ' saindo' : ''}`}>
+                    <span className="mcp-conexao-nome">
+                      {c.cliente}
+                      <span className="perfil-relativo">
+                        {c.visto_em ? `usado ${tempoRelativo(c.visto_em)}` : `conectado ${tempoRelativo(c.criado_em)}`}
+                      </span>
+                    </span>
+                    <button type="button" className="usuarios-btn-acesso remover"
+                      disabled={saindo.has(c.id)} onClick={() => void desconectar(c)}>
+                      Desconectar
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+      <p className="perfil-nota">
+        No claude.ai, no Claude Desktop e no Cursor, adicione um conector personalizado com o mesmo
+        endereço. Na primeira vez, o aplicativo abre o portal para você confirmar a conexão. O que a IA
+        fizer sai assinado por você, com as suas permissões.
+      </p>
     </div>
   );
 }
@@ -191,6 +332,8 @@ export default function PerfilPage({ token }: { token: string }) {
           <Linha rotulo="Duração da sessão" valor="8 horas, renovada a cada entrada" />
         </div>
       </div>
+
+      {usuarioSessao?.mcp && <ConectarIa token={token} />}
 
       {/* Trilha */}
       <div>

@@ -13532,6 +13532,122 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   max-width: 78ch;
 }
 
+/* ─── Conectar IA (MCP) ──────────────────────────────────────────────────── */
+/* O bloco do Perfil: endereço e comando em fonte de código, com o copiar ao
+   lado, e a lista dos aplicativos conectados. */
+.mcp-valor {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.mcp-valor code {
+  font-size: 12px;
+  color: var(--black);
+  background: var(--gray4);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  word-break: break-all;
+  text-align: left;
+}
+.mcp-conexoes { align-items: flex-start; }
+.mcp-conexoes-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+}
+.mcp-conexao {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: opacity var(--transition-spring), transform var(--transition-spring);
+}
+/* Sai antes de sumir da lista: o item desbota e sobe de leve. */
+.mcp-conexao.saindo { opacity: 0; transform: translateY(-2px); }
+.mcp-conexao-nome {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--black);
+}
+
+/* A tela de consentimento: um cartão só, no meio da página, fora do portal. */
+.mcp-conectar {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: var(--bg);
+}
+.mcp-conectar-cartao {
+  width: 100%;
+  max-width: 460px;
+  background: var(--white);
+  border: 1.5px solid var(--gray3);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 28px;
+}
+.mcp-conectar-icone {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--gray4);
+  color: var(--black);
+  margin-bottom: 16px;
+}
+.mcp-conectar-icone.erro { background: var(--red-soft); color: var(--red); }
+.mcp-conectar-titulo {
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--black);
+  letter-spacing: -.01em;
+  line-height: 1.25;
+  margin-top: 4px;
+}
+.mcp-conectar-texto {
+  font-size: 13.5px;
+  color: var(--gray);
+  line-height: 1.6;
+  margin-top: 10px;
+}
+.mcp-conectar-conta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 12px 0;
+  border-top: 1px solid var(--gray3);
+  border-bottom: 1px solid var(--gray3);
+}
+.mcp-conectar-conta-rotulo { font-size: 12px; font-weight: 600; color: var(--gray2); }
+.mcp-conectar-conta-valor { font-size: 13px; font-weight: 600; color: var(--black); text-align: right; }
+.mcp-conectar-conta-valor span { display: block; font-weight: 400; font-size: 12px; color: var(--gray2); word-break: break-all; }
+.mcp-conectar-acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+.mcp-conectar-acoes .btn { display: inline-flex; align-items: center; gap: 6px; }
+.mcp-conectar-nota { font-size: 11.5px; color: var(--gray2); margin-top: 14px; line-height: 1.55; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mcp-conexao { transition: none; }
+  .mcp-conexao.saindo { transform: none; }
+}
+
 /* ─── Página de Usuários (gestão de acessos) ─────────────────────────────── */
 .usuarios-pessoa { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .usuarios-pessoa-nome {
