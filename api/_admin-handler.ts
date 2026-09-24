@@ -30,6 +30,10 @@ import {
   ensurePermissoesSchema, permissoesDoUsuario, podeAcao, pode,
   matrizDoPapel, salvarMatrizPapel, negado,
 } from './_permissoes.js';
+import {
+  ensureMcpSchema, conferirPedido, emitirCodigo, mcpHabilitado, conexoesDoUsuario, desconectar,
+  revogarTudo, ErroOAuth,
+} from './_mcp/oauth.js';
 
 // Migração de schema: guardada pela promessa, não por um booleano.
 //
@@ -413,6 +417,26 @@ async function guardaDaEquipe(
   return membro.rows.length ? null : FORA_DA_EQUIPE;
 }
 
+/**
+ * A linha inteira da tarefa, se quem pergunta a enxerga. Nulo quando ela não
+ * existe ou mora num projeto fora da equipe - para quem pergunta, dá no mesmo.
+ * É o que o MCP lê antes de editar, porque `salvar_tarefa` grava o objeto
+ * inteiro e um campo que faltasse no corpo seria apagado.
+ */
+export async function tarefaVisivel(db: Client, usuario: UsuarioAdmin | null | undefined, id: number) {
+  if (!Number.isFinite(id) || id <= 0) return null;
+  if (await guardaDaEquipe(db, usuario, id, 'tarefa')) return null;
+  const r = await db.execute({
+    sql: `SELECT t.*, p.nome AS projeto_nome, en.titulo AS entrega_titulo
+          FROM projeto_tarefas t
+          JOIN projetos p ON p.id = t.projeto_id
+          LEFT JOIN projeto_entregas en ON en.id = t.entrega_id
+          WHERE t.id = ?`,
+    args: [id],
+  });
+  return (r.rows[0] as Record<string, any> | undefined) ?? null;
+}
+
 /** Os campos da tarefa que viram linha no diário, e como cada um se lê.
  *  `descricao` entra sem os valores: o texto inteiro no histórico faria o
  *  diário virar o rascunho, e "editou a descrição" já é o fato. */
@@ -432,7 +456,7 @@ type FotoDaTarefa = Record<string, string>;
  *  Cai no `responsavel_id` quando a lista não existe: é o formato de antes de
  *  a tarefa aceitar mais de um dono, e linha antiga que ainda não passou pela
  *  migração continua legível. */
-function donosDaTarefa(r: Record<string, any> | null | undefined): string[] {
+export function donosDaTarefa(r: Record<string, any> | null | undefined): string[] {
   if (!r) return [];
   const bruto = r.responsaveis;
   const lista = Array.isArray(bruto)
@@ -977,6 +1001,8 @@ async function migrarSchema(db: Client) {
       ultimo_acesso TEXT
     )
   `);
+  // O MCP: a marca de quem pode usar e as tabelas do OAuth dele.
+  await ensureMcpSchema(ddl);
 
 
   // ── Banco de talentos ───────────────────────────────────────────────────────
@@ -2418,6 +2444,21 @@ const NEGADO_USUARIOS = {
   body: { error: 'Somente o administrador do sistema gerencia usuários e acessos.' },
 } as const;
 
+/**
+ * A resposta que uma ação que não existe daria a esta pessoa: 403 do porteiro
+ * para quem tem a matriz configurada; para quem pode tudo, a do fim do
+ * despacho, que muda com o método. É o que o MCP responde a quem não o tem,
+ * para a recusa não ser, ela mesma, o aviso de que há algo ali.
+ */
+function comoAcaoInexistente(
+  permissoes: Awaited<ReturnType<typeof permissoesDoUsuario>>, method: string,
+) {
+  if (!podeAcao(permissoes, '@inexistente')) return negado(undefined);
+  return method === 'GET'
+    ? { status: 400, body: { error: 'Unknown action' } }
+    : { status: 405, body: { error: 'Method not allowed' } };
+}
+
 // ── Quem está no painel ──────────────────────────────────────────────────────
 //  A identidade vem do login com o Google (ver _google-auth.ts) e é gravada em
 //  `usuarios`. A senha compartilhada continua funcionando como plano B, e a
@@ -3507,10 +3548,13 @@ async function despacharAdminData(
       // `permissoes` acompanha a identidade para a tela não oferecer o que o
       // servidor vai recusar. `'*'` = pode tudo (master, admin, ou papel cuja
       // matriz nunca foi configurada).
+      // `mcp` só existe na resposta de quem tem o acesso: para os outros o
+      // campo não vem nem como `false`, e nada na tela sabe que ele existe.
+      const comMcp = await mcpHabilitado(db, usuario?.id);
       return {
         status: 200,
         body: {
-          usuario: usuario ?? null,
+          usuario: usuario ? { ...usuario, ...(comMcp ? { mcp: true } : {}) } : null,
           autor: autorNome,
           permissoes: permissoes === TUDO_PERM ? '*' : [...permissoes],
         },
@@ -3856,7 +3900,7 @@ async function despacharAdminData(
         // Aqui fica só o critério de desempate, que o banco resolve de graça.
         db.execute(`
           SELECT id, email, nome, foto_url, papel, ativo, convidado, criado_em, ultimo_acesso,
-                 senha_hash IS NOT NULL AS tem_senha
+                 senha_hash IS NOT NULL AS tem_senha, mcp_habilitado
           FROM usuarios
           ORDER BY ativo DESC, ultimo_acesso DESC, nome
         `),
@@ -3873,6 +3917,7 @@ async function despacharAdminData(
         }),
       ]);
       const abertas = new Map(sessoes.rows.map(r => [String(r.usuario_id), Number(r.c)]));
+      const mexeNoMcp = podeGerenciarUsuarios(usuario);
       const usuarios = lista.rows.map(r => {
         const email = String(r.email);
         return {
@@ -3889,6 +3934,9 @@ async function despacharAdminData(
           criado_em: String(r.criado_em ?? ''),
           ultimo_acesso: r.ultimo_acesso != null ? String(r.ultimo_acesso) : null,
           sessoes_abertas: abertas.get(String(r.id)) ?? 0,
+          // O MCP é assunto só do administrador do sistema: o master, que lê
+          // esta lista, não fica sabendo que ele existe.
+          ...(mexeNoMcp ? { mcp: Number(r.mcp_habilitado) === 1 } : {}),
         };
       });
       // Admin no topo, depois Master, depois Membro. A ordenação é aqui, e não
@@ -4597,12 +4645,199 @@ async function despacharAdminData(
       if (!Number.isFinite(tarefaId) || tarefaId <= 0) {
         return { status: 400, body: { error: 'id ausente.' } };
       }
+      // Mesmo corte da listagem: sem ele, um membro que soubesse o id lia o
+      // passo a passo de tarefa de projeto em que não está.
+      const barrado = await guardaDaEquipe(db, usuario, tarefaId, 'tarefa');
+      if (barrado) return barrado;
       const r = await db.execute({
         sql: `SELECT id, titulo, feita, ordem FROM tarefa_subtarefas
               WHERE tarefa_id = ? ORDER BY ordem, id`,
         args: [tarefaId],
       });
       return { status: 200, body: { subtarefas: r.rows } };
+    }
+
+    // ── Tarefas, em recorte ─────────────────────────────────────────────────
+    // A listagem com filtro que o MCP usa. A da tela vem dentro de `projetos`,
+    // que desce o banco inteiro de uma vez; aqui o filtro é no SQL e a resposta
+    // é paginada, porque quem lê é uma IA com contexto contado.
+    if (action === 'tarefas_filtradas') {
+      const soDaEquipe = papelEfetivo(usuario?.email, usuario?.papel) === 'membro';
+      const onde: string[] = [
+        '(p.ativo = 1 OR p.id = ?)',
+        '(? = 0 OR p.id = ? OR EXISTS (SELECT 1 FROM projeto_equipe e WHERE e.projeto_id = p.id AND e.usuario_id = ?))',
+      ];
+      const args: unknown[] = [PROJETO_GERAL, soDaEquipe ? 1 : 0, PROJETO_GERAL, usuario?.id ?? ''];
+      const lista = (chave: string) => String(query.get(chave) ?? '')
+        .split(',').map(x => x.trim()).filter(Boolean);
+      const dentro = (coluna: string, valores: string[]) => {
+        onde.push(`${coluna} IN (${valores.map(() => '?').join(',')})`);
+        args.push(...valores);
+      };
+
+      const projetosPedidos = lista('projeto');
+      if (projetosPedidos.length) dentro('t.projeto_id', projetosPedidos);
+      const statusPedidos = lista('status');
+      if (statusPedidos.length) dentro('t.status', statusPedidos);
+      const prioridades = lista('prioridade');
+      if (prioridades.length) dentro('t.prioridade', prioridades);
+      const entregas = lista('entrega').map(Number).filter(Number.isFinite).map(String);
+      if (entregas.length) dentro('t.entrega_id', entregas);
+
+      // Responsável por id, por e-mail ou `eu`. E-mail vira id aqui, para o
+      // filtro não depender de quem chama saber o id de ninguém.
+      const donosPedidos = lista('responsavel');
+      if (donosPedidos.length) {
+        const ids = donosPedidos.filter(d => !d.includes('@')).map(d => (d === 'eu' ? usuario?.id ?? '' : d));
+        const emails = donosPedidos.filter(d => d.includes('@')).map(d => d.toLowerCase());
+        if (emails.length) {
+          const r = await db.execute({
+            sql: `SELECT id FROM usuarios WHERE lower(email) IN (${emails.map(() => '?').join(',')})`,
+            args: emails,
+          });
+          ids.push(...r.rows.map(l => String(l.id)));
+        }
+        if (ids.length === 0) return { status: 200, body: { tarefas: [], total: 0, proximo: null } };
+        onde.push(`EXISTS (SELECT 1 FROM json_each(COALESCE(t.responsaveis, '[]')) d
+                           WHERE d.value IN (${ids.map(() => '?').join(',')}))`);
+        args.push(...ids);
+      }
+      const etiquetas = lista('etiqueta');
+      if (etiquetas.length) {
+        onde.push(`EXISTS (SELECT 1 FROM json_each(COALESCE(t.etiquetas, '[]')) x
+                           WHERE x.value IN (${etiquetas.map(() => '?').join(',')}))`);
+        args.push(...etiquetas);
+      }
+      const prazoDe = String(query.get('prazo_de') ?? '').trim();
+      if (prazoDe) { onde.push('t.prazo IS NOT NULL AND t.prazo >= ?'); args.push(prazoDe); }
+      const prazoAte = String(query.get('prazo_ate') ?? '').trim();
+      if (prazoAte) { onde.push('t.prazo IS NOT NULL AND t.prazo <= ?'); args.push(prazoAte); }
+
+      const texto = String(query.get('texto') ?? '').trim();
+      if (texto) {
+        // "#123" ou "123" também acham a tarefa pelo número, que é como as
+        // pessoas se referem a ela na conversa.
+        const numero = /^#?(\d+)$/.exec(texto)?.[1];
+        onde.push(`(t.titulo LIKE ? OR t.descricao LIKE ?${numero ? ' OR t.id = ?' : ''})`);
+        args.push(`%${texto}%`, `%${texto}%`, ...(numero ? [Number(numero)] : []));
+      }
+
+      // Concluída e desconsiderada ficam de fora por padrão: o que se pergunta
+      // quase sempre é o que ainda está aberto. Pedir um status pelo nome
+      // derruba o corte, porque aí a pergunta já disse o que quer.
+      const etapas = await etapasDeTarefa(db);
+      if (!statusPedidos.length && query.get('incluir_concluidas') !== '1') {
+        const fechadas = [...etapas.conclusivas, ...etapas.desconsideradas];
+        if (fechadas.length) {
+          onde.push(`t.status NOT IN (${fechadas.map(() => '?').join(',')})`);
+          args.push(...fechadas);
+        }
+      }
+
+      const limite = Math.min(Math.max(Number(query.get('limite')) || 50, 1), 200);
+      const desloca = Math.max(Number(query.get('cursor')) || 0, 0);
+      const filtro = onde.join(' AND ');
+      const [linhas, contagem, pessoas] = await Promise.all([
+        db.execute({
+          sql: `SELECT t.id, t.projeto_id, p.nome AS projeto_nome, t.entrega_id, en.titulo AS entrega_titulo,
+                       t.titulo, substr(COALESCE(t.descricao, ''), 1, 300) AS descricao,
+                       length(COALESCE(t.descricao, '')) AS descricao_tamanho,
+                       t.status, t.prioridade, t.responsaveis, t.prazo, t.etiquetas, t.concluida_em,
+                       t.criado_em, t.criado_por_nome,
+                       (SELECT COUNT(*) FROM tarefa_comentarios c WHERE c.tarefa_id = t.id) AS comentarios,
+                       (SELECT COUNT(*) FROM tarefa_comentario_anexos a
+                        JOIN tarefa_comentarios c ON c.id = a.comentario_id
+                        WHERE c.tarefa_id = t.id) AS anexos
+                FROM projeto_tarefas t
+                JOIN projetos p ON p.id = t.projeto_id
+                LEFT JOIN projeto_entregas en ON en.id = t.entrega_id
+                WHERE ${filtro}
+                ORDER BY t.criado_em DESC, t.id DESC
+                LIMIT ? OFFSET ?`,
+          args: [...args, limite, desloca] as never[],
+        }),
+        db.execute({
+          sql: `SELECT COUNT(*) AS n FROM projeto_tarefas t JOIN projetos p ON p.id = t.projeto_id
+                WHERE ${filtro}`,
+          args: args as never[],
+        }),
+        db.execute('SELECT id, nome, email FROM usuarios'),
+      ]);
+      const quem = new Map(pessoas.rows.map(u => [String(u.id), { id: String(u.id), nome: String(u.nome), email: String(u.email) }]));
+      const total = Number(contagem.rows[0]?.n ?? 0);
+      const tarefas = linhas.rows.map(l => ({
+        ...l,
+        responsaveis: donosDaTarefa(l).map(id => quem.get(id) ?? { id, nome: null, email: null }),
+        etiquetas: (() => { try { return JSON.parse(String(l.etiquetas ?? '[]')); } catch { return []; } })(),
+        descricao_cortada: Number(l.descricao_tamanho) > 300,
+      }));
+      return {
+        status: 200,
+        body: { tarefas, total, proximo: desloca + tarefas.length < total ? String(desloca + tarefas.length) : null },
+      };
+    }
+
+    // Os projetos que a pessoa enxerga, com as entregas de cada um: é o mapa
+    // de onde uma tarefa pode morar. Mesmo corte de equipe da listagem.
+    if (action === 'tarefas_projetos') {
+      const soDaEquipe = papelEfetivo(usuario?.email, usuario?.papel) === 'membro';
+      const projs = await db.execute({
+        sql: `SELECT p.id, p.codigo, p.nome, p.status, c.nome AS cliente
+              FROM projetos p LEFT JOIN clientes c ON c.id = p.cliente_id
+              WHERE (p.ativo = 1 OR p.id = ?)
+                AND (? = 0 OR p.id = ? OR EXISTS (
+                  SELECT 1 FROM projeto_equipe e WHERE e.projeto_id = p.id AND e.usuario_id = ?))
+              ORDER BY p.id = ?, p.nome`,
+        args: [PROJETO_GERAL, soDaEquipe ? 1 : 0, PROJETO_GERAL, usuario?.id ?? '', PROJETO_GERAL],
+      });
+      const ids = projs.rows.map(p => String(p.id));
+      if (ids.length === 0) return { status: 200, body: { projetos: [] } };
+      const marcas = ids.map(() => '?').join(',');
+      const [entregas, equipe] = await Promise.all([
+        db.execute({
+          sql: `SELECT id, projeto_id, titulo, status FROM projeto_entregas
+                WHERE projeto_id IN (${marcas}) ORDER BY ordem, id`,
+          args: ids,
+        }),
+        db.execute({
+          sql: `SELECT e.projeto_id, e.usuario_id, e.papel, u.nome, u.email
+                FROM projeto_equipe e JOIN usuarios u ON u.id = e.usuario_id
+                WHERE e.projeto_id IN (${marcas}) ORDER BY u.nome`,
+          args: ids,
+        }),
+      ]);
+      return {
+        status: 200,
+        body: {
+          projetos: projs.rows.map(p => ({
+            ...p,
+            entregas: entregas.rows.filter(e => e.projeto_id === p.id)
+              .map(e => ({ id: Number(e.id), titulo: e.titulo, status: e.status })),
+            equipe: equipe.rows.filter(e => e.projeto_id === p.id)
+              .map(e => ({ id: String(e.usuario_id), nome: e.nome, email: e.email, papel: e.papel })),
+          })),
+        },
+      };
+    }
+
+    // ── MCP: a tela de conectar e as conexões do Perfil ─────────────────────
+    // Quem não tem o MCP ligado recebe daqui a mesma resposta de uma ação que
+    // não existe: nem a mensagem de erro conta que existe algo a pedir.
+    if (action === 'mcp_pedido' || action === 'mcp_conexoes') {
+      if (!(await mcpHabilitado(db, usuario?.id))) return comoAcaoInexistente(permissoes, method);
+      if (action === 'mcp_conexoes') {
+        return {
+          status: 200,
+          body: { endereco: `${enderecoDoPortal()}/api/mcp`, conexoes: await conexoesDoUsuario(db, usuario!.id) },
+        };
+      }
+      try {
+        const { pedido, clienteNome } = await conferirPedido(db, Object.fromEntries(query));
+        return { status: 200, body: { cliente: clienteNome, redirect_uri: pedido.redirect_uri, state: pedido.state } };
+      } catch (err) {
+        if (err instanceof ErroOAuth) return { status: 400, body: { error: err.message } };
+        throw err;
+      }
     }
 
     if (action === 'tarefa_atividade') {
@@ -8029,6 +8264,42 @@ function faltaEmProjeto(p: any): string | null {
     // Papel e acesso de outra pessoa. Só o dono do painel, e nunca sobre a
     // própria conta dele: rebaixar ou desligar o administrador deixaria o
     // sistema sem ninguém capaz de devolver acesso a alguém.
+    // Liga ou desliga o MCP de alguém. Vale para qualquer papel, e também para
+    // a conta do próprio administrador: aqui não há risco de trancar o painel.
+    if (action === 'set_usuario_mcp') {
+      if (!podeGerenciarUsuarios(usuario)) return NEGADO_USUARIOS;
+      const alvoId = String(body?.usuario_id ?? '');
+      if (!alvoId) return { status: 400, body: { error: 'usuario_id ausente.' } };
+      const ligar = body?.mcp === true || body?.mcp === 1;
+      const r = await db.execute({
+        sql: 'UPDATE usuarios SET mcp_habilitado = ? WHERE id = ?', args: [ligar ? 1 : 0, alvoId],
+      });
+      if (r.rowsAffected === 0) return { status: 404, body: { error: 'Usuário não encontrado.' } };
+      // Desligar corta agora: as conexões abertas morrem junto, em vez de
+      // seguirem valendo até o token vencer.
+      if (!ligar) await revogarTudo(db, alvoId);
+      return { status: 200, body: { ok: true, usuario_id: alvoId, mcp: ligar } };
+    }
+
+    // O "sim" da tela de conectar: emite o código e devolve para onde voltar.
+    if (action === 'mcp_autorizar' || action === 'mcp_desconectar') {
+      if (!(await mcpHabilitado(db, usuario?.id))) return comoAcaoInexistente(permissoes, method);
+      if (action === 'mcp_desconectar') {
+        const ok = await desconectar(db, usuario!.id, Number(body?.id));
+        return ok
+          ? { status: 200, body: { ok: true } }
+          : { status: 404, body: { error: 'Conexão não encontrada.' } };
+      }
+      try {
+        const { pedido, clienteNome } = await conferirPedido(db, body?.pedido ?? {});
+        const redirecionar = await emitirCodigo(db, usuario!.id, pedido, enderecoDoPortal());
+        return { status: 200, body: { redirecionar, cliente: clienteNome } };
+      } catch (err) {
+        if (err instanceof ErroOAuth) return { status: 400, body: { error: err.message } };
+        throw err;
+      }
+    }
+
     if (action === 'set_papel' || action === 'set_usuario_ativo') {
       if (!podeGerenciarUsuarios(usuario)) return NEGADO_USUARIOS;
 

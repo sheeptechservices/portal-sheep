@@ -13,6 +13,10 @@
     }
   },
   "rewrites": [
+    { "source": "/.well-known/oauth-protected-resource(.*)", "destination": "/api/mcp-oauth?etapa=recurso" },
+    { "source": "/.well-known/oauth-authorization-server(.*)", "destination": "/api/mcp-oauth?etapa=servidor" },
+    { "source": "/.well-known/openid-configuration(.*)", "destination": "/api/mcp-oauth?etapa=servidor" },
+    { "source": "/api/mcp-oauth/:etapa", "destination": "/api/mcp-oauth?etapa=:etapa" },
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]

@@ -9,6 +9,7 @@
     "build": "tsc -b && vite build",
     "check:acessos": "node scripts/check-permissoes.mjs",
     "test:acessos": "node scripts/test-permissoes.mjs",
+    "test:mcp": "node scripts/test-mcp.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
