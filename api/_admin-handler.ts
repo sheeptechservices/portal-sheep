@@ -4833,9 +4833,19 @@ async function despacharAdminData(
       }
       try {
         const { pedido, clienteNome } = await conferirPedido(db, Object.fromEntries(query));
-        return { status: 200, body: { cliente: clienteNome, redirect_uri: pedido.redirect_uri, state: pedido.state } };
+        return {
+          status: 200,
+          body: {
+            cliente: clienteNome, redirect_uri: pedido.redirect_uri, state: pedido.state,
+            // A conta que vai ficar ligada ao cliente, para a pessoa conferir
+            // antes de dizer sim.
+            conta: { nome: usuario!.nome, email: usuario!.email },
+          },
+        };
       } catch (err) {
-        if (err instanceof ErroOAuth) return { status: 400, body: { error: err.message } };
+        // `oauth` separa o pedido malformado da recusa de quem não tem o
+        // MCP: a tela mostra o primeiro e, no segundo, só volta ao início.
+        if (err instanceof ErroOAuth) return { status: 400, body: { error: err.message, oauth: true } };
         throw err;
       }
     }
@@ -8295,7 +8305,9 @@ function faltaEmProjeto(p: any): string | null {
         const redirecionar = await emitirCodigo(db, usuario!.id, pedido, enderecoDoPortal());
         return { status: 200, body: { redirecionar, cliente: clienteNome } };
       } catch (err) {
-        if (err instanceof ErroOAuth) return { status: 400, body: { error: err.message } };
+        // `oauth` separa o pedido malformado da recusa de quem não tem o
+        // MCP: a tela mostra o primeiro e, no segundo, só volta ao início.
+        if (err instanceof ErroOAuth) return { status: 400, body: { error: err.message, oauth: true } };
         throw err;
       }
     }

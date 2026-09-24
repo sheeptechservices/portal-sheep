@@ -23,6 +23,7 @@ const GeradorPropostas = lazy(() => import('./GeradorPropostas'));
 const CofreSenhas = lazy(() => import('./CofreSenhas'));
 const TalentosPage = lazy(() => import('./TalentosPage'));
 const PerfilPage = lazy(() => import('./PerfilPage'));
+const ConectarMcp = lazy(() => import('./ConectarMcp'));
 const UsuariosPage = lazy(() => import('./UsuariosPage'));
 const QuickSearch = lazy(() => import('./QuickSearch'));
 import type { QuickTarget } from './QuickSearch';
@@ -55,6 +56,8 @@ export interface UsuarioSessao {
   nome: string;
   foto_url: string | null;
   papel: string;
+  /** Só vem, e só como `true`, para quem tem o MCP ligado. */
+  mcp?: true;
 }
 interface AuthCtx {
   onSessionExpired: () => void;
@@ -1914,6 +1917,9 @@ const _urlState = (() => {
   return { urlToken };
 })();
 
+/** A tela de conectar do MCP. Lido uma vez: nada no portal navega para cá. */
+const CONECTANDO_MCP = window.location.pathname.replace(/\/+$/, '') === '/mcp/conectar';
+
 /** Duração da saída de tela. Espelhada em .tela-sai, no main.css. */
 const SAIDA_MS = 300;
 
@@ -1961,5 +1967,15 @@ export default function AdminApp() {
   }
 
   if (!token) return <LoginScreen onLogin={t => trocarTela(() => setToken(t))} saindo={saindo} />;
+  // O consentimento do MCP ocupa a tela inteira, no lugar do portal: quem chega
+  // aqui veio de um aplicativo de IA e volta para ele. Sem sessão, a entrada de
+  // cima aparece primeiro e o endereço continua este.
+  if (CONECTANDO_MCP) {
+    return (
+      <Suspense fallback={<div className="mcp-conectar"><div className="dux-spinner-row"><span className="dux-spinner sm" /></div></div>}>
+        <ConectarMcp token={token} onSessaoExpirada={logout} />
+      </Suspense>
+    );
+  }
   return <MainApp token={token} onLogout={logout} saindo={saindo} />;
 }

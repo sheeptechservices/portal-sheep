@@ -40,19 +40,23 @@ cliente MCP ──POST /api/mcp (Bearer)──> api/mcp.ts
 |---|---|
 | `/.well-known/oauth-protected-resource` | RFC 9728, aponta o servidor de autorização (rewrite para `api/mcp-oauth.ts`) |
 | `/.well-known/oauth-authorization-server` | RFC 8414 (rewrite para `api/mcp-oauth.ts`) |
-| `POST /api/mcp-oauth?etapa=registro` | RFC 7591, cliente público, `token_endpoint_auth_method: none` |
+| `POST /api/mcp-oauth/registro` | RFC 7591, cliente público, `token_endpoint_auth_method: none` |
 | `GET /mcp/conectar?...` | tela do SPA dentro do `AdminApp`: entra com o Google se preciso e pede consentimento |
-| `POST /api/mcp-oauth?etapa=token` | `authorization_code` (com PKCE S256) e `refresh_token` |
+| `POST /api/mcp-oauth/token` | `authorization_code` (com PKCE S256) e `refresh_token` |
 
 - A tela `/mcp/conectar` chama a ação `mcp_autorizar` (sessão normal do portal).
   Ela confere `mcp_habilitado`, o cliente e o `redirect_uri`, e devolve a URL de
   retorno com um código de uso único que vale 5 minutos. Sem acesso, a ação
-  responde como ação desconhecida e a tela manda a pessoa para o início do portal.
+  responde como ação desconhecida (a mesma resposta, por método e por papel) e a
+  tela manda a pessoa para o início do portal. Erro de pedido OAuth vem marcado
+  com `oauth: true`, e só esse a tela mostra.
 - Access token de 1 hora e refresh token de 60 dias, rotativo. O banco guarda
   só o SHA-256 de cada um.
-- `redirect_uri`: correspondência exata com o registrado. Só aceita `https`, ou
-  `http` em `localhost`/`127.0.0.1`.
-- Registro e token passam pelo `checkLoginRateLimit` por IP.
+- `redirect_uri`: correspondência exata com o registrado. Aceita `https`, `http`
+  só em `localhost`/`127.0.0.1`/`[::1]`, e esquema próprio de aplicativo
+  (`cursor://...`, RFC 8252). Recusa `javascript:`, `data:`, `file:` e afins.
+- Registro e token passam pelo `checkLoginRateLimit`; só `invalid_grant` conta
+  como tentativa falha.
 - Tabelas: `mcp_clientes` (id, nome, redirect_uris, criado_em), `mcp_codigos`
   (hash do código, cliente, usuário, redirect_uri, challenge, expira_em) e
   `mcp_tokens` (hash do access, hash do refresh, cliente, usuário, validades,
@@ -89,7 +93,7 @@ O `tools/list` só mostra o que a pessoa pode chamar, conforme `podeAcao`.
 | `comentar` | `add_tarefa_comentario` |
 | `excluir_comentario`, `joinha_comentario` | ações de mesmo nome |
 | `baixar_anexo` | `tarefa_comentario_anexo_base64` |
-| `listar_projetos`, `listar_status`, `listar_etiquetas`, `listar_pessoas` | `tarefas_filtradas` (projetos), `tarefa_status_configs`, `tarefa_etiquetas`, `usuarios_notificaveis` |
+| `listar_projetos`, `listar_status`, `listar_etiquetas`, `listar_pessoas` | ação nova `tarefas_projetos` (`tarefas:ver`), `tarefa_status_configs`, `tarefa_etiquetas`, `usuarios_notificaveis` |
 
 `tarefas_filtradas` aceita projeto, status, responsável (id, e-mail ou `eu`),
 prioridade, etiqueta, entrega, prazo de/até, texto, `incluir_concluidas`,
@@ -108,16 +112,17 @@ Status e etiqueta entram pelo nome; pessoa entra por id ou e-mail.
 
 ## Correção de passagem
 
-`tarefa_subtarefas` (GET) e as três escritas de subtarefa passam a chamar
-`guardaDaEquipe`: hoje um membro que saiba um id lê e mexe no passo a passo de
-tarefa alheia.
+`tarefa_subtarefas` (GET) passa a chamar `guardaDaEquipe`: um membro que
+soubesse um id lia o passo a passo de tarefa alheia. As três escritas de
+subtarefa já estavam guardadas.
 
 ## Testes
 
 - `scripts/check-permissoes.mjs` cobre as ações novas.
-- `scripts/test-mcp.mjs`: PKCE errado recusado, código reutilizado recusado,
-  `mcp_habilitado = 0` dá 401, `tools/list` sem `tarefas:excluir` não traz a
-  ferramenta.
+- `scripts/test-mcp.mjs` (`npm run test:mcp`): OAuth (redirect, PKCE, código
+  de uso único, rotação do refresh, corte ao desligar), o esconderijo (mesma
+  resposta de ação inexistente, `me` e lista de usuários sem o campo), a
+  vitrine por permissão e um passeio pelas ferramentas sobre o handler real.
 - Ponta a ponta no `vercel dev` com `claude mcp add --transport http`.
 
 ## Fora do escopo
