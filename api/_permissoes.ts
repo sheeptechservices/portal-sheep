@@ -290,6 +290,10 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   tarefas_comentarios: 'tarefas:ver',
   tarefas_subtarefas: 'tarefas:ver',
   tarefa_comentario_anexo_base64: 'tarefas:ver',
+  // As leituras do MCP: a lista com filtro e o mapa de projetos e entregas.
+  // Mesma porta do quadro, e o mesmo corte de equipe dentro da consulta.
+  tarefas_filtradas: 'tarefas:ver',
+  tarefas_projetos: 'tarefas:ver',
   add_tarefa_comentario: 'tarefas:comentar',
   excluir_tarefa_comentario: 'tarefas:comentar',
   // O joinha e participar da conversa, como comentar.
@@ -351,6 +355,14 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   enviar_link_senha: SO_ADMIN,
   set_papel: SO_ADMIN,
   set_usuario_ativo: SO_ADMIN,
+  set_usuario_mcp: SO_ADMIN,
+  // O MCP de quem o tem ligado. Livre no porteiro porque a trava não é de
+  // papel, e sim a marca da pessoa, conferida dentro da ação - que responde a
+  // quem não tem como se a ação não existisse.
+  mcp_pedido: LIVRE,
+  mcp_autorizar: LIVRE,
+  mcp_conexoes: LIVRE,
+  mcp_desconectar: LIVRE,
   permissoes: SO_ADMIN_LEITURA,
   set_permissoes_papel: SO_ADMIN,
 

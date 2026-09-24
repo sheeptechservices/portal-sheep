@@ -114,6 +114,14 @@ const SEM_PORTEIRO_PROPRIO = new Set([
   // credencial é o token do link. Não chama `exigir` porque não há matriz a
   // consultar - o que a tranca é a lista de campos escrita no próprio arquivo.
   'projeto-publico.ts',
+  // O MCP não tem porteiro próprio: toda ferramenta passa pelo `handleAdminData`,
+  // que tranca no despacho como o `admin-data`. O `tools/list` só filtra a
+  // vitrine, com o mesmo `podeAcao`.
+  'mcp.ts',
+  // As portas do OAuth do MCP. Metadado, registro de cliente e troca de código
+  // por token: não há ação de negócio aqui, e quem recebe token é conferido pela
+  // marca `mcp_habilitado`, e não pela matriz.
+  'mcp-oauth.ts',
 ]);
 const proprios = readdirSync(join(raiz, 'api'))
   .filter(f => f.endsWith('.ts') && !f.startsWith('_') && !SEM_PORTEIRO_PROPRIO.has(f));
