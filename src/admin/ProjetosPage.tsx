@@ -7848,7 +7848,11 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           onAnexarReuniaoFireflies={anexarReuniaoFireflies}
           onExcluirReuniao={excluirReuniao}
           onPublicar={publicarProjeto}
-          acessos={podeEditar && form.editando ? acoesDeAcesso(form.editando.id) : undefined}
+          // Quem está na equipe vê os acessos e revela a senha, mesmo sem
+          // editar o projeto: o login é do trabalho, e quem executa e quem
+          // testa precisam dele. Quem não edita recebe a seção em leitura, sem
+          // guardar, mexer nem remover - o servidor confere as duas coisas.
+          acessos={form.editando ? acoesDeAcesso(form.editando.id) : undefined}
           onSalvarEntrega={salvarEntrega}
           onExcluirEntrega={excluirEntrega}
           onSubirEvidencia={subirEvidencia}
