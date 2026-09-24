@@ -485,6 +485,9 @@ export interface Pedido {
   system: string;
   conteudo: any[];
   maxTokens: number;
+  /** O esquema JSON que a resposta tem de obedecer. Com ele a resposta vem
+   *  como JSON válido, e não como texto de onde alguém garimpa o JSON. */
+  formato?: unknown;
   uso: UsoDeTokens;
 }
 
@@ -498,6 +501,7 @@ async function pedir(p: Pedido): Promise<{ ok: true; texto: string } | { ok: fal
       max_tokens: p.maxTokens,
       system: p.system,
       messages: [{ role: 'user', content: p.conteudo }],
+      ...(p.formato ? { output_config: { format: { type: 'json_schema', schema: p.formato } } } : {}),
     };
     const aberta = await abrirChamada(p.apiKey, corpo);
     if (!aberta.ok) {
@@ -511,7 +515,18 @@ async function pedir(p: Pedido): Promise<{ ok: true; texto: string } | { ok: fal
       .filter((b: any) => b?.type === 'text')
       .map((b: any) => String(b.text ?? ''))
       .join('');
-    if (!texto) return { ok: false, status: 502, erro: 'A Anthropic respondeu sem texto.' };
+    if (!texto) {
+      // Sem texto quase sempre é teto de tokens: nos modelos de hoje o
+      // raciocínio sai do mesmo `max_tokens` da resposta, e um teto curto
+      // acaba antes de sobrar palavra. Dizer isso evita caçar fantasma.
+      return {
+        ok: false,
+        status: 502,
+        erro: dados?.stop_reason === 'max_tokens'
+          ? 'A resposta da Anthropic bateu no teto de tokens antes de sair.'
+          : 'A Anthropic respondeu sem texto.',
+      };
+    }
     return { ok: true, texto };
   }
   return { ok: false, status: 502, erro: 'A Anthropic não respondeu.' };
@@ -667,6 +682,21 @@ interface Briefing {
   faltou: string | null;
 }
 
+/** O formato exato da leitura da vaga. Vai na chamada, e não só nas
+ *  instruções: assim a Anthropic devolve este objeto e nada mais, em vez de
+ *  uma resposta em prosa de onde o JSON teria de ser recortado. */
+const ESQUEMA_DA_VAGA = {
+  type: 'object',
+  properties: {
+    titulo: { type: 'string' },
+    resumo: { type: 'string' },
+    requisitos: { type: 'array', items: { type: 'string' } },
+    faltou: { type: 'string' },
+  },
+  required: ['titulo', 'resumo', 'requisitos', 'faltou'],
+  additionalProperties: false,
+};
+
 /** Etapa 1: ler a vaga. É a única que enxerga os anexos - dali em diante o que
  *  circula é o briefing, que é texto curto e cabe em toda chamada sem pesar. */
 async function lerAVaga(
@@ -690,7 +720,13 @@ async function lerAVaga(
     texto.trim() || '(sem texto digitado - está tudo no anexo acima)',
   ].join('\n')));
 
-  const r = await pedir({ apiKey, modelo, system: INSTRUCOES_VAGA, conteudo, maxTokens: 1500, uso });
+  // O teto é folgado de propósito: o raciocínio do modelo sai deste mesmo
+  // teto, e com 1500 ele às vezes acabava antes de escrever a leitura - era
+  // esta a análise que morria dizendo que a resposta não veio no formato.
+  const r = await pedir({
+    apiKey, modelo, system: INSTRUCOES_VAGA, conteudo, maxTokens: 6000, uso,
+    formato: ESQUEMA_DA_VAGA,
+  });
   if (!r.ok) return r;
   const lido = lerJson(r.texto);
   if (!lido) return { ok: false, status: 502, erro: 'A Anthropic não devolveu a leitura da vaga no formato esperado.' };
