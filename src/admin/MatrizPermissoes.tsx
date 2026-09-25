@@ -142,15 +142,30 @@ export default function MatrizPermissoes({ token, somenteLeitura = false }: {
    * gravado "não pode entrar em Liquidez, mas pode excluir lançamento", que não
    * quer dizer nada - e, mais importante, cada ação é conferida por si no
    * servidor, então essa marcação órfã seria uma permissão de verdade.
+   *
+   * O aninhamento anda junto, nos dois sentidos. Ligar uma ferramenta liga o
+   * hub que a contém: o servidor exige as duas permissões, e a ferramenta
+   * marcada sozinha não abria nada - a matriz dizia que estava liberada e o
+   * menu não mostrava. Apagar o hub apaga as ferramentas de dentro dele, pelo
+   * mesmo motivo de sempre: marcação que não alcança nada não fica gravada.
    */
   function alternarGrupo(grupo: PermGrupo) {
     const acesso = grupo.acoes.find(a => a.acesso);
     if (!acesso) return;
     const ligando = !marcadas.has(acesso.chave);
+    const doHub = grupo.dentroDe
+      ? (catalogo ?? []).find(g => g.chave === grupo.dentroDe)?.acoes.find(a => a.acesso)?.chave
+      : undefined;
+    const dentro = filhosDe.get(grupo.chave) ?? [];
     setMarcadas(prev => {
       const proximo = new Set(prev);
-      if (ligando) proximo.add(acesso.chave);
-      else for (const a of grupo.acoes) proximo.delete(a.chave);
+      if (ligando) {
+        proximo.add(acesso.chave);
+        if (doHub) proximo.add(doHub);
+      } else {
+        for (const a of grupo.acoes) proximo.delete(a.chave);
+        for (const f of dentro) for (const a of f.acoes) proximo.delete(a.chave);
+      }
       return proximo;
     });
   }
