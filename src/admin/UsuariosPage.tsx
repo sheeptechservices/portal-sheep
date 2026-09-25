@@ -52,9 +52,6 @@ interface UsuarioLinha {
   criado_em: string;
   ultimo_acesso: string | null;
   sessoes_abertas: number;
-  /** Acesso ao MCP. Só vem para o administrador do sistema; para o master,
-   *  que também lê esta lista, o campo nem existe. */
-  mcp?: boolean;
 }
 
 interface Resposta {
@@ -440,18 +437,6 @@ export default function UsuariosPage({ token }: { token: string }) {
       ativo ? `${u.nome} pode entrar novamente.` : `${u.nome} saiu do painel.`);
   }
 
-  /** Liga ou desliga o MCP. Pinta no gesto e volta atrás se o servidor recusar. */
-  async function trocarMcp(u: UsuarioLinha, mcp: boolean) {
-    const aplicar = (valor: boolean) =>
-      setUsuarios(lista => (lista ?? []).map(x => (x.id === u.id ? { ...x, mcp: valor } : x)));
-    aplicar(mcp);
-    const ok = await chamar({ action: 'set_usuario_mcp', usuario_id: u.id, mcp });
-    if (!ok) { aplicar(!mcp); return; }
-    toast('success', mcp ? 'MCP liberado' : 'MCP retirado', mcp
-      ? `${u.nome} já pode conectar um aplicativo de IA pelo Perfil.`
-      : `As conexões de ${u.nome} foram encerradas.`);
-  }
-
   // Menu escondido não é permissão: quem chegar por outro caminho para aqui vê a
   // mesma recusa que o servidor deu.
   if (negado || (usuarios === null && !carregando && !podeVerUsuarios(eu))) {
@@ -601,11 +586,6 @@ export default function UsuariosPage({ token }: { token: string }) {
                               com senha
                             </span>
                           )}
-                          {u.mcp && (
-                            <span className="usuarios-tag surge" title="Pode conectar um aplicativo de IA às tarefas">
-                              mcp
-                            </span>
-                          )}
                           {u.sessoes_abertas > 0 && (
                             <span className="usuarios-tag online" title={`${u.sessoes_abertas} ${u.sessoes_abertas === 1 ? 'sessão aberta' : 'sessões abertas'}`}>
                               no painel
@@ -655,20 +635,6 @@ export default function UsuariosPage({ token }: { token: string }) {
                             onClick={() => setSenhaDe(u)}
                           >
                             Enviar senha
-                          </button>
-                        )}
-                        {/* Vale também para a conta do administrador: ligar o MCP
-                            dele não tranca o painel de ninguém. */}
-                        {podeMexer && u.mcp !== undefined && u.ativo && (
-                          <button
-                            type="button"
-                            className={`usuarios-btn-acesso${u.mcp ? ' remover' : ''}`}
-                            title={u.mcp
-                              ? 'Tirar o acesso ao MCP e encerrar as conexões abertas'
-                              : 'Deixar esta pessoa conectar um aplicativo de IA às tarefas'}
-                            onClick={() => void trocarMcp(u, !u.mcp)}
-                          >
-                            {u.mcp ? 'Tirar MCP' : 'Liberar MCP'}
                           </button>
                         )}
                         {salvando === u.id

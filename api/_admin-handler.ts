@@ -32,7 +32,7 @@ import {
 } from './_permissoes.js';
 import {
   ensureMcpSchema, conferirPedido, emitirCodigo, mcpHabilitado, conexoesDoUsuario, desconectar,
-  revogarTudo, ErroOAuth,
+  ErroOAuth,
 } from './_mcp/oauth.js';
 
 // Migração de schema: guardada pela promessa, não por um booleano.
@@ -3900,7 +3900,7 @@ async function despacharAdminData(
         // Aqui fica só o critério de desempate, que o banco resolve de graça.
         db.execute(`
           SELECT id, email, nome, foto_url, papel, ativo, convidado, criado_em, ultimo_acesso,
-                 senha_hash IS NOT NULL AS tem_senha, mcp_habilitado
+                 senha_hash IS NOT NULL AS tem_senha
           FROM usuarios
           ORDER BY ativo DESC, ultimo_acesso DESC, nome
         `),
@@ -3917,7 +3917,6 @@ async function despacharAdminData(
         }),
       ]);
       const abertas = new Map(sessoes.rows.map(r => [String(r.usuario_id), Number(r.c)]));
-      const mexeNoMcp = podeGerenciarUsuarios(usuario);
       const usuarios = lista.rows.map(r => {
         const email = String(r.email);
         return {
@@ -3934,9 +3933,6 @@ async function despacharAdminData(
           criado_em: String(r.criado_em ?? ''),
           ultimo_acesso: r.ultimo_acesso != null ? String(r.ultimo_acesso) : null,
           sessoes_abertas: abertas.get(String(r.id)) ?? 0,
-          // O MCP é assunto só do administrador do sistema: o master, que lê
-          // esta lista, não fica sabendo que ele existe.
-          ...(mexeNoMcp ? { mcp: Number(r.mcp_habilitado) === 1 } : {}),
         };
       });
       // Admin no topo, depois Master, depois Membro. A ordenação é aqui, e não
@@ -8274,23 +8270,6 @@ function faltaEmProjeto(p: any): string | null {
     // Papel e acesso de outra pessoa. Só o dono do painel, e nunca sobre a
     // própria conta dele: rebaixar ou desligar o administrador deixaria o
     // sistema sem ninguém capaz de devolver acesso a alguém.
-    // Liga ou desliga o MCP de alguém. Vale para qualquer papel, e também para
-    // a conta do próprio administrador: aqui não há risco de trancar o painel.
-    if (action === 'set_usuario_mcp') {
-      if (!podeGerenciarUsuarios(usuario)) return NEGADO_USUARIOS;
-      const alvoId = String(body?.usuario_id ?? '');
-      if (!alvoId) return { status: 400, body: { error: 'usuario_id ausente.' } };
-      const ligar = body?.mcp === true || body?.mcp === 1;
-      const r = await db.execute({
-        sql: 'UPDATE usuarios SET mcp_habilitado = ? WHERE id = ?', args: [ligar ? 1 : 0, alvoId],
-      });
-      if (r.rowsAffected === 0) return { status: 404, body: { error: 'Usuário não encontrado.' } };
-      // Desligar corta agora: as conexões abertas morrem junto, em vez de
-      // seguirem valendo até o token vencer.
-      if (!ligar) await revogarTudo(db, alvoId);
-      return { status: 200, body: { ok: true, usuario_id: alvoId, mcp: ligar } };
-    }
-
     // O "sim" da tela de conectar: emite o código e devolve para onde voltar.
     if (action === 'mcp_autorizar' || action === 'mcp_desconectar') {
       if (!(await mcpHabilitado(db, usuario?.id))) return comoAcaoInexistente(permissoes, method);

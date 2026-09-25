@@ -355,7 +355,6 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   enviar_link_senha: SO_ADMIN,
   set_papel: SO_ADMIN,
   set_usuario_ativo: SO_ADMIN,
-  set_usuario_mcp: SO_ADMIN,
   // O MCP de quem o tem ligado. Livre no porteiro porque a trava não é de
   // papel, e sim a marca da pessoa, conferida dentro da ação - que responde a
   // quem não tem como se a ação não existisse.

@@ -7,9 +7,10 @@ das subtarefas, comentar, responder, marcar pessoas, anexar e baixar anexo.
 
 ## Decisões
 
-- **Acesso por pessoa, concedido pelo admin.** Coluna `usuarios.mcp_habilitado`,
-  desligada para todos, inclusive master e admin. Só o administrador do sistema
-  (`podeGerenciarUsuarios`) vê e mexe no interruptor.
+- **Acesso por pessoa, sem tela.** Coluna `usuarios.mcp_habilitado`, desligada
+  para todos, inclusive master e admin. Por enquanto o MCP é de uma pessoa só, e
+  a marca é posta direto no banco. O interruptor em Usuários existiu na primeira
+  versão e saiu em 25/09/2026.
 - **Escondido de quem não tem.** Sem acesso, a pessoa não vê menu, tela, instrução
   nem campo de resposta que mencione o MCP. O `me` só manda `mcp: true` para quem
   tem; para os outros o campo não existe.
@@ -64,7 +65,8 @@ cliente MCP ──POST /api/mcp (Bearer)──> api/mcp.ts
 - Toda chamada ao `/api/mcp` confere três coisas: o token vale, o usuário está
   ativo e `mcp_habilitado = 1`. Falhando qualquer uma, a resposta é 401 com
   `WWW-Authenticate: Bearer resource_metadata="..."`.
-- Desligar o interruptor apaga os tokens da pessoa. O Perfil de quem tem acesso
+- Desligar a marca no banco corta na chamada seguinte (o token deixa de valer);
+  as linhas de `mcp_tokens` da pessoa podem ser apagadas junto. O Perfil de quem tem acesso
   mostra a URL do MCP e os clientes conectados, com botão de desconectar
   (ações `mcp_conexoes` e `mcp_desconectar`).
 

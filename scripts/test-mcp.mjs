@@ -158,9 +158,9 @@ async function rodar({ O, R, F, H, P }) {
   eq('master sem MCP: mesmo status de ação inexistente', escondido.status, inexistente.status);
   eq('master sem MCP: mesma mensagem', escondido.body.error, inexistente.body.error);
   eq('lista de usuários do master não traz mcp', 'mcp' in (await acao(caio, 'GET', 'usuarios')).body.usuarios[0], false);
-  eq('lista de usuários do admin traz mcp', 'mcp' in (await acao(admin, 'GET', 'usuarios')).body.usuarios[0], true);
-  eq('master não liga MCP de ninguém', (await acao(caio, 'POST', 'set_usuario_mcp', { usuario_id: bia.id, mcp: true })).status, 403);
-  eq('admin liga o próprio MCP', (await acao(admin, 'POST', 'set_usuario_mcp', { usuario_id: admin.id, mcp: true })).status, 200);
+  eq('lista de usuários do admin também não', 'mcp' in (await acao(admin, 'GET', 'usuarios')).body.usuarios[0], false);
+  eq('não há ação de ligar pela tela', (await acao(admin, 'POST', 'set_usuario_mcp', { usuario_id: bia.id, mcp: true })).status,
+    (await acao(admin, 'POST', 'acao_que_nao_existe')).status);
 
   titulo('8. A tela de conectar emite o código só para quem tem');
   const autoriza = await acao(ana, 'POST', 'mcp_autorizar', { pedido: pedidoBom });

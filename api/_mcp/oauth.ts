@@ -31,7 +31,8 @@ type Ddl = (sql: string) => Promise<void>;
 
 export async function ensureMcpSchema(ddl: Ddl): Promise<void> {
   // Quem pode usar o MCP. Por pessoa, e fora da matriz de papel: nem master
-  // nem admin ganham por definição. Só o administrador do sistema liga.
+  // nem admin ganham por definição. Não há tela que ligue: por enquanto o MCP
+  // é de uma pessoa só, e a marca é posta direto no banco.
   try { await ddl(`ALTER TABLE usuarios ADD COLUMN mcp_habilitado INTEGER NOT NULL DEFAULT 0`); } catch { /* já existe */ }
 
   // Clientes do registro dinâmico (RFC 7591). Só públicos: nenhum tem segredo,
@@ -373,9 +374,4 @@ export async function desconectar(db: Client, usuarioId: string, conexaoId: numb
     sql: 'DELETE FROM mcp_tokens WHERE id = ? AND usuario_id = ?', args: [conexaoId, usuarioId],
   });
   return r.rowsAffected > 0;
-}
-
-export async function revogarTudo(db: Client, usuarioId: string): Promise<void> {
-  await db.execute({ sql: 'DELETE FROM mcp_tokens WHERE usuario_id = ?', args: [usuarioId] });
-  await db.execute({ sql: 'DELETE FROM mcp_codigos WHERE usuario_id = ?', args: [usuarioId] });
 }
