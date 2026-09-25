@@ -228,6 +228,9 @@ export default function CofreSenhas({ token }: { token: string }) {
         </AbaPainel>
       ) : (
       <AbaPainel key="segredos">
+      {/* O painel da aba é um filho só da página, então o respiro de 14px dela
+          não vale aqui dentro: a barra de filtros ficava colada na tabela. */}
+      <div className="cofre-painel">
       <div className="admin-toolbar">
         <span className="admin-toolbar-label">Filtrar</span>
         <FilterDropdown label="Categoria" values={fCategoria} options={categorias}
@@ -326,6 +329,7 @@ export default function CofreSenhas({ token }: { token: string }) {
           </table>
         </div>
       )}
+      </div>
       </AbaPainel>
       )}
 
@@ -956,6 +960,8 @@ function mmss(segundos: number): string {
 }
 
 const ESTILO = `
+  /* O mesmo respiro entre blocos que a página usa lá fora. */
+  .cofre-painel { display: flex; flex-direction: column; gap: 14px; }
   .cofre-busca { width: 260px; max-width: 40vw; }
   .cofre-dica { font-size: 11px; color: var(--gray2); line-height: 1.45; margin: 0; }
   .cofre-dica.erro { color: var(--red); }
