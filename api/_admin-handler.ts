@@ -2391,6 +2391,9 @@ async function migrarSchema(db: Client) {
       atualizado_em   TEXT NOT NULL
     )
   `);
+  // A proposta guardada sem ter saído em PDF: rascunho. Ela vive no histórico
+  // como as outras, para continuar depois, e diz no chip que ainda não foi.
+  try { await ddl(`ALTER TABLE propostas_geradas ADD COLUMN rascunho INTEGER NOT NULL DEFAULT 0`); } catch { /* já existe */ }
   await ddl(`CREATE UNIQUE INDEX IF NOT EXISTS idx_propostas_chave ON propostas_geradas (chave)`);
   await ddl(`CREATE INDEX IF NOT EXISTS idx_propostas_oportunidade
              ON propostas_geradas (oportunidade_id, atualizado_em DESC)`);
@@ -6081,7 +6084,7 @@ async function despacharAdminData(
     if (action === 'propostas_geradas') {
       const r = await db.execute(`
         SELECT p.id, p.oportunidade_id, p.cliente, p.subtitulo, p.slides, p.autor_nome,
-               p.criado_em, p.atualizado_em, s.empresa AS lead_empresa
+               p.rascunho, p.criado_em, p.atualizado_em, s.empresa AS lead_empresa
         FROM propostas_geradas p
         LEFT JOIN oportunidades s ON s.id = p.oportunidade_id
         ORDER BY p.atualizado_em DESC
@@ -6097,6 +6100,7 @@ async function despacharAdminData(
             cliente: String(x.cliente),
             subtitulo: String(x.subtitulo),
             slides: x.slides == null ? null : Number(x.slides),
+            rascunho: Number(x.rascunho) === 1,
             autor_nome: String(x.autor_nome),
             criado_em: String(x.criado_em),
             atualizado_em: String(x.atualizado_em),
@@ -8906,11 +8910,15 @@ function faltaEmProjeto(p: any): string | null {
       await db.execute({
         sql: `UPDATE propostas_geradas
               SET oportunidade_id = ?, cliente = ?, subtitulo = ?, chave = ?, dados = ?,
-                  slides = COALESCE(?, slides), autor_id = ?, autor_nome = ?, atualizado_em = ?
+                  slides = COALESCE(?, slides), rascunho = ?, autor_id = ?, autor_nome = ?,
+                  atualizado_em = ?
               WHERE id = ?`,
         args: [
           oportunidadeId, cliente, subtitulo, chave, texto,
           Number.isFinite(slides) ? slides : null,
+          // Guardar como rascunho mantém a marca; gerar o PDF a tira, que é o
+          // que faz o rascunho virar proposta.
+          marca(body?.rascunho),
           autorId ?? null, autorNome ?? 'alguém do time', agora, id,
         ],
       });
@@ -8950,13 +8958,13 @@ function faltaEmProjeto(p: any): string | null {
       const slides = Number(body?.slides);
       const r = await db.execute({
         sql: `INSERT INTO propostas_geradas
-                (oportunidade_id, cliente, subtitulo, chave, dados, slides, autor_id, autor_nome,
-                 criado_em, atualizado_em)
-              VALUES (?,?,?,?,?,?,?,?,?,?)
+                (oportunidade_id, cliente, subtitulo, chave, dados, slides, rascunho, autor_id,
+                 autor_nome, criado_em, atualizado_em)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?)
               RETURNING id, criado_em, atualizado_em`,
         args: [
           oportunidadeId, cliente, subtitulo, chave, texto,
-          Number.isFinite(slides) ? slides : null,
+          Number.isFinite(slides) ? slides : null, marca(body?.rascunho),
           autorId ?? null, autorNome ?? 'alguém do time', agora, agora,
         ],
       });
@@ -8994,20 +9002,21 @@ function faltaEmProjeto(p: any): string | null {
       const slides = Number(body?.slides);
       const r = await db.execute({
         sql: `INSERT INTO propostas_geradas
-                (oportunidade_id, cliente, subtitulo, chave, dados, slides, autor_id, autor_nome,
-                 criado_em, atualizado_em)
-              VALUES (?,?,?,?,?,?,?,?,?,?)
+                (oportunidade_id, cliente, subtitulo, chave, dados, slides, rascunho, autor_id,
+                 autor_nome, criado_em, atualizado_em)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?)
               ON CONFLICT(chave) DO UPDATE SET
                 cliente = excluded.cliente,
                 dados = excluded.dados,
                 slides = excluded.slides,
+                rascunho = excluded.rascunho,
                 autor_id = excluded.autor_id,
                 autor_nome = excluded.autor_nome,
                 atualizado_em = excluded.atualizado_em
               RETURNING id, criado_em, atualizado_em`,
         args: [
           oportunidadeId, cliente, subtitulo, chave, texto,
-          Number.isFinite(slides) ? slides : null,
+          Number.isFinite(slides) ? slides : null, marca(body?.rascunho),
           autorId ?? null, autorNome ?? 'alguém do time', agora, agora,
         ],
       });

@@ -24,6 +24,17 @@ export function IconEyeOff({ size = 15 }: { size?: number }) {
   );
 }
 
+// Salvar - o disquete, que continua sendo o desenho que todo mundo le como
+// "guardar", mesmo quem nunca viu um. Usado no rascunho da proposta.
+export function IconSalvar({ size = 14 }: { size?: number }) {
+  return (
+    <Ico size={size}>
+      <path d="M5 4.5h10.5L19.5 8.5V18a1.5 1.5 0 01-1.5 1.5H6A1.5 1.5 0 014.5 18V6A1.5 1.5 0 016 4.5z" />
+      <path d="M8.5 4.5v4h6v-4" />
+      <path d="M8 19.5v-5h8v5" />
+    </Ico>
+  );
+}
 export function IconDownload({ size = 15 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

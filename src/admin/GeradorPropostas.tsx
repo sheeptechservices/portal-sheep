@@ -24,7 +24,7 @@ import type { StatusConfig, Submission } from './types';
 const CadastroDeLead = lazy(() => import('./OportunidadesPage').then(m => ({ default: m.CreateModal })));
 import {
   IconArrowLeft, IconArrowRight, IconCheck, IconChevronRight, IconDoc, IconDownload, IconEdit, IconEye,
-  IconFunil, IconInbox, IconPlus, IconSparkles, IconSpinner, IconTrash, IconUpload,
+  IconFunil, IconInbox, IconPlus, IconSalvar, IconSparkles, IconSpinner, IconTrash, IconUpload,
 } from '../components/icons';
 import { AbaPainel, Abas } from '../components/Abas';
 import { SelectSistema } from '../components/SelectSistema';
@@ -63,6 +63,9 @@ interface PropostaGerada {
   cliente: string;
   subtitulo: string;
   slides: number | null;
+  /** Guardada sem ter saído em PDF: continua depois, e o funil não a anuncia
+   *  como proposta entregue. Gerar o PDF tira a marca. */
+  rascunho?: boolean;
   autor_nome: string;
   criado_em: string;
   atualizado_em: string;
@@ -658,7 +661,12 @@ function HistoricoPropostas({ lista, onVer, onEditar, abrindo, editando, baixand
         <li key={p.id} className="gp-hist-item">
           <span className="gp-hist-icone"><IconDoc size={16} /></span>
           <div className="gp-hist-texto">
-            <p className="gp-hist-titulo">{p.cliente}</p>
+            <p className="gp-hist-titulo">
+              {p.cliente}
+              {/* O rascunho diz que ainda não saiu: ele mora na mesma lista, e
+                  sem a marca leria como proposta entregue. */}
+              {p.rascunho && <span className="gp-hist-rascunho">Rascunho</span>}
+            </p>
             <p className="gp-hist-sub">{p.subtitulo}</p>
             <p className="gp-hist-meta">
               {instante(p.criado_em)} por {p.autor_nome}
@@ -731,6 +739,8 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
   const [comoSalvar, setComoSalvar] = useState<{ final: DadosProposta; slides: number } | null>(null);
   /** O PDF do formulário sendo montado no servidor. */
   const [gerandoPdf, setGerandoPdf] = useState(false);
+  /** O rascunho sendo guardado, para o botão girar enquanto isso. */
+  const [salvandoRascunho, setSalvandoRascunho] = useState(false);
   /** A proposta do histórico que está virando PDF. */
   const [baixando, setBaixando] = useState<number | null>(null);
   /** O lead do funil a que a proposta pertence. Obrigatório para gerar. */
@@ -937,25 +947,65 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
    * O arquivo é gerado no navegador antes - se o registro falhar, a proposta
    * continua na mão de quem pediu, e é o funil que fica devendo, com o aviso.
    */
-  async function registrar(final: DadosProposta, slides: number) {
+  async function registrar(final: DadosProposta, slides: number, rascunho = false) {
     const r = await api('', 'POST', {
       action: 'registrar_proposta', oportunidade_id: leadId,
-      cliente: final.cliente, subtitulo: final.subtitulo, dados: final, slides,
+      cliente: final.cliente, subtitulo: final.subtitulo, dados: final, slides, rascunho,
     });
     if (!r?.id) {
-      toast('error', 'A proposta saiu, mas não ficou presa à oportunidade',
-        r?.error ?? 'Gere de novo para registrar no funil.');
-      return;
+      toast('error', rascunho
+        ? 'O rascunho não foi guardado'
+        : 'A proposta saiu, mas não ficou presa à oportunidade',
+        r?.error ?? (rascunho ? 'Tente de novo.' : 'Gere de novo para registrar no funil.'));
+      return false;
     }
     const lead = leads?.find(l => l.id === leadId);
     const linha: PropostaGerada = {
       id: Number(r.id), oportunidade_id: leadId, lead_empresa: lead?.empresa ?? null,
-      cliente: final.cliente, subtitulo: final.subtitulo, slides,
+      cliente: final.cliente, subtitulo: final.subtitulo, slides, rascunho,
       autor_nome: usuario?.nome ?? 'você', criado_em: r.criado_em, atualizado_em: r.atualizado_em,
     };
     // Pelo id: refazer a mesma proposta atualiza a linha dela, e aqui ela sobe
     // para o topo em vez de virar uma segunda.
     setHistorico(atual => (atual == null ? atual : [linha, ...atual.filter(p => p.id !== linha.id)]));
+    return true;
+  }
+
+  /**
+   * Guarda a proposta como está, sem gerar o PDF: o rascunho.
+   *
+   * Não passa pela conferência do montador nem pela lista do que falta - é
+   * justamente a proposta pela metade que ele existe para guardar. O que ele
+   * pede é o mínimo para achá-la depois: o lead, o cliente e o subtítulo.
+   *
+   * Editando uma proposta do histórico, o rascunho sobrescreve a que está
+   * aberta: quem abriu para continuar não quer uma segunda linha a cada vez
+   * que para no meio.
+   */
+  async function salvarRascunho() {
+    if (salvandoRascunho) return;
+    if (!leadId || !d.cliente.trim() || !d.subtitulo.trim()) {
+      toast('error', 'Falta o começo', 'O rascunho precisa do lead, do cliente e do subtítulo.');
+      setPasso(0);
+      return;
+    }
+    setSalvandoRascunho(true);
+    const final = limpar(d, false);
+    // Os slides só se contam quando a proposta monta; no rascunho ela pode nem
+    // montar ainda, e aí a contagem fica para quando o PDF sair.
+    const conferida = template ? montarProposta(template, final) : null;
+    const slides = conferida?.ok ? conferida.conferencia.slides : 0;
+    if (editando) {
+      await gravarEdicao('sobrescrever', { final, slides }, true);
+      setSalvandoRascunho(false);
+      return;
+    }
+    const ok = await registrar(final, slides, true);
+    setSalvandoRascunho(false);
+    if (ok) {
+      toast('success', 'Rascunho guardado', `${final.cliente}. Continue por ele no histórico.`);
+      setAba('historico');
+    }
   }
 
   // ── Edição de uma proposta do histórico ──
@@ -1047,7 +1097,11 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
    * tela volta para ele. Se o servidor recusar, a linha volta a ser a de antes
    * e a edição reabre com o que foi escrito, para nada se perder.
    */
-  async function gravarEdicao(modo: 'sobrescrever' | 'nova', { final, slides }: { final: DadosProposta; slides: number }) {
+  async function gravarEdicao(
+    modo: 'sobrescrever' | 'nova',
+    { final, slides }: { final: DadosProposta; slides: number },
+    rascunho = false,
+  ) {
     if (!editando) return;
     const alvo = editando;
     const emEdicao = { d, leadId };
@@ -1062,6 +1116,7 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
       cliente: final.cliente,
       subtitulo: final.subtitulo,
       slides,
+      rascunho,
       autor_nome: usuario?.nome ?? alvo.linha.autor_nome,
       atualizado_em: agora,
       ...(modo === 'nova' ? { criado_em: agora } : {}),
@@ -1075,6 +1130,7 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
       action: modo === 'nova' ? 'salvar_proposta_como_nova' : 'atualizar_proposta',
       ...(modo === 'nova' ? {} : { id: alvo.id }),
       oportunidade_id: leadId, cliente: final.cliente, subtitulo: final.subtitulo, dados: final, slides,
+      rascunho,
     }).catch(() => null);
     if (!resposta?.ok) {
       setHistorico(h => (h == null ? h : modo === 'nova'
@@ -1096,10 +1152,13 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
         criado_em: modo === 'nova' ? String(resposta.criado_em ?? x.criado_em) : x.criado_em,
       }
       : x))));
-    toast('success', modo === 'nova' ? 'Salva como nova proposta' : 'Proposta atualizada',
-      modo === 'nova'
-        ? `${final.cliente}, ${slides} slides. A versão anterior continua no histórico.`
-        : `${final.cliente}, ${slides} slides`);
+    toast('success',
+      rascunho ? 'Rascunho guardado'
+        : modo === 'nova' ? 'Salva como nova proposta' : 'Proposta atualizada',
+      rascunho ? `${final.cliente}. Continue por ele no histórico.`
+        : modo === 'nova'
+          ? `${final.cliente}, ${slides} slides. A versão anterior continua no histórico.`
+          : `${final.cliente}, ${slides} slides`);
   }
 
   async function baixarDoHistorico(p: PropostaGerada) {
@@ -1108,7 +1167,16 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
     try {
       const pdf = await baixarPdfDaProposta(
         await htmlDoHistorico(p), nomeDoArquivoDe(p.cliente, p.atualizado_em), token);
-      if (!pdf.ok) toast('error', 'O PDF não saiu', pdf.erro);
+      if (!pdf.ok) { toast('error', 'O PDF não saiu', pdf.erro); return; }
+      // O rascunho que virou PDF deixa de ser rascunho: a marca diz que a
+      // proposta ainda não saiu, e agora ela saiu.
+      if (p.rascunho) {
+        setHistorico(h => (h == null ? h : h.map(x => (x.id === p.id ? { ...x, rascunho: false } : x))));
+        const r = await api('', 'POST', { action: 'proposta_deixa_de_ser_rascunho', id: p.id }).catch(() => null);
+        if (!r?.ok) {
+          setHistorico(h => (h == null ? h : h.map(x => (x.id === p.id ? { ...x, rascunho: true } : x))));
+        }
+      }
     } catch (e) {
       toast('error', 'Não consegui montar esta proposta', e instanceof Error ? e.message : undefined);
     } finally {
@@ -1129,6 +1197,17 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
               : 'As propostas que já saíram, cada uma presa à sua oportunidade'}
           </p>
         </div>
+        {/* Guardar pela metade é gesto de quem vai continuar depois, e por isso
+            mora no alto, valendo em qualquer passo: parar no meio do formulário
+            é justamente quando ele serve. O último passo é que gera o PDF. */}
+        {aba === 'gerador' && (
+          <button type="button" className="btn btn-secondary" onClick={() => void salvarRascunho()}
+            disabled={salvandoRascunho || gerandoPdf}
+            title="Guarda a proposta como está, para continuar depois. Não gera o PDF.">
+            {salvandoRascunho ? <IconSpinner size={14} /> : <IconSalvar size={14} />}
+            {' '}{salvandoRascunho ? 'Guardando' : editando ? 'Guardar como rascunho' : 'Salvar rascunho'}
+          </button>
+        )}
       </div>
 
       {/* Montar uma proposta ou olhar as que já saíram, nas abas da casa, abaixo
@@ -2071,6 +2150,20 @@ const ESTILO = `
     font-size: 11px; font-weight: 700; color: var(--gray2);
   }
   .gp-mini { width: 54px; padding: 6px 8px; text-align: center; }
+  /* O rascunho na lista: a mesma pilula dos chips de estado, em cinza - ele
+     nao e um aviso, e so o lembrete de que aquilo ainda nao saiu. */
+  .gp-hist-rascunho {
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    background: var(--gray4);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    color: var(--gray2);
+    vertical-align: middle;
+  }
   /* Os tres cenarios lado a lado: o mesmo servico nas tres colunas, que e como
      a tabela do slide le. */
   .gp-infra-valores { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }

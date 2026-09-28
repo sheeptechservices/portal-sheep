@@ -326,6 +326,8 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   propostas_leads: 'propostas:ver',
   propostas_geradas: 'propostas:ver',
   registrar_proposta: 'propostas:ver',
+  // Tirar a marca de rascunho é parte de gerar a proposta, e mora na mesma porta.
+  proposta_deixa_de_ser_rascunho: 'propostas:ver',
   // Editar uma proposta do historico e a mesma porta de gera-la.
   atualizar_proposta: 'propostas:ver',
   salvar_proposta_como_nova: 'propostas:ver',
