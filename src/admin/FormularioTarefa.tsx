@@ -24,6 +24,7 @@ import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { ancorar } from '../lib/ancorar';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { TextoRico } from '../components/TextoRico';
+import { SeletorProjetos } from '../components/SeletorProjetos';
 import { EditorRico } from '../components/EditorRico';
 import { ChipReuniao } from '../components/VinculoReuniao';
 import { ReuniaoModal } from '../components/ReuniaoModal';
@@ -167,6 +168,9 @@ export interface Rascunho {
    *  e não guarda nada aqui. */
   comentario_etiqueta?: string;
   projeto_id: string;
+  /** Os outros projetos a que a tarefa também pertence, sem o principal. A
+   *  entrega continua sendo a do principal: entrega é marco de um projeto só. */
+  projetos?: string[];
   entrega_id: string;
   titulo: string;
   descricao: string;
@@ -186,6 +190,7 @@ export function tarefaGravada(
   resposta: {
     id?: number; ordem?: number; criado_em?: string; concluida_em?: string | null;
     status?: string; responsaveis?: string[]; responsavel_id?: string | null;
+    projetos?: string[];
   },
   pessoas: Pessoa[],
 ): Tarefa {
@@ -196,6 +201,8 @@ export function tarefaGravada(
   return {
     id: Number(resposta.id),
     projeto_id: r.projeto_id,
+    // A lista que voltou vence: quem gravou sem mandá-la fica com a de antes.
+    projetos: resposta.projetos ?? [r.projeto_id, ...(r.projetos ?? [])],
     entrega_id: r.entrega_id ? Number(r.entrega_id) : null,
     titulo: r.titulo,
     descricao: r.descricao || null,
@@ -1182,7 +1189,12 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
               <label className="form-label">Projeto *</label>
               <SelectSistema
                 valor={rascunho.projeto_id}
-                onChange={v => onMudar({ ...rascunho, projeto_id: v, entrega_id: '' })}
+                onChange={v => onMudar({
+                  ...rascunho, projeto_id: v, entrega_id: '',
+                  // O novo principal sai da lista dos outros: ele já está lá
+                  // como principal, e aparecer duas vezes leria como dois.
+                  projetos: (rascunho.projetos ?? []).filter(x => x !== v),
+                })}
                 placeholder="Escolher projeto"
                 // O cliente embaixo do nome: dois projetos chamados "SDR IA" só
                 // se distinguem por ele, e a busca do seletor alcança essa linha.
@@ -1191,6 +1203,18 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
                   descricao: p.id === PROJETO_GERAL ? 'Demandas da casa' : p.cliente_nome ?? 'Sem cliente',
                 }))}
               />
+            </div>
+            {/* A tarefa que serve mais de um projeto aparece no quadro de cada
+                um deles. O principal fica de fora desta lista: ele é o campo
+                acima, e é dele a entrega. */}
+            <div className="form-group" style={{ minWidth: 0 }}>
+              <label className="form-label">Também em</label>
+              <SeletorProjetos
+                projetos={projetos
+                  .filter(p => p.id !== rascunho.projeto_id)
+                  .map(p => ({ id: p.id, nome: p.nome, cliente: p.cliente_nome }))}
+                valor={rascunho.projetos ?? []}
+                onChange={v => set('projetos', v)} />
             </div>
             <div className="form-group" style={{ minWidth: 0 }}>
               <label className="form-label">Entrega</label>

@@ -536,7 +536,9 @@ async function guardaDaEquipe(
   const ORIGEM: Record<string, string> = {
     projeto: 'SELECT ? AS projeto_id',
     entrega: 'SELECT projeto_id FROM projeto_entregas WHERE id = ?',
-    tarefa: 'SELECT projeto_id FROM projeto_tarefas WHERE id = ?',
+    // A tarefa vale para mais de um projeto, e a lista vem junto: quem está na
+    // equipe de qualquer um deles a enxerga.
+    tarefa: 'SELECT projeto_id, projetos FROM projeto_tarefas WHERE id = ?',
     evidencia: `SELECT t.projeto_id FROM entrega_evidencias e
                 JOIN projeto_entregas t ON t.id = e.entrega_id WHERE e.id = ?`,
     entrega_arquivo: `SELECT t.projeto_id FROM entrega_arquivos a
@@ -545,15 +547,22 @@ async function guardaDaEquipe(
     reuniao: 'SELECT projeto_id FROM projeto_reunioes WHERE id = ?',
   };
   const dono = await db.execute({ sql: ORIGEM[de], args: [id as never] });
-  const projetoId = dono.rows[0]?.projeto_id;
-  if (!projetoId) return FORA_DA_EQUIPE;
+  const linha = dono.rows[0];
+  // Um projeto para quase tudo; a tarefa e a excecao, e traz a lista dela.
+  const projetos = de === 'tarefa'
+    ? projetosDaTarefa(linha)
+    : (linha?.projeto_id ? [String(linha.projeto_id)] : []);
+  if (!projetos.length) return FORA_DA_EQUIPE;
   // A Geral e da casa inteira: nao tem equipe, e toda pessoa pode cuidar das
   // demandas que nao sao de projeto nenhum.
-  if (projetoId === PROJETO_GERAL) return null;
+  if (projetos.includes(PROJETO_GERAL)) return null;
 
+  // Estar na equipe de um dos projetos basta: a tarefa e a mesma nas duas
+  // listas, e enxerga-la pela metade seria mostrar um card que nao abre.
   const membro = await db.execute({
-    sql: 'SELECT 1 FROM projeto_equipe WHERE projeto_id = ? AND usuario_id = ?',
-    args: [projetoId, usuario?.id ?? ''],
+    sql: `SELECT 1 FROM projeto_equipe
+          WHERE usuario_id = ? AND projeto_id IN (${projetos.map(() => '?').join(',')})`,
+    args: [usuario?.id ?? '', ...projetos],
   });
   return membro.rows.length ? null : FORA_DA_EQUIPE;
 }
@@ -609,6 +618,29 @@ export function donosDaTarefa(r: Record<string, any> | null | undefined): string
   if (lista) return lista.map(String).map(s => s.trim()).filter(Boolean);
   const um = String(r.responsavel_id ?? '').trim();
   return um ? [um] : [];
+}
+
+/** Os projetos de uma linha de tarefa, com o principal na frente.
+ *
+ *  Mesma forma dos responsáveis: a lista quando ela existe, e o `projeto_id`
+ *  sozinho quando não - linha antiga, ou corpo de pedido que ainda só sabe
+ *  mandar um projeto. O principal é sempre o primeiro, e é dele a entrega e a
+ *  ordem no quadro. */
+export function projetosDaTarefa(r: Record<string, any> | null | undefined): string[] {
+  if (!r) return [];
+  const bruto = r.projetos;
+  const lista = Array.isArray(bruto)
+    ? bruto
+    : (() => {
+      try { const v = JSON.parse(String(bruto ?? 'null')); return Array.isArray(v) ? v : null; }
+      catch { return null; }
+    })();
+  const principal = String(r.projeto_id ?? '').trim();
+  const ids = (lista ?? []).map(String).map(s => s.trim()).filter(Boolean);
+  // O principal na frente, sem repetir: a lista gravada pode ter vindo de uma
+  // gravação que mudou o projeto principal e não reordenou.
+  const todos = [...new Set([...(principal ? [principal] : []), ...ids])];
+  return todos;
 }
 
 /** Quantos repositorios cabem num projeto.
@@ -2175,6 +2207,20 @@ async function migrarSchema(db: Client) {
                       SET responsaveis = '["' || responsavel_id || '"]'
                       WHERE responsaveis IS NULL AND responsavel_id IS NOT NULL AND responsavel_id <> ''`);
     await db.execute(`UPDATE projeto_tarefas SET responsaveis = '[]' WHERE responsaveis IS NULL`);
+  } catch { /* a coluna acabou de nascer numa base sem tarefas */ }
+
+  // A tarefa passou a valer para mais de um projeto: a mesma demanda que serve
+  // dois clientes, o trabalho da casa que também é de um projeto. Lista em JSON
+  // numa coluna, como os responsáveis.
+  //
+  // `projeto_id` fica onde está e continua sendo o principal - o primeiro da
+  // lista. É dele a entrega, a ordem no quadro e a contagem: entrega é marco de
+  // um projeto só, e uma tarefa em duas listas precisa de um lugar de origem.
+  try { await ddl(`ALTER TABLE projeto_tarefas ADD COLUMN projetos TEXT`); } catch {}
+  try {
+    await db.execute(`UPDATE projeto_tarefas
+                      SET projetos = '["' || projeto_id || '"]'
+                      WHERE projetos IS NULL AND projeto_id IS NOT NULL AND projeto_id <> ''`);
   } catch { /* a coluna acabou de nascer numa base sem tarefas */ }
 
   await ddl(`
@@ -4752,7 +4798,8 @@ async function despacharAdminData(
           FROM entrega_arquivos ORDER BY criado_em
         `),
         db.execute(`
-          SELECT t.id, t.projeto_id, t.entrega_id, t.titulo, t.descricao, t.status, t.prioridade,
+          SELECT t.id, t.projeto_id, t.projetos, t.entrega_id, t.titulo, t.descricao, t.status,
+                 t.prioridade,
                  t.responsavel_id, t.responsaveis, t.prazo, t.etiquetas, t.ordem, t.concluida_em,
                  t.criado_em,
                  u.nome AS responsavel_nome, u.email AS responsavel_email, u.foto_url AS responsavel_foto
@@ -4829,11 +4876,14 @@ async function despacharAdminData(
             progresso: progressoDaEntrega(daEntrega, etapasTarefa),
           };
         }),
-        tarefas: tarefas.rows.filter(t => t.projeto_id === p.id).map(t => ({
+        // A tarefa entra na lista de todos os projetos dela: e a mesma tarefa
+        // vista de dois lugares, e nao uma copia em cada um.
+        tarefas: tarefas.rows.filter(t => projetosDaTarefa(t).includes(String(p.id))).map(t => ({
           ...t,
           etiquetas: JSON.parse(String(t.etiquetas ?? '[]')) as string[],
           // O banco guarda JSON; a tela quer a lista pronta, como nas entregas.
           responsaveis: donosDaTarefa(t),
+          projetos: projetosDaTarefa(t),
           // Só os números: o conteúdo da conversa desce quando o card abre.
           comentarios: nComentarios.get(Number(t.id)) ?? 0,
           anexos: nAnexos.get(Number(t.id)) ?? 0,
@@ -4957,9 +5007,15 @@ async function despacharAdminData(
     // é paginada, porque quem lê é uma IA com contexto contado.
     if (action === 'tarefas_filtradas') {
       const soDaEquipe = papelEfetivo(usuario?.email, usuario?.papel) === 'membro';
+      // A tarefa vale para mais de um projeto, entao o corte por equipe pergunta
+      // pela lista inteira: estar na equipe de um deles basta.
+      const DOS_PROJETOS = `json_each(COALESCE(t.projetos, json_array(t.projeto_id)))`;
       const onde: string[] = [
         '(p.ativo = 1 OR p.id = ?)',
-        '(? = 0 OR p.id = ? OR EXISTS (SELECT 1 FROM projeto_equipe e WHERE e.projeto_id = p.id AND e.usuario_id = ?))',
+        `(? = 0 OR EXISTS (SELECT 1 FROM ${DOS_PROJETOS} j
+                           WHERE j.value = ? OR EXISTS (
+                             SELECT 1 FROM projeto_equipe e
+                             WHERE e.projeto_id = j.value AND e.usuario_id = ?)))`,
       ];
       const args: unknown[] = [PROJETO_GERAL, soDaEquipe ? 1 : 0, PROJETO_GERAL, usuario?.id ?? ''];
       const lista = (chave: string) => String(query.get(chave) ?? '')
@@ -4969,8 +5025,14 @@ async function despacharAdminData(
         args.push(...valores);
       };
 
+      // Filtrar por projeto acha a tarefa que apenas passa por ele: quem filtra
+      // "Concimed" quer tudo o que e da Concimed, e nao so o que nasceu la.
       const projetosPedidos = lista('projeto');
-      if (projetosPedidos.length) dentro('t.projeto_id', projetosPedidos);
+      if (projetosPedidos.length) {
+        onde.push(`EXISTS (SELECT 1 FROM ${DOS_PROJETOS} j
+                           WHERE j.value IN (${projetosPedidos.map(() => '?').join(',')}))`);
+        args.push(...projetosPedidos);
+      }
       const statusPedidos = lista('status');
       if (statusPedidos.length) dentro('t.status', statusPedidos);
       const prioridades = lista('prioridade');
@@ -5033,7 +5095,8 @@ async function despacharAdminData(
       const filtro = onde.join(' AND ');
       const [linhas, contagem, pessoas] = await Promise.all([
         db.execute({
-          sql: `SELECT t.id, t.projeto_id, p.nome AS projeto_nome, t.entrega_id, en.titulo AS entrega_titulo,
+          sql: `SELECT t.id, t.projeto_id, t.projetos, p.nome AS projeto_nome,
+                       t.entrega_id, en.titulo AS entrega_titulo,
                        t.titulo, substr(COALESCE(t.descricao, ''), 1, 300) AS descricao,
                        length(COALESCE(t.descricao, '')) AS descricao_tamanho,
                        t.status, t.prioridade, t.responsaveis, t.prazo, t.etiquetas, t.concluida_em,
@@ -5059,8 +5122,13 @@ async function despacharAdminData(
       ]);
       const quem = new Map(pessoas.rows.map(u => [String(u.id), { id: String(u.id), nome: String(u.nome), email: String(u.email) }]));
       const total = Number(contagem.rows[0]?.n ?? 0);
+      const nomeDoProjeto = new Map(
+        (await db.execute('SELECT id, nome FROM projetos')).rows.map(p => [String(p.id), String(p.nome)]));
       const tarefas = linhas.rows.map(l => ({
         ...l,
+        // Os projetos da tarefa, com o principal na frente. `projeto_nome`
+        // continua sendo o do principal, para quem so le um.
+        projetos: projetosDaTarefa(l).map(id => ({ id, nome: nomeDoProjeto.get(id) ?? null })),
         responsaveis: donosDaTarefa(l).map(id => quem.get(id) ?? { id, nome: null, email: null }),
         etiquetas: (() => { try { return JSON.parse(String(l.etiquetas ?? '[]')); } catch { return []; } })(),
         descricao_cortada: Number(l.descricao_tamanho) > 300,
@@ -6867,6 +6935,36 @@ function faltaEmProjeto(p: any): string | null {
       { const barrado = await guardaDaEquipe(db, usuario, t.projeto_id); if (barrado) return barrado; }
       if (!titulo) return { status: 400, body: { error: 'A tarefa precisa de um título.' } };
 
+      /**
+       * Os projetos da tarefa, com o principal na frente.
+       *
+       * O corpo pode mandar `projetos` ou não. Não mandando, a lista que já
+       * está gravada continua como está - é o que faz uma gravação que só
+       * conhece `projeto_id` (o MCP, um cliente antigo) mudar o principal sem
+       * jogar fora os outros.
+       *
+       * Cada projeto a mais passa pelo mesmo porteiro do principal: pôr a
+       * tarefa num projeto que a pessoa não enxerga seria escrever onde ela não
+       * pode ler.
+       */
+      const projetosPedidos: string[] | null = Array.isArray(t.projetos)
+        ? [...new Set(t.projetos.map((x: unknown) => String(x ?? '').trim()).filter(Boolean))] as string[]
+        : null;
+      const projetosAntes: string[] = t.id
+        ? projetosDaTarefa((await db.execute({
+          sql: 'SELECT projeto_id, projetos FROM projeto_tarefas WHERE id = ?', args: [t.id],
+        })).rows[0])
+        : [];
+      const principal = String(t.projeto_id);
+      const outros = (projetosPedidos ?? projetosAntes).filter(p => p !== principal);
+      for (const p of outros) {
+        const barrado = await guardaDaEquipe(db, usuario, p);
+        if (barrado) {
+          return { status: 403, body: { error: 'Você não participa de um dos projetos escolhidos.' } };
+        }
+      }
+      const projetos = JSON.stringify([principal, ...outros]);
+
       const listaEtiquetas: string[] = Array.isArray(t.etiquetas) ? t.etiquetas.map(String) : [];
       const etiquetas = JSON.stringify(listaEtiquetas);
       // As etiquetas que a tarefa não tinha antes. Só elas disparam regra:
@@ -7001,11 +7099,11 @@ function faltaEmProjeto(p: any): string | null {
 
         await db.execute({
           sql: `UPDATE projeto_tarefas
-                SET projeto_id=?, entrega_id=?, titulo=?, descricao=?, status=?, prioridade=?,
-                    responsavel_id=?, responsaveis=?, prazo=?, etiquetas=?,
+                SET projeto_id=?, projetos=?, entrega_id=?, titulo=?, descricao=?, status=?,
+                    prioridade=?, responsavel_id=?, responsaveis=?, prazo=?, etiquetas=?,
                     concluida_em=?${mudouDeProjeto ? ', ordem=?' : ''}
                 WHERE id=?`,
-          args: [t.projeto_id, entregaId as never, titulo, t.descricao ?? null, statusPedido,
+          args: [t.projeto_id, projetos, entregaId as never, titulo, t.descricao ?? null, statusPedido,
             t.prioridade ?? 'Média', donoPrincipal, responsaveis, t.prazo || null, etiquetas,
             carimbo as never, ...(mudouDeProjeto ? [ordemNova as never] : []), t.id],
         });
@@ -7021,11 +7119,11 @@ function faltaEmProjeto(p: any): string | null {
         const criadaEm = new Date().toISOString();
         const inserida = await db.execute({
           sql: `INSERT INTO projeto_tarefas
-                  (projeto_id, entrega_id, titulo, descricao, status, prioridade, responsavel_id,
-                   responsaveis, prazo, etiquetas, ordem, concluida_em, criado_em,
+                  (projeto_id, projetos, entrega_id, titulo, descricao, status, prioridade,
+                   responsavel_id, responsaveis, prazo, etiquetas, ordem, concluida_em, criado_em,
                    criado_por_id, criado_por_nome)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-          args: [t.projeto_id, t.entrega_id || null, titulo, t.descricao ?? null,
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          args: [t.projeto_id, projetos, t.entrega_id || null, titulo, t.descricao ?? null,
             statusPedido, t.prioridade ?? 'Média', donoPrincipal, responsaveis,
             t.prazo || null, etiquetas, Number(ordem.rows[0].proxima), concluida,
             criadaEm, autorId, autorNome],
@@ -7142,7 +7240,11 @@ function faltaEmProjeto(p: any): string | null {
           ok: true, id: novaId ?? t.id, status: statusPedido,
           // A lista volta porque a regra da etiqueta pode tê-la trocado sem que
           // a tela soubesse.
-          responsaveis: donos, responsavel_id: donoPrincipal, ...gravada,
+          responsaveis: donos, responsavel_id: donoPrincipal,
+          // E a dos projetos porque quem gravou sem mandá-la fica com a de
+          // antes: é o servidor que diz em quais projetos a tarefa ficou.
+          projetos: JSON.parse(projetos) as string[],
+          ...gravada,
         },
       };
     }

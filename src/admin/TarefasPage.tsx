@@ -50,7 +50,10 @@ import { dia as fmtData } from '../lib/datas';
 export { ETAPAS_PADRAO, etiquetasParaOPapel, type EtapaTarefa, type EtiquetaTarefa } from './FormularioTarefa';
 
 
-type TarefaComProjeto = Tarefa & { projeto: Projeto };
+/** A tarefa com o projeto ao lado. `projeto` é o principal - o dono da entrega
+ *  e da ordem no quadro -, e `projetosDela` são todos, para o filtro achar a
+ *  tarefa por qualquer um e a linha mostrar onde mais ela vale. */
+type TarefaComProjeto = Tarefa & { projeto: Projeto; projetosDela: Projeto[] };
 
 
 const VAZIO: Omit<Rascunho, 'status'> = {
@@ -391,20 +394,23 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
       ? p : { ...p, tarefas: [...(p.tarefas ?? []), nova] })));
   }, []);
 
-  /** Muda a tarefa de projeto na tela: tira da coluna de onde ela estava e põe
-   *  na de destino, já com o que foi editado junto. O nome do projeto que o card
-   *  mostra vem do balde em que a tarefa está, e não de um campo dela - por isso
-   *  pintar por cima não bastava: o card continuava embaixo do projeto antigo. */
-  const moverTarefaDeProjeto = useCallback((id: number, destino: string, mudancas: Partial<Tarefa>) => {
+  /** Põe a tarefa nos projetos dela e a tira dos outros, já com o que foi
+   *  editado junto.
+   *
+   *  O nome do projeto que o card mostra vem do balde em que a tarefa está, e
+   *  não de um campo dela - por isso pintar por cima não basta quando a lista de
+   *  projetos muda: o card continuaria embaixo do projeto antigo, ou faltaria no
+   *  novo. */
+  const recolocarTarefa = useCallback((id: number, ondeFica: string[], mudancas: Partial<Tarefa>) => {
     mudancasRef.current++;
     setProjetos(ps => {
       const atual = ps.flatMap(p => p.tarefas ?? []).find(t => t.id === id);
       if (!atual) return ps;
-      const movida = { ...atual, ...mudancas };
+      const nova = { ...atual, ...mudancas };
       return ps.map(p => ({
         ...p,
-        tarefas: p.id === destino
-          ? [...(p.tarefas ?? []).filter(t => t.id !== id), movida]
+        tarefas: ondeFica.includes(p.id)
+          ? [...(p.tarefas ?? []).filter(t => t.id !== id), nova]
           : (p.tarefas ?? []).filter(t => t.id !== id),
       }));
     });
@@ -441,10 +447,28 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
 
   /** Toda tarefa de todo projeto visível, já com o projeto ao lado: a tela é
    *  transversal, e sem isso cada card teria que procurar o dono. */
-  const tarefas = useMemo<TarefaComProjeto[]>(
-    () => projetos.flatMap(p => (p.tarefas ?? []).map(t => ({ ...t, projeto: p }))),
-    [projetos],
-  );
+  const tarefas = useMemo<TarefaComProjeto[]>(() => {
+    const porId = new Map(projetos.map(p => [p.id, p]));
+    // Uma linha por tarefa, e não uma por projeto dela: a tarefa que vale para
+    // dois projetos aparece na lista de cada um deles na tela de Projetos, mas
+    // aqui, onde a lista é transversal, ela é uma só.
+    const unicas = new Map<number, TarefaComProjeto>();
+    for (const p of projetos) {
+      for (const tarefa of p.tarefas ?? []) {
+        if (unicas.has(tarefa.id)) continue;
+        const ids = tarefa.projetos?.length ? tarefa.projetos : [tarefa.projeto_id];
+        const dela = ids.map(id => porId.get(id)).filter((x): x is Projeto => !!x);
+        unicas.set(tarefa.id, {
+          ...tarefa,
+          // O principal, quando esta pessoa o enxerga: senão, o projeto por onde
+          // a tarefa chegou até ela.
+          projeto: porId.get(tarefa.projeto_id) ?? p,
+          projetosDela: dela.length ? dela : [p],
+        });
+      }
+    }
+    return [...unicas.values()];
+  }, [projetos]);
 
   const filtradas = useMemo(() => {
     const q = semAcento(busca.trim());
@@ -455,7 +479,9 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
     const entregaDe = (t: TarefaComProjeto) =>
       t.entrega_id == null ? '' : (t.projeto.entregas?.find(e => e.id === t.entrega_id)?.titulo ?? '');
     const lista = tarefas.filter(t =>
-      (fProjeto.length === 0 || fProjeto.includes(t.projeto.nome)) &&
+      // Filtrar por projeto acha a tarefa que apenas passa por ele, e não só a
+      // que nasceu lá.
+      (fProjeto.length === 0 || t.projetosDela.some(p => fProjeto.includes(p.nome))) &&
       (fStatus.length === 0 || fStatus.includes(t.status)) &&
       // Basta um dos donos casar: quem filtra por uma pessoa quer as tarefas
       // dela, inclusive as que ela divide com outra.
@@ -520,12 +546,13 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
       // numa lista de nomes soltos eles sao a mesma linha duas vezes. O filtro
       // casa por nome, entao nome repetido em dois clientes mostra os dois - e
       // e isso que ele vai filtrar.
-      projeto: uniq(tarefas.map(t => t.projeto.nome)).map(v => ({
+      projeto: uniq(tarefas.flatMap(t => t.projetosDela.map(p => p.nome))).map(v => ({
         value: v,
         label: v,
         sub: [...new Set(tarefas
-          .filter(t => t.projeto.nome === v)
-          .map(t => t.projeto.cliente_nome)
+          .flatMap(t => t.projetosDela)
+          .filter(p => p.nome === v)
+          .map(p => p.cliente_nome)
           .filter((c): c is string => !!c))].join(', ') || null,
       })),
       status: uniq(tarefas.map(t => t.status)).map(v => ({ value: v, label: v })),
@@ -570,12 +597,15 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
         responsavel_id: r.responsaveis[0] ?? null,
         responsavel_nome: dono?.nome ?? null,
         responsavel_foto: dono?.foto_url ?? null,
+        projetos: [r.projeto_id, ...(r.projetos ?? [])],
       };
-      // De onde a tarefa está sendo vista agora. Diferente do projeto do
-      // rascunho, ela mudou de projeto - e aí não é pintar, é mudar de coluna.
-      const daTela = projetos.find(p => (p.tarefas ?? []).some(t => t.id === r.id))?.id;
-      if (daTela && daTela !== r.projeto_id) moverTarefaDeProjeto(r.id, r.projeto_id, campos);
-      else pintarTarefa(r.id, campos);
+      // Em que projetos ela está sendo vista agora. Mudou a lista, não é pintar:
+      // é tirar de um balde e pôr no outro.
+      const ondeEsta = projetos.filter(p => (p.tarefas ?? []).some(t => t.id === r.id)).map(p => p.id);
+      const ondeFica = campos.projetos;
+      const mesmos = ondeEsta.length === ondeFica.length && ondeEsta.every(id => ondeFica.includes(id));
+      if (mesmos) pintarTarefa(r.id, campos);
+      else recolocarTarefa(r.id, ondeFica, campos);
     }
     setSalvando(true);
     // Rascunho sem id com uma criação em curso: espera o id e grava por cima,
@@ -882,7 +912,8 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
   async function duplicar(t: Tarefa) {
     const r = await api('', 'POST', {
       action: 'salvar_tarefa',
-      projeto_id: t.projeto_id, entrega_id: t.entrega_id,
+      projeto_id: t.projeto_id, projetos: t.projetos ?? [t.projeto_id],
+      entrega_id: t.entrega_id,
       titulo: `${t.titulo} (cópia)`, descricao: t.descricao,
       status: t.status, prioridade: t.prioridade,
       responsavel_id: t.responsavel_id, prazo: t.prazo, etiquetas: t.etiquetas,
@@ -904,7 +935,10 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
   }
 
   const abrirEdicao = (t: Tarefa) => setForm({
-    id: t.id, projeto_id: t.projeto_id, entrega_id: t.entrega_id ? String(t.entrega_id) : '',
+    id: t.id, projeto_id: t.projeto_id,
+    // O campo "Também em" mostra os outros, sem o principal.
+    projetos: (t.projetos ?? []).filter(id => id !== t.projeto_id),
+    entrega_id: t.entrega_id ? String(t.entrega_id) : '',
     titulo: t.titulo, descricao: t.descricao ?? '', status: t.status,
     prioridade: t.prioridade ?? PRIORIDADE_PADRAO, responsaveis: t.responsaveis ?? [],
     prazo: t.prazo ?? '', etiquetas: t.etiquetas,
@@ -1371,7 +1405,9 @@ function Coluna({ grupo, pessoas, et, etq, podeEditar, arrastando, isOver, onAbr
                 )}
               </span>
             </div>
-            <p style={{ fontSize: 11, color: 'var(--gray2)', margin: 0 }}>{t.projeto.nome}</p>
+            <p style={{ fontSize: 11, color: 'var(--gray2)', margin: 0 }}>
+              {t.projetosDela.map(p => p.nome).join(' · ')}
+            </p>
             {t.etiquetas.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                 {t.etiquetas.map(e => <ChipEtiqueta key={e} etiqueta={e} cor={etq.cor(e)} />)}
@@ -1590,7 +1626,9 @@ function Tabela({ grupos, pessoas, et, etq, podeExcluir, onAbrir, onExcluir }: {
                       </span>
                     )}
                   </td>
-                  <td style={{ fontSize: 12, color: 'var(--gray)' }}>{t.projeto.nome}</td>
+                  <td style={{ fontSize: 12, color: 'var(--gray)' }}>
+                    {t.projetosDela.map(p => p.nome).join(' · ')}
+                  </td>
                   <td style={{ fontSize: 12, color: 'var(--gray2)' }}>{entrega?.titulo ?? '-'}</td>
                   <td><ChipStatus status={t.status} cor={et.cor(t.status)} /></td>
                   <td style={{ fontSize: 12, color: 'var(--gray)' }}>

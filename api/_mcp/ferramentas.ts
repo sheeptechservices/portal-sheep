@@ -10,7 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import type { Client } from '@libsql/client';
 import {
-  handleAdminData, tarefaVisivel, donosDaTarefa, type UsuarioAdmin,
+  handleAdminData, tarefaVisivel, donosDaTarefa, projetosDaTarefa, type UsuarioAdmin,
 } from '../_admin-handler.js';
 import { podeAcao, type Permissoes } from '../_permissoes.js';
 import { ErroFerramenta, type Ferramenta, type Servidor } from './protocolo.js';
@@ -155,7 +155,7 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        projeto: umOuVarios('Id do projeto (de listar_projetos).'),
+        projeto: umOuVarios('Id do projeto (de listar_projetos). Acha também a tarefa que tem esse projeto entre os seus.'),
         status: umOuVarios('Nome da etapa, como em listar_status.'),
         responsavel: umOuVarios('Id, e-mail ou "eu".'),
         prioridade: umOuVarios('Urgente, Alta, Média ou Baixa.'),
@@ -220,6 +220,9 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
         titulo: t.titulo,
         descricao: t.descricao ?? '',
         projeto: { id: t.projeto_id, nome: t.projeto_nome },
+        // A tarefa pode valer para mais de um projeto. O primeiro e o principal,
+        // que e de quem sao a entrega e a ordem no quadro.
+        projetos: projetosDaTarefa(t),
         entrega: t.entrega_id ? { id: Number(t.entrega_id), titulo: t.entrega_titulo } : null,
         status: t.status,
         prioridade: t.prioridade,
@@ -249,7 +252,11 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        projeto_id: { type: 'string', description: 'Id do projeto (de listar_projetos).' },
+        projeto_id: { type: 'string', description: 'Id do projeto principal (de listar_projetos).' },
+        projetos: {
+          type: 'array', items: { type: 'string' },
+          description: 'Outros projetos a que a tarefa também pertence. O principal entra sozinho.',
+        },
         titulo: { type: 'string' },
         descricao: { type: 'string' },
         status: { type: 'string', description: 'Nome da etapa.' },
@@ -268,6 +275,7 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
     async executar(a, ctx) {
       const corpo = {
         projeto_id: String(a.projeto_id),
+        projetos: [String(a.projeto_id), ...listaDe(a.projetos)],
         titulo: String(a.titulo),
         descricao: a.descricao != null ? String(a.descricao) : null,
         status: a.status ? await nomeDaEtapa(ctx, String(a.status)) : undefined,
@@ -280,7 +288,10 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
         comentario_etiqueta: a.comentario_etiqueta,
       };
       const r = await chamar(ctx, 'POST', 'salvar_tarefa', corpo);
-      return { id: Number(r.id), status: r.status, responsaveis: await comNomes(ctx, r.responsaveis ?? []) };
+      return {
+        id: Number(r.id), status: r.status,
+        responsaveis: await comNomes(ctx, r.responsaveis ?? []), projetos: r.projetos ?? [],
+      };
     },
   },
   {
@@ -304,7 +315,11 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
         etiquetas: { type: 'array', items: { type: 'string' } },
         adicionar_etiquetas: { type: 'array', items: { type: 'string' } },
         remover_etiquetas: { type: 'array', items: { type: 'string' } },
-        projeto_id: { type: 'string', description: 'Muda a tarefa de projeto.' },
+        projeto_id: { type: 'string', description: 'Muda o projeto principal da tarefa.' },
+        projetos: {
+          type: 'array', items: { type: 'string' },
+          description: 'Troca a lista inteira de projetos. Sem ela, a de antes fica como está.',
+        },
         entrega_id: { type: ['integer', 'null'] },
         comentario_etiqueta: { type: 'string', description: 'O porquê, quando a etiqueta pede.' },
       },
@@ -329,9 +344,13 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
       const tirarEtq = listaDe(a.remover_etiquetas).map(semAcento);
       etiquetas = [...new Set([...etiquetas, ...postas])].filter(e => !tirarEtq.includes(semAcento(e)));
 
+      const principal = a.projeto_id !== undefined ? String(a.projeto_id) : String(t.projeto_id);
       const corpo = {
         id: Number(t.id),
-        projeto_id: a.projeto_id !== undefined ? String(a.projeto_id) : t.projeto_id,
+        projeto_id: principal,
+        projetos: a.projetos !== undefined
+          ? [principal, ...listaDe(a.projetos)]
+          : [principal, ...projetosDaTarefa(t).filter(p => p !== principal)],
         entrega_id: a.entrega_id !== undefined ? a.entrega_id : t.entrega_id,
         titulo: a.titulo !== undefined ? String(a.titulo) : t.titulo,
         descricao: a.descricao !== undefined ? String(a.descricao) : t.descricao,
@@ -346,6 +365,7 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
       return {
         id: Number(t.id), status: r.status, concluida_em: r.concluida_em ?? null,
         responsaveis: await comNomes(ctx, r.responsaveis ?? []), etiquetas,
+        projetos: r.projetos ?? [],
       };
     },
   },

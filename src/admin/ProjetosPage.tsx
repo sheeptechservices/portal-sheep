@@ -252,7 +252,13 @@ export interface Entrega {
  *  projeto: chega na mesma carga e é dela que sai o andamento das entregas. */
 export interface Tarefa {
   id: number;
+  /** O projeto principal: o primeiro da lista. É dele a entrega da tarefa e a
+   *  ordem dela no quadro. */
   projeto_id: string;
+  /** Todos os projetos a que a tarefa pertence, com o principal na frente. A
+   *  mesma tarefa aparece na lista de cada um deles - é uma só, vista de dois
+   *  lugares, e não uma cópia em cada. */
+  projetos?: string[];
   /** Nulo quando a tarefa não pende de nenhum marco. */
   entrega_id: number | null;
   titulo: string;
@@ -6523,7 +6529,8 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
   const duplicarTarefa = useCallback(async (t: Tarefa) => {
     const r = await api('', 'POST', {
       action: 'salvar_tarefa',
-      projeto_id: t.projeto_id, entrega_id: t.entrega_id,
+      projeto_id: t.projeto_id, projetos: t.projetos ?? [t.projeto_id],
+      entrega_id: t.entrega_id,
       titulo: `${t.titulo} (cópia)`, descricao: t.descricao,
       status: t.status, prioridade: t.prioridade,
       responsavel_id: t.responsavel_id, prazo: t.prazo, etiquetas: t.etiquetas,
@@ -6579,7 +6586,9 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
   }, [api, etapaDeEntrada, inserirTarefa, pessoas, reconciliar, toast, usuario]);
 
   const abrirTarefa = useCallback((t: Tarefa) => setRascunhoTarefa({
-    id: t.id, projeto_id: t.projeto_id, entrega_id: t.entrega_id ? String(t.entrega_id) : '',
+    id: t.id, projeto_id: t.projeto_id,
+    projetos: (t.projetos ?? []).filter(id => id !== t.projeto_id),
+    entrega_id: t.entrega_id ? String(t.entrega_id) : '',
     titulo: t.titulo, descricao: t.descricao ?? '', status: t.status,
     prioridade: t.prioridade ?? PRIORIDADE_PADRAO, responsaveis: t.responsaveis ?? [],
     prazo: t.prazo ?? '', etiquetas: t.etiquetas,
