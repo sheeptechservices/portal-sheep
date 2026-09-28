@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  IconBalao, IconCheck, IconComentario, IconInbox, IconJoinha, IconMegafone, IconPlay, IconReply,
+  IconBalao, IconCheck, IconComentario, IconEstrela, IconInbox, IconJoinha, IconMegafone, IconPlay, IconReply,
   IconVisaoQuadro, IconX,
 } from './icons';
 import { Dialogo } from './Dialogo';
@@ -31,7 +31,7 @@ import { useToast } from '../lib/toast';
 /** Um aviso, no formato que o servidor manda para todas as fontes. */
 export interface ItemDoInbox {
   chave: string;
-  tipo: 'chamado' | 'pedido' | 'reuniao' | 'mencao' | 'resposta' | 'joinha' | 'etapa';
+  tipo: 'chamado' | 'pedido' | 'reuniao' | 'mencao' | 'resposta' | 'joinha' | 'etapa' | 'vitrine';
   titulo: string;
   descricao: string;
   etiqueta: string;
@@ -78,6 +78,7 @@ const FONTES = {
   resposta: { icone: IconReply, nome: 'Resposta em tarefa' },
   joinha: { icone: IconJoinha, nome: 'Joinha em tarefa' },
   etapa: { icone: IconVisaoQuadro, nome: 'Tarefa mudou de etapa' },
+  vitrine: { icone: IconEstrela, nome: 'Interesse na vitrine' },
 } as const;
 
 /** De quanto em quanto tempo a gaveta pergunta de novo, com a aba à vista. Uma

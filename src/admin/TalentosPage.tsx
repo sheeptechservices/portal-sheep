@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAuth, useToast } from './AdminApp';
 import { Avatar } from './FormularioTarefa';
-import { Abas } from '../components/Abas';
+import { AbaPainel, Abas } from '../components/Abas';
 import FilterDropdown from '../components/FilterDropdown';
 import { FAMILIAS, OUTRAS, familiaDe } from '../lib/habilidades';
 import { Skeleton } from '../components/Skeleton';
@@ -28,12 +28,13 @@ import { useAtividades, type Trabalho } from '../lib/atividades';
 import {
   PainelAnaliseVaga, type AnaliseFeita, type AndamentoDaAnalise, type AnexoDaVaga,
 } from './PainelAnaliseVaga';
+import { VitrinesDeTalentos, type PessoaParaVitrine } from './VitrinesDeTalentos';
 import {
   BarraMedia, PAPEIS, VisaoGeral,
   type Competencia, type Nota, type TalentoExterno, type TalentoInterno,
 } from './TalentoVisaoGeral';
 
-type Aba = 'todos' | 'time' | 'interessados';
+type Aba = 'todos' | 'time' | 'interessados' | 'vitrines';
 
 /** As colunas do meio, por aba - entre a pessoa e a avaliação. A de
  *  interessados é a mais larga porque a candidatura respondeu mais coisas. */
@@ -41,6 +42,8 @@ const CABECALHOS: Record<Aba, string[]> = {
   todos: ['Vínculo', 'Papel ou interesse'],
   time: ['Papel', 'No time desde'],
   interessados: ['Interesse', 'Senioridade', 'Experiência', 'Onde mora'],
+  // A vitrine não é tabela de gente: ela tem lista própria.
+  vitrines: [],
 };
 type Aberto = { tipo: 'interno' | 'externo'; id: string } | null;
 
@@ -85,7 +88,14 @@ const familiasDe = (habilidades: string[]) =>
 const dobrar = (v: string) =>
   v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-export default function TalentosPage({ token }: { token: string }) {
+/** O que o inbox manda abrir: a vitrine de um interesse, com o `nonce` que
+ *  faz o mesmo pedido duas vezes contar como dois. */
+export interface AbrirNosTalentos { id: string; nonce: number }
+
+export default function TalentosPage({ token, abrir }: {
+  token: string;
+  abrir?: AbrirNosTalentos;
+}) {
   const { onSessionExpired, pode } = useAuth();
   const { toast } = useToast();
   const { iniciar } = useAtividades();
@@ -95,6 +105,9 @@ export default function TalentosPage({ token }: { token: string }) {
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(true);
   const [aba, setAba] = useState<Aba>('todos');
+  // O aviso do inbox chega com a vitrine a abrir: a aba muda aqui, e a
+  // gaveta dela abre dentro do painel de vitrines.
+  useEffect(() => { if (abrir) setAba('vitrines'); }, [abrir?.nonce]);
   const [fVinculo, setFVinculo] = useState<string[]>([]);
   const [fPapel, setFPapel] = useState<string[]>([]);
   const [fAvaliacao, setFAvaliacao] = useState<string[]>([]);
@@ -190,6 +203,12 @@ export default function TalentosPage({ token }: { token: string }) {
       familias: familiasDe(t.habilidades), habilidades: t.habilidades,
     })),
   ].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')), [internos, externos]);
+
+  /** A mesma gente, no recorte que a vitrine precisa para escolher. */
+  const paraVitrine = useMemo<PessoaParaVitrine[]>(() => todos.map(t => ({
+    tipo: t.tipo, id: t.id, nome: t.nome, meio: t.meio,
+    senioridade: t.senioridade, experiencia: t.experiencia, habilidades: t.habilidades,
+  })), [todos]);
 
   /** Só o que existe na tela vira opção: oferecer "Contratado" sem nenhum
    *  contratado é oferecer uma lista vazia. */
@@ -432,13 +451,16 @@ export default function TalentosPage({ token }: { token: string }) {
             { valor: 'todos', label: `Todos (${todos.length})` },
             { valor: 'time', label: `Time (${internos.length})` },
             { valor: 'interessados', label: `Interessados (${externos.length})` },
+            { valor: 'vitrines', label: 'Vitrines' },
           ]}
         />
-        <label className="talentos-busca">
-          <IconSearch size={13} />
-          <input className="form-input" placeholder="Buscar por nome, e-mail, interesse ou habilidade"
-            value={busca} onChange={e => setBusca(e.target.value)} />
-        </label>
+        {aba !== 'vitrines' && (
+          <label className="talentos-busca">
+            <IconSearch size={13} />
+            <input className="form-input" placeholder="Buscar por nome, e-mail, interesse ou habilidade"
+              value={busca} onChange={e => setBusca(e.target.value)} />
+          </label>
+        )}
       </div>
 
       {/* A barra vale nas três abas, com o recorte que cada uma comporta: o
@@ -451,6 +473,7 @@ export default function TalentosPage({ token }: { token: string }) {
           `.troca`, com a `key` da aba para a animação tocar a cada troca. E
           filtro sem opção nenhuma não aparece: controle que abre menu vazio é
           um beco. */}
+      {aba !== 'vitrines' && (
       <div className="admin-toolbar talentos-filtros troca" key={aba}>
         <span className="admin-toolbar-label">Filtrar</span>
         {aba === 'todos' && (
@@ -476,9 +499,14 @@ export default function TalentosPage({ token }: { token: string }) {
           <button className="admin-toolbar-limpar surge" onClick={limparFiltros}>Limpar</button>
         )}
       </div>
+      )}
 
       {erro ? (
         <p className="ff-vazio ff-erro"><IconAlert size={13} /> {erro}</p>
+      ) : aba === 'vitrines' ? (
+        <AbaPainel key="vitrines">
+          <VitrinesDeTalentos token={token} pessoas={paraVitrine} abrir={abrir} />
+        </AbaPainel>
       ) : carregando ? (
         <Skeleton h={280} radius="var(--radius-md)" />
       ) : (

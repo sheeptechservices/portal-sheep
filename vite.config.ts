@@ -152,6 +152,47 @@ export default defineConfig(({ mode }) => {
             })
           })
 
+          // /api/vitrine-publica - a vitrine de profissionais. Mesmo arranjo da
+          // pagina do cliente logo abaixo: o handler de producao, com um `res`
+          // de mentira, para o que se testa aqui ser o que vai para o ar.
+          server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
+            const url = new URL(req.url ?? '/', `http://localhost`)
+            if (!url.pathname.startsWith('/api/vitrine-publica')) return next()
+            let corpo = ''
+            req.on('data', (pedaco: Buffer) => { corpo += pedaco.toString() })
+            req.on('end', () => {
+            ;(async () => {
+              const { default: handler } = await import('./api/vitrine-publica')
+              let status = 200
+              const falso = {
+                setHeader: (k: string, v: string) => { res.setHeader(k, v); return falso },
+                status: (s: number) => { status = s; return falso },
+                json: (b: unknown) => {
+                  res.statusCode = status
+                  res.setHeader('Content-Type', 'application/json')
+                  res.end(JSON.stringify(b))
+                  return falso
+                },
+              }
+              await handler(
+                {
+                  method: req.method,
+                  query: Object.fromEntries(url.searchParams),
+                  headers: req.headers,
+                  socket: req.socket,
+                  body: corpo ? JSON.parse(corpo) : {},
+                } as never,
+                falso as never,
+              )
+            })().catch(err => {
+              console.error('[api/vitrine-publica]', err)
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Internal error' }))
+            })
+            })
+          })
+
           // /api/projeto-publico - a pagina de acompanhamento do cliente. Roda
           // o mesmo handler que a Vercel executa em producao, com um `res` de
           // mentira: assim o que se testa aqui e o codigo que vai para o ar.

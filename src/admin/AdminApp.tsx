@@ -1398,6 +1398,15 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
     // A reunião não passa por aqui: ela abre a caixa de vincular dentro do
     // próprio inbox, que é onde a pergunta é feita.
     if (item.tipo === 'reuniao') return;
+    // O interesse se resolve na vitrine que o cliente abriu: a gaveta dela
+    // lista quem foi pedido, que e o que a linha do inbox esta anunciando.
+    if (item.tipo === 'vitrine') {
+      setPage('talentos');
+      if (item.alvo) {
+        setOpenCard(prev => ({ page: 'talentos', id: item.alvo!, nonce: (prev?.nonce ?? 0) + 1 }));
+      }
+      return;
+    }
     setPage('tarefas');
     if (item.alvo) {
       setOpenCard(prev => ({ page: 'tarefas', id: item.alvo!, nonce: (prev?.nonce ?? 0) + 1 }));
@@ -1872,7 +1881,8 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
                 } : undefined} />
             )}
             {paginaNaTela === 'cofre' && <CofreSenhas token={token} />}
-            {paginaNaTela === 'talentos'      && <TalentosPage      token={token} />}
+            {paginaNaTela === 'talentos'      && <TalentosPage      token={token}
+              abrir={openCard?.page === 'talentos' ? openCard : undefined} />}
             {paginaNaTela === 'perfil'        && <PerfilPage token={token} />}
             {paginaNaTela === 'usuarios'      && <UsuariosPage   token={token} />}
           </Suspense>

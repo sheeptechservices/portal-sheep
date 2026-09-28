@@ -114,6 +114,10 @@ const SEM_PORTEIRO_PROPRIO = new Set([
   // credencial é o token do link. Não chama `exigir` porque não há matriz a
   // consultar - o que a tranca é a lista de campos escrita no próprio arquivo.
   'projeto-publico.ts',
+  // Vitrine de profissionais, a página que o cliente abre sem login. Mesma
+  // regra da de cima: a credencial é o token do link, e o que tranca é a lista
+  // de campos de `_vitrine.ts` - nome, e-mail e telefone não entram na resposta.
+  'vitrine-publica.ts',
   // O MCP não tem porteiro próprio: toda ferramenta passa pelo `handleAdminData`,
   // que tranca no despacho como o `admin-data`. O `tools/list` só filtra a
   // vitrine, com o mesmo `podeAcao`.

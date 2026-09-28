@@ -154,6 +154,147 @@ function listaDeTexto(v: unknown): string[] {
   return cru.map(x => String(x ?? '').trim()).filter(Boolean).slice(0, 50);
 }
 
+/** Quantos perfis cabem numa vitrine. Teto alto porque o modo "banco inteiro"
+ *  copia todo mundo; a pagina do cliente tem busca para varrer. */
+const MAX_NA_VITRINE = 300;
+
+/** Todo mundo que pode aparecer numa vitrine: quem quer ser da casa e quem ja
+ *  e. Descartado fica de fora - mostrar ao cliente quem a casa dispensou seria
+ *  o contrario do que a vitrine existe para fazer. */
+async function todosDoBanco(db: Client): Promise<{ tipo: 'interno' | 'externo'; id: string }[]> {
+  const [externos, internos] = await Promise.all([
+    db.execute(`SELECT id FROM talentos_externos WHERE situacao <> 'descartado' ORDER BY nome`),
+    db.execute('SELECT id FROM usuarios WHERE ativo = 1 ORDER BY nome'),
+  ]);
+  return [
+    ...externos.rows.map(x => ({ tipo: 'externo' as const, id: String(x.id) })),
+    ...internos.rows.map(x => ({ tipo: 'interno' as const, id: String(x.id) })),
+  ].slice(0, MAX_NA_VITRINE);
+}
+
+/**
+ * Poe o resumo em forma de leitura.
+ *
+ * O texto vem do curriculo que a propria pessoa escreveu: e um paragrafo unico
+ * de mil caracteres, com marcadores no meio da frase, emoji de trofeu e
+ * espacamento de colagem. Jogado num cartao, vira parede - ninguem le, e o
+ * cliente desiste antes do terceiro.
+ *
+ * Aqui ele vira linhas: o que vinha depois de um marcador vira um item, o
+ * emoji sai e o espaco em excesso some. O conteudo e o mesmo; o que muda e
+ * poder passar o olho.
+ */
+function arrumarResumo(texto: string): string {
+  if (!texto) return '';
+  return texto
+    // Emoji e simbolo decorativo: no cartao eles nao informam nada, e brigam
+    // com o traco do desenho da casa.
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{2190}-\u{21FF}]/gu, '')
+    // O marcador vira quebra de linha - e assim que ele foi escrito para ser
+    // lido, ainda que tenha chegado no meio do paragrafo.
+    .replace(/\s*[•·▪●◦]\s*/g, '\n')
+    .split('\n')
+    // Pontuacao solta na frente do item sai: quem marca a linha aqui e a
+    // propria lista, e o que sobrou do curriculo era hifen, traco ou espaco.
+    .map(linha => linha.replace(/\s+/g, ' ').replace(/^[^\p{L}\p{N}]+/u, '').trim())
+    .filter(Boolean)
+    .join('\n')
+    .slice(0, 4000);
+}
+
+/**
+ * Tira do texto o nome de quem ele descreve.
+ *
+ * O resumo e escrito pela propria pessoa, e metade comeca por "Sou o Fulano".
+ * Copiar isso para a vitrine seria entregar o nome no primeiro paragrafo,
+ * justamente o que ela existe para nao fazer. O apelido entra no lugar.
+ *
+ * E uma rede, e nao uma garantia: apelido, ex-empresa e projeto conhecido
+ * continuam passando, e e por isso que existe a revisao antes de mandar o link.
+ */
+function semOProprioNome(texto: string, nome: string, apelido: string): string {
+  const partes = nome.split(/\s+/).map(p => p.trim()).filter(p => p.length >= 3);
+  if (!partes.length || !texto) return texto;
+  // Do nome inteiro para os pedacos: "Arthur Godoy" antes de "Arthur", senao
+  // sobraria "Profissional A Godoy".
+  const alvos = [nome, ...partes].filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+    .map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  let saida = texto;
+  for (const alvo of alvos) {
+    saida = saida.replace(new RegExp(`\\b${alvo}\\b`, 'gi'), apelido);
+  }
+  return saida;
+}
+
+/**
+ * Copia gente para dentro de uma vitrine, ja sem nada que identifique.
+ *
+ * O que entra e o que descreve o trabalho: senioridade, tempo, competencias
+ * avaliadas e habilidades. Nome, e-mail, telefone, cidade e LinkedIn nem sao
+ * lidos - o recorte e a propria consulta, e nao um `delete` depois.
+ */
+async function copiarParaVitrine(
+  db: Client,
+  vitrineId: number,
+  gente: { tipo: 'interno' | 'externo'; id: string }[],
+  aPartirDe = 0,
+): Promise<number> {
+  if (!gente.length) return 0;
+  const [fichas, notas, comps, habilidades] = await Promise.all([
+    // O nome vem junto por um motivo so: apaga-lo do resumo. Ele nao e gravado
+    // na vitrine nem sai na resposta publica.
+    db.execute(`SELECT id, nome, resumo, senioridade, tempo_experiencia, modelo_trabalho,
+                       contratacao, nivel_ingles
+                FROM talentos_externos`),
+    db.execute('SELECT tipo, pessoa_id, competencia_id, nota FROM talento_notas'),
+    db.execute('SELECT id, nome FROM talento_competencias WHERE ativa = 1 ORDER BY ordem, id'),
+    db.execute('SELECT tipo, pessoa_id, nome, nivel FROM talento_habilidades ORDER BY nivel DESC, nome'),
+  ]);
+  const nomeDaComp = new Map(comps.rows.map(c => [Number(c.id), String(c.nome)]));
+  const LETRAS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let ordem = aPartirDe;
+  let entraram = 0;
+  for (const p of gente) {
+    const ficha = p.tipo === 'externo' ? fichas.rows.find(f => String(f.id) === p.id) : undefined;
+    // Quem e da casa nao tem ficha de candidato: o que descreve o trabalho dele
+    // sao as competencias avaliadas e as habilidades declaradas.
+    const competencias = notas.rows
+      .filter(n => String(n.tipo) === p.tipo && String(n.pessoa_id) === p.id)
+      .map(n => ({ nome: nomeDaComp.get(Number(n.competencia_id)) ?? '', nota: Number(n.nota) }))
+      .filter(c => c.nome);
+    const suasHabilidades = habilidades.rows
+      .filter(h => String(h.tipo) === p.tipo && String(h.pessoa_id) === p.id)
+      .map(h => `${String(h.nome)} ${h.nivel == null ? '' : `${Number(h.nivel)}/5`}`.trim());
+    const apelido = `Profissional ${LETRAS[ordem] ?? String(ordem + 1)}`;
+    await db.execute({
+      sql: `INSERT INTO vitrine_perfis
+              (vitrine_id, pessoa_tipo, pessoa_id, apelido, resumo, senioridade,
+               tempo_experiencia, modelo_trabalho, contratacao, ingles, competencias,
+               habilidades, ordem)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      args: [
+        vitrineId, p.tipo, p.id,
+        apelido,
+        ficha?.resumo == null
+          ? ''
+          : semOProprioNome(arrumarResumo(String(ficha.resumo)), String(ficha.nome ?? ''), apelido),
+        ficha?.senioridade == null ? null : String(ficha.senioridade),
+        ficha?.tempo_experiencia == null ? null : String(ficha.tempo_experiencia),
+        ficha?.modelo_trabalho == null ? null : String(ficha.modelo_trabalho),
+        ficha?.contratacao == null ? null : String(ficha.contratacao),
+        ficha?.nivel_ingles == null ? null : String(ficha.nivel_ingles),
+        JSON.stringify(competencias),
+        JSON.stringify(suasHabilidades),
+        ordem,
+      ],
+    });
+    ordem++;
+    entraram++;
+  }
+  return entraram;
+}
+
 /** Um objetivo da semana como ele fica gravado: a frase, se ja foi cumprido, e
  *  o que veio depois - prazo e quem responde. */
 interface ObjetivoGravado {
@@ -1056,6 +1197,83 @@ async function migrarSchema(db: Client) {
   for (const coluna of colunasDoCandidato) {
     try { await ddl(`ALTER TABLE talentos_externos ADD COLUMN ${coluna}`); } catch {}
   }
+
+  // ── A vitrine de profissionais ──────────────────────────────────────────
+  //
+  // O que a casa mostra a um cliente depois de selecionar gente para uma vaga:
+  // uma pagina fora do portal, aberta por um endereco que ninguem adivinha, com
+  // os escolhidos sem nome e sem contato.
+  //
+  // O perfil que aparece la e uma COPIA, e nao uma consulta ao cadastro. Duas
+  // razoes: o que foi revisado e o que sai (mexer na ficha depois nao muda o que
+  // o cliente ja viu), e a copia so tem campo que pode ser mostrado - o nome, o
+  // e-mail e o telefone nao chegam nem a existir do lado publico.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS vitrines (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      token           TEXT NOT NULL UNIQUE,
+      titulo          TEXT NOT NULL,
+      empresa         TEXT,
+      recado          TEXT,
+      /** Ate quando o endereco abre. Nulo: sem prazo. */
+      expira_em       TEXT,
+      /** Fechada a mao antes do prazo. */
+      revogada_em     TEXT,
+      criado_em       TEXT NOT NULL,
+      atualizado_em   TEXT NOT NULL,
+      criado_por_id   TEXT,
+      criado_por_nome TEXT NOT NULL
+    )
+  `);
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS vitrine_perfis (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      vitrine_id    INTEGER NOT NULL,
+      /** De quem e o perfil. So o portal enxerga: e por aqui que quem recebeu o
+       *  interesse acha a pessoa de verdade. */
+      pessoa_tipo   TEXT NOT NULL,
+      pessoa_id     TEXT NOT NULL,
+      /** Como a pessoa aparece: "Profissional A". */
+      apelido       TEXT NOT NULL,
+      resumo        TEXT NOT NULL DEFAULT '',
+      senioridade   TEXT,
+      tempo_experiencia TEXT,
+      modelo_trabalho   TEXT,
+      contratacao   TEXT,
+      ingles        TEXT,
+      /** As competencias avaliadas, ja com nota: [{"nome":"Dados","nota":4}]. */
+      competencias  TEXT NOT NULL DEFAULT '[]',
+      /** As habilidades declaradas: ["React 4", "SQL 5"]. */
+      habilidades   TEXT NOT NULL DEFAULT '[]',
+      ordem         INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+  await ddl(`CREATE INDEX IF NOT EXISTS idx_vitrine_perfis ON vitrine_perfis (vitrine_id, ordem, id)`);
+  // Quem entra: os escolhidos de uma vaga ('selecao') ou o banco inteiro
+  // ('todos'). A diferenca e so quem e copiado na abertura - o que o cliente ve
+  // continua sendo a copia revisada, nos dois casos.
+  try { await ddl(`ALTER TABLE vitrines ADD COLUMN modo TEXT NOT NULL DEFAULT 'selecao'`); } catch { /* ja existe */ }
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS vitrine_interesses (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      vitrine_id  INTEGER NOT NULL,
+      perfil_id   INTEGER NOT NULL,
+      mensagem    TEXT,
+      criado_em   TEXT NOT NULL,
+      /** Quem do lado de la disse o nome, quando disse. Campo livre: a pagina
+       *  nao tem login, e obrigar cadastro para dizer "gostei" afasta. */
+      quem        TEXT
+    )
+  `);
+  await ddl(`CREATE INDEX IF NOT EXISTS idx_vitrine_interesses ON vitrine_interesses (vitrine_id, criado_em DESC)`);
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS vitrine_acessos (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      vitrine_id  INTEGER NOT NULL,
+      criado_em   TEXT NOT NULL
+    )
+  `);
+  await ddl(`CREATE INDEX IF NOT EXISTS idx_vitrine_acessos ON vitrine_acessos (vitrine_id, criado_em DESC)`);
 
   // As competencias avaliadas. Lista, e nao colunas: renomear ou acrescentar uma
   // competencia nao pode pedir migracao de tabela.
@@ -3327,7 +3545,7 @@ function chavesDoInbox(body: any): string[] {
   const cruas = Array.isArray(body?.chaves) ? body.chaves : [body?.chave];
   return [...new Set(cruas
     .map((c: unknown) => String(c ?? '').trim())
-    .filter((c: string) => /^(reporte|tarefa|reuniao|mencao|resposta|joinha|etapa):.{1,80}$/.test(c)))] as string[];
+    .filter((c: string) => /^(reporte|tarefa|reuniao|mencao|resposta|joinha|etapa|vitrine):.{1,80}$/.test(c)))] as string[];
 }
 
 /** Um aviso do inbox. O mesmo formato para as tres fontes: a gaveta desenha
@@ -3343,7 +3561,7 @@ interface ItemDoInbox {
    *  que pode ser marcado e limpo, e uma fonte nova que não entre lá nasce com
    *  o gesto recusado pelo servidor. */
   chave: string;
-  tipo: 'chamado' | 'pedido' | 'reuniao' | 'mencao' | 'resposta' | 'joinha' | 'etapa';
+  tipo: 'chamado' | 'pedido' | 'reuniao' | 'mencao' | 'resposta' | 'joinha' | 'etapa' | 'vitrine';
   titulo: string;
   descricao: string;
   /** O canto direito da linha: urgencia do chamado, projeto do pedido. */
@@ -3653,6 +3871,83 @@ async function despacharAdminData(
     // habilidades declaradas e, para quem veio de fora, a candidatura inteira.
     // Numa ida só - a visão geral abre com as três coisas.
     // O historico das analises de vaga: a lista, sem os relatorios.
+    /**
+     * As vitrines abertas, com a conta do que cada uma tem. A lista da aba.
+     */
+    if (action === 'vitrines') {
+      const [r, perfis, interesses, acessos] = await Promise.all([
+        db.execute(`SELECT id, token, titulo, empresa, recado, expira_em, revogada_em, modo,
+                           criado_em, atualizado_em, criado_por_nome
+                    FROM vitrines ORDER BY criado_em DESC LIMIT 200`),
+        db.execute('SELECT vitrine_id, COUNT(*) AS n FROM vitrine_perfis GROUP BY vitrine_id'),
+        db.execute('SELECT vitrine_id, COUNT(*) AS n FROM vitrine_interesses GROUP BY vitrine_id'),
+        db.execute(`SELECT vitrine_id, COUNT(*) AS n, MAX(criado_em) AS ultimo
+                    FROM vitrine_acessos GROUP BY vitrine_id`),
+      ]);
+      const conta = (linhas: { rows: any[] }, id: number) =>
+        Number(linhas.rows.find(x => Number(x.vitrine_id) === id)?.n ?? 0);
+      return {
+        status: 200,
+        body: {
+          vitrines: r.rows.map(x => {
+            const id = Number(x.id);
+            return {
+              id,
+              token: String(x.token),
+              titulo: String(x.titulo),
+              modo: String(x.modo ?? 'selecao'),
+              empresa: x.empresa == null ? null : String(x.empresa),
+              recado: x.recado == null ? null : String(x.recado),
+              expira_em: x.expira_em == null ? null : String(x.expira_em),
+              revogada_em: x.revogada_em == null ? null : String(x.revogada_em),
+              criado_em: String(x.criado_em),
+              atualizado_em: String(x.atualizado_em),
+              criado_por_nome: String(x.criado_por_nome),
+              perfis: conta(perfis, id),
+              interesses: conta(interesses, id),
+              acessos: conta(acessos, id),
+              ultimo_acesso: acessos.rows.find(a => Number(a.vitrine_id) === id)?.ultimo ?? null,
+            };
+          }),
+        },
+      };
+    }
+
+    /** Uma vitrine com os perfis como eles vao aparecer, e os interesses que
+     *  chegaram. E por aqui que se revisa antes de mandar o link. */
+    if (action === 'vitrine') {
+      const id = Number(query.get('id'));
+      if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };
+      const [v, perfis, interesses] = await Promise.all([
+        db.execute({ sql: 'SELECT * FROM vitrines WHERE id = ?', args: [id] }),
+        db.execute({
+          sql: 'SELECT * FROM vitrine_perfis WHERE vitrine_id = ? ORDER BY ordem, id', args: [id],
+        }),
+        db.execute({
+          sql: `SELECT i.id, i.perfil_id, i.mensagem, i.quem, i.criado_em, p.apelido
+                FROM vitrine_interesses i
+                LEFT JOIN vitrine_perfis p ON p.id = i.perfil_id
+                WHERE i.vitrine_id = ? ORDER BY i.criado_em DESC`,
+          args: [id],
+        }),
+      ]);
+      if (!v.rows[0]) return { status: 404, body: { error: 'Vitrine não encontrada.' } };
+      return {
+        status: 200,
+        body: {
+          vitrine: v.rows[0],
+          // Aqui dentro do portal o perfil vem com a pessoa a que pertence: e
+          // isso que deixa achar quem o cliente escolheu.
+          perfis: perfis.rows.map(p => ({
+            ...p,
+            competencias: JSON.parse(String(p.competencias ?? '[]')),
+            habilidades: JSON.parse(String(p.habilidades ?? '[]')),
+          })),
+          interesses: interesses.rows,
+        },
+      };
+    }
+
     if (action === 'analises_vaga') {
       const r = await db.execute(`
         SELECT a.id, a.criado_em, a.criado_por_nome, a.titulo, a.modelo, a.pessoas,
@@ -5742,7 +6037,12 @@ async function despacharAdminData(
                   ))`;
       const argsDaEquipe = [soDaEquipe ? 1 : 0, PROJETO_GERAL, usuario?.id ?? ''];
 
-      const [chamados, pedidos, lidos, mencoes, respostas, joinhas, etapas] = await Promise.all([
+      // O interesse que um cliente marcou na vitrine. Quem vê o banco de
+      // talentos vê o aviso: é a mesma gente que abre a vitrine e responde por
+      // ela.
+      const veVitrine = podeAcao(permissoes, 'vitrines');
+
+      const [chamados, pedidos, lidos, mencoes, respostas, joinhas, etapas, interesses] = await Promise.all([
         cuidaDaFila
           ? db.execute({
             // Sem filtro de andamento: chamado resolvido continua no inbox, com
@@ -5845,6 +6145,21 @@ async function despacharAdminData(
                 ORDER BY a.criado_em DESC LIMIT 40`,
           args: [usuario?.id ?? '', desde],
         }),
+        // Interesse marcado numa vitrine. O apelido vem do perfil daquela
+        // vitrine, e não do cadastro: é por ele que o cliente conhece a pessoa,
+        // e é ele que a revisão precisa procurar.
+        veVitrine
+          ? db.execute({
+            sql: `SELECT i.id, i.criado_em, i.quem, i.vitrine_id,
+                         p.apelido, v.titulo, v.empresa
+                  FROM vitrine_interesses i
+                  JOIN vitrines v ON v.id = i.vitrine_id
+                  LEFT JOIN vitrine_perfis p ON p.id = i.perfil_id
+                  WHERE i.criado_em >= ?
+                  ORDER BY i.criado_em DESC LIMIT 40`,
+            args: [desde],
+          })
+          : Promise.resolve({ rows: [] as Record<string, unknown>[] }),
       ]);
 
       const jaLido = new Set(lidos.rows.map(x => String(x.chave)));
@@ -5935,6 +6250,25 @@ async function despacharAdminData(
           quando: String(e.criado_em),
           lido: jaLido.has(chave),
           alvo: String(e.tarefa_id),
+        });
+      }
+
+      for (const i of interesses.rows) {
+        const chave = `vitrine:${i.id}`;
+        if (jaLimpo.has(chave)) continue;
+        const quem = String(i.quem ?? i.empresa ?? '').trim() || 'Um cliente';
+        itens.push({
+          chave,
+          tipo: 'vitrine',
+          titulo: `${quem} tem interesse em ${i.apelido ?? 'um profissional'}`,
+          descricao: String(i.titulo ?? ''),
+          // Sem etiqueta: a fonte na propria linha ja diz vitrine, e o titulo
+          // dela esta na descricao.
+          etiqueta: '',
+          quando: String(i.criado_em),
+          lido: jaLido.has(chave),
+          // A vitrine, que e onde os pedidos dela sao lidos.
+          alvo: String(i.vitrine_id),
         });
       }
 
@@ -8976,6 +9310,168 @@ function faltaEmProjeto(p: any): string | null {
           criado_em: String(linha?.criado_em ?? agora), atualizado_em: String(linha?.atualizado_em ?? agora),
         },
       };
+    }
+
+    /**
+     * Abre uma vitrine com as pessoas escolhidas.
+     *
+     * O perfil nasce do cadastro, ja sem nada que identifique: o apelido e uma
+     * letra, e o que vem junto e o que descreve o trabalho - senioridade, tempo,
+     * competencias avaliadas e habilidades. Nome, e-mail, telefone, cidade e
+     * LinkedIn ficam de fora da copia, e nao apenas da tela.
+     */
+    if (action === 'criar_vitrine') {
+      const titulo = String(body?.titulo ?? '').trim().slice(0, 200);
+      if (!titulo) return { status: 400, body: { error: 'A vitrine precisa de um título.' } };
+      // 'todos' abre o banco inteiro para o cliente garimpar; 'selecao' mostra
+      // só quem foi escolhido para aquela vaga.
+      const modo = body?.modo === 'todos' ? 'todos' : 'selecao';
+      const escolhidos = modo === 'todos'
+        ? await todosDoBanco(db)
+        : (Array.isArray(body?.pessoas) ? body.pessoas : [])
+          .map((p: any) => ({ tipo: String(p?.tipo ?? ''), id: String(p?.id ?? '') }))
+          .filter((p: { tipo: string; id: string }) =>
+            (p.tipo === 'interno' || p.tipo === 'externo') && p.id)
+          .slice(0, MAX_NA_VITRINE);
+      if (!escolhidos.length) {
+        return {
+          status: 400,
+          body: {
+            error: modo === 'todos'
+              ? 'O banco de talentos está vazio - não há quem mostrar.'
+              : 'Escolha ao menos um profissional.',
+          },
+        };
+      }
+      const expira = String(body?.expira_em ?? '').trim();
+      if (expira && !/^\d{4}-\d{2}-\d{2}$/.test(expira)) {
+        return { status: 400, body: { error: 'Validade fora do formato AAAA-MM-DD.' } };
+      }
+
+      const agora = new Date().toISOString();
+      // 32 hexadecimais: o link é a única credencial da página.
+      const token = randomUUID().replace(/-/g, '');
+      const r = await db.execute({
+        sql: `INSERT INTO vitrines
+                (token, titulo, empresa, recado, expira_em, modo, criado_em, atualizado_em,
+                 criado_por_id, criado_por_nome)
+              VALUES (?,?,?,?,?,?,?,?,?,?)
+              RETURNING id`,
+        args: [
+          token, titulo,
+          String(body?.empresa ?? '').trim().slice(0, 200) || null,
+          String(body?.recado ?? '').trim().slice(0, 1000) || null,
+          expira || null, modo, agora, agora, autorId ?? null, autorNome ?? 'alguém do time',
+        ],
+      });
+      const vitrineId = Number(r.rows[0]?.id ?? 0);
+      await copiarParaVitrine(db, vitrineId, escolhidos as never);
+      return { status: 200, body: { ok: true, id: vitrineId, token, modo, perfis: escolhidos.length } };
+    }
+
+    /**
+     * Traz para a vitrine quem entrou no banco depois que ela foi aberta.
+     *
+     * So faz sentido no modo "banco inteiro": ali a promessa e mostrar todo
+     * mundo, e quem se cadastrou ontem tem de aparecer. Quem ja esta na vitrine
+     * fica como esta - o texto revisado nao e reescrito por uma sincronizacao.
+     */
+    if (action === 'sincronizar_vitrine') {
+      const id = Number(body?.id);
+      if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };
+      const v = (await db.execute({
+        sql: 'SELECT modo FROM vitrines WHERE id = ?', args: [id],
+      })).rows[0];
+      if (!v) return { status: 404, body: { error: 'Vitrine não encontrada.' } };
+      if (String(v.modo ?? 'selecao') !== 'todos') {
+        return { status: 400, body: { error: 'Esta vitrine mostra uma seleção, e não o banco inteiro.' } };
+      }
+      const dentro = await db.execute({
+        sql: 'SELECT pessoa_tipo, pessoa_id, MAX(ordem) AS ultima FROM vitrine_perfis WHERE vitrine_id = ? GROUP BY pessoa_tipo, pessoa_id',
+        args: [id],
+      });
+      const jaTem = new Set(dentro.rows.map(x => `${x.pessoa_tipo}:${x.pessoa_id}`));
+      const ultima = Math.max(-1, ...dentro.rows.map(x => Number(x.ultima ?? -1)));
+      const faltando = (await todosDoBanco(db)).filter(p => !jaTem.has(`${p.tipo}:${p.id}`));
+      const entraram = await copiarParaVitrine(db, id, faltando, ultima + 1);
+      if (entraram) {
+        await db.execute({
+          sql: 'UPDATE vitrines SET atualizado_em = ? WHERE id = ?',
+          args: [new Date().toISOString(), id],
+        });
+      }
+      return { status: 200, body: { ok: true, entraram } };
+    }
+
+    /** A revisao de um perfil antes de mandar o link: o texto que sai, e o
+     *  apelido. E aqui que o "trabalhei no Bradesco" vira "banco grande". */
+    if (action === 'salvar_vitrine_perfil') {
+      const id = Number(body?.id);
+      if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };
+      const campos: Record<string, unknown> = {};
+      if (body?.apelido !== undefined) {
+        const apelido = String(body.apelido ?? '').trim().slice(0, 80);
+        if (!apelido) return { status: 400, body: { error: 'O perfil precisa de um apelido.' } };
+        campos.apelido = apelido;
+      }
+      if (body?.resumo !== undefined) campos.resumo = String(body.resumo ?? '').trim().slice(0, 4000);
+      for (const c of ['senioridade', 'tempo_experiencia', 'modelo_trabalho', 'contratacao', 'ingles']) {
+        if (body?.[c] !== undefined) campos[c] = String(body[c] ?? '').trim().slice(0, 120) || null;
+      }
+      if (body?.habilidades !== undefined) {
+        campos.habilidades = JSON.stringify((Array.isArray(body.habilidades) ? body.habilidades : [])
+          .map((h: unknown) => String(h ?? '').trim()).filter(Boolean).slice(0, 40));
+      }
+      if (!Object.keys(campos).length) return { status: 400, body: { error: 'Nada para gravar.' } };
+      const sets = Object.keys(campos).map(c => `${c} = ?`).join(', ');
+      const r = await db.execute({
+        sql: `UPDATE vitrine_perfis SET ${sets} WHERE id = ?`,
+        args: [...Object.values(campos), id] as never[],
+      });
+      if (!r.rowsAffected) return { status: 404, body: { error: 'Perfil não encontrado.' } };
+      return { status: 200, body: { ok: true } };
+    }
+
+    /** Tira um perfil da vitrine. O cadastro da pessoa nao e tocado. */
+    if (action === 'remover_vitrine_perfil') {
+      const id = Number(body?.id);
+      if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };
+      await db.execute({ sql: 'DELETE FROM vitrine_perfis WHERE id = ?', args: [id] });
+      return { status: 200, body: { ok: true } };
+    }
+
+    /** Fecha o endereco antes do prazo, ou reabre o que foi fechado. */
+    if (action === 'revogar_vitrine') {
+      const id = Number(body?.id);
+      if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };
+      const fechar = body?.reabrir !== true;
+      await db.execute({
+        sql: 'UPDATE vitrines SET revogada_em = ?, atualizado_em = ? WHERE id = ?',
+        args: [fechar ? new Date().toISOString() : null, new Date().toISOString(), id],
+      });
+      return { status: 200, body: { ok: true, revogada: fechar } };
+    }
+
+    /** Apaga a vitrine e o que veio com ela. O link morre junto. */
+    if (action === 'excluir_vitrine') {
+      const id = Number(body?.id);
+      if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };
+      for (const tabela of ['vitrine_interesses', 'vitrine_acessos', 'vitrine_perfis']) {
+        await db.execute({ sql: `DELETE FROM ${tabela} WHERE vitrine_id = ?`, args: [id] });
+      }
+      await db.execute({ sql: 'DELETE FROM vitrines WHERE id = ?', args: [id] });
+      return { status: 200, body: { ok: true } };
+    }
+
+    /** O rascunho saiu em PDF pelo histórico: a marca cai, e nada mais muda. */
+    if (action === 'proposta_deixa_de_ser_rascunho') {
+      const id = Number(body?.id);
+      if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };
+      const r = await db.execute({
+        sql: 'UPDATE propostas_geradas SET rascunho = 0 WHERE id = ?', args: [id],
+      });
+      if (!r.rowsAffected) return { status: 404, body: { error: 'Proposta não encontrada.' } };
+      return { status: 200, body: { ok: true } };
     }
 
     if (action === 'registrar_proposta') {

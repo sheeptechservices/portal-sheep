@@ -13,8 +13,12 @@ import './styles/main.css';
 const AdminApp = lazy(() => import('./admin/AdminApp'));
 const ProjetoPublico = lazy(() => import('./publico/ProjetoPublico'));
 const CriarSenha = lazy(() => import('./publico/CriarSenha'));
+const VitrinePublica = lazy(() => import('./publico/VitrinePublica'));
 
 const publico = /^\/p\/([0-9a-f]{32})\/?$/.exec(window.location.pathname);
+// `/v/<token>` é a vitrine de profissionais: a seleção de uma vaga mostrada a
+// um cliente, sem login e sem identificação de quem está ali.
+const vitrine = /^\/v\/([0-9a-f]{32})\/?$/.exec(window.location.pathname);
 // O token do convite é base64url de 32 bytes - 43 caracteres do alfabeto dele.
 const convite = /^\/senha\/([A-Za-z0-9_-]{20,})\/?$/.exec(window.location.pathname);
 
@@ -28,8 +32,9 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <Suspense fallback={Fallback}>
       {publico ? <ProjetoPublico token={publico[1]} />
-        : convite ? <CriarSenha token={convite[1]} />
-          : <AdminApp />}
+        : vitrine ? <VitrinePublica token={vitrine[1]} />
+          : convite ? <CriarSenha token={convite[1]} />
+            : <AdminApp />}
     </Suspense>
   </StrictMode>
 );

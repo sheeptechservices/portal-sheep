@@ -19857,3 +19857,344 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   .reportes-acao { transition: none; }
 }
 
+/* ── Vitrine de profissionais (a pagina do cliente, sem login) ─────────────
+   O mesmo desenho da pagina de acompanhamento: fundo claro, cartao branco com
+   moldura fina, e nada de navegacao - quem abre veio de um link e tem uma
+   coisa so a fazer aqui. */
+.vit-pagina {
+  /* O material da casa, com os mesmos valores da pagina de acompanhamento: as
+     duas sao a mesma folha vista pelo cliente, e dois cristais diferentes se
+     leriam como dois produtos. Degrade que escurece de cima para baixo, fio de
+     luz na aresta de cima, sombra baixa e larga por fora. Sem `backdrop-filter`:
+     o que da a leitura de vidro aqui e a aresta, e nao o borrao. */
+  --cristal: linear-gradient(180deg, rgba(255, 255, 255, .96) 0%,
+    rgba(255, 255, 255, .82) 100%);
+  --cristal-borda: rgba(23, 21, 15, .08);
+  --cristal-borda-forte: rgba(23, 21, 15, .24);
+  --cristal-luz: rgba(255, 255, 255, 1);
+  --cristal-base: rgba(23, 21, 15, .04);
+  --cristal-sombra: 0 1px 2px rgba(20, 22, 30, .04),
+    0 12px 26px -22px rgba(20, 22, 30, .5);
+  min-height: 100vh;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 40px 22px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  background: var(--bg);
+  color: var(--black);
+}
+/* No escuro o degrade inverte de material: branco translucido viraria um veu
+   leitoso sobre o fundo quase preto. */
+:root[data-theme="dark"] .vit-pagina {
+  --cristal: linear-gradient(180deg, rgba(30, 31, 36, .96) 0%,
+    rgba(20, 21, 24, .86) 100%);
+  --cristal-borda: rgba(255, 255, 255, .10);
+  --cristal-borda-forte: rgba(255, 255, 255, .30);
+  --cristal-luz: rgba(255, 255, 255, .08);
+  --cristal-base: rgba(0, 0, 0, .18);
+  --cristal-sombra: 0 1px 2px rgba(0, 0, 0, .25),
+    0 12px 26px -22px rgba(0, 0, 0, .8);
+}
+.vit-centro { align-items: center; justify-content: center; }
+.vit-erro { font-size: 14px; color: var(--gray2); }
+.vit-girando {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 3px solid var(--gray3); border-top-color: var(--green);
+  animation: spin .7s linear infinite;
+}
+.vit-topo { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+.vit-topo-texto { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+/* A assinatura da casa, desenhada em preto: no tema escuro ela inverte, como
+   nas outras telas que a usam. A largura e em `vw` tambem para que no celular
+   ela encolha em vez de espremer o titulo. */
+.vit-marca-sheep {
+  flex: none; width: 134px; max-width: 34vw; height: auto; object-fit: contain;
+  margin-top: 4px;
+}
+:root[data-theme="dark"] .vit-marca-sheep { filter: invert(1); }
+.vit-topo h1 { margin: 0; font-size: 26px; font-weight: 800; line-height: 1.2; }
+.vit-empresa { margin: 0; font-size: 13.5px; color: var(--gray); }
+.vit-recado { margin: 6px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--gray); }
+.vit-busca {
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 12px; height: 38px;
+  border: 1px solid var(--gray3); border-radius: var(--radius-md);
+  background: var(--white); color: var(--gray2);
+  transition: border-color var(--transition), box-shadow var(--transition-spring);
+}
+.vit-busca:hover { border-color: var(--cristal-borda-forte); }
+/* Em foco o acabamento sai e entra o halo: e ele que diz onde a escrita esta
+   indo, e os dois somados viravam borrao. */
+.vit-busca:focus-within {
+  border-color: var(--cristal-borda-forte);
+  box-shadow: 0 0 0 3px var(--gray4);
+}
+.vit-busca input {
+  flex: 1; border: none; background: none; outline: none;
+  font-family: inherit; font-size: 13.5px; color: var(--black);
+}
+.vit-busca button {
+  display: inline-flex; border: none; background: none; color: var(--gray2); cursor: pointer;
+}
+.vit-aviso {
+  margin: 0; padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--green) 40%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--green) 10%, transparent);
+  font-size: 13px; color: var(--black);
+}
+.vit-vazio { margin: 30px 0; font-size: 13.5px; color: var(--gray2); }
+.vit-lista { display: grid; gap: 14px; }
+.vit-cartao {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 18px 20px;
+  border: 1px solid var(--gray3); border-radius: var(--radius-lg);
+  background: var(--white);
+  transition: border-color var(--transition), box-shadow var(--transition-spring);
+}
+/* Sobe nao: o cartao inteiro nao e clicavel, e elevar diria que e. O hover
+   firma a aresta e alarga a sombra, repondo o fio de luz - sem ele o cartao
+   perderia a borda de cima justo quando ganha peso. */
+.vit-cartao:hover {
+  border-color: var(--cristal-borda-forte);
+  box-shadow: inset 0 1px 0 var(--cristal-luz),
+    inset 0 -1px 0 var(--cristal-base),
+    var(--shadow-card-hover);
+}
+.vit-cartao.pedido,
+.vit-cartao.pedido:hover { border-color: color-mix(in srgb, var(--green) 45%, transparent); }
+.vit-cartao-topo { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.vit-cartao-topo h2 { margin: 0; font-size: 17px; font-weight: 800; }
+.vit-linha { margin: 4px 0 0; font-size: 12.5px; color: var(--gray2); }
+.vit-resumo { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--gray); white-space: pre-wrap; }
+.vit-habilidades { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.vit-habilidades li {
+  padding: 3px 9px; border-radius: var(--radius-pill);
+  background: var(--gray4); font-size: 11.5px; font-weight: 600; color: var(--gray);
+}
+.vit-pedir {
+  flex: none;
+  padding: 8px 14px;
+  border: 1px solid var(--black); border-radius: var(--radius-pill);
+  background: var(--black); color: var(--white);
+  font-family: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+.vit-pedir:hover:not(:disabled) { background: var(--gray); border-color: var(--gray); }
+.vit-pedir.feito, .vit-pedir:disabled {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: none; color: var(--green); border-color: color-mix(in srgb, var(--green) 45%, transparent);
+  cursor: default;
+}
+/* As forcas: o radar a esquerda e a leitura competencia a competencia ao lado,
+   como na ficha do portal. */
+.vit-forcas { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.vit-radar { width: 120px; height: 120px; flex: none; }
+.vit-radar-teia { fill: none; stroke: var(--gray3); stroke-width: .8; opacity: .55; }
+.vit-radar-area {
+  fill: color-mix(in srgb, var(--green) 22%, transparent);
+  stroke: var(--green); stroke-width: 1.6; stroke-linejoin: round;
+}
+.vit-forcas ul { flex: 1; min-width: 200px; margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.vit-forcas li {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  font-size: 12.5px; color: var(--gray);
+}
+.vit-nota-comp { display: inline-flex; gap: 3px; }
+.vit-nota-comp i { width: 8px; height: 8px; border-radius: 50%; background: var(--gray3); }
+.vit-nota-comp i.cheia { background: var(--green); }
+.vit-pe { margin-top: 20px; font-size: 11.5px; color: var(--gray2); }
+/* A caixa que confirma o interesse. */
+.vit-modal {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  background: rgba(0,0,0,.45);
+}
+.vit-modal-caixa {
+  width: min(460px, 100%); display: flex; flex-direction: column; gap: 14px;
+  padding: 18px 20px 16px;
+  border-radius: var(--radius-lg); background: var(--white);
+  box-shadow: var(--shadow-card-hover);
+}
+.vit-modal-topo { display: flex; align-items: center; justify-content: space-between; font-size: 15px; }
+.vit-modal-topo button { display: inline-flex; border: none; background: none; color: var(--gray2); cursor: pointer; }
+.vit-modal-texto { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--gray); }
+.vit-modal-pe { display: flex; justify-content: flex-end; gap: 8px; }
+.vit-primario, .vit-secundario {
+  padding: 9px 16px; border-radius: var(--radius-pill);
+  font-family: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+.vit-primario { border: 1px solid var(--black); background: var(--black); color: var(--white); }
+.vit-primario:disabled { opacity: .5; cursor: default; }
+.vit-secundario {
+  border: 1px solid var(--cristal-borda); background: var(--cristal); color: var(--gray);
+  box-shadow: inset 0 1px 0 var(--cristal-luz),
+    inset 0 -1px 0 var(--cristal-base),
+    var(--cristal-sombra);
+}
+.vit-secundario:hover { border-color: var(--cristal-borda-forte); color: var(--black); }
+@media (max-width: 640px) {
+  .vit-cartao-topo { flex-direction: column; }
+  .vit-pedir { width: 100%; }
+  /* No celular a marca sobe para uma linha propria: ao lado do titulo ela
+     espremia o nome da selecao em quatro linhas. */
+  .vit-topo { flex-direction: column-reverse; align-items: flex-start; gap: 14px; }
+  .vit-marca-sheep { max-width: 46vw; margin-top: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vit-girando { animation: none; }
+  .vit-cartao { transition: none; }
+}
+
+/* ── Vitrines de profissionais (a aba do portal) ───────────────────────────
+   A lista das selecoes abertas, e as duas gavetas: a que monta e a que revisa
+   o que o cliente vai ler. */
+.vitrine-aba { display: flex; flex-direction: column; gap: 14px; }
+.vitrine-lista { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.vitrine-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--gray3); border-radius: var(--radius-lg);
+  background: var(--white);
+  transition: border-color var(--transition), box-shadow var(--transition-spring);
+}
+.vitrine-item:hover { box-shadow: var(--shadow-card-hover); }
+.vitrine-item-texto { min-width: 0; }
+.vitrine-item-titulo {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 0; font-size: 14px; font-weight: 700; color: var(--black);
+}
+.vitrine-item-sub { margin: 3px 0 0; font-size: 12.5px; color: var(--gray); }
+.vitrine-item-meta { margin: 2px 0 0; font-size: 11.5px; color: var(--gray2); }
+.vitrine-item-acoes { display: flex; align-items: center; gap: 6px; flex: none; flex-wrap: wrap; }
+/* Aberta e fechada, no mesmo chip de estado do resto do portal. */
+.vitrine-estado {
+  padding: 2px 8px; border-radius: var(--radius-pill);
+  font-size: 10.5px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase;
+}
+.vitrine-estado.aberta {
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+  color: var(--green);
+}
+.vitrine-estado.fechada { background: var(--gray4); color: var(--gray2); }
+/* A vitrine que mostra o banco inteiro diz isso ao lado do estado: sao duas
+   coisas diferentes - se o link abre, e quem esta dentro dele. */
+.vitrine-estado.banco { background: var(--gray4); color: var(--gray); }
+/* A gaveta que monta: campos em cima, gente embaixo. */
+.vitrine-corpo { display: flex; flex-direction: column; gap: 12px; padding-top: 18px; }
+.vitrine-campos { display: grid; grid-template-columns: 1fr 160px; gap: 10px; }
+.vitrine-conta {
+  margin-left: 6px; padding: 1px 7px; border-radius: var(--radius-pill);
+  background: var(--gray4); font-size: 11px; font-weight: 700; color: var(--gray);
+}
+.vitrine-gente { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.vitrine-gente-linha {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 8px; border-radius: var(--radius-md);
+  cursor: pointer; transition: background var(--transition);
+}
+.vitrine-gente-linha:hover { background: var(--card-hover-bg, var(--gray4)); }
+.vitrine-gente-nome { font-size: 13px; font-weight: 600; color: var(--black); }
+.vitrine-gente-meio { font-size: 11.5px; color: var(--gray2); margin-left: auto; text-align: right; }
+/* A revisao: um bloco por perfil, com o apelido em cima do texto que sai. */
+.vitrine-perfis { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.vitrine-perfil {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--gray3); border-radius: var(--radius-md);
+  background: var(--white);
+}
+.vitrine-perfil-topo { display: flex; align-items: center; gap: 10px; }
+.vitrine-apelido { flex: none; width: 190px; font-weight: 700; }
+.vitrine-perfil-meta { flex: 1; min-width: 0; font-size: 11.5px; color: var(--gray2); }
+.vitrine-perfil-hab { margin: 0; font-size: 11.5px; color: var(--gray2); }
+/* Os interesses que chegaram, no alto da revisao: e a noticia que quem abre a
+   gaveta quer primeiro. */
+.vitrine-interesses {
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--green) 40%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--green) 8%, transparent);
+}
+.vitrine-interesses ul { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.vitrine-interesses li { font-size: 12.5px; color: var(--gray); }
+.vitrine-interesses li p { margin: 3px 0 0; color: var(--black); }
+.vitrine-quando { margin-left: 8px; font-size: 11px; color: var(--gray2); }
+@media (max-width: 720px) {
+  .vitrine-item { flex-direction: column; align-items: flex-start; }
+  .vitrine-campos { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vitrine-item, .vitrine-gente-linha { transition: none; }
+}
+
+/* ── O cartao do profissional, por dentro ────────────────────────────────── */
+.vit-cartao-quem { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+/* Senioridade, tempo, modelo: o que se compara de relance entre um cartao e
+   outro, em etiquetas e nao numa frase corrida. */
+.vit-etiquetas { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.vit-etiquetas li {
+  padding: 2px 9px; border: 1px solid var(--gray3); border-radius: var(--radius-pill);
+  font-size: 11.5px; font-weight: 600; color: var(--gray2);
+}
+/* As tres competencias mais fortes, em cima: e por elas que a comparacao
+   comeca, e o radar inteiro e leitura fina de quem ja gostou. */
+.vit-fortes {
+  display: flex; flex-wrap: wrap; gap: 8px 20px;
+  margin: 0; padding: 10px 12px; list-style: none;
+  border-radius: var(--radius-md); background: var(--gray4);
+}
+.vit-fortes li { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: var(--gray); }
+.vit-texto { display: flex; flex-direction: column; gap: 6px; }
+.vit-abertura { margin: 0; font-size: 14px; line-height: 1.55; color: var(--black); }
+/* O resto do paragrafo, que so aparece com o cartao aberto. */
+.vit-continuacao { color: var(--gray); }
+.vit-itens {
+  display: flex; flex-direction: column; gap: 5px;
+  margin: 8px 0 0; padding: 0 0 0 16px;
+}
+.vit-itens li { font-size: 13px; line-height: 1.5; color: var(--gray); }
+.vit-mais {
+  align-self: flex-start;
+  padding: 0; border: none; background: none;
+  font-family: inherit; font-size: 12.5px; font-weight: 700; color: var(--gray2);
+  cursor: pointer; transition: color var(--transition);
+}
+.vit-mais:hover, .vit-mais:focus-visible { outline: none; color: var(--black); }
+.vit-forcas-bloco { display: flex; flex-direction: column; gap: 6px; }
+/* O acabamento, numa regra so, em tudo que e superficie: o cartao, o campo de
+   busca e a caixa de confirmar. Fica de fora o que nao repousa sobre a folha -
+   as etiquetas e as habilidades, que ja estao sobre o cartao (cristal sobre
+   cristal vira sujeira), e o aviso verde, que tem linguagem de cor propria. */
+.vit-cartao,
+.vit-busca,
+.vit-modal-caixa {
+  background: var(--cristal);
+  border-color: var(--cristal-borda);
+  box-shadow: inset 0 1px 0 var(--cristal-luz),
+    inset 0 -1px 0 var(--cristal-base),
+    var(--cristal-sombra);
+}
+/* A caixa paira, e nao repousa: ela guarda o fio de luz da aresta, mas a sombra
+   e a de quem esta na frente da pagina inteira. */
+.vit-modal-caixa {
+  box-shadow: inset 0 1px 0 var(--cristal-luz),
+    inset 0 -1px 0 var(--cristal-base),
+    var(--shadow-card-hover);
+}
+/* A caixa abre e fecha com animacao, e nao com um corte: o fundo esmaece e ela
+   cresce de leve, porque nao veio da borda. A saida espelha a entrada, e quem
+   a faz rodar e o `useSaidaSuave` - sem ele o React desmonta antes. */
+.vit-modal { animation: fadeIn .14s var(--curva-anti) both; }
+.vit-modal-caixa { animation: scaleIn .16s var(--curva-anti) both; }
+.vit-modal.saindo { animation: fadeOut .18s var(--curva-anti) both; }
+.vit-modal.saindo .vit-modal-caixa { animation: encolhe .18s var(--curva-anti) both; }
+@media (prefers-reduced-motion: reduce) {
+  .vit-mais { transition: none; }
+  .vit-cartao, .vit-busca, .vit-secundario { transition: none; }
+  .vit-modal, .vit-modal-caixa,
+  .vit-modal.saindo, .vit-modal.saindo .vit-modal-caixa { animation: none; }
+}

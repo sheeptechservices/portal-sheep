@@ -163,6 +163,8 @@ export const CATALOGO: PermGrupo[] = [
       { chave: 'talentos:avaliar', label: 'Dar nota de competência' },
       { chave: 'talentos:editar', label: 'Editar e excluir interessados' },
       { chave: 'talentos:analisar', label: 'Analisar vaga com IA' },
+      { chave: 'talentos:vitrine', label: 'Abrir vitrine de profissionais para um cliente',
+        nota: 'A página sem login que mostra os selecionados de uma vaga, sem nome e sem contato.' },
     ],
   },
   {
@@ -437,6 +439,16 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   // Quem gasta com uma analise nova precisa de `talentos:analisar`, que e a
   // permissao que tranca o endpoint proprio da analise.
   analises_vaga: 'talentos:ver',
+  // A vitrine: ver as abertas é ver o banco; abrir, revisar e fechar uma pede a
+  // permissão própria - é o gesto que mostra gente nossa a quem é de fora.
+  vitrines: 'talentos:ver',
+  vitrine: 'talentos:ver',
+  criar_vitrine: 'talentos:vitrine',
+  sincronizar_vitrine: 'talentos:vitrine',
+  salvar_vitrine_perfil: 'talentos:vitrine',
+  remover_vitrine_perfil: 'talentos:vitrine',
+  revogar_vitrine: 'talentos:vitrine',
+  excluir_vitrine: 'talentos:vitrine',
   analise_vaga: 'talentos:ver',
 
   // ── Análise de Crédito ────────────────────────────────────────────────────
