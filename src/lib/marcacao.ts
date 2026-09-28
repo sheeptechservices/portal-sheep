@@ -73,6 +73,22 @@ export function marcasEmHtml(trecho: string): string {
 }
 
 /**
+ * O texto sem as marcas, numa linha só.
+ *
+ * É para onde não cabe formatação nenhuma: a prévia de uma linha no meio de uma
+ * lista, um `title`, um resumo. Mostrar o texto cru ali deixaria os `**` à
+ * vista, e pôr o texto formatado quebraria a altura regular da linha.
+ */
+export function textoSemMarcas(texto: string): string {
+  return String(texto ?? '')
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map(linha => linha.replace(ITEM, '').replace(/\*\*|__|\*/g, '').trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+/**
  * O texto inteiro em HTML de leitura: linhas quebradas com `<br>`, linha em
  * branco como respiro entre blocos, itens seguidos virando uma lista.
  *

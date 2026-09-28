@@ -41,6 +41,8 @@ import {
   ComNegrito, ReuniaoModal, lerAcoes, lerDados, lerTopicos, type TopicoReuniao,
 } from '../components/ReuniaoModal';
 import { EntregaModal } from '../components/EntregaModal';
+import { CampoTexto } from '../components/CampoTexto';
+import { TextoRico } from '../components/TextoRico';
 import type { Transcricao } from '../components/BotaoTranscricao';
 import { Dialogo } from '../components/Dialogo';
 import { dia as fmtData, diaCurto as fmtDataCurta, tamanho as fmtTamanho } from '../lib/datas';
@@ -1688,8 +1690,11 @@ function EditorEntrega({ inicial, pessoas, marcadores, submarcadores, salvando, 
 
       <div className="form-group">
         <label className="form-label">Descritivo</label>
-        <textarea className="form-input" rows={3} value={descricao}
-          onChange={e => setDescricao(e.target.value)}
+        {/* O campo da casa, e não uma textarea crua: o descritivo é lido depois
+            na ficha da entrega e na página do cliente, e texto que será lido
+            merece negrito, itálico e lista - Ctrl+B, Ctrl+I, Ctrl+U e "- ". */}
+        <CampoTexto valor={descricao} onMudar={setDescricao} linhas={3}
+          ariaLabel="Descritivo da entrega"
           placeholder="O que precisa estar pronto para esta entrega ser dada como feita" />
       </div>
 
@@ -2340,9 +2345,9 @@ function SecaoEntregas({
                         )}
 
                         {e.descricao && (
-                          <p style={{ fontSize: 12, color: 'var(--gray)', margin: '8px 0 0', whiteSpace: 'pre-wrap' }}>
-                            {e.descricao}
-                          </p>
+                          <div style={{ marginTop: 8 }}>
+                            <TextoRico texto={e.descricao} className="texto-rico-menor" />
+                          </div>
                         )}
 
                         {e.responsaveis.length > 0 && (
@@ -2537,9 +2542,9 @@ function SecaoEntregas({
                   {e.prazo && <span style={{ fontSize: 11, color: 'var(--gray2)' }}>{fmtData(e.prazo)}</span>}
                 </div>
                 {e.descricao && (
-                  <p style={{ fontSize: 12, color: 'var(--gray)', margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>
-                    {e.descricao}
-                  </p>
+                  <div style={{ marginTop: 4 }}>
+                    <TextoRico texto={e.descricao} className="texto-rico-menor" />
+                  </div>
                 )}
                 <p style={{ fontSize: 11, color: 'var(--gray2)', margin: '6px 0 0' }}>
                   A evidência pode ser anexada depois de o projeto ser criado.

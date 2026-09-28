@@ -19,6 +19,8 @@ import { logoDoCliente } from '../lib/marcas';
 // portal junto, e o filtro fica com o mesmo desenho dos dois lados.
 import FilterDropdown from '../components/FilterDropdown';
 import { PreviaArquivo } from '../components/PreviaArquivo';
+import { TextoRico } from '../components/TextoRico';
+import { textoSemMarcas } from '../lib/marcacao';
 import {
   IconAgrupar, IconCheck, IconChevronRight, IconExternal, IconMarcoAndamento, IconMarcoBloqueado,
   IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado, IconMarcoTriagem, IconMarcoValidado,
@@ -393,7 +395,9 @@ function LinhaEntrega({ e, marca, aberta, realcada, onAlternar, onAbrirPrevia }:
           <span className="pub-seta" aria-hidden="true"><IconChevronRight size={12} /></span>
         )}
         {marca && <span className="pub-marcador">{marca}</span>}
-        {e.descricao && <span className="pub-entrega-desc">{e.descricao}</span>}
+        {/* Na linha fechada, o descritivo entra sem as marcas: ali ele é apoio
+            numa linha só, e formatá-lo quebraria a altura regular da lista. */}
+        {e.descricao && <span className="pub-entrega-desc">{textoSemMarcas(e.descricao)}</span>}
       </span>
       <span className="pub-entrega-fim">
         {fmtData(e.prazo) && <span className="pub-prazo">{fmtData(e.prazo)}</span>}
@@ -416,7 +420,7 @@ function LinhaEntrega({ e, marca, aberta, realcada, onAlternar, onAbrirPrevia }:
           <div>
             <div className="pub-detalhe-corpo">
               {jaAbriu && (<>
-                {e.descricao && <p className="pub-detalhe-desc">{e.descricao}</p>}
+                {e.descricao && <TextoRico texto={e.descricao} className="pub-detalhe-desc" />}
                 {e.evidencias.length > 0 && (
                   <div className="pub-evidencias">
                     <p className="pub-evidencias-titulo">

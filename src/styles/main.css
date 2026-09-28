@@ -5561,6 +5561,9 @@ body.arrastando-painel {
   word-break: break-word;
 }
 .texto-rico p { margin: 0; }
+/* A previa dentro de uma lista - o descritivo da entrega na linha dela: o mesmo
+   texto, um ponto menor, porque ali ele e apoio e nao o conteudo do bloco. */
+.texto-rico.texto-rico-menor { font-size: 12px; }
 .texto-rico strong { font-weight: 700; color: var(--black); }
 .texto-rico u { text-decoration-color: var(--gray2); }
 .texto-rico-lista {
@@ -14937,12 +14940,14 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   padding: 12px 14px 14px 50px;
   border-top: 1px solid var(--gray3);
 }
+/* O descritivo aberto e texto com marcacao: quem monta as linhas e o
+   `TextoRico`, entao aqui nao entra `pre-wrap` - ele abriria vaos que ninguem
+   escreveu. */
 .pub-detalhe-desc {
   margin: 0;
   font-size: 12.5px;
   line-height: 1.6;
   color: var(--gray);
-  white-space: pre-wrap;
   max-width: 72ch;
 }
 
