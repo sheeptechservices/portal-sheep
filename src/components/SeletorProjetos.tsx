@@ -3,8 +3,11 @@
 //
 //  Nasceu quando a tarefa passou a valer para mais de um projeto: a mesma
 //  demanda que serve dois clientes, ou o trabalho da casa que também é de um
-//  projeto. O campo do projeto principal continua sendo um `SelectSistema` - é
-//  dele a entrega -, e este aqui é o "também em".
+//  projeto.
+//
+//  A ordem da escolha é conteúdo, e não enfeite: o primeiro da lista é o
+//  principal - é dele a entrega e a ordem no quadro -, e por isso ele leva a
+//  marca na lista e na pílula. Tirá-lo promove o seguinte.
 //
 //  É o mesmo desenho do seletor de pessoas: um gatilho do tamanho do campo, a
 //  lista num portal, busca a partir de meia dúzia de opções e um item que não
@@ -29,8 +32,9 @@ export interface ProjetoParaEscolher {
 /** A partir de quantos projetos a busca aparece. */
 const BUSCA_A_PARTIR_DE = 6;
 
-export function SeletorProjetos({ projetos, valor, onChange, vazio = 'Nenhum outro projeto' }: {
+export function SeletorProjetos({ projetos, valor, onChange, vazio = 'Escolher projeto' }: {
   projetos: ProjetoParaEscolher[];
+  /** Os escolhidos, na ordem: o primeiro é o principal. */
   valor: string[];
   onChange: (v: string[]) => void;
   vazio?: string;
@@ -69,8 +73,17 @@ export function SeletorProjetos({ projetos, valor, onChange, vazio = 'Nenhum out
           <span style={{ color: 'var(--gray2)' }}>{vazio}</span>
         ) : (
           <span style={{ display: 'flex', flexWrap: 'wrap', gap: 5, minWidth: 0 }}>
-            {escolhidos.map(p => (
-              <span key={p.id} className="chip-projeto">{p.nome}</span>
+            {/* A marca do principal só existe quando há mais de um: com um
+                projeto só, distinguir o principal seria nomear uma diferença
+                que ainda não existe. */}
+            {escolhidos.map((p, i) => (
+              <span key={p.id}
+                className={`chip-projeto${i === 0 && escolhidos.length > 1 ? ' principal' : ''}`}
+                title={i === 0 && escolhidos.length > 1
+                  ? 'Projeto principal: é dele a entrega e a ordem no quadro'
+                  : undefined}>
+                {p.nome}
+              </span>
             ))}
           </span>
         )}
@@ -95,16 +108,20 @@ export function SeletorProjetos({ projetos, valor, onChange, vazio = 'Nenhum out
             </p>
           ) : filtrados.map(p => {
             const ativo = valor.includes(p.id);
+            const principal = valor[0] === p.id && valor.length > 1;
             return (
               <div key={p.id} className={`status-select-option${ativo ? ' active' : ''}`}
                 onClick={() => onChange(ativo ? valor.filter(x => x !== p.id) : [...valor, p.id])}>
                 <span style={{ minWidth: 0, overflow: 'hidden' }}>
                   <span style={{ display: 'block', overflow: 'hidden',
                     textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nome}</span>
-                  {p.cliente && (
+                  {/* Com dois ou mais escolhidos, o primeiro se anuncia: é ele
+                      que responde de onde vem a entrega. Com um só, dizê-lo
+                      seria nomear uma distinção que não existe ainda. */}
+                  {(principal || p.cliente) && (
                     <span style={{ display: 'block', fontSize: 10.5, color: 'var(--gray2)',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {p.cliente}
+                      {principal ? `Principal · ${p.cliente ?? ''}`.trim().replace(/ ·$/, '') : p.cliente}
                     </span>
                   )}
                 </span>

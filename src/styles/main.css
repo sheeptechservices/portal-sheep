@@ -5583,13 +5583,16 @@ body.arrastando-painel {
   flex-shrink: 0;
 }
 
-/* A pilula de um projeto escolhido, no campo "Também em" da tarefa. Mesma
+/* A pilula de um projeto escolhido no campo de projetos da tarefa. Mesma
    moldura das etiquetas: e uma marca, e nao um estado. */
 .chip-projeto {
   display: inline-flex; align-items: center;
   padding: 2px 9px; border-radius: var(--radius-pill);
   background: var(--gray4); font-size: 11.5px; font-weight: 600; color: var(--gray);
 }
+/* O principal e o primeiro da lista, e a pilula dele e a unica escura: e dele
+   a entrega e a ordem no quadro, e quem le precisa ver qual e sem abrir. */
+.chip-projeto.principal { background: var(--gray3); color: var(--black); }
 
 .texto-rico p { margin: 0; }
 /* A previa dentro de uma lista - o descritivo da entrega na linha dela: o mesmo

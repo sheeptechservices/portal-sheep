@@ -854,6 +854,9 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
 }) {
   const set = <K extends keyof Rascunho>(k: K, v: Rascunho[K]) => onMudar({ ...rascunho, [k]: v });
   const projeto = projetos.find(p => p.id === rascunho.projeto_id);
+  /** Os projetos da tarefa, com o principal na frente. É o valor do campo de
+   *  escolha múltipla, e a ordem dele é que diz qual é o principal. */
+  const escolhidos = [rascunho.projeto_id, ...(rascunho.projetos ?? [])].filter(Boolean);
   /** O rascunho de agora, para o que termina depois de uma ida ao servidor não
    *  gravar por cima do que se digitou enquanto ela ia e voltava. */
   const rascunhoVivo = useRef(rascunho);
@@ -1251,36 +1254,34 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
               esticava a coluna para fora do modal. */}
           <div className="campos-2" style={{ display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+            {/* Um campo só, de escolha múltipla: a tarefa que serve mais de um
+                projeto aparece no quadro de cada um deles.
+
+                O primeiro escolhido é o principal - é dele a entrega, a ordem
+                no quadro e a contagem do progresso -, e por isso ele leva a
+                marca na lista. Tirar o principal promove o seguinte, e a
+                entrega, que era do projeto que saiu, se desfaz junto: entrega
+                de um projeto pendurada em tarefa de outro sujaria o progresso
+                de uma entrega que não é dela. */}
             <div className="form-group" style={{ minWidth: 0 }}>
-              <label className="form-label">Projeto *</label>
-              <SelectSistema
-                valor={rascunho.projeto_id}
-                onChange={v => onMudar({
-                  ...rascunho, projeto_id: v, entrega_id: '',
-                  // O novo principal sai da lista dos outros: ele já está lá
-                  // como principal, e aparecer duas vezes leria como dois.
-                  projetos: (rascunho.projetos ?? []).filter(x => x !== v),
-                })}
-                placeholder="Escolher projeto"
-                // O cliente embaixo do nome: dois projetos chamados "SDR IA" só
-                // se distinguem por ele, e a busca do seletor alcança essa linha.
-                opcoes={projetos.map(p => ({
-                  valor: p.id, label: p.nome,
-                  descricao: p.id === PROJETO_GERAL ? 'Demandas da casa' : p.cliente_nome ?? 'Sem cliente',
-                }))}
-              />
-            </div>
-            {/* A tarefa que serve mais de um projeto aparece no quadro de cada
-                um deles. O principal fica de fora desta lista: ele é o campo
-                acima, e é dele a entrega. */}
-            <div className="form-group" style={{ minWidth: 0 }}>
-              <label className="form-label">Também em</label>
+              <label className="form-label">
+                {escolhidos.length > 1 ? 'Projetos *' : 'Projeto *'}
+              </label>
               <SeletorProjetos
-                projetos={projetos
-                  .filter(p => p.id !== rascunho.projeto_id)
-                  .map(p => ({ id: p.id, nome: p.nome, cliente: p.cliente_nome }))}
-                valor={rascunho.projetos ?? []}
-                onChange={v => set('projetos', v)} />
+                projetos={projetos.map(p => ({
+                  id: p.id, nome: p.nome,
+                  // O cliente embaixo do nome: dois projetos chamados "SDR IA"
+                  // só se distinguem por ele, e a busca alcança essa linha.
+                  cliente: p.id === PROJETO_GERAL ? 'Demandas da casa' : p.cliente_nome ?? 'Sem cliente',
+                }))}
+                valor={escolhidos}
+                vazio="Escolher projeto"
+                onChange={v => onMudar({
+                  ...rascunho,
+                  projeto_id: v[0] ?? '',
+                  projetos: v.slice(1),
+                  entrega_id: (v[0] ?? '') === rascunho.projeto_id ? rascunho.entrega_id : '',
+                })} />
             </div>
             <div className="form-group" style={{ minWidth: 0 }}>
               <label className="form-label">Entrega</label>
