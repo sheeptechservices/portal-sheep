@@ -391,7 +391,13 @@ function ListaDeObjetivos({ dados, pessoas, onIr, onAtualizar, onDesdobrar, onPr
   const jaAbertas = useRef(new Set<string>());
   const chaveDe = (o: MeuObjetivo) => `${o.projeto_id}:${o.id}`;
 
-  useEffect(() => { onPrender?.(!!editando || !!concluindo); }, [editando, concluindo]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** A lista de status de alguma linha está aberta. Ela nasce num portal, então
+   *  o clique nela é "fora" do balão: sem prender, escolher um status fazia o
+   *  balão sumir antes de a escolha chegar. */
+  const [statusAberto, setStatusAberto] = useState(false);
+  useEffect(() => {
+    onPrender?.(!!editando || !!concluindo || statusAberto);
+  }, [editando, concluindo, statusAberto]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const alternarFamilia = (chave: string) => setAbertas(atual => {
     const nova = new Set(atual);
@@ -476,6 +482,7 @@ function ListaDeObjetivos({ dados, pessoas, onIr, onAtualizar, onDesdobrar, onPr
         <span className="objetivos-marca">
           <MarcoDeStatus status={statusDoObjetivo(o)} opcoes={OPCOES_DO_OBJETIVO}
             cores={COR_OBJETIVO} icones={ICONE_OBJETIVO} nome={`Status de "${o.texto}"`}
+            onAlternar={setStatusAberto}
             onEscolher={v => {
               const s = v as StatusDoObjetivo;
               if (s === statusDoObjetivo(o)) return;

@@ -22,7 +22,9 @@ export interface OpcaoDoMarco {
   nota?: string;
 }
 
-export function MarcoDeStatus({ status, opcoes, cores, icones, nome, somenteLeitura, desabilitado, onEscolher }: {
+export function MarcoDeStatus({
+  status, opcoes, cores, icones, nome, somenteLeitura, desabilitado, onEscolher, onAlternar,
+}: {
   status: string;
   opcoes: OpcaoDoMarco[];
   cores: Record<string, string>;
@@ -34,6 +36,15 @@ export function MarcoDeStatus({ status, opcoes, cores, icones, nome, somenteLeit
   /** A lista não abre - a linha ainda não tem o que marcar. */
   desabilitado?: boolean;
   onEscolher?: (v: string) => void;
+  /**
+   * A lista abriu ou fechou.
+   *
+   * Serve a quem mora dentro de outra coisa que fecha por clique fora - o balão
+   * dos objetivos, por exemplo. A lista nasce num portal, no `body`, então o
+   * clique nela é "fora" para quem a abriga: sem este aviso, escolher um status
+   * fazia o balão inteiro sumir antes de a escolha chegar.
+   */
+  onAlternar?: (aberto: boolean) => void;
 }) {
   const [aberto, setAberto] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
@@ -42,11 +53,15 @@ export function MarcoDeStatus({ status, opcoes, cores, icones, nome, somenteLeit
   const Icone = icones[status] ?? Object.values(icones)[0];
   const cor = { '--mc': cores[status] ?? 'var(--gray2)' } as CSSProperties;
 
-  function abrir() {
-    setPos(ancorar(triggerRef.current!, opcoes.length, 200));
-    setAberto(a => !a);
+  function alternar(v: boolean) {
+    setAberto(v);
+    onAlternar?.(v);
   }
-  useDropdownDismiss(aberto, [triggerRef, dropRef], () => setAberto(false));
+  function abrir() {
+    if (!aberto) setPos(ancorar(triggerRef.current!, opcoes.length, 200));
+    alternar(!aberto);
+  }
+  useDropdownDismiss(aberto, [triggerRef, dropRef], () => alternar(false));
 
   if (somenteLeitura) {
     return (
@@ -72,7 +87,7 @@ export function MarcoDeStatus({ status, opcoes, cores, icones, nome, somenteLeit
             return (
               <div key={op.valor} role="option" aria-selected={op.valor === status}
                 className={`status-select-option${op.valor === status ? ' active' : ''}`}
-                onClick={() => { setAberto(false); onEscolher?.(op.valor); }}>
+                onClick={() => { alternar(false); onEscolher?.(op.valor); }}>
                 <span className="marco-bolha" style={{ '--mc': cores[op.valor] } as CSSProperties}>
                   <Desenho size={14} />
                 </span>
