@@ -32,6 +32,7 @@ import {
   type StatusDoObjetivo,
 } from '../lib/statusDoObjetivo';
 import { DESCRICAO_PAPEL, PAPEIS_EQUIPE, porNivelDeContato } from '../lib/papeisDeEquipe';
+import { equipeDePartida } from '../lib/equipeDePartida';
 import { SkeletonCards, SkeletonTabela } from '../components/Skeleton';
 import { CartaoKpi, CartoesKpiEsqueleto } from '../components/CartaoKpi';
 import { Abas, AbaPainel } from '../components/Abas';
@@ -437,18 +438,18 @@ function entregasDePartida(): EntregaPendente[] {
 export const NOME_PADRAO = 'Sem título';
 
 /** O rascunho de um projeto recém-nascido. Só entra aqui o que é verdade sem
- *  perguntar a ninguém: quem clicou é o gestor, e os ritos da casa são os
- *  mesmos de sempre. Cliente, tipo e datas ficam vazios de propósito - chutá-los
- *  poria no quadro de todo mundo um projeto dizendo coisas que ninguém decidiu.
+ *  perguntar a ninguém: a equipe de sempre e os ritos da casa. Cliente, tipo e
+ *  datas ficam vazios de propósito - chutá-los poria no quadro de todo mundo um
+ *  projeto dizendo coisas que ninguém decidiu.
  *
  *  O formulário abre exatamente com isto, e é isto que vai para o banco no
  *  clique: se os dois divergissem, a primeira gravação automática devolveria
  *  campos vazios por cima do que acabou de ser criado. */
-function rascunhoDePartida(usuarioId?: string): Rascunho {
+function rascunhoDePartida(usuarioId?: string, pessoas: Pessoa[] = []): Rascunho {
   return {
     ...VAZIO,
     nome: NOME_PADRAO,
-    equipe: usuarioId ? [{ usuario_id: usuarioId, papel: 'Gestor' }] : [],
+    equipe: equipeDePartida(pessoas, usuarioId),
     entregas: entregasDePartida(),
   };
 }
@@ -6701,7 +6702,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
    *  há mais "Criar projeto": esperar a ida ao servidor para só então mostrar o
    *  formulário é o que fazia a criação parecer lenta. */
   function novoProjeto() {
-    const base = rascunhoDePartida(usuario?.id);
+    const base = rascunhoDePartida(usuario?.id, pessoas);
     setForm({ editando: null, base });
     const promessa = api('', 'POST', { action: 'create_projeto', ...base }).then(r => {
       if (r?.error) { toast('error', 'Não foi possível criar', r.error); return null; }
