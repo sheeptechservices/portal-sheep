@@ -38,7 +38,7 @@ import { diaCurto as fmtDataCurta } from '../lib/datas';
 export { ConfirmarExclusao } from '../components/Dialogo';
 import { DESCRICAO_PRIORIDADE, ICONE_PRIORIDADE, PRIORIDADES } from '../lib/prioridades';
 import {
-  COMPLEXIDADES, COR_COMPLEXIDADE, DESCRICAO_COMPLEXIDADE,
+  COMPLEXIDADES, DESCRICAO_COMPLEXIDADE, ICONE_COMPLEXIDADE,
 } from '../lib/complexidades';
 import type { Entrega, Projeto, Reuniao, Tarefa } from './ProjetosPage';
 import { PROJETO_GERAL } from '../lib/projetoGeral';
@@ -1330,12 +1330,17 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
               <SelectSistema valor={rascunho.complexidade ?? ''}
                 onChange={v => set('complexidade', v)}
                 opcoes={[
-                  { valor: '', label: 'Sem complexidade' },
+                  // O vazio leva um espaçador do tamanho do ícone: sem ele, o
+                  // texto desta linha começa antes do das outras, e a coluna de
+                  // nomes sai torta.
+                  {
+                    valor: '', label: 'Sem complexidade',
+                    icone: <span aria-hidden="true" style={{ width: 15, display: 'inline-block' }} />,
+                  },
                   ...COMPLEXIDADES.map(x => ({
                     valor: x as string,
                     label: x,
-                    icone: <span className="bolha-complexidade"
-                      style={{ background: COR_COMPLEXIDADE[x] }} />,
+                    icone: ICONE_COMPLEXIDADE[x]?.({ size: 15 }),
                     descricao: DESCRICAO_COMPLEXIDADE[x],
                   })),
                 ]} />

@@ -36,7 +36,7 @@ import type { Projeto, Tarefa } from './ProjetosPage';
 import {
   COR_PRIORIDADE, ICONE_PRIORIDADE, PRIORIDADES, PRIORIDADE_PADRAO, porUrgencia,
 } from '../lib/prioridades';
-import { COMPLEXIDADES, COR_COMPLEXIDADE } from '../lib/complexidades';
+import { COMPLEXIDADES, ICONE_COMPLEXIDADE } from '../lib/complexidades';
 // O formulário e o vocabulário de tarefa moram fora desta tela: o relatório de
 // Gestão abre o mesmo modal, e duas cópias divergiriam no primeiro campo novo.
 import {
@@ -248,15 +248,15 @@ function Prazo({ iso, concluida }: { iso: string | null; concluida: boolean }) {
   );
 }
 
-/** A complexidade na linha: a bolha da cor e a palavra. Some quando ninguém
- *  dimensionou a tarefa - um "sem complexidade" em cada card seria uma coluna
- *  de nada. */
+/** A complexidade na linha: o caminho em degraus, na cor do nível, e a palavra.
+ *  Some quando ninguém dimensionou a tarefa - um "sem complexidade" em cada card
+ *  seria uma coluna de nada. */
 function Complexidade({ valor }: { valor?: string | null }) {
-  const cor = COR_COMPLEXIDADE[String(valor ?? '')];
-  if (!cor) return null;
+  const Icone = ICONE_COMPLEXIDADE[String(valor ?? '')];
+  if (!Icone) return null;
   return (
     <span className="chip-complexidade" title={`Complexidade: ${valor}`}>
-      <span className="bolha-complexidade" style={{ background: cor }} />
+      <Icone size={13} />
       {valor}
     </span>
   );

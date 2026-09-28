@@ -392,6 +392,32 @@ export function IconPrioridadeMaxima({ size = 14 }: { size?: number }) {
     </Ico>
   );
 }
+// Complexidade, em degraus: quanto se tem de subir para chegar do lado esquerdo
+// ao direito. O caminho é sempre o mesmo traço, e o que muda é quantas vezes ele
+// sobe - reto é direto ao ponto, três degraus é muita parte a resolver.
+//
+// Degraus, e não mais barras: a prioridade já são barras, e dois conjuntos de
+// barras lado a lado no mesmo card se confundem de relance.
+function Degraus({ size, degraus }: { size: number; degraus: 0 | 1 | 3 }) {
+  const caminho = degraus === 0
+    ? 'M3.5 17h17'
+    : degraus === 1
+      ? 'M3.5 17.5h6.5v-5.5h10.5'
+      : 'M3 19.5h4.5V15H12v-4.5h4.5V6H21';
+  return <Ico size={size} traco={2}><path d={caminho} /></Ico>;
+}
+// Direto ao ponto: o caminho não sobe.
+export function IconComplexidadeSimples({ size = 14 }: { size?: number }) {
+  return <Degraus size={size} degraus={0} />;
+}
+// Um degrau: o caminho é conhecido, com uma coisa a resolver no meio.
+export function IconComplexidadeModerada({ size = 14 }: { size?: number }) {
+  return <Degraus size={size} degraus={1} />;
+}
+// Três degraus: muita parte, e cada uma pede a anterior de pé.
+export function IconComplexidadeDificil({ size = 14 }: { size?: number }) {
+  return <Degraus size={size} degraus={3} />;
+}
 // Marcos de entrega. Todos partem do mesmo círculo e mudam só por dentro: no
 // tamanho em que aparecem na lista, silhuetas diferentes viram borrão, e o que
 // distingue os estados precisa caber no miolo.

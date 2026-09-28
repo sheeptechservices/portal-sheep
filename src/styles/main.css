@@ -5560,7 +5560,8 @@ body.arrastando-painel {
      ninguem escreveu. */
   word-break: break-word;
 }
-/* A complexidade da tarefa: a bolha da cor e a palavra, em pilula de contorno.
+/* A complexidade da tarefa: o caminho em degraus, na cor do nivel, e a palavra,
+   em pilula de contorno.
    Contorno e nao preenchimento - a etiqueta ao lado ja e um bloco de cor, e
    duas pilulas cheias na mesma linha brigariam entre si. */
 .chip-complexidade {
@@ -5576,13 +5577,6 @@ body.arrastando-painel {
   color: var(--gray);
   white-space: nowrap;
 }
-.bolha-complexidade {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
 /* A pilula de um projeto escolhido no campo de projetos da tarefa. Mesma
    moldura das etiquetas: e uma marca, e nao um estado. */
 .chip-projeto {
