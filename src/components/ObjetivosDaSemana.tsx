@@ -24,8 +24,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  IconAlfinete, IconCheck, IconClip, IconEdit, IconRamificar, IconTarget, IconUpload,
-  IconX,
+  IconAlfinete, IconCheck, IconClip, IconEdit, IconRamificar, IconTarget, IconX,
 } from './icons';
 import { DatePicker } from './DatePicker';
 import { SeletorPessoas } from './SeletorPessoas';
@@ -34,15 +33,14 @@ import { LogoDoCliente } from './LogoDoCliente';
 import { AlternarDesejavel, ChipDesejavel } from './ChipDesejavel';
 import { AcaoDoObjetivo, ICONE_DA_ACAO } from './AcaoDoObjetivo';
 import { MarcoDeStatus } from './MarcoDeStatus';
+import { CaixaDaProva } from './CaixaDaProva';
 import { diaEMes, segundaDaData, sextaDaSemana } from '../lib/semanaDoObjetivo';
 import {
   COR_OBJETIVO, ICONE_OBJETIVO, OPCOES_DO_OBJETIVO, marcasDoStatus, statusDoObjetivo,
   type StatusDoObjetivo,
 } from '../lib/statusDoObjetivo';
-import { Dialogo } from './Dialogo';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { ancorarCaixa } from '../lib/ancorar';
-import { arquivosColados } from '../lib/colarArquivos';
 import { useToast } from '../lib/toast';
 
 export interface MeuObjetivo {
@@ -118,8 +116,6 @@ export interface MudancaDeObjetivo {
   provas?: File[];
 }
 
-/** O teto de uma prova: o mesmo do anexo de comentário, e o do servidor. */
-const LIMITE_DE_PROVA = 8 * 1024 * 1024;
 
 export interface ObjetivosCarregados {
   objetivos: MeuObjetivo[] | null;
@@ -256,103 +252,6 @@ function Topo({ dados, fixado, onAlfinete }: {
         </button>}
       </span>
     </div>
-  );
-}
-
-/** O tamanho de um arquivo, para quem lê. */
-function tamanhoLegivel(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1).replace('.', ',')} MB`;
-}
-
-/**
- * A caixa que marca como feito. A prova é opcional: quem tem o print anexa
- * ali mesmo, e quem não tem marca do mesmo jeito. Um print entra arrastado,
- * escolhido ou colado com Ctrl+V - a colagem é ouvida na janela inteira,
- * porque o foco raramente está onde se imagina.
- */
-function CaixaDaProva({ objetivo, onFechar, onConfirmar }: {
-  objetivo: MeuObjetivo;
-  onFechar: () => void;
-  onConfirmar: (arquivos: File[]) => void;
-}) {
-  const [arquivos, setArquivos] = useState<File[]>([]);
-  const [erro, setErro] = useState('');
-  const [arrastando, setArrastando] = useState(false);
-  const entrada = useRef<HTMLInputElement>(null);
-  // O `Dialogo` confirma depois da animação de saída; o que foi escolhido vai
-  // por aqui, e não pelo estado de quando o clique aconteceu.
-  const escolhidos = useRef<File[]>([]);
-  escolhidos.current = arquivos;
-
-  const somar = useCallback((lista: File[]) => {
-    const grandes = lista.filter(f => f.size > LIMITE_DE_PROVA);
-    const cabem = lista.filter(f => f.size <= LIMITE_DE_PROVA);
-    setErro(grandes.length
-      ? `"${grandes[0].name}" passa de 8 MB. Mande um recorte ou um arquivo menor.`
-      : '');
-    if (cabem.length) setArquivos(a => [...a, ...cabem].slice(0, 5));
-  }, []);
-
-  useEffect(() => {
-    const colar = (e: ClipboardEvent) => {
-      const colados = arquivosColados(e.clipboardData);
-      if (!colados.length) return;
-      e.preventDefault();
-      somar(colados);
-    };
-    window.addEventListener('paste', colar);
-    return () => window.removeEventListener('paste', colar);
-  }, [somar]);
-
-  return (
-    <Dialogo
-      titulo="Marcar como feito"
-      descricao={<>Se tiver, anexe a evidência de que <strong>{objetivo.texto}</strong> foi cumprido.</>}
-      rotuloOk="Marcar como feito"
-      perigo={false}
-      zIndex={10060}
-      largura={440}
-      onFechar={onFechar}
-      onConfirmar={() => onConfirmar(escolhidos.current)}
-    >
-      <div className="objetivos-prova">
-      <div
-        className={`objetivos-prova-area${arrastando ? ' arrastando' : ''}`}
-        role="button" tabIndex={0}
-        onClick={() => entrada.current?.click()}
-        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); entrada.current?.click(); } }}
-        onDragOver={e => { e.preventDefault(); setArrastando(true); }}
-        onDragLeave={() => setArrastando(false)}
-        onDrop={e => {
-          e.preventDefault();
-          setArrastando(false);
-          somar([...(e.dataTransfer?.files ?? [])]);
-        }}>
-        <IconUpload size={18} />
-        <b>Anexe a evidência <span className="objetivos-prova-opcional">(opcional)</span></b>
-        <span>Arraste, cole um print com Ctrl+V ou clique para escolher</span>
-      </div>
-      <input ref={entrada} type="file" multiple hidden
-        onChange={e => { somar([...(e.target.files ?? [])]); e.target.value = ''; }} />
-      {arquivos.length > 0 && (
-        <ul className="objetivos-prova-arquivos lista-anima" key={arquivos.map(f => f.name).join('|')}>
-          {arquivos.map((f, i) => (
-            <li key={`${f.name}-${i}`}>
-              <IconClip size={12} />
-              <span className="objetivos-prova-nome" title={f.name}>{f.name}</span>
-              <span className="objetivos-prova-tamanho">{tamanhoLegivel(f.size)}</span>
-              <button type="button" className="objetivos-prova-tirar" aria-label={`Tirar ${f.name}`}
-                onClick={() => setArquivos(a => a.filter((_, k) => k !== i))}>
-                <IconX size={11} />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {erro && <p className="objetivos-prova-erro surge">{erro}</p>}
-      </div>
-    </Dialogo>
   );
 }
 
@@ -751,7 +650,7 @@ function ListaDeObjetivos({ dados, pessoas, onIr, onAtualizar, onDesdobrar, onPr
       </div>
 
       {concluindo && (
-        <CaixaDaProva objetivo={concluindo}
+        <CaixaDaProva texto={concluindo.texto}
           onFechar={() => setConcluindo(null)}
           onConfirmar={arquivos => {
             const o = concluindo;

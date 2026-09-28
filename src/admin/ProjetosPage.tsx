@@ -24,6 +24,7 @@ import { LogoDoCliente } from '../components/LogoDoCliente';
 import { AlternarDesejavel, ChipDesejavel } from '../components/ChipDesejavel';
 import { AcaoDoObjetivo, ICONE_DA_ACAO } from '../components/AcaoDoObjetivo';
 import { MarcoDeStatus } from '../components/MarcoDeStatus';
+import { CaixaDaProva } from '../components/CaixaDaProva';
 import {
   SemanaDaPlanningCtx, diaEMes, segundaDaData, sextaDaSemana, type ObjetivoLevado,
 } from '../lib/semanaDoObjetivo';
@@ -3521,6 +3522,11 @@ function ObjetivosDaPlanning({ projetoId, valores, placeholder, somenteLeitura, 
   const linhaDoAnexo = useRef<string | null>(null);
   const provasDe = (objetivoId: string) =>
     (provas?.lista ?? []).filter(e => e.objetivo_id === objetivoId);
+  /** O objetivo que está sendo marcado como feito, enquanto a caixa da prova
+   *  está aberta. É a mesma caixa do balão de objetivos: marcar aqui e marcar
+   *  lá é o mesmo gesto, e pedir a prova num lugar só faria a Planning parecer
+   *  o caminho de quem não quer anexar nada. */
+  const [concluindo, setConcluindo] = useState<{ i: number; objetivo: ObjetivoDaSemana } | null>(null);
   /** A linha que acabou de nascer, para o foco ir até ela depois da pintura. */
   const nova = useRef<number | null>(null);
   /** A linha levada pelo punho, e onde ela vai cair. */
@@ -3778,7 +3784,14 @@ function ObjetivosDaPlanning({ projetoId, valores, placeholder, somenteLeitura, 
           <MarcoDeStatus status={statusDoObjetivo(v)} opcoes={OPCOES_DO_OBJETIVO}
             cores={COR_OBJETIVO} icones={ICONE_OBJETIVO} nome="Status do objetivo"
             desabilitado={v.texto.trim() === ''}
-            onEscolher={s => trocar(i, marcasDoStatus(s as StatusDoObjetivo))} />
+            onEscolher={s => {
+              const status = s as StatusDoObjetivo;
+              if (status === statusDoObjetivo(v)) return;
+              // Feito passa pela caixa, que aceita uma prova; fazer e fazendo
+              // mudam direto, e voltar de feito também - a prova anexada fica.
+              if (status === 'Feito' && provas) { setConcluindo({ i, objetivo: v }); return; }
+              trocar(i, marcasDoStatus(status));
+            }} />
           <input
             ref={el => { campos.current[i] = el; }}
             className="pl-linha-campo"
@@ -3900,6 +3913,17 @@ function ObjetivosDaPlanning({ projetoId, valores, placeholder, somenteLeitura, 
             e.target.value = '';
             linhaDoAnexo.current = null;
             if (linha && escolhidos.length) provas.anexar(linha, escolhidos);
+          }} />
+      )}
+
+      {concluindo && (
+        <CaixaDaProva texto={concluindo.objetivo.texto}
+          onFechar={() => setConcluindo(null)}
+          onConfirmar={arquivos => {
+            const { i, objetivo } = concluindo;
+            setConcluindo(null);
+            trocar(i, marcasDoStatus('Feito'));
+            if (arquivos.length) provas?.anexar(objetivo.id, arquivos);
           }} />
       )}
     </div>
