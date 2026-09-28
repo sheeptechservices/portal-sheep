@@ -7320,6 +7320,32 @@ function faltaEmProjeto(p: any): string | null {
       return { status: 200, body: { ok: true } };
     }
 
+    /**
+     * A ordem dos passos, depois de alguém arrastar um deles.
+     *
+     * Vem a lista inteira de ids, na ordem nova, e não "o passo X foi para a
+     * posição 3": com a lista, a gravação é uma foto do que está na tela, e dois
+     * arrastos seguidos não podem se atropelar. Id que não é daquela tarefa é
+     * simplesmente ignorado - a ordem é dos passos dela.
+     */
+    if (action === 'reordenar_tarefa_subtarefas') {
+      const tarefaId = Number(body?.tarefa_id);
+      if (!Number.isFinite(tarefaId)) return { status: 400, body: { error: 'tarefa_id ausente.' } };
+      { const barrado = await guardaDaEquipe(db, usuario, tarefaId, 'tarefa'); if (barrado) return barrado; }
+      const pedidos = (Array.isArray(body?.ids) ? body.ids : []).map(Number).filter(Number.isFinite);
+      if (!pedidos.length) return { status: 400, body: { error: 'Nenhum passo para ordenar.' } };
+      const daTarefa = new Set((await db.execute({
+        sql: 'SELECT id FROM tarefa_subtarefas WHERE tarefa_id = ?', args: [tarefaId],
+      })).rows.map(r => Number(r.id)));
+      const ordenados = [...new Set(pedidos as number[])].filter(id => daTarefa.has(id));
+      if (!ordenados.length) return { status: 400, body: { error: 'Nenhum passo desta tarefa.' } };
+      await db.batch(ordenados.map((id, i) => ({
+        sql: 'UPDATE tarefa_subtarefas SET ordem = ? WHERE id = ? AND tarefa_id = ?',
+        args: [i, id, tarefaId] as never[],
+      })));
+      return { status: 200, body: { ok: true } };
+    }
+
     if (action === 'excluir_tarefa_subtarefa') {
       const id = Number(body?.id);
       const alvo = await db.execute({

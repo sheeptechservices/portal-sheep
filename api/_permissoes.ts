@@ -249,6 +249,7 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   add_tarefa_subtarefa: 'tarefas:editar',
   atualizar_tarefa_subtarefa: 'tarefas:editar',
   excluir_tarefa_subtarefa: 'tarefas:editar',
+  reordenar_tarefa_subtarefas: 'tarefas:editar',
   tarefa_etiqueta_uso: 'configuracoes:etapas',
   create_tarefa_etiqueta: 'configuracoes:etapas',
   update_tarefa_etiqueta: 'configuracoes:etapas',

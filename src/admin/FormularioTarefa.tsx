@@ -13,8 +13,8 @@ import { AtividadeDaTarefa } from './AtividadeDaTarefa';
 import { createPortal } from 'react-dom';
 import { iniciais, useToast } from './AdminApp';
 import {
-  IconAlert, IconCheck, IconChevronDown, IconClipboard, IconDuplicar, IconLink, IconPlus,
-  IconSpinner, IconTrash, IconUser, IconX,
+  IconAlert, IconArrastar, IconCheck, IconChevronDown, IconClipboard, IconDuplicar, IconLink,
+  IconPlus, IconSpinner, IconTrash, IconUser, IconX,
 } from '../components/icons';
 import { SelectSistema } from '../components/SelectSistema';
 import { SeletorPessoas } from '../components/SeletorPessoas';
@@ -25,6 +25,7 @@ import { ancorar } from '../lib/ancorar';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { TextoRico } from '../components/TextoRico';
 import { SeletorProjetos } from '../components/SeletorProjetos';
+import { mesmaOrdem, moverNaLista } from '../lib/reordenar';
 import { EditorRico } from '../components/EditorRico';
 import { ChipReuniao } from '../components/VinculoReuniao';
 import { ReuniaoModal } from '../components/ReuniaoModal';
@@ -397,6 +398,35 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
     nascendo.current.set(chave, promessa);
   }
 
+  /**
+   * O passo que está sendo arrastado e onde ele cairia.
+   *
+   * A ordem muda na tela no momento em que se solta, e a gravação vai por
+   * baixo com a lista inteira de ids: é uma foto do que ficou, e não "o passo X
+   * desceu uma linha" - dois arrastos seguidos se atropelariam.
+   */
+  const [arrastando, setArrastando] = useState<number | null>(null);
+  const [alvo, setAlvo] = useState<{ i: number; lado: 'antes' | 'depois' } | null>(null);
+
+  function soltar(destino: number) {
+    const origem = arrastando;
+    const lado = alvo?.lado ?? 'antes';
+    setArrastando(null);
+    setAlvo(null);
+    if (origem == null || origem === destino) return;
+    const novos = moverNaLista(itens, origem, destino, lado);
+    if (mesmaOrdem(novos, itens)) return;
+    aplicar(novos, async () => {
+      const ids = await Promise.all(novos.map(idDoPasso));
+      // Um passo escrito há instantes ainda pode não ter id. Recusar aqui
+      // devolve a lista à ordem de antes, em vez de gravar uma ordem furada.
+      if (ids.some(id => !id)) return { error: 'Um passo ainda está sendo gravado. Tente de novo.' };
+      return api!('', 'POST', {
+        action: 'reordenar_tarefa_subtarefas', tarefa_id: tarefaId, ids,
+      });
+    });
+  }
+
   const feitas = itens.filter(i => Number(i.feita) === 1).length;
 
   return (
@@ -410,9 +440,38 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
 
       {itens.length > 0 && (
         <div className="checklist">
-          {itens.map((item, i) => (
+          {itens.map((item, i) => {
+            // Arrastar sai do caminho de quem está escrevendo: com o campo
+            // aberto, selecionar o texto com o mouse viraria um arrasto.
+            const podeArrastar = !desabilitado && reescrevendo !== i;
+            return (
             <div key={item.id ?? `novo-${i}`}
-              className={`checklist-item${Number(item.feita) === 1 ? ' feito' : ''}`}>
+              className={`checklist-item${Number(item.feita) === 1 ? ' feito' : ''}`
+                + `${arrastando === i ? ' arrastando' : ''}`
+                + `${alvo?.i === i && arrastando !== i ? ` solta-${alvo.lado}` : ''}`}
+              draggable={podeArrastar}
+              onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; setArrastando(i); }}
+              onDragEnd={() => { setArrastando(null); setAlvo(null); }}
+              onDragOver={e => {
+                if (arrastando === null) return;
+                e.preventDefault();
+                const r = e.currentTarget.getBoundingClientRect();
+                setAlvo({ i, lado: e.clientY < r.top + r.height / 2 ? 'antes' : 'depois' });
+              }}
+              onDragLeave={e => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                  setAlvo(a => (a?.i === i ? null : a));
+                }
+              }}
+              onDrop={e => { e.preventDefault(); soltar(i); }}>
+              {/* O punho aparece na linha sob o cursor, como o "x" de tirar: ele
+                  diz que a linha se arrasta, sem pôr seis pontos em cada passo
+                  de uma lista parada. */}
+              {podeArrastar && (
+                <span className="checklist-punho" aria-hidden="true" title="Arraste para reordenar">
+                  <IconArrastar size={12} />
+                </span>
+              )}
               {/* A marca ficou sozinha no rótulo: com o texto dentro dele,
                   clicar na palavra marcava o passo, e é justamente ali que
                   agora se clica para reescrever. */}
@@ -470,7 +529,8 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
                 </button>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

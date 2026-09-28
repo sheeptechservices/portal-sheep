@@ -5669,6 +5669,31 @@ body.arrastando-painel {
   transition: background var(--transition);
 }
 .checklist-item:hover { background: var(--gray4); }
+/* Arrastando, a linha fica meio apagada: ela saiu do lugar, e mostra-la inteira
+   no ponto antigo faria parecer que nada esta acontecendo. */
+.checklist-item.arrastando { opacity: .45; }
+/* Onde ela cai: um fio na aresta de cima ou de baixo da linha sob o cursor, o
+   mesmo sinal das etapas do funil. */
+.checklist-item.solta-antes { box-shadow: inset 0 2px 0 0 var(--yellow); }
+.checklist-item.solta-depois { box-shadow: inset 0 -2px 0 0 var(--yellow); }
+/* O punho so aparece na linha sob o cursor, como o "x" de tirar: seis pontos em
+   cada passo de uma lista parada pesariam mais que o que esta escrito. */
+.checklist-punho {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  margin-top: 2px;
+  color: var(--gray3);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity var(--transition), color var(--transition);
+}
+.checklist-item:hover .checklist-punho { opacity: 1; }
+.checklist-punho:hover { color: var(--gray2); }
+.checklist-item.arrastando .checklist-punho { cursor: grabbing; opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .checklist-punho { transition: none; }
+}
 .checklist-marca {
   flex-shrink: 0;
   display: inline-flex;
