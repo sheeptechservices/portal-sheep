@@ -5976,8 +5976,10 @@ async function despacharAdminData(
         args: [id],
       });
 
+      // A descricao vem junto: e ela que vira a dica da etapa na pilula, como
+      // ja acontece no quadro de tarefas.
       const statuses = await db.execute(
-        'SELECT id, nome, cor FROM status_configs WHERE ativo = 1 ORDER BY ordem'
+        'SELECT id, nome, cor, descricao FROM status_configs WHERE ativo = 1 ORDER BY ordem'
       );
 
       const pendencias = await db.execute({

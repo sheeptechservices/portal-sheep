@@ -25,6 +25,7 @@ import { ancorar } from '../lib/ancorar';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { TextoRico } from '../components/TextoRico';
 import { SeletorProjetos } from '../components/SeletorProjetos';
+import { PilulaDeStatus } from '../components/PilulaDeStatus';
 import { mesmaOrdem, moverNaLista } from '../lib/reordenar';
 import { EditorRico } from '../components/EditorRico';
 import { ChipReuniao } from '../components/VinculoReuniao';
@@ -749,76 +750,6 @@ export function SeletorEtiquetas({ valor, opcoes, etq, onChange, desabilitado }:
   );
 }
 
-/** A etapa como pílula no cabeçalho do painel, e não como campo no meio do
- *  formulário. É o mesmo desenho do status no painel de projeto: a etapa é o
- *  estado da tarefa, a coisa que mais se olha e mais se troca, e ela se perde
- *  quando vira um seletor entre outros quatro. */
-function PilulaEtapa({ valor, etapas, desabilitado, onChange }: {
-  valor: string;
-  etapas: EtapaTarefa[];
-  desabilitado: boolean;
-  onChange: (v: string) => void;
-}) {
-  const [aberto, setAberto] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
-  const gatilho = useRef<HTMLButtonElement>(null);
-  const lista = useRef<HTMLDivElement>(null);
-  // Etapa que saiu da configuração continua sendo o estado da tarefa: cai no
-  // cinza em vez de sumir do gatilho.
-  const cor = etapas.find(e => e.nome === valor)?.cor ?? '#6E6F69';
-
-  useDropdownDismiss(aberto, [gatilho, lista], () => setAberto(false));
-
-  return (
-    <>
-      <button
-        ref={gatilho}
-        type="button"
-        className="status-select-trigger sem-contorno"
-        style={{ ['--sc' as string]: cor, cursor: desabilitado ? 'default' : 'pointer' }}
-        disabled={desabilitado}
-        title={etapas.find(e => e.nome === valor)?.descricao ?? undefined}
-        aria-label={`Etapa: ${valor || 'sem etapa'}`}
-        onClick={() => {
-          if (desabilitado || !gatilho.current) return;
-          setPos(ancorar(gatilho.current, etapas.length, 200));
-          setAberto(a => !a);
-        }}
-      >
-        <span className="status-select-dot" style={{ background: cor }} />
-        <span>{valor || 'Sem etapa'}</span>
-        {!desabilitado && <IconChevronDown size={10} />}
-      </button>
-
-      {aberto && createPortal(
-        <div ref={lista} className="status-select-dropdown"
-          style={{ top: pos.top, left: pos.left, width: pos.width }}>
-          {etapas.map(e => {
-            const ativo = e.nome === valor;
-            return (
-              // A descrição da etapa vira a dica: o nome cabe em duas
-              // palavras, e o critério de quando usar cada uma nem sempre cabe.
-              // Quem configura escreve em Configurações; quem escolhe lê aqui.
-              <div key={e.id} className={`status-select-option${ativo ? ' active' : ''}`}
-                title={e.descricao ?? undefined}
-                onClick={() => { onChange(e.nome); setAberto(false); }}>
-                <span className="status-select-dot" style={{ background: e.cor }} />
-                <span>{e.nome}</span>
-                {ativo && (
-                  <span style={{ marginLeft: 'auto', color: e.cor, display: 'inline-flex' }}>
-                    <IconCheck size={12} />
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>,
-        document.body,
-      )}
-    </>
-  );
-}
-
 // ── O formulário ──────────────────────────────────────────────────────────────
 
 export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etiquetaPorPapel,
@@ -1152,9 +1083,13 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
                   quem abre a tarefa de qualquer jeito, e uma lista que escondia
                   etapas fazia o seletor mentir sobre para onde ela podia ir. O
                   papel diz quem é avisado, e isso o servidor resolve. */}
-              <PilulaEtapa valor={rascunho.status}
-                etapas={etapas}
-                desabilitado={somenteLeitura} onChange={v => set('status', v)} />
+              <PilulaDeStatus
+                valor={rascunho.status}
+                opcoes={etapas.map(e => ({
+                  chave: e.nome, nome: e.nome, cor: e.cor, descricao: e.descricao,
+                }))}
+                desabilitado={somenteLeitura}
+                onEscolher={o => set('status', String(o.chave))} />
             </div>
           </div>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>

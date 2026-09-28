@@ -41,6 +41,7 @@ import {
   ComNegrito, ReuniaoModal, lerAcoes, lerDados, lerTopicos, type TopicoReuniao,
 } from '../components/ReuniaoModal';
 import { EntregaModal } from '../components/EntregaModal';
+import { PilulaDeStatus } from '../components/PilulaDeStatus';
 import { CampoTexto } from '../components/CampoTexto';
 import { TextoRico } from '../components/TextoRico';
 import type { Transcricao } from '../components/BotaoTranscricao';
@@ -2837,69 +2838,6 @@ function DialogoEvidencia({ entrega, alvo, salvando, onConcluir, onFechar }: {
 
 // ── Status como pílula ───────────────────────────────────────────────────────
 
-/** O mesmo controle de etapa que o Funil usa no cabeçalho do card: pílula na
- *  cor do status, com o dropdown num portal para não ser cortado pelo modal. */
-function PilulaStatus({ valor, onChange, compacta }: {
-  valor: string;
-  onChange: (v: string) => void;
-  /** Dentro de linha de tabela, onde o status não é o dado principal. */
-  compacta?: boolean;
-}) {
-  const [aberto, setAberto] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const dropRef = useRef<HTMLDivElement>(null);
-  const cor = COR_STATUS[valor] ?? '#aaa';
-
-  function abrir() {
-    setPos(ancorar(triggerRef.current!, STATUS_PROJETO.length, 200));
-    setAberto(a => !a);
-  }
-
-  useDropdownDismiss(aberto, [triggerRef, dropRef], () => setAberto(false));
-
-  return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        className={`status-select-trigger sem-contorno${compacta ? ' compacta' : ''}`}
-        style={{ '--sc': cor } as React.CSSProperties}
-        onClick={abrir}
-      >
-        <span className="status-select-dot" style={{ background: cor }} />
-        <span>{valor}</span>
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
-          <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
-
-      {aberto && createPortal(
-        <div ref={dropRef} className="status-select-dropdown"
-          style={{ top: pos.top, left: pos.left, width: pos.width }}>
-          {STATUS_PROJETO.map(st => {
-            const ativo = st === valor;
-            return (
-              <div key={st} className={`status-select-option${ativo ? ' active' : ''}`}
-                onClick={() => { onChange(st); setAberto(false); }}>
-                <span className="status-select-dot" style={{ background: COR_STATUS[st] }} />
-                <span>{st}</span>
-                {ativo && (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                    style={{ marginLeft: 'auto', color: COR_STATUS[st] }}>
-                    <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                )}
-              </div>
-            );
-          })}
-        </div>,
-        document.body,
-      )}
-    </>
-  );
-}
-
 // ── Equipe do projeto ────────────────────────────────────────────────────────
 
 function SecaoEquipe({ titulo, pessoas, valor, somenteLeitura, onChange }: {
@@ -5603,7 +5541,11 @@ function FormularioProjeto({
           <div style={{ marginTop: 2, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             {somenteLeitura
               ? <ChipStatus status={r.status} />
-              : <PilulaStatus valor={r.status} onChange={v => set('status', v)} />}
+              : (
+                <PilulaDeStatus valor={r.status} rotulo="Status"
+                  opcoes={STATUS_PROJETO.map(s => ({ chave: s, nome: s, cor: COR_STATUS[s] }))}
+                  onEscolher={o => set('status', String(o.chave))} />
+              )}
           </div>
 
           {editando && (
@@ -7738,7 +7680,9 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
                       // O controle vive dentro de uma linha clicavel: o clique e o
                       // Enter param aqui, senao abririam o modal de edicao junto.
                       <span onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
-                        <PilulaStatus valor={p.status} onChange={v => void ajustar(p, 'status', v)} compacta />
+                        <PilulaDeStatus valor={p.status} rotulo="Status" compacta
+                          opcoes={STATUS_PROJETO.map(s => ({ chave: s, nome: s, cor: COR_STATUS[s] }))}
+                          onEscolher={o => void ajustar(p, 'status', String(o.chave))} />
                       </span>
                     ) : <ChipStatus status={p.status} />}
                   </td>

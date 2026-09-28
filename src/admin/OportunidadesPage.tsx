@@ -38,6 +38,7 @@ import {
 import { SecaoReunioes, type Reuniao } from '../components/SecaoReunioes';
 import { Chip, ChipReuniao } from '../components/VinculoReuniao';
 import { ReuniaoModal } from '../components/ReuniaoModal';
+import { PilulaDeStatus } from '../components/PilulaDeStatus';
 import { Avatar, type Pessoa } from './FormularioTarefa';
 
 import { definirImagemArrasto } from '../lib/dragImage';
@@ -408,78 +409,6 @@ function PendenciaSection({ pendencias, onToggle, onDelete, onUpdateCat, onAdd }
         </button>
       </div>
     </section>
-  );
-}
-
-// ── Status Select ────────────────────────────────────
-function StatusSelect({
-  statuses, currentId, disabled, onChange,
-}: {
-  statuses: Pick<StatusConfig, 'id' | 'nome' | 'cor' | 'descricao'>[];
-  currentId: number | null | undefined;
-  disabled: boolean;
-  onChange: (id: number) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const dropRef = useRef<HTMLDivElement>(null);
-
-  const current = statuses.find(s => Number(s.id) === currentId);
-
-  function openDropdown() {
-    if (disabled) return;
-    const rect = triggerRef.current!.getBoundingClientRect();
-    setPos({ top: rect.bottom + 6, left: rect.left, width: Math.max(rect.width, 200) });
-    setOpen(o => !o);
-  }
-
-  useDropdownDismiss(open, [triggerRef, dropRef], () => setOpen(false));
-
-  return (
-    <>
-      <button
-        ref={triggerRef}
-        className="status-select-trigger"
-        style={{ '--sc': current?.cor ?? '#aaa' } as any}
-        onClick={openDropdown}
-        disabled={disabled}
-        type="button"
-      >
-        <span className="status-select-dot" style={{ background: current?.cor ?? '#aaa' }} />
-        <span>{current?.nome ?? 'Sem etapa'}</span>
-        <IconChevronDown size={10} />
-      </button>
-
-      {open && createPortal(
-        <div
-          ref={dropRef}
-          className="status-select-dropdown"
-          style={{ top: pos.top, left: pos.left, minWidth: pos.width }}
-        >
-          {statuses.map(st => {
-            const isActive = Number(st.id) === currentId;
-            return (
-              // A descrição da etapa vira a dica: o nome cabe em duas palavras,
-              // e o critério de quando usar cada uma nem sempre cabe.
-              <div
-                key={st.id}
-                className={`status-select-option${isActive ? ' active' : ''}`}
-                title={st.descricao ?? undefined}
-                onClick={() => { onChange(Number(st.id)); setOpen(false); }}
-              >
-                <span className="status-select-dot" style={{ background: st.cor }} />
-                <span>{st.nome}</span>
-                {isActive && (
-                  <span style={{ display: 'inline-flex', marginLeft: 'auto', color: st.cor }}><IconCheck size={12} /></span>
-                )}
-              </div>
-            );
-          })}
-        </div>,
-        document.body
-      )}
-    </>
   );
 }
 
@@ -1954,12 +1883,13 @@ export function DetailPanel({
           {/* Row 2: status select + download all + drive link */}
           {detail && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <StatusSelect
-                statuses={detail.statuses}
-                currentId={currentStatusId}
-                disabled={movingTo !== null}
-                onChange={moveToStatus}
-              />
+              <PilulaDeStatus
+                valor={currentStatusId}
+                opcoes={detail.statuses.map(s => ({
+                  chave: Number(s.id), nome: s.nome, cor: s.cor, descricao: s.descricao,
+                }))}
+                desabilitado={movingTo !== null}
+                onEscolher={o => moveToStatus(Number(o.chave))} />
               {(detail.form_arquivos.length + detail.etapa_arquivos.length) > 0 && (
                 <button
                   className="download-all-btn"

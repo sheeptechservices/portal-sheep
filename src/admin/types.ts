@@ -185,6 +185,6 @@ export interface SubmissionDetail {
   eventos: Evento[];
   etapa_arquivos: EtapaArquivo[];
   form_arquivos: FormArquivo[];
-  statuses: Pick<StatusConfig, 'id' | 'nome' | 'cor'>[];
+  statuses: Pick<StatusConfig, 'id' | 'nome' | 'cor' | 'descricao'>[];
   pendencias: Pendencia[];
 }
