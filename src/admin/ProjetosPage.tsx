@@ -5978,7 +5978,26 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
   const { pode, usuario, onSessionExpired } = useAuth();
   const { toast } = useToast();
 
-  const [aba, setAba] = useState<Aba>('geral');
+  /**
+   * As abas que esta pessoa alcança, pela matriz de permissões.
+   *
+   * A Geral é a lista de projetos e a Planning é o combinado da semana: são
+   * duas áreas, e nem todo mundo cuida das duas. Quem não tem nenhuma das duas
+   * marcas fica com a Geral - a página já se abriu para ela, e uma tela sem aba
+   * nenhuma seria uma porta que leva a lugar nenhum.
+   */
+  const abasVisiveis = useMemo(() => {
+    const lista: { valor: Aba; label: string }[] = [];
+    if (pode('projetos:geral')) lista.push({ valor: 'geral', label: 'Geral' });
+    if (pode('projetos:planning')) lista.push({ valor: 'planning', label: 'Planning' });
+    return lista.length ? lista : [{ valor: 'geral' as Aba, label: 'Geral' }];
+  }, [pode]);
+
+  const [aba, setAba] = useState<Aba>(() => abasVisiveis[0].valor);
+  // A aba escolhida some quando a permissão muda debaixo de quem está olhando.
+  useEffect(() => {
+    if (!abasVisiveis.some(x => x.valor === aba)) setAba(abasVisiveis[0].valor);
+  }, [abasVisiveis, aba]);
   const [projetos, setProjetos] = useState<Projeto[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
@@ -7349,11 +7368,15 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
 
   return (
     <div className="admin-content-wrap pagina-cristal pagina-projetos">
-      <Abas
-        valor={aba}
-        onChange={setAba}
-        opcoes={[{ valor: 'geral', label: 'Geral' }, { valor: 'planning', label: 'Planning' }]}
-      />
+      {/* As abas são o que a matriz liberou. Com uma só, a faixa some: uma
+          aba sozinha não é escolha, é um rótulo repetindo o título da página. */}
+      {abasVisiveis.length > 1 && (
+        <Abas
+          valor={aba}
+          onChange={setAba}
+          opcoes={abasVisiveis}
+        />
+      )}
 
       <div className={`admin-page-header${aba === 'planning' ? ' com-semana' : ''}`}>
         <div>

@@ -82,6 +82,17 @@ export const CATALOGO: PermGrupo[] = [
     nota: 'Cadastro dos projetos da casa e o acompanhamento de cada um.',
     acoes: [
       { chave: 'projetos:ver', label: 'Ver os projetos', acesso: true },
+      // As duas abas da página. A Geral mostra a mesma carga que a Planning
+      // usa, então escondê-la é decisão de tela e não trava do servidor: quem
+      // tem a página aberta continua podendo pedir a lista. A Planning, essa
+      // tem porta própria - o combinado da semana é outra leitura.
+      { chave: 'projetos:geral', label: 'Abrir a aba Geral',
+        nota: 'A lista de projetos. Sem esta marca a página abre direto na Planning.',
+        apenasUi: true },
+      { chave: 'projetos:planning', label: 'Abrir a aba Planning',
+        nota: 'O combinado da semana, por projeto.' },
+      { chave: 'projetos:planning_editar', label: 'Combinar e marcar na Planning',
+        nota: 'Escrever objetivos, mover de semana, anexar a prova do que foi feito.' },
       { chave: 'projetos:criar', label: 'Cadastrar projeto' },
       { chave: 'projetos:editar', label: 'Editar projeto e andamento' },
       { chave: 'projetos:excluir', label: 'Excluir projeto' },
@@ -262,12 +273,15 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   // O combinado da planning e do projeto: quem ve o projeto le, quem edita
   // escreve. A leitura vem cortada por equipe na propria consulta de projetos,
   // que e o que decide quais projetos aparecem na tela.
-  planning_semana: 'projetos:ver',
+  planning_semana: 'projetos:planning',
+  // O balão de "meus objetivos" fica no topo do portal, e não na aba: são os
+  // objetivos da própria pessoa, e marcá-los feito é gesto dela. Quem não
+  // acompanha a Planning do projeto continua cuidando do que é seu.
   meus_objetivos: 'projetos:ver',
-  salvar_planning_semana: 'projetos:editar',
+  salvar_planning_semana: 'projetos:planning_editar',
   // Leva o objetivo para a semana da data nova: é gravar a Planning.
-  mover_objetivo_de_semana: 'projetos:editar',
-  ordenar_planning: 'projetos:editar',
+  mover_objetivo_de_semana: 'projetos:planning_editar',
+  ordenar_planning: 'projetos:planning_editar',
   // A prova de que o objetivo da semana foi cumprido segue a mesma porta do
   // combinado: quem escreve o objetivo diz que ele foi feito.
   // Os acessos do projeto. Ler a senha e `projetos:ver` mais a equipe do
@@ -278,7 +292,7 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   projeto_acesso_senha: 'projetos:ver',
   add_planning_evidencia: 'projetos:editar',
   // A porta é ver projetos; a ação confere se quem pede é responsável pelo
-  // objetivo ou pode editar o projeto.
+  // objetivo ou pode editar o projeto. Vale pelo balão, que é de todo mundo.
   atualizar_objetivo: 'projetos:ver',
   desdobrar_objetivo: 'projetos:ver',
   excluir_planning_evidencia: 'projetos:editar',

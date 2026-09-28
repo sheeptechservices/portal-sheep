@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
 import type { StatusConfig, UsuarioNotificavel, Notificacao, NovaNotificacao } from './types';
@@ -3219,7 +3219,26 @@ type EscopoEtapas = 'funil' | 'tarefas';
 export default function ConfiguracoesPage({ token }: { token: string }) {
   const api = useApi(token);
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<ConfigTab>('etapas');
+  const { pode } = useAuth();
+
+  /** As abas que esta pessoa alcança. Etapas e Integrações já têm permissão
+   *  própria na matriz - a aba era a única parte que não a respeitava, e quem
+   *  não podia gravar entrava para ver o botão recusar. */
+  const abasVisiveis = useMemo<{ valor: ConfigTab; label: string }[]>(() => [
+    ...(pode('configuracoes:etapas') ? [{ valor: 'etapas' as const, label: 'Etapas' }] : []),
+    ...(pode('configuracoes:integracoes')
+      ? [{ valor: 'integracoes' as const, label: 'Integrações' }] : []),
+    { valor: 'desenho' as const, label: 'Desenho' },
+  ], [pode]);
+
+  const [activeTab, setActiveTab] = useState<ConfigTab>(
+    () => abasVisiveis[0].valor);
+  // A aba escolhida some quando a permissão muda debaixo de quem está olhando.
+  useEffect(() => {
+    if (!abasVisiveis.some(x => x.valor === activeTab)) {
+      setActiveTab(abasVisiveis[0].valor);
+    }
+  }, [abasVisiveis, activeTab]);
   const [escopo, setEscopo] = useState<EscopoEtapas>('funil');
   const [addingTarefa, setAddingTarefa] = useState(false);
   const [addingEtiqueta, setAddingEtiqueta] = useState(false);
@@ -3297,15 +3316,15 @@ export default function ConfiguracoesPage({ token }: { token: string }) {
 
   return (
     <div className="admin-content-wrap">
-      <Abas
-        valor={activeTab}
-        onChange={setActiveTab}
-        opcoes={[
-          { valor: 'etapas', label: 'Etapas' },
-          { valor: 'integracoes', label: 'Integrações' },
-          { valor: 'desenho', label: 'Desenho' },
-        ]}
-      />
+      {/* Com uma aba só a faixa some: ela não seria escolha, e sim o título da
+          página escrito duas vezes. */}
+      {abasVisiveis.length > 1 && (
+        <Abas
+          valor={activeTab}
+          onChange={setActiveTab}
+          opcoes={abasVisiveis}
+        />
+      )}
 
       <div className="admin-page-header">
         <div>
