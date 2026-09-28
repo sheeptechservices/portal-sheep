@@ -706,6 +706,9 @@ export interface RascunhoOportunidade {
   indicado_por: string;
   /** A comissão combinada com quem indicou, em porcento. Só com `indicado_por`. */
   indicacao_percentual: string;
+  /** Quando o negócio fechou. Só existe na etapa de conversão: antes dela não
+   *  há fechamento, e a data seria um palpite gravado como fato. */
+  data_execucao: string;
   /** Chegou por um parceiro. */
   parceria: boolean;
   /** Quanto do negócio fica com quem trouxe, em porcento. Só com `parceria`. */
@@ -736,6 +739,7 @@ export const OPORTUNIDADE_VAZIA: RascunhoOportunidade = {
   // maioria preencher a mesma palavra toda vez.
   pais: 'Brasil',
   origem: '', indicado_por: '', indicacao_percentual: '',
+  data_execucao: '',
   parceria: false, parceria_percentual: '',
   temperatura: '', tipo_projeto: '', segmento: '',
   interesse: '', briefing: '', valor_estimado: '', parcelas: '',
@@ -760,6 +764,7 @@ export function corpoDaOportunidade(r: RascunhoOportunidade) {
     indicacao_percentual: r.indicado_por.trim() && r.indicacao_percentual !== ''
       ? Number(r.indicacao_percentual)
       : null,
+    data_execucao: r.data_execucao || null,
     // 0 ou 1, como a coluna guarda: o mesmo corpo vira `Partial<Submission>`
     // na tela, e um booleano ali seria um tipo a mais para a ficha conferir.
     parceria: r.parceria ? 1 : 0,
@@ -1128,6 +1133,10 @@ export function CreateModal({ statuses, etapaInicial, token, inicial, onClose, o
   const fundo = useFecharNoFundo(fechar);
   // Cadastro e edição dividem a mesma memória de largura: é a mesma ficha.
   const painel = useLarguraPainel('oportunidade-form');
+  /** A etapa escolhida é a de venda realizada? É ela que pede a data do
+   *  fechamento já no cadastro. */
+  const ehConversao = (id: number | '') =>
+    id !== '' && !!statuses.find(st => Number(st.id) === Number(id))?.is_conversion;
 
   async function criar() {
     if (!r.empresa.trim()) { toast('error', 'Falta a empresa', 'Uma oportunidade é uma empresa com quem se fala.'); return; }
@@ -1167,9 +1176,28 @@ export function CreateModal({ statuses, etapaInicial, token, inicial, onClose, o
             <label className="form-label">Etapa</label>
             <FormSelect
               value={statusId === '' ? '' : String(statusId)}
-              onChange={v => setStatusId(v === '' ? '' : Number(v))}
+              onChange={v => {
+                const id = v === '' ? '' : Number(v);
+                setStatusId(id);
+                // Saiu da etapa de venda: a data do fechamento sai junto, para
+                // não ficar gravada uma data de algo que não fechou.
+                if (!ehConversao(id)) set('data_execucao', '');
+              }}
               options={statuses.map(st => ({ value: String(st.id), label: st.nome }))}
             />
+          </div>
+          {/* Vendida já no cadastro: a data do fechamento é perguntada aqui, e
+              não só depois na ficha - é ela que põe o valor no mês certo do
+              painel. Entra pela revelação da casa, como os outros campos que
+              nascem de uma escolha. */}
+          <div className={`revelar${ehConversao(statusId) ? ' aberto' : ''}`}>
+            <div>
+              <div className="form-group">
+                <label className="form-label">Fechado em</label>
+                <DatePicker compact allowPast value={r.data_execucao}
+                  onChange={v => set('data_execucao', v)} />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1210,6 +1238,7 @@ function EditModal({ detail, token, onClose, onSaved }: {
     origem: s.origem ?? '',
     indicado_por: s.indicado_por ?? '',
     indicacao_percentual: s.indicacao_percentual != null ? String(s.indicacao_percentual) : '',
+    data_execucao: s.data_execucao ? String(s.data_execucao) : '',
     parceria: Number(s.parceria) === 1,
     segmento: s.segmento ?? '',
     interesse: s.interesse ?? '',
@@ -1506,13 +1535,22 @@ export function DetailPanel({
 
   // Grava a data (otimista + backend), sem efeitos de status
   async function saveExecField(field: 'previsao_execucao' | 'data_execucao', value: string) {
+    // A data pinta na hora e volta ao que era se o servidor recusar. O `api`
+    // devolve o corpo do erro em vez de estourar, então a recusa precisa ser
+    // lida: sem isso a tela mostrava a data gravada e o banco continuava como
+    // estava, que é o "alterei e não salvou" de quem usa.
+    const antes = detail?.submission?.[field] ?? null;
     setDetail(prev => prev ? { ...prev, submission: { ...prev.submission, [field]: value || null } } : prev);
     onEdited?.(id, { [field]: value || null }); // avisa o pai (ex.: Liquidez reagrupa por semana na hora)
-    try {
-      await api('', 'POST', { action: 'patch_submission', id, field, value: value || null });
-    } catch {
-      toast('error', 'Erro ao salvar a data');
+    const r = await api('', 'POST', { action: 'patch_submission', id, field, value: value || null })
+      .catch(() => ({ error: 'A conexão caiu antes de a data chegar.' }));
+    if (r?.error || !r?.ok) {
+      setDetail(prev => prev ? { ...prev, submission: { ...prev.submission, [field]: antes } } : prev);
+      onEdited?.(id, { [field]: antes });
+      toast('error', 'Não foi possível salvar a data', r?.error ?? 'O servidor não confirmou.');
+      return false;
     }
+    return true;
   }
 
   async function patchExecField(field: 'previsao_execucao' | 'data_execucao', value: string) {

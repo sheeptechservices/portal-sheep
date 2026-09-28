@@ -9732,8 +9732,9 @@ function faltaEmProjeto(p: any): string | null {
                proxima_acao, proxima_acao_em, observacoes,
                cidade, estado, pais, indicado_por, parceria, segmento, briefing,
                temperatura, tipo_projeto, parceria_percentual, indicacao_percentual,
+               data_execucao,
                criado_por_id, criado_por_nome)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         args: [
           id, now, empresa,
           texto(body?.cnpj), texto(body?.contato_nome), texto(body?.contato_cargo),
@@ -9752,6 +9753,9 @@ function faltaEmProjeto(p: any): string | null {
           // O mesmo vale para a comissão: ela é de quem indicou, e sem
           // indicação não há de quem ser.
           texto(body?.indicado_por) ? numero(body?.indicacao_percentual) : null,
+          // Quando a oportunidade já entra vendida, a data do fechamento vem
+          // junto: é ela que põe o valor no mês certo do painel.
+          texto(body?.data_execucao),
           autorId, autorNome,
         ],
       });
@@ -9800,6 +9804,7 @@ function faltaEmProjeto(p: any): string | null {
             tipo_projeto: texto(body?.tipo_projeto),
             parceria_percentual: marca(body?.parceria) ? numero(body?.parceria_percentual) : null,
             indicacao_percentual: texto(body?.indicado_por) ? numero(body?.indicacao_percentual) : null,
+            data_execucao: texto(body?.data_execucao),
             arquivo_count: 0,
             comentario_count: 0,
             pendencia_aberta_count: 0,
