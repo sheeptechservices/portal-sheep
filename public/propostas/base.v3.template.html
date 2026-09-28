@@ -106,8 +106,12 @@ body{background:var(--bg);color:var(--black);font-family:'Manrope',sans-serif;he
 .pill-cloud{display:flex;flex-wrap:wrap;gap:clamp(7px,0.8vw,12px);justify-content:center;align-items:center;align-content:center;margin-top:6px}
 .pill{display:inline-block;padding:clamp(7px,0.7vw,10px) clamp(14px,1.5vw,22px);border-radius:100px;font-size:clamp(10px,1.04vw,15px);font-weight:700;line-height:1;letter-spacing:.01em;border:1px solid var(--black2);animation:floatpill 3s ease-in-out infinite;cursor:default;transition:box-shadow .25s,filter .25s}
 /* lista grande (~50+ tecnologias): reduz tamanho e amplitude do float, como faz o módulo interno */
-.pill-cloud.dense{gap:clamp(4px,0.45vw,7px)}
-.pill-cloud.dense .pill{padding:clamp(3px,0.35vw,5px) clamp(7px,0.75vw,11px);font-size:clamp(7px,0.72vw,11px);animation-name:floatpill-sm}
+/* A nuvem densa e um bloco no meio do slide, e nao uma faixa de ponta a ponta:
+   aberta na largura toda ela saia em cinco linhas finas, com o slide vazio em
+   cima e embaixo. Mais estreita, as mesmas pilulas empilham em mais linhas e
+   preenchem a vertical. */
+.pill-cloud.dense{gap:clamp(4px,0.5vw,8px);max-width:min(62%,760px);margin-left:auto;margin-right:auto}
+.pill-cloud.dense .pill{padding:clamp(4px,0.45vw,7px) clamp(9px,0.95vw,14px);font-size:clamp(8px,0.85vw,13px);animation-name:floatpill-sm}
 .pill-dark{background:var(--black2);color:#fff}
 .pill-accent{background:var(--yellow);color:var(--black2)}
 
