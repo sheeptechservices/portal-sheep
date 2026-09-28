@@ -48,6 +48,9 @@ export interface TarefaExport {
   descricao: string | null;
   status: string;
   prioridade: string | null;
+  /** Quanto trabalho ela dá: Difícil, Moderada ou Simples. Nula na tarefa que
+   *  ninguém dimensionou. */
+  complexidade?: string | null;
   responsavel_nome: string | null;
   prazo: string | null;
   etiquetas: string[];
@@ -91,7 +94,7 @@ const COLUNAS = [
   'Projeto', 'Código', 'Cliente', 'Entrega', 'Tarefa', 'Descrição',
   // "Etapa" como na tela: o campo da tarefa se chama assim no painel, e a
   // planilha que sai daqui é lida ao lado dele.
-  'Etapa', 'Prioridade', 'Responsável', 'Prazo', 'Etiquetas', 'Concluída em',
+  'Etapa', 'Prioridade', 'Complexidade', 'Responsável', 'Prazo', 'Etiquetas', 'Concluída em',
   'Checklist', 'Passos feitos', 'Comentários',
 ] as const;
 
@@ -169,13 +172,13 @@ function linhas(pacote: Pacote): string[][] {
   const saida: string[][] = [];
   for (const p of pacote.projetos) {
     if (p.tarefas.length === 0) {
-      saida.push([p.nome, p.codigo ?? '', p.cliente ?? '', '', '', '', p.status, p.prioridade ?? '', p.gestor ?? '', dia(p.previsao_entrega), '', '', '', '', '']);
+      saida.push([p.nome, p.codigo ?? '', p.cliente ?? '', '', '', '', p.status, p.prioridade ?? '', '', p.gestor ?? '', dia(p.previsao_entrega), '', '', '', '', '']);
       continue;
     }
     for (const t of p.tarefas) {
       saida.push([
         p.nome, p.codigo ?? '', p.cliente ?? '', t.entrega_titulo ?? '',
-        t.titulo, t.descricao ?? '', t.status, t.prioridade ?? '',
+        t.titulo, t.descricao ?? '', t.status, t.prioridade ?? '', t.complexidade ?? '',
         t.responsavel_nome ?? '', dia(t.prazo), (t.etiquetas ?? []).join('; '),
         dia(t.concluida_em), checklistEmTexto(t.subtarefas),
         andamentoDoChecklist(t.subtarefas), conversaEmTexto(t.comentarios),
@@ -370,6 +373,7 @@ function markdown(pacote: Pacote): string {
         const meta = [
           `status: ${t.status}`,
           t.prioridade ? `prioridade: ${t.prioridade}` : null,
+          t.complexidade ? `complexidade: ${t.complexidade}` : null,
           t.responsavel_nome ? `responsável: ${t.responsavel_nome}` : null,
           dia(t.prazo) ? `prazo: ${dia(t.prazo)}` : null,
           t.etiquetas?.length ? `etiquetas: ${t.etiquetas.join(', ')}` : null,
@@ -441,6 +445,7 @@ export function markdownDaTarefa(t: FichaDaTarefa): string {
     ['Entrega', t.entrega_titulo],
     ['Etapa', t.status],
     ['Prioridade', t.prioridade],
+    ['Complexidade', t.complexidade ?? null],
     ['Responsáveis', t.responsavel_nome],
     ['Prazo', dia(t.prazo) || null],
     ['Etiquetas', t.etiquetas?.length ? t.etiquetas.join(', ') : null],
@@ -508,7 +513,8 @@ function exportarPdf(pacote: Pacote) {
     if (p.descricao) partes.push(`<p class="desc">${escHtml(p.descricao)}</p>`);
 
     partes.push('<table><thead><tr>'
-      + ['Tarefa', 'Entrega', 'Etapa', 'Prioridade', 'Responsável', 'Prazo', 'Etiquetas']
+      + ['Tarefa', 'Entrega', 'Etapa', 'Prioridade', 'Complexidade', 'Responsável', 'Prazo',
+        'Etiquetas']
         .map(h => `<th>${h}</th>`).join('')
       + '</tr></thead><tbody>');
     for (const t of p.tarefas) {
@@ -539,6 +545,7 @@ function exportarPdf(pacote: Pacote) {
         + `<td>${escHtml(t.entrega_titulo ?? '-')}</td>`
         + `<td>${escHtml(t.status)}</td>`
         + `<td>${escHtml(t.prioridade ?? '-')}</td>`
+        + `<td>${escHtml(t.complexidade ?? '-')}</td>`
         + `<td>${escHtml(t.responsavel_nome ?? '-')}</td>`
         + `<td>${escHtml(dia(t.prazo) || '-')}</td>`
         + `<td>${escHtml((t.etiquetas ?? []).join(', ') || '-')}</td>`

@@ -24,6 +24,8 @@ export interface Ctx {
 }
 
 const PRIORIDADES = ['Urgente', 'Alta', 'Média', 'Baixa'];
+/** Quanto trabalho a tarefa dá. Vazio é resposta: "ainda não dimensionada". */
+const COMPLEXIDADES = ['Difícil', 'Moderada', 'Simples'];
 /** Marca de menção gravada no texto do comentário: `@[Nome](id)`. */
 const MARCA = /@\[([^\]]+)\]\(([^)]+)\)/g;
 
@@ -91,6 +93,16 @@ async function nomesDasEtiquetas(ctx: Ctx, pedidas: string[]): Promise<string[]>
 function nomeDaPrioridade(pedida: string): string {
   const achada = PRIORIDADES.find(p => semAcento(p) === semAcento(pedida));
   if (!achada) throw new ErroFerramenta(`Prioridade "${pedida}" não existe. Use ${PRIORIDADES.join(', ')}.`);
+  return achada;
+}
+
+/** Texto vazio tira a marca, e é diferente de não mandar o campo. */
+function nomeDaComplexidade(pedida: string): string {
+  if (!pedida.trim()) return '';
+  const achada = COMPLEXIDADES.find(c => semAcento(c) === semAcento(pedida));
+  if (!achada) {
+    throw new ErroFerramenta(`Complexidade "${pedida}" não existe. Use ${COMPLEXIDADES.join(', ')}.`);
+  }
   return achada;
 }
 
@@ -226,6 +238,7 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
         entrega: t.entrega_id ? { id: Number(t.entrega_id), titulo: t.entrega_titulo } : null,
         status: t.status,
         prioridade: t.prioridade,
+        complexidade: t.complexidade ?? null,
         responsaveis: await comNomes(ctx, donosDaTarefa(t)),
         prazo: t.prazo ?? null,
         etiquetas: etiquetasDaLinha(t),
@@ -261,6 +274,10 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
         descricao: { type: 'string' },
         status: { type: 'string', description: 'Nome da etapa.' },
         prioridade: { type: 'string', description: 'Urgente, Alta, Média ou Baixa. Padrão Média.' },
+        complexidade: {
+          type: 'string',
+          description: 'Difícil, Moderada ou Simples. Sem ela, a tarefa fica sem complexidade.',
+        },
         responsaveis: { type: 'array', items: { type: 'string' }, description: 'Ids, e-mails ou "eu".' },
         prazo: { type: 'string', description: 'AAAA-MM-DD.' },
         etiquetas: { type: 'array', items: { type: 'string' } },
@@ -280,6 +297,7 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
         descricao: a.descricao != null ? String(a.descricao) : null,
         status: a.status ? await nomeDaEtapa(ctx, String(a.status)) : undefined,
         prioridade: a.prioridade ? nomeDaPrioridade(String(a.prioridade)) : 'Média',
+        complexidade: a.complexidade !== undefined ? nomeDaComplexidade(String(a.complexidade)) : '',
         responsaveis: await idsDasPessoas(ctx, listaDe(a.responsaveis)),
         prazo: a.prazo ? data(a.prazo, 'prazo') : null,
         etiquetas: await nomesDasEtiquetas(ctx, listaDe(a.etiquetas)),
@@ -308,6 +326,10 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
         descricao: { type: 'string' },
         status: { type: 'string', description: 'Nome da etapa.' },
         prioridade: { type: 'string' },
+        complexidade: {
+          type: 'string',
+          description: 'Difícil, Moderada, Simples - ou "" para tirar a marca.',
+        },
         responsaveis: { type: 'array', items: { type: 'string' } },
         adicionar_responsaveis: { type: 'array', items: { type: 'string' } },
         remover_responsaveis: { type: 'array', items: { type: 'string' } },
@@ -356,6 +378,10 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
         descricao: a.descricao !== undefined ? String(a.descricao) : t.descricao,
         status: a.status !== undefined ? await nomeDaEtapa(ctx, String(a.status)) : t.status,
         prioridade: a.prioridade !== undefined ? nomeDaPrioridade(String(a.prioridade)) : t.prioridade,
+        // Não mandar o campo deixa como está; mandar vazio tira a marca.
+        complexidade: a.complexidade !== undefined
+          ? nomeDaComplexidade(String(a.complexidade))
+          : (t.complexidade ?? ''),
         responsaveis: donos,
         prazo: a.prazo !== undefined ? data(a.prazo, 'prazo') : t.prazo,
         etiquetas,

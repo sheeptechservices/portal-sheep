@@ -36,6 +36,7 @@ import type { Projeto, Tarefa } from './ProjetosPage';
 import {
   COR_PRIORIDADE, ICONE_PRIORIDADE, PRIORIDADES, PRIORIDADE_PADRAO, porUrgencia,
 } from '../lib/prioridades';
+import { COMPLEXIDADES, COR_COMPLEXIDADE } from '../lib/complexidades';
 // O formulário e o vocabulário de tarefa moram fora desta tela: o relatório de
 // Gestão abre o mesmo modal, e duas cópias divergiriam no primeiro campo novo.
 import {
@@ -58,7 +59,7 @@ type TarefaComProjeto = Tarefa & { projeto: Projeto; projetosDela: Projeto[] };
 
 const VAZIO: Omit<Rascunho, 'status'> = {
   projeto_id: '', entrega_id: '', titulo: '', descricao: '',
-  prioridade: PRIORIDADE_PADRAO, responsaveis: [], prazo: '', etiquetas: [],
+  prioridade: PRIORIDADE_PADRAO, complexidade: '', responsaveis: [], prazo: '', etiquetas: [],
 };
 
 /** Os quatro formatos, na ordem em que se usa: planilha, planilha de verdade,
@@ -247,6 +248,20 @@ function Prazo({ iso, concluida }: { iso: string | null; concluida: boolean }) {
   );
 }
 
+/** A complexidade na linha: a bolha da cor e a palavra. Some quando ninguém
+ *  dimensionou a tarefa - um "sem complexidade" em cada card seria uma coluna
+ *  de nada. */
+function Complexidade({ valor }: { valor?: string | null }) {
+  const cor = COR_COMPLEXIDADE[String(valor ?? '')];
+  if (!cor) return null;
+  return (
+    <span className="chip-complexidade" title={`Complexidade: ${valor}`}>
+      <span className="bolha-complexidade" style={{ background: cor }} />
+      {valor}
+    </span>
+  );
+}
+
 function Prioridade({ valor }: { valor: string }) {
   const Icone = ICONE_PRIORIDADE[valor || PRIORIDADE_PADRAO];
   if (!Icone) return null;
@@ -294,6 +309,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
   const [fStatus, setFStatus] = useState<string[]>([]);
   const [fResponsavel, setFResponsavel] = useState<string[]>([]);
   const [fEtiqueta, setFEtiqueta] = useState<string[]>([]);
+  const [fComplexidade, setFComplexidade] = useState<string[]>([]);
   // Guardado por id: dois projetos podem ter entregas de mesmo nome.
   const [fEntrega, setFEntrega] = useState<string[]>([]);
   const [busca, setBusca] = useState('');
@@ -487,6 +503,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
       // dela, inclusive as que ela divide com outra.
       (fResponsavel.length === 0 || nomesDosDonos(t, pessoas).some(n => fResponsavel.includes(n))) &&
       (fEtiqueta.length === 0 || t.etiquetas.some(e => fEtiqueta.includes(e))) &&
+      (fComplexidade.length === 0 || fComplexidade.includes(t.complexidade ?? '')) &&
       (fEntrega.length === 0 || fEntrega.includes(String(t.entrega_id))) &&
       (!q || semAcento(t.titulo).includes(q) || semAcento(t.descricao ?? '').includes(q)
         || semAcento(entregaDe(t)).includes(q))
@@ -558,6 +575,14 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
       status: uniq(tarefas.map(t => t.status)).map(v => ({ value: v, label: v })),
       responsavel: uniq(tarefas.flatMap(t => nomesDosDonos(t, pessoas))).map(v => ({ value: v, label: v })),
       etiqueta: uniq(tarefas.flatMap(t => t.etiquetas)).map(v => ({ value: v, label: v })),
+      // Na ordem da escala, e não na de chegada. "Sem complexidade" só entra
+      // quando existe alguma tarefa assim - que é quase sempre, no começo.
+      complexidade: [
+        ...COMPLEXIDADES.filter(c => tarefas.some(t => t.complexidade === c))
+          .map(c => ({ value: c as string, label: c as string })),
+        ...(tarefas.some(t => !t.complexidade)
+          ? [{ value: '', label: 'Sem complexidade' }] : []),
+      ],
       // A opção guarda o id e mostra o título: nomes se repetem entre projetos.
       entrega: [...new Map(tarefas
         .filter(t => t.entrega_id != null)
@@ -570,10 +595,11 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
   }, [tarefas]);
 
   const temFiltro = fProjeto.length + fStatus.length + fResponsavel.length
-    + fEtiqueta.length + fEntrega.length > 0 || !!busca.trim();
+    + fEtiqueta.length + fEntrega.length + fComplexidade.length > 0 || !!busca.trim();
 
   function limparFiltros() {
     setFProjeto([]); setFStatus([]); setFResponsavel([]); setFEtiqueta([]); setFEntrega([]);
+    setFComplexidade([]);
     setBusca('');
   }
 
@@ -591,7 +617,8 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
       const dono = pessoas.find(x => x.id === r.responsaveis[0]);
       const campos = {
         titulo: r.titulo, descricao: r.descricao, status: r.status,
-        prioridade: r.prioridade, prazo: r.prazo || null, etiquetas: r.etiquetas,
+        prioridade: r.prioridade, complexidade: r.complexidade || null,
+        prazo: r.prazo || null, etiquetas: r.etiquetas,
         entrega_id: r.entrega_id ? Number(r.entrega_id) : null,
         responsaveis: r.responsaveis,
         responsavel_id: r.responsaveis[0] ?? null,
@@ -755,6 +782,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
             descricao: t.descricao ?? null,
             status: t.status,
             prioridade: t.prioridade ?? null,
+            complexidade: t.complexidade ?? null,
             responsavel_nome: nomesDosDonos(t, pessoas).join(', ') || null,
             prazo: t.prazo ?? null,
             etiquetas: t.etiquetas ?? [],
@@ -915,7 +943,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
       projeto_id: t.projeto_id, projetos: t.projetos ?? [t.projeto_id],
       entrega_id: t.entrega_id,
       titulo: `${t.titulo} (cópia)`, descricao: t.descricao,
-      status: t.status, prioridade: t.prioridade,
+      status: t.status, prioridade: t.prioridade, complexidade: t.complexidade ?? '',
       responsavel_id: t.responsavel_id, prazo: t.prazo, etiquetas: t.etiquetas,
       concluida_em: t.concluida_em,
     });
@@ -940,7 +968,8 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
     projetos: (t.projetos ?? []).filter(id => id !== t.projeto_id),
     entrega_id: t.entrega_id ? String(t.entrega_id) : '',
     titulo: t.titulo, descricao: t.descricao ?? '', status: t.status,
-    prioridade: t.prioridade ?? PRIORIDADE_PADRAO, responsaveis: t.responsaveis ?? [],
+    prioridade: t.prioridade ?? PRIORIDADE_PADRAO, complexidade: t.complexidade ?? '',
+    responsaveis: t.responsaveis ?? [],
     prazo: t.prazo ?? '', etiquetas: t.etiquetas,
   });
 
@@ -1039,6 +1068,8 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
             <FilterDropdown label="Responsável" values={fResponsavel} options={opcoes.responsavel} onChange={setFResponsavel} />
             <FilterDropdown label="Entrega" values={fEntrega} options={opcoes.entrega} onChange={setFEntrega} />
             <FilterDropdown label="Etiqueta" values={fEtiqueta} options={opcoes.etiqueta} onChange={setFEtiqueta} />
+            <FilterDropdown label="Complexidade" values={fComplexidade} options={opcoes.complexidade}
+              onChange={setFComplexidade} />
             {temFiltro && (
               <button
                 style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray2)', background: 'none', border: 'none', cursor: 'pointer' }}
@@ -1415,6 +1446,7 @@ function Coluna({ grupo, pessoas, et, etq, podeEditar, arrastando, isOver, onAbr
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <DonosDaTarefa ids={t.responsaveis} pessoas={pessoas} size={20} />
+              <Complexidade valor={t.complexidade} />
               <SinaisDaTarefa t={t} />
               <span style={{ marginLeft: 'auto' }}>
                 {/* Etapa desconsiderada não cobra prazo: a tarefa saiu da conta. */}
@@ -1546,6 +1578,7 @@ function Lista({ grupos, pessoas, et, etq, podeExcluir, onAbrir, onExcluir }: {
                   </p>
                 </div>
                 {t.etiquetas.map(e => <ChipEtiqueta key={e} etiqueta={e} cor={etq.cor(e)} />)}
+                <Complexidade valor={t.complexidade} />
                 <SinaisDaTarefa t={t} />
                 <Prioridade valor={t.prioridade} />
                 <Prazo iso={t.prazo} concluida={et.fecha(t.status) || !!grupo.desconsiderada} />
@@ -1581,7 +1614,7 @@ function Tabela({ grupos, pessoas, et, etq, podeExcluir, onAbrir, onExcluir }: {
 
   return (
     <div className="admin-table-wrap">
-      <table className="admin-table sem-quebra largura-fixa" style={{ minWidth: 1080 }}>
+      <table className="admin-table sem-quebra largura-fixa" style={{ minWidth: 1210 }}>
         <thead>
           <tr>
             <th style={{ width: 40 }} aria-label="Prioridade" />
@@ -1589,6 +1622,7 @@ function Tabela({ grupos, pessoas, et, etq, podeExcluir, onAbrir, onExcluir }: {
             <th style={{ width: 180 }}>Projeto</th>
             <th style={{ width: 170 }}>Entrega</th>
             <th style={{ width: 140 }}>Status</th>
+            <th style={{ width: 130 }}>Complexidade</th>
             <th style={{ width: 170 }}>Responsável</th>
             <th style={{ width: 110 }}>Prazo</th>
             <th style={{ width: 70 }}>Ações</th>
@@ -1599,7 +1633,7 @@ function Tabela({ grupos, pessoas, et, etq, podeExcluir, onAbrir, onExcluir }: {
           // ela não se perde ao rolar nem vira uma linha clicável a mais.
           <tbody key={grupo.chave}>
             <tr className="linha-grupo">
-              <td colSpan={8}>
+              <td colSpan={9}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
                   {grupo.icone
                     ? <span style={{ display: 'inline-flex', color: grupo.cor }}>{grupo.icone}</span>
@@ -1631,6 +1665,7 @@ function Tabela({ grupos, pessoas, et, etq, podeExcluir, onAbrir, onExcluir }: {
                   </td>
                   <td style={{ fontSize: 12, color: 'var(--gray2)' }}>{entrega?.titulo ?? '-'}</td>
                   <td><ChipStatus status={t.status} cor={et.cor(t.status)} /></td>
+                  <td><Complexidade valor={t.complexidade} /></td>
                   <td style={{ fontSize: 12, color: 'var(--gray)' }}>
                     {t.responsaveis?.length ? (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>

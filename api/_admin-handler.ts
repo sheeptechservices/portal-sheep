@@ -595,7 +595,8 @@ export async function tarefaVisivel(db: Client, usuario: UsuarioAdmin | null | u
 const LIMITE_ANEXO = 8 * 1024 * 1024;
 
 const CAMPOS_NO_DIARIO = [
-  'titulo', 'descricao', 'status', 'prioridade', 'responsavel', 'prazo', 'entrega', 'etiquetas',
+  'titulo', 'descricao', 'status', 'prioridade', 'complexidade', 'responsavel', 'prazo', 'entrega',
+  'etiquetas',
 ] as const;
 
 type FotoDaTarefa = Record<string, string>;
@@ -725,6 +726,7 @@ function fotoDaTarefa(r: Record<string, any> | null | undefined): FotoDaTarefa |
     descricao: String(r.descricao ?? ''),
     status: String(r.status ?? ''),
     prioridade: String(r.prioridade ?? ''),
+    complexidade: String(r.complexidade ?? ''),
     responsavel: donosDaTarefa(r).join(', '),
     prazo: String(r.prazo ?? '').slice(0, 10),
     entrega: String(r.entrega_id ?? ''),
@@ -2208,6 +2210,11 @@ async function migrarSchema(db: Client) {
                       WHERE responsaveis IS NULL AND responsavel_id IS NOT NULL AND responsavel_id <> ''`);
     await db.execute(`UPDATE projeto_tarefas SET responsaveis = '[]' WHERE responsaveis IS NULL`);
   } catch { /* a coluna acabou de nascer numa base sem tarefas */ }
+
+  // Quanto trabalho a tarefa dá: Difícil, Moderada ou Simples. Nasce vazia, e
+  // vazia é resposta - a tarefa que ninguém dimensionou não vira "Moderada"
+  // por conta própria, porque isso seria um palpite gravado como fato.
+  try { await ddl(`ALTER TABLE projeto_tarefas ADD COLUMN complexidade TEXT`); } catch {}
 
   // A tarefa passou a valer para mais de um projeto: a mesma demanda que serve
   // dois clientes, o trabalho da casa que também é de um projeto. Lista em JSON
@@ -4799,7 +4806,7 @@ async function despacharAdminData(
         `),
         db.execute(`
           SELECT t.id, t.projeto_id, t.projetos, t.entrega_id, t.titulo, t.descricao, t.status,
-                 t.prioridade,
+                 t.prioridade, t.complexidade,
                  t.responsavel_id, t.responsaveis, t.prazo, t.etiquetas, t.ordem, t.concluida_em,
                  t.criado_em,
                  u.nome AS responsavel_nome, u.email AS responsavel_email, u.foto_url AS responsavel_foto
@@ -5099,7 +5106,8 @@ async function despacharAdminData(
                        t.entrega_id, en.titulo AS entrega_titulo,
                        t.titulo, substr(COALESCE(t.descricao, ''), 1, 300) AS descricao,
                        length(COALESCE(t.descricao, '')) AS descricao_tamanho,
-                       t.status, t.prioridade, t.responsaveis, t.prazo, t.etiquetas, t.concluida_em,
+                       t.status, t.prioridade, t.complexidade, t.responsaveis, t.prazo,
+                       t.etiquetas, t.concluida_em,
                        t.criado_em, t.criado_por_nome,
                        (SELECT COUNT(*) FROM tarefa_comentarios c WHERE c.tarefa_id = t.id) AS comentarios,
                        (SELECT COUNT(*) FROM tarefa_comentario_anexos a
@@ -6950,11 +6958,13 @@ function faltaEmProjeto(p: any): string | null {
       const projetosPedidos: string[] | null = Array.isArray(t.projetos)
         ? [...new Set(t.projetos.map((x: unknown) => String(x ?? '').trim()).filter(Boolean))] as string[]
         : null;
-      const projetosAntes: string[] = t.id
-        ? projetosDaTarefa((await db.execute({
-          sql: 'SELECT projeto_id, projetos FROM projeto_tarefas WHERE id = ?', args: [t.id],
-        })).rows[0])
-        : [];
+      const linhaAntes = t.id
+        ? (await db.execute({
+          sql: 'SELECT projeto_id, projetos, complexidade FROM projeto_tarefas WHERE id = ?',
+          args: [t.id],
+        })).rows[0]
+        : null;
+      const projetosAntes: string[] = projetosDaTarefa(linhaAntes);
       const principal = String(t.projeto_id);
       const outros = (projetosPedidos ?? projetosAntes).filter(p => p !== principal);
       for (const p of outros) {
@@ -6964,6 +6974,24 @@ function faltaEmProjeto(p: any): string | null {
         }
       }
       const projetos = JSON.stringify([principal, ...outros]);
+
+      /**
+       * Quanto trabalho a tarefa dá.
+       *
+       * Só os três do catálogo entram; qualquer outra coisa vira vazio, que é
+       * "ainda não dimensionada" - e é com esse vazio que toda tarefa anterior a
+       * este campo continua.
+       *
+       * Não mandar o campo é diferente de mandá-lo vazio: quem grava sem ele -
+       * arrastar o card de coluna, o MCP - fica com o que já estava, e quem o
+       * manda vazio está mesmo tirando a marca.
+       */
+      const COMPLEXIDADES = ['Difícil', 'Moderada', 'Simples'];
+      const complexidade = t.complexidade === undefined
+        ? (linhaAntes?.complexidade ?? null)
+        : (COMPLEXIDADES.includes(String(t.complexidade ?? '').trim())
+          ? String(t.complexidade).trim()
+          : null);
 
       const listaEtiquetas: string[] = Array.isArray(t.etiquetas) ? t.etiquetas.map(String) : [];
       const etiquetas = JSON.stringify(listaEtiquetas);
@@ -7044,7 +7072,7 @@ function faltaEmProjeto(p: any): string | null {
       // A foto do que a gravação está pedindo, para o diário comparar.
       const depois = fotoDaTarefa({
         titulo, descricao: t.descricao, status: statusPedido, prioridade: t.prioridade ?? 'Média',
-        responsaveis: donos, prazo: t.prazo, entrega_id: t.entrega_id, etiquetas,
+        complexidade, responsaveis: donos, prazo: t.prazo, entrega_id: t.entrega_id, etiquetas,
       })!;
 
       // O que a tela precisa saber do que foi gravado: o id da nova e os campos
@@ -7055,7 +7083,8 @@ function faltaEmProjeto(p: any): string | null {
 
       if (t.id) {
         const antes = await db.execute({
-          sql: `SELECT projeto_id, titulo, descricao, status, prioridade, responsavel_id, prazo,
+          sql: `SELECT projeto_id, titulo, descricao, status, prioridade, complexidade,
+                       responsavel_id, responsaveis, prazo,
                        entrega_id, etiquetas, concluida_em
                 FROM projeto_tarefas WHERE id = ?`,
           args: [t.id],
@@ -7100,11 +7129,11 @@ function faltaEmProjeto(p: any): string | null {
         await db.execute({
           sql: `UPDATE projeto_tarefas
                 SET projeto_id=?, projetos=?, entrega_id=?, titulo=?, descricao=?, status=?,
-                    prioridade=?, responsavel_id=?, responsaveis=?, prazo=?, etiquetas=?,
-                    concluida_em=?${mudouDeProjeto ? ', ordem=?' : ''}
+                    prioridade=?, complexidade=?, responsavel_id=?, responsaveis=?, prazo=?,
+                    etiquetas=?, concluida_em=?${mudouDeProjeto ? ', ordem=?' : ''}
                 WHERE id=?`,
           args: [t.projeto_id, projetos, entregaId as never, titulo, t.descricao ?? null, statusPedido,
-            t.prioridade ?? 'Média', donoPrincipal, responsaveis, t.prazo || null, etiquetas,
+            t.prioridade ?? 'Média', complexidade, donoPrincipal, responsaveis, t.prazo || null, etiquetas,
             carimbo as never, ...(mudouDeProjeto ? [ordemNova as never] : []), t.id],
         });
         gravada = { concluida_em: (carimbo as string | null) ?? null };
@@ -7120,11 +7149,11 @@ function faltaEmProjeto(p: any): string | null {
         const inserida = await db.execute({
           sql: `INSERT INTO projeto_tarefas
                   (projeto_id, projetos, entrega_id, titulo, descricao, status, prioridade,
-                   responsavel_id, responsaveis, prazo, etiquetas, ordem, concluida_em, criado_em,
-                   criado_por_id, criado_por_nome)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                   complexidade, responsavel_id, responsaveis, prazo, etiquetas, ordem, concluida_em,
+                   criado_em, criado_por_id, criado_por_nome)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
           args: [t.projeto_id, projetos, t.entrega_id || null, titulo, t.descricao ?? null,
-            statusPedido, t.prioridade ?? 'Média', donoPrincipal, responsaveis,
+            statusPedido, t.prioridade ?? 'Média', complexidade, donoPrincipal, responsaveis,
             t.prazo || null, etiquetas, Number(ordem.rows[0].proxima), concluida,
             criadaEm, autorId, autorNome],
         });

@@ -5560,6 +5560,29 @@ body.arrastando-painel {
      ninguem escreveu. */
   word-break: break-word;
 }
+/* A complexidade da tarefa: a bolha da cor e a palavra, em pilula de contorno.
+   Contorno e nao preenchimento - a etiqueta ao lado ja e um bloco de cor, e
+   duas pilulas cheias na mesma linha brigariam entre si. */
+.chip-complexidade {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 1px 8px 1px 6px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray);
+  white-space: nowrap;
+}
+.bolha-complexidade {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 /* A pilula de um projeto escolhido, no campo "Também em" da tarefa. Mesma
    moldura das etiquetas: e uma marca, e nao um estado. */
 .chip-projeto {

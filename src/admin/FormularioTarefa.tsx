@@ -37,6 +37,9 @@ import { diaCurto as fmtDataCurta } from '../lib/datas';
 // saiu para os componentes quando as outras telas passaram a usar a mesma caixa.
 export { ConfirmarExclusao } from '../components/Dialogo';
 import { DESCRICAO_PRIORIDADE, ICONE_PRIORIDADE, PRIORIDADES } from '../lib/prioridades';
+import {
+  COMPLEXIDADES, COR_COMPLEXIDADE, DESCRICAO_COMPLEXIDADE,
+} from '../lib/complexidades';
 import type { Entrega, Projeto, Reuniao, Tarefa } from './ProjetosPage';
 import { PROJETO_GERAL } from '../lib/projetoGeral';
 
@@ -177,6 +180,8 @@ export interface Rascunho {
   descricao: string;
   status: string;
   prioridade: string;
+  /** Difícil, Moderada, Simples - ou vazio, que é "ainda não dimensionada". */
+  complexidade?: string;
   responsaveis: string[];
   prazo: string;
   etiquetas: string[];
@@ -209,6 +214,7 @@ export function tarefaGravada(
     descricao: r.descricao || null,
     status: resposta.status ?? r.status,
     prioridade: r.prioridade,
+    complexidade: r.complexidade || null,
     responsaveis: donos,
     responsavel_id: donos[0] ?? null,
     // O nome e a foto a tela já tem: o servidor recebe só o id de quem cuida.
@@ -1313,6 +1319,25 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
                   icone: ICONE_PRIORIDADE[x]?.({ size: 15 }),
                   descricao: DESCRICAO_PRIORIDADE[x],
                 }))} />
+            </div>
+            {/* Ao lado da prioridade porque as duas se leem juntas na hora de
+                escolher o que fazer: uma diz quando, a outra diz quanto custa.
+                Sem padrão - a tarefa que ninguém dimensionou fica sem marca, em
+                vez de nascer "Moderada" por acaso. */}
+            <div className="form-group" style={{ flex: '1 1 190px', minWidth: 0 }}>
+              <label className="form-label">Complexidade</label>
+              <SelectSistema valor={rascunho.complexidade ?? ''}
+                onChange={v => set('complexidade', v)}
+                opcoes={[
+                  { valor: '', label: 'Sem complexidade' },
+                  ...COMPLEXIDADES.map(x => ({
+                    valor: x as string,
+                    label: x,
+                    icone: <span className="bolha-complexidade"
+                      style={{ background: COR_COMPLEXIDADE[x] }} />,
+                    descricao: DESCRICAO_COMPLEXIDADE[x],
+                  })),
+                ]} />
             </div>
             <div className="form-group" style={{ flex: '1 1 190px', minWidth: 0 }}>
               <label className="form-label">

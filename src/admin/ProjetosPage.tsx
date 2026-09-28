@@ -265,6 +265,9 @@ export interface Tarefa {
   descricao: string | null;
   status: string;
   prioridade: string;
+  /** Quanto trabalho ela dá: Difícil, Moderada ou Simples. Vazia enquanto
+   *  ninguém dimensionou - e vazia é resposta. */
+  complexidade?: string | null;
   /** Quem cuida da tarefa. Lista, porque trabalho a quatro mãos é o normal e
    *  não a exceção - e é o mesmo formato que a entrega já usa. */
   responsaveis: string[];
@@ -6532,7 +6535,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
       projeto_id: t.projeto_id, projetos: t.projetos ?? [t.projeto_id],
       entrega_id: t.entrega_id,
       titulo: `${t.titulo} (cópia)`, descricao: t.descricao,
-      status: t.status, prioridade: t.prioridade,
+      status: t.status, prioridade: t.prioridade, complexidade: t.complexidade ?? '',
       responsavel_id: t.responsavel_id, prazo: t.prazo, etiquetas: t.etiquetas,
       concluida_em: t.concluida_em,
     });
@@ -6590,7 +6593,8 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     projetos: (t.projetos ?? []).filter(id => id !== t.projeto_id),
     entrega_id: t.entrega_id ? String(t.entrega_id) : '',
     titulo: t.titulo, descricao: t.descricao ?? '', status: t.status,
-    prioridade: t.prioridade ?? PRIORIDADE_PADRAO, responsaveis: t.responsaveis ?? [],
+    prioridade: t.prioridade ?? PRIORIDADE_PADRAO, complexidade: t.complexidade ?? '',
+    responsaveis: t.responsaveis ?? [],
     prazo: t.prazo ?? '', etiquetas: t.etiquetas,
   }), []);
 
