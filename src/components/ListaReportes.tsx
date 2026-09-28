@@ -46,6 +46,11 @@ export const STATUS_DO_RELATO = [
 const ROTULO_STATUS: Record<string, { label: string; cor: string }> =
   Object.fromEntries(STATUS_DO_RELATO.map(s => [s.valor, s]));
 
+/** O chamado já foi decidido e sai da fila por padrão. Resolvido e descartado
+ *  são as duas formas de acabar: um virou trabalho feito, o outro virou "não
+ *  vamos fazer". Quem abre a lista quer ver o que ainda está de pé. */
+const foraDaFila = (status?: string) => status === 'resolvido' || status === 'descartado';
+
 /**
  * O que o chamado e. Sao dois, e de proposito: a pergunta que a fila responde e
  * uma so - isto esta quebrado? -, e uma terceira gaveta viraria o deposito de
@@ -146,9 +151,10 @@ export function ListaReportes({
   const limparPergunta = () => { setConfirmando(null); setComentario(''); };
   /** Uma linha aberta por vez: a fila é para varrer, e três detalhes abertos
    *  juntos empurram o resto para fora da tela. */
-  /** Resolvido sai da fila por padrão: o que se abre a lista para ver é o que
-   *  ainda não aconteceu. A chave traz de volta quem quer conferir o histórico,
-   *  e vale para todo mundo - não é ajuste de administrador. */
+  /** Resolvido e descartado saem da fila por padrão: o que se abre a lista
+   *  para ver é o que ainda não aconteceu, e os dois já foram decididos. A
+   *  chave traz os dois de volta para quem quer conferir o histórico, e vale
+   *  para todo mundo - não é ajuste de administrador. */
   const [verResolvidos, setVerResolvidos] = useState(false);
   /** Quais tipos ficam a vista. Lista vazia quer dizer todos, que e como o
    *  filtro da casa trabalha: escolher nada e nao filtrar, e nao um estado
@@ -171,11 +177,11 @@ export function ListaReportes({
   const limparReabertura = () => { setReabrindo(null); setMotivo(''); };
 
   /** Quantos estão fora da fila agora - o número que a chave mostra. */
-  const resolvidos = (lista ?? []).filter(r => r.status === 'resolvido').length;
+  const encerrados = (lista ?? []).filter(r => foraDaFila(r.status)).length;
   /** O que a tabela desenha. Filtrar aqui, e não esconder por CSS: linha
    *  escondida continua no caminho do teclado e da leitura de tela. */
   const visiveis = (lista ?? []).filter(r =>
-    (verResolvidos || r.status !== 'resolvido')
+    (verResolvidos || !foraDaFila(r.status))
     && (filtroTipos.length === 0 || filtroTipos.includes(r.tipo ?? 'sem')));
   /** As opcoes do filtro, com a conta de cada uma: um filtro que nao diz o
    *  tamanho do que oferece faz quem clica descobrir por tentativa.
@@ -185,7 +191,7 @@ export function ListaReportes({
    *  nada. E `Sem tipo` so aparece quando existe algum: opcao que sempre
    *  devolve lista vazia e so mais uma linha para ler. */
   const opcoesDeTipo = useMemo(() => {
-    const naFila = (lista ?? []).filter(r => verResolvidos || r.status !== 'resolvido');
+    const naFila = (lista ?? []).filter(r => verResolvidos || !foraDaFila(r.status));
     const quantos = (t: string) => naFila.filter(r => (r.tipo ?? 'sem') === t).length;
     const semTipo = quantos('sem');
     return [
@@ -217,9 +223,9 @@ export function ListaReportes({
     if (!expandir || !lista?.length) return;
     if (!lista.some(r => r.id === expandir)) return;
     setAberta(expandir);
-    // O resolvido so aparece com a chave ligada: mirado pelo inbox, ele tem de
+    // O encerrado so aparece com a chave ligada: mirado pelo inbox, ele tem de
     // aparecer de qualquer jeito, senao a fila abre sem o chamado do aviso.
-    if (lista.find(r => r.id === expandir)?.status === 'resolvido') setVerResolvidos(true);
+    if (foraDaFila(lista.find(r => r.id === expandir)?.status)) setVerResolvidos(true);
     // Um quadro depois, para a linha ja estar desenhada quando a rolagem sair.
     const t = setTimeout(() => {
       document.getElementById(`reporte-${expandir}`)
@@ -418,8 +424,8 @@ export function ListaReportes({
               <Chave
                 ligada={verResolvidos}
                 onChange={setVerResolvidos}
-                rotulo={`Mostrar resolvidos${resolvidos ? ` (${resolvidos})` : ''}`}
-                dica="Chamados resolvidos ficam fora da fila por padrão"
+                rotulo={`Mostrar encerrados${encerrados ? ` (${encerrados})` : ''}`}
+                dica="Chamado resolvido ou descartado fica fora da fila por padrão"
               />
               <button type="button" className="admin-modal-close" onClick={fechar} aria-label="Fechar">
                 <IconX size={16} />
@@ -439,7 +445,7 @@ export function ListaReportes({
               <p className="reportes-vazio">
                 {lista.length === 0
                   ? 'Nada reportado ainda. O que for enviado pelo cartão do menu aparece aqui.'
-                  : `Nada em aberto. ${resolvidos === 1 ? 'Há um chamado resolvido' : `Há ${resolvidos} chamados resolvidos`} - ligue a chave acima para vê-${resolvidos === 1 ? 'lo' : 'los'}.`}
+                  : `Nada em aberto. ${encerrados === 1 ? 'Há um chamado encerrado' : `Há ${encerrados} chamados encerrados`} - ligue a chave acima para vê-${encerrados === 1 ? 'lo' : 'los'}.`}
               </p>
             ) : (
               <table className="reportes-tabela">
@@ -467,11 +473,11 @@ export function ListaReportes({
                     const Icone = ICONE_PRIORIDADE[r.urgencia];
                     const abertaAqui = aberta === r.id;
                     const editandoAqui = editando?.id === r.id;
-                    // Resolvido sai do caminho sem sair da lista: fica riscado e
-                    // apagado, do jeito que um item feito fica numa lista de
-                    // tarefas. Some da fila ele nao pode - a fila tambem serve
+                    // Encerrado sai do caminho sem sair da lista: fica riscado
+                    // e apagado, do jeito que um item feito fica numa lista de
+                    // tarefas. Some da lista ele nao pode - ela tambem serve
                     // para ver que aquilo ja foi tratado, e para desfazer.
-                    const resolvido = r.status === 'resolvido';
+                    const resolvido = foraDaFila(r.status);
                     return (
                       <Fragment key={r.id}>
                       <tr id={`reporte-${r.id}`}
