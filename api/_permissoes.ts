@@ -448,6 +448,11 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   talentos: 'talentos:ver',
   talento_notas: 'talentos:ver',
   salvar_talento_nota: 'talentos:avaliar',
+  // O retorno da entrevista: ler e da mesma porta da ficha, escrever e de quem
+  // avalia - dizer como a pessoa foi na conversa e avaliacao, e nao cadastro.
+  talento_feedbacks: 'talentos:ver',
+  salvar_talento_feedback: 'talentos:avaliar',
+  excluir_talento_feedback: 'talentos:avaliar',
   update_talento_externo: 'talentos:editar',
   delete_talento_externo: 'talentos:editar',
   // Ler o historico e ler o banco de talentos por outro caminho: mesma chave.

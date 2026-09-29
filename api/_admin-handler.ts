@@ -1339,6 +1339,26 @@ async function migrarSchema(db: Client) {
   `);
   await ddl(`CREATE INDEX IF NOT EXISTS idx_talento_notas_pessoa ON talento_notas (tipo, pessoa_id)`);
 
+  // O que se soube da pessoa conversando com ela: o retorno da entrevista.
+  //
+  // Separado das notas de competencia de proposito. A nota e um numero que
+  // muda - ela e o estado atual do que a casa sabe -, e isto aqui e um fato
+  // datado: "conversei em 12/09 e foi assim". Regravar por cima apagaria a
+  // conversa de antes, que e justamente o que se quer reler antes da proxima.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS talento_feedbacks (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      tipo        TEXT NOT NULL,
+      pessoa_id   TEXT NOT NULL,
+      texto       TEXT NOT NULL,
+      autor_id    TEXT,
+      autor_nome  TEXT NOT NULL,
+      criado_em   TEXT NOT NULL
+    )
+  `);
+  await ddl(`CREATE INDEX IF NOT EXISTS idx_talento_feedbacks_pessoa
+             ON talento_feedbacks (tipo, pessoa_id, criado_em)`);
+
   // As habilidades que a propria pessoa declarou, com quanto tempo de uso e que
   // nivel se da. Tabela, e nao coluna JSON: assim uma habilidade e uma linha
   // procuravel, e nao um texto que so a tela sabe abrir. Mesma convencao de
@@ -4067,6 +4087,26 @@ async function despacharAdminData(
           relatorio,
         },
       };
+    }
+
+    /**
+     * O retorno das conversas com a pessoa, do mais recente para o mais antigo.
+     *
+     * Uma lista, e nao um campo: cada entrevista e um fato datado, e reler a
+     * conversa anterior antes da proxima e o motivo de isto existir.
+     */
+    if (action === 'talento_feedbacks') {
+      const tipo = query.get('tipo') === 'externo' ? 'externo' : 'interno';
+      const pessoa = String(query.get('id') ?? '');
+      if (!pessoa) return { status: 400, body: { error: 'id required' } };
+      const r = await db.execute({
+        sql: `SELECT id, texto, autor_id, autor_nome, criado_em
+              FROM talento_feedbacks
+              WHERE tipo = ? AND pessoa_id = ?
+              ORDER BY criado_em DESC, id DESC`,
+        args: [tipo, pessoa],
+      });
+      return { status: 200, body: { feedbacks: r.rows } };
     }
 
     if (action === 'talento_notas') {
@@ -9020,6 +9060,48 @@ function faltaEmProjeto(p: any): string | null {
 
     // Uma nota. Grava por cima da anterior: a avaliação é o retrato de agora, e
     // o que interessa guardar é quem deu a última e quando.
+    /** Grava o retorno de uma conversa. Sempre uma linha nova: o retorno de
+     *  ontem continua ali, e e ele que se le antes da proxima entrevista. */
+    if (action === 'salvar_talento_feedback') {
+      const tipo = body?.tipo === 'externo' ? 'externo' : 'interno';
+      const pessoa = String(body?.pessoa_id ?? '');
+      const texto = String(body?.texto ?? '').trim();
+      if (!pessoa) return { status: 400, body: { error: 'Pessoa ausente.' } };
+      if (!texto) return { status: 400, body: { error: 'Escreva o que a conversa mostrou.' } };
+      const agora = new Date().toISOString();
+      const r = await db.execute({
+        sql: `INSERT INTO talento_feedbacks (tipo, pessoa_id, texto, autor_id, autor_nome, criado_em)
+              VALUES (?,?,?,?,?,?)`,
+        args: [tipo, pessoa, texto.slice(0, 8000), autorId ?? null, autorNome ?? 'Alguém', agora],
+      });
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          feedback: {
+            id: Number(r.lastInsertRowid), texto: texto.slice(0, 8000),
+            autor_id: autorId ?? null, autor_nome: autorNome ?? 'Alguém', criado_em: agora,
+          },
+        },
+      };
+    }
+
+    /** Tira um retorno da lista. So quem escreveu: apagar a leitura de outra
+     *  pessoa sobre uma entrevista seria reescrever o que ela viu. */
+    if (action === 'excluir_talento_feedback') {
+      const id = Number(body?.id);
+      if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };
+      const dono = await db.execute({
+        sql: 'SELECT autor_id FROM talento_feedbacks WHERE id = ?', args: [id],
+      });
+      if (!dono.rows[0]) return { status: 404, body: { error: 'Retorno não encontrado.' } };
+      if (String(dono.rows[0].autor_id ?? '') !== String(autorId ?? '')) {
+        return { status: 403, body: { error: 'Só quem escreveu pode apagar este retorno.' } };
+      }
+      await db.execute({ sql: 'DELETE FROM talento_feedbacks WHERE id = ?', args: [id] });
+      return { status: 200, body: { ok: true } };
+    }
+
     if (action === 'salvar_talento_nota') {
       const tipo = body?.tipo === 'externo' ? 'externo' : 'interno';
       const pessoa = String(body?.pessoa_id ?? '');

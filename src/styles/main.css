@@ -5583,6 +5583,31 @@ body.arrastando-painel {
   .analise-contato { display: none; }
 }
 
+/* ── O retorno das conversas, na ficha do talento ─────────────────────────
+   Uma lista de fatos datados, e nao um campo que se reescreve: cada entrada
+   guarda quem falou e quando. */
+.talento-retornos { margin-top: 14px; }
+.talento-retorno-escrever { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.talento-retornos-lista {
+  display: flex; flex-direction: column; gap: 12px;
+  margin: 14px 0 0; padding: 0; list-style: none;
+}
+.talento-retornos-lista li {
+  padding: 10px 12px;
+  border: 1px solid var(--gray3); border-radius: var(--radius-md);
+  background: var(--white);
+}
+.talento-retorno-quem {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 4px;
+  font-size: 11.5px; color: var(--gray2);
+}
+.talento-retorno-quem strong { font-size: 12.5px; color: var(--black); }
+/* O apagar so aparece na linha sob o cursor, como em toda lista da casa. */
+.talento-retorno-quem .file-delete-btn { margin-left: auto; opacity: 0; }
+.talento-retornos-lista li:hover .file-delete-btn,
+.talento-retorno-quem .file-delete-btn:focus-visible { opacity: 1; }
+
 /* A complexidade da tarefa: o caminho em degraus, na cor do nivel, e a palavra,
    em pilula de contorno.
    Contorno e nao preenchimento - a etiqueta ao lado ja e um bloco de cor, e

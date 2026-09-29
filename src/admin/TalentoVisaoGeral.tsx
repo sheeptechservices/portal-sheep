@@ -12,8 +12,10 @@ import { useToast } from './AdminApp';
 import { Avatar } from './FormularioTarefa';
 import { Dialogo } from '../components/Dialogo';
 import { Skeleton } from '../components/Skeleton';
-import { IconDownload, IconLink, IconTrash } from '../components/icons';
-import { dia as fmtDataBR } from '../lib/datas';
+import { IconDownload, IconLink, IconSpinner, IconTrash } from '../components/icons';
+import { CampoTexto } from '../components/CampoTexto';
+import { TextoRico } from '../components/TextoRico';
+import { dia as fmtDataBR, instante } from '../lib/datas';
 import { baixarCurriculo } from '../lib/curriculoPdf';
 import { RadarHabilidades } from './RadarHabilidades';
 
@@ -91,6 +93,15 @@ export interface FichaCandidato {
   candidatura_em: string | null;
   atualizado_origem_em: string | null;
   observacoes: string | null;
+}
+
+/** Um retorno de conversa com a pessoa, como o servidor o devolve. */
+export interface FeedbackDoTalento {
+  id: number;
+  texto: string;
+  autor_id: string | null;
+  autor_nome: string;
+  criado_em: string;
 }
 
 export interface Nota {
@@ -311,6 +322,11 @@ export function VisaoGeral({
   const [notas, setNotas] = useState<Nota[]>([]);
   const [habilidades, setHabilidades] = useState<Habilidade[]>([]);
   const [ficha, setFicha] = useState<FichaCandidato | null>(null);
+  /** O retorno das conversas com a pessoa, do mais novo para o mais antigo. */
+  const [feedbacks, setFeedbacks] = useState<FeedbackDoTalento[]>([]);
+  const [escrevendo, setEscrevendo] = useState('');
+  const [gravandoFeedback, setGravandoFeedback] = useState(false);
+  const [apagando, setApagando] = useState<FeedbackDoTalento | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [confirmando, setConfirmando] = useState(false);
   /** A competência sob o ponteiro, no radar ou na régua. As duas peças mostram
@@ -329,8 +345,48 @@ export function VisaoGeral({
         setFicha(d?.ficha ?? null);
       })
       .finally(() => { if (vivo) setCarregando(false); });
+    api(`action=talento_feedbacks&tipo=${tipo}&id=${encodeURIComponent(pessoa.id)}`)
+      .then((d: any) => { if (vivo) setFeedbacks(d?.feedbacks ?? []); });
     return () => { vivo = false; };
   }, [api, tipo, pessoa.id]);
+
+  /** Guarda o retorno de uma conversa. A linha aparece na hora, com id
+   *  provisório, e o id de verdade chega da gravação: escrever um parecer de
+   *  cinco linhas e esperar a volta do servidor para vê-lo é esperar duas vezes
+   *  pela mesma coisa. */
+  async function guardarFeedback() {
+    const texto = escrevendo.trim();
+    if (!texto || gravandoFeedback) return;
+    const provisorio = -Date.now();
+    setFeedbacks(l => [{
+      id: provisorio, texto, autor_id: null, autor_nome: 'Você',
+      criado_em: new Date().toISOString(),
+    }, ...l]);
+    setEscrevendo('');
+    setGravandoFeedback(true);
+    const r = await gravar({
+      action: 'salvar_talento_feedback', tipo, pessoa_id: pessoa.id, texto,
+    }).finally(() => setGravandoFeedback(false));
+    if (r?.error || !r?.feedback) {
+      setFeedbacks(l => l.filter(f => f.id !== provisorio));
+      setEscrevendo(texto);
+      toast('error', 'O retorno não foi guardado', r?.error ?? 'Tente de novo.');
+      return;
+    }
+    setFeedbacks(l => l.map(f => (f.id === provisorio ? (r.feedback as FeedbackDoTalento) : f)));
+  }
+
+  /** Tira um retorno da lista. Some na hora e volta se o servidor recusar. */
+  async function apagarFeedback(alvo: FeedbackDoTalento) {
+    const antes = feedbacks;
+    setApagando(null);
+    setFeedbacks(l => l.filter(f => f.id !== alvo.id));
+    const r = await gravar({ action: 'excluir_talento_feedback', id: alvo.id });
+    if (r?.error) {
+      setFeedbacks(antes);
+      toast('error', 'Não foi possível apagar', r.error);
+    }
+  }
 
   /** O currículo em PDF, montado com o que a ficha tem. O banco não guarda o
    *  arquivo que a pessoa mandou - guarda o que ela respondeu -, e é disso que
@@ -566,6 +622,67 @@ export function VisaoGeral({
           </div>
           <p className="talentos-texto">{ficha.case_sucesso}</p>
         </section>
+      )}
+
+      {/* O que as conversas mostraram, em ordem de quem falou por último.
+          Separado das notas de propósito: a nota é o estado atual do que a casa
+          sabe e muda por cima; isto aqui é um fato datado, e é ele que se relê
+          antes da próxima entrevista. */}
+      <section className="painel talento-retornos">
+        <div className="painel-topo">
+          <div>
+            <p className="painel-titulo">Retorno das conversas</p>
+            <p className="painel-apoio">
+              {feedbacks.length
+                ? 'O que cada entrevista mostrou, do mais recente ao mais antigo'
+                : 'Ainda não há retorno de entrevista registrado'}
+            </p>
+          </div>
+        </div>
+
+        {podeAvaliar && (
+          <div className="talento-retorno-escrever">
+            <CampoTexto valor={escrevendo} onMudar={setEscrevendo} linhas={3}
+              ariaLabel="Retorno da conversa"
+              placeholder="Como foi a conversa: o que ficou claro, o que ficou em aberto, o que decidir depois" />
+            <button type="button" className="btn btn-primary"
+              disabled={!escrevendo.trim() || gravandoFeedback}
+              onClick={() => void guardarFeedback()}>
+              {gravandoFeedback ? <><IconSpinner size={13} /> Guardando</> : 'Guardar retorno'}
+            </button>
+          </div>
+        )}
+
+        {feedbacks.length > 0 && (
+          <ul className="talento-retornos-lista lista-anima" key={feedbacks.map(f => f.id).join('|')}>
+            {feedbacks.map(f => (
+              <li key={f.id}>
+                <div className="talento-retorno-quem">
+                  <strong>{f.autor_nome}</strong>
+                  <span>{instante(f.criado_em)}</span>
+                  {podeAvaliar && (
+                    <button type="button" className="file-delete-btn"
+                      title="Apagar este retorno" aria-label={`Apagar o retorno de ${f.autor_nome}`}
+                      onClick={() => setApagando(f)}>
+                      <IconTrash size={12} />
+                    </button>
+                  )}
+                </div>
+                <TextoRico texto={f.texto} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {apagando && (
+        <Dialogo
+          titulo="Apagar retorno"
+          descricao={<>O retorno de <strong>{apagando.autor_nome}</strong> sai da ficha. Não há como desfazer.</>}
+          rotuloOk="Apagar"
+          onFechar={() => setApagando(null)}
+          onConfirmar={() => void apagarFeedback(apagando)}
+        />
       )}
 
       {confirmando && (
