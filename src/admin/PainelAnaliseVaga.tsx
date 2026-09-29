@@ -30,8 +30,9 @@ import { useLarguraPainel } from '../lib/painelLateral';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import {
-  IconAlert, IconArrowLeft, IconCheck, IconChevronRight, IconDoc, IconHelp, IconImage,
-  IconRefresh, IconRelogio, IconSparkles, IconSpinner, IconTrash, IconUpload, IconUser, IconX,
+  IconAlert, IconArrowLeft, IconCheck, IconChevronRight, IconDoc, IconDownload, IconEnvelope,
+  IconHelp, IconImage, IconRefresh, IconRelogio, IconSparkles, IconSpinner, IconTelefone,
+  IconTrash, IconUpload, IconUser, IconX,
 } from '../components/icons';
 
 /** Um anexo já lido: o `base64` é a data URL inteira, que serve de prévia na
@@ -77,6 +78,20 @@ export interface PessoaNoRanking {
 }
 
 /** O que a análise já fez, contado por ela mesma enquanto acontece. */
+/**
+ * O contato de uma pessoa do ranking, e a ficha dela para o currículo.
+ *
+ * A análise devolve quem encaixa; quem vai falar com a pessoa precisa do e-mail
+ * e do telefone na mesma linha. Isso não vem do modelo - vem do cadastro que a
+ * tela já tem na mão -, e por isso entra por fora, e não pela resposta da IA.
+ */
+export interface ContatoDoRanking {
+  email: string | null;
+  telefone: string | null;
+  /** Baixa o currículo dessa pessoa. Ausente para quem a tela não sabe montar. */
+  baixarCurriculo?: () => void;
+}
+
 export interface AndamentoDaAnalise {
   fase: 'preparando' | 'lendo' | 'triando' | 'comparando' | 'fechando';
   /** Quantas pessoas o dossiê tem. Zero até o servidor dizer. */
@@ -165,7 +180,7 @@ function lerDataUrl(f: File): Promise<string> {
 
 export function PainelAnaliseVaga({
   onFechar, texto, onTexto, anexos, onAnexos, resultado, carregando, erro,
-  onAnalisar, onLimpar, onAbrirPessoa, andamento, api, onRefazer,
+  onAnalisar, onLimpar, onAbrirPessoa, contatoDe, andamento, api, onRefazer,
 }: {
   onFechar: () => void;
   texto: string;
@@ -178,6 +193,9 @@ export function PainelAnaliseVaga({
   onAnalisar: () => void;
   onLimpar: () => void;
   onAbrirPessoa: (tipo: 'interno' | 'externo', id: string) => void;
+  /** O contato de quem aparece no ranking, vindo do cadastro que a tela já
+   *  carregou. */
+  contatoDe?: (tipo: 'interno' | 'externo', id: string) => ContatoDoRanking | null;
   /** O andamento da análise em curso. `null` quando não há nenhuma. */
   andamento: AndamentoDaAnalise | null;
   /** A busca do painel, para o histórico se virar sozinho. */
@@ -388,7 +406,8 @@ export function PainelAnaliseVaga({
 
               {resultado && !carregando && (
                 <div className="analise-resultado surge">
-                  <Relatorio relatorio={resultado} onAbrirPessoa={onAbrirPessoa} />
+                  <Relatorio relatorio={resultado} onAbrirPessoa={onAbrirPessoa}
+                    contatoDe={contatoDe} />
                   <div className="analise-rodape">
                     <span>{assinatura(resultado)}</span>
                     <button type="button" className="analise-limpar" onClick={onLimpar}>Começar outra</button>
@@ -477,7 +496,8 @@ export function PainelAnaliseVaga({
                 )}
               </section>
 
-              <Relatorio relatorio={aberta.relatorio} onAbrirPessoa={onAbrirPessoa} />
+              <Relatorio relatorio={aberta.relatorio} onAbrirPessoa={onAbrirPessoa}
+                contatoDe={contatoDe} />
 
               <div className="analise-rodape">
                 <span>
@@ -555,9 +575,10 @@ function Andamento({ andamento }: { andamento: AndamentoDaAnalise }) {
 /** O relatório em si - o mesmo desenho para a análise que acabou de sair e para
  *  a que foi aberta no histórico. Duas leituras iguais não podem ter duas
  *  caras. */
-function Relatorio({ relatorio, onAbrirPessoa }: {
+function Relatorio({ relatorio, onAbrirPessoa, contatoDe }: {
   relatorio: AnaliseFeita;
   onAbrirPessoa: (tipo: 'interno' | 'externo', id: string) => void;
+  contatoDe?: (tipo: 'interno' | 'externo', id: string) => ContatoDoRanking | null;
 }) {
   const [verDescartados, setVerDescartados] = useState(false);
   /** Uma vez aberto, o bloco fica montado: `.revelar` anima de nada para nada
@@ -599,7 +620,8 @@ function Relatorio({ relatorio, onAbrirPessoa }: {
 
       <ol className="analise-ranking lista-anima" key={relatorio.analisado_em}>
         {mostrados.map((p, i) => (
-          <LinhaDoRanking key={p.ref} pessoa={p} posicao={i + 1} onAbrir={onAbrirPessoa} />
+          <LinhaDoRanking key={p.ref} pessoa={p} posicao={i + 1} onAbrir={onAbrirPessoa}
+            contato={contatoDe?.(p.tipo, p.id) ?? null} />
         ))}
       </ol>
 
@@ -625,7 +647,7 @@ function Relatorio({ relatorio, onAbrirPessoa }: {
                 <ol className="analise-ranking analise-ranking-fraco">
                   {descartados.map((p, i) => (
                     <LinhaDoRanking key={p.ref} pessoa={p} posicao={mostrados.length + i + 1}
-                      onAbrir={onAbrirPessoa} />
+                      onAbrir={onAbrirPessoa} contato={contatoDe?.(p.tipo, p.id) ?? null} />
                   ))}
                 </ol>
               )}
@@ -675,10 +697,13 @@ const SITUACAO: Record<ItemDoChecklist['situacao'], { icone: JSX.Element; titulo
  * primeira abertura: montado só enquanto aberto, o bloco animaria de nada para
  * nada.
  */
-function LinhaDoRanking({ pessoa, posicao, onAbrir }: {
+function LinhaDoRanking({ pessoa, posicao, onAbrir, contato }: {
   pessoa: PessoaNoRanking;
   posicao: number;
   onAbrir: (tipo: 'interno' | 'externo', id: string) => void;
+  /** O e-mail e o telefone de quem aparece aqui. Nulo enquanto a tela não os
+   *  tem - análise guardada de alguém que saiu do banco, por exemplo. */
+  contato?: ContatoDoRanking | null;
 }) {
   const [aberto, setAberto] = useState(false);
   const [jaAbriu, setJaAbriu] = useState(false);
@@ -713,6 +738,27 @@ function LinhaDoRanking({ pessoa, posicao, onAbrir }: {
           </span>
         )}
 
+        {/* O contato na linha, e não dentro da ficha: a pergunta seguinte a
+            "quem encaixa" é "como falo com essa pessoa", e ela não deveria
+            custar mais dois cliques e uma tela. */}
+        {(contato?.email || contato?.telefone) && (
+          <span className="analise-contato">
+            {contato.email && (
+              <a href={`mailto:${contato.email}`} title={`Escrever para ${contato.email}`}
+                onClick={e => e.stopPropagation()}>
+                <IconEnvelope size={11} /> {contato.email}
+              </a>
+            )}
+            {contato.telefone && (
+              <a href={`tel:${contato.telefone.replace(/[^+\d]/g, '')}`}
+                title={`Ligar para ${contato.telefone}`}
+                onClick={e => e.stopPropagation()}>
+                <IconTelefone size={11} /> {contato.telefone}
+              </a>
+            )}
+          </span>
+        )}
+
         <span className="analise-aderencia">
           {nota == null ? <em>sem leitura</em> : <><strong>{nota}</strong><small>%</small></>}
         </span>
@@ -720,6 +766,13 @@ function LinhaDoRanking({ pessoa, posicao, onAbrir }: {
         {/* A ficha da pessoa fica num botão só dela: a linha inteira agora abre
             o detalhe, e um clique que às vezes expande e às vezes troca de tela
             seria um clique em que não se confia. */}
+        {contato?.baixarCurriculo && (
+          <button type="button" className="analise-ficha"
+            aria-label={`Baixar o currículo de ${pessoa.nome}`} title="Baixar o currículo"
+            onClick={() => contato.baixarCurriculo?.()}>
+            <IconDownload size={13} />
+          </button>
+        )}
         <button type="button" className="analise-ficha" aria-label={`Abrir a ficha de ${pessoa.nome}`}
           title="Abrir a ficha" onClick={() => onAbrir(pessoa.tipo, pessoa.id)}>
           <IconUser size={13} />

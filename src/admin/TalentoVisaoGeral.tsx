@@ -12,8 +12,9 @@ import { useToast } from './AdminApp';
 import { Avatar } from './FormularioTarefa';
 import { Dialogo } from '../components/Dialogo';
 import { Skeleton } from '../components/Skeleton';
-import { IconLink, IconTrash } from '../components/icons';
+import { IconDownload, IconLink, IconTrash } from '../components/icons';
 import { dia as fmtDataBR } from '../lib/datas';
+import { baixarCurriculo } from '../lib/curriculoPdf';
 import { RadarHabilidades } from './RadarHabilidades';
 
 export interface Competencia { id: number; nome: string }
@@ -331,6 +332,27 @@ export function VisaoGeral({
     return () => { vivo = false; };
   }, [api, tipo, pessoa.id]);
 
+  /** O currículo em PDF, montado com o que a ficha tem. O banco não guarda o
+   *  arquivo que a pessoa mandou - guarda o que ela respondeu -, e é disso que
+   *  a folha é feita. */
+  function baixarFicha() {
+    baixarCurriculo({
+      nome: pessoa.nome,
+      email: pessoa.email,
+      telefone: externo?.telefone ?? null,
+      cidade: ficha?.cidade, uf: ficha?.uf,
+      linkedin: ficha?.linkedin, github: ficha?.github,
+      senioridade: ficha?.senioridade, tempo_experiencia: ficha?.tempo_experiencia,
+      nivel_ingles: ficha?.nivel_ingles, outro_idioma: ficha?.outro_idioma,
+      modelo_trabalho: ficha?.modelo_trabalho, contratacao: ficha?.contratacao,
+      vaga: ficha?.vaga, resumo: ficha?.resumo, case_sucesso: ficha?.case_sucesso,
+      habilidades,
+      competencias: competencias
+        .map(c => ({ nome: c.nome, nota: porCompetencia.get(c.id) }))
+        .filter((c): c is { nome: string; nota: number } => c.nota != null),
+    });
+  }
+
   /** A coluna da esquerda é o radar de habilidades. Sem habilidade declarada -
    *  o caso de quem é da casa -, a avaliação ocupa a linha inteira. */
   const temEsquerda = habilidades.length > 0;
@@ -421,6 +443,11 @@ export function VisaoGeral({
         </div>
 
         <div className="talento-capa-acoes">
+          {/* Levar a ficha para a conversa: quem vai entrevistar precisa dela
+              fora da tela, e copiar campo a campo era o trabalho que sobrava. */}
+          <button className="btn btn-secondary" onClick={baixarFicha}>
+            <IconDownload size={13} /> Baixar currículo
+          </button>
           {externo && podeEditar && (
             <button className="btn btn-secondary" onClick={() => setConfirmando(true)}>
               <IconTrash size={13} /> Excluir

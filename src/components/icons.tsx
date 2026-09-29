@@ -392,6 +392,23 @@ export function IconPrioridadeMaxima({ size = 14 }: { size?: number }) {
     </Ico>
   );
 }
+// Contato por e-mail: o envelope, com a aba de cima fechando no meio.
+export function IconEnvelope({ size = 14 }: { size?: number }) {
+  return (
+    <Ico size={size}>
+      <rect x="3" y="5.5" width="18" height="13" rx="2.2" />
+      <path d="M3.8 7l8.2 6 8.2-6" />
+    </Ico>
+  );
+}
+// Contato por telefone: o fone deitado, como em qualquer lista de contato.
+export function IconTelefone({ size = 14 }: { size?: number }) {
+  return (
+    <Ico size={size}>
+      <path d="M8.4 3.8 10 7.2l-1.9 1.6a11 11 0 0 0 5.1 5.1L14.8 12l3.4 1.6v3.3c0 .9-.8 1.6-1.7 1.5C8.9 17.9 6.1 15.1 5.2 6.5c-.1-.9.6-1.7 1.5-1.7h1.7Z" />
+    </Ico>
+  );
+}
 // Complexidade, em degraus: quanto se tem de subir para chegar do lado esquerdo
 // ao direito. O caminho é sempre o mesmo traço, e o que muda é quantas vezes ele
 // sobe - reto é direto ao ponto, três degraus é muita parte a resolver.

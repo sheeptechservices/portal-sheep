@@ -5560,6 +5560,29 @@ body.arrastando-painel {
      ninguem escreveu. */
   word-break: break-word;
 }
+/* O contato na linha do ranking: e-mail e telefone, que e a pergunta seguinte a
+   "quem encaixa". Fica antes da nota, e nao dentro da ficha - dois cliques e
+   uma tela para copiar um e-mail era o caminho de antes. */
+.analise-contato {
+  display: flex; flex-direction: column; gap: 1px;
+  min-width: 0; max-width: 230px;
+  font-size: 11px; line-height: 1.35;
+}
+.analise-contato a {
+  display: inline-flex; align-items: center; gap: 5px;
+  min-width: 0;
+  color: var(--gray2); text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: color var(--transition);
+}
+.analise-contato a:hover { color: var(--black); text-decoration: underline; }
+.analise-contato svg { flex-shrink: 0; }
+@media (max-width: 900px) {
+  /* Na coluna estreita o contato desceria empurrando a nota: ele sai, e a
+     ficha continua a um clique. */
+  .analise-contato { display: none; }
+}
+
 /* A complexidade da tarefa: o caminho em degraus, na cor do nivel, e a palavra,
    em pilula de contorno.
    Contorno e nao preenchimento - a etiqueta ao lado ja e um bloco de cor, e

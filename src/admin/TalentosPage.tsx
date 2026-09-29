@@ -27,8 +27,10 @@ import { lerEventos } from '../lib/sse';
 import { useAtividades, type Trabalho } from '../lib/atividades';
 import {
   PainelAnaliseVaga, type AnaliseFeita, type AndamentoDaAnalise, type AnexoDaVaga,
+  type ContatoDoRanking,
 } from './PainelAnaliseVaga';
 import { VitrinesDeTalentos, type PessoaParaVitrine } from './VitrinesDeTalentos';
+import { baixarCurriculo } from '../lib/curriculoPdf';
 import {
   BarraMedia, PAPEIS, VisaoGeral,
   type Competencia, type Nota, type TalentoExterno, type TalentoInterno,
@@ -148,6 +150,33 @@ export default function TalentosPage({ token, abrir }: {
     return await r.json().catch(() => null);
   }, [token, onSessionExpired]);
 
+  /** Monta e baixa o currículo de alguém do ranking. A ficha - resumo,
+   *  habilidades e notas - é lida agora, e não com a lista: é a mesma leitura
+   *  que a ficha da pessoa faz quando se abre. */
+  const baixarCurriculoDe = useCallback(async (
+    tipo: 'interno' | 'externo',
+    pessoa: { id: string; nome: string; email: string; telefone?: string },
+  ) => {
+    const d = await api(`action=talento_notas&tipo=${tipo}&id=${encodeURIComponent(pessoa.id)}`);
+    const ficha = d?.ficha ?? {};
+    const notas: { competencia_id: number; nota: number }[] = d?.notas ?? [];
+    const nomeDaComp = new Map(competencias.map(c => [c.id, c.nome]));
+    baixarCurriculo({
+      nome: pessoa.nome,
+      email: pessoa.email,
+      telefone: pessoa.telefone ?? null,
+      cidade: ficha.cidade, uf: ficha.uf, linkedin: ficha.linkedin, github: ficha.github,
+      senioridade: ficha.senioridade, tempo_experiencia: ficha.tempo_experiencia,
+      nivel_ingles: ficha.nivel_ingles, outro_idioma: ficha.outro_idioma,
+      modelo_trabalho: ficha.modelo_trabalho, contratacao: ficha.contratacao,
+      vaga: ficha.vaga, resumo: ficha.resumo, case_sucesso: ficha.case_sucesso,
+      habilidades: d?.habilidades ?? [],
+      competencias: notas
+        .map(n => ({ nome: nomeDaComp.get(n.competencia_id) ?? '', nota: n.nota }))
+        .filter(c => c.nome),
+    });
+  }, [api, competencias]);
+
   const gravar = useCallback(async (corpo: Record<string, unknown>) => {
     const r = await fetch('/api/admin-data', {
       method: 'POST',
@@ -203,6 +232,27 @@ export default function TalentosPage({ token, abrir }: {
       familias: familiasDe(t.habilidades), habilidades: t.habilidades,
     })),
   ].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')), [internos, externos]);
+
+  /**
+   * O contato de quem aparece no ranking da análise, e o currículo dela.
+   *
+   * Vem do cadastro que esta tela já carregou, e não da resposta do modelo: a
+   * IA diz quem encaixa, e quem fala com a pessoa é a casa. A ficha completa -
+   * resumo, habilidades, notas - chega por uma leitura própria na hora de
+   * baixar: carregar a ficha de trinta pessoas para mostrar uma lista seria
+   * pagar por trinta o que se usa uma vez.
+   */
+  const contatoDe = useCallback((tipo: 'interno' | 'externo', id: string): ContatoDoRanking | null => {
+    const interno = tipo === 'interno' ? internos.find(x => x.id === id) : null;
+    const externo = tipo === 'externo' ? externos.find(x => x.id === id) : null;
+    const pessoa = interno ?? externo;
+    if (!pessoa) return null;
+    return {
+      email: pessoa.email || null,
+      telefone: externo?.telefone || null,
+      baixarCurriculo: () => void baixarCurriculoDe(tipo, pessoa),
+    };
+  }, [internos, externos, baixarCurriculoDe]);
 
   /** A mesma gente, no recorte que a vitrine precisa para escolher. */
   const paraVitrine = useMemo<PessoaParaVitrine[]>(() => todos.map(t => ({
@@ -437,6 +487,7 @@ export default function TalentosPage({ token, abrir }: {
           // Abrir a ficha de alguem do ranking fecha a gaveta: a ficha e uma
           // tela inteira, e ela nasce atras de um painel que cobre meia janela.
           onAbrirPessoa={(tipo, id) => { setAberto({ tipo, id }); setAnaliseAberta(false); }}
+          contatoDe={contatoDe}
           andamento={andamento}
           api={api}
           onRefazer={id => void analisar(id)}
