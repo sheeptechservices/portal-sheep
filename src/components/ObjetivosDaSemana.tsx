@@ -46,8 +46,6 @@ import { useToast } from '../lib/toast';
 export interface MeuObjetivo {
   projeto_id: string;
   projeto_nome: string;
-  /** Se o projeto tem divisória própria na Planning (em andamento). */
-  na_divisoria: boolean;
   cliente: string | null;
   id: string;
   texto: string;
@@ -417,7 +415,7 @@ function ListaDeObjetivos({ dados, pessoas, onIr, onAtualizar, onDesdobrar, onPr
     if (cabeca) setAbertas(atual => new Set(atual).add(chaveDe(cabeca)));
     const provisorio = `novo-${Date.now()}`;
     const novo: MeuObjetivo = {
-      projeto_id: origem.projeto_id, projeto_nome: origem.projeto_nome, na_divisoria: origem.na_divisoria,
+      projeto_id: origem.projeto_id, projeto_nome: origem.projeto_nome,
       cliente: origem.cliente, id: provisorio, texto, feito: false, prazo: sextaDaSemana(dados.semana), provas: 0,
       responsaveis: origem.responsaveis,
       pai: origem.pai ?? origem.id, pai_texto: origem.pai ? origem.pai_texto ?? null : origem.texto,

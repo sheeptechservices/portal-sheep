@@ -1143,7 +1143,7 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
   const [openCard, setOpenCard] = useState<
     {
       page: Page; id: string; nonce: number; aba?: 'reunioes' | 'planning'; reuniao?: number;
-      semana?: string; divisoria?: boolean;
+      semana?: string;
     } | null
   >(null);
 
@@ -1265,7 +1265,7 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
     setPage('projetos');
     setOpenCard(prev => ({
       page: 'projetos', id: o.projeto_id, nonce: (prev?.nonce ?? 0) + 1,
-      aba: 'planning', semana, divisoria: o.na_divisoria,
+      aba: 'planning', semana,
     }));
   }, []);
 

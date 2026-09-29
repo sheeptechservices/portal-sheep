@@ -4616,10 +4616,6 @@ async function despacharAdminData(
         .map(o => ({
           projeto_id: String(x.projeto_id),
           projeto_nome: x.projeto_nome == null ? 'Projeto' : String(x.projeto_nome),
-          // Em andamento é o que a Planning lista em divisória própria; o resto
-          // (demandas gerais, projeto pausado) só aparece na visão de todos os
-          // objetivos, e é para lá que o clique leva.
-          na_divisoria: String(x.projeto_id) !== PROJETO_GERAL && String(x.projeto_status ?? '') === 'Em andamento',
           cliente: x.cliente == null ? null : String(x.cliente),
           id: o.id,
           texto: o.texto,
