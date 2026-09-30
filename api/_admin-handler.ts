@@ -3548,6 +3548,72 @@ function corpoDeMencao(oportunidade: string, texto: string): string {
 }
 
 /**
+ * Avisa por e-mail quem foi marcado num comentário de tarefa.
+ *
+ * O balão do portal já acende para quem está com ele aberto; o e-mail alcança
+ * quem não está - que é justamente o caso de quem foi chamado para responder
+ * alguma coisa. É o mesmo par que a mudança de etapa já usava, e o mesmo que o
+ * comentário de oportunidade já fazia: a tarefa era a única conversa que
+ * avisava só por dentro.
+ *
+ * Três recusas, todas de propósito:
+ *  - quem escreveu não recebe aviso do próprio comentário;
+ *  - quem não enxerga a tarefa não recebe o texto dela, ainda que marcado - o
+ *    corte de equipe vale para o e-mail como vale para a tela;
+ *  - sem e-mail cadastrado não há o que mandar.
+ *
+ * Falhar aqui nunca derruba o comentário: o envio é efeito colateral, e o
+ * comentário já está gravado quando esta função roda.
+ */
+async function avisarMencionados(
+  db: Client,
+  marcados: Record<string, unknown>[],
+  dados: { tarefaId: number; texto: string; autorId: string | null; autorNome: string },
+): Promise<void> {
+  const destinos = marcados.filter(m => String(m.id) !== String(dados.autorId ?? '') && m.email);
+  if (destinos.length === 0) return;
+  try {
+    const t = await db.execute({
+      sql: `SELECT t.titulo, p.nome AS projeto FROM projeto_tarefas t
+            JOIN projetos p ON p.id = t.projeto_id
+            WHERE t.id = ?`,
+      args: [dados.tarefaId],
+    });
+    const titulo = String(t.rows[0]?.titulo ?? 'Tarefa');
+    const projeto = String(t.rows[0]?.projeto ?? '-');
+    // O texto do comentário guarda a marcação como `@[Nome](id)`. No e-mail ela
+    // vira só o nome, que é o que quem escreveu leu na tela.
+    const lido = dados.texto.replace(/@\[([^\]]+)\]\([^)]+\)/g, '@$1').trim();
+    const link = `${enderecoDoPortal()}/?tarefa=${dados.tarefaId}`;
+    const corpo = fichaEmail([
+      ['Tarefa', titulo],
+      ['Projeto', projeto],
+      ['Quem marcou', dados.autorNome],
+    ]) + citacaoEmail(lido) + botaoEmail('Abrir a tarefa', link);
+
+    for (const dest of destinos) {
+      // O mesmo porteiro da tela: marcar alguém não dá a ela acesso ao que ela
+      // não podia ler.
+      const barrado = await guardaDaEquipe(db, {
+        id: String(dest.id), email: String(dest.email), nome: String(dest.nome ?? ''),
+        foto_url: null, papel: String(dest.papel ?? 'membro') as UsuarioAdmin['papel'],
+      }, dados.tarefaId, 'tarefa');
+      if (barrado) continue;
+      void notifyEmail(db, String(dest.email), `${dados.autorNome} marcou você em "${titulo}"`,
+        corpo, 'mencao_tarefa',
+        {
+          previa: lido.slice(0, 140),
+          rodape: 'Você recebe este aviso porque foi citado no comentário da tarefa.',
+        });
+    }
+  } catch (e) {
+    // Aviso é efeito colateral: o comentário já está gravado, e uma falha aqui
+    // não pode virar erro na tela de quem escreveu.
+    console.error('[mencao-tarefa]', (e as Error).message);
+  }
+}
+
+/**
  * E-mails dos inscritos numa lista de notificação.
  *
  * O e-mail sai sempre de `usuarios`, nunca de cópia guardada na tabela de
@@ -7466,7 +7532,8 @@ function faltaEmProjeto(p: any): string | null {
       const pedidas: string[] = [...new Set(cruas.map(v => String(v)))];
       if (pedidas.length > 0) {
         const validos = await db.execute({
-          sql: `SELECT id FROM usuarios WHERE ativo = 1 AND id IN (${pedidas.map(() => '?').join(',')})`,
+          sql: `SELECT id, nome, email, papel FROM usuarios
+                WHERE ativo = 1 AND id IN (${pedidas.map(() => '?').join(',')})`,
           args: pedidas,
         });
         // Numa leva só: uma ida ao banco por pessoa marcada fazia um comentário
@@ -7477,6 +7544,9 @@ function faltaEmProjeto(p: any): string | null {
             args: [comentarioId, String(r.id)],
           })), 'write');
         }
+        await avisarMencionados(db, validos.rows, {
+          tarefaId, texto, autorId, autorNome,
+        });
       }
 
       // Confere todos antes de gravar qualquer um: recusar o terceiro no meio
