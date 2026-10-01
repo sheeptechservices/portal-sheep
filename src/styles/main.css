@@ -5560,6 +5560,16 @@ body.arrastando-painel {
      ninguem escreveu. */
   word-break: break-word;
 }
+/* As etiquetas no card do quadro do painel. Em linha que quebra, como na tela
+   de Tarefas: duas etiquetas cabem lado a lado, e a terceira desce em vez de
+   espremer as outras. */
+.kanban-card-etiquetas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
 /* O contato na linha do ranking: e-mail e telefone, que e a pergunta seguinte a
    "quem encaixa". Fica antes da nota, e nao dentro da ficha - dois cliques e
    uma tela para copiar um e-mail era o caminho de antes. */

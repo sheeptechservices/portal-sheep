@@ -1,4 +1,7 @@
-import { Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  createContext, Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { iniciais, useAuth, useToast } from './AdminApp';
 import {
@@ -80,8 +83,8 @@ import { Donut, type FatiaDonut } from '../components/Donut';
 // O mesmo formulário da tela de Tarefas: o quadro da semana abre a tarefa aqui,
 // e uma cópia local divergiria dela no primeiro campo novo.
 import {
-  ConfirmarExclusao, FormularioTarefa, indexarEtiquetas, tarefaGravada, TITULO_PADRAO,
-  type EtapaTarefa, type EtiquetaTarefa, type Rascunho as RascunhoTarefa,
+  ChipEtiqueta, ConfirmarExclusao, FormularioTarefa, indexarEtiquetas, tarefaGravada, TITULO_PADRAO,
+  type EtapaTarefa, type Etiquetario, type EtiquetaTarefa, type Rascunho as RascunhoTarefa,
 } from './FormularioTarefa';
 import { PreviaArquivo } from '../components/PreviaArquivo';
 import { SelectSistema } from '../components/SelectSistema';
@@ -1211,6 +1214,16 @@ const INTENCAO_MS = 200;
  *  é um traço com a bolinha da cor e a contagem; abre parando o ponteiro em
  *  cima, e na hora quando um card está sendo arrastado, porque aí a coluna
  *  precisa estar pronta para receber. */
+/**
+ * As cores das etiquetas de tarefa, para quem desenha um card.
+ *
+ * Por contexto, e não por prop: o card do quadro mora quatro níveis abaixo da
+ * página - folha da Planning, seção de tarefas, quadro, coluna -, e passar a
+ * cor de mão em mão obrigaria cada um desses componentes a conhecer uma coisa
+ * que não é dele. É o mesmo arranjo da semana da Planning.
+ */
+const EtiquetarioCtx = createContext<Etiquetario | null>(null);
+
 function ColunaDoQuadro({ etapa, tarefas, pessoas, podeEditar, arrastando, onAbrir, onCriar,
   onExcluir, onSoltarAqui, onArrastar, onFimDoArraste, onFixarRecolhida, entregaDe }: {
   etapa: EtapaTarefa;
@@ -1230,6 +1243,7 @@ function ColunaDoQuadro({ etapa, tarefas, pessoas, podeEditar, arrastando, onAbr
   /** Ausente para quem não configura etapas. */
   onFixarRecolhida?: (etapaId: number) => void;
 }) {
+  const etiquetario = useContext(EtiquetarioCtx);
   const [aberta, setAberta] = useState(false);
   const [sobre, setSobre] = useState(false);
   const abrirTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1342,6 +1356,16 @@ function ColunaDoQuadro({ etapa, tarefas, pessoas, podeEditar, arrastando, onAbr
               <p className="kanban-card-entrega" title={entregaDe(x) ?? undefined}>
                 {entregaDe(x)}
               </p>
+            )}
+            {/* As etiquetas no card, como na tela de Tarefas: "bug", "bloqueado"
+                e companhia mudam o que se olha primeiro, e saber disso só
+                abrindo a tarefa é saber tarde demais. */}
+            {x.etiquetas?.length > 0 && (
+              <div className="kanban-card-etiquetas">
+                {x.etiquetas.map(e => (
+                  <ChipEtiqueta key={e} etiqueta={e} cor={etiquetario?.cor(e)} />
+                ))}
+              </div>
             )}
             <div className="painel-kanban-pe">
               {/* O ícone de prioridade explica a ordem da coluna, que de outro
@@ -7235,6 +7259,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
   }
 
   return (
+    <EtiquetarioCtx.Provider value={etq}>
     <div className="admin-content-wrap pagina-cristal pagina-projetos">
       {/* As abas são o que a matriz liberou. Com uma só, a faixa some: uma
           aba sozinha não é escolha, é um rótulo repetindo o título da página. */}
@@ -7789,5 +7814,6 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           onCancelar={() => setExcluindo(null)} onConfirmar={() => void excluir(excluindo)} />
       )}
     </div>
+    </EtiquetarioCtx.Provider>
   );
 }
