@@ -51,6 +51,10 @@ import { CampoTexto } from '../components/CampoTexto';
 import { TextoRico } from '../components/TextoRico';
 import type { Transcricao } from '../components/BotaoTranscricao';
 import { Dialogo } from '../components/Dialogo';
+import {
+  exportar as exportarPacote, type ComentarioExport, type ObjetivoExport,
+  type Pacote as PacoteExport, type SubtarefaExport,
+} from '../lib/exportarTarefas';
 import { dia as fmtData, diaCurto as fmtDataCurta, tamanho as fmtTamanho } from '../lib/datas';
 import { ancorar } from '../lib/ancorar';
 import { contemTermo } from '../lib/texto';
@@ -1479,7 +1483,7 @@ function QuadroDeTarefas({ tarefas, etapas, pessoas, podeEditar, onAbrir, onCria
  * quer a tarefa dentro de uma entrega cria pelo quadro dela, na aba Geral.
  */
 function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCriar, onExcluir,
-  onMover, onFixarRecolhida }: {
+  onMover, onFixarRecolhida, onExportar }: {
   projeto: Projeto;
   etapas: EtapaTarefa[];
   pessoas: Pessoa[];
@@ -1489,6 +1493,10 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
   onExcluir: (t: Tarefa) => void;
   onMover: (t: Tarefa, status: string) => void;
   onFixarRecolhida?: (etapaId: number) => void;
+  /** Leva o combinado da semana e estas tarefas para um arquivo de markdown.
+   *  Ausente onde não há semana combinada - a ficha do projeto, por exemplo -,
+   *  e aí o botão não existe. */
+  onExportar?: (tarefas: Tarefa[], etapas: string[]) => Promise<void> | void;
 }) {
   const todas = projeto.tarefas ?? [];
   const tituloDaEntrega = new Map((projeto.entregas ?? []).map(e => [e.id, e.titulo]));
@@ -1503,6 +1511,11 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
   const [busca, setBusca] = useState('');
   const temFiltro = fResponsavel.length > 0 || fEntrega.length > 0
     || fEtiqueta.length > 0 || fPrioridade.length > 0 || busca.trim() !== '';
+  /** A escolha das etapas, aberta. Nula: ninguém pediu a exportação ainda. */
+  const [exportando, setExportando] = useState<string[] | null>(null);
+  /** O arquivo sendo montado: a conversa e o checklist de cada tarefa vêm do
+   *  servidor antes de ele sair. */
+  const [montando, setMontando] = useState(false);
 
   /** As opções vêm do que existe nas tarefas, e não de listas fixas: filtro que
    *  oferece valor sem resultado é ruído. O valor é o id, e o nome é só o
@@ -1565,8 +1578,12 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
         )}
       </div>
 
-      {todas.length > 0 && (
+      {/* A barra existe com tarefa para filtrar, e tambem sem nenhuma quando ha
+          o que exportar: na semana que so tem objetivos combinados, o arquivo
+          continua fazendo sentido. */}
+      {(todas.length > 0 || !!onExportar) && (
         <div className="admin-toolbar painel-kanban-filtros">
+          {todas.length > 0 && <>
           <span className="admin-toolbar-label">Filtrar</span>
           <FilterDropdown label="Responsável" values={fResponsavel} options={opcoes.responsavel}
             onChange={setFResponsavel} />
@@ -1593,7 +1610,79 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
           <span className="admin-toolbar-label para-a-direita">Buscar</span>
           <CampoBusca className="painel-kanban-busca" valor={busca} onMudar={setBusca}
             placeholder="Buscar por título, descritivo ou entrega" rotulo="Buscar tarefa" />
+          </>}
+          {/* O combinado da semana e as tarefas num arquivo só, escrito para
+              uma IA ler: é o contexto inteiro do projeto, e colá-lo a mão de
+              card em card é o que esta tela existe para evitar. */}
+          {onExportar && (
+            <button type="button"
+              className={`admin-toolbar-btn${todas.length === 0 ? ' para-a-direita' : ''}`}
+              title="Baixar o combinado da semana e as tarefas em markdown, para dar de contexto a uma IA"
+              disabled={montando}
+              onClick={() => setExportando(etapas.map(e => e.nome))}>
+              {montando ? <IconSpinner size={13} /> : <IconDownload size={13} />}
+              Exportar
+            </button>
+          )}
         </div>
+      )}
+
+      {/* Quais etapas entram no arquivo. Todas por padrão: o pedido comum é o
+          projeto inteiro, e quem quer só o que está em curso tira as outras. */}
+      {exportando && onExportar && (
+        <Dialogo
+          titulo="Exportar para markdown"
+          descricao={<>
+            Sai o combinado da semana e as tarefas <b>que estão na tela</b> (os filtros e a
+            busca valem), nas etapas escolhidas. Cada tarefa vai inteira: descritivo,
+            checklist e conversa.
+          </>}
+          perigo={false}
+          rotuloOk="Baixar markdown"
+          // Sem rótulo de espera: aqui `ocupado` é trava, e não demora. O
+          // arquivo se monta depois que a caixa fecha, e quem gira é o botão
+          // da barra.
+          ocupado={exportando.length === 0}
+          largura={460}
+          onFechar={() => setExportando(null)}
+          onConfirmar={() => {
+            const escolhidas = exportando;
+            setExportando(null);
+            setMontando(true);
+            void Promise.resolve(onExportar(tarefas.filter(t => escolhidas.includes(t.status)), escolhidas))
+              .finally(() => setMontando(false));
+          }}>
+          <div className="exportar-etapas">
+            <label className="exportar-etapa exportar-etapa-todas">
+              <input type="checkbox" className="form-checkbox"
+                checked={exportando.length === etapas.length}
+                // Marcar com algumas escolhidas marca todas; desmarcar esvazia,
+                // e aí o botão trava - exportar nada não é um pedido.
+                onChange={() => setExportando(exportando.length === etapas.length
+                  ? [] : etapas.map(e => e.nome))} />
+              <span>Todas as etapas</span>
+              <span className="exportar-etapa-conta">{tarefas.length}</span>
+            </label>
+            {etapas.map(et => {
+              const quantas = tarefas.filter(t => t.status === et.nome).length;
+              const marcada = exportando.includes(et.nome);
+              return (
+                <label key={et.id} className="exportar-etapa">
+                  <input type="checkbox" className="form-checkbox" checked={marcada}
+                    onChange={() => setExportando(e => (marcada
+                      ? (e ?? []).filter(x => x !== et.nome)
+                      : [...(e ?? []), et.nome]))} />
+                  <span className="exportar-etapa-cor" style={{ background: et.cor }} aria-hidden="true" />
+                  <span>{et.nome}</span>
+                  <span className="exportar-etapa-conta">{quantas}</span>
+                </label>
+              );
+            })}
+            {exportando.length === 0 && (
+              <p className="form-hint surge">Escolha ao menos uma etapa.</p>
+            )}
+          </div>
+        </Dialogo>
       )}
 
       <QuadroDeTarefas
@@ -3120,7 +3209,7 @@ function PessoaFoto({ nome, id, equipe, tamanho = 20 }: {
 function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEditar,
   podeEditarTarefa, podeExcluirTarefa, etapas, etapaDeEntrada, etapaDeConclusao, onAbrir,
   onAbrirTarefa, onSalvarTarefa, onExcluirTarefa, onMudarPlanning, onCriarTarefa, entregas,
-  provas }: {
+  provas, onExportar }: {
   /** Como prender um print a um objetivo desta folha. */
   provas?: ProvasDosObjetivos;
   projeto: Projeto;
@@ -3148,6 +3237,8 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
    *  regrava a cada tecla. */
   onMudarPlanning: (dados: { objetivos: ObjetivoDaSemana[] }) => void;
   onCriarTarefa: (status: string) => void;
+  /** Baixa o combinado da semana e as tarefas escolhidas em markdown. */
+  onExportar?: (tarefas: Tarefa[], etapas: string[]) => Promise<void> | void;
 }) {
   const gestor = p.equipe.find(m => m.papel === 'Gestor');
   const ehGeral = p.id === PROJETO_GERAL;
@@ -3240,6 +3331,7 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
           onAbrir={x => onAbrirTarefa(x, p)}
           onCriar={status => onCriarTarefa(status)}
           onExcluir={onExcluirTarefa}
+          onExportar={onExportar}
           onMover={(t, status) => onSalvarTarefa(t, { status })} />
       </section>
 
@@ -4837,6 +4929,7 @@ const PLANNING_VAZIA: PlanningDaSemana = { objetivos: [], evidencias: [] };
  */
 function AbaPlanning({
   projetos, pessoas, planning, semana, onMudarSemana, onSalvarPlanning, onReordenar, provasDe,
+  onExportar,
   onAbrir, onSalvarTarefa, onAbrirTarefa, onCriarTarefa, onExcluirTarefa,
   etapas, etapaDeEntrada, etapaDeConclusao, podeEditar, podeEditarTarefa, podeExcluirTarefa,
   entregasDe, funil, secao, onVerProjeto, onAbrirOportunidade, foco,
@@ -4880,6 +4973,9 @@ function AbaPlanning({
   /** Como prender um print a um objetivo, projeto por projeto. Ausente para
    *  quem não edita. */
   provasDe?: (projetoId: string) => ProvasDosObjetivos;
+  /** Baixa a folha aberta em markdown: o combinado da semana e as tarefas das
+   *  etapas escolhidas, com tudo o que cada uma tem. */
+  onExportar?: (projeto: Projeto, tarefas: Tarefa[], etapas: string[]) => Promise<void>;
 }) {
   const dias = useMemo(() => diasUteisDaSemana(semana), [semana]);
 
@@ -4995,6 +5091,8 @@ function AbaPlanning({
               onSalvarTarefa={onSalvarTarefa}
               onExcluirTarefa={onExcluirTarefa}
               onCriarTarefa={status => onCriarTarefa(atual, status)}
+              onExportar={onExportar && ((tarefas, etapasEscolhidas) =>
+                onExportar(atual, tarefas, etapasEscolhidas))}
               entregas={atual.id === PROJETO_GERAL ? null : entregasDe(atual)}
               provas={provasDe?.(atual.id)}
               onMudarPlanning={dados => onSalvarPlanning(atual.id, {
@@ -6181,6 +6279,115 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     remover: prova => removerProva(projetoId, prova, planning[projetoId]?.evidencias ?? []),
     abrir: prova => setPrevia({ fonte: 'objetivo', item: prova }),
   }), [planning, anexarProva, removerProva]);
+
+  /**
+   * A folha da Planning num arquivo de markdown, para dar de contexto a uma IA.
+   *
+   * Sai tudo o que a tela tem sobre o projeto: a ficha, o combinado da semana
+   * com cada objetivo inteiro (estado, prazo, quem responde, desdobramentos e
+   * as provas anexadas), as entregas e as tarefas escolhidas - cada uma com
+   * descritivo, checklist e conversa. É o que alguém teria de abrir card por
+   * card e copiar à mão.
+   *
+   * O checklist e a conversa não estão no quadro: eles descem numa chamada só
+   * para todas as tarefas, como na tela de Tarefas. Falhando, o arquivo sai sem
+   * eles em vez de não sair.
+   */
+  const exportarPlanning = useCallback(async (
+    projeto: Projeto, tarefas: Tarefa[], etapasEscolhidas: string[],
+  ) => {
+    const ids = tarefas.map(t => t.id);
+    const vazio = { comentarios: new Map<number, ComentarioExport[]>(), passos: new Map<number, SubtarefaExport[]>() };
+    const detalhes = ids.length === 0 ? vazio : await (async () => {
+      const [cs, ps] = await Promise.all([
+        api(`?action=tarefas_comentarios&ids=${ids.join(',')}`).catch(() => null),
+        api(`?action=tarefas_subtarefas&ids=${ids.join(',')}`).catch(() => null),
+      ]);
+      const comentarios = new Map<number, ComentarioExport[]>();
+      for (const c of (cs?.comentarios ?? []) as any[]) {
+        const id = Number(c.tarefa_id);
+        const lista = comentarios.get(id) ?? [];
+        lista.push({
+          id: Number(c.id),
+          pai: c.pai_id == null ? null : Number(c.pai_id),
+          autor: String(c.usuario_nome ?? 'Alguém'),
+          em: String(c.criado_em ?? ''),
+          texto: String(c.texto ?? ''),
+          resposta: c.pai_id != null,
+          anexos: String(c.anexos ?? '').split('|').filter(Boolean),
+        });
+        comentarios.set(id, lista);
+      }
+      const passos = new Map<number, SubtarefaExport[]>();
+      for (const x of (ps?.subtarefas ?? []) as any[]) {
+        const id = Number(x.tarefa_id);
+        const lista = passos.get(id) ?? [];
+        lista.push({ titulo: String(x.titulo ?? ''), feita: Number(x.feita) === 1 });
+        passos.set(id, lista);
+      }
+      return { comentarios, passos };
+    })();
+
+    const combinado = planning[projeto.id] ?? PLANNING_VAZIA;
+    const nomeDe = (id: string) => pessoas.find(x => x.id === id)?.nome ?? id;
+    const comoObjetivo = (o: ObjetivoDaSemana): ObjetivoExport => ({
+      texto: o.texto,
+      estado: statusDoObjetivo(o),
+      prazo: o.prazo,
+      responsaveis: (o.responsaveis ?? []).map(nomeDe),
+      desejavel: o.desejavel,
+      provas: combinado.evidencias.filter(e => e.objetivo_id === o.id).map(e => e.nome),
+      // Os desdobramentos descem sob a mãe, como na tela.
+      filhos: combinado.objetivos.filter(f => f.pai === o.id).map(comoObjetivo),
+    });
+    const gestor = projeto.equipe.find(m => m.papel === 'Gestor');
+    const entregas = projeto.entregas ?? [];
+    const pacote: PacoteExport = {
+      gerado_em: new Date(),
+      filtro: `Planning da semana de ${iso10(semanaDaPlanning)} a ${sextaDaSemana(iso10(semanaDaPlanning))}`
+        + ` · ${projeto.nome} · etapas: ${etapasEscolhidas.join(', ')}`,
+      projetos: [{
+        codigo: projeto.codigo ?? null,
+        nome: projeto.nome,
+        cliente: projeto.cliente_nome ?? null,
+        descricao: projeto.descricao ?? null,
+        status: projeto.status,
+        prioridade: projeto.prioridade ?? null,
+        gestor: gestor?.nome ?? null,
+        data_inicio: projeto.data_inicio ?? null,
+        previsao_entrega: projeto.previsao_entrega ?? null,
+        equipe: projeto.equipe.map(m => ({ nome: m.nome, papel: m.papel })),
+        entregas: entregas.map(e => ({
+          titulo: e.titulo, status: e.status, prazo: e.prazo,
+          marcador: e.marcador, submarcador: e.submarcador,
+        })),
+        semana: {
+          de: iso10(semanaDaPlanning),
+          ate: sextaDaSemana(iso10(semanaDaPlanning)),
+          // Só as mães no primeiro nível: os desdobramentos já descem dentro delas.
+          objetivos: combinado.objetivos.filter(o => !o.pai).map(comoObjetivo),
+        },
+        tarefas: tarefas.map(t => ({
+          titulo: t.titulo,
+          descricao: t.descricao ?? null,
+          status: t.status,
+          prioridade: t.prioridade ?? null,
+          complexidade: t.complexidade ?? null,
+          responsavel_nome: (t.responsaveis ?? []).map(nomeDe).join(', ') || null,
+          prazo: t.prazo ?? null,
+          etiquetas: t.etiquetas ?? [],
+          concluida_em: t.concluida_em ?? null,
+          feita: t.status === etapaDeConclusao,
+          entrega_titulo: entregas.find(e => e.id === t.entrega_id)?.titulo ?? null,
+          subtarefas: detalhes.passos.get(t.id) ?? [],
+          comentarios: detalhes.comentarios.get(t.id) ?? [],
+        })),
+      }],
+    };
+    exportarPacote('md', pacote);
+    toast('success', 'Markdown baixado',
+      `${projeto.nome}: ${combinado.objetivos.length} objetivos e ${tarefas.length} tarefas.`);
+  }, [api, planning, pessoas, semanaDaPlanning, etapaDeConclusao, toast]);
 
   /** Grava o combinado de um projeto. Pinta na hora e manda depois, juntando as
    *  teclas: numa reunião se digita a frase inteira, e uma gravação por letra
@@ -7625,6 +7832,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           semana={semanaDaPlanning}
           onMudarSemana={setSemanaDaPlanning}
           onSalvarPlanning={salvarPlanning}
+          onExportar={exportarPlanning}
           provasDe={podeEditar ? provasDe : undefined}
           onReordenar={reordenarPlanning}
           onCriarTarefa={(p, status) => criarTarefaNoProjeto(p, null, status)}

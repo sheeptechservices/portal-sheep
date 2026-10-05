@@ -65,6 +65,31 @@ export interface TarefaExport {
   comentarios: ComentarioExport[];
 }
 
+/** Um objetivo combinado para a semana, como a planning o guarda. */
+export interface ObjetivoExport {
+  texto: string;
+  /** Feito, Fazendo ou A fazer - o mesmo rótulo do marco na tela. */
+  estado: string;
+  /** Para que dia ele foi combinado. Nulo: a semana inteira. */
+  prazo: string | null;
+  /** Quem respondeu por ele na reunião. Vazio: é do time. */
+  responsaveis: string[];
+  /** Não obrigatório, mas de grande valor se sair. */
+  desejavel?: boolean;
+  /** Os desdobramentos que nasceram dele. Um nível só. */
+  filhos?: ObjetivoExport[];
+  /** Os arquivos presos como prova do que foi feito. */
+  provas?: string[];
+}
+
+/** O combinado de uma semana: de quando a quando, e o que foi combinado. */
+export interface SemanaExport {
+  /** A segunda e a sexta, em `AAAA-MM-DD`. */
+  de: string;
+  ate: string;
+  objetivos: ObjetivoExport[];
+}
+
 export interface ProjetoExport {
   codigo: string | null;
   nome: string;
@@ -80,6 +105,9 @@ export interface ProjetoExport {
     titulo: string; status: string; prazo: string | null;
     marcador: string | null; submarcador: string | null;
   }[];
+  /** O combinado da semana em foco. Só a exportação da planning o traz - as
+   *  outras saem sem ele, e o markdown então não abre a seção. */
+  semana?: SemanaExport | null;
   tarefas: TarefaExport[];
 }
 
@@ -307,6 +335,24 @@ function exportarXlsx(pacote: Pacote) {
 
 // ── Markdown ────────────────────────────────────────────────────────────────
 
+/** Um objetivo e os desdobramentos dele, recuados sob a mae: e assim que a
+ *  planning os mostra, e e o recuo que diz de quem cada um nasceu. */
+function linhasDoObjetivo(o: ObjetivoExport, recuo: string): string[] {
+  const L: string[] = [];
+  const marca = o.estado === 'Feito' ? 'x' : ' ';
+  L.push(`${recuo}- [${marca}] **${o.texto}**`);
+  const meta = [
+    `estado: ${o.estado}`,
+    dia(o.prazo) ? `prazo: ${dia(o.prazo)}` : null,
+    o.responsaveis.length ? `responsáveis: ${o.responsaveis.join(', ')}` : 'responsável: o time',
+    o.desejavel ? 'desejável (não obrigatório)' : null,
+  ].filter(Boolean).join(' · ');
+  L.push(`${recuo}  - ${meta}`);
+  if (o.provas?.length) L.push(`${recuo}  - provas anexadas: ${o.provas.join(', ')}`);
+  for (const f of o.filhos ?? []) L.push(...linhasDoObjetivo(f, `${recuo}  `));
+  return L;
+}
+
 /** O formato pensado para uma IA ler: o projeto inteiro em prosa estruturada,
  *  com as tarefas agrupadas pela entrega a que pertencem. Cabeçalho, contexto
  *  e trabalho, na ordem em que alguém precisaria deles para começar. */
@@ -317,6 +363,12 @@ function markdown(pacote: Pacote): string {
   L.push(`Exportado em ${d.toLocaleString('pt-BR')}.`);
   if (pacote.filtro) L.push(`Recorte aplicado: ${pacote.filtro}.`);
   L.push('');
+  // Quem le isto costuma ser um modelo, e sem esta linha ele comeca adivinhando
+  // o que e cada secao e o que significa a caixa marcada.
+  L.push('Este arquivo é o contexto exportado do portal da Sheep. Cada projeto traz a ficha,',
+    'o combinado da semana (quando a exportação vem da planning), as entregas e as tarefas',
+    'do recorte - cada tarefa com a descrição, o checklist e a conversa dela. A caixa marcada',
+    'quer dizer concluída.', '');
 
   for (const p of pacote.projetos) {
     L.push('---', '');
@@ -337,6 +389,28 @@ function markdown(pacote: Pacote): string {
     if (p.equipe.length) {
       L.push('### Equipe', '');
       for (const m of p.equipe) L.push(`- ${m.nome} - ${m.papel}`);
+      L.push('');
+    }
+
+    // O combinado da semana vem antes das entregas e das tarefas: e o que a
+    // sala decidiu que esta semana precisa entregar, e e por ele que se le o
+    // resto. Quem exporta de outra tela nao manda semana nenhuma, e a secao
+    // simplesmente nao existe.
+    if (p.semana) {
+      // A conta inclui os desdobramentos, como a bolha da tela: eles sao
+      // objetivos combinados tanto quanto as maes.
+      const todos = (lista: ObjetivoExport[]): ObjetivoExport[] =>
+        lista.flatMap(o => [o, ...todos(o.filhos ?? [])]);
+      const combinados = todos(p.semana.objetivos);
+      const feitos = combinados.filter(o => o.estado === 'Feito').length;
+      L.push(`### Objetivos da semana de ${dia(p.semana.de)} a ${dia(p.semana.ate)} `
+        + `(${feitos}/${combinados.length} feitos)`, '');
+      if (p.semana.objetivos.length === 0) {
+        L.push('_Nenhum objetivo combinado para esta semana._', '');
+      }
+      for (const o of p.semana.objetivos) {
+        L.push(...linhasDoObjetivo(o, ''));
+      }
       L.push('');
     }
 

@@ -3383,6 +3383,51 @@ body.arrastando-painel {
    anda junto, como "Filtrar" anda com os filtros do outro lado. A mesma classe
    serve a qualquer peca que feche a barra pela direita. */
 .painel-kanban-filtros .para-a-direita { margin-left: auto; }
+/* O botao de acao da barra na altura dos filtros: ele fecha a mesma linha, e
+   dois pixels a mais ja desalinham a fileira. */
+.painel-kanban-filtros .admin-toolbar-btn { height: 32px; }
+
+/* ── Quais etapas vao no markdown ─────────────────────
+   Uma linha por coluna do quadro, com a cor dela e quantas tarefas ela leva
+   para o arquivo: a conta e o que deixa escolher sem fechar a caixa para ir
+   contar card. O texto alinha a esquerda porque o dialogo da casa e centrado,
+   e lista centrada nao se le. */
+.exportar-etapas {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0 2px;
+  text-align: left;
+}
+.exportar-etapa {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  color: var(--black);
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.exportar-etapa:hover { background: var(--gray4); }
+/* "Todas" governa a lista inteira, e o fio a separa das etapas uma a uma. */
+.exportar-etapa-todas {
+  font-weight: 700;
+  border-bottom: 1px solid var(--gray3);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  margin-bottom: 2px;
+}
+.exportar-etapa-cor { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.exportar-etapa-conta {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--gray2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .exportar-etapa { transition: none; }
+}
 /* As colunas sobem todas a mesma altura, como no quadro grande: com a altura
    vinda do conteudo, uma coluna cheia ao lado de uma vazia desenhava um degrau,
    e o espaco de soltar da vazia ficava do tamanho do titulo dela. */
