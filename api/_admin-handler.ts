@@ -2685,6 +2685,13 @@ async function migrarSchema(db: Client) {
   // A proposta guardada sem ter saído em PDF: rascunho. Ela vive no histórico
   // como as outras, para continuar depois, e diz no chip que ainda não foi.
   try { await ddl(`ALTER TABLE propostas_geradas ADD COLUMN rascunho INTEGER NOT NULL DEFAULT 0`); } catch { /* já existe */ }
+  // A proposta evolui em versões, e elas andam juntas: a principal tem
+  // `origem_id` nulo, cada versão aponta para ela e `versao` as numera dentro
+  // da família. É o que faz o histórico mostrar a evolução de uma proposta num
+  // bloco só, em vez de linhas soltas com o mesmo cliente e o mesmo subtítulo.
+  try { await ddl(`ALTER TABLE propostas_geradas ADD COLUMN origem_id INTEGER`); } catch { /* já existe */ }
+  try { await ddl(`ALTER TABLE propostas_geradas ADD COLUMN versao INTEGER NOT NULL DEFAULT 1`); } catch { /* já existe */ }
+  await ddl(`CREATE INDEX IF NOT EXISTS idx_propostas_origem ON propostas_geradas (origem_id)`);
   await ddl(`CREATE UNIQUE INDEX IF NOT EXISTS idx_propostas_chave ON propostas_geradas (chave)`);
   await ddl(`CREATE INDEX IF NOT EXISTS idx_propostas_oportunidade
              ON propostas_geradas (oportunidade_id, atualizado_em DESC)`);
@@ -4434,7 +4441,8 @@ async function despacharAdminData(
           -- As propostas geradas para o lead, para o chip do card. So o que o
           -- chip mostra; os campos da apresentacao descem ao abrir a previa.
           (SELECT json_group_array(json_object(
-              'id', pg.id, 'subtitulo', pg.subtitulo, 'atualizado_em', pg.atualizado_em))
+              'id', pg.id, 'subtitulo', pg.subtitulo, 'versao', pg.versao,
+              'atualizado_em', pg.atualizado_em))
            FROM propostas_geradas pg WHERE pg.oportunidade_id = s.id) AS propostas,
           curr.status_id AS current_status_id,
           curr.criado_em  AS status_since
@@ -6598,7 +6606,8 @@ async function despacharAdminData(
     if (action === 'propostas_geradas') {
       const r = await db.execute(`
         SELECT p.id, p.oportunidade_id, p.cliente, p.subtitulo, p.slides, p.autor_nome,
-               p.rascunho, p.criado_em, p.atualizado_em, s.empresa AS lead_empresa
+               p.rascunho, p.origem_id, p.versao, p.criado_em, p.atualizado_em,
+               s.empresa AS lead_empresa
         FROM propostas_geradas p
         LEFT JOIN oportunidades s ON s.id = p.oportunidade_id
         ORDER BY p.atualizado_em DESC
@@ -6615,6 +6624,9 @@ async function despacharAdminData(
             subtitulo: String(x.subtitulo),
             slides: x.slides == null ? null : Number(x.slides),
             rascunho: Number(x.rascunho) === 1,
+            // A principal vem com `origem_id` nulo; as versões apontam para ela.
+            origem_id: x.origem_id == null ? null : Number(x.origem_id),
+            versao: Number(x.versao ?? 1) || 1,
             autor_nome: String(x.autor_nome),
             criado_em: String(x.criado_em),
             atualizado_em: String(x.atualizado_em),
@@ -9597,15 +9609,22 @@ function faltaEmProjeto(p: any): string | null {
       const agora = new Date().toISOString();
       const chave = `${oportunidadeId}|${subtitulo.toLocaleLowerCase('pt-BR')}|${randomUUID()}`;
       const slides = Number(body?.slides);
+      // De qual proposta esta cópia saiu. Com ela, a cópia entra na família da
+      // original como a versão seguinte, e o histórico as mostra juntas; sem
+      // ela - uma proposta salva assim antes de as versões existirem -, a linha
+      // nasce principal, como era.
+      const veioDe = Number(body?.origem_de);
+      const familia = Number.isFinite(veioDe) && veioDe > 0 ? await familiaDaProposta(veioDe) : null;
       const r = await db.execute({
         sql: `INSERT INTO propostas_geradas
-                (oportunidade_id, cliente, subtitulo, chave, dados, slides, rascunho, autor_id,
-                 autor_nome, criado_em, atualizado_em)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?)
-              RETURNING id, criado_em, atualizado_em`,
+                (oportunidade_id, cliente, subtitulo, chave, dados, slides, rascunho, origem_id,
+                 versao, autor_id, autor_nome, criado_em, atualizado_em)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+              RETURNING id, versao, criado_em, atualizado_em`,
         args: [
           oportunidadeId, cliente, subtitulo, chave, texto,
           Number.isFinite(slides) ? slides : null, marca(body?.rascunho),
+          familia?.raiz ?? null, familia?.proxima ?? 1,
           autorId ?? null, autorNome ?? 'alguém do time', agora, agora,
         ],
       });
@@ -9614,9 +9633,150 @@ function faltaEmProjeto(p: any): string | null {
         status: 200,
         body: {
           ok: true, id: Number(linha?.id ?? 0),
+          origem_id: familia?.raiz ?? null, versao: Number(linha?.versao ?? 1),
           criado_em: String(linha?.criado_em ?? agora), atualizado_em: String(linha?.atualizado_em ?? agora),
         },
       };
+    }
+
+    /**
+     * Uma versão nova a partir de uma proposta do histórico: a cópia nasce com
+     * tudo o que a de origem tem e segue a vida dela própria, editada e apagada
+     * sem tocar na original.
+     *
+     * Nasce rascunho de propósito. Ela ainda não foi para ninguém, e sem a
+     * marca o funil anunciaria como entregue uma proposta que acabou de ser
+     * duplicada. Gerar o PDF dela tira a marca, como em qualquer outra.
+     */
+    if (action === 'criar_versao_proposta') {
+      const id = Number(body?.id);
+      if (!Number.isFinite(id) || id <= 0) return { status: 400, body: { error: 'id inválido.' } };
+      const r = await db.execute({
+        sql: `SELECT id, oportunidade_id, cliente, subtitulo, dados, slides
+              FROM propostas_geradas WHERE id = ?`,
+        args: [id],
+      });
+      const base = r.rows[0];
+      if (!base) return { status: 404, body: { error: 'Proposta não encontrada.' } };
+      const familia = await familiaDaProposta(id);
+      if (!familia) return { status: 404, body: { error: 'Proposta não encontrada.' } };
+      const oportunidadeId = String(base.oportunidade_id);
+      const subtitulo = String(base.subtitulo);
+      const agora = new Date().toISOString();
+      // A chave ganha um sufixo próprio: a versão divide o subtítulo com a
+      // original, e a chave sem sufixo bateria na dela.
+      const chave = `${oportunidadeId}|${subtitulo.toLocaleLowerCase('pt-BR')}|${randomUUID()}`;
+      const nova = await db.execute({
+        sql: `INSERT INTO propostas_geradas
+                (oportunidade_id, cliente, subtitulo, chave, dados, slides, rascunho, origem_id,
+                 versao, autor_id, autor_nome, criado_em, atualizado_em)
+              VALUES (?,?,?,?,?,?,1,?,?,?,?,?,?)
+              RETURNING id, versao, criado_em, atualizado_em`,
+        args: [
+          oportunidadeId, String(base.cliente), subtitulo, chave, String(base.dados),
+          base.slides == null ? null : Number(base.slides),
+          familia.raiz, familia.proxima,
+          autorId ?? null, autorNome ?? 'alguém do time', agora, agora,
+        ],
+      });
+      const linha = nova.rows[0];
+      return {
+        status: 200,
+        body: {
+          ok: true, id: Number(linha?.id ?? 0), origem_id: familia.raiz,
+          versao: Number(linha?.versao ?? familia.proxima),
+          criado_em: String(linha?.criado_em ?? agora), atualizado_em: String(linha?.atualizado_em ?? agora),
+        },
+      };
+    }
+
+    /**
+     * O nome de uma proposta do histórico: o cliente e o subtítulo, trocados
+     * sem abrir o gerador. É o que conserta o nome que saiu errado sem ter de
+     * percorrer os passos de novo.
+     *
+     * O nome também mora dentro dos campos da apresentação, e por isso ele é
+     * trocado nos dois lugares: só na linha, o PDF continuaria saindo com o
+     * nome antigo. A data de atualização não se mexe - trocar o nome não é
+     * refazer a proposta, e subi-la no histórico por isso seria mentira.
+     */
+    if (action === 'renomear_proposta') {
+      const id = Number(body?.id);
+      const cliente = String(body?.cliente ?? '').trim().slice(0, 200);
+      const subtitulo = String(body?.subtitulo ?? '').trim().slice(0, 300);
+      if (!Number.isFinite(id) || id <= 0) return { status: 400, body: { error: 'id inválido.' } };
+      if (!cliente || !subtitulo) {
+        return { status: 400, body: { error: 'A proposta precisa do cliente e do subtítulo.' } };
+      }
+      const r = await db.execute({
+        sql: 'SELECT id, oportunidade_id, chave, dados FROM propostas_geradas WHERE id = ?', args: [id],
+      });
+      const linha = r.rows[0];
+      if (!linha) return { status: 404, body: { error: 'Proposta não encontrada.' } };
+      // A chave é a identidade: a oportunidade e o subtítulo, mais o sufixo
+      // próprio das cópias. O sufixo vai junto na troca - sem ele a versão
+      // passaria a dividir a chave com a principal.
+      const partes = String(linha.chave).split('|');
+      const sufixo = partes.length > 2 ? `|${partes.slice(2).join('|')}` : '';
+      const chave = `${String(linha.oportunidade_id)}|${subtitulo.toLocaleLowerCase('pt-BR')}${sufixo}`;
+      if (chave !== String(linha.chave)) {
+        const outra = await db.execute({
+          sql: 'SELECT id FROM propostas_geradas WHERE chave = ? AND id <> ?', args: [chave, id],
+        });
+        if (outra.rows[0]) {
+          return {
+            status: 409,
+            body: { error: 'Já existe outra proposta com este subtítulo para esta oportunidade. Troque o subtítulo.' },
+          };
+        }
+      }
+      const dados = comoObjeto(linha.dados);
+      dados.cliente = cliente;
+      dados.subtitulo = subtitulo;
+      await db.execute({
+        sql: 'UPDATE propostas_geradas SET cliente = ?, subtitulo = ?, chave = ?, dados = ? WHERE id = ?',
+        args: [cliente, subtitulo, chave, JSON.stringify(dados), id],
+      });
+      return { status: 200, body: { ok: true } };
+    }
+
+    /**
+     * Apaga uma proposta do histórico. Some com ela o chip dela no card do
+     * lead - o registro é o que prende a proposta à oportunidade.
+     *
+     * Apagar a principal de uma família não leva as versões junto: a mais
+     * antiga das que ficam assume o lugar dela, e as outras passam a apontar
+     * para essa. Sem isso as versões ficariam apontando para uma linha que não
+     * existe mais, e o histórico não saberia onde pô-las.
+     */
+    if (action === 'excluir_proposta') {
+      const id = Number(body?.id);
+      if (!Number.isFinite(id) || id <= 0) return { status: 400, body: { error: 'id inválido.' } };
+      const r = await db.execute({
+        sql: 'SELECT id, origem_id FROM propostas_geradas WHERE id = ?', args: [id],
+      });
+      const linha = r.rows[0];
+      if (!linha) return { status: 404, body: { error: 'Proposta não encontrada.' } };
+      let novaPrincipal: number | null = null;
+      if (linha.origem_id == null) {
+        const filhas = await db.execute({
+          sql: 'SELECT id FROM propostas_geradas WHERE origem_id = ? ORDER BY versao, id LIMIT 1',
+          args: [id],
+        });
+        const herdeira = filhas.rows[0];
+        if (herdeira) {
+          novaPrincipal = Number(herdeira.id);
+          await db.execute({
+            sql: 'UPDATE propostas_geradas SET origem_id = NULL WHERE id = ?', args: [novaPrincipal],
+          });
+          await db.execute({
+            sql: 'UPDATE propostas_geradas SET origem_id = ? WHERE origem_id = ? AND id <> ?',
+            args: [novaPrincipal, id, novaPrincipal],
+          });
+        }
+      }
+      await db.execute({ sql: 'DELETE FROM propostas_geradas WHERE id = ?', args: [id] });
+      return { status: 200, body: { ok: true, nova_principal: novaPrincipal } };
     }
 
     /**
@@ -9768,6 +9928,29 @@ function faltaEmProjeto(p: any): string | null {
       }
       await db.execute({ sql: 'DELETE FROM vitrines WHERE id = ?', args: [id] });
       return { status: 200, body: { ok: true } };
+    }
+
+    /**
+     * A família de uma proposta, e o número que a próxima versão dela leva.
+     *
+     * Vir de uma versão é o mesmo que vir da principal: a família é um leque, e
+     * não uma corrente, senão o histórico precisaria subir de pai em pai para
+     * saber de que proposta cada linha é. Por isso a raiz é sempre a origem da
+     * linha pedida, e a principal é a que não tem origem.
+     */
+    async function familiaDaProposta(id: number): Promise<{ raiz: number; proxima: number } | null> {
+      const r = await db.execute({
+        sql: 'SELECT id, origem_id FROM propostas_geradas WHERE id = ?', args: [id],
+      });
+      const linha = r.rows[0];
+      if (!linha) return null;
+      const raiz = linha.origem_id == null ? Number(linha.id) : Number(linha.origem_id);
+      const alta = await db.execute({
+        sql: 'SELECT MAX(versao) AS maior FROM propostas_geradas WHERE id = ? OR origem_id = ?',
+        args: [raiz, raiz],
+      });
+      const maior = Number(alta.rows[0]?.maior ?? 1);
+      return { raiz, proxima: (Number.isFinite(maior) && maior > 0 ? maior : 1) + 1 };
     }
 
     /** O rascunho saiu em PDF pelo histórico: a marca cai, e nada mais muda. */

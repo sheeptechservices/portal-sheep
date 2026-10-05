@@ -63,6 +63,8 @@ export interface ReuniaoDoCard {
 export interface PropostaDoCard {
   id: number;
   subtitulo: string;
+  /** O numero dela dentro da familia de versoes. A principal e a 1. */
+  versao?: number;
   atualizado_em: string;
 }
 

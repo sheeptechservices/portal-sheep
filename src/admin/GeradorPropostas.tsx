@@ -17,6 +17,7 @@
 //  entregar quando falta coisa, em vez de gerar assim mesmo.
 // ─────────────────────────────────────────────────────────────────────────────
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { KeyboardEvent as EventoDeTecla } from 'react';
 import type { StatusConfig, Submission } from './types';
 
 /** O cadastro de lead do Funil, o mesmo de lá. Sob demanda: só quem cria um
@@ -24,7 +25,7 @@ import type { StatusConfig, Submission } from './types';
 const CadastroDeLead = lazy(() => import('./OportunidadesPage').then(m => ({ default: m.CreateModal })));
 import {
   IconArrowLeft, IconArrowRight, IconCheck, IconChevronRight, IconDoc, IconDownload, IconEdit, IconEye,
-  IconFunil, IconInbox, IconPlus, IconSalvar, IconSparkles, IconSpinner, IconTrash, IconUpload,
+  IconFunil, IconInbox, IconPlus, IconSalvar, IconSparkles, IconSpinner, IconTrash, IconUpload, IconX,
 } from '../components/icons';
 import { AbaPainel, Abas } from '../components/Abas';
 import { SelectSistema } from '../components/SelectSistema';
@@ -66,6 +67,11 @@ interface PropostaGerada {
   /** Guardada sem ter saído em PDF: continua depois, e o funil não a anuncia
    *  como proposta entregue. Gerar o PDF tira a marca. */
   rascunho?: boolean;
+  /** A proposta principal de que esta é versão, ou nulo quando ela é a
+   *  principal. É o que agrupa a evolução num bloco só no histórico. */
+  origem_id: number | null;
+  /** O número dela dentro da família. A principal é a 1. */
+  versao: number;
   autor_nome: string;
   criado_em: string;
   atualizado_em: string;
@@ -622,12 +628,57 @@ function Previa({ html, secao }: { html: string | null; secao: string | null }) 
 
 // ── A tela ──────────────────────────────────────────────────────────────────
 
+/** Uma proposta do histórico e as versões que saíram dela, da mais nova para a
+ *  mais velha. */
+interface FamiliaDeProposta { principal: PropostaGerada; versoes: PropostaGerada[] }
+
+/** O movimento mais novo da família, que é por onde ela se ordena: criar ou
+ *  mexer numa versão sobe a proposta inteira para o topo do histórico. */
+function movimentoDaFamilia(f: FamiliaDeProposta): string {
+  return [f.principal, ...f.versoes]
+    .reduce((maior, p) => (p.atualizado_em > maior ? p.atualizado_em : maior), '');
+}
+
+/**
+ * As propostas do histórico agrupadas por família.
+ *
+ * A principal é a que não tem origem; as versões apontam para ela. Quando a
+ * principal não vem na lista - ela é cortada em 300 linhas -, a de menor versão
+ * entre as que vieram faz o papel dela, para a família não sumir da tela.
+ */
+function familiasDoHistorico(lista: PropostaGerada[]): FamiliaDeProposta[] {
+  const porRaiz = new Map<number, PropostaGerada[]>();
+  for (const p of lista) {
+    const raiz = p.origem_id ?? p.id;
+    const membros = porRaiz.get(raiz);
+    if (membros) membros.push(p);
+    else porRaiz.set(raiz, [p]);
+  }
+  const familias = [...porRaiz.entries()].map(([raiz, membros]) => {
+    const principal = membros.find(p => p.id === raiz)
+      ?? [...membros].sort((a, b) => a.versao - b.versao)[0];
+    return {
+      principal,
+      versoes: membros.filter(p => p.id !== principal.id).sort((a, b) => b.versao - a.versao),
+    };
+  });
+  return familias.sort((a, b) => movimentoDaFamilia(b).localeCompare(movimentoDaFamilia(a)));
+}
+
 /**
  * O histórico: toda proposta que já saiu do gerador, com o lead de cada uma.
  * Cada linha abre a apresentação na prévia da casa e baixa a segunda via, as
  * duas montadas de novo a partir dos campos guardados.
+ *
+ * A proposta que evoluiu aparece num bloco só: a principal na frente e as
+ * versões dela recolhidas embaixo, em vez de três linhas soltas com o mesmo
+ * cliente e o mesmo subtítulo. Cada versão é proposta de verdade - abre, edita,
+ * baixa e é apagada sozinha, sem tocar nas outras.
  */
-function HistoricoPropostas({ lista, onVer, onEditar, abrindo, editando, baixando, onBaixar, onAbrirLead }: {
+function HistoricoPropostas({
+  lista, onVer, onEditar, abrindo, editando, baixando, onBaixar, onAbrirLead,
+  onNovaVersao, versionando, onExcluir, onRenomear,
+}: {
   /** `null` enquanto a lista não chegou. */
   lista: PropostaGerada[] | null;
   onVer: (p: PropostaGerada) => void;
@@ -641,7 +692,22 @@ function HistoricoPropostas({ lista, onVer, onEditar, abrindo, editando, baixand
   baixando: number | null;
   onBaixar: (p: PropostaGerada) => void;
   onAbrirLead?: (oportunidadeId: string) => void;
+  /** Copia esta proposta numa versão nova, ao lado dela. */
+  onNovaVersao: (p: PropostaGerada) => void;
+  /** A que está sendo copiada agora, para o botão dela girar. */
+  versionando: number | null;
+  /** Abre a pergunta de apagar esta proposta. */
+  onExcluir: (p: PropostaGerada) => void;
+  /** Troca o cliente e o subtítulo de uma proposta, sem abrir o gerador. */
+  onRenomear: (p: PropostaGerada, cliente: string, subtitulo: string) => void;
 }) {
+  /** As famílias abertas, pelo id da principal. Recolhidas por padrão: o
+   *  histórico é a lista das propostas, e a evolução de cada uma se abre para
+   *  quem quer olhar. */
+  const [abertas, setAbertas] = useState<number[]>([]);
+  /** A proposta com o nome aberto para edição, e o que já foi digitado. */
+  const [renomeando, setRenomeando] = useState<{ id: number; cliente: string; subtitulo: string } | null>(null);
+
   if (lista == null) return <div className="dux-spinner-row"><span className="dux-spinner sm" /></div>;
   if (!lista.length) {
     return (
@@ -655,50 +721,157 @@ function HistoricoPropostas({ lista, onVer, onEditar, abrindo, editando, baixand
       </div>
     );
   }
-  return (
-    <ul className="gp-hist lista-anima" key={lista.map(p => p.id).join('|')}>
-      {lista.map(p => (
-        <li key={p.id} className="gp-hist-item">
-          <span className="gp-hist-icone"><IconDoc size={16} /></span>
-          <div className="gp-hist-texto">
+  /** Grava o nome em edição e fecha os campos. Campo vazio não grava: o nome é
+   *  o que acha a proposta depois. */
+  const gravarNome = () => {
+    const alvo = renomeando && (lista ?? []).find(p => p.id === renomeando.id);
+    if (!renomeando || !alvo) return;
+    const cliente = renomeando.cliente.trim();
+    const subtitulo = renomeando.subtitulo.trim();
+    if (!cliente || !subtitulo) return;
+    setRenomeando(null);
+    if (cliente !== alvo.cliente || subtitulo !== alvo.subtitulo) onRenomear(alvo, cliente, subtitulo);
+  };
+  const teclasDoNome = (e: EventoDeTecla<HTMLInputElement>) => {
+    if (e.key === 'Enter') { e.preventDefault(); gravarNome(); }
+    if (e.key === 'Escape') { e.preventDefault(); setRenomeando(null); }
+  };
+
+  /** A linha de uma proposta: a mesma para a principal e para cada versão. */
+  const linha = (p: PropostaGerada, familia?: { quantas: number; aberta: boolean; alternar: () => void }) => (
+    <div className="gp-hist-item">
+      <span className="gp-hist-icone"><IconDoc size={16} /></span>
+      <div className="gp-hist-texto">
+        {renomeando?.id === p.id ? (
+          /* A mesma área trocando de conteúdo: o nome lido vira os dois campos
+             que o escrevem, no lugar onde ele estava. */
+          <div className="gp-hist-renome troca">
+            <input className="form-input gp-hist-renome-campo" value={renomeando.cliente}
+              aria-label="Cliente da proposta" placeholder="Cliente" autoFocus
+              onKeyDown={teclasDoNome}
+              onChange={e => setRenomeando(r => (r ? { ...r, cliente: e.target.value } : r))} />
+            <input className="form-input gp-hist-renome-campo gp-hist-renome-sub" value={renomeando.subtitulo}
+              aria-label="Subtítulo da proposta" placeholder="Subtítulo"
+              onKeyDown={teclasDoNome}
+              onChange={e => setRenomeando(r => (r ? { ...r, subtitulo: e.target.value } : r))} />
+            <button type="button" className="gp-hist-nome-botao" aria-label="Gravar o nome"
+              title="Gravar" onClick={gravarNome}>
+              <IconCheck size={13} />
+            </button>
+            <button type="button" className="gp-hist-nome-botao" aria-label="Deixar o nome como estava"
+              title="Cancelar" onClick={() => setRenomeando(null)}>
+              <IconX size={13} />
+            </button>
+          </div>
+        ) : (
+          <>
             <p className="gp-hist-titulo">
-              {p.cliente}
+              <span className="gp-hist-nome">{p.cliente}</span>
+              {/* A versão diz de qual ela é: sem o número, duas linhas com o mesmo
+                  subtítulo não têm como ser diferenciadas. */}
+              {p.versao > 1 && <span className="gp-hist-versao">v{p.versao}</span>}
               {/* O rascunho diz que ainda não saiu: ele mora na mesma lista, e
                   sem a marca leria como proposta entregue. */}
               {p.rascunho && <span className="gp-hist-rascunho">Rascunho</span>}
+              {/* Trocar o nome aqui, sem percorrer os passos do gerador. Fora
+                  quando a proposta está aberta lá: ali o nome é campo do
+                  formulário, e os dois juntos brigariam na hora de gravar. */}
+              <button type="button" className="gp-hist-renomear"
+                aria-label={`Trocar o nome da proposta ${p.cliente}`}
+                disabled={editando === p.id || p.id < 0}
+                title={editando === p.id
+                  ? 'Esta proposta está aberta no gerador: o nome se troca por lá'
+                  : 'Trocar o cliente e o subtítulo'}
+                onClick={() => setRenomeando({ id: p.id, cliente: p.cliente, subtitulo: p.subtitulo })}>
+                <IconEdit size={12} />
+              </button>
             </p>
             <p className="gp-hist-sub">{p.subtitulo}</p>
-            <p className="gp-hist-meta">
-              {instante(p.criado_em)} por {p.autor_nome}
-              {p.atualizado_em !== p.criado_em && ` - refeita ${tempoRelativo(p.atualizado_em)}`}
-              {p.slides ? ` - ${p.slides} slides` : ''}
-            </p>
-          </div>
-          <div className="gp-hist-acoes">
-            {/* O lead de onde a proposta veio, que é onde ela aparece como chip. */}
-            <button type="button" className="gp-hist-lead" disabled={!onAbrirLead}
-              title={onAbrirLead ? 'Abrir a oportunidade no Funil' : undefined}
-              onClick={() => onAbrirLead?.(p.oportunidade_id)}>
-              <IconFunil size={12} />
-              <span>{p.lead_empresa ?? 'Oportunidade removida'}</span>
-            </button>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => onVer(p)}>
-              <IconEye size={13} /> Ver
-            </button>
-            <button type="button" className="btn btn-secondary btn-sm"
-              disabled={abrindo != null}
-              title={editando === p.id ? 'Esta proposta já está aberta no gerador' : 'Abrir no gerador para editar'}
-              onClick={() => onEditar(p)}>
-              {abrindo === p.id ? <IconSpinner size={13} /> : <IconEdit size={13} />}
-              {editando === p.id ? 'Em edição' : 'Editar'}
-            </button>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => onBaixar(p)}
-              disabled={baixando === p.id}>
-              {baixando === p.id ? <IconSpinner size={13} /> : <IconDownload size={13} />} Baixar PDF
-            </button>
-          </div>
-        </li>
-      ))}
+          </>
+        )}
+        <p className="gp-hist-meta">
+          {instante(p.criado_em)} por {p.autor_nome}
+          {p.atualizado_em !== p.criado_em && ` - refeita ${tempoRelativo(p.atualizado_em)}`}
+          {p.slides ? ` - ${p.slides} slides` : ''}
+        </p>
+        {familia && (
+          <button type="button" className="gp-hist-evolucao" onClick={familia.alternar}
+            title={familia.aberta ? 'Esconder as versões' : 'Ver a evolução desta proposta'}>
+            <span className={`entrega-seta${familia.aberta ? ' aberta' : ''}`}>
+              <IconChevronRight size={11} />
+            </span>
+            {familia.quantas === 1 ? '1 versão depois desta' : `${familia.quantas} versões depois desta`}
+          </button>
+        )}
+      </div>
+      <div className="gp-hist-acoes">
+        {/* O lead de onde a proposta veio, que é onde ela aparece como chip. */}
+        <button type="button" className="gp-hist-lead" disabled={!onAbrirLead}
+          title={onAbrirLead ? 'Abrir a oportunidade no Funil' : undefined}
+          onClick={() => onAbrirLead?.(p.oportunidade_id)}>
+          <IconFunil size={12} />
+          <span>{p.lead_empresa ?? 'Oportunidade removida'}</span>
+        </button>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => onVer(p)}>
+          <IconEye size={13} /> Ver
+        </button>
+        <button type="button" className="btn btn-secondary btn-sm"
+          disabled={abrindo != null}
+          title={editando === p.id ? 'Esta proposta já está aberta no gerador' : 'Abrir no gerador para editar'}
+          onClick={() => onEditar(p)}>
+          {abrindo === p.id ? <IconSpinner size={13} /> : <IconEdit size={13} />}
+          {editando === p.id ? 'Em edição' : 'Editar'}
+        </button>
+        {/* A versão nova sai daqui: ela copia esta proposta inteira e segue
+            sozinha, para a anterior continuar intacta na mesa do cliente. */}
+        <button type="button" className="btn btn-secondary btn-sm"
+          disabled={versionando != null}
+          title="Criar uma versão nova a partir desta proposta"
+          onClick={() => onNovaVersao(p)}>
+          {versionando === p.id ? <IconSpinner size={13} /> : <IconPlus size={13} />} Nova versão
+        </button>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => onBaixar(p)}
+          disabled={baixando === p.id}>
+          {baixando === p.id ? <IconSpinner size={13} /> : <IconDownload size={13} />} Baixar PDF
+        </button>
+        <button type="button" className="gp-x" aria-label={`Apagar a proposta ${p.cliente}`}
+          title="Apagar esta proposta do histórico" onClick={() => onExcluir(p)}>
+          <IconTrash size={13} />
+        </button>
+      </div>
+    </div>
+  );
+
+  const familias = familiasDoHistorico(lista);
+  return (
+    <ul className="gp-hist lista-anima" key={lista.map(p => p.id).join('|')}>
+      {familias.map(f => {
+        const aberta = abertas.includes(f.principal.id);
+        return (
+          <li key={f.principal.id} className="gp-hist-familia">
+            {linha(f.principal, f.versoes.length
+              ? {
+                quantas: f.versoes.length,
+                aberta,
+                alternar: () => setAbertas(a => (a.includes(f.principal.id)
+                  ? a.filter(x => x !== f.principal.id)
+                  : [...a, f.principal.id])),
+              }
+              : undefined)}
+            {/* Montado desde o começo, e não só quando abre: montar na abertura
+                faz o bloco animar de nada para nada. */}
+            {f.versoes.length > 0 && (
+              <div className={`revelar${aberta ? ' aberto' : ''}`}>
+                <div>
+                  <ul className="gp-hist-versoes">
+                    {f.versoes.map(v => <li key={v.id}>{linha(v)}</li>)}
+                  </ul>
+                </div>
+              </div>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -743,6 +916,10 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
   const [salvandoRascunho, setSalvandoRascunho] = useState(false);
   /** A proposta do histórico que está virando PDF. */
   const [baixando, setBaixando] = useState<number | null>(null);
+  /** A proposta que está sendo copiada numa versão nova. */
+  const [versionando, setVersionando] = useState<number | null>(null);
+  /** A proposta do histórico com a pergunta de apagar aberta. */
+  const [apagando, setApagando] = useState<PropostaGerada | null>(null);
   /** O lead do funil a que a proposta pertence. Obrigatório para gerar. */
   const [leadId, setLeadId] = useState('');
   const [leads, setLeads] = useState<LeadDoFunil[] | null>(null);
@@ -963,6 +1140,7 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
     const linha: PropostaGerada = {
       id: Number(r.id), oportunidade_id: leadId, lead_empresa: lead?.empresa ?? null,
       cliente: final.cliente, subtitulo: final.subtitulo, slides, rascunho,
+      origem_id: null, versao: 1,
       autor_nome: usuario?.nome ?? 'você', criado_em: r.criado_em, atualizado_em: r.atualizado_em,
     };
     // Pelo id: refazer a mesma proposta atualiza a linha dela, e aqui ela sobe
@@ -1107,10 +1285,17 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
     const emEdicao = { d, leadId };
     const lead = leads?.find(l => l.id === leadId);
     const agora = new Date().toISOString();
+    // Salva como nova, a cópia entra na família da que estava aberta: é a
+    // versão seguinte dela, e não uma proposta solta com o mesmo subtítulo.
+    const raiz = alvo.linha.origem_id ?? alvo.id;
+    const proximaVersao = 1 + (historico ?? [])
+      .filter(x => x.id === raiz || x.origem_id === raiz)
+      .reduce((maior, x) => Math.max(maior, x.versao), 1);
     const nova: PropostaGerada = {
       ...alvo.linha,
       // A cópia ganha um id provisório, negativo, até o de verdade chegar.
       id: modo === 'nova' ? -Date.now() : alvo.id,
+      ...(modo === 'nova' ? { origem_id: raiz, versao: proximaVersao } : {}),
       oportunidade_id: leadId,
       lead_empresa: lead?.empresa ?? alvo.linha.lead_empresa,
       cliente: final.cliente,
@@ -1128,7 +1313,7 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
 
     const resposta = await api('', 'POST', {
       action: modo === 'nova' ? 'salvar_proposta_como_nova' : 'atualizar_proposta',
-      ...(modo === 'nova' ? {} : { id: alvo.id }),
+      ...(modo === 'nova' ? { origem_de: alvo.id } : { id: alvo.id }),
       oportunidade_id: leadId, cliente: final.cliente, subtitulo: final.subtitulo, dados: final, slides,
       rascunho,
     }).catch(() => null);
@@ -1150,11 +1335,12 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
         id: Number(resposta.id ?? x.id),
         atualizado_em: String(resposta.atualizado_em ?? x.atualizado_em),
         criado_em: modo === 'nova' ? String(resposta.criado_em ?? x.criado_em) : x.criado_em,
+        ...(modo === 'nova' ? { versao: Number(resposta.versao ?? x.versao) } : {}),
       }
       : x))));
     toast('success',
       rascunho ? 'Rascunho guardado'
-        : modo === 'nova' ? 'Salva como nova proposta' : 'Proposta atualizada',
+        : modo === 'nova' ? `Salva como versão ${nova.versao}` : 'Proposta atualizada',
       rascunho ? `${final.cliente}. Continue por ele no histórico.`
         : modo === 'nova'
           ? `${final.cliente}, ${slides} slides. A versão anterior continua no histórico.`
@@ -1182,6 +1368,105 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
     } finally {
       setBaixando(null);
     }
+  }
+
+  // ── Versões de uma proposta ──
+
+  /**
+   * Uma versão nova a partir de uma proposta do histórico.
+   *
+   * A cópia aparece na hora, com tudo o que a de origem tem: os campos já estão
+   * na tela, e esperar a ida e a volta para ver a linha nascer seria esperar
+   * pelo id. Ela nasce rascunho - ainda não foi para ninguém -, e dali em diante
+   * é proposta por conta própria: editada, baixada e apagada sem tocar na outra.
+   */
+  async function criarVersao(p: PropostaGerada) {
+    if (versionando != null) return;
+    setVersionando(p.id);
+    const raiz = p.origem_id ?? p.id;
+    const agora = new Date().toISOString();
+    const copia: PropostaGerada = {
+      ...p,
+      // Id provisório, negativo, até o de verdade chegar.
+      id: -Date.now(),
+      origem_id: raiz,
+      versao: 1 + (historico ?? [])
+        .filter(x => x.id === raiz || x.origem_id === raiz)
+        .reduce((maior, x) => Math.max(maior, x.versao), 1),
+      rascunho: true,
+      autor_nome: usuario?.nome ?? p.autor_nome,
+      criado_em: agora,
+      atualizado_em: agora,
+    };
+    setHistorico(h => (h == null ? h : [copia, ...h]));
+    const r = await api('', 'POST', { action: 'criar_versao_proposta', id: p.id }).catch(() => null);
+    setVersionando(null);
+    if (!r?.ok) {
+      setHistorico(h => (h == null ? h : h.filter(x => x.id !== copia.id)));
+      toast('error', 'A versão não foi criada', r?.error ?? 'A conexão caiu. Tente de novo.');
+      return;
+    }
+    setHistorico(h => (h == null ? h : h.map(x => (x.id === copia.id
+      ? {
+        ...x,
+        id: Number(r.id ?? x.id),
+        origem_id: Number(r.origem_id ?? x.origem_id ?? raiz),
+        versao: Number(r.versao ?? x.versao),
+        criado_em: String(r.criado_em ?? x.criado_em),
+        atualizado_em: String(r.atualizado_em ?? x.atualizado_em),
+      }
+      : x))));
+    toast('success', `Versão ${Number(r.versao ?? copia.versao)} criada`,
+      `${p.cliente}. Abra por "Editar" para mexer nela - a anterior continua como está.`);
+  }
+
+  /**
+   * Troca o cliente e o subtítulo de uma proposta pelo histórico.
+   *
+   * O nome muda na hora e volta atrás se o servidor recusar - dois subtítulos
+   * iguais na mesma oportunidade, por exemplo. Lá ele troca também dentro dos
+   * campos da apresentação, para a segunda via sair com o nome novo.
+   */
+  async function renomearProposta(p: PropostaGerada, cliente: string, subtitulo: string) {
+    const antes = { cliente: p.cliente, subtitulo: p.subtitulo };
+    setHistorico(h => (h == null ? h : h.map(x => (x.id === p.id ? { ...x, cliente, subtitulo } : x))));
+    const r = await api('', 'POST', {
+      action: 'renomear_proposta', id: p.id, cliente, subtitulo,
+    }).catch(() => null);
+    if (!r?.ok) {
+      setHistorico(h => (h == null ? h : h.map(x => (x.id === p.id ? { ...x, ...antes } : x))));
+      toast('error', 'O nome não foi trocado', r?.error ?? 'A conexão caiu. Tente de novo.');
+    }
+  }
+
+  /**
+   * Apaga uma proposta do histórico, e com ela o chip dela no card do lead.
+   *
+   * Apagar a principal não leva as versões junto: a mais antiga das que ficam
+   * assume o lugar dela na tela, como o servidor faz no banco.
+   */
+  async function apagarProposta(p: PropostaGerada) {
+    const antes = historico;
+    if (editando?.id === p.id) sairDaEdicao();
+    setHistorico(h => {
+      if (h == null) return h;
+      const herdeira = p.origem_id == null
+        ? [...h.filter(x => x.origem_id === p.id)].sort((a, b) => a.versao - b.versao)[0]
+        : undefined;
+      return h.filter(x => x.id !== p.id).map(x => {
+        if (!herdeira) return x;
+        if (x.id === herdeira.id) return { ...x, origem_id: null };
+        if (x.origem_id === p.id) return { ...x, origem_id: herdeira.id };
+        return x;
+      });
+    });
+    const r = await api('', 'POST', { action: 'excluir_proposta', id: p.id }).catch(() => null);
+    if (!r?.ok) {
+      setHistorico(antes ?? null);
+      toast('error', 'A proposta não foi apagada', r?.error ?? 'A conexão caiu. Tente de novo.');
+      return;
+    }
+    toast('success', 'Proposta apagada', `${p.cliente} saiu do histórico e do card do lead.`);
   }
 
   return (
@@ -1256,8 +1541,26 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
             editando={editando?.id ?? null}
             baixando={baixando}
             onBaixar={p => { void baixarDoHistorico(p); }}
+            onNovaVersao={p => { void criarVersao(p); }}
+            versionando={versionando}
+            onExcluir={setApagando}
+            onRenomear={(p, cliente, subtitulo) => { void renomearProposta(p, cliente, subtitulo); }}
             onAbrirLead={onAbrirOportunidade} />
         </div>
+      )}
+
+      {apagando && (
+        <Dialogo
+          titulo="Apagar esta proposta?"
+          descricao={<>
+            <b>{apagando.cliente}</b>{apagando.versao > 1 ? `, versão ${apagando.versao}` : ''} sai do histórico
+            e do card do lead no Funil. Não tem volta.
+            {apagando.origem_id == null && ' As versões criadas a partir dela ficam, e a mais antiga delas passa a ser a principal.'}
+          </>}
+          rotuloOk="Apagar"
+          onConfirmar={() => { const p = apagando; setApagando(null); void apagarProposta(p); }}
+          onFechar={() => setApagando(null)}
+          largura={460} />
       )}
 
       {comoSalvar && editando && (
@@ -1265,10 +1568,11 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
           titulo="Como salvar esta edição?"
           descricao={<>
             <b>Sobrescrever</b> troca a proposta guardada por esta, e a versão anterior não volta.{' '}
-            <b>Salvar como nova</b> guarda esta ao lado da original, que continua no histórico como está.
+            <b>Salvar como versão nova</b> guarda esta como a versão seguinte, junto da original, que
+            continua no histórico como está.
           </>}
           rotuloCancelar="Voltar"
-          rotuloMeio="Salvar como nova"
+          rotuloMeio="Salvar como versão nova"
           onMeio={() => { const c = comoSalvar; setComoSalvar(null); void gravarEdicao('nova', c); }}
           rotuloOk="Sobrescrever a atual"
           onConfirmar={() => { const c = comoSalvar; setComoSalvar(null); void gravarEdicao('sobrescrever', c); }}
@@ -1977,6 +2281,42 @@ const ESTILO = `
   .gp-hist-texto { flex: 1; min-width: 0; }
   .gp-hist-titulo, .gp-hist-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; }
   .gp-hist-titulo { font-size: 13px; font-weight: 800; color: var(--black); }
+  /* O titulo e uma linha de pecas: o nome que corta, as pilulas e o lapis. Sem
+     o flex, nome comprido comeria as pilulas e o lapis pelo corte. */
+  .gp-hist-titulo { display: flex; align-items: center; min-width: 0; }
+  .gp-hist-nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* O lapis que abre o nome para edicao: discreto, a vista no hover da linha,
+     como o dos objetivos da semana. */
+  .gp-hist-renomear {
+    flex: none;
+    margin-left: 6px;
+    width: 22px; height: 22px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: none; border-radius: var(--radius-sm);
+    background: none; color: var(--gray2); cursor: pointer;
+    opacity: 0;
+    transition: opacity var(--transition), background var(--transition), color var(--transition);
+  }
+  .gp-hist-item:hover .gp-hist-renomear,
+  .gp-hist-renomear:focus-visible { opacity: 1; }
+  .gp-hist-renomear:hover:not(:disabled),
+  .gp-hist-renomear:focus-visible { outline: none; background: var(--gray4); color: var(--black); }
+  .gp-hist-renomear:disabled { cursor: default; }
+  /* Em tela de toque nao ha mouse em cima: o lapis fica a vista. */
+  @media (hover: none) { .gp-hist-renomear { opacity: 1; } }
+  /* O nome em edicao, no lugar do nome lido. */
+  .gp-hist-renome { display: flex; align-items: center; gap: 6px; }
+  .gp-hist-renome-campo { padding: 5px 8px; font-size: 12.5px; width: 180px; flex: none; }
+  .gp-hist-renome-sub { flex: 1; min-width: 0; width: auto; }
+  .gp-hist-nome-botao {
+    flex: none;
+    width: 26px; height: 26px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--gray3); border-radius: var(--radius-sm);
+    background: var(--white); color: var(--gray); cursor: pointer;
+    transition: background var(--transition), border-color var(--transition), color var(--transition);
+  }
+  .gp-hist-nome-botao:hover { background: var(--gray4); border-color: var(--gray2); color: var(--black); }
   .gp-hist-sub { font-size: 12px; color: var(--gray); margin-top: 1px; }
   .gp-hist-meta { font-size: 11.5px; color: var(--gray2); margin: 2px 0 0; }
   .gp-hist-acoes { display: flex; align-items: center; gap: 6px; flex: none; }
@@ -1996,7 +2336,7 @@ const ESTILO = `
     .gp-hist-acoes { width: 100%; flex-wrap: wrap; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .gp-hist-lead { transition: none; }
+    .gp-hist-lead, .gp-hist-evolucao { transition: none; }
   }
 
   /* O formulário fica estreito de propósito: os campos empilham, e a largura
@@ -2164,6 +2504,69 @@ const ESTILO = `
     color: var(--gray2);
     vertical-align: middle;
   }
+  /* A versao, na mesma pilula do rascunho mas em amarelo: ela nao e um aviso,
+     e o numero que diz qual das propostas da familia e esta. */
+  .gp-hist-versao {
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    background: var(--yellow);
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: .02em;
+    color: var(--on-yellow);
+    vertical-align: middle;
+  }
+  /* A familia: a principal na frente e as versoes recolhidas embaixo. */
+  .gp-hist-familia { display: flex; flex-direction: column; }
+  /* O gatilho da evolucao, dentro do texto da principal. */
+  .gp-hist-evolucao {
+    display: inline-flex; align-items: center; gap: 5px;
+    margin-top: 5px; padding: 0;
+    border: 0; background: none; cursor: pointer;
+    font-size: 11.5px; font-weight: 700; color: var(--gray);
+    transition: color var(--transition);
+  }
+  .gp-hist-evolucao:hover { color: var(--black); }
+  .gp-hist-evolucao .entrega-seta { color: var(--gray2); }
+  .gp-hist-evolucao:hover .entrega-seta { color: var(--black); }
+  /* As versoes descem recuadas sob a principal, cada uma presa por um traco em
+     L - o mesmo ramo dos desdobramentos de objetivo. A ligacao e por linha, e
+     nao um fio corrido ao lado: e dela que sai cada versao. */
+  .gp-hist-versoes {
+    list-style: none; margin: 8px 0 0 36px; padding: 0;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .gp-hist-versoes > li { position: relative; }
+  .gp-hist-versoes > li::before {
+    content: '';
+    position: absolute;
+    left: -14px;
+    top: -12px;
+    width: 14px;
+    height: calc(50% + 12px);
+    border-left: 1.5px solid var(--gray3);
+    border-bottom: 1.5px solid var(--gray3);
+    border-bottom-left-radius: 7px;
+    pointer-events: none;
+  }
+  /* O tronco segue da curva de uma versao ate a de baixo: sem ele o traco
+     nasceria de novo a cada linha, e as versoes leriam como ramos de nada.
+
+     Ele comeca onde a curva sai da vertical (o raio, 7px acima do meio) e
+     morre onde a curva de baixo comeca (12px acima dela, 4px acima do fim
+     desta linha): encostam sem se sobrepor, senao o traco engrossa no meio. */
+  .gp-hist-versoes > li:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: -14px;
+    top: calc(50% - 7px);
+    bottom: 4px;
+    width: 1.5px;
+    background: var(--gray3);
+    pointer-events: none;
+  }
+  .gp-hist-versoes .gp-hist-item { background: var(--bg); }
   /* Os tres cenarios lado a lado: o mesmo servico nas tres colunas, que e como
      a tabela do slide le. */
   .gp-infra-valores { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }

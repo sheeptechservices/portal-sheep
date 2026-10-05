@@ -2740,8 +2740,10 @@ function ChipsDeProposta({ propostas, empresa }: { propostas: PropostaDoCard[]; 
         <Chip key={p.id}
           icone={<IconDoc size={12} />}
           nome="Proposta"
-          nota={p.subtitulo}
-          titulo={`Ver a proposta "${p.subtitulo}"`}
+          // A versão vai no chip: duas propostas da mesma família dividem o
+          // subtítulo, e sem o número elas ficariam idênticas no card.
+          nota={(p.versao ?? 1) > 1 ? `${p.subtitulo} - v${p.versao}` : p.subtitulo}
+          titulo={`Ver a proposta "${p.subtitulo}"${(p.versao ?? 1) > 1 ? `, versão ${p.versao}` : ''}`}
           onAbrir={() => setVendo(p)} />
       ))}
       {vendo && (
