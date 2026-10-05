@@ -3370,7 +3370,19 @@ body.arrastando-painel {
 }
 
 /* Na barra do quadro, a busca fecha a linha, depois dos filtros. */
-.painel-kanban-filtros .campo-busca { margin-left: auto; }
+.painel-kanban-filtros .campo-busca {
+  height: 32px;
+  border-radius: var(--radius-sm);
+  /* O branco chapado do filtro ao lado, e nao o degrade do cristal: numa barra
+     sobre a folha cinza, o degrade puxa o cinza para dentro do campo e ele le
+     como apagado entre botoes brancos. O acabamento (fio de luz, borda e
+     sombra) continua sendo o mesmo deles. */
+  background: var(--white);
+}
+/* O rotulo "Buscar" leva a busca inteira para a direita: o par rotulo + campo
+   anda junto, como "Filtrar" anda com os filtros do outro lado. A mesma classe
+   serve a qualquer peca que feche a barra pela direita. */
+.painel-kanban-filtros .para-a-direita { margin-left: auto; }
 /* As colunas sobem todas a mesma altura, como no quadro grande: com a altura
    vinda do conteudo, uma coluna cheia ao lado de uma vazia desenhava um degrau,
    e o espaco de soltar da vazia ficava do tamanho do titulo dela. */
@@ -5953,6 +5965,7 @@ button.checklist-texto:focus-visible {
 .pagina-cristal .admin-toolbar-btn,
 .pagina-cristal .filter-dropdown-btn,
 .pagina-cristal .secao-busca-campo,
+.pagina-cristal .campo-busca,
 .pagina-cristal .view-toggle,
 .pagina-cristal .kanban-card,
 .pagina-cristal .linha-grupo,
@@ -5976,6 +5989,8 @@ button.checklist-texto:focus-visible {
 .pagina-cristal .filter-dropdown-btn:hover,
 .pagina-cristal .secao-busca-campo:hover,
 .pagina-cristal .secao-busca-campo:focus-within,
+.pagina-cristal .campo-busca:hover,
+.pagina-cristal .campo-busca:focus-within,
 .pagina-cristal .linha-grupo:hover {
   border-color: var(--cristal-borda-forte);
 }

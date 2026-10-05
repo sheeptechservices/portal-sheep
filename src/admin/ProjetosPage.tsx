@@ -1587,7 +1587,10 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
             </button>
           )}
           {/* A busca depois dos filtros: eles estreitam o conjunto, e ela varre
-              o que sobrou. */}
+              o que sobrou. O rótulo é o mesmo "Filtrar" do começo da barra -
+              são duas ferramentas da mesma linha, e uma delas sem nome leria
+              como um campo solto que sobrou ali. */}
+          <span className="admin-toolbar-label para-a-direita">Buscar</span>
           <CampoBusca className="painel-kanban-busca" valor={busca} onMudar={setBusca}
             placeholder="Buscar por título, descritivo ou entrega" rotulo="Buscar tarefa" />
         </div>
