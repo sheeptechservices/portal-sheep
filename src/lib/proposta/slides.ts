@@ -332,6 +332,9 @@ const celula = (n: number | null) => (n == null
  * do formulário - o total que o cliente lê é a soma do que está acima dele.
  */
 function slideInfra(inf: InfraManutencao): string {
+  // A escolha do desenho. Proposta gravada antes de a escolha existir nao tem
+  // o campo, e continua saindo pela tabela, como saiu da primeira vez.
+  if (inf.modelo === 'faixa') return slideInfraEmFaixa(inf);
   const destaque = (c: Cenario) => (c === 'realista' ? 'background:var(--yd);' : '');
   const th = 'text-align:right;padding:clamp(5px,0.6vw,9px) clamp(8px,0.8vw,12px);vertical-align:bottom';
   const td = 'text-align:right;padding:clamp(4px,0.5vw,7px) clamp(8px,0.8vw,12px);white-space:nowrap';
@@ -398,6 +401,105 @@ function slideInfra(inf: InfraManutencao): string {
     </div>
     ${inf.nota.trim()
       ? `<div class="note a" style="margin-top:clamp(10px,1.4vh,18px);font-size:clamp(9px,0.9vw,13px);line-height:1.55">${rico(inf.nota)}</div>`
+      : ''}
+    ${rodape}
+  </div>`;
+}
+
+/**
+ * A mesma pergunta, respondida por faixa: de quanto a quanto fica por mes.
+ *
+ * O slide tem um assunto so, e o desenho diz isso: a faixa ocupa uma banda
+ * inteira no alto, com os dois extremos ligados pela regua entre eles - e a
+ * figura que faz "de 2.500 a 3.000" ser lido como intervalo, e nao como dois
+ * precos soltos. O aviso da variacao anda colado nela, porque faixa sem o
+ * porque vira preco fechado na cabeca de quem le.
+ *
+ * Embaixo, o que esta incluso e a manutencao, lado a lado. Sem lista de
+ * inclusos, a manutencao toma a largura inteira e abre as duas colunas dela:
+ * meia linha vazia ao lado de um card seria a moldura dizendo que falta algo.
+ */
+function slideInfraEmFaixa(inf: InfraManutencao): string {
+  const f = inf.faixa ?? { de: '', ate: '', unidade: '', variacao: '', inclui: [] };
+  const rotulo = (texto: string, cor = 'var(--black)') =>
+    `<div style="font-size:clamp(7px,0.68vw,10px);font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:${cor};margin:0 0 clamp(4px,0.5vh,7px)">${texto}</div>`;
+  const lista = (itens: string[]) => `<ul style="margin:0;padding-left:1.05em;font-size:clamp(8px,0.78vw,11.5px);line-height:1.6;color:var(--gray)">${itens
+    .map(i => `<li style="margin-top:clamp(1px,0.15vh,3px)">${esc(i)}</li>`).join('')}</ul>`;
+  const cifrao = '<sup style="color:var(--yellow)">R$</sup>';
+  const extremo = (valor: string, nome: string, direita = false) => `<div style="flex:none;${direita ? 'text-align:right' : ''}">
+          <div class="price-figure" style="font-size:clamp(22px,2.6vw,38px);white-space:nowrap">${cifrao}${esc(valor)}</div>
+          <div style="font-size:clamp(7px,0.66vw,9.5px);font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--gray2);margin-top:clamp(2px,0.3vh,4px)">${nome}</div>
+        </div>`;
+  // A regua entre os dois extremos: cinza no minimo, amarela no maximo. E o
+  // unico lugar do deck em que a cor anda, e ela anda para o lado do numero
+  // maior de proposito.
+  const regua = `<div style="flex:1;min-width:clamp(30px,6vw,90px);height:clamp(3px,0.3vw,5px);border-radius:999px;background:linear-gradient(90deg,var(--gray3) 0%,var(--yellow) 100%)"></div>`;
+
+  const faixa = f.ate.trim()
+    ? `<div style="display:flex;align-items:center;gap:clamp(10px,1.2vw,20px)">
+        ${extremo(f.de, 'mínimo')}
+        ${regua}
+        ${extremo(f.ate, 'máximo', true)}
+      </div>`
+    : `<div class="price-figure" style="font-size:clamp(22px,2.6vw,38px);white-space:nowrap">${cifrao}${esc(f.de)}</div>`;
+
+  const card = 'background:var(--white);border:1px solid var(--gray3);border-top:3px solid var(--yellow);'
+    + 'border-radius:clamp(10px,1.1vw,16px);padding:clamp(14px,1.6vw,24px)';
+
+  const colunasDeBaixo = f.inclui.length ? 'repeat(2,minmax(0,1fr))' : 'minmax(0,1fr)';
+  // Dentro da manutencao, inclui e nao inclui se arrumam sozinhos: lado a lado
+  // quando o card e largo, empilhados quando ele divide a linha.
+  const colunasDaManutencao = 'repeat(auto-fit,minmax(clamp(130px,15vw,210px),1fr))';
+
+  const rodapeDoSlide = [
+    inf.fonte.trim()
+      ? `<div style="font-size:clamp(6.5px,0.64vw,9.5px);font-style:italic;color:var(--gray2);line-height:1.5">${esc(inf.fonte)}</div>`
+      : '',
+    inf.nota.trim()
+      ? `<div class="note" style="font-size:clamp(9px,0.9vw,13px);line-height:1.55">${rico(inf.nota)}</div>`
+      : '',
+  ].filter(Boolean).join('\n      ');
+
+  return `<div class="slide">
+    ${cabecalho('Infra e manutenção')}
+    <div class="title sm a">Infra e manutenção</div>
+    <div class="rule a"></div>
+    <div class="a" style="background:var(--yd);border:1px solid var(--yb);border-radius:clamp(12px,1.3vw,18px);padding:clamp(16px,1.8vw,28px) clamp(18px,2vw,32px);display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:clamp(16px,2vw,36px);align-items:center">
+      <div>
+        ${rotulo('Infraestrutura')}
+        ${faixa}
+      </div>
+      <div>
+        <div class="price-unit" style="font-size:clamp(9px,0.86vw,12.5px)">${esc(f.unidade)}</div>
+        ${f.variacao.trim()
+          ? `<div style="margin-top:clamp(5px,0.7vh,9px);font-size:clamp(8px,0.78vw,11.5px);line-height:1.55;color:var(--black)">${esc(f.variacao)}</div>`
+          : ''}
+      </div>
+    </div>
+
+    <div class="a" style="margin-top:clamp(12px,1.6vh,20px);display:grid;grid-template-columns:${colunasDeBaixo};gap:clamp(12px,1.4vw,22px);align-items:start">
+      ${f.inclui.length
+        ? `<div style="${card}">
+        ${rotulo('O que a infra inclui')}
+        ${lista(f.inclui)}
+      </div>`
+        : ''}
+      <div style="${card}">
+        <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:clamp(6px,0.8vw,12px);margin-bottom:clamp(8px,1vh,13px)">
+          <div class="eyebrow" style="margin:0">Manutenção</div>
+          <div class="price-figure" style="font-size:clamp(17px,1.8vw,26px);white-space:nowrap">${cifrao}${esc(inf.manutencao.valor)}</div>
+          <div class="price-unit" style="font-size:clamp(8px,0.76vw,11px)">${esc(inf.manutencao.unidade)}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:${colunasDaManutencao};gap:clamp(10px,1.2vw,20px)">
+          ${inf.manutencao.inclui.length ? `<div>${rotulo('Inclui')}${lista(inf.manutencao.inclui)}</div>` : ''}
+          ${inf.manutencao.naoInclui.length ? `<div>${rotulo('Não inclui', 'var(--gray2)')}${lista(inf.manutencao.naoInclui)}</div>` : ''}
+        </div>
+      </div>
+    </div>
+    ${rodapeDoSlide
+      ? `<div class="a" style="margin-top:clamp(12px,1.6vh,20px);display:flex;flex-direction:column;gap:clamp(7px,0.9vh,12px)">
+      ${rodapeDoSlide}
+    </div>`
       : ''}
     ${rodape}
   </div>`;

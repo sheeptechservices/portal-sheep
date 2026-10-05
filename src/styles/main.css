@@ -3387,6 +3387,18 @@ body.arrastando-painel {
    dois pixels a mais ja desalinham a fileira. */
 .painel-kanban-filtros .admin-toolbar-btn { height: 32px; }
 
+/* ── A faixa de infra, no gerador de propostas ────────
+   Os dois numeros na mesma linha, com o "a" entre eles: e assim que a faixa se
+   le no slide, e dois campos empilhados nao diriam que um e o comeco do outro. */
+.gp-faixa { display: flex; align-items: center; gap: 8px; }
+.gp-faixa .form-input { flex: 1; min-width: 0; }
+.gp-faixa-a {
+  flex: none;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gray2);
+}
+
 /* ── Quais etapas vao no markdown ─────────────────────
    Uma linha por coluna do quadro, com a cor dela e quantas tarefas ela leva
    para o arquivo: a conta e o que deixa escolher sem fechar a caixa para ir

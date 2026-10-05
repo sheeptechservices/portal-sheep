@@ -101,9 +101,37 @@ export interface ItemDeInfra {
   valores: Record<Cenario, string>;
 }
 
+/** Como o slide de infra é desenhado.
+ *
+ *  `cenarios` abre a tabela dos três cenários, serviço por serviço: é a forma
+ *  de quem consultou a tabela da nuvem e quer mostrar a conta. `faixa` diz de
+ *  quanto a quanto fica por mês e o que faz o valor andar dentro disso, no
+ *  desenho dos cards de investimento - é a forma de quem fecha uma estimativa
+ *  sem abrir item por item. */
+export type ModeloDeInfra = 'cenarios' | 'faixa';
+
+/** A faixa de custo, quando o slide não abre a tabela: de quanto a quanto por
+ *  mês, por que varia e o que está dentro. */
+export interface FaixaDeInfra {
+  /** Só o número, no formato brasileiro sem o "R$": "2.500". */
+  de: string;
+  ate: string;
+  /** O que o valor compra: "por mês, em infraestrutura". */
+  unidade: string;
+  /** Por que o valor anda dentro da faixa. É o que impede a estimativa de ser
+   *  lida como preço fechado. */
+  variacao: string;
+  /** O que está dentro da faixa: servidor, banco, backups. */
+  inclui: string[];
+}
+
 /** O slide de infraestrutura e manutenção: o que custa manter o sistema no ar
  *  depois da entrega, que é a pergunta que o cliente faz logo depois do preço. */
 export interface InfraManutencao {
+  /** O desenho do slide. Ausente vale `cenarios`: é como as propostas gravadas
+   *  antes desta escolha saíram, e trocá-las de forma sozinho mudaria o que já
+   *  foi ao cliente. */
+  modelo?: ModeloDeInfra;
   /** O que cada cenário supõe: "até 200 usuários, 5 GB de dados". */
   premissas: Record<Cenario, string>;
   /** De um a seis serviços: é o que cabe na tabela do slide. */
@@ -121,6 +149,10 @@ export interface InfraManutencao {
     /** O que fica fora. Sem essa lista, manutenção vira escopo aberto. */
     naoInclui: string[];
   };
+  /** A faixa, usada quando o modelo é `faixa`. Vive ao lado dos cenários, e não
+   *  no lugar deles: trocar o modelo de ida e volta não pode apagar o que já
+   *  tinha sido escrito do outro lado. */
+  faixa?: FaixaDeInfra;
   /** Uma nota curta sob a tabela: o que move o custo de um cenário para outro. */
   nota: string;
 }

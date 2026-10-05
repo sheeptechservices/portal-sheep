@@ -77,6 +77,7 @@ export function propostaEmBranco(): DadosProposta {
 export function infraEmBranco(manutencao = ''): InfraManutencao {
   const vazio = { otimista: '', realista: '', pessimista: '' };
   return {
+    modelo: 'cenarios',
     premissas: { ...vazio },
     itens: [
       { servico: 'Servidor da aplicação', detalhe: '', valores: { ...vazio } },
@@ -88,6 +89,12 @@ export function infraEmBranco(manutencao = ''): InfraManutencao {
       unidade: 'por mês, a partir do go-live',
       inclui: ['Correção de falhas', 'Atualizações de segurança', 'Monitoramento e backups'],
       naoInclui: ['Funcionalidades novas', 'O custo da própria infraestrutura'],
+    },
+    faixa: {
+      de: '', ate: '',
+      unidade: 'por mês, em infraestrutura',
+      variacao: 'Pode variar com o volume de tráfego e de dados da plataforma.',
+      inclui: ['Servidor da aplicação', 'Banco de dados', 'Backups e monitoramento'],
     },
     nota: '',
   };

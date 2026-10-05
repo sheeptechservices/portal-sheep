@@ -29,6 +29,7 @@ import {
 } from '../components/icons';
 import { AbaPainel, Abas } from '../components/Abas';
 import { SelectSistema } from '../components/SelectSistema';
+import { SegSwitch } from '../components/SegSwitch';
 import { PreviaArquivo } from '../components/PreviaArquivo';
 import { CampoTexto } from '../components/CampoTexto';
 import { Chave } from '../components/Chave';
@@ -46,7 +47,8 @@ import { emBase64, htmlDaProposta, lerTemplate } from '../lib/proposta/gerar';
 import { baixarPdfDaProposta } from '../lib/proposta/pdf';
 import { instante, tempoRelativo } from '../lib/datas';
 import type {
-  DadosProposta, Entrega, Fase, InfraManutencao, ItemDeInfra, OpcaoInvestimento,
+  DadosProposta, Entrega, FaixaDeInfra, Fase, InfraManutencao, ItemDeInfra, ModeloDeInfra,
+  OpcaoInvestimento,
 } from '../lib/proposta/tipos';
 import { CENARIOS, NOME_DO_CENARIO, manutencaoSugerida } from '../lib/proposta/tipos';
 
@@ -176,6 +178,11 @@ function ondeHaTravessao(d: DadosProposta): Travessao[] {
       ver('infra', `Serviço ${i + 1}`, x.servico);
       ver('infra', `Serviço ${i + 1} · O que foi precificado`, x.detalhe);
     });
+    if (inf.faixa) {
+      ver('infra', 'Faixa · O que o valor compra', inf.faixa.unidade);
+      ver('infra', 'Faixa · Por que varia', inf.faixa.variacao);
+      inf.faixa.inclui.forEach((x, k) => ver('infra', `Faixa · Inclui ${k + 1}`, x));
+    }
     ver('infra', 'De onde vêm os preços', inf.fonte);
     ver('infra', 'Manutenção · O que o valor compra', inf.manutencao.unidade);
     inf.manutencao.inclui.forEach((x, k) => ver('infra', `Manutenção · Inclui ${k + 1}`, x));
@@ -275,6 +282,12 @@ function Lista({ rotulo, itens, onChange, placeholder, dica }: {
   );
 }
 
+/** A faixa de uma proposta que ainda não tem uma: trocar para este desenho não
+ *  pode esbarrar num campo que não existe. */
+const FAIXA_EM_BRANCO: FaixaDeInfra = {
+  de: '', ate: '', unidade: 'por mês, em infraestrutura', variacao: '', inclui: [],
+};
+
 /**
  * O passo de infra e manutenção.
  *
@@ -292,9 +305,61 @@ function PassoDeInfra({ inf, sugestao, onChange }: {
     onChange({ ...inf, itens: inf.itens.map((x, k) => (k === i ? v : x)) });
   const manutencao = (m: Partial<InfraManutencao['manutencao']>) =>
     onChange({ ...inf, manutencao: { ...inf.manutencao, ...m } });
+  const faixa = inf.faixa ?? FAIXA_EM_BRANCO;
+  const trocarFaixa = (f: Partial<FaixaDeInfra>) =>
+    onChange({ ...inf, faixa: { ...faixa, ...f } });
+  // Proposta gravada antes desta escolha não tem o campo, e continua na tabela.
+  const modelo = inf.modelo ?? 'cenarios';
 
   return (
     <div className="gp-grade surge">
+      <div className="gp-campo">
+        <span className="form-label">Como este slide se desenha</span>
+        <SegSwitch<ModeloDeInfra>
+          valor={modelo}
+          opcoes={[
+            { valor: 'cenarios', label: 'Por cenários' },
+            { valor: 'faixa', label: 'Faixa de valor' },
+          ]}
+          onChange={v => onChange({ ...inf, modelo: v })} />
+        <span className="gp-dica">
+          {modelo === 'cenarios'
+            ? 'A tabela com os três cenários lado a lado, serviço por serviço, e a conta somada.'
+            : 'De quanto a quanto fica por mês, com o que faz o valor variar - nos cards do slide de investimento.'}
+        </span>
+      </div>
+
+      {/* O que não é do modelo escolhido sai da tela, mas fica guardado: trocar
+          de ida e volta não pode apagar o que já foi escrito do outro lado. */}
+      {modelo === 'faixa' ? (
+        <div className="gp-grade troca" key="faixa">
+          <div className="gp-campo">
+            <span className="form-label">A faixa por mês, em reais</span>
+            <div className="gp-faixa">
+              <input className="form-input" value={faixa.de} inputMode="decimal"
+                aria-label="Começo da faixa, em reais" placeholder="2.500"
+                onChange={e => trocarFaixa({ de: e.target.value })} />
+              <span className="gp-faixa-a">a</span>
+              <input className="form-input" value={faixa.ate} inputMode="decimal"
+                aria-label="Fim da faixa, em reais" placeholder="3.000"
+                onChange={e => trocarFaixa({ ate: e.target.value })} />
+            </div>
+            <span className="gp-dica">
+              Só o número, como no investimento. Sem o segundo, sai um valor só.
+            </span>
+          </div>
+          <Campo rotulo="O que o valor compra" valor={faixa.unidade}
+            placeholder="por mês, em infraestrutura"
+            onChange={v => trocarFaixa({ unidade: v })} />
+          <Texto rotulo="Por que varia" valor={faixa.variacao} linhas={2}
+            placeholder="Podem sofrer variação a depender do volume de tráfego na plataforma."
+            onChange={v => trocarFaixa({ variacao: v })}
+            dica="Fica em destaque ao lado do valor: faixa sem o porquê se lê como preço fechado." />
+          <Lista rotulo="Inclui" itens={faixa.inclui} onChange={v => trocarFaixa({ inclui: v })}
+            placeholder="Servidor da aplicação" />
+        </div>
+      ) : (
+      <div className="gp-grade troca" key="cenarios">
       <div className="gp-campo">
         <span className="form-label">O que cada cenário supõe</span>
         {CENARIOS.map(c => (
@@ -353,7 +418,11 @@ function PassoDeInfra({ inf, sugestao, onChange }: {
           <IconPlus size={12} /> Mais um serviço
         </button>
       )}
+      </div>
+      )}
 
+      {/* De onde vêm os preços vale nos dois desenhos: na tabela ele fica sob
+          ela, e na faixa, no pé do card. */}
       <Campo rotulo="De onde vêm os preços" valor={inf.fonte}
         placeholder="Tabela de preços da AWS consultada em 18/09/2026, região São Paulo, preços sob demanda."
         onChange={v => onChange({ ...inf, fonte: v })}
@@ -2252,6 +2321,7 @@ function limpar(d: DadosProposta, previa: boolean): DadosProposta {
     },
     infra: d.infra && {
       ...d.infra,
+      faixa: d.infra.faixa && { ...d.infra.faixa, inclui: semVazios(d.infra.faixa.inclui) },
       itens: d.infra.itens.filter(x => previa || x.servico.trim()),
       manutencao: {
         ...d.infra.manutencao,
