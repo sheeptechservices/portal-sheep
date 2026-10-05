@@ -24,6 +24,7 @@ import { IconCheck, IconSparkles } from '../components/icons';
 import { Chave } from '../components/Chave';
 import { lerEventos } from '../lib/sse';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
+import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import type { DadosProposta } from '../lib/proposta/tipos';
 
 /** As partes da proposta na ordem em que a IA as escreve. */
@@ -105,10 +106,19 @@ export function usePreenchimentoPorIa(token: string, onSessaoExpirada: () => voi
 
   const preencher = useCallback(async (
     oportunidadeId: string, contexto: string, informado?: InformadoParaIa,
+    sinalDeFora?: AbortSignal,
   ): Promise<Resultado> => {
     setAndamento({
       fase: 'oportunidade', empresa: null, reunioes: null, aws: null, perguntas: null, secao: null,
     });
+    // Cancelar pelo balao das atividades para o pedido daqui: a volta em curso
+    // e abortada e a pergunta que esperasse resposta se resolve com nulo, que e
+    // como o laco entende "cancelado".
+    const aoAbortarDeFora = () => {
+      controle.current?.abort();
+      aguardando.current?.(null);
+    };
+    sinalDeFora?.addEventListener('abort', aoAbortarDeFora, { once: true });
     let retomada: { estado: string; respostas: RespostaAIa[] } | undefined;
     try {
       // Uma volta por pedido: a primeira, e uma a mais para cada pergunta que
@@ -179,6 +189,7 @@ export function usePreenchimentoPorIa(token: string, onSessaoExpirada: () => voi
       if (err?.name === 'AbortError') return { ok: false, cancelado: true };
       return { ok: false, erro: 'A conexão caiu no meio do preenchimento. Tente de novo.' };
     } finally {
+      sinalDeFora?.removeEventListener('abort', aoAbortarDeFora);
       // A janela não some aqui: ela recebe o `fim` e sai com a animação dela,
       // e só então `encerrar` a desmonta.
       setAndamento(a => a && { ...a, fase: 'fim' });
@@ -197,7 +208,7 @@ export function usePreenchimentoPorIa(token: string, onSessaoExpirada: () => voi
 
 /** Quanto já andou, de 0 a 100. É uma estimativa pelas etapas, e não um
  *  cronômetro: a barra anda quando algo de fato acontece. */
-function percentual(a: AndamentoDaIa): number {
+export function percentualDaIa(a: AndamentoDaIa): number {
   if (a.fase === 'oportunidade') return 6;
   if (a.fase === 'reunioes') {
     const r = a.reunioes;
@@ -210,6 +221,23 @@ function percentual(a: AndamentoDaIa): number {
   if (a.fase === 'fim') return 100;
   const i = SECOES.findIndex(s => s.id === a.secao);
   return 40 + ((i + 1) / SECOES.length) * 54;
+}
+
+/** A mesma história da janela, em uma linha: é o que o balão das atividades
+ *  mostra quando a janela sai de vista. */
+export function resumoDaIa(a: AndamentoDaIa): string {
+  if (a.fase === 'oportunidade') return 'lendo o card da oportunidade';
+  if (a.fase === 'reunioes') {
+    const r = a.reunioes;
+    return r && r.total ? `reuniões: ${r.lidas} de ${r.total}` : 'lendo as reuniões';
+  }
+  if (a.fase === 'pensando') return 'correlacionando o que leu';
+  if (a.fase === 'pergunta') return 'a IA tem uma pergunta para você';
+  if (a.fase === 'precos') return `preços na AWS: ${a.aws?.rotulo ?? ''}`.trim();
+  if (a.fase === 'conferindo') return 'conferindo o que veio';
+  if (a.fase === 'fim') return 'fechando';
+  const secao = SECOES.find(s => s.id === a.secao);
+  return secao ? `escrevendo: ${secao.nome}` : 'escrevendo a proposta';
 }
 
 /** Uma etapa da lista: feita, em curso ou por vir. */
@@ -292,11 +320,13 @@ function PerguntasDaIa({ perguntas, onResponder }: {
 /**
  * A janela do preenchimento, no centro da tela.
  *
- * Clicar fora não fecha, de propósito: é uma ação de um minuto que custa
- * dinheiro, e um clique distraído no fundo jogaria tudo fora. O que cancela é
- * o botão - e o Escape, que é o gesto de quem quer sair.
+ * Sair dela não para nada: o fundo, o Escape e o botão "Em segundo plano"
+ * mandam a janela embora e o trabalho segue, contado pelo balão do canto, como
+ * na análise de vaga. Parar é só pelo Cancelar, que é um gesto escrito: a ação
+ * leva um minuto e custa dinheiro, e um clique distraído no fundo não pode
+ * jogá-la fora.
  */
-export function ProgressoDaIa({ andamento, onResponder, onCancelar, onFechada }: {
+export function ProgressoDaIa({ andamento, onResponder, onCancelar, onFechada, onSegundoPlano }: {
   andamento: AndamentoDaIa;
   /** A resposta às perguntas da IA, que retoma o preenchimento. */
   onResponder: (r: RespostaAIa[]) => void;
@@ -304,18 +334,36 @@ export function ProgressoDaIa({ andamento, onResponder, onCancelar, onFechada }:
   onCancelar: () => void;
   /** A janela terminou de sair: quem a montou já pode desmontá-la. */
   onFechada: () => void;
+  /** A janela saiu de vista com o trabalho ainda correndo: daqui em diante
+   *  quem conta o andamento é o balão. */
+  onSegundoPlano?: () => void;
 }) {
-  const { saindo, fechar } = useSaidaSuave(onFechada);
+  // Os dois jeitos de a janela sair usam a mesma animação, e este alvo diz qual
+  // deles foi: o fim do trabalho desmonta tudo, o segundo plano só esconde.
+  const aoTerminar = useRef<() => void>(onFechada);
+  const { saindo, fechar } = useSaidaSuave(() => aoTerminar.current());
+  const irParaOFundo = () => {
+    if (!onSegundoPlano) return;
+    aoTerminar.current = onSegundoPlano;
+    fechar();
+  };
+  const fundo = useFecharNoFundo(irParaOFundo);
 
   // Terminou - bem, mal ou cancelado -: a janela sai com a animação dela, em
   // vez de sumir de estalo debaixo do formulário que acabou de encher.
-  useEffect(() => { if (andamento.fase === 'fim') fechar(); }, [andamento.fase, fechar]);
-
   useEffect(() => {
-    const tecla = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancelar(); };
+    if (andamento.fase !== 'fim') return;
+    aoTerminar.current = onFechada;
+    fechar();
+  }, [andamento.fase, fechar, onFechada]);
+
+  // Escape manda a janela para o fundo, e não corta o trabalho: perder um
+  // minuto de IA por uma tecla de fuga seria caro demais.
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => { if (e.key === 'Escape') irParaOFundo(); };
     window.addEventListener('keydown', tecla);
     return () => window.removeEventListener('keydown', tecla);
-  }, [onCancelar]);
+  });
 
   const ordem = ['oportunidade', 'reunioes', 'pensando', 'pergunta', 'precos', 'escrevendo', 'conferindo', 'fim'] as const;
   const aqui = ordem.indexOf(andamento.fase);
@@ -334,7 +382,7 @@ export function ProgressoDaIa({ andamento, onResponder, onCancelar, onFechada }:
 
   return createPortal(
     <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`}
-      style={{ zIndex: 10040, alignItems: 'center', justifyContent: 'center' }}>
+      style={{ zIndex: 10040, alignItems: 'center', justifyContent: 'center' }} {...fundo}>
       <div className="delete-confirm-modal ia-janela" role="dialog" aria-modal="true"
         aria-labelledby="ia-janela-titulo">
         <div className="ia-giro" aria-hidden="true">
@@ -353,8 +401,8 @@ export function ProgressoDaIa({ andamento, onResponder, onCancelar, onFechada }:
         </p>
 
         <div className="ia-barra" role="progressbar" aria-valuemin={0} aria-valuemax={100}
-          aria-valuenow={Math.round(percentual(andamento))}>
-          <span style={{ width: `${percentual(andamento)}%` }} />
+          aria-valuenow={Math.round(percentualDaIa(andamento))}>
+          <span style={{ width: `${percentualDaIa(andamento)}%` }} />
         </div>
 
         {perguntando ? (
@@ -396,6 +444,15 @@ export function ProgressoDaIa({ andamento, onResponder, onCancelar, onFechada }:
             disabled={andamento.fase === 'fim'}>
             Cancelar
           </button>
+          {/* A saída de quem não vai ficar olhando: a janela some, o trabalho
+              fica, e o balão do canto conta o resto. Fora na pergunta - ali a
+              IA está parada esperando resposta, e não há o que acompanhar. */}
+          {onSegundoPlano && !perguntando && (
+            <button type="button" className="btn btn-secondary" onClick={irParaOFundo}
+              disabled={andamento.fase === 'fim'}>
+              Em segundo plano
+            </button>
+          )}
           {/* Fora do formulário, ao lado do Cancelar: as duas saídas da
               pergunta ficam na mesma linha. O `form` liga o botão a ele. */}
           {perguntando && (

@@ -34,8 +34,10 @@ import { CampoTexto } from '../components/CampoTexto';
 import { Chave } from '../components/Chave';
 import { Dialogo } from '../components/Dialogo';
 import {
-  ProgressoDaIa, usePreenchimentoPorIa, type InformadoParaIa, type PropostaDaIa,
+  ProgressoDaIa, percentualDaIa, resumoDaIa, usePreenchimentoPorIa,
+  type InformadoParaIa, type PropostaDaIa,
 } from './PreenchimentoPorIa';
+import { useAtividades, type Trabalho } from '../lib/atividades';
 import { useRevelar } from '../lib/useRevelar';
 import { useAuth, useToast } from './AdminApp';
 import { montarPrevia, montarProposta, type Conferencia } from '../lib/proposta/montar';
@@ -950,6 +952,15 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
    *  inteiro. Nulo quando não há o que desfazer. */
   const [antesDaIa, setAntesDaIa] = useState<DadosProposta | null>(null);
   const ia = usePreenchimentoPorIa(token, onSessionExpired);
+  /** A janela do preenchimento à vista. Fechada, o trabalho continua e quem
+   *  conta o andamento é o balão do canto. */
+  const [janelaDaIa, setJanelaDaIa] = useState(false);
+  /** O mesmo, em ref: o `preencher` é esperado com `await`, e depois dele o
+   *  estado lido no corpo da função seria o de antes. */
+  const janelaAberta = useRef(false);
+  /** O trabalho em segundo plano deste preenchimento, para o balão. */
+  const trabalhoDaIa = useRef<Trabalho | null>(null);
+  const { iniciar } = useAtividades();
   const [template, setTemplate] = useState<string | null>(null);
   const [passo, setPasso] = useState(0);
   const [entregaEmFoco, setEntregaEmFoco] = useState(0);
@@ -1003,6 +1014,27 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
     return () => clearTimeout(t);
   }, [d]);
 
+  // O balão conta a mesma história da janela, em uma linha.
+  useEffect(() => {
+    if (!ia.andamento) return;
+    trabalhoDaIa.current?.andar(percentualDaIa(ia.andamento) / 100, resumoDaIa(ia.andamento));
+  }, [ia.andamento]);
+
+  // Com a janela à vista, o balão se cala: dois lugares contando a mesma coisa
+  // ao mesmo tempo é ruído.
+  useEffect(() => {
+    janelaAberta.current = janelaDaIa;
+    trabalhoDaIa.current?.mostrarBalao(!janelaDaIa);
+  }, [janelaDaIa]);
+
+  // Sair do gerador leva o preenchimento junto: os campos que ele enche são os
+  // desta tela, e sem ela a resposta não teria onde cair. O balão diz isso em
+  // vez de ficar girando para sempre.
+  useEffect(() => () => {
+    trabalhoDaIa.current?.falhar('O preenchimento pela IA parou',
+      'O gerador foi fechado, e é nele que a proposta escrita cai.');
+  }, []);
+
   const editar = (parte: Partial<DadosProposta>) => setD(a => ({ ...a, ...parte }));
 
   /** Pede a proposta à IA e põe o que voltou no formulário. O que não é dela -
@@ -1010,9 +1042,25 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
    *  ela devolveu vazio não apaga o que o operador já tinha escrito. */
   async function preencherComIa() {
     if (!leadId || ia.andamento) return;
-    const r = await ia.preencher(leadId, contextoIa.trim(), informadoIa);
+    // A partir daqui quem manda no pedido é o sistema, e não a janela: fechá-la
+    // não para nada, e só o Cancelar - dela ou do balão - corta.
+    const t = iniciar({
+      titulo: 'Preenchendo a proposta',
+      onde: 'Gerador de propostas',
+      pagina: 'gerador-propostas',
+      abrir: () => setJanelaDaIa(true),
+      aviso: 'O que a IA já escreveu se perde, e a chamada feita até aqui não volta.',
+    });
+    trabalhoDaIa.current = t;
+    setJanelaDaIa(true);
+    t.mostrarBalao(false);
+    const r = await ia.preencher(leadId, contextoIa.trim(), informadoIa, t.sinal);
+    // Terminado com a janela fora de vista, não há quem a desmonte: o andamento
+    // se encerra aqui para o próximo preenchimento poder começar.
+    if (!janelaAberta.current) ia.encerrar();
+    trabalhoDaIa.current = null;
     if (!r.ok) {
-      if (!('cancelado' in r)) toast('error', 'A IA não preencheu a proposta', r.erro);
+      if (!('cancelado' in r)) t.falhar('A IA não preencheu a proposta', r.erro);
       return;
     }
     const nova: PropostaDaIa = r.proposta;
@@ -1039,8 +1087,11 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
     const precos = r.consultasAws
       ? `, e consultou ${r.consultasAws === 1 ? 'um preço' : `${r.consultasAws} preços`} na AWS`
       : '';
-    toast('success', 'Proposta preenchida pela IA',
-      `${leu}${precos}. Passe pelos passos conferindo o que ela escreveu.`);
+    // O fim passa pelo balão: ele confirma com o toast da casa e fica no canto
+    // com a cara de pronto, para quem estava noutra tela encontrar o resultado.
+    t.concluir('Proposta preenchida pela IA', janelaAberta.current
+      ? `${leu}${precos}. Passe pelos passos conferindo o que ela escreveu.`
+      : `${leu}${precos}. Os campos estão no gerador, esperando a sua conferida.`);
   }
 
   const htmlDaPrevia = useMemo(
@@ -1580,9 +1631,11 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
           largura={500} />
       )}
 
-      {ia.andamento && (
+      {ia.andamento && janelaDaIa && (
         <ProgressoDaIa andamento={ia.andamento} onResponder={ia.responder}
-          onCancelar={ia.cancelar} onFechada={ia.encerrar} />
+          onCancelar={ia.cancelar}
+          onFechada={() => { setJanelaDaIa(false); ia.encerrar(); }}
+          onSegundoPlano={() => setJanelaDaIa(false)} />
       )}
 
       {novoLead && (
