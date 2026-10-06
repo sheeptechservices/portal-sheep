@@ -46,6 +46,7 @@ import { infraEmBranco, propostaEmBranco } from '../lib/proposta/exemplo';
 import { emBase64, htmlDaProposta, lerTemplate } from '../lib/proposta/gerar';
 import { baixarPdfDaProposta } from '../lib/proposta/pdf';
 import { instante, tempoRelativo } from '../lib/datas';
+import { TEMPLATES, type TemplateDeProposta } from '../lib/proposta/templates';
 import type {
   DadosProposta, Entrega, FaixaDeInfra, FaixaDeVolume, Fase, InfraManutencao, ItemDeInfra,
   ModeloDeInfra, OpcaoInvestimento,
@@ -1050,7 +1051,67 @@ function HistoricoPropostas({
   );
 }
 
-type AbaDoGerador = 'gerador' | 'historico';
+/**
+ * Os templates: um produto da casa com o miolo da proposta já escrito.
+ *
+ * Cada card diz o que vem dentro - entregas, prazo, valor, o desenho da infra
+ * -, para a escolha ser feita antes de abrir, e não depois de ver o formulário
+ * mudar. A prévia mostra o deck inteiro como sairia, com o nome do cliente em
+ * aberto.
+ */
+function TemplatesDeProposta({ onUsar, onVer, bloqueado }: {
+  onUsar: (t: TemplateDeProposta) => void;
+  onVer: (t: TemplateDeProposta) => void;
+  /** Há uma proposta do histórico aberta: o template entraria por cima dela. */
+  bloqueado: boolean;
+}) {
+  return (
+    <div className="gp-templates">
+      {TEMPLATES.map(t => {
+        const d = t.dados();
+        const opcao = d.investimento.opcoes.find(o => o.recomendada) ?? d.investimento.opcoes[0];
+        const fatos = [
+          `${d.entregas.length} ${d.entregas.length === 1 ? 'entrega' : 'entregas'}`,
+          `${d.cronograma.meses} ${d.cronograma.meses === 1 ? 'mês' : 'meses'}`,
+          opcao?.valor ? `R$ ${opcao.valor} ${opcao.unidade}` : null,
+          d.infra?.modelo === 'volume' && d.infra.volumes
+            ? `Infra por ${d.infra.volumes.rotulo.toLowerCase()}`
+            : d.infra ? 'Com infra e manutenção' : null,
+        ].filter(Boolean) as string[];
+        return (
+          <article key={t.id} className="gp-template">
+            <div className="gp-template-topo">
+              <span className="gp-template-icone"><IconDoc size={16} /></span>
+              <div className="gp-template-nome">
+                <b>{t.nome}</b>
+                <span>{t.origem}</span>
+              </div>
+            </div>
+            <p className="gp-template-desc">{t.descricao}</p>
+            <ul className="gp-template-fatos">
+              {fatos.map(f => <li key={f}>{f}</li>)}
+            </ul>
+            <ul className="gp-template-entregas">
+              {d.entregas.map(e => <li key={e.nome}>{e.nome}</li>)}
+            </ul>
+            <div className="gp-template-acoes">
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => onVer(t)}>
+                <IconEye size={13} /> Ver prévia
+              </button>
+              <button type="button" className="btn btn-primary btn-sm" disabled={bloqueado}
+                title={bloqueado ? 'Saia da edição da proposta aberta antes de usar um template' : undefined}
+                onClick={() => onUsar(t)}>
+                Usar este template <IconArrowRight size={12} />
+              </button>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+type AbaDoGerador = 'gerador' | 'templates' | 'historico';
 
 export default function GeradorPropostas({ token, onAbrirOportunidade }: {
   token: string;
@@ -1208,6 +1269,56 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
   }, []);
 
   const editar = (parte: Partial<DadosProposta>) => setD(a => ({ ...a, ...parte }));
+
+  // ── Templates ──
+
+  /** O template que pede confirmação antes de entrar: o formulário já tinha
+   *  conteúdo, e o template o substitui inteiro. */
+  const [templatePedido, setTemplatePedido] = useState<TemplateDeProposta | null>(null);
+  /** O template com a prévia aberta. */
+  const [templateVisto, setTemplateVisto] = useState<TemplateDeProposta | null>(null);
+
+  /** O formulário ainda é o de partida: usar um template não apaga nada. Quem
+   *  prepara vem da sessão e não conta como algo escrito. */
+  const formularioEmBranco = JSON.stringify({ ...d, preparadoPor: '' }) === JSON.stringify(propostaEmBranco());
+
+  /** Põe o template no formulário. O que é desta proposta, e não do produto,
+   *  fica: a oportunidade escolhida, o cliente já digitado e quem prepara. */
+  function usarTemplate(t: TemplateDeProposta) {
+    const novo = t.dados();
+    setD(a => ({ ...novo, cliente: a.cliente || novo.cliente, preparadoPor: usuario?.nome ?? a.preparadoPor }));
+    setAntesDaIa(null);
+    setConferencia(null);
+    setPasso(0);
+    setEntregaEmFoco(0);
+    setAba('gerador');
+    toast('success', `Template ${t.nome} aplicado`,
+      leadId ? 'Confira os passos e ajuste o que for deste cliente.' : 'Escolha a oportunidade e confira os passos.');
+  }
+
+  function pedirTemplate(t: TemplateDeProposta) {
+    if (editando) return;
+    if (formularioEmBranco) usarTemplate(t);
+    else setTemplatePedido(t);
+  }
+
+  /** O deck do template como sairia, com o nome do cliente em aberto. */
+  const htmlDoTemplate = useCallback(async (t: TemplateDeProposta) => {
+    const html = await htmlDaProposta({ ...t.dados(), cliente: 'Nome do cliente', preparadoPor: usuario?.nome ?? '' });
+    if (!html) throw new Error('O modelo da proposta não carregou.');
+    return html;
+  }, [usuario?.nome]);
+
+  async function baixarHtmlDoTemplate(t: TemplateDeProposta) {
+    const html = await htmlDoTemplate(t).catch(() => null);
+    if (!html) { toast('error', 'A prévia não saiu', 'O modelo da proposta não carregou.'); return; }
+    const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Template - ${t.nome}.html`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 
   /** Pede a proposta à IA e põe o que voltou no formulário. O que não é dela -
    *  quem prepara, quem apresenta, a validade - fica como estava, e campo que
@@ -1702,7 +1813,9 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
           <p className="admin-page-desc">
             {aba === 'gerador'
               ? 'A apresentação da casa, um passo por vez'
-              : 'As propostas que já saíram, cada uma presa à sua oportunidade'}
+              : aba === 'templates'
+                ? 'Os produtos da casa com a proposta já escrita, para começar por eles'
+                : 'As propostas que já saíram, cada uma presa à sua oportunidade'}
           </p>
         </div>
         {/* Guardar pela metade é gesto de quem vai continuar depois, e por isso
@@ -1728,6 +1841,7 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
           <Abas valor={aba} onChange={setAba}
             opcoes={[
               { valor: 'gerador', label: 'Gerador' },
+              { valor: 'templates', label: 'Templates' },
               { valor: 'historico', label: 'Histórico' },
             ]} />
         </div>
@@ -1770,6 +1884,35 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
             onRenomear={(p, cliente, subtitulo) => { void renomearProposta(p, cliente, subtitulo); }}
             onAbrirLead={onAbrirOportunidade} />
         </div>
+      )}
+
+      {aba === 'templates' && (
+        <div className="aba-painel gp-card">
+          <TemplatesDeProposta onUsar={pedirTemplate} onVer={setTemplateVisto} bloqueado={!!editando} />
+        </div>
+      )}
+
+      {templatePedido && (
+        <Dialogo
+          titulo={`Usar o template ${templatePedido.nome}?`}
+          descricao={<>
+            O formulário já tem uma proposta pela metade, e o template entra no lugar dela.
+            A oportunidade e o cliente escolhidos ficam. Se quiser guardar o que está lá, salve
+            como rascunho antes.
+          </>}
+          rotuloOk="Usar o template"
+          onConfirmar={() => { const t = templatePedido; setTemplatePedido(null); usarTemplate(t); }}
+          onFechar={() => setTemplatePedido(null)}
+          largura={460} />
+      )}
+
+      {templateVisto && (
+        <PreviaArquivo
+          arquivo={{ nome: `Template - ${templateVisto.nome}`, chave: `template-${templateVisto.id}` }}
+          onCarregar={async () => ({ tipo: 'text/html', base64: emBase64(await htmlDoTemplate(templateVisto)) })}
+          onBaixar={() => { void baixarHtmlDoTemplate(templateVisto); }}
+          onFechar={() => setTemplateVisto(null)}
+        />
       )}
 
       {apagando && (
@@ -2816,6 +2959,38 @@ const ESTILO = `
     border-radius: var(--radius-sm); background: var(--gray4);
     font-size: 13px; font-weight: 800; color: var(--black); white-space: nowrap;
   }
+
+  /* Os templates: um card por produto, lado a lado quando ha largura. */
+  .gp-templates {
+    display: grid; gap: 14px;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  }
+  .gp-template {
+    display: flex; flex-direction: column; gap: 12px; padding: 16px;
+    background: var(--white); border: 1px solid var(--gray3); border-radius: var(--radius-md);
+  }
+  .gp-template-topo { display: flex; align-items: center; gap: 10px; }
+  .gp-template-icone {
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+    width: 34px; height: 34px; border-radius: var(--radius-sm);
+    background: var(--yellow); color: var(--on-yellow);
+  }
+  .gp-template-nome { display: flex; flex-direction: column; min-width: 0; }
+  .gp-template-nome b { font-size: 14px; font-weight: 800; color: var(--black); }
+  .gp-template-nome span { font-size: 11.5px; color: var(--gray2); }
+  .gp-template-desc { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--gray); }
+  .gp-template-fatos, .gp-template-entregas {
+    list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px;
+  }
+  .gp-template-fatos li {
+    font-size: 11px; font-weight: 700; color: var(--black);
+    padding: 3px 9px; border-radius: var(--radius-pill); background: var(--gray4);
+  }
+  .gp-template-entregas li {
+    font-size: 11px; font-weight: 600; color: var(--gray);
+    padding: 3px 9px; border-radius: var(--radius-pill); border: 1px solid var(--gray3);
+  }
+  .gp-template-acoes { display: flex; justify-content: flex-end; gap: 8px; margin-top: auto; padding-top: 4px; }
   .gp-proto {
     display: flex; align-items: center; gap: 8px;
     font-size: 11.5px; color: var(--gray);
