@@ -3385,7 +3385,7 @@ body.arrastando-painel {
 .painel-kanban-filtros .para-a-direita { margin-left: auto; }
 /* O botao de acao da barra na altura dos filtros: ele fecha a mesma linha, e
    dois pixels a mais ja desalinham a fileira. */
-.painel-kanban-filtros .admin-toolbar-btn { height: 32px; }
+.painel-kanban-filtros .admin-toolbar-btn { width: 32px; height: 32px; flex: none; }
 
 /* ── A faixa de infra, no gerador de propostas ────────
    Os dois numeros na mesma linha, com o "a" entre eles: e assim que a faixa se

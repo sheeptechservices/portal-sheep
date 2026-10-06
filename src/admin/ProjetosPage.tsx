@@ -1617,11 +1617,11 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
           {onExportar && (
             <button type="button"
               className={`admin-toolbar-btn${todas.length === 0 ? ' para-a-direita' : ''}`}
-              title="Baixar o combinado da semana e as tarefas em markdown, para dar de contexto a uma IA"
+              title="Exportar em markdown: o combinado da semana e as tarefas, para dar de contexto a uma IA"
+              aria-label="Exportar em markdown"
               disabled={montando}
               onClick={() => setExportando(etapas.map(e => e.nome))}>
-              {montando ? <IconSpinner size={13} /> : <IconDownload size={13} />}
-              Exportar
+              {montando ? <IconSpinner size={15} /> : <IconDownload size={15} />}
             </button>
           )}
         </div>
