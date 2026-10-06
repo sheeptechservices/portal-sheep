@@ -4258,6 +4258,68 @@ body.arrastando-painel {
   color: var(--black);
 }
 
+/* ── Filtro de período: a lista dos filtros com um calendário dentro ──────── */
+/* A mesma moldura e a mesma entrada da lista de opções; so a altura sai do
+   teto, porque o mes inteiro tem de caber sem rolar. */
+.filtro-periodo { width: 276px; max-height: none; overflow: visible; padding: 10px; }
+.filtro-periodo-atalhos {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  padding-bottom: 10px; margin-bottom: 8px; border-bottom: 1px solid var(--gray3);
+}
+.filtro-periodo-atalho {
+  height: 24px; padding: 0 9px; border-radius: var(--radius-pill);
+  border: 1px solid var(--gray3); background: var(--white); color: var(--gray);
+  font: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
+}
+.filtro-periodo-atalho:hover { border-color: var(--gray2); color: var(--black); }
+.filtro-periodo-atalho.ativo { border-color: var(--black); color: var(--black); }
+.filtro-periodo-mes {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
+  font-size: 12.5px; font-weight: 800; color: var(--black);
+}
+.filtro-periodo-mes span { flex: 1; text-align: center; }
+.filtro-periodo-nav {
+  width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: var(--radius-sm); background: none; color: var(--gray); cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.filtro-periodo-nav:hover { background: var(--gray4); color: var(--black); }
+/* Sete colunas sem vao: o trecho escolhido e uma faixa continua, e o vao entre
+   os dias o picotaria. */
+.filtro-periodo-grade { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); row-gap: 2px; }
+.filtro-periodo-semana {
+  text-align: center; font-size: 10px; font-weight: 700; color: var(--gray2);
+  letter-spacing: .06em; padding: 2px 0 4px;
+}
+.filtro-periodo-dia {
+  height: 30px; border: none; background: none; padding: 0;
+  font: inherit; font-size: 12px; font-weight: 500; color: var(--black); cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition), color var(--transition);
+}
+.filtro-periodo-dia:hover { background: var(--gray4); }
+.filtro-periodo-dia.fora { color: var(--gray2); opacity: .55; }
+.filtro-periodo-dia.hoje { font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
+/* O meio do trecho e faixa reta; as pontas arredondam do lado de fora. */
+.filtro-periodo-dia.dentro { background: var(--gray4); border-radius: 0; }
+.filtro-periodo-dia.ponta {
+  background: var(--yellow); color: var(--on-yellow); font-weight: 800; opacity: 1;
+}
+.filtro-periodo-dia.inicio { border-top-left-radius: var(--radius-sm); border-bottom-left-radius: var(--radius-sm); }
+.filtro-periodo-dia.fim { border-top-right-radius: var(--radius-sm); border-bottom-right-radius: var(--radius-sm); }
+.filtro-periodo-pe {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--gray3);
+}
+.filtro-periodo-dica { flex: 1; font-size: 11px; color: var(--gray2); }
+.filtro-periodo-limpar {
+  border: none; background: none; padding: 4px 6px; border-radius: var(--radius-sm);
+  font: inherit; font-size: 11px; font-weight: 700; color: var(--gray2); cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+}
+.filtro-periodo-limpar:hover { color: var(--black); background: var(--gray4); }
+
 .filter-check {
   width: 14px;
   height: 14px;

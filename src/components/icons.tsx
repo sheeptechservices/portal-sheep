@@ -598,6 +598,10 @@ export function IconArrowRight({ size = 14 }: { size?: number }) {
 export function IconChevronRight({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M9 6l6 6-6 6" /></Ico>;
 }
+// Voltar um passo numa navegação curta, como o mês anterior de um calendário.
+export function IconChevronLeft({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><path d="M15 6l-6 6 6 6" /></Ico>;
+}
 export function IconChevronDown({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M5.5 9l6.5 6.5L18.5 9" /></Ico>;
 }

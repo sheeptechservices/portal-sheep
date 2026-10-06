@@ -20,6 +20,7 @@ import {
   IconX, IconZip, IconRamificar
 } from '../components/icons';
 import FilterDropdown from '../components/FilterDropdown';
+import FiltroPeriodo, { dentroDoPeriodo } from '../components/FiltroPeriodo';
 import { SegSwitch } from '../components/SegSwitch';
 import { PLANNING_FUNIL, PROJETO_GERAL } from '../lib/projetoGeral';
 import { logoDoCliente } from '../lib/marcas';
@@ -1508,9 +1509,12 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
   const [fEntrega, setFEntrega] = useState<string[]>([]);
   const [fEtiqueta, setFEtiqueta] = useState<string[]>([]);
   const [fPrioridade, setFPrioridade] = useState<string[]>([]);
+  /** O período do prazo, de um dia a outro. Vazio nas duas pontas: sem filtro. */
+  const [fPrazo, setFPrazo] = useState({ de: '', ate: '' });
   const [busca, setBusca] = useState('');
   const temFiltro = fResponsavel.length > 0 || fEntrega.length > 0
-    || fEtiqueta.length > 0 || fPrioridade.length > 0 || busca.trim() !== '';
+    || fEtiqueta.length > 0 || fPrioridade.length > 0 || busca.trim() !== ''
+    || !!(fPrazo.de || fPrazo.ate);
   /** A escolha das etapas, aberta. Nula: ninguém pediu a exportação ainda. */
   const [exportando, setExportando] = useState<string[] | null>(null);
   /** O arquivo sendo montado: a conversa e o checklist de cada tarefa vêm do
@@ -1549,11 +1553,12 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
     (fEntrega.length === 0 || fEntrega.includes(String(t.entrega_id))) &&
     (fEtiqueta.length === 0 || (t.etiquetas ?? []).some(e => fEtiqueta.includes(e))) &&
     (fPrioridade.length === 0 || fPrioridade.includes(t.prioridade ?? PRIORIDADE_PADRAO)) &&
+    dentroDoPeriodo(t.prazo, fPrazo.de, fPrazo.ate) &&
     // A busca alcança o título, o descritivo e o nome da entrega: é por esses
     // três que se procura uma tarefa em voz alta.
     (contemTermo(t.titulo, busca) || contemTermo(t.descricao, busca)
       || contemTermo(t.entrega_id != null ? tituloDaEntrega.get(t.entrega_id) : null, busca))
-  ), [todas, fResponsavel, fEntrega, fEtiqueta, fPrioridade, busca, tituloDaEntrega]);
+  ), [todas, fResponsavel, fEntrega, fEtiqueta, fPrioridade, fPrazo, busca, tituloDaEntrega]);
 
   return (
     <section>
@@ -1595,10 +1600,13 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
           )}
           <FilterDropdown label="Prioridade" values={fPrioridade} options={opcoes.prioridade}
             onChange={setFPrioridade} />
+          <FiltroPeriodo label="Prazo" de={fPrazo.de} ate={fPrazo.ate}
+            onChange={(de, ate) => setFPrazo({ de, ate })} />
           {temFiltro && (
             <button type="button" className="admin-toolbar-limpar surge"
               onClick={() => {
                 setFResponsavel([]); setFEntrega([]); setFEtiqueta([]); setFPrioridade([]); setBusca('');
+                setFPrazo({ de: '', ate: '' });
               }}>
               Limpar
             </button>

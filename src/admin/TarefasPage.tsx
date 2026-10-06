@@ -23,6 +23,7 @@ import {
 import { SelectSistema } from '../components/SelectSistema';
 import { DatePicker } from '../components/DatePicker';
 import FilterDropdown from '../components/FilterDropdown';
+import FiltroPeriodo, { dentroDoPeriodo } from '../components/FiltroPeriodo';
 import { SkeletonCards, SkeletonTabela } from '../components/Skeleton';
 import { CartaoKpi, CartoesKpiEsqueleto } from '../components/CartaoKpi';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
@@ -312,6 +313,8 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
   const [fComplexidade, setFComplexidade] = useState<string[]>([]);
   // Guardado por id: dois projetos podem ter entregas de mesmo nome.
   const [fEntrega, setFEntrega] = useState<string[]>([]);
+  /** O período do prazo, de um dia a outro. Vazio nas duas pontas: sem filtro. */
+  const [fPrazo, setFPrazo] = useState({ de: '', ate: '' });
   const [busca, setBusca] = useState('');
   const [ordem, setOrdem] = useState<string>('prioridade');
   const [agrupamento, setAgrupamento] = useState<string>('status');
@@ -505,6 +508,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
       (fEtiqueta.length === 0 || t.etiquetas.some(e => fEtiqueta.includes(e))) &&
       (fComplexidade.length === 0 || fComplexidade.includes(t.complexidade ?? '')) &&
       (fEntrega.length === 0 || fEntrega.includes(String(t.entrega_id))) &&
+      dentroDoPeriodo(t.prazo, fPrazo.de, fPrazo.ate) &&
       (!q || semAcento(t.titulo).includes(q) || semAcento(t.descricao ?? '').includes(q)
         || semAcento(entregaDe(t)).includes(q))
     );
@@ -523,7 +527,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
       const va = de(a), vb = de(b);
       return va < vb ? -1 : va > vb ? 1 : porUrgencia(a, b) || a.id - b.id;
     });
-  }, [tarefas, fProjeto, fStatus, fResponsavel, fEtiqueta, fEntrega, busca, ordem]);
+  }, [tarefas, fProjeto, fStatus, fResponsavel, fEtiqueta, fEntrega, fComplexidade, fPrazo, busca, ordem]);
 
   const grupos = useMemo(
     () => montarGrupos(filtradas, agrupamento, etapas),
@@ -595,11 +599,13 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
   }, [tarefas]);
 
   const temFiltro = fProjeto.length + fStatus.length + fResponsavel.length
-    + fEtiqueta.length + fEntrega.length + fComplexidade.length > 0 || !!busca.trim();
+    + fEtiqueta.length + fEntrega.length + fComplexidade.length > 0 || !!busca.trim()
+    || !!(fPrazo.de || fPrazo.ate);
 
   function limparFiltros() {
     setFProjeto([]); setFStatus([]); setFResponsavel([]); setFEtiqueta([]); setFEntrega([]);
     setFComplexidade([]);
+    setFPrazo({ de: '', ate: '' });
     setBusca('');
   }
 
@@ -1070,6 +1076,8 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
             <FilterDropdown label="Etiqueta" values={fEtiqueta} options={opcoes.etiqueta} onChange={setFEtiqueta} />
             <FilterDropdown label="Complexidade" values={fComplexidade} options={opcoes.complexidade}
               onChange={setFComplexidade} />
+            <FiltroPeriodo label="Prazo" de={fPrazo.de} ate={fPrazo.ate}
+              onChange={(de, ate) => setFPrazo({ de, ate })} />
             {temFiltro && (
               <button
                 style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray2)', background: 'none', border: 'none', cursor: 'pointer' }}
