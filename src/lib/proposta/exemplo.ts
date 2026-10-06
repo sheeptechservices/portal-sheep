@@ -96,6 +96,14 @@ export function infraEmBranco(manutencao = ''): InfraManutencao {
       variacao: 'Pode variar com o volume de tráfego e de dados da plataforma.',
       inclui: ['Servidor da aplicação', 'Banco de dados', 'Backups e monitoramento'],
     },
+    volumes: {
+      rotulo: 'Uso por mês',
+      faixas: [
+        { volume: '', infra: '', manutencao: '' },
+        { volume: '', infra: '', manutencao: '' },
+        { volume: '', infra: '', manutencao: '' },
+      ],
+    },
     nota: '',
   };
 }

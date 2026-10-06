@@ -47,10 +47,10 @@ import { emBase64, htmlDaProposta, lerTemplate } from '../lib/proposta/gerar';
 import { baixarPdfDaProposta } from '../lib/proposta/pdf';
 import { instante, tempoRelativo } from '../lib/datas';
 import type {
-  DadosProposta, Entrega, FaixaDeInfra, Fase, InfraManutencao, ItemDeInfra, ModeloDeInfra,
-  OpcaoInvestimento,
+  DadosProposta, Entrega, FaixaDeInfra, FaixaDeVolume, Fase, InfraManutencao, ItemDeInfra,
+  ModeloDeInfra, OpcaoInvestimento,
 } from '../lib/proposta/tipos';
-import { CENARIOS, NOME_DO_CENARIO, manutencaoSugerida } from '../lib/proposta/tipos';
+import { CENARIOS, NOME_DO_CENARIO, manutencaoSugerida, numeroBr, reaisBr } from '../lib/proposta/tipos';
 
 /** Um lead do funil, no recorte que o seletor mostra. */
 interface LeadDoFunil {
@@ -177,7 +177,12 @@ function ondeHaTravessao(d: DadosProposta): Travessao[] {
     inf.itens.forEach((x, i) => {
       ver('infra', `Serviço ${i + 1}`, x.servico);
       ver('infra', `Serviço ${i + 1} · O que foi precificado`, x.detalhe);
+      ver('infra', `Serviço ${i + 1} · Custo base`, x.custo);
     });
+    if (inf.volumes) {
+      ver('infra', 'O que as faixas medem', inf.volumes.rotulo);
+      inf.volumes.faixas.forEach((f, i) => ver('infra', `Faixa ${i + 1} · Até quanto`, f.volume));
+    }
     if (inf.faixa) {
       ver('infra', 'Faixa · O que o valor compra', inf.faixa.unidade);
       ver('infra', 'Faixa · Por que varia', inf.faixa.variacao);
@@ -288,6 +293,16 @@ const FAIXA_EM_BRANCO: FaixaDeInfra = {
   de: '', ate: '', unidade: 'por mês, em infraestrutura', variacao: '', inclui: [],
 };
 
+/** As faixas de uso de uma proposta que ainda não tem nenhuma, pelo mesmo
+ *  motivo. */
+const VOLUMES_EM_BRANCO: NonNullable<InfraManutencao['volumes']> = {
+  rotulo: 'Uso por mês', faixas: [{ volume: '', infra: '', manutencao: '' }],
+};
+
+/** Faixas de uso na tabela do slide: quatro linhas cabem ao lado da lista de
+ *  serviços sem passar do rodapé. */
+const MAX_FAIXAS_DE_VOLUME = 4;
+
 /**
  * O passo de infra e manutenção.
  *
@@ -308,6 +323,11 @@ function PassoDeInfra({ inf, sugestao, onChange }: {
   const faixa = inf.faixa ?? FAIXA_EM_BRANCO;
   const trocarFaixa = (f: Partial<FaixaDeInfra>) =>
     onChange({ ...inf, faixa: { ...faixa, ...f } });
+  const volumes = inf.volumes ?? VOLUMES_EM_BRANCO;
+  const trocarVolumes = (v: Partial<NonNullable<InfraManutencao['volumes']>>) =>
+    onChange({ ...inf, volumes: { ...volumes, ...v } });
+  const trocarFaixaDeVolume = (i: number, f: Partial<FaixaDeVolume>) =>
+    trocarVolumes({ faixas: volumes.faixas.map((x, k) => (k === i ? { ...x, ...f } : x)) });
   // Proposta gravada antes desta escolha não tem o campo, e continua na tabela.
   const modelo = inf.modelo ?? 'cenarios';
 
@@ -320,18 +340,98 @@ function PassoDeInfra({ inf, sugestao, onChange }: {
           opcoes={[
             { valor: 'cenarios', label: 'Por cenários' },
             { valor: 'faixa', label: 'Faixa de valor' },
+            { valor: 'volume', label: 'Por volume' },
           ]}
           onChange={v => onChange({ ...inf, modelo: v })} />
         <span className="gp-dica">
           {modelo === 'cenarios'
             ? 'A tabela com os três cenários lado a lado, serviço por serviço, e a conta somada.'
-            : 'De quanto a quanto fica por mês, com o que faz o valor variar - nos cards do slide de investimento.'}
+            : modelo === 'faixa'
+              ? 'De quanto a quanto fica por mês, com o que faz o valor variar - nos cards do slide de investimento.'
+              : 'Os serviços com o custo base de cada um, e infra mais manutenção fechadas por faixa de uso.'}
         </span>
       </div>
 
       {/* O que não é do modelo escolhido sai da tela, mas fica guardado: trocar
           de ida e volta não pode apagar o que já foi escrito do outro lado. */}
-      {modelo === 'faixa' ? (
+      {modelo === 'volume' ? (
+        <div className="gp-grade troca" key="volume">
+          {inf.itens.map((item, i) => (
+            <div key={i} className="gp-time">
+              <div className="gp-entrega-topo">
+                <span className="gp-entrega-num">Serviço {i + 1}</span>
+                {inf.itens.length > 1 && (
+                  <button type="button" className="gp-x" aria-label={`Remover o serviço ${i + 1}`}
+                    onClick={() => onChange({ ...inf, itens: inf.itens.filter((_, k) => k !== i) })}>
+                    <IconTrash size={13} />
+                  </button>
+                )}
+              </div>
+              <div className="gp-grade">
+                <Campo rotulo="Serviço" valor={item.servico} placeholder="Supabase"
+                  onChange={v => trocarItem(i, { ...item, servico: v })} />
+                <Campo rotulo="Para que serve" valor={item.detalhe} placeholder="Banco de dados e autenticação"
+                  onChange={v => trocarItem(i, { ...item, detalhe: v })} />
+                <Campo rotulo="Custo base" valor={item.custo ?? ''} placeholder="R$ 130 por mês"
+                  onChange={v => trocarItem(i, { ...item, custo: v })} />
+              </div>
+            </div>
+          ))}
+          {inf.itens.length < MAX_INFRA && (
+            <button type="button" className="gp-mais"
+              onClick={() => onChange({
+                ...inf,
+                itens: [...inf.itens, { servico: '', detalhe: '', custo: '', valores: { otimista: '', realista: '', pessimista: '' } }],
+              })}>
+              <IconPlus size={12} /> Mais um serviço
+            </button>
+          )}
+
+          <p className="gp-secao">Faixas de uso</p>
+          <Campo rotulo="O que as faixas medem" valor={volumes.rotulo} placeholder="Leads por mês"
+            onChange={v => trocarVolumes({ rotulo: v })}
+            dica="É o cabeçalho da coluna das faixas no slide." />
+          {volumes.faixas.map((f, i) => {
+            const infra = numeroBr(f.infra);
+            const man = numeroBr(f.manutencao);
+            return (
+              <div key={i} className="gp-time">
+                <div className="gp-entrega-topo">
+                  <span className="gp-entrega-num">Faixa {i + 1}</span>
+                  {volumes.faixas.length > 1 && (
+                    <button type="button" className="gp-x" aria-label={`Remover a faixa ${i + 1}`}
+                      onClick={() => trocarVolumes({ faixas: volumes.faixas.filter((_, k) => k !== i) })}>
+                      <IconTrash size={13} />
+                    </button>
+                  )}
+                </div>
+                <div className="gp-grade">
+                  <Campo rotulo="Até quanto" valor={f.volume} placeholder="Até 1.000 leads"
+                    onChange={v => trocarFaixaDeVolume(i, { volume: v })} />
+                  <div className="gp-volume-valores">
+                    <Campo rotulo="Infra por mês" valor={f.infra} placeholder="1.337"
+                      onChange={v => trocarFaixaDeVolume(i, { infra: v })} />
+                    <Campo rotulo="Manutenção por mês" valor={f.manutencao} placeholder="2.900"
+                      onChange={v => trocarFaixaDeVolume(i, { manutencao: v })} />
+                    <div className="gp-campo">
+                      <span className="form-label">Total por mês</span>
+                      <span className="gp-total-faixa">
+                        {infra == null || man == null ? 'a confirmar' : `R$ ${reaisBr(infra + man)}`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {volumes.faixas.length < MAX_FAIXAS_DE_VOLUME && (
+            <button type="button" className="gp-mais"
+              onClick={() => trocarVolumes({ faixas: [...volumes.faixas, { volume: '', infra: '', manutencao: '' }] })}>
+              <IconPlus size={12} /> Mais uma faixa
+            </button>
+          )}
+        </div>
+      ) : modelo === 'faixa' ? (
         <div className="gp-grade troca" key="faixa">
           <div className="gp-campo">
             <span className="form-label">A faixa por mês, em reais</span>
@@ -429,6 +529,8 @@ function PassoDeInfra({ inf, sugestao, onChange }: {
         dica="Aparece em letra pequena sob a tabela: é o que deixa o cliente conferir a conta." />
 
       <p className="gp-secao">Manutenção</p>
+      {/* Por volume, o valor da manutenção é de cada faixa, e está nelas. */}
+      {modelo !== 'volume' && (<>
       <div className="gp-campo">
         <span className="form-label">Valor por mês</span>
         <div className="gp-linha">
@@ -450,6 +552,7 @@ function PassoDeInfra({ inf, sugestao, onChange }: {
       </div>
       <Campo rotulo="O que o valor compra" valor={inf.manutencao.unidade}
         onChange={v => manutencao({ unidade: v })} />
+      </>)}
       <Lista rotulo="Inclui" itens={inf.manutencao.inclui} onChange={v => manutencao({ inclui: v })} />
       <Lista rotulo="Não inclui" itens={inf.manutencao.naoInclui} onChange={v => manutencao({ naoInclui: v })}
         dica="Sem essa lista, manutenção vira escopo aberto." />
@@ -2322,6 +2425,10 @@ function limpar(d: DadosProposta, previa: boolean): DadosProposta {
     infra: d.infra && {
       ...d.infra,
       faixa: d.infra.faixa && { ...d.infra.faixa, inclui: semVazios(d.infra.faixa.inclui) },
+      volumes: d.infra.volumes && {
+        ...d.infra.volumes,
+        faixas: d.infra.volumes.faixas.filter(f => previa || f.volume.trim()),
+      },
       itens: d.infra.itens.filter(x => previa || x.servico.trim()),
       manutencao: {
         ...d.infra.manutencao,
@@ -2695,6 +2802,20 @@ const ESTILO = `
   .gp-infra-valores { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
   .gp-cenario { font-size: 11px; font-weight: 700; color: var(--gray); min-width: 70px; }
   .gp-sugerir { flex-shrink: 0; white-space: nowrap; }
+  /* Infra, manutencao e total de uma faixa: lado a lado quando a coluna e
+     larga, e quebrando de linha quando ela aperta - os rotulos sao longos, e
+     tres colunas fixas os encavalavam. */
+  .gp-volume-valores {
+    display: grid; gap: 8px;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr));
+  }
+  /* O total de uma faixa de uso: conta, e nao campo, com a altura de um campo
+     para a linha nao pular quando ele aparece. */
+  .gp-total-faixa {
+    display: flex; align-items: center; min-height: 36px; padding: 0 10px;
+    border-radius: var(--radius-sm); background: var(--gray4);
+    font-size: 13px; font-weight: 800; color: var(--black); white-space: nowrap;
+  }
   .gp-proto {
     display: flex; align-items: center; gap: 8px;
     font-size: 11.5px; color: var(--gray);

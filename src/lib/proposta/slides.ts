@@ -335,6 +335,7 @@ function slideInfra(inf: InfraManutencao): string {
   // A escolha do desenho. Proposta gravada antes de a escolha existir nao tem
   // o campo, e continua saindo pela tabela, como saiu da primeira vez.
   if (inf.modelo === 'faixa') return slideInfraEmFaixa(inf);
+  if (inf.modelo === 'volume') return slideInfraPorVolume(inf);
   const destaque = (c: Cenario) => (c === 'realista' ? 'background:var(--yd);' : '');
   const th = 'text-align:right;padding:clamp(5px,0.6vw,9px) clamp(8px,0.8vw,12px);vertical-align:bottom';
   const td = 'text-align:right;padding:clamp(4px,0.5vw,7px) clamp(8px,0.8vw,12px);white-space:nowrap';
@@ -500,6 +501,99 @@ function slideInfraEmFaixa(inf: InfraManutencao): string {
       ? `<div class="a" style="margin-top:clamp(12px,1.6vh,20px);display:flex;flex-direction:column;gap:clamp(7px,0.9vh,12px)">
       ${rodapeDoSlide}
     </div>`
+      : ''}
+    ${rodape}
+  </div>`;
+}
+
+/**
+ * A mesma pergunta, respondida pelo volume de uso.
+ *
+ * À esquerda, os serviços com o preço de tabela de cada um: é o que deixa o
+ * cliente ver de onde a conta vem sem abrir uma planilha. À direita, a conta
+ * fechada por faixa - infra, manutenção e o total, que é soma e não campo. O
+ * total anda em destaque porque é o número que o cliente leva para a decisão.
+ *
+ * Um "a confirmar" numa das parcelas deixa o total a confirmar também: somado
+ * como zero, ele pareceria certo sem ser.
+ */
+function slideInfraPorVolume(inf: InfraManutencao): string {
+  const v = inf.volumes ?? { rotulo: '', faixas: [] };
+  const rotulo = (texto: string, cor = 'var(--gray2)', alinhar = 'left') =>
+    `<div style="font-size:clamp(7px,0.68vw,10px);font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:${cor};text-align:${alinhar}">${esc(texto)}</div>`;
+
+  const servicos = inf.itens.map(item => `<div style="display:flex;align-items:baseline;gap:clamp(8px,0.9vw,14px);padding:clamp(6px,0.75vh,10px) 0;border-top:1px solid var(--gray3)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:clamp(9px,0.88vw,12.5px);font-weight:700;color:var(--black)">${esc(item.servico)}</div>
+            <div style="font-size:clamp(7px,0.68vw,10px);color:var(--gray2);line-height:1.4">${esc(item.detalhe)}</div>
+          </div>
+          <div style="flex:none;max-width:45%;text-align:right;font-size:clamp(8px,0.78vw,11px);font-weight:700;color:var(--black);line-height:1.35">${esc(item.custo ?? '')}</div>
+        </div>`).join('');
+
+  const th = 'padding:0 clamp(8px,0.8vw,12px) clamp(6px,0.7vw,10px);vertical-align:bottom';
+  const td = 'padding:clamp(9px,1.2vh,15px) clamp(8px,0.8vw,12px);text-align:right;white-space:nowrap;font-size:clamp(9px,0.9vw,13px);color:var(--black)';
+  const total = 'background:var(--yd);';
+  const linhas = v.faixas.map((f, i) => {
+    const infra = numeroBr(f.infra);
+    const manutencao = numeroBr(f.manutencao);
+    const soma = infra == null || manutencao == null ? null : infra + manutencao;
+    return `<tr style="${i ? 'border-top:1px solid var(--gray3)' : ''}">
+            <td style="padding:clamp(9px,1.2vh,15px) clamp(8px,0.8vw,12px) clamp(9px,1.2vh,15px) 0">
+              <span style="display:inline-flex;align-items:center;gap:clamp(5px,0.5vw,8px);font-size:clamp(9px,0.88vw,12.5px);font-weight:700;color:var(--black);white-space:nowrap"><span style="background:var(--yellow);color:var(--black);font-weight:800;font-size:clamp(7px,0.66vw,10px);padding:clamp(2px,0.22vw,4px) clamp(6px,0.58vw,9px);border-radius:100px">${String(i + 1).padStart(2, '0')}</span>${esc(f.volume)}</span>
+            </td>
+            <td style="${td}">${celula(infra)}</td>
+            <td style="${td}">${celula(manutencao)}</td>
+            <td style="${td};${total}font-weight:800;font-size:clamp(10px,1.02vw,14.5px)">${celula(soma)}</td>
+          </tr>`;
+  }).join('');
+
+  const listaPequena = (itens: string[]) => `<ul style="margin:0;padding-left:1.05em;font-size:clamp(7.5px,0.72vw,10.5px);line-height:1.5;color:var(--gray)">${itens
+    .map(i => `<li>${esc(i)}</li>`).join('')}</ul>`;
+  const listasDaManutencao = [
+    inf.manutencao.inclui.length
+      ? `<div>${rotulo('A manutenção inclui', 'var(--black)')}<div style="margin-top:clamp(3px,0.4vh,6px)">${listaPequena(inf.manutencao.inclui)}</div></div>`
+      : '',
+    inf.manutencao.naoInclui.length
+      ? `<div>${rotulo('Não inclui')}<div style="margin-top:clamp(3px,0.4vh,6px)">${listaPequena(inf.manutencao.naoInclui)}</div></div>`
+      : '',
+  ].filter(Boolean);
+
+  const card = 'background:var(--white);border:1px solid var(--gray3);border-top:3px solid var(--yellow);'
+    + 'border-radius:clamp(10px,1.1vw,16px);padding:clamp(12px,1.4vw,20px)';
+
+  return `<div class="slide">
+    ${cabecalho('Infra e manutenção')}
+    <div class="title sm a">Infra e manutenção</div>
+    <div class="rule a"></div>
+    <div class="a" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.45fr);gap:clamp(14px,1.8vw,30px);align-items:start">
+      <div style="${card}">
+        <div style="margin-bottom:clamp(4px,0.6vh,8px)">${rotulo('A estrutura e o custo base', 'var(--black)')}</div>
+        ${servicos}
+        ${inf.fonte.trim()
+          ? `<div style="margin-top:clamp(6px,0.8vh,10px);font-size:clamp(6.5px,0.62vw,9px);font-style:italic;color:var(--gray2);line-height:1.5">${esc(inf.fonte)}</div>`
+          : ''}
+      </div>
+      <div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr>
+            <th style="${th};padding-left:0">${rotulo(v.rotulo)}</th>
+            <th style="${th}">${rotulo('Infra por mês', 'var(--gray2)', 'right')}</th>
+            <th style="${th}">${rotulo('Manutenção', 'var(--gray2)', 'right')}</th>
+            <th style="${th};${total}border-radius:clamp(6px,0.6vw,9px) clamp(6px,0.6vw,9px) 0 0">${rotulo('Total por mês', 'var(--black)', 'right')}</th>
+          </tr></thead>
+          <tbody>
+            ${linhas}
+          </tbody>
+        </table>
+        ${listasDaManutencao.length
+          ? `<div style="margin-top:clamp(10px,1.4vh,18px);display:grid;grid-template-columns:repeat(${listasDaManutencao.length},minmax(0,1fr));gap:clamp(10px,1.2vw,20px)">
+          ${listasDaManutencao.join('\n          ')}
+        </div>`
+          : ''}
+      </div>
+    </div>
+    ${inf.nota.trim()
+      ? `<div class="note a" style="margin-top:clamp(12px,1.6vh,20px);font-size:clamp(9px,0.9vw,13px);line-height:1.55">${rico(inf.nota)}</div>`
       : ''}
     ${rodape}
   </div>`;

@@ -99,6 +99,21 @@ export interface ItemDeInfra {
   detalhe: string;
   /** Custo por mês em reais, no formato brasileiro sem o "R$": "412,50". */
   valores: Record<Cenario, string>;
+  /** O custo base escrito por extenso, usado no desenho por volume: "R$ 130
+   *  por mês", "cerca de R$ 0,01 por lead". Lá o serviço não tem um valor por
+   *  cenário, tem o preço de tabela - é o volume que decide a conta. */
+  custo?: string;
+}
+
+/** Uma faixa de volume, no desenho por volume: até quanto se usa por mês, e
+ *  quanto custam a infra e a manutenção nessa faixa. O total é conta, e não
+ *  campo: o cliente lê a soma do que está ao lado dela. */
+export interface FaixaDeVolume {
+  /** "Até 1.000 leads". */
+  volume: string;
+  /** Por mês, em reais, sem o "R$": "1.337". */
+  infra: string;
+  manutencao: string;
 }
 
 /** Como o slide de infra é desenhado.
@@ -107,8 +122,11 @@ export interface ItemDeInfra {
  *  de quem consultou a tabela da nuvem e quer mostrar a conta. `faixa` diz de
  *  quanto a quanto fica por mês e o que faz o valor andar dentro disso, no
  *  desenho dos cards de investimento - é a forma de quem fecha uma estimativa
- *  sem abrir item por item. */
-export type ModeloDeInfra = 'cenarios' | 'faixa';
+ *  sem abrir item por item. `volume` lista os serviços com o preço de tabela
+ *  de cada um e fecha a conta por faixa de uso ("até 1.000 leads por mês"),
+ *  com infra e manutenção andando juntas: é a forma de produto cobrado pelo
+ *  volume, como o SDR com IA. */
+export type ModeloDeInfra = 'cenarios' | 'faixa' | 'volume';
 
 /** A faixa de custo, quando o slide não abre a tabela: de quanto a quanto por
  *  mês, por que varia e o que está dentro. */
@@ -153,6 +171,13 @@ export interface InfraManutencao {
    *  no lugar deles: trocar o modelo de ida e volta não pode apagar o que já
    *  tinha sido escrito do outro lado. */
   faixa?: FaixaDeInfra;
+  /** As faixas de uso, quando o modelo é `volume`. Como a faixa de valor, vive
+   *  ao lado dos cenários, e não no lugar deles. */
+  volumes?: {
+    /** O cabeçalho da coluna das faixas: "Leads por mês". */
+    rotulo: string;
+    faixas: FaixaDeVolume[];
+  };
   /** Uma nota curta sob a tabela: o que move o custo de um cenário para outro. */
   nota: string;
 }
