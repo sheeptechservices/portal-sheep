@@ -148,15 +148,33 @@ function sdrComIa(): DadosProposta {
     },
 
     investimento: {
-      opcoes: [{
-        rotulo: 'Implementação',
-        titulo: 'Time de implementação',
-        valor: '18.900',
-        unidade: 'total por mês',
-        destaque: { valor: '4 meses', texto: 'em 4 sprints, do discovery ao KT' },
-        bullets: [],
-        recomendada: true,
-      }],
+      // Dois custos que se somam, e não duas opções para escolher: a
+      // implementação, paga uma vez, e o custo mensal de manter o SDR no ar.
+      opcoes: [
+        {
+          rotulo: 'Implementação',
+          titulo: 'Setup do SDR com IA',
+          valor: '9.800',
+          unidade: 'valor único da implementação',
+          destaque: { valor: '4 meses', texto: 'em 4 sprints, do discovery ao KT' },
+          bullets: [
+            'Configuração e setup inicial para parametrizar o sistema',
+            'Pago uma vez: cobre o projeto inteiro, do discovery ao go-live',
+          ],
+          recomendada: true,
+        },
+        {
+          rotulo: 'Custo mensal',
+          titulo: 'Infra + manutenção',
+          valor: '1.850',
+          unidade: 'custo total por mês, a partir do go-live',
+          destaque: { valor: 'R$ 1.295', texto: 'de infra (70%)', nota: 'e R$ 555 de manutenção (30%)' },
+          bullets: [
+            'Cobre uma estrutura de 500 leads prospectados na IA e 3 usuários no BI',
+            'Acima de 500 leads, de 3 usuários no BI ou com customizações por empresa: sob demanda',
+          ],
+        },
+      ],
       time: [
         {
           papel: 'Gestor de Projetos', quantidade: 1, dedicacao: '',
