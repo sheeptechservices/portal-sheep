@@ -1,0 +1,167 @@
+<style>
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .kpi { padding: 15px 16px; display: flex; flex-direction: column; gap: 6px; }
+  .kpi-topo { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; font-weight: 700; }
+  .kpi-icone { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; }
+  .kpi-valor { display: flex; align-items: baseline; gap: 8px; }
+  .kpi-valor b { font-size: 27px; font-weight: 800; letter-spacing: -.02em; }
+  .delta { font-size: 11.5px; font-weight: 800; color: var(--green); background: var(--green-soft); border-radius: 999px; padding: 2px 8px; }
+  .kpi small { font-size: 11px; color: var(--soft); }
+  .grade { display: grid; grid-template-columns: 1fr 540px; gap: 16px; min-height: 0; flex: 1; }
+  .coluna-esq { display: flex; flex-direction: column; gap: 16px; min-height: 0; }
+  .coluna-esq .card:last-child { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .funil { padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .etapa-funil { display: grid; grid-template-columns: 120px 1fr 90px; align-items: center; gap: 12px; }
+  .etapa-funil span { font-size: 12px; font-weight: 700; color: var(--ink-2); }
+  .etapa-funil em { font-style: normal; text-align: right; font-size: 12px; color: var(--muted); }
+  .etapa-funil em b { color: var(--ink); font-size: 13px; }
+  .trilho { height: 30px; border-radius: 8px; background: var(--line-2); overflow: hidden; }
+  /* A barra cresce por CSS, e nao por script: o quadro fora da tela nao desenha
+     quadros, e a animacao que esperasse por um nunca rodaria. */
+  .trilho i { display: flex; align-items: center; height: 100%; border-radius: 8px; padding-left: 10px; color: #fff; font-size: 11px; font-weight: 800; white-space: nowrap; transform-origin: left; animation: cresce .7s cubic-bezier(.2, .6, .2, 1) both; }
+  @keyframes cresce { from { transform: scaleX(0); } }
+  @media (prefers-reduced-motion: reduce) { .trilho i { animation: none; } }
+  .grafico { padding: 6px 16px 12px; }
+  .grafico { flex: 1; min-height: 0; }
+  .grafico svg { width: 100%; height: 100%; }
+  .legenda { display: flex; gap: 14px; font-size: 11px; color: var(--muted); font-weight: 600; padding: 0 16px 12px; }
+  .legenda i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+  .baixo { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .baixo .card-topo { flex-wrap: wrap; row-gap: 10px; }
+  .baixo .abas { width: 100%; }
+  .baixo .aba { flex: 1; justify-content: center; }
+  .baixo .nome small { display: block; max-width: 210px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+</style>
+<main class="main">
+  <div class="topo">
+    <div>
+      <h1>Dashboard</h1>
+      <p>O sucesso da automação, do primeiro contato à reunião marcada</p>
+    </div>
+    <div class="topo-acoes">
+      <div class="abas" id="periodo">
+        <button class="aba" data-p="7">7 dias</button>
+        <button class="aba ativa" data-p="30">30 dias</button>
+        <button class="aba" data-p="90">90 dias</button>
+      </div>
+      <button class="btn btn-linha"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5"/><path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>Exportar</button>
+      <div class="avatar">GZ</div>
+    </div>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="grade">
+    <div class="coluna-esq">
+      <div class="card">
+        <div class="card-topo"><h2>Funil da automação</h2><span class="sub">contatados, responderam, qualificados e agendados</span></div>
+        <div class="funil" id="funil"></div>
+      </div>
+      <div class="card">
+        <div class="card-topo"><h2>Respostas por dia</h2><span class="sub" id="grafSub"></span></div>
+        <div class="grafico" id="grafico"></div>
+        <div class="legenda"><span><i style="background:#2563eb"></i>Mensagens enviadas</span><span><i style="background:#16a34a"></i>Respostas</span></div>
+      </div>
+    </div>
+    <div class="card baixo">
+      <div class="card-topo"><h2>Leads por status</h2><span class="sub">com o próximo passo de cada um</span><div class="abas" id="abas"></div></div>
+      <table>
+        <thead><tr><th>Lead</th><th>Status</th><th>Interesse</th><th style="text-align:right">Quando</th></tr></thead>
+        <tbody id="linhas"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+<script>
+  const PERIODOS = {
+    7: { contatados: 214, resposta: 41, qualif: 22, reunioes: 9, d: ['+6%', '+3 pp', '+2 pp', '+4'] },
+    30: { contatados: 836, resposta: 38, qualif: 19, reunioes: 34, d: ['+18%', '+5 pp', '+3 pp', '+12'] },
+    90: { contatados: 2410, resposta: 35, qualif: 17, reunioes: 88, d: ['+42%', '+7 pp', '+4 pp', '+31'] },
+  };
+  const ICONE = {
+    contatados: ['#2563eb', '#eef3ff', '<path d="M3 11l16-7-5 16-3.5-6.5z"/><path d="M10.5 13.5L19 4"/>'],
+    resposta: ['#16a34a', '#e8f7ee', '<path d="M21 12a8 8 0 01-11.6 7.1L4 20.5l1.4-5A8 8 0 1121 12z"/>'],
+    qualif: ['#d97706', '#fff4e2', '<path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6-4.5-4.2 6.1-.7z"/>'],
+    reunioes: ['#7c3aed', '#f4f0ff', '<rect x="3" y="4.5" width="18" height="16.5" rx="2"/><path d="M3 9.5h18M8 3v3M16 3v3"/>'],
+  };
+  const LEADS = [
+    ['Mariana Duarte', 'Clínica Vida Plena', 'agendado', 86, 'Demonstração qua, 14/10 às 15h', 'agora'],
+    ['Fernanda Rocha', 'Clínica Bem Nascer', 'qualificado', 79, 'IA vai propor horários', '25 min'],
+    ['Bruno Carvalho', 'Fisio Movimento', 'respondeu', 64, 'Tratando objeção de preço', '1 h'],
+    ['Thiago Martins', 'Odonto Sorriso', 'respondeu', 57, 'Retomar na próxima semana', '2 h'],
+    ['Rafael Monteiro', 'Odonto Prime', 'contatado', 0, 'Aguardando resposta', '3 h'],
+    ['Lucas Fernandes', 'Clínica Ortomed', 'respondeu', 38, 'Pedir contato do decisor', '3 h'],
+    ['Camila Teixeira', 'Instituto Respira', 'contatado', 0, 'Segundo contato amanhã', '1 dia'],
+    ['Renata Simões', 'Clínica Equilíbrio', 'agendado', 81, 'Demonstração seg, 12/10 às 14h', '1 dia'],
+  ];
+  const ST = { contatado: ['Contatado', 's-contatado'], respondeu: ['Respondeu', 's-respondeu'], qualificado: ['Qualificado', 's-morno'], agendado: ['Agendado', 's-quente'] };
+  let periodo = 30, aba = 'todos';
+  const fmt = n => n.toLocaleString('pt-BR');
+
+  function desenharKpis() {
+    const p = PERIODOS[periodo];
+    const itens = [
+      ['contatados', 'Leads contatados', fmt(p.contatados), p.d[0], 'pela IA no período'],
+      ['resposta', 'Taxa de resposta', `${p.resposta}%`, p.d[1], 'leads que responderam'],
+      ['qualif', 'Taxa de qualificação', `${p.qualif}%`, p.d[2], 'dos contatados'],
+      ['reunioes', 'Reuniões agendadas', fmt(p.reunioes), p.d[3], 'direto na Google Agenda'],
+    ];
+    document.getElementById('kpis').innerHTML = itens.map(([k, r, v, d, s]) => `<div class="card kpi">
+      <div class="kpi-topo"><span class="kpi-icone" style="background:${ICONE[k][1]};color:${ICONE[k][0]}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONE[k][2]}</svg></span>${r}</div>
+      <div class="kpi-valor"><b>${v}</b><span class="delta">${d}</span></div>
+      <small>${s}</small></div>`).join('');
+  }
+
+  function desenharFunil() {
+    const p = PERIODOS[periodo];
+    const resp = Math.round(p.contatados * p.resposta / 100);
+    const qual = Math.round(p.contatados * p.qualif / 100);
+    const etapas = [['Contatados', p.contatados, '#2563eb'], ['Responderam', resp, '#3b82f6'], ['Qualificados', qual, '#60a5fa'], ['Agendados', p.reunioes, '#16a34a']];
+    const el = document.getElementById('funil');
+    el.innerHTML = etapas.map(([r, n, c], k) => `<div class="etapa-funil"><span>${r}</span><div class="trilho"><i style="width:${Math.max(9, n / p.contatados * 100)}%;background:${c};animation-delay:${k * 80}ms">${Math.round(n / p.contatados * 100)}%</i></div><em><b>${fmt(n)}</b> leads</em></div>`).join('');
+  }
+
+  function desenharGrafico() {
+    const n = periodo === 7 ? 7 : periodo === 30 ? 15 : 13;
+    document.getElementById('grafSub').textContent = periodo === 7 ? 'últimos 7 dias' : periodo === 30 ? 'últimos 30 dias, a cada 2 dias' : 'últimos 90 dias, por semana';
+    const base = PERIODOS[periodo].contatados / n;
+    const env = Array.from({ length: n }, (_, i) => base * (0.75 + 0.5 * Math.abs(Math.sin(i * 1.3 + periodo))));
+    const res = env.map((v, i) => v * (0.3 + 0.12 * Math.abs(Math.cos(i * 0.9))));
+    const W = 760, H = 170, max = Math.max(...env) * 1.1;
+    const x = i => 10 + i * (W - 20) / (n - 1);
+    const y = v => H - 18 - (v / max) * (H - 30);
+    const linha = s => s.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    const area = s => `${linha(s)} L${x(n - 1).toFixed(1)},${H - 18} L${x(0).toFixed(1)},${H - 18} Z`;
+    const grade = [0.25, 0.5, 0.75, 1].map(f => `<line x1="10" x2="${W - 10}" y1="${y(max * f / 1.1)}" y2="${y(max * f / 1.1)}" stroke="#eef1f6"/>`).join('');
+    document.getElementById('grafico').innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+      <defs><linearGradient id="ga" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#2563eb" stop-opacity=".18"/><stop offset="1" stop-color="#2563eb" stop-opacity="0"/></linearGradient>
+      <linearGradient id="gv" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#16a34a" stop-opacity=".2"/><stop offset="1" stop-color="#16a34a" stop-opacity="0"/></linearGradient></defs>
+      ${grade}
+      <path d="${area(env)}" fill="url(#ga)"/><path d="${linha(env)}" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linejoin="round"/>
+      <path d="${area(res)}" fill="url(#gv)"/><path d="${linha(res)}" fill="none" stroke="#16a34a" stroke-width="2.2" stroke-linejoin="round"/>
+    </svg>`;
+  }
+
+  function desenharLeads() {
+    const abas = [['todos', 'Todos'], ['contatado', 'Contatados'], ['respondeu', 'Responderam'], ['qualificado', 'Qualificados'], ['agendado', 'Agendados']];
+    document.getElementById('abas').innerHTML = abas.map(([v, r]) => `<button class="aba${aba === v ? ' ativa' : ''}" data-a="${v}">${r}</button>`).join('');
+    const lista = LEADS.filter(l => aba === 'todos' || l[2] === aba);
+    document.getElementById('linhas').innerHTML = lista.map(([n, e, s, nota, prox, q]) => `<tr>
+      <td><div class="linha-flex"><span class="ini">${n.split(' ').map(p => p[0]).join('')}</span><span class="nome"><b>${n}</b><small title="${e}">${prox}</small></span></div></td>
+      <td><span class="selo ${ST[s][1]}">${ST[s][0]}</span></td>
+      <td style="width:110px">${nota ? `<div class="linha-flex"><div class="barra" style="flex:1"><i style="width:${nota}%"></i></div><b style="font-size:12px">${nota}</b></div>` : '<span style="color:var(--soft);font-size:11.5px">sem leitura</span>'}</td>
+      <td style="text-align:right;color:var(--muted)">${q}</td></tr>`).join('');
+  }
+
+  document.getElementById('periodo').addEventListener('click', e => {
+    const b = e.target.closest('[data-p]'); if (!b) return;
+    periodo = Number(b.dataset.p);
+    document.querySelectorAll('#periodo .aba').forEach(x => x.classList.toggle('ativa', x === b));
+    desenharKpis(); desenharFunil(); desenharGrafico();
+  });
+  document.getElementById('abas').addEventListener('click', e => {
+    const b = e.target.closest('[data-a]'); if (!b) return;
+    aba = b.dataset.a; desenharLeads();
+  });
+  desenharKpis(); desenharFunil(); desenharGrafico(); desenharLeads();
+</script>

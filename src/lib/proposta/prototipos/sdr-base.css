@@ -1,0 +1,142 @@
+/* SheepCrew, o SDR com IA: o desenho das telas da proposta de referencia.
+   Claro, com a barra lateral azul-marinho estreita, o azul como cor de acao e
+   o verde do WhatsApp so onde a conversa acontece. */
+:root {
+  --navy: #0f1b3d; --navy-2: #1b2a55;
+  --bg: #f5f7fb; --card: #ffffff; --line: #e6eaf1; --line-2: #eef1f6;
+  --ink: #0f172a; --ink-2: #334155; --muted: #64748b; --soft: #94a3b8;
+  --blue: #2563eb; --blue-2: #1d4ed8; --blue-soft: #eef3ff; --blue-line: #cfdcff;
+  --green: #16a34a; --green-soft: #e8f7ee;
+  --amber: #d97706; --amber-soft: #fff4e2;
+  --red: #dc2626; --red-soft: #fdecec;
+  --wa: #25d366; --wa-dark: #128c7e; --wa-bg: #efeae2; --wa-out: #d9fdd3;
+  --r: 12px; --r-sm: 8px;
+  --sombra: 0 1px 2px rgba(15, 23, 42, .04), 0 4px 14px rgba(15, 23, 42, .05);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1440px; height: 100%; overflow: hidden; }
+body {
+  font-family: 'Manrope', system-ui, sans-serif; background: var(--bg); color: var(--ink);
+  font-size: 13px; -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+svg { display: block; flex: none; }
+.app { display: grid; grid-template-columns: 68px 1fr; height: 100vh; }
+
+/* A barra lateral */
+.lado {
+  background: var(--navy); display: flex; flex-direction: column; align-items: center;
+  padding: 16px 0; gap: 6px;
+}
+.marca {
+  width: 36px; height: 36px; border-radius: 10px; background: var(--blue); color: #fff;
+  display: grid; place-items: center; margin-bottom: 18px;
+}
+.lado-item {
+  width: 42px; height: 42px; border-radius: 10px; color: rgba(255, 255, 255, .55);
+  display: grid; place-items: center; transition: background .15s, color .15s;
+}
+.lado-item:hover { background: var(--navy-2); color: #fff; }
+.lado-item.ativo { background: var(--blue); color: #fff; }
+.lado-fim { margin-top: auto; }
+
+/* O conteudo */
+.main { display: flex; flex-direction: column; min-width: 0; padding: 22px 28px 24px; gap: 16px; overflow: hidden; }
+/* A area de baixo de cada tela ocupa o que sobra da altura, e nao mais: sem a
+   linha presa, a tabela comprida empurrava a conversa para fora do quadro. */
+.grade { grid-template-rows: minmax(0, 1fr); }
+.topo { display: flex; align-items: center; gap: 16px; }
+.topo h1 { font-size: 22px; font-weight: 800; letter-spacing: -.02em; }
+.topo p { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.topo-acoes { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.busca {
+  display: flex; align-items: center; gap: 8px; height: 36px; width: 240px; padding: 0 12px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--soft);
+}
+.avatar {
+  width: 34px; height: 34px; border-radius: 50%; background: var(--blue-soft); color: var(--blue);
+  display: grid; place-items: center; font-weight: 800; font-size: 12px;
+}
+.btn {
+  height: 36px; padding: 0 14px; border-radius: 10px; display: inline-flex; align-items: center; gap: 7px;
+  font-weight: 700; font-size: 12.5px; transition: background .15s, border-color .15s, color .15s;
+}
+.btn-azul { background: var(--blue); color: #fff; }
+.btn-azul:hover { background: var(--blue-2); }
+.btn-linha { border: 1px solid var(--line); background: var(--card); color: var(--ink-2); }
+.btn-linha:hover { border-color: var(--soft); color: var(--ink); }
+
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--sombra); }
+.card-topo { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line-2); }
+.card-topo h2 { font-size: 14px; font-weight: 800; }
+.card-topo span.sub { font-size: 11.5px; color: var(--muted); }
+.rotulo { font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--soft); }
+
+/* Selos de status */
+.selo {
+  display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; white-space: nowrap;
+}
+.selo::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.s-novo { background: #f1f5f9; color: #475569; }
+.s-contatado { background: var(--blue-soft); color: var(--blue); }
+.s-sem { background: var(--amber-soft); color: var(--amber); }
+.s-respondeu { background: var(--green-soft); color: var(--green); }
+.s-quente { background: var(--red-soft); color: var(--red); }
+.s-morno { background: var(--amber-soft); color: var(--amber); }
+.s-frio { background: var(--blue-soft); color: var(--blue); }
+
+/* Abas de filtro */
+.abas { display: flex; gap: 4px; padding: 4px; background: var(--line-2); border-radius: 10px; }
+.aba {
+  height: 30px; padding: 0 12px; border-radius: 8px; font-size: 12px; font-weight: 700; color: var(--muted);
+  display: inline-flex; align-items: center; gap: 6px; transition: background .15s, color .15s;
+}
+.aba:hover { color: var(--ink); }
+.aba.ativa { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(15, 23, 42, .08); }
+.aba b { font-size: 10.5px; color: var(--soft); font-weight: 700; }
+
+/* A conversa no WhatsApp */
+.wa { display: flex; flex-direction: column; min-height: 0; border-radius: var(--r); overflow: hidden; border: 1px solid var(--line); }
+.wa-topo { background: var(--wa-dark); color: #fff; display: flex; align-items: center; gap: 10px; padding: 10px 14px; }
+.wa-topo .foto { width: 34px; height: 34px; border-radius: 50%; background: rgba(255, 255, 255, .2); display: grid; place-items: center; font-weight: 800; font-size: 12px; }
+.wa-topo b { font-size: 13px; display: block; }
+.wa-topo small { font-size: 11px; opacity: .8; }
+.wa-corpo {
+  flex: 1; background: var(--wa-bg); padding: 14px; display: flex; flex-direction: column; gap: 8px; overflow: hidden;
+  /* Presa ao pe, como no WhatsApp: a mensagem nova aparece, e a antiga e que sai por cima. */
+  justify-content: flex-end;
+}
+.bolha {
+  max-width: 78%; padding: 8px 10px 6px; border-radius: 10px; font-size: 12.5px; line-height: 1.45;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, .06); background: #fff; align-self: flex-start;
+  animation: entra .35s cubic-bezier(.2, .6, .2, 1) both;
+}
+.bolha.ia { background: var(--wa-out); align-self: flex-end; }
+.bolha time { display: block; text-align: right; font-size: 10px; color: #667781; margin-top: 2px; }
+.bolha .marca-ia {
+  display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 800; color: var(--wa-dark);
+  margin-bottom: 3px; letter-spacing: .02em;
+}
+.wa-pe { background: #f0f2f5; padding: 9px 12px; display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+.wa-pe .campo { flex: 1; height: 34px; border-radius: 999px; background: #fff; display: flex; align-items: center; padding: 0 14px; }
+.wa-pe .enviar { width: 34px; height: 34px; border-radius: 50%; background: var(--wa-dark); color: #fff; display: grid; place-items: center; }
+@keyframes entra { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .bolha { animation: none; } }
+
+/* Tabela */
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 10.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--soft); padding: 10px 16px; border-bottom: 1px solid var(--line-2); }
+td { padding: 10px 16px; border-bottom: 1px solid var(--line-2); font-size: 12.5px; color: var(--ink-2); }
+tbody tr { transition: background .12s; cursor: pointer; }
+tbody tr:hover { background: #f8fafc; }
+tbody tr.sel { background: var(--blue-soft); }
+.nome b { display: block; color: var(--ink); font-size: 12.5px; }
+.nome small { color: var(--muted); font-size: 11.5px; }
+.ini {
+  width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800;
+  background: var(--blue-soft); color: var(--blue); flex: none;
+}
+.linha-flex { display: flex; align-items: center; gap: 10px; }
+.barra { height: 6px; border-radius: 999px; background: var(--line-2); overflow: hidden; }
+.barra i { display: block; height: 100%; border-radius: 999px; background: var(--blue); transition: width .5s cubic-bezier(.2, .6, .2, 1); }

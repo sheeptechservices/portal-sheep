@@ -1,0 +1,145 @@
+<style>
+  .campanha { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 22px; padding: 14px 18px; }
+  .campanha-icone { width: 40px; height: 40px; border-radius: 10px; background: var(--blue-soft); color: var(--blue); display: grid; place-items: center; }
+  .campanha h3 { font-size: 14px; font-weight: 800; }
+  .campanha p { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .progresso { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .progresso-txt { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); }
+  .progresso-txt b { color: var(--ink); }
+  .persona { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 999px; background: #f4f0ff; color: #6d28d9; font-size: 11.5px; font-weight: 700; }
+  .ao-vivo { display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 700; color: var(--green); }
+  .ao-vivo i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 0 rgba(22, 163, 74, .45); animation: pulsa 1.6s infinite; }
+  .ao-vivo.pausada { color: var(--amber); }
+  .ao-vivo.pausada i { background: var(--amber); animation: none; }
+  @keyframes pulsa { 70% { box-shadow: 0 0 0 8px rgba(22, 163, 74, 0); } 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); } }
+  .grade { display: grid; grid-template-columns: 1fr 430px; gap: 16px; min-height: 0; flex: 1; }
+  .leads { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .leads .card-topo { justify-content: space-between; }
+  .ultima { color: var(--muted); font-size: 11.5px; max-width: 230px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .vazio-wa { margin: auto; text-align: center; color: #54656f; font-size: 12.5px; line-height: 1.5; max-width: 260px; }
+  .vazio-wa div { width: 44px; height: 44px; border-radius: 50%; background: #fff; display: grid; place-items: center; margin: 0 auto 10px; color: var(--wa-dark); }
+  @media (prefers-reduced-motion: reduce) { .ao-vivo i { animation: none; } }
+</style>
+<main class="main">
+  <div class="topo">
+    <div>
+      <h1>Prospecção ativa</h1>
+      <p>A IA inicia o contato com cada lead da base, com a personalidade definida para a sua marca</p>
+    </div>
+    <div class="topo-acoes">
+      <div class="busca"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4-4"/></svg>Buscar lead</div>
+      <button class="btn btn-linha"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5"/><path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>Importar leads</button>
+      <button class="btn btn-azul" id="pausar"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6v12M15 6v12"/></svg><span>Pausar campanha</span></button>
+      <div class="avatar">GZ</div>
+    </div>
+  </div>
+
+  <div class="card campanha">
+    <div class="campanha-icone"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l16-7-5 16-3.5-6.5z"/><path d="M10.5 13.5L19 4"/></svg></div>
+    <div class="progresso">
+      <div class="progresso-txt"><span><b>Campanha outubro</b> · Clínicas e consultórios</span><span><b id="contatados">836</b> de 1.248 leads contatados</span></div>
+      <div class="barra"><i id="barra" style="width:67%"></i></div>
+    </div>
+    <span class="persona"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg>Personalidade: consultiva</span>
+    <span class="ao-vivo" id="aoVivo"><i></i><span>Enviando agora</span></span>
+  </div>
+
+  <div class="grade">
+    <div class="card leads">
+      <div class="card-topo">
+        <h2>Leads da base</h2>
+        <div class="abas" id="abas"></div>
+      </div>
+      <table>
+        <thead><tr><th>Lead</th><th>Telefone</th><th>Status</th><th>Última mensagem</th><th style="text-align:right">Quando</th></tr></thead>
+        <tbody id="linhas"></tbody>
+      </table>
+    </div>
+    <div class="wa" id="conversa"></div>
+  </div>
+</main>
+<script>
+  const LEADS = [
+    { nome: 'Mariana Duarte', empresa: 'Clínica Vida Plena', tel: '(31) 98812-4410', status: 'respondeu', quando: '2 min', conversa: [
+      ['ia', 'Oi, Mariana! Aqui é a Júlia, da SheepCrew. Vi que a Clínica Vida Plena atende em três unidades em BH, e queria te mostrar como outras clínicas estão confirmando consultas pelo WhatsApp sem ocupar a recepção. Posso te contar em dois minutos?', '09:12'],
+      ['lead', 'Oi Júlia! Pode sim, hoje a recepção perde muito tempo com isso.', '09:20'],
+      ['ia', 'Imagino! Hoje vocês confirmam por ligação ou por mensagem? Pergunto para te mostrar o exemplo que mais se parece com a rotina de vocês.', '09:20'] ] },
+    { nome: 'Rafael Monteiro', empresa: 'Odonto Prime', tel: '(31) 99654-2287', status: 'contatado', quando: '14 min', conversa: [
+      ['ia', 'Olá, Rafael! Tudo bem? Aqui é a Júlia, da SheepCrew. A Odonto Prime apareceu entre as clínicas que mais cresceram na região, e acho que faz sentido uma conversa rápida sobre agenda cheia sem aumentar o time. Posso te enviar um exemplo?', '08:58'] ] },
+    { nome: 'Camila Teixeira', empresa: 'Instituto Respira', tel: '(11) 97231-0098', status: 'sem', quando: '1 dia', conversa: [
+      ['ia', 'Oi, Camila! Aqui é a Júlia, da SheepCrew. Posso te mostrar como reduzir as faltas nas sessões do Instituto Respira?', 'ontem'],
+      ['ia', 'Camila, passando só para não deixar a conversa se perder. Se fizer mais sentido, posso falar com outra pessoa da equipe. Quem cuida da agenda de vocês?', '10:05'] ] },
+    { nome: 'Bruno Carvalho', empresa: 'Fisio Movimento', tel: '(21) 98102-7765', status: 'respondeu', quando: '32 min', conversa: [
+      ['ia', 'Olá, Bruno! Aqui é a Júlia, da SheepCrew. Notei que a Fisio Movimento abriu agenda aos sábados, parabéns! Como vocês estão captando pacientes novos para esses horários?', '08:41'],
+      ['lead', 'Oi! Hoje é mais indicação mesmo. Por quê?', '08:50'],
+      ['ia', 'Porque temos ajudado clínicas de fisioterapia a preencher horários novos falando com a base de pacientes antigos. Te mostro um caso parecido?', '08:51'] ] },
+    { nome: 'Juliana Prado', empresa: 'Dermato Essence', tel: '(31) 99877-1203', status: 'novo', quando: 'na fila', conversa: [] },
+    { nome: 'Lucas Fernandes', empresa: 'Clínica Ortomed', tel: '(31) 98455-3390', status: 'contatado', quando: '41 min', conversa: [
+      ['ia', 'Oi, Lucas! Aqui é a Júlia, da SheepCrew. Vi que a Ortomed atende convênios e particulares; queria entender como vocês fazem o retorno dos pacientes depois da consulta.', '08:32'] ] },
+    { nome: 'Patrícia Lemos', empresa: 'Nutri & Forma', tel: '(11) 96633-8810', status: 'sem', quando: '2 dias', conversa: [
+      ['ia', 'Olá, Patrícia! Aqui é a Júlia, da SheepCrew. Posso te mostrar como nutricionistas estão aumentando a recorrência das consultas pelo WhatsApp?', 'seg'] ] },
+    { nome: 'Henrique Alves', empresa: 'Centro Visão', tel: '(31) 98720-5512', status: 'novo', quando: 'na fila', conversa: [] },
+  ];
+  const STATUS = {
+    novo: ['Novo', 's-novo'], contatado: ['Contatado', 's-contatado'],
+    sem: ['Sem resposta', 's-sem'], respondeu: ['Respondeu', 's-respondeu'],
+  };
+  const ABAS = [['todos', 'Todos'], ['novo', 'Novo'], ['contatado', 'Contatado'], ['sem', 'Sem resposta'], ['respondeu', 'Respondeu']];
+  let aba = 'todos';
+  let sel = LEADS[0];
+  const iniciais = n => n.split(' ').map(p => p[0]).slice(0, 2).join('');
+
+  function desenharAbas() {
+    document.getElementById('abas').innerHTML = ABAS.map(([v, r]) => {
+      const n = v === 'todos' ? LEADS.length : LEADS.filter(l => l.status === v).length;
+      return `<button class="aba${aba === v ? ' ativa' : ''}" data-aba="${v}">${r} <b>${n}</b></button>`;
+    }).join('');
+  }
+
+  function desenharLinhas() {
+    const lista = LEADS.filter(l => aba === 'todos' || l.status === aba);
+    document.getElementById('linhas').innerHTML = lista.map((l, i) => {
+      const ultima = l.conversa.length ? l.conversa[l.conversa.length - 1][1] : 'Aguardando o primeiro contato';
+      return `<tr class="${l === sel ? 'sel' : ''}" data-i="${LEADS.indexOf(l)}">
+        <td><div class="linha-flex"><span class="ini">${iniciais(l.nome)}</span><span class="nome"><b>${l.nome}</b><small>${l.empresa}</small></span></div></td>
+        <td>${l.tel}</td>
+        <td><span class="selo ${STATUS[l.status][1]}">${STATUS[l.status][0]}</span></td>
+        <td><div class="ultima">${ultima}</div></td>
+        <td style="text-align:right;color:var(--muted)">${l.quando}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function desenharConversa() {
+    const l = sel;
+    const corpo = l.conversa.length
+      ? l.conversa.map(([de, t, h]) => `<div class="bolha ${de === 'ia' ? 'ia' : ''}">${de === 'ia' ? '<span class="marca-ia"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/></svg>IA SheepCrew</span>' : ''}${t}<time>${h}</time></div>`).join('')
+      : `<div class="vazio-wa"><div><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg></div>Este lead está na fila. A IA inicia o contato no próximo lote, dentro do horário comercial.</div>`;
+    document.getElementById('conversa').innerHTML = `
+      <div class="wa-topo"><span class="foto">${iniciais(l.nome)}</span><div><b>${l.nome}</b><small>${l.empresa} · ${l.tel}</small></div></div>
+      <div class="wa-corpo">${corpo}</div>
+      <div class="wa-pe"><span class="campo">A IA conduz esta conversa. Você pode assumir a qualquer momento</span><span class="enviar"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l16-8-6 16-3-6z"/></svg></span></div>`;
+  }
+
+  document.getElementById('abas').addEventListener('click', e => {
+    const b = e.target.closest('[data-aba]'); if (!b) return;
+    aba = b.dataset.aba;
+    const visiveis = LEADS.filter(l => aba === 'todos' || l.status === aba);
+    if (!visiveis.includes(sel) && visiveis.length) { sel = visiveis[0]; desenharConversa(); }
+    desenharAbas(); desenharLinhas();
+  });
+  document.getElementById('linhas').addEventListener('click', e => {
+    const tr = e.target.closest('tr'); if (!tr) return;
+    sel = LEADS[Number(tr.dataset.i)];
+    desenharLinhas(); desenharConversa();
+  });
+  let pausada = false;
+  document.getElementById('pausar').addEventListener('click', () => {
+    pausada = !pausada;
+    document.querySelector('#pausar span').textContent = pausada ? 'Retomar campanha' : 'Pausar campanha';
+    const v = document.getElementById('aoVivo');
+    v.classList.toggle('pausada', pausada);
+    v.querySelector('span').textContent = pausada ? 'Campanha pausada' : 'Enviando agora';
+  });
+  desenharAbas(); desenharLinhas(); desenharConversa();
+</script>

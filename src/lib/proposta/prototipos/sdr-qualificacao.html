@@ -1,0 +1,164 @@
+<style>
+  .grade { display: grid; grid-template-columns: 330px 1fr 360px; gap: 16px; min-height: 0; flex: 1; }
+  .fila { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .fila-item { display: flex; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line-2); cursor: pointer; transition: background .12s; text-align: left; width: 100%; }
+  .fila-item:hover { background: #f8fafc; }
+  .fila-item.sel { background: var(--blue-soft); box-shadow: inset 3px 0 0 var(--blue); }
+  .fila-texto { flex: 1; min-width: 0; }
+  .fila-texto b { display: flex; justify-content: space-between; font-size: 12.5px; }
+  .fila-texto b small { font-weight: 600; color: var(--soft); font-size: 11px; }
+  .fila-texto p { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 2px 0 7px; }
+  .interesse-mini { display: flex; align-items: center; gap: 8px; font-size: 10.5px; font-weight: 700; color: var(--muted); }
+  .interesse-mini .barra { flex: 1; height: 5px; }
+  .ficha { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .ficha-corpo { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+  .medidor { display: flex; align-items: center; gap: 16px; }
+  .anel { position: relative; width: 92px; height: 92px; flex: none; }
+  .anel svg { width: 92px; height: 92px; transform: rotate(-90deg); }
+  .anel circle { fill: none; stroke-width: 9; }
+  .anel .trilho { stroke: var(--line-2); }
+  .anel .valor { stroke: var(--blue); stroke-linecap: round; animation: enche .8s cubic-bezier(.2, .6, .2, 1) both; }
+  @keyframes enche { from { stroke-dashoffset: var(--volta); } }
+  .anel span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 22px; font-weight: 800; }
+  .medidor-txt b { font-size: 15px; font-weight: 800; display: block; }
+  .medidor-txt p { font-size: 11.5px; color: var(--muted); margin-top: 3px; line-height: 1.45; }
+  .dados { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .dado { background: #f8fafc; border: 1px solid var(--line-2); border-radius: 10px; padding: 9px 11px; }
+  .dado small { display: block; font-size: 10px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--soft); }
+  .dado b { display: block; font-size: 12.5px; margin-top: 3px; }
+  .objecoes { display: flex; flex-direction: column; gap: 7px; }
+  .objecao { display: flex; gap: 9px; align-items: flex-start; font-size: 12px; color: var(--ink-2); line-height: 1.45; }
+  .objecao i { width: 18px; height: 18px; border-radius: 50%; background: var(--green-soft); color: var(--green); display: grid; place-items: center; flex: none; margin-top: 1px; }
+  .digitando { align-self: flex-end; background: var(--wa-out); border-radius: 10px; padding: 9px 12px; display: flex; gap: 4px; }
+  .digitando i { width: 6px; height: 6px; border-radius: 50%; background: #7a8c86; animation: pisca 1.2s infinite; }
+  .digitando i:nth-child(2) { animation-delay: .2s; } .digitando i:nth-child(3) { animation-delay: .4s; }
+  @keyframes pisca { 0%, 60%, 100% { opacity: .3; } 30% { opacity: 1; } }
+  .tag-obj { display: inline-block; margin-top: 4px; font-size: 10px; font-weight: 800; color: var(--amber); background: var(--amber-soft); border-radius: 999px; padding: 2px 8px; }
+  @media (prefers-reduced-motion: reduce) { .digitando i { animation: none; } .anel .valor { animation: none; } }
+</style>
+<main class="main">
+  <div class="topo">
+    <div>
+      <h1>Qualificação</h1>
+      <p>A IA entende o interesse de cada lead, trata as objeções em tempo real e registra o que ouviu</p>
+    </div>
+    <div class="topo-acoes">
+      <div class="abas" id="filtro">
+        <button class="aba ativa" data-f="todos">Todas</button>
+        <button class="aba" data-f="quente">Quentes</button>
+        <button class="aba" data-f="morno">Mornas</button>
+        <button class="aba" data-f="frio">Frias</button>
+      </div>
+      <div class="avatar">GZ</div>
+    </div>
+  </div>
+  <div class="grade">
+    <div class="card fila">
+      <div class="card-topo"><h2>Em qualificação</h2><span class="sub" id="qtd"></span></div>
+      <div id="fila"></div>
+    </div>
+    <div class="wa" id="conversa"></div>
+    <div class="card ficha">
+      <div class="card-topo"><h2>Ficha do lead</h2><span id="classe" style="margin-left:auto"></span></div>
+      <div class="ficha-corpo" id="ficha"></div>
+    </div>
+  </div>
+</main>
+<script>
+  const LEADS = [
+    { nome: 'Mariana Duarte', empresa: 'Clínica Vida Plena', nota: 86, classe: 'quente', quando: 'agora',
+      dados: { Cargo: 'Gerente administrativa', Empresa: 'Clínica Vida Plena', Necessidade: 'Confirmar consultas sem ocupar a recepção', Urgência: 'Alta, ainda este mês' },
+      objecoes: ['Já temos uma secretária para isso: mostrou que a IA libera a recepção para o atendimento presencial', 'Paciente idoso não usa WhatsApp: ofereceu confirmação por ligação como alternativa'],
+      conversa: [
+        ['lead', 'Gostei, mas aqui já temos uma secretária que faz as confirmações.', '09:24'],
+        ['ia', 'Faz todo sentido, Mariana. A ideia não é substituir a recepção: é tirar dela as 80 ligações de confirmação por dia, para ela cuidar de quem está na clínica. Hoje quanto tempo isso toma da equipe?', '09:24', 'Objeção: já tem equipe'],
+        ['lead', 'Umas três horas por dia, fácil. E ainda tem paciente que falta.', '09:27'],
+        ['ia', 'Então o ganho está nas duas pontas: menos tempo ao telefone e menos faltas. Quem além de você participa dessa decisão?', '09:27'],
+        ['lead', 'Eu e o Dr. Paulo, que é o diretor.', '09:29'] ] },
+    { nome: 'Bruno Carvalho', empresa: 'Fisio Movimento', nota: 64, classe: 'morno', quando: '12 min',
+      dados: { Cargo: 'Sócio fisioterapeuta', Empresa: 'Fisio Movimento', Necessidade: 'Preencher a agenda de sábado', Urgência: 'Média, próximo trimestre' },
+      objecoes: ['Está caro para o nosso tamanho: comparou o custo com um horário vazio por semana'],
+      conversa: [
+        ['lead', 'Achei interessante, mas acho que fica caro para uma clínica do nosso tamanho.', '09:02'],
+        ['ia', 'Entendo, Bruno. Uma conta rápida: se a automação preencher dois horários de sábado por semana, quanto isso representa no mês para vocês?', '09:02', 'Objeção: preço'],
+        ['lead', 'Uns 1.200 reais, mais ou menos.', '09:06'],
+        ['ia', 'Então a conversa é sobre quantos horários ela consegue preencher, e não sobre o custo. Posso te mostrar o resultado de uma clínica com três salas, como a sua?', '09:06'] ] },
+    { nome: 'Lucas Fernandes', empresa: 'Clínica Ortomed', nota: 38, classe: 'frio', quando: '1 h',
+      dados: { Cargo: 'Recepcionista', Empresa: 'Clínica Ortomed', Necessidade: 'Ainda não identificada', Urgência: 'Baixa' },
+      objecoes: ['Não sou eu quem decide: pediu o contato do responsável pela gestão'],
+      conversa: [
+        ['lead', 'Olha, eu sou da recepção, quem vê isso é a gerência.', '08:40'],
+        ['ia', 'Obrigada por avisar, Lucas! Você pode me passar o nome de quem cuida da gestão? Assim eu falo direto com a pessoa certa e não ocupo o seu tempo.', '08:41', 'Objeção: não é o decisor'] ] },
+    { nome: 'Fernanda Rocha', empresa: 'Clínica Bem Nascer', nota: 79, classe: 'quente', quando: '25 min',
+      dados: { Cargo: 'Coordenadora de atendimento', Empresa: 'Clínica Bem Nascer', Necessidade: 'Retorno de pacientes do pré-natal', Urgência: 'Alta' },
+      objecoes: ['Medo de a mensagem parecer robô: mostrou o tom de voz configurado para a marca'],
+      conversa: [
+        ['lead', 'Tenho receio de os pacientes acharem que estão falando com um robô.', '08:51'],
+        ['ia', 'É um cuidado importante. O tom de voz é configurado para a Bem Nascer, e quando a conversa pede uma pessoa, ela passa para a sua equipe na hora. Quer ver um exemplo de conversa real?', '08:52', 'Objeção: parece robô'],
+        ['lead', 'Quero sim!', '08:55'] ] },
+    { nome: 'Thiago Martins', empresa: 'Odonto Sorriso', nota: 57, classe: 'morno', quando: '2 h',
+      dados: { Cargo: 'Dentista e proprietário', Empresa: 'Odonto Sorriso', Necessidade: 'Reativar pacientes sem retorno', Urgência: 'Média' },
+      objecoes: ['Agora não é um bom momento: combinou de retomar na semana que vem'],
+      conversa: [
+        ['lead', 'Agora estou no meio de uma reforma, não é um bom momento.', '07:58'],
+        ['ia', 'Sem problema, Thiago! Posso te procurar na semana que vem, quando a reforma acalmar? Assim a clínica já reabre com a agenda andando.', '07:59', 'Objeção: momento'] ] },
+  ];
+  const CLASSE = { quente: ['Quente', 's-quente'], morno: ['Morno', 's-morno'], frio: ['Frio', 's-frio'] };
+  const COR = { quente: '#dc2626', morno: '#d97706', frio: '#2563eb' };
+  let filtro = 'todos';
+  let sel = LEADS[0];
+  const ini = n => n.split(' ').map(p => p[0]).slice(0, 2).join('');
+
+  function desenharFila() {
+    const lista = LEADS.filter(l => filtro === 'todos' || l.classe === filtro);
+    document.getElementById('qtd').textContent = `${lista.length} conversas`;
+    document.getElementById('fila').innerHTML = lista.map(l => {
+      const ultima = l.conversa[l.conversa.length - 1][1];
+      return `<button class="fila-item${l === sel ? ' sel' : ''}" data-i="${LEADS.indexOf(l)}">
+        <span class="ini">${ini(l.nome)}</span>
+        <span class="fila-texto"><b>${l.nome}<small>${l.quando}</small></b><p>${ultima}</p>
+        <span class="interesse-mini"><span class="barra"><i style="width:${l.nota}%;background:${COR[l.classe]}"></i></span>${l.nota}%</span></span>
+      </button>`;
+    }).join('');
+  }
+
+  function desenharConversa() {
+    const l = sel;
+    const bolhas = l.conversa.map(([de, t, h, obj]) => `<div class="bolha ${de === 'ia' ? 'ia' : ''}">${de === 'ia' ? '<span class="marca-ia"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/></svg>IA SheepCrew</span>' : ''}${t}${obj ? `<br><span class="tag-obj">${obj}</span>` : ''}<time>${h}</time></div>`).join('');
+    document.getElementById('conversa').innerHTML = `
+      <div class="wa-topo"><span class="foto">${ini(l.nome)}</span><div><b>${l.nome}</b><small>${l.empresa}</small></div></div>
+      <div class="wa-corpo">${bolhas}${l.conversa[l.conversa.length - 1][0] === 'lead' ? '<div class="digitando"><i></i><i></i><i></i></div>' : ''}</div>
+      <div class="wa-pe"><span class="campo">A IA está qualificando este lead</span><span class="enviar"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l16-8-6 16-3-6z"/></svg></span></div>`;
+  }
+
+  function desenharFicha() {
+    const l = sel;
+    const raio = 37, volta = 2 * Math.PI * raio;
+    document.getElementById('classe').innerHTML = `<span class="selo ${CLASSE[l.classe][1]}">${CLASSE[l.classe][0]}</span>`;
+    const nivel = l.nota >= 75 ? 'Interesse alto' : l.nota >= 50 ? 'Interesse médio' : 'Interesse baixo';
+    document.getElementById('ficha').innerHTML = `
+      <div class="medidor">
+        <div class="anel"><svg viewBox="0 0 92 92"><circle class="trilho" cx="46" cy="46" r="${raio}"/><circle class="valor" cx="46" cy="46" r="${raio}" stroke-dasharray="${volta}" style="--volta:${volta};stroke-dashoffset:${volta * (1 - l.nota / 100)};stroke:${COR[l.classe]}"/></svg><span>${l.nota}</span></div>
+        <div class="medidor-txt"><b>${nivel}</b><p>Calculado pelas respostas: dor declarada, prazo e quem participa da decisão.</p></div>
+      </div>
+      <div><div class="rotulo" style="margin-bottom:8px">Dados coletados na conversa</div>
+        <div class="dados">${Object.entries(l.dados).map(([k, v]) => `<div class="dado"><small>${k}</small><b>${v}</b></div>`).join('')}</div></div>
+      <div><div class="rotulo" style="margin-bottom:8px">Objeções tratadas</div>
+        <div class="objecoes">${l.objecoes.map(o => `<div class="objecao"><i><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></i>${o}</div>`).join('')}</div></div>`;
+  }
+
+  document.getElementById('fila').addEventListener('click', e => {
+    const b = e.target.closest('[data-i]'); if (!b) return;
+    sel = LEADS[Number(b.dataset.i)];
+    desenharFila(); desenharConversa(); desenharFicha();
+  });
+  document.getElementById('filtro').addEventListener('click', e => {
+    const b = e.target.closest('[data-f]'); if (!b) return;
+    filtro = b.dataset.f;
+    document.querySelectorAll('#filtro .aba').forEach(x => x.classList.toggle('ativa', x === b));
+    const lista = LEADS.filter(l => filtro === 'todos' || l.classe === filtro);
+    if (!lista.includes(sel)) { sel = lista[0]; desenharConversa(); desenharFicha(); }
+    desenharFila();
+  });
+  desenharFila(); desenharConversa(); desenharFicha();
+</script>

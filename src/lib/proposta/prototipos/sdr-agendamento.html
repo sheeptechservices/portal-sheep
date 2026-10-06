@@ -1,0 +1,140 @@
+<style>
+  .grade { display: grid; grid-template-columns: 400px 1fr 290px; gap: 16px; min-height: 0; flex: 1; }
+  .horarios { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .horario {
+    height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--wa-dark); color: var(--wa-dark);
+    background: #fff; font-size: 12px; font-weight: 700; transition: background .15s, color .15s;
+  }
+  .horario:hover { background: var(--wa-dark); color: #fff; }
+  .horario:disabled { opacity: .45; cursor: default; background: #fff; color: var(--wa-dark); }
+  .agenda { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .google { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; background: var(--green-soft); color: var(--green); font-size: 11px; font-weight: 700; margin-left: auto; }
+  .semana { display: grid; grid-template-columns: 52px repeat(5, 1fr); flex: 1; min-height: 0; }
+  .dia-cab { text-align: center; padding: 10px 0 8px; border-bottom: 1px solid var(--line-2); }
+  .dia-cab small { display: block; font-size: 10.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--soft); }
+  .dia-cab b { font-size: 17px; font-weight: 800; }
+  .dia-cab.hoje b { color: #fff; background: var(--blue); width: 30px; height: 30px; border-radius: 50%; display: inline-grid; place-items: center; margin-top: 2px; }
+  .horas { display: grid; grid-template-rows: repeat(9, 1fr); }
+  .horas span { font-size: 10.5px; color: var(--soft); text-align: right; padding-right: 8px; transform: translateY(-6px); }
+  .coluna { position: relative; border-left: 1px solid var(--line-2); display: grid; grid-template-rows: repeat(9, 1fr); }
+  .coluna div { border-bottom: 1px solid var(--line-2); }
+  .evento {
+    position: absolute; left: 4px; right: 4px; border-radius: 7px; padding: 5px 7px; font-size: 11px; line-height: 1.3;
+    background: #e8eefc; color: #1e3a8a; border-left: 3px solid var(--blue); overflow: hidden;
+  }
+  .evento b, .evento span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .evento b { font-size: 11px; }
+  .evento.novo { background: var(--green-soft); color: #14532d; border-left-color: var(--green); animation: surge .5s cubic-bezier(.2, .6, .2, 1) both; box-shadow: 0 4px 14px rgba(22, 163, 74, .18); }
+  @keyframes surge { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
+  .proximas { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .reuniao { display: flex; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line-2); }
+  .reuniao.nova { background: var(--green-soft); animation: surge .5s cubic-bezier(.2, .6, .2, 1) both; }
+  .data { width: 44px; flex: none; text-align: center; border-radius: 9px; background: var(--blue-soft); color: var(--blue); padding: 5px 0; }
+  .data small { display: block; font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+  .data b { font-size: 16px; font-weight: 800; }
+  .reuniao.nova .data { background: #fff; color: var(--green); }
+  .reuniao-txt b { font-size: 12.5px; display: block; }
+  .reuniao-txt p { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .reuniao-txt span { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 700; color: var(--green); margin-top: 5px; }
+  @media (prefers-reduced-motion: reduce) { .evento.novo, .reuniao.nova { animation: none; } }
+</style>
+<main class="main">
+  <div class="topo">
+    <div>
+      <h1>Agendamento</h1>
+      <p>A IA sugere os horários livres da agenda na própria conversa e confirma a reunião sozinha</p>
+    </div>
+    <div class="topo-acoes">
+      <button class="btn btn-linha" id="reiniciar"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6"/><path d="M4 4v4.6h4.6"/></svg>Ver de novo</button>
+      <div class="avatar">GZ</div>
+    </div>
+  </div>
+  <div class="grade">
+    <div class="wa">
+      <div class="wa-topo"><span class="foto">MD</span><div><b>Mariana Duarte</b><small>Clínica Vida Plena · lead quente</small></div></div>
+      <div class="wa-corpo" id="chat"></div>
+      <div class="wa-pe"><span class="campo">Escolha um horário na conversa ao lado</span><span class="enviar"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l16-8-6 16-3-6z"/></svg></span></div>
+    </div>
+    <div class="card agenda">
+      <div class="card-topo"><h2>Semana de 12 a 16 de outubro</h2><span class="google"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>Google Agenda conectada</span></div>
+      <div class="semana" id="semana"></div>
+    </div>
+    <div class="card proximas">
+      <div class="card-topo"><h2>Próximas reuniões</h2><span class="sub" id="qtdReunioes"></span></div>
+      <div id="lista"></div>
+    </div>
+  </div>
+</main>
+<script>
+  const DIAS = [['Seg', 12], ['Ter', 13], ['Qua', 14], ['Qui', 15], ['Sex', 16]];
+  const INICIO = 9, HORAS = 9;
+  const OCUPADOS = [
+    { dia: 0, h: 10, dur: 1, t: 'Reunião de time', s: 'Interno' },
+    { dia: 0, h: 14, dur: 1, t: 'Demonstração', s: 'Odonto Prime' },
+    { dia: 1, h: 9, dur: 1.5, t: 'Kickoff', s: 'Instituto Respira' },
+    { dia: 2, h: 11, dur: 1, t: 'Demonstração', s: 'Fisio Movimento' },
+    { dia: 3, h: 13, dur: 1, t: 'Almoço com parceiro', s: 'Externo' },
+    { dia: 4, h: 10, dur: 1, t: 'Revisão de propostas', s: 'Interno' },
+    { dia: 4, h: 15, dur: 1, t: 'Demonstração', s: 'Clínica Bem Nascer' },
+  ];
+  const OFERTA = [{ dia: 2, h: 15, r: 'Qua, 14/10 às 15h' }, { dia: 3, h: 10, r: 'Qui, 15/10 às 10h' }, { dia: 3, h: 16, r: 'Qui, 15/10 às 16h' }];
+  const REUNIOES = [
+    { d: 'Seg', n: 12, t: 'Demonstração · Odonto Prime', p: '14h às 15h, com Rafael Monteiro' },
+    { d: 'Qua', n: 14, t: 'Demonstração · Fisio Movimento', p: '11h às 12h, com Bruno Carvalho' },
+    { d: 'Sex', n: 16, t: 'Demonstração · Clínica Bem Nascer', p: '15h às 16h, com Fernanda Rocha' },
+  ];
+  const IA = '<span class="marca-ia"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/></svg>IA SheepCrew</span>';
+  let marcado = null;
+
+  function desenharSemana() {
+    const cab = '<div></div>' + DIAS.map(([d, n], i) => `<div class="dia-cab${i === 0 ? ' hoje' : ''}"><small>${d}</small><b>${n}</b></div>`).join('');
+    const horas = `<div class="horas">${Array.from({ length: HORAS }, (_, i) => `<span>${INICIO + i}h</span>`).join('')}</div>`;
+    const colunas = DIAS.map((_, di) => {
+      const eventos = OCUPADOS.filter(e => e.dia === di).concat(marcado && marcado.dia === di ? [{ ...marcado, novo: true }] : []);
+      const blocos = eventos.map(e => `<div class="evento${e.novo ? ' novo' : ''}" style="top:calc(${(e.h - INICIO) / HORAS * 100}% + 2px);height:calc(${e.dur / HORAS * 100}% - 4px)"><b>${e.t}</b><span>${e.s}</span></div>`).join('');
+      return `<div class="coluna">${Array.from({ length: HORAS }, () => '<div></div>').join('')}${blocos}</div>`;
+    }).join('');
+    const sem = document.getElementById('semana');
+    sem.style.gridTemplateRows = 'auto 1fr';
+    sem.innerHTML = cab + horas + colunas;
+  }
+
+  function desenharLista() {
+    const lista = [...REUNIOES];
+    if (marcado) lista.splice(marcado.dia >= 3 ? 2 : 1, 0, { d: DIAS[marcado.dia][0], n: DIAS[marcado.dia][1], t: 'Demonstração · Clínica Vida Plena', p: `${marcado.h}h às ${marcado.h + 1}h, com Mariana Duarte`, nova: true });
+    document.getElementById('qtdReunioes').textContent = `${lista.length} nesta semana`;
+    document.getElementById('lista').innerHTML = lista.map(r => `<div class="reuniao${r.nova ? ' nova' : ''}">
+      <div class="data"><small>${r.d}</small><b>${r.n}</b></div>
+      <div class="reuniao-txt"><b>${r.t}</b><p>${r.p}</p>${r.nova ? '<span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>Agendada pela IA agora</span>' : ''}</div>
+    </div>`).join('');
+  }
+
+  function bolha(de, html, hora) {
+    const b = document.createElement('div');
+    b.className = `bolha ${de === 'ia' ? 'ia' : ''}`;
+    b.innerHTML = `${de === 'ia' ? IA : ''}${html}<time>${hora}</time>`;
+    document.getElementById('chat').appendChild(b);
+  }
+
+  function comecar() {
+    marcado = null;
+    document.getElementById('chat').innerHTML = '';
+    bolha('lead', 'Pode ser, quero ver isso funcionando na prática.', '09:31');
+    bolha('ia', `Perfeito, Mariana! Olhei a agenda do nosso especialista e separei três horários para uma demonstração de 1 hora. Qual fica melhor para você e o Dr. Paulo?<div class="horarios">${OFERTA.map((o, i) => `<button class="horario" data-o="${i}">${o.r}</button>`).join('')}</div>`, '09:31');
+    desenharSemana(); desenharLista();
+  }
+
+  document.getElementById('chat').addEventListener('click', e => {
+    const b = e.target.closest('[data-o]'); if (!b || marcado) return;
+    const o = OFERTA[Number(b.dataset.o)];
+    document.querySelectorAll('.horario').forEach(x => { x.disabled = true; });
+    bolha('lead', `${o.r} é perfeito.`, '09:33');
+    setTimeout(() => {
+      marcado = { dia: o.dia, h: o.h, dur: 1, t: 'Demonstração', s: 'Clínica Vida Plena' };
+      bolha('ia', `Agendado! Demonstração confirmada para <b>${o.r}</b>. O convite com o link da chamada já foi para o seu e-mail, e eu te lembro aqui uma hora antes.`, '09:33');
+      desenharSemana(); desenharLista();
+    }, 700);
+  });
+  document.getElementById('reiniciar').addEventListener('click', comecar);
+  comecar();
+</script>

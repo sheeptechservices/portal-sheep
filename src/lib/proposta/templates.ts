@@ -9,6 +9,7 @@
 //  de código.
 // ─────────────────────────────────────────────────────────────────────────────
 import { infraEmBranco } from './exemplo';
+import { PROTOTIPOS_SDR } from './prototipos/sdr';
 import { APRESENTADO_POR, VALIDADE_DIAS, type DadosProposta } from './tipos';
 
 export interface TemplateDeProposta {
@@ -50,6 +51,7 @@ function sdrComIa(): DadosProposta {
     entregas: [
       {
         nome: 'Prospecção ativa',
+        prototipo: PROTOTIPOS_SDR.prospeccao(),
         resumo: 'O agente de IA conversa com seus leads de maneira humanizada, com uma personalidade '
           + 'definida. O contato se dá a partir de uma lista de leads inserida na plataforma.',
         itens: [
@@ -61,6 +63,7 @@ function sdrComIa(): DadosProposta {
       },
       {
         nome: 'Qualificação',
+        prototipo: PROTOTIPOS_SDR.qualificacao(),
         resumo: 'Tratamento de objeções e qualificação do interesse em tempo real. Aqui ocorre não '
           + 'somente a qualificação do lead, mas também a negociação para o agendamento.',
         itens: [
@@ -72,6 +75,7 @@ function sdrComIa(): DadosProposta {
       },
       {
         nome: 'Agendamento',
+        prototipo: PROTOTIPOS_SDR.agendamento(),
         resumo: 'Integração com a Google Agenda e agendamento automático.',
         itens: [
           'Integração com a Google Agenda',
@@ -82,6 +86,7 @@ function sdrComIa(): DadosProposta {
       },
       {
         nome: 'Dashboard',
+        prototipo: PROTOTIPOS_SDR.dashboard(),
         resumo: 'Painel interno de acompanhamento do sucesso da automação.',
         itens: [
           'Visão geral: total de leads contatados, taxa de resposta, taxa de qualificação e reuniões agendadas',
