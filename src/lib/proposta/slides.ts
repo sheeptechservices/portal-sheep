@@ -235,7 +235,10 @@ function cardDeOpcao(o: OpcaoInvestimento): string {
     : '';
 
   return `<div style="position:relative;display:flex;flex-direction:column;${moldura};border-radius:clamp(10px,1.1vw,16px);padding:clamp(14px,1.67vw,24px)">
-        <div style="position:absolute;top:calc(-1 * clamp(8px,0.85vw,12px));right:clamp(14px,1.67vw,24px);font-size:clamp(7px,0.68vw,10px);font-weight:800;letter-spacing:.12em;text-transform:uppercase;padding:clamp(3px,0.36vw,5px) clamp(9px,0.95vw,14px);border-radius:100px;white-space:nowrap;${etiqueta}">${esc(o.rotulo)}</div>
+        ${o.rotulo.trim()
+          // Sem nome, a etiqueta sai: a pílula vazia na borda seria moldura sem nada dentro.
+          ? `<div style="position:absolute;top:calc(-1 * clamp(8px,0.85vw,12px));right:clamp(14px,1.67vw,24px);font-size:clamp(7px,0.68vw,10px);font-weight:800;letter-spacing:.12em;text-transform:uppercase;padding:clamp(3px,0.36vw,5px) clamp(9px,0.95vw,14px);border-radius:100px;white-space:nowrap;${etiqueta}">${esc(o.rotulo)}</div>`
+          : ''}
         <div class="eyebrow" style="margin:0">${esc(o.titulo)}</div>
         <div style="display:flex;flex-wrap:wrap;align-items:center;gap:clamp(9px,1vw,15px);margin-top:clamp(5px,0.7vh,10px)">
           <div style="flex-shrink:0">

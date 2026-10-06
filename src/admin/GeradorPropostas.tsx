@@ -158,6 +158,7 @@ function ondeHaTravessao(d: DadosProposta): Travessao[] {
     f.entregas.forEach((x, k) => ver('cronograma', `${f.nome} · Entrega ${k + 1}`, x));
   });
   d.investimento.opcoes.forEach(o => {
+    ver('investimento', `${o.rotulo} · Nome da opção`, o.rotulo);
     ver('investimento', `${o.rotulo} · Linha fina`, o.titulo);
     ver('investimento', `${o.rotulo} · Valor`, o.valor);
     ver('investimento', `${o.rotulo} · O que o valor compra`, o.unidade);
@@ -690,32 +691,50 @@ const MAX_POR_PAPEL = 20;
  *  vira uma tabela em vez de uma decisão. */
 const MAX_OPCOES = 3;
 
-/** As opções depois de uma entrar ou sair: a etiqueta segue a posição ("Opção
- *  A", "B", "C"), e sempre há uma recomendada. Tirar a recomendada passa o
- *  destaque para a primeira que sobrou - sem ele, o slide perde a borda que diz
- *  ao cliente por onde começar. */
+/** O nome que a opção ganha pela posição: "Opção A", "B", "C". */
+const nomePadraoDaOpcao = (i: number) => `Opção ${String.fromCharCode(65 + i)}`;
+
+/** As opções depois de uma entrar ou sair: o nome padrão segue a posição, e
+ *  sempre há uma recomendada. Nome escrito por alguém ("Implementação",
+ *  "Roadmap completo") fica como está - só o automático se renumera, senão
+ *  tirar a primeira opção apagaria o nome que a segunda ganhou à mão.
+ *
+ *  Tirar a recomendada passa o destaque para a primeira que sobrou - sem ele,
+ *  o slide perde a borda que diz ao cliente por onde começar. */
 function emOrdem(opcoes: OpcaoInvestimento[]): OpcaoInvestimento[] {
   const temRecomendada = opcoes.some(o => o.recomendada);
   return opcoes.map((o, i) => ({
     ...o,
-    rotulo: `Opção ${String.fromCharCode(65 + i)}`,
+    rotulo: !o.rotulo.trim() || /^Opção [A-Z]$/.test(o.rotulo.trim()) ? nomePadraoDaOpcao(i) : o.rotulo,
     recomendada: temRecomendada ? !!o.recomendada : i === 0,
   }));
 }
 
-function CardDeOpcao({ o, onChange, onRemover }: {
+function CardDeOpcao({ o, i, onChange, onRemover }: {
   o: OpcaoInvestimento;
+  /** A posição, para o nome padrão quando o campo fica vazio. */
+  i: number;
   onChange: (v: OpcaoInvestimento) => void;
   /** Ausente quando é a única: proposta sem opção nenhuma não tem preço. */
   onRemover?: () => void;
 }) {
   const d = o.destaque ?? { valor: '', texto: '', nota: '' };
+  const padrao = nomePadraoDaOpcao(i);
   return (
     <div className={`gp-opcao${o.recomendada ? ' rec' : ''}`}>
       <div className="gp-entrega-topo">
-        <span className="gp-entrega-num">{o.rotulo}{o.recomendada ? ' · recomendada' : ''}</span>
+        {/* O nome é a etiqueta que flutua na borda do card no slide. Escreve-se
+            direto no cabeçalho, como um título: campo vazio volta ao nome da
+            posição ao sair dele, porque etiqueta em branco no slide é um
+            pedaço de moldura sem nada dentro. */}
+        <input className="gp-opcao-nome" value={o.rotulo} placeholder={padrao}
+          aria-label="Nome da opção, que aparece na etiqueta do card"
+          title="Nome da opção, que aparece na etiqueta do card no slide"
+          onChange={e => onChange({ ...o, rotulo: e.target.value })}
+          onBlur={() => { if (!o.rotulo.trim()) onChange({ ...o, rotulo: padrao }); }} />
+        {o.recomendada && <span className="gp-opcao-rec">recomendada</span>}
         {onRemover && (
-          <button type="button" className="gp-x" aria-label={`Remover ${o.rotulo}`} onClick={onRemover}>
+          <button type="button" className="gp-x" aria-label={`Remover ${o.rotulo || padrao}`} onClick={onRemover}>
             <IconTrash size={13} />
           </button>
         )}
@@ -2275,7 +2294,7 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
             <>
               <p className="gp-secao">Investimento</p>
               {d.investimento.opcoes.map((o, i) => (
-                <CardDeOpcao key={i} o={o}
+                <CardDeOpcao key={i} o={o} i={i}
                   onChange={v => editar({
                     investimento: {
                       ...d.investimento,
@@ -2827,6 +2846,22 @@ const ESTILO = `
   }
   .gp-entrega-num, .gp-fase-nome { font-size: 11.5px; font-weight: 800; color: var(--black); }
   .gp-entrega-topo .gp-x, .gp-fase-topo .gp-x { margin-left: auto; }
+  /* O nome da opcao, editavel no proprio cabecalho: le como titulo, e so
+     mostra a moldura de campo no hover e no foco. */
+  .gp-opcao-nome {
+    flex: 1; min-width: 0; height: 28px; margin-left: -8px; padding: 0 8px;
+    border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent;
+    font: inherit; font-size: 11.5px; font-weight: 800; color: var(--black);
+    transition: border-color var(--transition), background var(--transition), box-shadow var(--transition);
+  }
+  .gp-opcao-nome:hover { border-color: var(--gray3); background: var(--white); }
+  .gp-opcao-nome:focus { outline: none; border-color: var(--gray2); background: var(--white); box-shadow: 0 0 0 3px var(--gray4); }
+  .gp-opcao-nome::placeholder { color: var(--gray2); }
+  .gp-opcao-rec {
+    flex: none; padding: 2px 8px; border-radius: var(--radius-pill);
+    background: var(--yellow); color: var(--on-yellow);
+    font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  }
   /* A chave do "Nao cobrado" vai para a direita do topo, e a lixeira encosta
      nela em vez de disputar o espaco. */
   .gp-nao-cobrado { margin-left: auto; display: inline-flex; }
