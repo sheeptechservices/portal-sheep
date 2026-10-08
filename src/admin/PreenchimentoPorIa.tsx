@@ -64,6 +64,9 @@ export interface AndamentoDaIa {
   aws: { rotulo: string; consultas: number } | null;
   perguntas: PerguntaDaIa[] | null;
   secao: Secao | null;
+  /** O arquivo da proposta de fora, quando o pedido é de conversão. Nulo no
+   *  preenchimento comum. */
+  fonte: string | null;
 }
 
 /** O que a IA devolve: os campos do formulário, menos os que não são dela
@@ -107,9 +110,13 @@ export function usePreenchimentoPorIa(token: string, onSessaoExpirada: () => voi
   const preencher = useCallback(async (
     oportunidadeId: string, contexto: string, informado?: InformadoParaIa,
     sinalDeFora?: AbortSignal,
+    /** A proposta de fora a converter no padrão do portal. O arquivo dela vira
+     *  a fonte principal, e a oportunidade passa a ser a dela. */
+    fonteId?: number,
   ): Promise<Resultado> => {
     setAndamento({
       fase: 'oportunidade', empresa: null, reunioes: null, aws: null, perguntas: null, secao: null,
+      fonte: fonteId ? '' : null,
     });
     // Cancelar pelo balao das atividades para o pedido daqui: a volta em curso
     // e abortada e a pergunta que esperasse resposta se resolve com nulo, que e
@@ -133,7 +140,7 @@ export function usePreenchimentoPorIa(token: string, onSessaoExpirada: () => voi
             method: 'POST',
             signal: c.signal,
             headers: { 'Content-Type': 'application/json', 'x-admin-session': token },
-            body: JSON.stringify({ oportunidade_id: oportunidadeId, contexto, informado, retomada }),
+            body: JSON.stringify({ oportunidade_id: oportunidadeId, contexto, informado, retomada, fonte_id: fonteId }),
           });
           if (r.status === 401) { onSessaoExpirada(); return { ok: false, erro: 'Sessão expirada.' }; }
           if (!r.ok || !r.body) {
@@ -141,7 +148,9 @@ export function usePreenchimentoPorIa(token: string, onSessaoExpirada: () => voi
             return { ok: false, erro: dados?.error ?? 'Não foi possível preencher a proposta.' };
           }
           await lerEventos(r.body, e => {
-            if (e.tipo === 'oportunidade') {
+            if (e.tipo === 'fonte') {
+              setAndamento(a => a && { ...a, fonte: String(e.nome ?? '') });
+            } else if (e.tipo === 'oportunidade') {
               setAndamento(a => a && {
                 ...a, fase: e.reunioes ? 'reunioes' : 'pensando', empresa: e.empresa,
                 reunioes: { lidas: 0, total: e.reunioes, assunto: null },
@@ -392,7 +401,7 @@ export function ProgressoDaIa({ andamento, onResponder, onCancelar, onFechada, o
           <span className="ia-giro-icone"><IconSparkles size={16} /></span>
         </div>
         <h3 id="ia-janela-titulo" className="ia-janela-titulo troca" key={perguntando ? 'p' : 'e'}>
-          {!perguntando ? 'Preenchendo a proposta'
+          {!perguntando ? (andamento.fonte != null ? 'Convertendo a proposta' : 'Preenchendo a proposta')
             : andamento.perguntas!.length === 1 ? 'A IA tem uma pergunta' : 'A IA tem algumas perguntas'}
         </h3>
         <p className="ia-janela-sub">
@@ -409,7 +418,14 @@ export function ProgressoDaIa({ andamento, onResponder, onCancelar, onFechada, o
           <PerguntasDaIa key="perguntas" perguntas={andamento.perguntas!} onResponder={onResponder} />
         ) : (
           <ol className="ia-etapas troca" key="etapas">
-            <Etapa estado={estadoDe('oportunidade')} titulo="Lendo o card da oportunidade"
+            {/* Na conversão, a proposta de fora é a primeira leitura: é ela a
+                fonte, e o card só completa. */}
+            {andamento.fonte != null && (
+              <Etapa estado={andamento.fonte ? 'feita' : 'agora'} titulo="Lendo a proposta de fora"
+                nota={andamento.fonte || null} />
+            )}
+            <Etapa estado={andamento.fonte === '' ? 'depois' : estadoDe('oportunidade')}
+              titulo="Lendo o card da oportunidade"
               nota={andamento.empresa} />
             <Etapa estado={aqui <= 0 ? 'depois' : aqui === 1 ? 'agora' : 'feita'}
               titulo="Lendo as reuniões do Fireflies"
@@ -425,7 +441,9 @@ export function ProgressoDaIa({ andamento, onResponder, onCancelar, onFechada, o
                 nota={`${aws.rotulo} · ${aws.consultas === 1 ? '1 consulta' : `${aws.consultas} consultas`}`} />
             )}
             <Etapa estado={escrevendo} titulo="Escrevendo a proposta"
-              nota={andamento.fase === 'pensando' ? 'Correlacionando o card, as reuniões e o seu contexto' : null}>
+              nota={andamento.fase !== 'pensando' ? null : andamento.fonte != null
+                ? 'Passando a proposta para os campos do portal'
+                : 'Correlacionando o card, as reuniões e o seu contexto'}>
               <span className="ia-secoes">
                 {SECOES.map((s, i) => (
                   <span key={s.id}

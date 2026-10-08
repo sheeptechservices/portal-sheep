@@ -33,9 +33,12 @@ import { abrirChamada, somarUso, usoZerado, type UsoDeTokens } from './_analise-
 import {
   consultarPrecosAws, cotacaoDoDolar, valoresDeAtributoAws, type CredencialAws,
 } from './_aws-precos.js';
+import { instrucaoDaConversao, type FonteDaProposta } from './_proposta-fonte.js';
 
 /** O que o preenchimento conta enquanto acontece. */
 export type EventoDaProposta =
+  /** Leu a proposta de fora que está sendo convertida. */
+  | { tipo: 'fonte'; nome: string }
   /** Leu o card: é desta oportunidade que se trata. */
   | { tipo: 'oportunidade'; empresa: string; reunioes: number }
   /** Mais uma transcrição chegou do Fireflies. */
@@ -317,7 +320,10 @@ const inteiro = (v: unknown, min: number, max: number, padrao: number) => {
  * fases e os meses dentro do cronograma. O que o modelo escreveu fora disso
  * não chega à tela.
  */
-export function conferirProposta(bruto: any) {
+export function conferirProposta(bruto: any, limites: { entregas?: number } = {}) {
+  // Escrever do zero cabe em seis entregas; converter uma proposta que já
+  // existe guarda as que ela tem, até doze.
+  const maxEntregas = limites.entregas ?? 6;
   const meses = inteiro(bruto?.cronograma?.meses, 1, 24, 4);
   const fasesDoModelo: any[] = Array.isArray(bruto?.cronograma?.fases) ? bruto.cronograma.fases : [];
   const fases = FASES.map((nome, i) => {
@@ -379,7 +385,32 @@ export function conferirProposta(bruto: any) {
         servico: limpo(i?.servico, 60),
         detalhe: curto(i?.detalhe, 140),
         valores: porCenario(i?.valores, valorEmReais),
+        // O preço de tabela por extenso, do desenho por volume.
+        ...(t(i?.custo) ? { custo: limpo(i.custo, 80) } : {}),
       })).filter((i: any) => i.servico),
+      // Os outros dois desenhos do slide, quando a proposta os usa: a faixa de
+      // valor e as faixas de uso. Sem eles, tudo cai nos três cenários.
+      ...(inf.modelo === 'faixa' && inf.faixa && typeof inf.faixa === 'object' ? {
+        modelo: 'faixa' as const,
+        faixa: {
+          de: valorEmReais(inf.faixa.de),
+          ate: valorEmReais(inf.faixa.ate),
+          unidade: limpo(inf.faixa.unidade, 80) || 'por mês, em infraestrutura',
+          variacao: limpo(inf.faixa.variacao, 300),
+          inclui: listaDe(inf.faixa.inclui, 5, 140),
+        },
+      } : {}),
+      ...(inf.modelo === 'volume' && Array.isArray(inf.volumes?.faixas) && inf.volumes.faixas.length ? {
+        modelo: 'volume' as const,
+        volumes: {
+          rotulo: limpo(inf.volumes.rotulo, 60) || 'Volume',
+          faixas: inf.volumes.faixas.slice(0, 6).map((f: any) => ({
+            volume: limpo(f?.volume, 60),
+            infra: valorEmReais(f?.infra),
+            manutencao: valorEmReais(f?.manutencao),
+          })).filter((f: any) => f.volume),
+        },
+      } : {}),
       fonte: limpo(inf.fonte, 300),
       manutencao: {
         valor: valorEmReais(inf.manutencao?.valor),
@@ -408,7 +439,7 @@ export function conferirProposta(bruto: any) {
     subtitulo: limpo(bruto?.subtitulo, 120),
     projeto: limpo(bruto?.projeto, 3000),
     ganhos: listaDe(bruto?.ganhos, 5, 200),
-    entregas: (Array.isArray(bruto?.entregas) ? bruto.entregas : []).slice(0, 6).map((e: any) => ({
+    entregas: (Array.isArray(bruto?.entregas) ? bruto.entregas : []).slice(0, maxEntregas).map((e: any) => ({
       nome: limpo(e?.nome, 80),
       resumo: limpo(e?.resumo, 1500),
       itens: listaDe(e?.itens, 6, 160),
@@ -845,6 +876,9 @@ export async function preencherProposta(
     informado?: Informado;
     /** A volta de uma pergunta: o estado que a tela guardou e as respostas. */
     retomada?: { estado: string; respostas: RespostaDoOperador[] };
+    /** A proposta de fora que está sendo convertida no padrão do portal. Com
+     *  ela, a tarefa deixa de ser escrever e passa a ser converter. */
+    fonte?: FonteDaProposta;
   },
   avisar: (e: EventoDaProposta) => void = () => {},
 ): Promise<SaidaDoPreenchimento> {
@@ -864,9 +898,21 @@ export async function preencherProposta(
     }
   }
 
+  if (pedido.fonte && !pausa) avisar({ tipo: 'fonte', nome: pedido.fonte.nome });
   // Na volta de uma pergunta, o material é montado de novo sem contar nada à
   // tela: ela já mostrou essa parte, e a janela não deve andar para trás.
-  const material = await montarMaterial(db, pedido.oportunidadeId, pausa ? () => {} : avisar);
+  // A conversão de uma proposta de fora sem oportunidade não tem card nem
+  // reunião: o arquivo é o material inteiro.
+  const material: Material | null = !pedido.oportunidadeId && pedido.fonte
+    ? {
+      empresa: pedido.fonte.cliente,
+      reunioes: 0,
+      texto: [
+        '# A oportunidade',
+        'Esta proposta não está presa a nenhuma oportunidade do funil: não há card nem reunião. Use só a proposta acima.',
+      ].join('\n\n'),
+    }
+    : await montarMaterial(db, pedido.oportunidadeId, pausa ? () => {} : avisar);
   if (!material) return { status: 404, body: { error: 'Oportunidade não encontrada.' } };
 
   const [aws, dolar] = await Promise.all([
@@ -886,7 +932,10 @@ export async function preencherProposta(
   ].join('\n');
 
   const informado = pedido.informado ? blocoDoInformado(pedido.informado) : null;
+  // Na conversão, o arquivo vem antes de tudo: documento antes da pergunta,
+  // como a Anthropic recomenda, e é ele a fonte principal.
   const conteudo: Bloco[] = [
+    ...(pedido.fonte ? [...pedido.fonte.blocos, { type: 'text', text: instrucaoDaConversao(pedido.fonte) }] : []),
     { type: 'text', text: material.texto },
     ...(informado ? [{ type: 'text', text: informado }] : []),
     {
@@ -1031,7 +1080,7 @@ export async function preencherProposta(
   return {
     status: 200,
     body: {
-      proposta: conferirProposta(lido.valor),
+      proposta: conferirProposta(lido.valor, { entregas: pedido.fonte ? 12 : 6 }),
       reunioes: material.reunioes,
       modelo: cred.model,
       consultasAws: consultas,

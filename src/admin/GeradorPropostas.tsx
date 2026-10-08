@@ -888,6 +888,7 @@ function familiasDoHistorico(lista: PropostaGerada[]): FamiliaDeProposta[] {
 function HistoricoPropostas({
   lista, onVer, onEditar, abrindo, editando, baixando, onBaixar, onAbrirLead,
   onNovaVersao, versionando, onExcluir, onRenomear, compartilhando, onCompartilhar,
+  onConverter, convertendo, iaOcupada,
 }: {
   /** `null` enquanto a lista não chegou. */
   lista: PropostaGerada[] | null;
@@ -914,6 +915,12 @@ function HistoricoPropostas({
   compartilhando: number | null;
   /** Copia o link público da apresentação. */
   onCompartilhar: (p: PropostaGerada) => void;
+  /** A IA lê a proposta de fora e a passa para os campos do portal. */
+  onConverter: (p: PropostaGerada) => void;
+  /** A que está sendo convertida agora, para o botão dela girar. */
+  convertendo: number | null;
+  /** Há um preenchimento por IA em curso: a IA faz um trabalho por vez. */
+  iaOcupada: boolean;
 }) {
   /** As famílias abertas, pelo id da principal. Recolhidas por padrão: o
    *  histórico é a lista das propostas, e a evolução de cada uma se abre para
@@ -1046,6 +1053,20 @@ function HistoricoPropostas({
           <button type="button" className="btn btn-secondary btn-sm" disabled={p.enviando}
             onClick={() => onVer(p)}>
             <IconEye size={13} /> Ver
+          </button>
+        )}
+        {/* A proposta de fora vira proposta do portal: a IA lê o arquivo e
+            escreve os campos numa versão nova, editável como qualquer outra. A
+            original fica como está, ao lado. */}
+        {p.arquivo && (
+          <button type="button" className="btn btn-secondary btn-sm"
+            disabled={p.enviando || p.id < 0 || convertendo != null || iaOcupada}
+            title={iaOcupada && convertendo !== p.id
+              ? 'A IA está ocupada com outro preenchimento'
+              : 'A IA lê esta proposta e monta uma versão editável no padrão do portal'}
+            onClick={() => onConverter(p)}>
+            {convertendo === p.id ? <IconSpinner size={13} /> : <IconSparkles size={13} />}
+            {convertendo === p.id ? 'Convertendo' : 'Converter'}
           </button>
         )}
         {/* Editar é reabrir os campos no gerador, e a proposta de fora não tem
@@ -1234,6 +1255,8 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
   const [compartilhando, setCompartilhando] = useState<number | null>(null);
   /** A proposta do histórico com a pergunta de apagar aberta. */
   const [apagando, setApagando] = useState<PropostaGerada | null>(null);
+  /** A proposta de fora que a IA está passando para os campos do portal. */
+  const [convertendo, setConvertendo] = useState<number | null>(null);
   /** A gaveta de subir uma proposta feita fora, e de qual ela é versão. */
   const [envio, setEnvio] = useState<{ origem: OrigemDoEnvio | null } | null>(null);
   /** O lead do funil a que a proposta pertence. Obrigatório para gerar. */
@@ -1960,6 +1983,109 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
       `${pedido.cliente}. Ela está no histórico com a etiqueta Upload externo.`);
   }
 
+  /** A edição sempre pela versão mais nova da função: a conversão a chama um
+   *  minuto depois de começar, e a de então leria o formulário daquela hora. */
+  const editarAgora = useRef(editarDoHistorico);
+  editarAgora.current = editarDoHistorico;
+
+  /**
+   * Converte uma proposta feita fora no padrão do portal.
+   *
+   * É o preenchimento por IA do gerador, com o arquivo da proposta como fonte
+   * principal. O resultado não substitui a original: entra como a versão
+   * seguinte da família, feita no portal e marcada como rascunho, e a de fora
+   * continua no histórico como subiu. Quem acompanhou a janela até o fim cai
+   * direto na edição; quem mandou para o segundo plano encontra a versão no
+   * histórico.
+   */
+  async function converterProposta(p: PropostaGerada) {
+    if (convertendo != null || ia.andamento) return;
+    setConvertendo(p.id);
+    const t = iniciar({
+      titulo: 'Convertendo a proposta',
+      onde: 'Gerador de propostas',
+      pagina: 'gerador-propostas',
+      abrir: () => setJanelaDaIa(true),
+      aviso: 'O que a IA já escreveu se perde, e a chamada feita até aqui não volta.',
+    });
+    trabalhoDaIa.current = t;
+    setJanelaDaIa(true);
+    t.mostrarBalao(false);
+    const r = await ia.preencher(p.oportunidade_id, '', undefined, t.sinal, p.id);
+    const acompanhou = janelaAberta.current;
+    if (!acompanhou) ia.encerrar();
+    trabalhoDaIa.current = null;
+    if (!r.ok) {
+      setConvertendo(null);
+      if (!('cancelado' in r)) t.falhar('A IA não converteu a proposta', r.erro);
+      return;
+    }
+    const nova: PropostaDaIa = r.proposta;
+    const dados: DadosProposta = {
+      ...propostaEmBranco(),
+      preparadoPor: usuario?.nome ?? '',
+      cliente: nova.cliente || p.cliente,
+      subtitulo: nova.subtitulo || p.subtitulo,
+      projeto: nova.projeto,
+      ganhos: nova.ganhos,
+      entregas: nova.entregas,
+      comoFunciona: nova.comoFunciona ?? undefined,
+      cronograma: nova.cronograma,
+      investimento: nova.investimento,
+      infra: nova.infra ?? undefined,
+    };
+    // A versão nasce na tela antes da resposta: o servidor só devolve o id.
+    const raiz = p.origem_id ?? p.id;
+    const agora = new Date().toISOString();
+    const provisoria: PropostaGerada = {
+      id: -Date.now(),
+      oportunidade_id: p.oportunidade_id,
+      lead_empresa: p.lead_empresa,
+      cliente: dados.cliente,
+      subtitulo: dados.subtitulo,
+      slides: null,
+      rascunho: true,
+      origem_id: raiz,
+      versao: 1 + (historico ?? [])
+        .filter(x => x.id === raiz || x.origem_id === raiz)
+        .reduce((maior, x) => Math.max(maior, x.versao), 1),
+      autor_nome: usuario?.nome ?? p.autor_nome,
+      criado_em: agora,
+      atualizado_em: agora,
+      token_publico: null,
+      arquivo: null,
+    };
+    setHistorico(h => [provisoria, ...(h ?? [])]);
+    const salvo = await api('', 'POST', {
+      action: 'salvar_proposta_como_nova',
+      origem_de: p.id,
+      oportunidade_id: p.oportunidade_id,
+      cliente: dados.cliente,
+      subtitulo: dados.subtitulo,
+      dados,
+      rascunho: true,
+    }).catch(() => null);
+    setConvertendo(null);
+    if (!salvo?.ok) {
+      setHistorico(h => (h == null ? h : h.filter(x => x.id !== provisoria.id)));
+      t.falhar('A conversão não foi guardada', salvo?.error ?? 'A conexão caiu. Converta de novo.');
+      return;
+    }
+    const linha: PropostaGerada = {
+      ...provisoria,
+      id: Number(salvo.id),
+      origem_id: salvo.origem_id == null ? raiz : Number(salvo.origem_id),
+      versao: Number(salvo.versao ?? provisoria.versao),
+      criado_em: String(salvo.criado_em ?? agora),
+      atualizado_em: String(salvo.atualizado_em ?? agora),
+    };
+    setHistorico(h => (h == null ? h : h.map(x => (x.id === provisoria.id ? linha : x))));
+    t.concluir(`Proposta convertida na versão ${linha.versao}`, acompanhou
+      ? 'Ela abriu no gerador. Passe pelos passos conferindo o que a IA escreveu; a original continua no histórico.'
+      : `${linha.cliente}. A versão ${linha.versao} está no histórico, como rascunho, pronta para editar.`);
+    if (acompanhou) void editarAgora.current(linha);
+  }
+
   /**
    * Troca o cliente e o subtítulo de uma proposta pelo histórico.
    *
@@ -2104,6 +2230,9 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
             onRenomear={(p, cliente, subtitulo) => { void renomearProposta(p, cliente, subtitulo); }}
             compartilhando={compartilhando}
             onCompartilhar={p => { void compartilharDoHistorico(p); }}
+            onConverter={p => { void converterProposta(p); }}
+            convertendo={convertendo}
+            iaOcupada={!!ia.andamento}
             onAbrirLead={onAbrirOportunidade} />
         </div>
       )}

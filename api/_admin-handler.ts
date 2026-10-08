@@ -9713,16 +9713,31 @@ function faltaEmProjeto(p: any): string | null {
       const cliente = String(body?.cliente ?? '').trim().slice(0, 200);
       const subtitulo = String(body?.subtitulo ?? '').trim().slice(0, 300);
       const dados = body?.dados;
+      // A única proposta sem oportunidade é a conversão de uma proposta de
+      // fora que também não tinha: ela herda o vazio da original, e a
+      // oportunidade é escolhida depois, ao editar no gerador.
+      let semOportunidade = false;
       if (!oportunidadeId) {
-        return { status: 400, body: { error: 'Escolha a oportunidade a que esta proposta pertence.' } };
+        const origemDe = Number(body?.origem_de);
+        const original = Number.isFinite(origemDe) && origemDe > 0
+          ? (await db.execute({
+            sql: 'SELECT externa, oportunidade_id FROM propostas_geradas WHERE id = ?', args: [origemDe],
+          })).rows[0]
+          : undefined;
+        semOportunidade = Number(original?.externa) === 1 && !String(original?.oportunidade_id ?? '');
+        if (!semOportunidade) {
+          return { status: 400, body: { error: 'Escolha a oportunidade a que esta proposta pertence.' } };
+        }
       }
       if (!cliente || !subtitulo || !dados || typeof dados !== 'object') {
         return { status: 400, body: { error: 'Proposta sem dados para gravar.' } };
       }
-      const op = await db.execute({
-        sql: 'SELECT id FROM oportunidades WHERE id = ? AND deleted_at IS NULL', args: [oportunidadeId],
-      });
-      if (!op.rows[0]) return { status: 404, body: { error: 'A oportunidade escolhida não está mais no funil.' } };
+      if (!semOportunidade) {
+        const op = await db.execute({
+          sql: 'SELECT id FROM oportunidades WHERE id = ? AND deleted_at IS NULL', args: [oportunidadeId],
+        });
+        if (!op.rows[0]) return { status: 404, body: { error: 'A oportunidade escolhida não está mais no funil.' } };
+      }
       const texto = JSON.stringify(dados);
       if (texto.length > 200000) {
         return { status: 413, body: { error: 'Os dados desta proposta não cabem no histórico.' } };

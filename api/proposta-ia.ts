@@ -3,6 +3,7 @@ import { createClient } from '@libsql/client';
 import { getAdminSession, registrarAuditoria } from './_admin-handler.js';
 import { exigirFerramenta } from './_permissoes.js';
 import { preencherProposta, type EventoDaProposta } from './_proposta-ia.js';
+import { lerFonteDaProposta, type FonteDaProposta } from './_proposta-fonte.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  /api/proposta-ia
@@ -37,13 +38,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const recusa = await exigirFerramenta(db, sessao.usuario, 'propostas:ver');
   if (recusa) return res.status(recusa.status).json(recusa.body);
 
-  const oportunidadeId = String(req.body?.oportunidade_id ?? '').trim();
+  // A conversão de uma proposta subida de fora: o arquivo dela é a fonte, e a
+  // oportunidade é a dela - não a que a tela mandar.
+  const fonteId = Number(req.body?.fonte_id);
+  let fonte: FonteDaProposta | undefined;
+  if (Number.isFinite(fonteId) && fonteId > 0) {
+    const lida = await lerFonteDaProposta(db, fonteId);
+    if (!lida.ok) return res.status(lida.status).json({ error: lida.erro });
+    fonte = lida.fonte;
+  }
+  const oportunidadeId = fonte?.oportunidadeId ?? String(req.body?.oportunidade_id ?? '').trim();
   const contexto = String(req.body?.contexto ?? '').trim().slice(0, 20000);
-  if (!oportunidadeId) return res.status(400).json({ error: 'Escolha a oportunidade primeiro.' });
+  // Sem oportunidade só a conversão: a proposta de fora pode não ter lead, e
+  // aí o arquivo é o material inteiro.
+  if (!oportunidadeId && !fonte) return res.status(400).json({ error: 'Escolha a oportunidade primeiro.' });
 
   // Fica registrado quem pediu: lê as reuniões do cliente e gasta na conta da
   // casa.
-  await registrarAuditoria(db, sessao.usuario, 'proposta_ia', oportunidadeId);
+  await registrarAuditoria(db, sessao.usuario, fonte ? 'proposta_ia_conversao' : 'proposta_ia',
+    fonte ? `${oportunidadeId} (proposta ${fonte.id})` : oportunidadeId);
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
@@ -72,7 +85,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         })),
       }
       : undefined;
-    const r = await preencherProposta(db, { oportunidadeId, contexto, informado, retomada },
+    const r = await preencherProposta(db, { oportunidadeId, contexto, informado, retomada, fonte },
       (e: EventoDaProposta) => mandar(e));
     // Parou numa pergunta: o fluxo termina aqui, e a resposta volta num pedido
     // novo, com o estado que vai junto.
