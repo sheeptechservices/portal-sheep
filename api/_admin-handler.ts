@@ -11,6 +11,7 @@ import {
   AWS_PRECOS_KEY, getAwsPrecosCredential,
 } from './_credentials.js';
 import { validarChaveAws } from './_aws-precos.js';
+import { lerCurriculo } from './_leitura-curriculo.js';
 import {
   botaoEmail, citacaoEmail, codigoEmail, enderecoDoPortal, esc, fichaEmail, layoutEmail, notaEmail,
   notifyEmail, remetenteDeEmail, remetenteEndereco, textoEmail,
@@ -9122,6 +9123,55 @@ function faltaEmProjeto(p: any): string | null {
     // `SO_ADMIN` -, e é por isso que a fila mostra o status a todo mundo sem
     // oferecer o campo a ninguém mais.
     // ── Banco de talentos ─────────────────────────────────────────────────────
+    // O currículo lido pela IA, como rascunho da ficha. Não grava nada: quem
+    // cadastra confere o que veio e só então manda `criar_talento_externo`.
+    if (action === 'ler_curriculo') {
+      const r = await lerCurriculo(db, body?.anexo ?? {});
+      if (!r.ok) return { status: r.status, body: { error: r.erro } };
+      return { status: 200, body: { ok: true, ...r.lido } };
+    }
+
+    // O candidato cadastrado à mão, com ou sem currículo lido. Devolve só o que
+    // o servidor sabe sozinho - o id e a hora -; a linha a tela já montou com o
+    // que a pessoa escreveu.
+    if (action === 'criar_talento_externo') {
+      const nome = String(body?.nome ?? '').trim();
+      if (!nome) return { status: 400, body: { error: 'O nome é obrigatório.' } };
+      const id = randomUUID();
+      const agora = new Date().toISOString();
+      // Lista fechada de campos, como no update: nome de coluna vindo do corpo
+      // é porta aberta.
+      const colunas = ['email', 'telefone', 'interesse', 'origem', 'observacoes', 'nascimento', 'sexo',
+        'cidade', 'estado', 'uf', 'linkedin', 'github', 'modelo_trabalho', 'contratacao', 'resumo',
+        'senioridade', 'tempo_experiencia', 'nivel_ingles', 'outro_idioma', 'regime_fiscal',
+        'case_sucesso', 'indicado_por'];
+      const cnpj = body?.possui_cnpj == null || body?.possui_cnpj === '' ? null : marca(body.possui_cnpj);
+      const habilidades: { nome: string; tempo: string | null }[] = [];
+      const vistas = new Set<string>();
+      for (const h of Array.isArray(body?.habilidades) ? body.habilidades.slice(0, 40) : []) {
+        const n = String(h?.nome ?? '').trim().slice(0, 60);
+        if (!n || vistas.has(n.toLowerCase())) continue;
+        vistas.add(n.toLowerCase());
+        habilidades.push({ nome: n, tempo: texto(h?.tempo) });
+      }
+      await db.batch([
+        {
+          sql: `INSERT INTO talentos_externos
+                (id, nome, situacao, possui_cnpj, candidatura_em, criado_em, criado_por_id, criado_por_nome,
+                 ${colunas.join(', ')})
+                VALUES (?, ?, 'novo', ?, ?, ?, ?, ?, ${colunas.map(() => '?').join(', ')})`,
+          args: [id, nome, cnpj, agora, agora, autorId ?? null, autorNome ?? null,
+            ...colunas.map(c => texto(body?.[c]))],
+        },
+        ...habilidades.map(h => ({
+          sql: `INSERT OR IGNORE INTO talento_habilidades (tipo, pessoa_id, nome, tempo, nivel)
+                VALUES ('externo', ?, ?, ?, NULL)`,
+          args: [id, h.nome, h.tempo],
+        })),
+      ], 'write');
+      return { status: 200, body: { ok: true, id, criado_em: agora } };
+    }
+
     if (action === 'update_talento_externo') {
       // Lista fechada de campos: nome de coluna vindo do corpo é porta aberta.
       const campos = ['nome', 'email', 'telefone', 'foto_url', 'interesse', 'origem', 'situacao', 'observacoes'];

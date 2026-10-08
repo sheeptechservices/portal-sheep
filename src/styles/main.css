@@ -20465,3 +20465,38 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   .vit-modal, .vit-modal-caixa,
   .vit-modal.saindo, .vit-modal.saindo .vit-modal-caixa { animation: none; }
 }
+
+/* ── O cadastro de candidato ─────────────────────────────────────────────── */
+/* O corpo empilha com respiro proprio, e os titulos de secao perdem a margem
+   de baixo: quem espaca aqui e o `gap`. */
+.candidato-corpo { display: flex; flex-direction: column; gap: 12px; padding-top: 18px; }
+.candidato-corpo .admin-section-title { margin: 6px 0 -2px; }
+.candidato-grade { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+.candidato-arquivo { padding: 8px 10px; border-radius: var(--radius-md); }
+.candidato-arquivo-estado {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 600; color: var(--gray2); white-space: nowrap;
+}
+.candidato-lido {
+  margin: 0; padding: 8px 11px; border-radius: var(--radius-sm);
+  background: var(--bg); font-size: 12px; line-height: 1.45; color: var(--gray);
+}
+.candidato-habs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.candidato-hab {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 4px 3px 10px; border: 1px solid var(--gray4); border-radius: var(--radius-pill);
+  background: var(--white); font-size: 12px; font-weight: 600; color: var(--black);
+}
+.candidato-hab small { font-size: 11px; font-weight: 500; color: var(--gray2); }
+.candidato-hab button {
+  display: inline-flex; padding: 4px; border: none; border-radius: var(--radius-pill);
+  background: none; color: var(--gray2); cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.candidato-hab button:hover { background: var(--gray4); color: var(--red); }
+.candidato-hab-nova { display: flex; gap: 8px; }
+.candidato-hab-nova .form-input { flex: 1; min-width: 0; }
+.candidato-hab-nova .modal-acao { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+@media (max-width: 560px) {
+  .candidato-grade { grid-template-columns: 1fr; }
+}

@@ -19,7 +19,7 @@ import { AbaPainel, Abas } from '../components/Abas';
 import FilterDropdown from '../components/FilterDropdown';
 import { FAMILIAS, OUTRAS, familiaDe } from '../lib/habilidades';
 import { Skeleton } from '../components/Skeleton';
-import { IconAlert, IconChevronRight, IconSearch, IconSparkles } from '../components/icons';
+import { IconAlert, IconChevronRight, IconPlus, IconSearch, IconSparkles } from '../components/icons';
 import { dia as fmtDataBR } from '../lib/datas';
 import { useDegrauTrilha } from '../lib/trilha';
 import { useTrocaDeNivel } from '../lib/useTrocaDeNivel';
@@ -31,6 +31,7 @@ import {
 } from './PainelAnaliseVaga';
 import { VitrinesDeTalentos, type PessoaParaVitrine } from './VitrinesDeTalentos';
 import { baixarCurriculo } from '../lib/curriculoPdf';
+import { CadastroCandidato, corpoDoCandidato, type CandidatoNovo } from './CadastroCandidato';
 import {
   BarraMedia, PAPEIS, VisaoGeral,
   type Competencia, type Nota, type TalentoExterno, type TalentoInterno,
@@ -119,6 +120,7 @@ export default function TalentosPage({ token, abrir }: {
   const [fFamilia, setFFamilia] = useState<string[]>([]);
   const [busca, setBusca] = useState('');
   const [aberto, setAberto] = useState<Aberto>(null);
+  const [cadastroAberto, setCadastroAberto] = useState(false);
 
   // A analise de vaga. O rascunho e o resultado moram aqui, e nao na gaveta:
   // fechar a gaveta no meio de uma analise jogaria fora uma chamada que ja foi
@@ -422,6 +424,32 @@ export default function TalentosPage({ token, abrir }: {
     }
   };
 
+  /** O candidato novo entra na lista no gesto, com um id provisório que o do
+   *  servidor substitui quando chega. Recusado, ele sai e o toast explica. */
+  const cadastrar = (novo: CandidatoNovo) => {
+    const provisorio = `novo-${Date.now()}`;
+    const c = novo.campos;
+    setExternos(l => [{
+      id: provisorio, nome: novo.nome, email: c.email, telefone: c.telefone, foto_url: null,
+      interesse: c.interesse, origem: c.origem, situacao: 'novo', desde: new Date().toISOString(),
+      media: null, cidade: c.cidade, uf: c.uf, senioridade: c.senioridade,
+      tempo_experiencia: c.tempo_experiencia, nivel_ingles: c.nivel_ingles,
+      possui_cnpj: c.possui_cnpj === 'sim' ? true : c.possui_cnpj === 'nao' ? false : null,
+      indicado_por: c.origem === 'Indicação' ? c.indicado_por : '',
+      habilidades: novo.habilidades.map(h => h.nome),
+    }, ...l]);
+    setAba('interessados');
+    void gravar(corpoDoCandidato(novo)).catch(() => null).then(r => {
+      if (!r?.ok) {
+        setExternos(l => l.filter(t => t.id !== provisorio));
+        toast('error', 'Não foi possível cadastrar', r?.error ?? 'A conexão caiu. Nada foi gravado.');
+        return;
+      }
+      setExternos(l => l.map(t => (t.id === provisorio ? { ...t, id: String(r.id), desde: String(r.criado_em) } : t)));
+      toast('success', 'Candidato cadastrado', novo.nome);
+    });
+  };
+
   const atualizarMedia = (tipo: 'interno' | 'externo', id: string, notas: Nota[]) => {
     const media = notas.length
       ? Math.round(notas.reduce((s, n) => s + n.nota, 0) / notas.length)
@@ -459,13 +487,25 @@ export default function TalentosPage({ token, abrir }: {
           <h1 className="admin-page-title">Banco de Talentos</h1>
           <p className="admin-page-desc">Quem já é da casa e quem quer ser.</p>
         </div>
-        {pode('talentos:analisar') && (
-          <button className="btn btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13 }}
-            onClick={() => setAnaliseAberta(true)}>
-            <IconSparkles size={13} /> Analisar vaga
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          {podeEditar && (
+            <button className="btn btn-secondary" style={{ height: 38, padding: '0 16px', fontSize: 13 }}
+              onClick={() => setCadastroAberto(true)}>
+              <IconPlus size={13} /> Cadastrar candidato
+            </button>
+          )}
+          {pode('talentos:analisar') && (
+            <button className="btn btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13 }}
+              onClick={() => setAnaliseAberta(true)}>
+              <IconSparkles size={13} /> Analisar vaga
+            </button>
+          )}
+        </div>
       </div>
+
+      {cadastroAberto && (
+        <CadastroCandidato gravar={gravar} onFechar={() => setCadastroAberto(false)} onCadastrar={cadastrar} />
+      )}
 
       {analiseAberta && (
         <PainelAnaliseVaga
@@ -584,7 +624,7 @@ export default function TalentosPage({ token, abrir }: {
               {aba === 'todos' && filtrados.todos.map(t => (
                 <Linha key={t.tipo + t.id} nome={t.nome} email={t.email} foto={t.foto} media={t.media}
                   colunas={[<ChipVinculo tipo={t.tipo} />, t.meio]}
-                  onAbrir={() => setAberto({ tipo: t.tipo, id: t.id })} />
+                  onAbrir={() => { if (!t.id.startsWith('novo-')) setAberto({ tipo: t.tipo, id: t.id }); }} />
               ))}
               {aba === 'time' && filtrados.internos.map(t => (
                 <Linha key={t.id} nome={t.nome} email={t.email} foto={t.foto_url} media={t.media}
@@ -602,7 +642,7 @@ export default function TalentosPage({ token, abrir }: {
                     t.tempo_experiencia || '-',
                     [t.cidade, t.uf].filter(Boolean).join(' - ') || '-',
                   ]}
-                  onAbrir={() => setAberto({ tipo: 'externo', id: t.id })} />
+                  onAbrir={() => { if (!t.id.startsWith('novo-')) setAberto({ tipo: 'externo', id: t.id }); }} />
               ))}
             </tbody>
           </table>

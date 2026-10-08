@@ -493,8 +493,9 @@ export interface Pedido {
 
 /** Uma chamada comum, sem fluxo: manda, espera, devolve o texto. Serve às
  *  etapas curtas - ler a vaga e triar -, em que não há nada para contar no meio
- *  do caminho e o que chega é pequeno. */
-async function pedir(p: Pedido): Promise<{ ok: true; texto: string } | { ok: false; status: number; erro: string }> {
+ *  do caminho e o que chega é pequeno. Exportada: a leitura de currículo do
+ *  cadastro de candidato é uma etapa curta do mesmo tipo. */
+export async function pedir(p: Pedido): Promise<{ ok: true; texto: string } | { ok: false; status: number; erro: string }> {
   for (let volta = 0; volta < 2; volta++) {
     const corpo = {
       model: p.modelo,
@@ -650,7 +651,7 @@ function remendarJson(json: string): any | null {
 }
 
 /** O JSON que o modelo escreveu, inteiro ou remendado. */
-function lerJson(texto: string): { valor: any; cortado: boolean } | null {
+export function lerJson(texto: string): { valor: any; cortado: boolean } | null {
   const cru = recortarJson(texto);
   if (!cru) return null;
   try { return { valor: JSON.parse(cru), cortado: false }; } catch { /* segue para o remendo */ }

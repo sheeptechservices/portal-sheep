@@ -172,7 +172,7 @@ export const CATALOGO: PermGrupo[] = [
     acoes: [
       { chave: 'talentos:ver', label: 'Abrir o banco de talentos', acesso: true },
       { chave: 'talentos:avaliar', label: 'Dar nota de competência' },
-      { chave: 'talentos:editar', label: 'Editar e excluir interessados' },
+      { chave: 'talentos:editar', label: 'Cadastrar, editar e excluir interessados' },
       { chave: 'talentos:analisar', label: 'Analisar vaga com IA' },
       { chave: 'talentos:vitrine', label: 'Abrir vitrine de profissionais para um cliente',
         nota: 'A página sem login que mostra os selecionados de uma vaga, sem nome e sem contato.' },
@@ -460,6 +460,8 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   talento_feedbacks: 'talentos:ver',
   salvar_talento_feedback: 'talentos:avaliar',
   excluir_talento_feedback: 'talentos:avaliar',
+  ler_curriculo: 'talentos:editar',
+  criar_talento_externo: 'talentos:editar',
   update_talento_externo: 'talentos:editar',
   delete_talento_externo: 'talentos:editar',
   // Ler o historico e ler o banco de talentos por outro caminho: mesma chave.
