@@ -20500,3 +20500,47 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 @media (max-width: 560px) {
   .candidato-grade { grid-template-columns: 1fr; }
 }
+
+/* ── Subir uma proposta feita fora ───────────────────────────────────────── */
+.envio-proposta-corpo { display: flex; flex-direction: column; gap: 12px; padding-top: 18px; }
+.envio-proposta-corpo .acessos-dica { margin: 0; }
+.envio-proposta-arquivo { padding: 8px 10px; border-radius: var(--radius-md); }
+
+/* A proposta subida de fora, aberta pelo link: o arquivo na janela inteira e
+   o download sempre a mao, no canto. */
+.prop-publica-arquivo { position: fixed; inset: 0; background: var(--bg); }
+.prop-publica-quadro { width: 100%; height: 100%; border: 0; display: block; }
+.prop-publica-imagem {
+  width: 100%; height: 100%; overflow: auto;
+  display: flex; align-items: flex-start; justify-content: center; padding: 24px 16px;
+}
+.prop-publica-imagem img { max-width: 100%; height: auto; border-radius: var(--radius-md); box-shadow: var(--shadow-card); }
+.prop-publica-baixar {
+  position: fixed; right: 16px; bottom: 16px;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 9px 14px; border: 1px solid var(--gray3); border-radius: var(--radius-pill);
+  background: var(--white); color: var(--black); font: inherit; font-size: 12px; font-weight: 700;
+  box-shadow: var(--shadow-card); cursor: pointer;
+  transition: transform var(--transition-spring), box-shadow var(--transition-spring);
+}
+.prop-publica-baixar:hover { transform: translateY(-2px); box-shadow: var(--shadow-card-hover); }
+.prop-publica-cartao {
+  display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center;
+  padding: 32px 28px; margin: 0 16px; border-radius: var(--radius-lg);
+  background: var(--white); box-shadow: var(--shadow-card);
+}
+.prop-publica-cliente { margin: 0; font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--gray2); }
+.prop-publica-nome { margin: 0 0 6px; font-size: 15px; font-weight: 700; color: var(--black); word-break: break-word; }
+@media (prefers-reduced-motion: reduce) {
+  .prop-publica-baixar { transition: none; }
+  .prop-publica-baixar:hover { transform: none; }
+}
+/* O que a gaveta mostra sem deixar escrever: o cliente e a oportunidade
+   herdada. A moldura de campo, sem ser campo. */
+.envio-proposta-leitura {
+  margin: 0; padding: 9px 12px; min-height: 38px;
+  border: 1px solid var(--gray4); border-radius: var(--radius-md);
+  background: var(--bg); font-size: 13px; color: var(--black);
+}
+.envio-proposta-leitura.vazio { color: var(--gray2); }
+.envio-proposta-titulo-vazio { color: var(--gray2); font-weight: 600; display: flex; align-items: center; min-height: 1.4em; }

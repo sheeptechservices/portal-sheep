@@ -45,6 +45,11 @@ import { montarPrevia, montarProposta, type Conferencia } from '../lib/proposta/
 import { infraEmBranco, propostaEmBranco } from '../lib/proposta/exemplo';
 import { emBase64, htmlDaProposta, lerTemplate } from '../lib/proposta/gerar';
 import { baixarPdfDaProposta } from '../lib/proposta/pdf';
+import {
+  abreNaPrevia, baixarPartes, pesoDoArquivo, rotuloDoFormato, salvarArquivo,
+  type ArquivoDaProposta,
+} from '../lib/proposta/arquivo';
+import { EnvioDeProposta, type OrigemDoEnvio, type PedidoDeEnvio } from './EnvioDeProposta';
 import { instante, tempoRelativo } from '../lib/datas';
 import { TEMPLATES, type TemplateDeProposta } from '../lib/proposta/templates';
 import type {
@@ -83,6 +88,11 @@ interface PropostaGerada {
   /** O token do link público, quando ela já foi compartilhada. Com ele, copiar
    *  o link de novo é na hora, sem ida ao servidor. */
   token_publico?: string | null;
+  /** O arquivo, quando a proposta foi feita fora do gerador e subida aqui. Ela
+   *  não tem campos: abre, baixa e circula pelo arquivo. */
+  arquivo?: ArquivoDaProposta | null;
+  /** A linha que acabou de nascer e ainda está subindo o arquivo. */
+  enviando?: boolean;
 }
 
 /** O endereço que o cliente abre para ver a apresentação. */
@@ -920,7 +930,8 @@ function HistoricoPropostas({
         <p>Nenhuma proposta gerada por aqui ainda.</p>
         <p className="gp-hist-nota">
           Toda proposta que sai do gerador entra nesta lista, presa à oportunidade do funil - e daqui
-          ela abre de novo, sem precisar preencher tudo outra vez.
+          ela abre de novo, sem precisar preencher tudo outra vez. A que foi feita fora entra por
+          "Subir proposta", lá em cima.
         </p>
       </div>
     );
@@ -944,7 +955,9 @@ function HistoricoPropostas({
   /** A linha de uma proposta: a mesma para a principal e para cada versão. */
   const linha = (p: PropostaGerada, familia?: { quantas: number; aberta: boolean; alternar: () => void }) => (
     <div className="gp-hist-item">
-      <span className="gp-hist-icone"><IconDoc size={16} /></span>
+      <span className="gp-hist-icone">
+        {p.enviando ? <IconSpinner size={15} /> : p.arquivo ? <IconUpload size={15} /> : <IconDoc size={16} />}
+      </span>
       <div className="gp-hist-texto">
         {renomeando?.id === p.id ? (
           /* A mesma área trocando de conteúdo: o nome lido vira os dois campos
@@ -977,12 +990,19 @@ function HistoricoPropostas({
               {/* O rascunho diz que ainda não saiu: ele mora na mesma lista, e
                   sem a marca leria como proposta entregue. */}
               {p.rascunho && <span className="gp-hist-rascunho">Rascunho</span>}
+              {/* A proposta feita fora diz de onde veio: ela não abre no gerador,
+                  e sem a marca alguém a procuraria lá. */}
+              {p.arquivo && (
+                <span className="gp-hist-externa" title={`Subida como arquivo: ${p.arquivo.nome}`}>
+                  Upload externo
+                </span>
+              )}
               {/* Trocar o nome aqui, sem percorrer os passos do gerador. Fora
                   quando a proposta está aberta lá: ali o nome é campo do
                   formulário, e os dois juntos brigariam na hora de gravar. */}
               <button type="button" className="gp-hist-renomear"
                 aria-label={`Trocar o nome da proposta ${p.cliente}`}
-                disabled={editando === p.id || p.id < 0}
+                disabled={editando === p.id || p.id < 0 || p.enviando}
                 title={editando === p.id
                   ? 'Esta proposta está aberta no gerador: o nome se troca por lá'
                   : 'Trocar o cliente e o subtítulo'}
@@ -997,6 +1017,8 @@ function HistoricoPropostas({
           {instante(p.criado_em)} por {p.autor_nome}
           {p.atualizado_em !== p.criado_em && ` - refeita ${tempoRelativo(p.atualizado_em)}`}
           {p.slides ? ` - ${p.slides} slides` : ''}
+          {p.arquivo && ` - ${rotuloDoFormato(p.arquivo)}, ${pesoDoArquivo(p.arquivo.tamanho)}`}
+          {p.enviando && ' - subindo o arquivo'}
         </p>
         {familia && (
           <button type="button" className="gp-hist-evolucao" onClick={familia.alternar}
@@ -1010,27 +1032,40 @@ function HistoricoPropostas({
       </div>
       <div className="gp-hist-acoes">
         {/* O lead de onde a proposta veio, que é onde ela aparece como chip. */}
-        <button type="button" className="gp-hist-lead" disabled={!onAbrirLead}
-          title={onAbrirLead ? 'Abrir a oportunidade no Funil' : undefined}
+        <button type="button" className="gp-hist-lead" disabled={!onAbrirLead || !p.oportunidade_id}
+          title={onAbrirLead && p.oportunidade_id ? 'Abrir a oportunidade no Funil' : undefined}
           onClick={() => onAbrirLead?.(p.oportunidade_id)}>
           <IconFunil size={12} />
-          <span>{p.lead_empresa ?? 'Oportunidade removida'}</span>
+          {/* A proposta de fora pode não ter oportunidade: o chip diz isso, em
+              vez de "removida", que seria outra história. */}
+          <span>{!p.oportunidade_id ? 'Sem oportunidade' : p.lead_empresa ?? 'Oportunidade removida'}</span>
         </button>
-        <button type="button" className="btn btn-secondary btn-sm" onClick={() => onVer(p)}>
-          <IconEye size={13} /> Ver
-        </button>
-        <button type="button" className="btn btn-secondary btn-sm"
-          disabled={abrindo != null}
-          title={editando === p.id ? 'Esta proposta já está aberta no gerador' : 'Abrir no gerador para editar'}
-          onClick={() => onEditar(p)}>
-          {abrindo === p.id ? <IconSpinner size={13} /> : <IconEdit size={13} />}
-          {editando === p.id ? 'Em edição' : 'Editar'}
-        </button>
+        {/* O arquivo de fora que o navegador não mostra - PowerPoint, Keynote -
+            não tem o que ver aqui: ele só baixa. */}
+        {(!p.arquivo || abreNaPrevia(p.arquivo.tipo)) && (
+          <button type="button" className="btn btn-secondary btn-sm" disabled={p.enviando}
+            onClick={() => onVer(p)}>
+            <IconEye size={13} /> Ver
+          </button>
+        )}
+        {/* Editar é reabrir os campos no gerador, e a proposta de fora não tem
+            campos: o que muda nela é o arquivo, por uma versão nova. */}
+        {!p.arquivo && (
+          <button type="button" className="btn btn-secondary btn-sm"
+            disabled={abrindo != null}
+            title={editando === p.id ? 'Esta proposta já está aberta no gerador' : 'Abrir no gerador para editar'}
+            onClick={() => onEditar(p)}>
+            {abrindo === p.id ? <IconSpinner size={13} /> : <IconEdit size={13} />}
+            {editando === p.id ? 'Em edição' : 'Editar'}
+          </button>
+        )}
         {/* A versão nova sai daqui: ela copia esta proposta inteira e segue
             sozinha, para a anterior continuar intacta na mesa do cliente. */}
         <button type="button" className="btn btn-secondary btn-sm"
-          disabled={versionando != null}
-          title="Criar uma versão nova a partir desta proposta"
+          disabled={versionando != null || p.enviando}
+          title={p.arquivo
+            ? 'Subir o arquivo da versão nova desta proposta'
+            : 'Criar uma versão nova a partir desta proposta'}
           onClick={() => onNovaVersao(p)}>
           {versionando === p.id ? <IconSpinner size={13} /> : <IconPlus size={13} />} Nova versão
         </button>
@@ -1038,16 +1073,20 @@ function HistoricoPropostas({
             recebe, com os protótipos rodando, e o endereço é o mesmo a cada
             vez que se copia. */}
         <button type="button" className="btn btn-secondary btn-sm"
-          disabled={compartilhando === p.id || p.id < 0}
+          disabled={compartilhando === p.id || p.id < 0 || p.enviando}
           title="Copiar o link da apresentação para mandar ao cliente"
           onClick={() => onCompartilhar(p)}>
           {compartilhando === p.id ? <IconSpinner size={13} /> : <IconLink size={13} />} Compartilhar
         </button>
+        {/* A de fora baixa como subiu, no formato dela: convertê-la em PDF
+            seria entregar outro documento. */}
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => onBaixar(p)}
-          disabled={baixando === p.id}>
-          {baixando === p.id ? <IconSpinner size={13} /> : <IconDownload size={13} />} Baixar PDF
+          disabled={baixando === p.id || p.enviando}>
+          {baixando === p.id ? <IconSpinner size={13} /> : <IconDownload size={13} />}
+          {p.arquivo ? 'Baixar' : 'Baixar PDF'}
         </button>
         <button type="button" className="gp-x" aria-label={`Apagar a proposta ${p.cliente}`}
+          disabled={p.enviando}
           title="Apagar esta proposta do histórico" onClick={() => onExcluir(p)}>
           <IconTrash size={13} />
         </button>
@@ -1195,6 +1234,8 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
   const [compartilhando, setCompartilhando] = useState<number | null>(null);
   /** A proposta do histórico com a pergunta de apagar aberta. */
   const [apagando, setApagando] = useState<PropostaGerada | null>(null);
+  /** A gaveta de subir uma proposta feita fora, e de qual ela é versão. */
+  const [envio, setEnvio] = useState<{ origem: OrigemDoEnvio | null } | null>(null);
   /** O lead do funil a que a proposta pertence. Obrigatório para gerar. */
   const [leadId, setLeadId] = useState('');
   const [leads, setLeads] = useState<LeadDoFunil[] | null>(null);
@@ -1272,6 +1313,12 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
     const html = await htmlDaProposta(r.dados as DadosProposta);
     if (!html) throw new Error('O modelo da proposta não carregou.');
     return html;
+  }, [api]);
+
+  /** O arquivo de uma proposta subida de fora, remontado das partes. */
+  const arquivoDoHistorico = useCallback(async (p: PropostaGerada) => {
+    if (!p.arquivo) throw new Error('Esta proposta não tem arquivo.');
+    return baixarPartes(ordem => api(`?action=proposta_arquivo_parte&id=${p.id}&ordem=${ordem}`), p.arquivo.partes);
   }, [api]);
 
   // Quem prepara é quem está com a tela aberta. Vem por efeito, e não do estado
@@ -1724,6 +1771,16 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
   async function baixarDoHistorico(p: PropostaGerada) {
     if (baixando != null) return;
     setBaixando(p.id);
+    if (p.arquivo) {
+      try {
+        salvarArquivo(await arquivoDoHistorico(p), p.arquivo.tipo, p.arquivo.nome);
+      } catch (e) {
+        toast('error', 'O arquivo não desceu', e instanceof Error ? e.message : undefined);
+      } finally {
+        setBaixando(null);
+      }
+      return;
+    }
     try {
       const pdf = await baixarPdfDaProposta(
         await htmlDoHistorico(p), nomeDoArquivoDe(p.cliente, p.atualizado_em), token);
@@ -1787,8 +1844,22 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
    */
   async function criarVersao(p: PropostaGerada) {
     if (versionando != null) return;
-    setVersionando(p.id);
     const raiz = p.origem_id ?? p.id;
+    // A versão nova da proposta de fora é o arquivo novo: abre a gaveta de
+    // subir, presa à mesma família e à mesma oportunidade.
+    if (p.arquivo) {
+      setEnvio({
+        origem: {
+          id: p.id, oportunidade_id: p.oportunidade_id, lead_empresa: p.lead_empresa,
+          cliente: p.cliente, subtitulo: p.subtitulo,
+          proximaVersao: 1 + (historico ?? [])
+            .filter(x => x.id === raiz || x.origem_id === raiz)
+            .reduce((maior, x) => Math.max(maior, x.versao), 1),
+        },
+      });
+      return;
+    }
+    setVersionando(p.id);
     const agora = new Date().toISOString();
     const copia: PropostaGerada = {
       ...p,
@@ -1823,6 +1894,70 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
       : x))));
     toast('success', `Versão ${Number(r.versao ?? copia.versao)} criada`,
       `${p.cliente}. Abra por "Editar" para mexer nela - a anterior continua como está.`);
+  }
+
+  /**
+   * Sobe uma proposta feita fora do gerador.
+   *
+   * O arquivo já subiu na gaveta, em partes paralelas, quando foi solto - é lá
+   * que a IA leu o título. Aqui a linha entra no histórico no clique, girando,
+   * e a proposta é criada por baixo; o servidor só a cria com o arquivo
+   * inteiro. Se algo falhar, a linha sai e o toast diz por quê.
+   */
+  async function subirProposta(pedido: PedidoDeEnvio) {
+    const agora = new Date().toISOString();
+    const provisorio = -Date.now();
+    const familia = pedido.origem_id == null ? null
+      : (historico ?? []).find(x => x.id === pedido.origem_id) ?? null;
+    const raiz = familia ? (familia.origem_id ?? familia.id) : null;
+    const lead = leads?.find(l => l.id === pedido.oportunidade_id);
+    const arquivo: ArquivoDaProposta = pedido.arquivo;
+    const linha: PropostaGerada = {
+      id: provisorio,
+      oportunidade_id: pedido.oportunidade_id,
+      lead_empresa: familia?.lead_empresa ?? lead?.empresa ?? null,
+      cliente: pedido.cliente,
+      subtitulo: pedido.subtitulo,
+      slides: null,
+      rascunho: false,
+      origem_id: raiz,
+      versao: raiz == null ? 1 : 1 + (historico ?? [])
+        .filter(x => x.id === raiz || x.origem_id === raiz)
+        .reduce((maior, x) => Math.max(maior, x.versao), 1),
+      autor_nome: usuario?.nome ?? 'você',
+      criado_em: agora,
+      atualizado_em: agora,
+      token_publico: null,
+      arquivo,
+      enviando: true,
+    };
+    setHistorico(h => [linha, ...(h ?? [])]);
+    const desfazer = (erro: string) => {
+      setHistorico(h => (h == null ? h : h.filter(x => x.id !== provisorio)));
+      toast('error', 'A proposta não subiu', erro);
+    };
+    // O arquivo já subiu na gaveta, quando foi solto: falta só a linha.
+    const r = await api('', 'POST', {
+      action: 'criar_proposta_externa',
+      envio: pedido.envio, partes: arquivo.partes,
+      arquivo_nome: arquivo.nome, arquivo_tipo: arquivo.tipo, arquivo_tamanho: arquivo.tamanho,
+      oportunidade_id: pedido.oportunidade_id, cliente: pedido.cliente, subtitulo: pedido.subtitulo,
+      origem_id: pedido.origem_id,
+    }).catch(() => null);
+    if (!r?.ok) { desfazer(r?.error ?? 'A conexão caiu. Tente de novo.'); return; }
+    setHistorico(h => (h == null ? h : h.map(x => (x.id === provisorio
+      ? {
+        ...x,
+        id: Number(r.id),
+        origem_id: r.origem_id == null ? null : Number(r.origem_id),
+        versao: Number(r.versao ?? x.versao),
+        criado_em: String(r.criado_em ?? x.criado_em),
+        atualizado_em: String(r.atualizado_em ?? x.atualizado_em),
+        enviando: false,
+      }
+      : x))));
+    toast('success', raiz == null ? 'Proposta subida' : `Versão ${Number(r.versao)} subida`,
+      `${pedido.cliente}. Ela está no histórico com a etiqueta Upload externo.`);
   }
 
   /**
@@ -1900,7 +2035,21 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
             {' '}{salvandoRascunho ? 'Guardando' : editando ? 'Guardar como rascunho' : 'Salvar rascunho'}
           </button>
         )}
+        {/* A proposta feita fora entra pelo histórico, que é onde ela mora. */}
+        {aba === 'historico' && (
+          <button type="button" className="btn btn-secondary surge" onClick={() => setEnvio({ origem: null })}
+            title="Guardar no histórico uma proposta feita fora do gerador">
+            <IconUpload size={14} /> Subir proposta
+          </button>
+        )}
       </div>
+
+      {envio && (
+        <EnvioDeProposta leads={leads} origem={envio.origem}
+          enviar={corpo => api('', 'POST', corpo)}
+          onFechar={() => setEnvio(null)}
+          onSubir={pedido => { void subirProposta(pedido); }} />
+      )}
 
       {/* Montar uma proposta ou olhar as que já saíram, nas abas da casa, abaixo
           do título e no começo da linha, como no Banco de Talentos. O formulário
@@ -2049,8 +2198,10 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
 
       {vendo && (
         <PreviaArquivo
-          arquivo={{ nome: `${vendo.cliente} - ${vendo.subtitulo}`, chave: vendo.id }}
-          onCarregar={async () => ({ tipo: 'text/html', base64: emBase64(await htmlDoHistorico(vendo)) })}
+          arquivo={{ nome: vendo.arquivo?.nome ?? `${vendo.cliente} - ${vendo.subtitulo}`, chave: vendo.id }}
+          onCarregar={async () => (vendo.arquivo
+            ? { tipo: vendo.arquivo.tipo, base64: await arquivoDoHistorico(vendo) }
+            : { tipo: 'text/html', base64: emBase64(await htmlDoHistorico(vendo)) })}
           onBaixar={() => { void baixarDoHistorico(vendo); }}
           onFechar={() => setVendo(null)}
         />
@@ -2968,6 +3119,21 @@ const ESTILO = `
   }
   /* A versao, na mesma pilula do rascunho mas em amarelo: ela nao e um aviso,
      e o numero que diz qual das propostas da familia e esta. */
+  /* A etiqueta da proposta de fora: a mesma pilula do rascunho, com borda no
+     lugar do fundo - e outra informacao, nao um outro estado. */
+  .gp-hist-externa {
+    flex: none;
+    margin-left: 8px;
+    padding: 1px 8px;
+    border: 1px solid var(--gray3);
+    border-radius: var(--radius-pill);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    color: var(--gray);
+    white-space: nowrap;
+  }
   .gp-hist-versao {
     margin-left: 8px;
     padding: 2px 8px;

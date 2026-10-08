@@ -12,6 +12,7 @@ import {
 } from './_credentials.js';
 import { validarChaveAws } from './_aws-precos.js';
 import { lerCurriculo } from './_leitura-curriculo.js';
+import { lerTituloDoArquivo } from './_proposta-fonte.js';
 import {
   botaoEmail, citacaoEmail, codigoEmail, enderecoDoPortal, esc, fichaEmail, layoutEmail, notaEmail,
   notifyEmail, remetenteDeEmail, remetenteEndereco, textoEmail,
@@ -594,6 +595,13 @@ export async function tarefaVisivel(db: Client, usuario: UsuarioAdmin | null | u
 /** Teto de um anexo, igual ao da tela: 8 MB. O conteúdo vai para o banco em
  *  base64, e arquivo grande aqui pesa em toda leitura da conversa. */
 const LIMITE_ANEXO = 8 * 1024 * 1024;
+
+/** A proposta subida como arquivo: até 12 partes de 2,4 MB, que em base64 dão
+ *  3,2 milhões de letras cada - o pedido inteiro fica abaixo dos 4,5 MB da
+ *  Vercel. A tela para em 25 MB, que cabe em 11. */
+const MAX_PARTES_DA_PROPOSTA = 12;
+const LETRAS_POR_PARTE = 3_200_000;
+const idDeEnvio = (v: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(String(v ?? ''));
 
 const CAMPOS_NO_DIARIO = [
   'titulo', 'descricao', 'status', 'prioridade', 'complexidade', 'responsavel', 'prazo', 'entrega',
@@ -2697,6 +2705,31 @@ async function migrarSchema(db: Client) {
   // por link não tem porta aberta para fora.
   try { await ddl(`ALTER TABLE propostas_geradas ADD COLUMN token_publico TEXT`); } catch { /* já existe */ }
   await ddl(`CREATE UNIQUE INDEX IF NOT EXISTS idx_propostas_token ON propostas_geradas (token_publico)`);
+  // A proposta que não saiu do gerador: feita fora - no PowerPoint, no Canva,
+  // num HTML à parte - e subida pelo histórico como arquivo. Mora na mesma
+  // tabela para ganhar de graça o que a proposta tem: o lead, as versões, o
+  // link público e o chip no card. `externa` é o que diz que os campos não
+  // existem e que o conteúdo é o arquivo.
+  try { await ddl(`ALTER TABLE propostas_geradas ADD COLUMN externa INTEGER NOT NULL DEFAULT 0`); } catch { /* já existe */ }
+  try { await ddl(`ALTER TABLE propostas_geradas ADD COLUMN arquivo_nome TEXT`); } catch { /* já existe */ }
+  try { await ddl(`ALTER TABLE propostas_geradas ADD COLUMN arquivo_tipo TEXT`); } catch { /* já existe */ }
+  try { await ddl(`ALTER TABLE propostas_geradas ADD COLUMN arquivo_tamanho INTEGER`); } catch { /* já existe */ }
+  try { await ddl(`ALTER TABLE propostas_geradas ADD COLUMN arquivo_partes INTEGER`); } catch { /* já existe */ }
+  try { await ddl(`ALTER TABLE propostas_geradas ADD COLUMN arquivo_envio TEXT`); } catch { /* já existe */ }
+  // O arquivo, em partes. Uma requisição da Vercel para em 4,5 MB, na ida e na
+  // volta, e o PDF de uma apresentação passa disso com facilidade: ele sobe e
+  // desce em pedaços de 2,4 MB, cada um numa linha. O `envio` é o id do upload,
+  // nascido no navegador - as partes chegam antes de a proposta existir, e só
+  // viram proposta quando todas estão aqui.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS proposta_arquivo_partes (
+      envio     TEXT NOT NULL,
+      ordem     INTEGER NOT NULL,
+      base64    TEXT NOT NULL,
+      criado_em TEXT NOT NULL,
+      PRIMARY KEY (envio, ordem)
+    )
+  `);
   await ddl(`CREATE INDEX IF NOT EXISTS idx_propostas_origem ON propostas_geradas (origem_id)`);
   await ddl(`CREATE UNIQUE INDEX IF NOT EXISTS idx_propostas_chave ON propostas_geradas (chave)`);
   await ddl(`CREATE INDEX IF NOT EXISTS idx_propostas_oportunidade
@@ -4448,7 +4481,10 @@ async function despacharAdminData(
           -- chip mostra; os campos da apresentacao descem ao abrir a previa.
           (SELECT json_group_array(json_object(
               'id', pg.id, 'subtitulo', pg.subtitulo, 'versao', pg.versao,
-              'atualizado_em', pg.atualizado_em))
+              'atualizado_em', pg.atualizado_em,
+              -- A de fora abre pelo arquivo, e nao pelos campos.
+              'externa', pg.externa, 'arquivo_nome', pg.arquivo_nome,
+              'arquivo_tipo', pg.arquivo_tipo, 'arquivo_partes', pg.arquivo_partes))
            FROM propostas_geradas pg WHERE pg.oportunidade_id = s.id) AS propostas,
           curr.status_id AS current_status_id,
           curr.criado_em  AS status_since
@@ -6613,6 +6649,7 @@ async function despacharAdminData(
       const r = await db.execute(`
         SELECT p.id, p.oportunidade_id, p.cliente, p.subtitulo, p.slides, p.autor_nome,
                p.rascunho, p.origem_id, p.versao, p.criado_em, p.atualizado_em, p.token_publico,
+               p.externa, p.arquivo_nome, p.arquivo_tipo, p.arquivo_tamanho, p.arquivo_partes,
                s.empresa AS lead_empresa
         FROM propostas_geradas p
         LEFT JOIN oportunidades s ON s.id = p.oportunidade_id
@@ -6638,9 +6675,36 @@ async function despacharAdminData(
             atualizado_em: String(x.atualizado_em),
             // O link público, quando já foi compartilhada: copiar de novo é na hora.
             token_publico: x.token_publico == null ? null : String(x.token_publico),
+            // A subida de fora vem com o arquivo descrito: é por ele que a tela
+            // abre, baixa e diz de onde a proposta veio.
+            arquivo: Number(x.externa) === 1 ? {
+              nome: String(x.arquivo_nome ?? 'proposta'),
+              tipo: String(x.arquivo_tipo ?? 'application/octet-stream'),
+              tamanho: Number(x.arquivo_tamanho ?? 0),
+              partes: Number(x.arquivo_partes ?? 0),
+            } : null,
           })),
         },
       };
+    }
+
+    /** Uma parte do arquivo de uma proposta subida de fora. A tela pede todas
+     *  em paralelo e junta: o arquivo inteiro não cabe numa resposta. */
+    if (action === 'proposta_arquivo_parte') {
+      const id = Number(query.get('id'));
+      const ordem = Number(query.get('ordem'));
+      if (!Number.isFinite(id) || !Number.isInteger(ordem) || ordem < 0) {
+        return { status: 400, body: { error: 'Parte inválida.' } };
+      }
+      const r = await db.execute({
+        sql: `SELECT a.base64 FROM propostas_geradas p
+              JOIN proposta_arquivo_partes a ON a.envio = p.arquivo_envio AND a.ordem = ?
+              WHERE p.id = ? AND p.externa = 1`,
+        args: [ordem, id],
+      });
+      const base64 = r.rows[0]?.base64;
+      if (base64 == null) return { status: 404, body: { error: 'O arquivo desta proposta não está inteiro.' } };
+      return { status: 200, body: { base64: String(base64) } };
     }
 
     /** Os campos de uma proposta, para montar a apresentacao de novo: a previa
@@ -9709,12 +9773,17 @@ function faltaEmProjeto(p: any): string | null {
       const id = Number(body?.id);
       if (!Number.isFinite(id) || id <= 0) return { status: 400, body: { error: 'id inválido.' } };
       const r = await db.execute({
-        sql: `SELECT id, oportunidade_id, cliente, subtitulo, dados, slides
+        sql: `SELECT id, oportunidade_id, cliente, subtitulo, dados, slides, externa
               FROM propostas_geradas WHERE id = ?`,
         args: [id],
       });
       const base = r.rows[0];
       if (!base) return { status: 404, body: { error: 'Proposta não encontrada.' } };
+      // Copiar um arquivo não faz versão nenhuma: a versão da proposta de fora
+      // é o arquivo novo, subido por `criar_proposta_externa`.
+      if (Number(base.externa) === 1) {
+        return { status: 400, body: { error: 'Esta proposta veio de fora: a versão nova sobe como arquivo.' } };
+      }
       const familia = await familiaDaProposta(id);
       if (!familia) return { status: 404, body: { error: 'Proposta não encontrada.' } };
       const oportunidadeId = String(base.oportunidade_id);
@@ -9742,6 +9811,148 @@ function faltaEmProjeto(p: any): string | null {
         body: {
           ok: true, id: Number(linha?.id ?? 0), origem_id: familia.raiz,
           versao: Number(linha?.versao ?? familia.proxima),
+          criado_em: String(linha?.criado_em ?? agora), atualizado_em: String(linha?.atualizado_em ?? agora),
+        },
+      };
+    }
+
+    /**
+     * Uma parte do arquivo de uma proposta que está subindo. As partes chegam
+     * em paralelo, antes de a proposta existir; mandar a mesma de novo grava
+     * por cima, que é o que torna a nova tentativa segura.
+     */
+    if (action === 'enviar_parte_proposta') {
+      const envio = String(body?.envio ?? '');
+      const ordem = Number(body?.ordem);
+      const base64 = String(body?.base64 ?? '');
+      if (!idDeEnvio(envio) || !Number.isInteger(ordem) || ordem < 0 || ordem >= MAX_PARTES_DA_PROPOSTA) {
+        return { status: 400, body: { error: 'Parte inválida.' } };
+      }
+      if (!base64 || base64.length > LETRAS_POR_PARTE || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) {
+        return { status: 400, body: { error: 'Esta parte do arquivo chegou estragada.' } };
+      }
+      // Um envio que já virou proposta está fechado: sem isto, quem soubesse o
+      // id trocaria o arquivo de uma proposta que já foi para o cliente.
+      const usado = await db.execute({
+        sql: 'SELECT 1 FROM propostas_geradas WHERE arquivo_envio = ? LIMIT 1', args: [envio],
+      });
+      if (usado.rows[0]) return { status: 409, body: { error: 'Este envio já foi concluído.' } };
+      await db.execute({
+        sql: `INSERT OR REPLACE INTO proposta_arquivo_partes (envio, ordem, base64, criado_em)
+              VALUES (?, ?, ?, ?)`,
+        args: [envio, ordem, base64, new Date().toISOString()],
+      });
+      return { status: 200, body: { ok: true } };
+    }
+
+    /**
+     * O título e o cliente de uma proposta que acabou de subir, lidos pela IA
+     * no arquivo. A gaveta pede isto logo depois da subida: o nome da proposta
+     * vem dela, e não de quem sobe.
+     */
+    if (action === 'ler_proposta_externa') {
+      const envio = String(body?.envio ?? '');
+      const partes = Number(body?.partes);
+      if (!idDeEnvio(envio) || !Number.isInteger(partes) || partes < 1 || partes > MAX_PARTES_DA_PROPOSTA) {
+        return { status: 400, body: { error: 'Envio inválido.' } };
+      }
+      const r = await lerTituloDoArquivo(db, envio, partes,
+        String(body?.arquivo_nome ?? 'proposta').slice(0, 200), String(body?.arquivo_tipo ?? '').slice(0, 150));
+      if (!r.ok) return { status: r.status, body: { error: r.erro } };
+      return { status: 200, body: { ok: true, titulo: r.titulo, cliente: r.cliente } };
+    }
+
+    /**
+     * A proposta feita fora do gerador, com o arquivo já inteiro aqui.
+     *
+     * Ela entra no histórico como as outras - presa a uma oportunidade, com
+     * versão e link público -, e não como rascunho: quem sobe um arquivo pronto
+     * está registrando o que foi para o cliente. Com `origem_id`, é a versão
+     * nova de uma proposta que já existe, e herda a oportunidade dela.
+     */
+    if (action === 'criar_proposta_externa') {
+      const envio = String(body?.envio ?? '');
+      const partes = Number(body?.partes);
+      const cliente = String(body?.cliente ?? '').trim().slice(0, 200);
+      const subtitulo = String(body?.subtitulo ?? '').trim().slice(0, 300);
+      const nome = String(body?.arquivo_nome ?? '').trim().slice(0, 200) || 'proposta';
+      const tipo = String(body?.arquivo_tipo ?? '').trim().slice(0, 150) || 'application/octet-stream';
+      const tamanho = Math.max(0, Math.round(Number(body?.arquivo_tamanho) || 0));
+      if (!idDeEnvio(envio) || !Number.isInteger(partes) || partes < 1 || partes > MAX_PARTES_DA_PROPOSTA) {
+        return { status: 400, body: { error: 'Envio inválido.' } };
+      }
+      if (!cliente || !subtitulo) {
+        return { status: 400, body: { error: 'A proposta precisa do cliente e do subtítulo.' } };
+      }
+      let oportunidadeId = String(body?.oportunidade_id ?? '').trim();
+      let familia: { raiz: number; proxima: number } | null = null;
+      const origem = Number(body?.origem_id);
+      if (Number.isFinite(origem) && origem > 0) {
+        familia = await familiaDaProposta(origem);
+        if (!familia) return { status: 404, body: { error: 'A proposta de origem não existe mais.' } };
+        const raiz = await db.execute({
+          sql: 'SELECT oportunidade_id FROM propostas_geradas WHERE id = ?', args: [familia.raiz],
+        });
+        oportunidadeId = String(raiz.rows[0]?.oportunidade_id ?? oportunidadeId);
+      }
+      // A oportunidade é opcional aqui: a proposta feita fora pode chegar antes
+      // de o lead existir no funil. Sem ela, a linha guarda vazio, e o chip do
+      // card simplesmente não aparece.
+      if (oportunidadeId) {
+        const lead = await db.execute({
+          sql: 'SELECT 1 FROM oportunidades WHERE id = ? AND deleted_at IS NULL', args: [oportunidadeId],
+        });
+        if (!lead.rows[0]) return { status: 404, body: { error: 'A oportunidade não existe mais.' } };
+      }
+      // O arquivo tem de estar inteiro, da primeira à última parte. Faltando
+      // uma, a proposta abriria quebrada na mesa do cliente.
+      const chegou = await db.execute({
+        sql: `SELECT COUNT(*) AS n, MIN(ordem) AS menor, MAX(ordem) AS maior
+              FROM proposta_arquivo_partes WHERE envio = ?`,
+        args: [envio],
+      });
+      const c = chegou.rows[0];
+      if (Number(c?.n) !== partes || Number(c?.menor) !== 0 || Number(c?.maior) !== partes - 1) {
+        return { status: 400, body: { error: 'O arquivo não chegou inteiro. Suba de novo.' } };
+      }
+      const usado = await db.execute({
+        sql: 'SELECT 1 FROM propostas_geradas WHERE arquivo_envio = ? LIMIT 1', args: [envio],
+      });
+      if (usado.rows[0]) return { status: 409, body: { error: 'Este arquivo já virou proposta.' } };
+      const agora = new Date().toISOString();
+      // A chave segue o desenho das outras - oportunidade, subtítulo e um
+      // sufixo próprio -, para o renomear do histórico tratá-la igual.
+      const chave = `${oportunidadeId}|${subtitulo.toLocaleLowerCase('pt-BR')}|externa-${envio}`;
+      const nova = await db.execute({
+        sql: `INSERT INTO propostas_geradas
+                (oportunidade_id, cliente, subtitulo, chave, dados, slides, rascunho, origem_id, versao,
+                 autor_id, autor_nome, criado_em, atualizado_em,
+                 externa, arquivo_nome, arquivo_tipo, arquivo_tamanho, arquivo_partes, arquivo_envio)
+              VALUES (?,?,?,?,?,NULL,0,?,?,?,?,?,?,1,?,?,?,?,?)
+              RETURNING id, versao, criado_em, atualizado_em`,
+        args: [
+          oportunidadeId, cliente, subtitulo, chave, JSON.stringify({ cliente, subtitulo }),
+          familia?.raiz ?? null, familia?.proxima ?? 1,
+          autorId ?? null, autorNome ?? 'alguém do time', agora, agora,
+          nome, tipo, tamanho, partes, envio,
+        ],
+      });
+      // Os envios que ficaram pela metade - a aba fechada no meio da subida -
+      // saem depois de dois dias. Aqui, e não num agendamento: é quando se
+      // sobe que o lixo se forma.
+      const antes = new Date(Date.now() - 2 * 86_400_000).toISOString();
+      await db.execute({
+        sql: `DELETE FROM proposta_arquivo_partes
+              WHERE criado_em < ?
+                AND envio NOT IN (SELECT arquivo_envio FROM propostas_geradas WHERE arquivo_envio IS NOT NULL)`,
+        args: [antes],
+      }).catch(() => null);
+      const linha = nova.rows[0];
+      return {
+        status: 200,
+        body: {
+          ok: true, id: Number(linha?.id ?? 0), origem_id: familia?.raiz ?? null,
+          versao: Number(linha?.versao ?? 1),
           criado_em: String(linha?.criado_em ?? agora), atualizado_em: String(linha?.atualizado_em ?? agora),
         },
       };
@@ -9833,7 +10044,7 @@ function faltaEmProjeto(p: any): string | null {
       const id = Number(body?.id);
       if (!Number.isFinite(id) || id <= 0) return { status: 400, body: { error: 'id inválido.' } };
       const r = await db.execute({
-        sql: 'SELECT id, origem_id FROM propostas_geradas WHERE id = ?', args: [id],
+        sql: 'SELECT id, origem_id, arquivo_envio FROM propostas_geradas WHERE id = ?', args: [id],
       });
       const linha = r.rows[0];
       if (!linha) return { status: 404, body: { error: 'Proposta não encontrada.' } };
@@ -9856,6 +10067,13 @@ function faltaEmProjeto(p: any): string | null {
         }
       }
       await db.execute({ sql: 'DELETE FROM propostas_geradas WHERE id = ?', args: [id] });
+      // A proposta de fora leva o arquivo junto: sem ela, as partes não são de
+      // ninguém e só pesariam no banco.
+      if (linha.arquivo_envio != null) {
+        await db.execute({
+          sql: 'DELETE FROM proposta_arquivo_partes WHERE envio = ?', args: [String(linha.arquivo_envio)],
+        });
+      }
       return { status: 200, body: { ok: true, nova_principal: novaPrincipal } };
     }
 

@@ -2731,6 +2731,12 @@ function ChipsDeProposta({ propostas, empresa }: { propostas: PropostaDoCard[]; 
     ]);
     return r?.dados ? htmlDaProposta(r.dados as DadosProposta) : null;
   }
+  /** O arquivo da proposta feita fora, remontado das partes. */
+  async function arquivoDe(p: PropostaDoCard): Promise<string> {
+    const { baixarPartes } = await import('../lib/proposta/arquivo');
+    return baixarPartes(ordem => pedir(`?action=proposta_arquivo_parte&id=${p.id}&ordem=${ordem}`),
+      Number(p.arquivo_partes ?? 0));
+  }
   // A mais recente na frente: é a que está na mesa com o cliente.
   const ordenadas = [...propostas].sort((a, b) => (b.atualizado_em ?? '').localeCompare(a.atualizado_em ?? ''));
 
@@ -2748,9 +2754,18 @@ function ChipsDeProposta({ propostas, empresa }: { propostas: PropostaDoCard[]; 
       ))}
       {vendo && (
         <PreviaArquivo
-          arquivo={{ nome: `Proposta ${empresa ?? ''} - ${vendo.subtitulo}`.replace(/\s+-\s+$/, ''), chave: vendo.id }}
+          arquivo={{
+            nome: vendo.externa
+              ? String(vendo.arquivo_nome ?? 'proposta')
+              : `Proposta ${empresa ?? ''} - ${vendo.subtitulo}`.replace(/\s+-\s+$/, ''),
+            chave: vendo.id,
+          }}
           camada={1080}
           onCarregar={async () => {
+            // A de fora abre pelo arquivo que subiu, no formato dele.
+            if (vendo.externa) {
+              return { tipo: String(vendo.arquivo_tipo ?? 'application/octet-stream'), base64: await arquivoDe(vendo) };
+            }
             const html = await montar(vendo.id);
             if (!html) return null;
             const { emBase64 } = await import('../lib/proposta/gerar');
@@ -2760,6 +2775,16 @@ function ChipsDeProposta({ propostas, empresa }: { propostas: PropostaDoCard[]; 
             // A proposta sai só em PDF: a prévia daqui é HTML para ver, e o
             // arquivo que se baixa é o que vai ao cliente.
             void (async () => {
+              if (vendo.externa) {
+                try {
+                  const { salvarArquivo } = await import('../lib/proposta/arquivo');
+                  salvarArquivo(await arquivoDe(vendo), String(vendo.arquivo_tipo ?? 'application/octet-stream'),
+                    String(vendo.arquivo_nome ?? 'proposta'));
+                } catch (e) {
+                  toast('error', 'O arquivo não desceu', e instanceof Error ? e.message : undefined);
+                }
+                return;
+              }
               const html = await montar(vendo.id);
               if (!html) {
                 toast('error', 'Não consegui montar esta proposta', 'Tente de novo.');

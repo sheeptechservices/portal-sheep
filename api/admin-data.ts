@@ -7,7 +7,7 @@ import {
   type SessaoAdmin,
 } from './_admin-handler.js';
 import { getQuery } from './_query.js';
-import { propostaPublica } from './_proposta-publica.js';
+import { partePublica, propostaPublica } from './_proposta-publica.js';
 import { configGoogle, trocarCodigoGoogle, verificarIdTokenGoogle } from './_google-auth.js';
 
 function getDb() {
@@ -132,12 +132,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // não somar mais uma função ao projeto; a regra está em `_proposta-publica`.
   if (bodyAction === 'proposta-publica') {
     try {
-      const dados = await propostaPublica(db, String(req.body?.token ?? ''));
+      const proposta = await propostaPublica(db, String(req.body?.token ?? ''));
       res.setHeader('Cache-Control', 'no-store');
-      if (!dados) return res.status(404).json({ error: 'Esta proposta não está mais disponível.' });
-      return res.status(200).json({ dados });
+      if (!proposta) return res.status(404).json({ error: 'Esta proposta não está mais disponível.' });
+      return res.status(200).json(proposta);
     } catch (err) {
       console.error('[admin-data] proposta-publica', err);
+      return res.status(500).json({ error: 'Erro interno.' });
+    }
+  }
+  // Uma parte do arquivo da proposta subida de fora, pelo mesmo token.
+  if (bodyAction === 'proposta-publica-parte') {
+    try {
+      const base64 = await partePublica(db, String(req.body?.token ?? ''), Number(req.body?.ordem));
+      res.setHeader('Cache-Control', 'no-store');
+      if (base64 == null) return res.status(404).json({ error: 'Esta proposta não está mais disponível.' });
+      return res.status(200).json({ base64 });
+    } catch (err) {
+      console.error('[admin-data] proposta-publica-parte', err);
       return res.status(500).json({ error: 'Erro interno.' });
     }
   }

@@ -341,14 +341,26 @@ export default defineConfig(({ mode }) => {
                 // A proposta aberta pelo link - espelha api/admin-data.ts.
                 if (bodyAction === 'proposta-publica') {
                   const { propostaPublica } = await import('./api/_proposta-publica')
-                  const dados = await propostaPublica(db, String(parsed?.token ?? ''))
+                  const proposta = await propostaPublica(db, String(parsed?.token ?? ''))
                   res.setHeader('Cache-Control', 'no-store')
-                  if (!dados) {
+                  if (!proposta) {
                     res.statusCode = 404
                     res.end(JSON.stringify({ error: 'Esta proposta não está mais disponível.' }))
                     return
                   }
-                  res.end(JSON.stringify({ dados }))
+                  res.end(JSON.stringify(proposta))
+                  return
+                }
+                if (bodyAction === 'proposta-publica-parte') {
+                  const { partePublica } = await import('./api/_proposta-publica')
+                  const base64 = await partePublica(db, String(parsed?.token ?? ''), Number(parsed?.ordem))
+                  res.setHeader('Cache-Control', 'no-store')
+                  if (base64 == null) {
+                    res.statusCode = 404
+                    res.end(JSON.stringify({ error: 'Esta proposta não está mais disponível.' }))
+                    return
+                  }
+                  res.end(JSON.stringify({ base64 }))
                   return
                 }
 

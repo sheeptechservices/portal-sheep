@@ -66,6 +66,12 @@ export interface PropostaDoCard {
   /** O numero dela dentro da familia de versoes. A principal e a 1. */
   versao?: number;
   atualizado_em: string;
+  /** 1 quando a proposta foi feita fora e subida como arquivo: ela abre pelo
+   *  arquivo, e não pelos campos. */
+  externa?: number;
+  arquivo_nome?: string | null;
+  arquivo_tipo?: string | null;
+  arquivo_partes?: number | null;
 }
 
 export interface Submission {
