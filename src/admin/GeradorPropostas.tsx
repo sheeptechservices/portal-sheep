@@ -25,7 +25,7 @@ import type { StatusConfig, Submission } from './types';
 const CadastroDeLead = lazy(() => import('./OportunidadesPage').then(m => ({ default: m.CreateModal })));
 import {
   IconArrowLeft, IconArrowRight, IconCheck, IconChevronRight, IconDoc, IconDownload, IconEdit, IconEye,
-  IconFunil, IconInbox, IconPlus, IconSalvar, IconSparkles, IconSpinner, IconTrash, IconUpload, IconX,
+  IconFunil, IconInbox, IconLink, IconPlus, IconSalvar, IconSparkles, IconSpinner, IconTrash, IconUpload, IconX,
 } from '../components/icons';
 import { AbaPainel, Abas } from '../components/Abas';
 import { SelectSistema } from '../components/SelectSistema';
@@ -80,7 +80,13 @@ interface PropostaGerada {
   autor_nome: string;
   criado_em: string;
   atualizado_em: string;
+  /** O token do link público, quando ela já foi compartilhada. Com ele, copiar
+   *  o link de novo é na hora, sem ida ao servidor. */
+  token_publico?: string | null;
 }
+
+/** O endereço que o cliente abre para ver a apresentação. */
+const linkDaProposta = (tokenPublico: string) => `${window.location.origin}/proposta/${tokenPublico}`;
 
 /** O nome do arquivo que sai: cliente e data, sem o que o sistema de arquivos
  *  não aceita. */
@@ -871,7 +877,7 @@ function familiasDoHistorico(lista: PropostaGerada[]): FamiliaDeProposta[] {
  */
 function HistoricoPropostas({
   lista, onVer, onEditar, abrindo, editando, baixando, onBaixar, onAbrirLead,
-  onNovaVersao, versionando, onExcluir, onRenomear,
+  onNovaVersao, versionando, onExcluir, onRenomear, compartilhando, onCompartilhar,
 }: {
   /** `null` enquanto a lista não chegou. */
   lista: PropostaGerada[] | null;
@@ -894,6 +900,10 @@ function HistoricoPropostas({
   onExcluir: (p: PropostaGerada) => void;
   /** Troca o cliente e o subtítulo de uma proposta, sem abrir o gerador. */
   onRenomear: (p: PropostaGerada, cliente: string, subtitulo: string) => void;
+  /** A que está pedindo o link agora, para o botão dela girar. */
+  compartilhando: number | null;
+  /** Copia o link público da apresentação. */
+  onCompartilhar: (p: PropostaGerada) => void;
 }) {
   /** As famílias abertas, pelo id da principal. Recolhidas por padrão: o
    *  histórico é a lista das propostas, e a evolução de cada uma se abre para
@@ -1023,6 +1033,15 @@ function HistoricoPropostas({
           title="Criar uma versão nova a partir desta proposta"
           onClick={() => onNovaVersao(p)}>
           {versionando === p.id ? <IconSpinner size={13} /> : <IconPlus size={13} />} Nova versão
+        </button>
+        {/* O link no lugar do PDF: a apresentação abre no navegador de quem
+            recebe, com os protótipos rodando, e o endereço é o mesmo a cada
+            vez que se copia. */}
+        <button type="button" className="btn btn-secondary btn-sm"
+          disabled={compartilhando === p.id || p.id < 0}
+          title="Copiar o link da apresentação para mandar ao cliente"
+          onClick={() => onCompartilhar(p)}>
+          {compartilhando === p.id ? <IconSpinner size={13} /> : <IconLink size={13} />} Compartilhar
         </button>
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => onBaixar(p)}
           disabled={baixando === p.id}>
@@ -1172,6 +1191,8 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
   const [baixando, setBaixando] = useState<number | null>(null);
   /** A proposta que está sendo copiada numa versão nova. */
   const [versionando, setVersionando] = useState<number | null>(null);
+  /** A proposta do histórico que está pedindo o link público. */
+  const [compartilhando, setCompartilhando] = useState<number | null>(null);
   /** A proposta do histórico com a pergunta de apagar aberta. */
   const [apagando, setApagando] = useState<PropostaGerada | null>(null);
   /** O lead do funil a que a proposta pertence. Obrigatório para gerar. */
@@ -1723,6 +1744,37 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
     }
   }
 
+  /**
+   * Copia o link público da proposta, para mandar ao cliente no lugar do PDF.
+   *
+   * Na primeira vez o servidor cria o endereço; dali em diante ele já vem com a
+   * lista, e copiar é na hora. O link mostra a proposta como ela está, então
+   * editá-la depois muda o que o cliente vê.
+   */
+  async function compartilharDoHistorico(p: PropostaGerada) {
+    const copiar = async (tokenPublico: string) => {
+      const link = linkDaProposta(tokenPublico);
+      try {
+        await navigator.clipboard.writeText(link);
+        toast('success', 'Link copiado', `${p.cliente}. Quem abrir vê a apresentação como ela está agora.`);
+      } catch {
+        toast('error', 'O navegador não deixou copiar', link);
+      }
+    };
+    if (p.token_publico) { await copiar(p.token_publico); return; }
+    if (compartilhando != null) return;
+    setCompartilhando(p.id);
+    const r = await api('', 'POST', { action: 'compartilhar_proposta', id: p.id }).catch(() => null);
+    setCompartilhando(null);
+    if (!r?.ok || !r.token) {
+      toast('error', 'O link não saiu', r?.error ?? 'A conexão caiu. Tente de novo.');
+      return;
+    }
+    const tokenPublico = String(r.token);
+    setHistorico(h => (h == null ? h : h.map(x => (x.id === p.id ? { ...x, token_publico: tokenPublico } : x))));
+    await copiar(tokenPublico);
+  }
+
   // ── Versões de uma proposta ──
 
   /**
@@ -1901,6 +1953,8 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
             versionando={versionando}
             onExcluir={setApagando}
             onRenomear={(p, cliente, subtitulo) => { void renomearProposta(p, cliente, subtitulo); }}
+            compartilhando={compartilhando}
+            onCompartilhar={p => { void compartilharDoHistorico(p); }}
             onAbrirLead={onAbrirOportunidade} />
         </div>
       )}

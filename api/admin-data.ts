@@ -7,6 +7,7 @@ import {
   type SessaoAdmin,
 } from './_admin-handler.js';
 import { getQuery } from './_query.js';
+import { propostaPublica } from './_proposta-publica.js';
 import { configGoogle, trocarCodigoGoogle, verificarIdTokenGoogle } from './_google-auth.js';
 
 function getDb() {
@@ -120,6 +121,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ token, usuario });
     } catch (err) {
       console.error('[admin-data] login-google error', err);
+      return res.status(500).json({ error: 'Erro interno.' });
+    }
+  }
+
+  // ── A proposta aberta pelo link ──────────────────────────────────────────
+  //
+  // Sem sessão, como o convite logo abaixo: o cliente não tem login, e o que
+  // abre a porta é o token do link. Mora aqui, e não numa rota própria, para
+  // não somar mais uma função ao projeto; a regra está em `_proposta-publica`.
+  if (bodyAction === 'proposta-publica') {
+    try {
+      const dados = await propostaPublica(db, String(req.body?.token ?? ''));
+      res.setHeader('Cache-Control', 'no-store');
+      if (!dados) return res.status(404).json({ error: 'Esta proposta não está mais disponível.' });
+      return res.status(200).json({ dados });
+    } catch (err) {
+      console.error('[admin-data] proposta-publica', err);
       return res.status(500).json({ error: 'Erro interno.' });
     }
   }

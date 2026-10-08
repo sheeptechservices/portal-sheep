@@ -2691,6 +2691,11 @@ async function migrarSchema(db: Client) {
   // bloco só, em vez de linhas soltas com o mesmo cliente e o mesmo subtítulo.
   try { await ddl(`ALTER TABLE propostas_geradas ADD COLUMN origem_id INTEGER`); } catch { /* já existe */ }
   try { await ddl(`ALTER TABLE propostas_geradas ADD COLUMN versao INTEGER NOT NULL DEFAULT 1`); } catch { /* já existe */ }
+  // O endereço público da proposta, para mandar o link em vez do PDF. Nasce
+  // vazio e só ganha valor quando alguém compartilha: proposta que nunca saiu
+  // por link não tem porta aberta para fora.
+  try { await ddl(`ALTER TABLE propostas_geradas ADD COLUMN token_publico TEXT`); } catch { /* já existe */ }
+  await ddl(`CREATE UNIQUE INDEX IF NOT EXISTS idx_propostas_token ON propostas_geradas (token_publico)`);
   await ddl(`CREATE INDEX IF NOT EXISTS idx_propostas_origem ON propostas_geradas (origem_id)`);
   await ddl(`CREATE UNIQUE INDEX IF NOT EXISTS idx_propostas_chave ON propostas_geradas (chave)`);
   await ddl(`CREATE INDEX IF NOT EXISTS idx_propostas_oportunidade
@@ -6606,7 +6611,7 @@ async function despacharAdminData(
     if (action === 'propostas_geradas') {
       const r = await db.execute(`
         SELECT p.id, p.oportunidade_id, p.cliente, p.subtitulo, p.slides, p.autor_nome,
-               p.rascunho, p.origem_id, p.versao, p.criado_em, p.atualizado_em,
+               p.rascunho, p.origem_id, p.versao, p.criado_em, p.atualizado_em, p.token_publico,
                s.empresa AS lead_empresa
         FROM propostas_geradas p
         LEFT JOIN oportunidades s ON s.id = p.oportunidade_id
@@ -6630,6 +6635,8 @@ async function despacharAdminData(
             autor_nome: String(x.autor_nome),
             criado_em: String(x.criado_em),
             atualizado_em: String(x.atualizado_em),
+            // O link público, quando já foi compartilhada: copiar de novo é na hora.
+            token_publico: x.token_publico == null ? null : String(x.token_publico),
           })),
         },
       };
@@ -9688,6 +9695,29 @@ function faltaEmProjeto(p: any): string | null {
           criado_em: String(linha?.criado_em ?? agora), atualizado_em: String(linha?.atualizado_em ?? agora),
         },
       };
+    }
+
+    /**
+     * O link público de uma proposta do histórico, para mandar ao cliente no
+     * lugar do PDF.
+     *
+     * O token nasce no primeiro pedido e fica: compartilhar de novo devolve o
+     * mesmo endereço, para o link que já foi mandado continuar valendo. Ele
+     * mostra a proposta como ela está - editar depois muda o que o cliente vê,
+     * e apagar a proposta fecha a porta junto.
+     */
+    if (action === 'compartilhar_proposta') {
+      const id = Number(body?.id);
+      if (!Number.isFinite(id) || id <= 0) return { status: 400, body: { error: 'id inválido.' } };
+      // 32 hexadecimais: o link é a única credencial da página.
+      await db.execute({
+        sql: 'UPDATE propostas_geradas SET token_publico = ? WHERE id = ? AND token_publico IS NULL',
+        args: [randomUUID().replace(/-/g, ''), id],
+      });
+      const r = await db.execute({ sql: 'SELECT token_publico FROM propostas_geradas WHERE id = ?', args: [id] });
+      const token = r.rows[0]?.token_publico;
+      if (token == null) return { status: 404, body: { error: 'Proposta não encontrada.' } };
+      return { status: 200, body: { ok: true, token: String(token) } };
     }
 
     /**

@@ -20299,6 +20299,23 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   .vit-cartao { transition: none; }
 }
 
+/* ── A proposta aberta pelo link ───────────────────────────────────────────
+   A apresentação ocupa a janela inteira, sem moldura do portal em volta: o
+   cliente abre o link e vê o deck, como abriria o PDF. Antes dela, só o giro;
+   no lugar dela, quando o link não vale, uma frase. */
+.prop-publica {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg);
+}
+.prop-publica-erro { font-size: 14px; color: var(--gray2); }
+.prop-publica-deck {
+  position: fixed; inset: 0;
+  width: 100%; height: 100%;
+  border: 0; display: block;
+  background: var(--bg);
+}
+
 /* ── Vitrines de profissionais (a aba do portal) ───────────────────────────
    A lista das selecoes abertas, e as duas gavetas: a que monta e a que revisa
    o que o cliente vai ler. */

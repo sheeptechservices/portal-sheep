@@ -338,6 +338,20 @@ export default defineConfig(({ mode }) => {
                   return
                 }
 
+                // A proposta aberta pelo link - espelha api/admin-data.ts.
+                if (bodyAction === 'proposta-publica') {
+                  const { propostaPublica } = await import('./api/_proposta-publica')
+                  const dados = await propostaPublica(db, String(parsed?.token ?? ''))
+                  res.setHeader('Cache-Control', 'no-store')
+                  if (!dados) {
+                    res.statusCode = 404
+                    res.end(JSON.stringify({ error: 'Esta proposta não está mais disponível.' }))
+                    return
+                  }
+                  res.end(JSON.stringify({ dados }))
+                  return
+                }
+
                 // O convite de criar a senha - espelha api/admin-data.ts.
                 if (bodyAction === 'senha-token-info') {
                   const dono = await donoDoTokenSenha(db, String(parsed?.token ?? ''))

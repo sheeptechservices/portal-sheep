@@ -352,6 +352,8 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   // edita-la: quem pode reescrever a proposta pode tirar e duplicar a dele.
   criar_versao_proposta: 'propostas:ver',
   renomear_proposta: 'propostas:ver',
+  // Mandar o link é mandar a proposta: a mesma porta de baixar o PDF dela.
+  compartilhar_proposta: 'propostas:ver',
   excluir_proposta: 'propostas:ver',
   proposta_dados: ['propostas:ver', 'oportunidades:ver'],
   contratos_gerados: 'gerador:ver',
