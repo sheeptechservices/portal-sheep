@@ -3267,10 +3267,12 @@ body.arrastando-painel {
   vertical-align: middle;
   margin-right: 5px;
 }
+/* Dentro da entrega: alto o bastante para ler a coluna de uma vez na maior
+   parte das entregas, sem que o quadro empurre a proxima entrega para longe. */
 .painel-kanban .kanban-column-body {
   padding: 6px;
   gap: 5px;
-  max-height: 240px;
+  max-height: 360px;
 }
 
 /* Quando o quadro e a aba inteira, e nao um bloco dentro de uma entrega.
