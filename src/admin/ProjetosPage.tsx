@@ -4940,10 +4940,13 @@ function AbaPlanning({
   onExportar,
   onAbrir, onSalvarTarefa, onAbrirTarefa, onCriarTarefa, onExcluirTarefa,
   etapas, etapaDeEntrada, etapaDeConclusao, podeEditar, podeEditarTarefa, podeExcluirTarefa,
-  entregasDe, funil, secao, onVerProjeto, onAbrirOportunidade, foco,
+  entregasDe, funil, secao, onVerProjeto, onAbrirOportunidade, foco, onFocoAtendido,
 }: {
   /** O projeto a pôr na tela, pedido de fora da Planning. */
   foco?: { id: string; nonce: number } | null;
+  /** O pedido foi atendido: quem o fez o apaga, para ele não voltar a valer
+   *  quando a Planning for montada de novo. */
+  onFocoAtendido?: () => void;
   /** Monta a seção de entregas de um projeto. */
   entregasDe: (p: Projeto) => React.ReactNode;
   projetos: Projeto[];
@@ -5021,8 +5024,19 @@ function AbaPlanning({
   const [ativo, setAtivo] = useState<string | null>(null);
   // O pedido de fora escolhe a divisória. Só vale quando o projeto está na
   // lista; fora dela, a folha que abriria seria outra, e o clique enganaria.
+  //
+  // Uma vez por pedido. A lista se refaz a cada recarga - um objetivo gravado,
+  // uma tarefa movida -, e reaplicar o pedido a cada vez arrastava a tela de
+  // volta para o projeto do aviso, por cima da divisória que a pessoa tinha
+  // escolhido depois. A lista continua entre as dependências porque o pedido
+  // pode chegar antes dos projetos; o que impede a repetição é o nonce guardado.
+  const focoAtendido = useRef<number | null>(null);
   useEffect(() => {
-    if (foco && lista.some(p => p.id === foco.id)) setAtivo(foco.id);
+    if (!foco || focoAtendido.current === foco.nonce) return;
+    if (!lista.some(p => p.id === foco.id)) return;
+    focoAtendido.current = foco.nonce;
+    setAtivo(foco.id);
+    onFocoAtendido?.();
   }, [foco?.nonce, lista]);
   // O projeto escolhido, ou o primeiro da lista. Guardado por id e não por
   // posição: a lista se reordena quando alguém muda uma prioridade, e a folha
@@ -7834,6 +7848,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
         <SemanaDaPlanningCtx.Provider value={contextoDaSemana}>
         <AbaPlanning
           foco={focoDaPlanning}
+          onFocoAtendido={() => setFocoDaPlanning(null)}
           projetos={projetos}
           pessoas={pessoas}
           planning={planning}
