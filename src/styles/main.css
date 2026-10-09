@@ -8168,7 +8168,9 @@ button.kanban-card.pl-funil-card:focus-visible { outline: none; border-color: va
 /* ── Caixa de escrita ─────────────────────────────── */
 .ativ-escrever { margin-bottom: 16px; }
 .ativ-campo-caixa { position: relative; }
-.ativ-campo { font-size: 13px; resize: vertical; }
+/* O campo da casa cresce com o texto, entre o piso e o teto: nao tem o canto
+   de arrastar que o `textarea` antigo tinha. */
+.ativ-campo { font-size: 13px; }
 
 /* Lista de gente aberta pelo `@`, presa embaixo da caixa. */
 .ativ-mencoes {
@@ -8352,6 +8354,9 @@ button.kanban-card.pl-funil-card:focus-visible { outline: none; border-color: va
   border-radius: var(--radius-sm);
   padding: 0 4px;
 }
+/* No escuro o texto quase preto some na chapa verde: ali ele usa a tinta
+   clara do tema, como as outras pecas escritas sobre `--yd`. */
+:root[data-theme="dark"] .ativ-marca { color: var(--yellow-tinta); }
 /* A etapa marcada no comentario usa a cor dela, que e como ela se identifica no
    funil inteiro. Sem cor conhecida - etapa renomeada depois do comentario - cai
    no cinza, e continua legivel. */

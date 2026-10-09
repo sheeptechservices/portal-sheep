@@ -29,6 +29,7 @@ const MOLDURA = 20;
 
 export function CampoTexto({
   valor, onMudar, placeholder, linhas = 3, alturaMaxima = 320, ariaLabel, className,
+  autoFocus, onBlur, aoTeclar, aoColar, caixaRef,
 }: {
   valor: string;
   onMudar: (texto: string) => void;
@@ -39,6 +40,13 @@ export function CampoTexto({
   alturaMaxima?: number;
   ariaLabel?: string;
   className?: string;
+  autoFocus?: boolean;
+  onBlur?: () => void;
+  /** A tecla e a colagem passam primeiro por quem montou o campo; ver
+   *  `EditorRico`. */
+  aoTeclar?: (e: React.KeyboardEvent<HTMLDivElement>) => void;
+  aoColar?: (e: React.ClipboardEvent<HTMLDivElement>) => void;
+  caixaRef?: React.MutableRefObject<HTMLDivElement | null>;
 }) {
   const estilo = {
     ['--campo-texto-min' as string]: `${Math.round(linhas * LINHA + MOLDURA)}px`,
@@ -52,7 +60,12 @@ export function CampoTexto({
         valor={valor}
         onMudar={onMudar}
         placeholder={placeholder}
-        ariaLabel={ariaLabel} />
+        ariaLabel={ariaLabel}
+        autoFocus={autoFocus}
+        onBlur={onBlur}
+        aoTeclar={aoTeclar}
+        aoColar={aoColar}
+        caixaRef={caixaRef} />
     </div>
   );
 }

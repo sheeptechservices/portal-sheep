@@ -3614,6 +3614,26 @@ function corpoDeMencao(oportunidade: string, texto: string): string {
 }
 
 /**
+ * O comentário como se lê fora da conversa: no e-mail e na prévia do inbox.
+ *
+ * A marcação `@[Nome](id)` vira só o nome, e as marcas leves da escrita
+ * (`**negrito**`, `*itálico*`, `__sublinhado__`) saem, ficando o texto: nenhum
+ * dos dois lugares desenha formatação, e os asteriscos à vista leriam como
+ * erro. O item de lista vira um ponto. A regra das marcas é a de
+ * `src/lib/marcacao`; aqui só se desfaz a escrita dela.
+ */
+function comentarioLido(bruto: unknown): string {
+  return String(bruto ?? '')
+    .replace(/\r\n/g, '\n')
+    .replace(/@\[([^\]]+)\]\([^)]+\)/g, '@$1')
+    .replace(/\*\*([^*\n]+)\*\*/g, '$1')
+    .replace(/__([^_\n]+)__/g, '$1')
+    .replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, '$1$2')
+    .replace(/^\s*-\s+/gm, '\u2022 ')
+    .trim();
+}
+
+/**
  * Avisa por e-mail quem foi marcado num comentário de tarefa.
  *
  * O balão do portal já acende para quem está com ele aberto; o e-mail alcança
@@ -3649,7 +3669,7 @@ async function avisarMencionados(
     const projeto = String(t.rows[0]?.projeto ?? '-');
     // O texto do comentário guarda a marcação como `@[Nome](id)`. No e-mail ela
     // vira só o nome, que é o que quem escreveu leu na tela.
-    const lido = dados.texto.replace(/@\[([^\]]+)\]\([^)]+\)/g, '@$1').trim();
+    const lido = comentarioLido(dados.texto);
     const link = `${enderecoDoPortal()}/?tarefa=${dados.tarefaId}`;
     const corpo = fichaEmail([
       ['Tarefa', titulo],
@@ -6457,9 +6477,10 @@ async function despacharAdminData(
       }
 
       // A marcacao vem gravada como `@[Nome](id)`: na gaveta ela vira so o
-      // nome, que e o que quem escreveu leu na tela.
+      // nome, que e o que quem escreveu leu na tela, e as marcas de negrito e
+      // lista saem. Numa linha so: a previa nao tem altura para quebra.
       const trecho = (bruto: unknown) => {
-        const texto = String(bruto ?? '').replace(/@\[([^\]]+)\]\([^)]+\)/g, '@$1').trim();
+        const texto = comentarioLido(bruto).replace(/\s*\n\s*/g, ' ');
         return texto.length > 160 ? `${texto.slice(0, 160)}…` : texto;
       };
       // As tres fontes de conversa de tarefa levam a tarefa como alvo, que e

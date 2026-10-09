@@ -26,21 +26,25 @@ export { ITEM, LINK, enderecoDoLink };
 /** Uma linha vira uma sequência de pedaços de texto, trechos marcados e links.
  *  Recursiva de propósito: negrito com um trecho em itálico dentro é o que sai
  *  do editor quando alguém aperta os dois, e precisa voltar igual. */
-function pedacos(linha: string, chave: string): React.ReactNode[] {
+/** O que desenha o trecho sem marca. O padrão só liga os endereços; a conversa
+ *  passa um que desenha também as menções. */
+type Trecho = (trecho: string, chave: string) => React.ReactNode[];
+
+function pedacos(linha: string, chave: string, trecho: Trecho = comLinks): React.ReactNode[] {
   const saida: React.ReactNode[] = [];
   let ultimo = 0;
   let i = 0;
   for (const m of linha.matchAll(INLINE)) {
     const inicio = m.index ?? 0;
-    if (inicio > ultimo) saida.push(...comLinks(linha.slice(ultimo, inicio), `${chave}-t${i}`));
+    if (inicio > ultimo) saida.push(...trecho(linha.slice(ultimo, inicio), `${chave}-t${i}`));
     const t = m[0];
     const k = `${chave}-${i++}`;
-    if (t.startsWith('**')) saida.push(<strong key={k}>{pedacos(t.slice(2, -2), k)}</strong>);
-    else if (t.startsWith('__')) saida.push(<u key={k}>{pedacos(t.slice(2, -2), k)}</u>);
-    else saida.push(<em key={k}>{pedacos(t.slice(1, -1), k)}</em>);
+    if (t.startsWith('**')) saida.push(<strong key={k}>{pedacos(t.slice(2, -2), k, trecho)}</strong>);
+    else if (t.startsWith('__')) saida.push(<u key={k}>{pedacos(t.slice(2, -2), k, trecho)}</u>);
+    else saida.push(<em key={k}>{pedacos(t.slice(1, -1), k, trecho)}</em>);
     ultimo = inicio + t.length;
   }
-  if (ultimo < linha.length) saida.push(...comLinks(linha.slice(ultimo), `${chave}-f`));
+  if (ultimo < linha.length) saida.push(...trecho(linha.slice(ultimo), `${chave}-f`));
   return saida;
 }
 
@@ -67,7 +71,12 @@ function comLinks(trecho: string, chave: string): React.ReactNode[] {
 
 /** O texto desenhado. Nada de HTML vindo do banco: cada pedaço vira elemento
  *  aqui, então o que estiver escrito na descrição é sempre texto. */
-export function TextoRico({ texto, className }: { texto: string; className?: string }) {
+export function TextoRico({ texto, className, trecho }: {
+  texto: string;
+  className?: string;
+  /** Quem desenha o trecho sem marca, no lugar do que só liga endereços. */
+  trecho?: Trecho;
+}) {
   const linhas = texto.split('\n');
   const blocos: React.ReactNode[] = [];
   let lista: React.ReactNode[] = [];
@@ -80,14 +89,14 @@ export function TextoRico({ texto, className }: { texto: string; className?: str
 
   linhas.forEach((linha, i) => {
     if (ITEM.test(linha)) {
-      lista.push(<li key={`li-${i}`}>{pedacos(linha.replace(ITEM, ''), `l${i}`)}</li>);
+      lista.push(<li key={`li-${i}`}>{pedacos(linha.replace(ITEM, ''), `l${i}`, trecho)}</li>);
       return;
     }
     fecharLista();
     // Linha em branco vira respiro, e não parágrafo vazio: dois enters seguidos
     // separam blocos, como em qualquer editor.
     if (!linha.trim()) { blocos.push(<span key={`br-${i}`} className="texto-rico-vao" />); return; }
-    blocos.push(<p key={`p-${i}`}>{pedacos(linha, `p${i}`)}</p>);
+    blocos.push(<p key={`p-${i}`}>{pedacos(linha, `p${i}`, trecho)}</p>);
   });
   fecharLista();
 

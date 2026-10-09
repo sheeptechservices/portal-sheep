@@ -106,7 +106,8 @@ export function htmlParaTexto(raiz: HTMLElement): string {
 
 /** O campo. Guarda texto, mostra formatação. */
 export function EditorRico({
-  valor, onMudar, placeholder, autoFocus, onFoco, onBlur, className, ariaLabel,
+  valor, onMudar, placeholder, autoFocus, onFoco, onBlur, className, ariaLabel, aoTeclar: teclaDeFora,
+  aoColar: colagemDeFora, caixaRef,
 }: {
   valor: string;
   onMudar: (texto: string) => void;
@@ -118,8 +119,16 @@ export function EditorRico({
   onBlur?: () => void;
   className?: string;
   ariaLabel?: string;
+  /** A tecla passa primeiro por quem montou o campo. Se ele a tratou
+   *  (`preventDefault`), o editor não faz mais nada com ela: é por aqui que a
+   *  conversa faz o Enter enviar e as setas andarem na lista de menções. */
+  aoTeclar?: (e: React.KeyboardEvent<HTMLDivElement>) => void;
+  /** A colagem, idem: o print colado na conversa vira anexo, e não texto. */
+  aoColar?: (e: React.ClipboardEvent<HTMLDivElement>) => void;
+  /** A caixa editável, para quem precisa medir ou ler o cursor dentro dela. */
+  caixaRef?: React.MutableRefObject<HTMLDivElement | null>;
 }) {
-  const caixa = useRef<HTMLDivElement>(null);
+  const caixa = useRef<HTMLDivElement | null>(null);
   /** O último texto que saiu daqui. Serve para não reescrever o HTML - e jogar
    *  o cursor para o começo - a cada tecla digitada. */
   const meu = useRef<string | null>(null);
@@ -225,7 +234,45 @@ export function EditorRico({
     return { faixa, texto };
   }
 
+  /**
+   * Põe num bloco próprio o texto que está solto na raiz do campo.
+   *
+   * A primeira linha digitada num campo vazio nasce solta, fora de qualquer
+   * `<div>` - é o navegador -, e as seguintes já vêm em blocos. Solta, ela é
+   * puxada pelo comando de lista do navegador: o "- " da segunda linha virava
+   * item com a primeira junto. O cursor é guardado antes e devolvido depois,
+   * porque mover o texto de lugar o desfaria.
+   */
+  function embrulharSoltos() {
+    const raiz = caixa.current;
+    if (!raiz || !Array.from(raiz.children).some(f => /^(DIV|P|UL|OL)$/.test(f.tagName))) return;
+    // O nó e a posição, e não uma faixa: faixa é viva, e mover o nó a desfaria.
+    const sel = window.getSelection();
+    const faixa = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
+    const guardada = faixa && faixa.startContainer !== raiz
+      ? { no: faixa.startContainer, pos: faixa.startOffset } : null;
+    let bloco: HTMLDivElement | null = null;
+    for (const no of Array.from(raiz.childNodes)) {
+      const ehBloco = no.nodeType === Node.ELEMENT_NODE && /^(DIV|P|UL|OL)$/.test((no as Element).tagName);
+      if (ehBloco) { bloco = null; continue; }
+      if (!bloco) {
+        bloco = document.createElement('div');
+        raiz.insertBefore(bloco, no);
+      }
+      bloco.appendChild(no);
+    }
+    if (guardada && sel) {
+      const volta = document.createRange();
+      volta.setStart(guardada.no, guardada.pos);
+      volta.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(volta);
+    }
+  }
+
   function aoTeclar(e: React.KeyboardEvent<HTMLDivElement>) {
+    teclaDeFora?.(e);
+    if (e.defaultPrevented) return;
     const cmd = e.ctrlKey || e.metaKey;
     if (cmd && !e.altKey) {
       const t = e.key.toLowerCase();
@@ -235,6 +282,20 @@ export function EditorRico({
       document.execCommand(comando);
       avisar();
       return;
+    }
+
+    // Enter num item vazio sai da lista, como em qualquer editor. Sozinho, o
+    // navegador abre mais um item vazio, e a lista não tem fim.
+    if (e.key === 'Enter' && !e.shiftKey) {
+      const ancora = window.getSelection()?.anchorNode ?? null;
+      const el = ancora?.nodeType === Node.ELEMENT_NODE ? ancora as Element : ancora?.parentElement;
+      const item = el?.closest('li');
+      if (item && caixa.current?.contains(item) && !(item.textContent ?? '').trim()) {
+        e.preventDefault();
+        document.execCommand('insertUnorderedList');
+        avisar();
+        return;
+      }
     }
 
     // Endereço terminado vira link. No Enter é só marcar; o espaço é escrito
@@ -250,6 +311,7 @@ export function EditorRico({
     // "- " no começo da linha abre a lista, como em qualquer editor: o hífen
     // desaparece e a linha vira item.
     if (e.key === ' ') {
+      embrulharSoltos();
       const antes = antesDoCursor();
       if (!antes || antes.texto !== '-') return;
       e.preventDefault();
@@ -259,7 +321,18 @@ export function EditorRico({
       no.textContent = conteudo.slice(0, corte - 1) + conteudo.slice(corte);
       const sel = window.getSelection();
       const nova = document.createRange();
-      nova.setStart(no, corte - 1);
+      // A linha que era só o hífen fica vazia, e linha vazia sem `<br>` não tem
+      // altura: o navegador levava o cursor para o fim da linha de cima, e a
+      // lista nascia lá. O `<br>` é o corpo da linha, como o navegador mesmo
+      // faz numa linha em branco.
+      const bloco = no.parentElement;
+      if (!no.textContent && bloco && bloco !== caixa.current && !(bloco.textContent ?? '')) {
+        no.parentNode?.removeChild(no);
+        if (!bloco.querySelector('br')) bloco.appendChild(document.createElement('br'));
+        nova.setStart(bloco, 0);
+      } else {
+        nova.setStart(no, corte - 1);
+      }
       nova.collapse(true);
       sel?.removeAllRanges();
       sel?.addRange(nova);
@@ -271,6 +344,8 @@ export function EditorRico({
   /** Cola sempre como texto: o que vem de outro lugar traz HTML inteiro junto,
    *  e o campo guarda marcas, não estilos. */
   function aoColar(e: React.ClipboardEvent<HTMLDivElement>) {
+    colagemDeFora?.(e);
+    if (e.defaultPrevented) return;
     e.preventDefault();
     const texto = e.clipboardData.getData('text/plain');
     document.execCommand('insertText', false, texto);
@@ -289,7 +364,7 @@ export function EditorRico({
 
   return (
     <div
-      ref={caixa}
+      ref={el => { caixa.current = el; if (caixaRef) caixaRef.current = el; }}
       className={className ? `editor-rico ${className}` : 'editor-rico'}
       contentEditable
       suppressContentEditableWarning

@@ -18,6 +18,8 @@ import {
 import { PreviaArquivo } from './PreviaArquivo';
 import { quando, tamanho as fmtTamanho } from '../lib/datas';
 import { arquivosColados } from '../lib/colarArquivos';
+import { CampoTexto } from './CampoTexto';
+import { TextoRico } from './TextoRico';
 import { Avatar, type Pessoa } from '../admin/FormularioTarefa';
 
 /** Uma linha do diário, já em português.
@@ -119,7 +121,7 @@ function idsMarcados(texto: string): string[] {
  *  se lendo igual. */
 const SOLTAS = /(https?:\/\/[^\s]+)|#\[([^\]]+)\]|@([\w.]+)/g;
 
-function pedacosSoltos(texto: string, etapas?: EtapaMarcavel[]): React.ReactNode[] {
+function pedacosSoltos(texto: string, etapas?: EtapaMarcavel[], chave = ''): React.ReactNode[] {
   const saida: React.ReactNode[] = [];
   let ultimo = 0;
   let i = 0;
@@ -133,18 +135,18 @@ function pedacosSoltos(texto: string, etapas?: EtapaMarcavel[]): React.ReactNode
       const cauda = /[.,;:!?)\]]+$/.exec(url)?.[0] ?? '';
       if (cauda) url = url.slice(0, -cauda.length);
       saida.push(
-        <a key={i++} href={url} target="_blank" rel="noopener noreferrer"
+        <a key={`${chave}${i++}`} href={url} target="_blank" rel="noopener noreferrer"
           className="ativ-endereco" onClick={e => e.stopPropagation()}>{url}</a>,
       );
       if (cauda) saida.push(cauda);
     } else if (m[2]) {
       const etapa = etapas?.find(x => x.nome === m[2]);
       saida.push(
-        <span key={i++} className="ativ-marca ativ-marca-etapa"
+        <span key={`${chave}${i++}`} className="ativ-marca ativ-marca-etapa"
           style={etapa ? ({ ['--marca-cor' as string]: etapa.cor }) : undefined}>#{m[2]}</span>,
       );
     } else {
-      saida.push(<span key={i++} className="ativ-marca">@{m[3]}</span>);
+      saida.push(<span key={`${chave}${i++}`} className="ativ-marca">@{m[3]}</span>);
     }
     ultimo = em + m[0].length;
   }
@@ -152,15 +154,17 @@ function pedacosSoltos(texto: string, etapas?: EtapaMarcavel[]): React.ReactNode
   return saida;
 }
 
+/** O comentário lido: as marcas da casa - negrito, itálico, sublinhado, lista,
+ *  link -, pela mesma regra da descrição da tarefa, e as menções e etapas como
+ *  chips dentro de cada trecho. */
 function TextoDoComentario({ texto, etapas }: { texto: string; etapas?: EtapaMarcavel[] }) {
   return (
-    <p className="ativ-texto">
-      {pedacos(texto).map((p, i) => (
+    <TextoRico texto={texto} className="ativ-texto"
+      trecho={(t, chave) => pedacos(t).flatMap((p, i): React.ReactNode[] => (
         p.tipo === 'marca'
-          ? <span key={i} className="ativ-marca">@{p.valor}</span>
-          : <span key={i}>{pedacosSoltos(p.valor, etapas)}</span>
-      ))}
-    </p>
+          ? [<span key={`${chave}m${i}`} className="ativ-marca">@{p.valor}</span>]
+          : pedacosSoltos(p.valor, etapas, `${chave}s${i}-`)
+      ))} />
   );
 }
 
@@ -187,17 +191,30 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
   /** A marcação sendo escrita. `paraCima` e `altura` são medidos na hora de
    *  abrir: a caixa de comentário fica no pé do painel, e a lista para baixo
    *  nascia atrás da borda dele. */
-  const [busca, setBusca] = useState<
-    { tipo: 'pessoa' | 'etapa'; termo: string; inicio: number; paraCima: boolean; altura: number } | null
-  >(null);
-  const campo = useRef<HTMLTextAreaElement>(null);
+  const [busca, setBusca] = useState<{
+    tipo: 'pessoa' | 'etapa'; termo: string; paraCima: boolean; altura: number;
+    /** Onde o `@` está: o pedaço de texto da caixa e a posição dentro dele. */
+    no: Text; inicio: number;
+  } | null>(null);
+  const campo = useRef<HTMLDivElement | null>(null);
   const arquivo = useRef<HTMLInputElement>(null);
 
   /** Procura um `@` - ou um `#`, onde há etapas - em aberto imediatamente antes
    *  do cursor. Só vale se ele começar palavra: um e-mail digitado no meio da
-   *  frase não abre a lista. */
-  function verMarcacao(valor: string, cursor: number) {
-    const antes = valor.slice(0, cursor);
+   *  frase não abre a lista.
+   *
+   *  A caixa é o campo formatado da casa, e não um `textarea`: o cursor é lido
+   *  da seleção, no pedaço de texto em que ele está. */
+  function verMarcacao() {
+    const sel = window.getSelection();
+    const faixa = sel && sel.rangeCount && sel.isCollapsed ? sel.getRangeAt(0) : null;
+    const no = faixa?.startContainer;
+    if (!faixa || !no || no.nodeType !== Node.TEXT_NODE || !campo.current?.contains(no)) {
+      setBusca(null);
+      return;
+    }
+    const cursor = faixa.startOffset;
+    const antes = (no.textContent ?? '').slice(0, cursor);
     const m = /(^|\s)@([^\s@]*)$/.exec(antes);
     const e = etapas?.length ? /(^|\s)#([^\s#\[\]]*)$/.exec(antes) : null;
     const achado = m ?? e;
@@ -211,6 +228,7 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
     setBusca({
       tipo: m ? 'pessoa' : 'etapa',
       termo: achado[2],
+      no: no as Text,
       inicio: cursor - achado[2].length - 1,
       paraCima,
       altura: Math.max(120, Math.min(220, (paraCima ? acima : abaixo) - 8)),
@@ -227,9 +245,9 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
   /** Quem foi marcado nesta escrita: nome que foi para o texto -> id.
    *
    *  O texto gravado continua sendo `@[Nome](id)`, que é o que segura a ligação
-   *  quando alguém muda de nome. Mas o que se escreve é `@Nome`: a caixa é um
-   *  `textarea`, e o formato cru punha um código de 36 caracteres no meio da
-   *  frase de quem está escrevendo. A conversão acontece no envio. */
+   *  quando alguém muda de nome. Mas o que se escreve é `@Nome`: o formato cru
+   *  punha um código de 36 caracteres no meio da frase de quem está escrevendo.
+   *  A conversão acontece no envio. */
   const marcados = useRef(new Map<string, string>());
 
   /** Devolve o texto com as marcações no formato de gravação. Os nomes mais
@@ -253,18 +271,20 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
     inserir(`#[${x.nome}] `);
   }
 
+  /** Troca o `@termo` digitado pela marcação. Pela seleção e pelo comando de
+   *  escrever do navegador, como uma digitação: o campo avisa a mudança sozinho,
+   *  o cursor fica depois do nome, e o Ctrl+Z desfaz. */
   function inserir(trecho: string) {
-    if (!busca) return;
-    const el = campo.current;
-    const cursor = el?.selectionStart ?? texto.length;
-    setTexto(`${texto.slice(0, busca.inicio)}${trecho}${texto.slice(cursor)}`);
+    const sel = window.getSelection();
+    if (!busca || !sel || !sel.rangeCount || !busca.no.isConnected) { setBusca(null); return; }
+    const cursor = sel.getRangeAt(0);
+    const alvo = document.createRange();
+    alvo.setStart(busca.no, Math.max(0, busca.inicio));
+    alvo.setEnd(cursor.startContainer, cursor.startOffset);
+    sel.removeAllRanges();
+    sel.addRange(alvo);
+    document.execCommand('insertText', false, trecho);
     setBusca(null);
-    // Devolve o foco e põe o cursor depois da marcação recém-inserida.
-    requestAnimationFrame(() => {
-      const pos = busca.inicio + trecho.length;
-      el?.focus();
-      el?.setSelectionRange(pos, pos);
-    });
   }
 
   async function escolherArquivos(lista: FileList | File[] | null) {
@@ -296,7 +316,9 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
    * do que se escreveu se perde.
    */
   async function enviar() {
-    const limpo = texto.trim();
+    // O campo editável escreve o espaço do fim como espaço que não quebra; no
+    // texto guardado ele volta a ser espaço comum.
+    const limpo = texto.replace(/\u00a0/g, ' ').trim();
     if ((!limpo && anexos.length === 0) || enviando) return;
     setEnviando(true);
     setErro(null);
@@ -310,26 +332,53 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
   return (
     <div className="ativ-escrever">
       <div className="ativ-campo-caixa">
-        <textarea
-          ref={campo}
-          className="form-input ativ-campo"
-          rows={2}
-          value={texto}
+        {/* O campo da casa: Ctrl+B, Ctrl+I e Ctrl+U formatam, "- " abre lista,
+            e o texto sai guardado com as marcas leves, como a descrição da
+            tarefa. */}
+        <CampoTexto
+          caixaRef={campo}
+          className="ativ-campo"
+          linhas={2}
+          alturaMaxima={240}
+          valor={texto}
           autoFocus={autoFoco}
+          ariaLabel="Comentário"
           placeholder={etapas?.length
             ? 'Escreva um comentário. Use @ para marcar alguém e # para uma etapa.'
             : 'Escreva um comentário. Use @ para marcar alguém.'}
-          onChange={e => { setTexto(e.target.value); verMarcacao(e.target.value, e.target.selectionStart); }}
-          onKeyDown={e => {
+          onMudar={t => { setTexto(t); verMarcacao(); }}
+          aoTeclar={e => {
+            const lista = busca && (candidatos.length > 0 || candidatasEtapas.length > 0);
             if (e.key === 'Escape' && busca) { e.preventDefault(); setBusca(null); return; }
+            // Com a lista de menções aberta, Enter e Tab escolhem a primeira.
+            if (lista && (e.key === 'Enter' || e.key === 'Tab')) {
+              e.preventDefault();
+              if (candidatos[0]) marcar(candidatos[0]);
+              else marcarEtapa(candidatasEtapas[0]);
+              return;
+            }
             // Enter envia, Shift+Enter quebra linha: é o que a mão já espera de
-            // uma caixa de comentário.
-            if (e.key === 'Enter' && !e.shiftKey && !busca) { e.preventDefault(); void enviar(); }
+            // uma caixa de comentário. Dentro de uma lista, Enter abre o item
+            // seguinte - e num item vazio, sai dela -, como em qualquer editor.
+            // Shift+Enter abre uma linha nova como bloco próprio, que é o que o
+            // Enter faz na descrição da tarefa. Deixado ao navegador, ele põe
+            // uma quebra dentro do mesmo bloco, e o "- " da linha de baixo
+            // transformaria as duas linhas numa lista só.
+            if (e.key === 'Enter' && e.shiftKey) {
+              e.preventDefault();
+              document.execCommand('insertParagraph');
+              return;
+            }
+            if (e.key === 'Enter') {
+              if (document.queryCommandState('insertUnorderedList')) return;
+              e.preventDefault();
+              void enviar();
+            }
           }}
           onBlur={() => setTimeout(() => setBusca(null), 120)}
           // O print colado entra como anexo, igual ao que o clipe traria. Texto
           // colado segue sendo texto: o evento só é engolido quando veio arquivo.
-          onPaste={e => {
+          aoColar={e => {
             if (!permiteAnexo) return;
             const colados = arquivosColados(e.clipboardData);
             if (!colados.length) return;
