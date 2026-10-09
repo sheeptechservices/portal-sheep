@@ -596,6 +596,10 @@ export async function tarefaVisivel(db: Client, usuario: UsuarioAdmin | null | u
  *  base64, e arquivo grande aqui pesa em toda leitura da conversa. */
 const LIMITE_ANEXO = 8 * 1024 * 1024;
 
+/** O anexo de comentário sobe sozinho, num pedido só dele, e o pedido da
+ *  Vercel para em 4,5 MB: em base64, 3 MB de arquivo chegam com folga. */
+const LIMITE_ANEXO_DE_COMENTARIO = 3 * 1024 * 1024;
+
 /** A proposta subida como arquivo: até 12 partes de 2,4 MB, que em base64 dão
  *  3,2 milhões de letras cada - o pedido inteiro fica abaixo dos 4,5 MB da
  *  Vercel. A tela para em 25 MB, que cabe em 11. */
@@ -2346,6 +2350,22 @@ async function migrarSchema(db: Client) {
     )
   `);
 
+  // O anexo que subiu e ainda espera o comentário. Os anexos iam todos dentro
+  // do pedido do comentário, e sete prints passavam dos 4,5 MB que a Vercel
+  // aceita: o pedido era recusado antes de chegar aqui. Agora cada um sobe
+  // sozinho para cá, e o comentário os puxa de uma vez quando é criado. O que
+  // ficou para trás - a aba fechada antes de comentar - sai depois de um dia.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS comentario_anexos_pendentes (
+      id         TEXT PRIMARY KEY,
+      usuario_id TEXT,
+      nome       TEXT NOT NULL,
+      tipo       TEXT NOT NULL,
+      tamanho    INTEGER NOT NULL,
+      base64     TEXT NOT NULL,
+      criado_em  TEXT NOT NULL
+    )
+  `);
   await ddl(`
     -- Anexo do comentário. Mesmo formato das evidências de entrega: o conteúdo
     -- mora no banco em base64, que é o que este portal já faz em toda parte.
@@ -7574,14 +7594,58 @@ function faltaEmProjeto(p: any): string | null {
       return { status: 200, body: { ok: true } };
     }
 
+    /** Um anexo de comentário, sozinho. Devolve o id com que o comentário vai
+     *  buscá-lo. */
+    if (action === 'subir_anexo_comentario') {
+      const nome = String(body?.nome ?? '').trim().slice(0, 200);
+      const base64 = String(body?.base64 ?? '');
+      if (!nome || !base64) return { status: 400, body: { error: 'O anexo chegou vazio.' } };
+      // O tamanho do arquivo, contado no base64: cada 4 letras são 3 bytes, menos
+      // o `=` de enchimento do fim.
+      const tamanho = Math.floor(base64.length * 3 / 4) - (/==$/.test(base64) ? 2 : /=$/.test(base64) ? 1 : 0);
+      if (tamanho > LIMITE_ANEXO_DE_COMENTARIO) {
+        return { status: 413, body: { error: `"${nome}" passa de 3 MB.` } };
+      }
+      const id = randomUUID();
+      const agora = new Date().toISOString();
+      await db.execute({
+        sql: `INSERT INTO comentario_anexos_pendentes (id, usuario_id, nome, tipo, tamanho, base64, criado_em)
+              VALUES (?,?,?,?,?,?,?)`,
+        args: [id, autorId ?? null, nome, String(body?.tipo ?? 'application/octet-stream').slice(0, 150),
+          tamanho, base64, agora],
+      });
+      // O que ficou para trás de outras vezes sai aqui: é quando se sobe que
+      // o lixo se forma.
+      await db.execute({
+        sql: 'DELETE FROM comentario_anexos_pendentes WHERE criado_em < ?',
+        args: [new Date(Date.now() - 86_400_000).toISOString()],
+      }).catch(() => null);
+      return { status: 200, body: { ok: true, id } };
+    }
+
     if (action === 'add_tarefa_comentario') {
       const tarefaId = Number(body?.tarefa_id);
       if (!Number.isFinite(tarefaId)) return { status: 400, body: { error: 'tarefa_id ausente.' } };
       { const barrado = await guardaDaEquipe(db, usuario, tarefaId, 'tarefa'); if (barrado) return barrado; }
       const texto = String(body?.texto ?? '').trim();
       const anexos: any[] = Array.isArray(body?.anexos) ? body.anexos : [];
+      // Os anexos que já subiram, um a um, pela área de espera. Conferidos antes
+      // de o comentário existir: faltando um, nada é gravado, e quem escreveu
+      // continua com o texto e os arquivos na caixa.
+      const idsDosAnexos: string[] = Array.isArray(body?.anexos_ids)
+        ? [...new Set((body.anexos_ids as unknown[]).map(v => String(v)))].slice(0, 30) : [];
+      if (idsDosAnexos.length) {
+        const achados = await db.execute({
+          sql: `SELECT id FROM comentario_anexos_pendentes
+                WHERE id IN (${idsDosAnexos.map(() => '?').join(',')}) AND usuario_id IS ?`,
+          args: [...idsDosAnexos, autorId ?? null],
+        });
+        if (achados.rows.length !== idsDosAnexos.length) {
+          return { status: 400, body: { error: 'Um dos anexos não chegou. Anexe de novo e comente.' } };
+        }
+      }
       // Comentário só com anexo é legítimo; vazio de tudo, não.
-      if (!texto && anexos.length === 0) {
+      if (!texto && anexos.length === 0 && idsDosAnexos.length === 0) {
         return { status: 400, body: { error: 'Escreva alguma coisa ou anexe um arquivo.' } };
       }
 
@@ -7648,6 +7712,21 @@ function faltaEmProjeto(p: any): string | null {
                 VALUES (?,?,?,?,?,?)`,
           args: [comentarioId, String(a.nome), String(a.tipo ?? 'application/octet-stream'),
             tamanho, String(a.base64), agora] as never[],
+        });
+      }
+      // Os da área de espera passam para o comentário, na ordem em que foram
+      // anexados, e saem de lá no mesmo lote.
+      for (const id of idsDosAnexos) {
+        paraGravar.push({
+          sql: `INSERT INTO tarefa_comentario_anexos (comentario_id, nome, tipo, tamanho, base64, criado_em)
+                SELECT ?, nome, tipo, tamanho, base64, ? FROM comentario_anexos_pendentes WHERE id = ?`,
+          args: [comentarioId, agora, id] as never[],
+        });
+      }
+      if (idsDosAnexos.length) {
+        paraGravar.push({
+          sql: `DELETE FROM comentario_anexos_pendentes WHERE id IN (${idsDosAnexos.map(() => '?').join(',')})`,
+          args: idsDosAnexos as never[],
         });
       }
       // Numa leva só, como as menções.

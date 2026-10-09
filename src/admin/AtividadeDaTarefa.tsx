@@ -10,7 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useMemo } from 'react';
 import {
-  Atividade, type ComentarioAtividade, type EventoAtividade,
+  Atividade, type AnexoPendente, type ComentarioAtividade, type EventoAtividade,
 } from '../components/Atividade';
 import type { Pessoa } from './FormularioTarefa';
 
@@ -72,11 +72,26 @@ export function AtividadeDaTarefa({ tarefaId, pessoas, usuarioId, podeComentar, 
         comentarios: (r?.comentarios ?? []) as ComentarioAtividade[],
       };
     },
-    enviar: (texto: string, anexos: unknown[], paiId: number | null) => api('', 'POST', {
-      action: 'add_tarefa_comentario',
-      tarefa_id: tarefaId, pai_id: paiId, texto,
-      mencoes: idsMarcados(texto), anexos,
-    }),
+    // Cada anexo sobe sozinho, todos ao mesmo tempo, e só então o comentário é
+    // criado, levando os ids. Dentro de um pedido só, sete prints passavam dos
+    // 4,5 MB que a Vercel aceita, e o comentário sumia sem chegar ao servidor.
+    enviar: async (texto: string, anexos: AnexoPendente[], paiId: number | null) => {
+      const subidos = await Promise.all(anexos.map(a => api('', 'POST', {
+        action: 'subir_anexo_comentario', nome: a.nome, tipo: a.tipo, base64: a.base64,
+      }).catch(() => null)));
+      const falhou = subidos.findIndex(r => !r?.ok || !r.id);
+      if (falhou >= 0) {
+        return { error: subidos[falhou]?.error ?? `"${anexos[falhou].nome}" não subiu. Tente de novo.` };
+      }
+      const r = await api('', 'POST', {
+        action: 'add_tarefa_comentario',
+        tarefa_id: tarefaId, pai_id: paiId, texto,
+        mencoes: idsMarcados(texto), anexos_ids: subidos.map(x => String(x.id)),
+      });
+      // Resposta vazia é falha: é o que chega quando o pedido é recusado antes
+      // do servidor, e tratá-la como sucesso apagava o comentário da caixa.
+      return r ?? { error: 'O comentário não chegou ao servidor. Tente de novo.' };
+    },
     excluir: (id: number) => api('', 'POST', { action: 'excluir_tarefa_comentario', id }),
     anexo: (id: number) => api(`?action=tarefa_comentario_anexo_base64&id=${id}`),
     joinha: (id: number, ligar: boolean) => api('', 'POST', { action: 'joinha_tarefa_comentario', id, ligar }),

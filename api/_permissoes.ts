@@ -312,6 +312,8 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   tarefas_filtradas: 'tarefas:ver',
   tarefas_projetos: 'tarefas:ver',
   add_tarefa_comentario: 'tarefas:comentar',
+  // O anexo sobe antes do comentário, pela mesma porta de comentar.
+  subir_anexo_comentario: 'tarefas:comentar',
   excluir_tarefa_comentario: 'tarefas:comentar',
   // O joinha e participar da conversa, como comentar.
   joinha_tarefa_comentario: 'tarefas:comentar',

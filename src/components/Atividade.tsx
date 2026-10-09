@@ -77,7 +77,9 @@ export interface AnexoPendente {
   base64: string;
 }
 
-const LIMITE_ANEXO = 8 * 1024 * 1024;
+/** Por arquivo. Cada anexo sobe num pedido só dele, e o pedido da Vercel para
+ *  em 4,5 MB: em base64, 3 MB chegam com folga. */
+const LIMITE_ANEXO = 3 * 1024 * 1024;
 
 const fmtDataHora = (iso: string) => {
   const d = new Date(iso);
@@ -679,7 +681,11 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
   async function enviar(texto: string, anexos: AnexoPendente[], paiId: number | null): Promise<string | null> {
     try {
       const r = await dono.enviar(texto, anexos, paiId);
-      if (r?.error) return String(r.error);
+      // Sem resposta nenhuma também é falha: o pedido recusado antes do
+      // servidor volta vazio, e contar isso como gravado esvaziava a caixa de
+      // um comentário que nunca existiu.
+      if (!r) return 'O comentário não chegou ao servidor. Tente de novo.';
+      if (r.error) return String(r.error);
       await carregar();
       setRespondendo(null);
       return null;
