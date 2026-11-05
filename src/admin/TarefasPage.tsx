@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { iniciais, useAuth, useToast } from './AdminApp';
 import {
-  IconAgrupar, IconAlert, IconCalendario, IconCheck, IconChevronDown, IconClip, IconComentario, IconInbox, IconRecolher,
+  IconAgrupar, IconAlert, IconCalendario, IconCheck, IconChevronDown, IconInbox, IconRecolher,
   IconDownload, IconDuplicar, IconOrdenar, IconPlus, IconSearch, IconTrash, IconUser,
   IconVisaoLista, IconVisaoQuadro,
   IconVisaoTabela, IconX,
@@ -46,6 +46,7 @@ import {
   type Etapario, type EtiquetaTarefa, type Etiquetario, type Pessoa, type Rascunho,
 } from './FormularioTarefa';
 import { DonosDaTarefa } from '../components/DonosDaTarefa';
+import { SinaisDaTarefa } from '../components/SinaisDaTarefa';
 import { nomesDosDonos } from '../lib/donosDaTarefa';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import { dia as fmtData } from '../lib/datas';
@@ -191,32 +192,6 @@ function diasPara(iso: string | null): number | null {
 const semAcento = (t: string) =>
   t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLocaleLowerCase('pt-BR');
 
-
-/** O que a tarefa carrega além do título: conversa e arquivos.
- *
- *  Só aparece havendo algo - zero comentário não é uma informação, é a
- *  ausência dela, e um "0" em cada cartão de uma coluna cheia vira sujeira. */
-function SinaisDaTarefa({ t }: { t: Tarefa }) {
-  const conversa = t.comentarios ?? 0;
-  const arquivos = t.anexos ?? 0;
-  if (conversa === 0 && arquivos === 0) return null;
-  return (
-    <span className="tarefa-sinais">
-      {conversa > 0 && (
-        <span title={`${conversa} comentário${conversa > 1 ? 's' : ''}`}>
-          <IconComentario size={12} />
-          {conversa}
-        </span>
-      )}
-      {arquivos > 0 && (
-        <span title={`${arquivos} anexo${arquivos > 1 ? 's' : ''}`}>
-          <IconClip size={12} />
-          {arquivos}
-        </span>
-      )}
-    </span>
-  );
-}
 
 function ChipStatus({ status, cor }: { status: string; cor: string }) {
   return (
@@ -1183,6 +1158,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
           api={api}
           onMudar={setForm}
           onFechar={() => void fecharTarefa()}
+          onConversaMudou={reconciliar}
           onSalvar={() => salvar(form)}
           onExcluir={podeExcluir && form.id ? () => {
             const alvo = tarefas.find(x => x.id === form.id);

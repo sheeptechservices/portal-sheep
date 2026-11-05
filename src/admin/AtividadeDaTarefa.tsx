@@ -54,12 +54,15 @@ export function frase(e: EventoDaTarefa): EventoAtividade {
 const MARCA = /@\[([^\]]+)\]\(([^)]+)\)/g;
 const idsMarcados = (texto: string) => [...new Set([...texto.matchAll(MARCA)].map(m => m[2]))];
 
-export function AtividadeDaTarefa({ tarefaId, pessoas, usuarioId, podeComentar, api }: {
+export function AtividadeDaTarefa({ tarefaId, pessoas, usuarioId, podeComentar, api, onConversaMudou }: {
   tarefaId: number;
   pessoas: Pessoa[];
   usuarioId: string | undefined;
   podeComentar: boolean;
   api: (path: string, method?: string, body?: unknown) => Promise<any>;
+  /** Comentário entrou ou saiu: o cartão no quadro atrás conta os comentários e
+   *  os anexos, e sem este aviso o número ficaria velho até a próxima leitura. */
+  onConversaMudou?: () => void;
 }) {
   // Preso ao id e ao `api`: um objeto novo a cada quadro faria a atividade
   // reler sem ninguém ter pedido.
@@ -90,12 +93,17 @@ export function AtividadeDaTarefa({ tarefaId, pessoas, usuarioId, podeComentar, 
       });
       // Resposta vazia é falha: é o que chega quando o pedido é recusado antes
       // do servidor, e tratá-la como sucesso apagava o comentário da caixa.
+      if (r && !r.error) onConversaMudou?.();
       return r ?? { error: 'O comentário não chegou ao servidor. Tente de novo.' };
     },
-    excluir: (id: number) => api('', 'POST', { action: 'excluir_tarefa_comentario', id }),
+    excluir: async (id: number) => {
+      const r = await api('', 'POST', { action: 'excluir_tarefa_comentario', id });
+      if (r && !r.error) onConversaMudou?.();
+      return r;
+    },
     anexo: (id: number) => api(`?action=tarefa_comentario_anexo_base64&id=${id}`),
     joinha: (id: number, ligar: boolean) => api('', 'POST', { action: 'joinha_tarefa_comentario', id, ligar }),
-  }), [api, tarefaId]);
+  }), [api, tarefaId, onConversaMudou]);
 
   return (
     <Atividade dono={dono} pessoas={pessoas} usuarioId={usuarioId}

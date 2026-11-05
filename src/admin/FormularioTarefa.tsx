@@ -754,7 +754,9 @@ export function SeletorEtiquetas({ valor, opcoes, etq, onChange, desabilitado }:
 
 export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etiquetaPorPapel,
   usuarioId, etq, pessoas, salvando, somenteLeitura, podeComentar, api,
-  onMudar, onFechar, onSalvar, onExcluir, onDuplicar, onEntregaCriada }: {
+  onMudar, onFechar, onSalvar, onExcluir, onDuplicar, onEntregaCriada, onConversaMudou }: {
+  /** Comentário entrou ou saiu, para o cartão atualizar as contagens dele. */
+  onConversaMudou?: () => void;
   /** Recebe a entrega que acabou de nascer pelo seletor, para a tela a pôr na
    *  lista do projeto. Ausente para quem não edita projeto - e aí o seletor não
    *  oferece criar, porque o servidor recusaria. */
@@ -1378,6 +1380,7 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
               usuarioId={usuarioId}
               podeComentar={!!podeComentar}
               api={api}
+              onConversaMudou={onConversaMudou}
             />
           )}
         </div>

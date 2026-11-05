@@ -98,6 +98,7 @@ import { CampoBusca } from '../components/CampoBusca';
 import { DatePicker } from '../components/DatePicker';
 import { COR_ENTREGA, ICONE_ENTREGA } from '../lib/etapasEntrega';
 import { DonosDaTarefa } from '../components/DonosDaTarefa';
+import { SinaisDaTarefa } from '../components/SinaisDaTarefa';
 import { SeletorPessoas } from '../components/SeletorPessoas';
 import {
   SecaoReunioes, type Reuniao, type ReuniaoFF,
@@ -1382,6 +1383,7 @@ function ColunaDoQuadro({ etapa, tarefas, pessoas, podeEditar, arrastando, onAbr
                 {ICONE_PRIORIDADE[x.prioridade ?? PRIORIDADE_PADRAO]?.({ size: 12 })}
               </span>
               {x.prazo && <span>{fmtData(x.prazo)}</span>}
+              <SinaisDaTarefa t={x} />
               {x.responsaveis?.length > 0 && (
                 <span style={{ marginLeft: 'auto' }}>
                   <DonosDaTarefa ids={x.responsaveis} pessoas={pessoas} size={16} />
@@ -8028,6 +8030,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           api={api}
           onMudar={setRascunhoTarefa}
           onFechar={() => setRascunhoTarefa(null)}
+          onConversaMudou={reconciliar}
           onSalvar={() => salvarRascunho(rascunhoTarefa)}
           onExcluir={pode('tarefas:excluir') && rascunhoTarefa.id ? () => {
             const alvo = projetos.flatMap(p => p.tarefas ?? []).find(x => x.id === rascunhoTarefa.id);
