@@ -2071,9 +2071,10 @@ function SecaoEntregas({
   const [busca, setBusca] = useState('');
   const [ordem, setOrdem] = useState<string>('prioridade');
   // Dois níveis, escolhidos na tela: o grupo maior e o que se reparte dentro
-  // dele. Desligado por padrão - agrupar ajuda em lista longa e atrapalha em
-  // lista curta.
-  const [maior, setMaior] = useState<Dimensao>('nenhum');
+  // dele. A ficha do projeto abre por etapa, como a página do cliente: a primeira
+  // pergunta de quem abre um projeto é em que pé cada entrega está. A Planning
+  // segue sem grupo.
+  const [maior, setMaior] = useState<Dimensao>(naPlanning ? 'nenhum' : 'status');
   const [menor, setMenor] = useState<Dimensao>('nenhum');
 
   const visiveis = useMemo(() => {
