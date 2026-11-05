@@ -20,7 +20,7 @@
 export interface OpcoesOndas {
   /** Quão rápido a onda anda. */
   velocidade?: number;
-  /** Peso do teal aceso sobre o cinza-azulado do fundo. */
+  /** Peso do limão aceso sobre o cinza-azulado do fundo. */
   brilho?: number;
   /**
    * Camadas de deformação do laço. Cada uma é uma ida de seno e cosseno por
@@ -42,7 +42,7 @@ export interface Ondas {
 
 /**
  * Shader das ondas, porte fiel do template: deforma o plano com uma soma de
- * senos e cossenos realimentada e tira dali o brilho e a banda em teal.
+ * senos e cossenos realimentada e tira dali o brilho e a banda em limão.
  *
  * O número de camadas entra no código-fonte, e não como uniform, porque WebGL 1
  * exige limite constante em laço - trocar isso em tempo de execução obrigaria a
@@ -65,10 +65,10 @@ void main(){
   float mid = pow(s, 2.2);
   float gold = pow(0.5 + 0.5*sin(q.x*0.9 - q.y*1.3 + t*0.5), 3.0);
   vec3 base = vec3(0.016, 0.018, 0.026);
-  vec3 midC = mix(vec3(0.020, 0.080, 0.068), vec3(0.035, 0.150, 0.125), gold*u_warm);
-  vec3 hi   = mix(vec3(0.10, 0.82, 0.68), vec3(0.25, 0.92, 0.80), gold*u_warm);
+  vec3 midC = mix(vec3(0.070, 0.078, 0.004), vec3(0.135, 0.150, 0.006), gold*u_warm);
+  vec3 hi   = mix(vec3(0.78, 0.86, 0.02), vec3(0.91, 0.99, 0.10), gold*u_warm);
   vec3 col = base + midC*mid + hi*sheen*0.85;
-  col += vec3(0.05, 0.72, 0.60) * gold * mid * sheen * 0.5 * u_warm;
+  col += vec3(0.68, 0.74, 0.01) * gold * mid * sheen * 0.5 * u_warm;
   float vig = smoothstep(1.45, 0.35, length(uv));
   col *= 0.55 + 0.45*vig;
   gl_FragColor = vec4(col, 1.0);

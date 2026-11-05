@@ -494,7 +494,7 @@ function GraficoFechados({ serie, metrica }: { serie: MesFechado[]; metrica: Met
 //  decisão errada numa reunião, e o aviso custa uma etiqueta.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** A paleta dos gráficos: o verde da casa, e os tons que as etapas de entrega
+/** A paleta dos gráficos: o limão da casa, e os tons que as etapas de entrega
  *  já usam. Nada de hex novo - cor de dado no sistema sai daqui. */
 const TINTA = {
   principal: 'var(--yellow)',

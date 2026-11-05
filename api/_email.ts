@@ -84,7 +84,7 @@ export function fichaEmail(itens: [string, string][]): string {
 export function citacaoEmail(texto: string): string {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 4px">
     <tr>
-      <td style="padding:12px 16px;background:#F7F6F3;border-left:3px solid #00C9A7;border-radius:0 10px 10px 0;
+      <td style="padding:12px 16px;background:#F7F6F3;border-left:3px solid #E9FC00;border-radius:0 10px 10px 0;
                  font-size:14px;line-height:1.6;color:#2E2E2B;white-space:pre-wrap">${esc(texto)}</td>
     </tr>
   </table>`;
@@ -174,7 +174,7 @@ export function layoutEmail(titulo: string, corpo: string, opcoes?: { previa?: s
             </a>
           </td>
         </tr>
-        <tr><td style="padding:20px 30px 0"><div style="height:3px;width:32px;border-radius:2px;background:#00C9A7"></div></td></tr>
+        <tr><td style="padding:20px 30px 0"><div style="height:3px;width:32px;border-radius:2px;background:#E9FC00"></div></td></tr>
         <tr>
           <td style="padding:14px 30px 0">
             <h1 style="margin:0;font-family:${FONTE_EMAIL};font-size:19px;line-height:1.35;font-weight:800;color:#121316">${esc(titulo)}</h1>

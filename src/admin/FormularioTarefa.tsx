@@ -731,7 +731,7 @@ export function SeletorEtiquetas({ valor, opcoes, etq, onChange, desabilitado }:
                 </span>
                 <span aria-hidden="true" style={{
                   display: 'inline-flex', flexShrink: 0,
-                  color: 'var(--yellow)', visibility: ativo ? 'visible' : 'hidden',
+                  color: 'var(--yellow-tinta)', visibility: ativo ? 'visible' : 'hidden',
                 }}>
                   <IconCheck size={13} />
                 </span>

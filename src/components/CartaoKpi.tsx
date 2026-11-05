@@ -30,6 +30,8 @@ export function CartaoKpi({ rotulo, valor, nota, cor, atraso = 0, ativo, onClick
       // de mão para todos, e aqui ele é desfeito.
       style={{
         '--accent-color': cor,
+        // O numero nao pode sair em limao cheio: sobre o cartao claro ele some.
+        '--accent-texto': cor === 'var(--yellow)' ? 'var(--yellow-tinta)' : cor,
         animationDelay: `${atraso}s`,
         cursor: interativo ? 'pointer' : 'default',
       } as CSSProperties}

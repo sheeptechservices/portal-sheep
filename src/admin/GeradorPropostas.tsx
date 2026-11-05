@@ -2982,7 +2982,7 @@ const ESTILO = `
     font-variant-numeric: tabular-nums;
     transition: background var(--transition), color var(--transition);
   }
-  .gp-passo.pronto .gp-passo-num { background: var(--yd); color: var(--yellow); }
+  .gp-passo.pronto .gp-passo-num { background: var(--yd); color: var(--yellow-tinta); }
   .gp-passo.atual {
     border-color: var(--yellow); background: var(--yd); color: var(--black);
   }

@@ -6,23 +6,26 @@
   --gray:   #666666;
   --gray2:  #AAAAAA;
   --gray3:  #E3E4DE;
-  --yellow: #00C9A7;
+  --yellow: #E9FC00;
   /* Texto/ícone SOBRE o amarelo. Fixo nos dois temas: o amarelo não muda, então
      o que fica em cima dele também não pode mudar (--black clareia no escuro). */
   --on-yellow: #121316;
-  --yd:     rgba(0, 201, 167, 0.12);
-  --yb:     rgba(0, 201, 167, 0.40);
-  /* O verde para TEXTO sobre o `--yd`. O `--yellow` cheio e claro demais para
-     numero e rotulo pequenos sobre fundo claro; este e o mesmo tom, dois
-     degraus mais fundo, que e o que da contraste sem sair da cor da casa. */
-  --yellow-tinta: #00806B;
+  --yd:     rgba(233, 252, 0, 0.30);
+  --yb:     rgba(190, 206, 0, 0.60);
+  /* O limao para TEXTO e icone solto. O `--yellow` cheio some sobre fundo claro
+     (contraste perto de 1:1); este e o mesmo tom escurecido ate dar leitura. Limao
+     cheio so como fundo, com `--on-yellow` em cima, ou no tema escuro. */
+  --yellow-tinta: #636B00;
   /* Cor do arco que gira nos carregamentos. Token próprio e não `--yellow`
      porque o amarelo também pinta badge, gráfico e relatório: o carregamento
      mudar de cor não deve arrastar o resto do sistema junto. */
-  --spinner: #00C9A7;
+  --spinner: #121316;
+  /* Linha de grafico: limao sobre fundo claro nao se le. No claro ela e preta, com
+     a area em limao embaixo; no escuro volta a ser limao. */
+  --grafico-linha: #121316;
   --red:    #D93025;
   --green:  #1E8A3E;
-  /* Ambar de estado. O `--yellow` da casa e o teal da marca, entao "amarelo" no
+  /* Ambar de estado. O `--yellow` da casa e o verde-limao da marca, entao "amarelo" no
      sentido de atencao precisava de token proprio - e o mesmo tom que a
      prioridade Media ja usa. */
   --amber:  #B58300;
@@ -73,7 +76,7 @@
 
   --shadow-card: 0 2px 8px rgba(0,0,0,0.07);
   --shadow-card-hover: 0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06);
-  --shadow-yellow: 0 4px 20px rgba(0, 201, 167,0.35);
+  --shadow-yellow: 0 4px 20px rgba(233, 252, 0,0.35);
   --transition:  .1s ease;
   --transition-spring: .18s cubic-bezier(0.4, 0, 0.2, 1);
   --curva-anti: cubic-bezier(0.2, 0.6, 0.2, 1);
@@ -128,11 +131,13 @@
      "em relevo". */
   --grafico-faixa: var(--card-hover-bg);
   --grafico-faixa-forte: var(--gray3);
-  --yd:     rgba(0, 201, 167, 0.16);
-  --yb:     rgba(0, 201, 167, 0.45);
+  --yd:     rgba(233, 252, 0, 0.13);
+  --yb:     rgba(233, 252, 0, 0.45);
   /* No escuro o caminho e o contrario: o texto sobe de luminosidade para
      aparecer sobre a chapa verde escura. */
-  --yellow-tinta: #3FE0C2;
+  --yellow-tinta: #E9FC00;
+  --spinner: #E9FC00;
+  --grafico-linha: #E9FC00;
   --shadow-card: 0 2px 10px rgba(0,0,0,0.55);
   --shadow-card-hover: 0 8px 32px rgba(0,0,0,0.65), 0 2px 8px rgba(0,0,0,0.5);
   /* O azul do tema claro fica escuro demais sobre a folha quase preta: aqui
@@ -182,7 +187,7 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   flex-shrink: 0;
 }
 .dux-spinner.sm { width: 16px; height: 16px; border-width: 2px; }
-/* Dentro de botao colorido o giro herda a cor do texto: o cinza com topo teal
+/* Dentro de botao colorido o giro herda a cor do texto: o cinza com topo escuro
    sumiria no fundo. E a mesma peca, so que vestida do que estiver em volta. */
 .dux-spinner.na-cor {
   border-color: color-mix(in srgb, currentColor 35%, transparent);
@@ -311,7 +316,7 @@ body {
 
 @keyframes pulse-glow {
   0%, 100% { box-shadow: 0 0 0 4px var(--yd); }
-  50%       { box-shadow: 0 0 0 6px rgba(0, 201, 167,0.20); }
+  50%       { box-shadow: 0 0 0 6px rgba(233, 252, 0,0.20); }
 }
 
 .animate { animation: up .2s var(--transition-spring) both; }
@@ -369,12 +374,12 @@ body {
 
 .app-header-logo img:hover {
   animation: logo-spin-bounce .5s cubic-bezier(.34,1.56,.64,1) forwards;
-  filter: drop-shadow(0 0 14px rgba(0, 201, 167,.55));
+  filter: drop-shadow(0 0 14px rgba(233, 252, 0,.55));
 }
 
 .app-header-logo img:active {
   transform: scale(0.86) rotate(-8deg);
-  filter: drop-shadow(0 0 8px rgba(0, 201, 167,.8));
+  filter: drop-shadow(0 0 8px rgba(233, 252, 0,.8));
 }
 
 @keyframes logo-float {
@@ -935,8 +940,8 @@ textarea.form-input {
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #00A88C;
-  border-color: #00A88C;
+  background: #D3E600;
+  border-color: #D3E600;
   box-shadow: var(--shadow-yellow);
   transform: translateY(-2px);
 }
@@ -1296,7 +1301,7 @@ body.has-footer-banner .app-content {
 }
 
 .tooltip-footer-banner-title svg {
-  color: var(--yellow);
+  color: var(--yellow-tinta);
   flex-shrink: 0;
 }
 
@@ -1594,7 +1599,7 @@ body.has-footer-banner .app-content {
   animation: up .4s ease 1.22s both;
 }
 
-.success-notice svg { color: var(--yellow); }
+.success-notice svg { color: var(--yellow-tinta); }
 .success-notice strong { color: var(--black); }
 
 .success-whatsapp-link {
@@ -2338,11 +2343,11 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   /* Palco das ondas: o fundo e os dois focos quentes que passeiam por ele. Os
      focos são o movimento de reserva, o que a tela mostra enquanto o canvas em
      WebGL está fora do ar. */
-  --lg-palco-brasa:  rgba(30, 190, 160, .30);
-  --lg-palco-brilho: rgba(18, 120, 102, .26);
-  /* Risco acima da frase do palco: acompanha o teal das ondas. */
-  --lg-risco-claro: #5FE8CE;
-  --lg-risco-esc:   #00C9A7;
+  --lg-palco-brasa:  rgba(210, 228, 0, .30);
+  --lg-palco-brilho: rgba(120, 132, 0, .26);
+  /* Risco acima da frase do palco: acompanha o limao das ondas. */
+  --lg-risco-claro: #F4FF70;
+  --lg-risco-esc:   #E9FC00;
 
   display: flex;
   min-height: 100vh;
@@ -6462,7 +6467,7 @@ button.checklist-texto:focus-visible {
 .agrupar-marca {
   margin-left: auto;
   display: inline-flex;
-  color: var(--yellow);
+  color: var(--yellow-tinta);
 }
 /* Indisponivel: sem grupo maior nao ha dentro do que, e a dimensao ja usada no
    maior nao reparte nada de novo. Fica visivel, e nao escondida - some e
@@ -8796,7 +8801,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 }
 
 .timeline-dot-file {
-  background: color-mix(in srgb, #00C9A7 16%, var(--white));
+  background: var(--yd);
   font-size: 11px;
 }
 
@@ -10887,8 +10892,8 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 /* ── Comment inline badges ──────────────────────────── */
 .comment-at-mention {
   display: inline;
-  background: rgba(0, 201, 167, .12);
-  color: #0A6E5C;
+  background: rgba(233, 252, 0, .12);
+  color: var(--yellow-tinta);
   border-radius: 4px;
   padding: 0 3px;
   font-weight: 600;
@@ -12840,7 +12845,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   font-size: 24px;
   font-weight: 800;
   line-height: 1;
-  color: var(--accent-color, var(--black));
+  color: var(--accent-texto, var(--accent-color, var(--black)));
   margin: 0;
   animation: countUp 0.5s cubic-bezier(0.4,0,0.2,1) both;
 }
@@ -12866,9 +12871,9 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
    FERRAMENTA: Análise de Crédito (escopo .ac-page)
    ═══════════════════════════════════════════════════════════════════════ */
 .ac-page {
-  /* Accent primário alinhado ao sistema (teal da Sheep) */
+  /* Accent primário alinhado ao sistema (limao da Sheep) */
   --ac-accent: var(--yellow);
-  --ac-accent-dark: #00A88C;
+  --ac-accent-dark: var(--yellow-tinta);
   --ac-accent-bg: var(--yd);
   /* Roxo mantido apenas como cor de dado/IA (indicadores, hints) */
   --ac-purple: #7C3AED;
@@ -12888,7 +12893,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 /* Análise de Crédito no tema escuro - inverte a escala de cinzas e ameniza os
    fundos pastel (tints) para não estourarem sobre superfícies escuras. */
 :root[data-theme="dark"] .ac-page {
-  --ac-accent-dark: #5FE8CE;
+  --ac-accent-dark: var(--yellow-tinta);
   --ac-purple: #A78BFA; --ac-purple-dark: #C4B5FD; --ac-purple-bg: rgba(124,58,237,.22);
   --ac-green-dark: #4ADE80;
   --ac-ok-bg: rgba(30,138,62,.20);
@@ -12954,7 +12959,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 .ac-input:hover, .ac-select:hover, .ac-textarea:hover { border-color: var(--ac-g400); }
 .ac-input:focus, .ac-select:focus, .ac-textarea:focus {
   outline: none; border-color: var(--ac-accent);
-  box-shadow: 0 0 0 4px var(--ac-accent-bg), 0 2px 8px rgba(0, 201, 167,.12); transform: translateY(-1px);
+  box-shadow: 0 0 0 4px var(--ac-accent-bg), 0 2px 8px rgba(233, 252, 0,.12); transform: translateY(-1px);
 }
 .ac-select {
   appearance: none; -webkit-appearance: none; cursor: pointer; padding-right: 36px;
@@ -13979,7 +13984,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 .usuarios-select:disabled { opacity: .5; cursor: default; }
 .usuarios-select:focus-visible { border-color: var(--yellow); }
 /* Marca da opção em vigor, no fim da linha da lista. */
-.usuarios-select-marca { margin-left: auto; display: inline-flex; color: var(--yellow); }
+.usuarios-select-marca { margin-left: auto; display: inline-flex; color: var(--yellow-tinta); }
 /* A opção é uma div focável: sem isto o teclado andaria pela lista sem sinal. */
 .status-select-option:focus-visible {
   outline: none;
@@ -16026,8 +16031,8 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   animation: pub-realce 2.2s var(--curva-anti) both;
 }
 @keyframes pub-realce {
-  0%   { box-shadow: 0 0 0 3px rgba(0, 201, 167, .40); }
-  100% { box-shadow: 0 0 0 0 rgba(0, 201, 167, 0); }
+  0%   { box-shadow: 0 0 0 3px rgba(233, 252, 0, .40); }
+  100% { box-shadow: 0 0 0 0 rgba(233, 252, 0, 0); }
 }
 
 @media (max-width: 560px) {
@@ -16879,7 +16884,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 .objetivos-fixar svg { transition: transform var(--transition-spring); }
 .objetivos-fixar:hover { background: var(--gray4); color: var(--black); }
 .objetivos-fixar:focus-visible { outline: none; background: var(--gray4); color: var(--black); }
-.objetivos-fixar.ligado { color: var(--yellow); }
+.objetivos-fixar.ligado { color: var(--yellow-tinta); }
 .objetivos-fixar.ligado svg { transform: rotate(-30deg); }
 /* Fixado, o quadro fica abaixo das gavetas e dos modais: e parte da tela, e
    nao uma caixa que pede atencao agora. */
@@ -17606,7 +17611,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 .grafico-tinta-base { stop-color: color-mix(in srgb, var(--yellow) 2%, transparent); }
 .grafico-linha {
   fill: none;
-  stroke: var(--yellow);
+  stroke: var(--grafico-linha);
   stroke-width: 2;
   stroke-linecap: round;
   /* `miter` no joelho: a virada de um mes para o outro e uma quina, e arredonda-la
@@ -17751,7 +17756,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 
 /* ─── O convite a reportar, no pe do menu ────────────────────────────────
    Fundo escuro com o mesmo movimento do palco do login - dois focos de luz com
-   tempos diferentes, no teal da casa. Ele nao e decoracao: parado e chapado, o
+   tempos diferentes, no limao da casa. Ele nao e decoracao: parado e chapado, o
    cartao viraria mais uma linha do menu, e o convite se perderia entre os itens
    de navegacao. */
 .reportar-cartao {
@@ -17765,8 +17770,8 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
      campo, que e a coisa mais clara do cartao. */
   --select-realce-borda: rgba(255, 255, 255, .34);
   --select-realce-halo:  rgba(255, 255, 255, .09);
-  --reportar-brasa:  rgba(30, 190, 160, .34);
-  --reportar-brilho: rgba(18, 120, 102, .30);
+  --reportar-brasa:  rgba(210, 228, 0, .34);
+  --reportar-brilho: rgba(120, 132, 0, .30);
   position: relative;
   flex-shrink: 0;
   /* Recuado dos dois lados: o menu nao tem folga horizontal (os itens vao de
@@ -17865,7 +17870,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   margin: 0;
   font-size: 11.5px;
   font-weight: 700;
-  color: #5FE8CE;
+  color: var(--yellow);
 }
 
 /* Vidro, e nao um retangulo preto: o campo fica em cima do feixe, e um fundo
@@ -19450,7 +19455,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 .atividade-girinho {
   display: inline-flex;
   flex-shrink: 0;
-  color: var(--yellow);
+  color: var(--yellow-tinta);
 }
 /* Terminada, o balao troca de cara: o girinho vira visto (ou aviso), a barra
    sai, e a borda diz de longe como acabou. Ele fica ate alguem fechar - some
@@ -19841,13 +19846,13 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   font-weight: 700;
   color: var(--on-yellow);
   cursor: pointer;
-  box-shadow: 0 10px 30px -8px rgba(0, 201, 167, .55), 0 2px 6px rgba(20, 22, 30, .12);
+  box-shadow: 0 10px 30px -8px rgba(233, 252, 0, .55), 0 2px 6px rgba(20, 22, 30, .12);
   transition: transform var(--transition-spring), box-shadow var(--transition-spring),
     opacity .18s var(--curva-anti);
 }
 .pub-balao:hover {
   transform: translateY(-3px);
-  box-shadow: 0 16px 38px -8px rgba(0, 201, 167, .65), 0 4px 10px rgba(20, 22, 30, .14);
+  box-shadow: 0 16px 38px -8px rgba(233, 252, 0, .65), 0 4px 10px rgba(20, 22, 30, .14);
 }
 .pub-balao:active { transform: translateY(-1px); }
 .pub-balao-icone { display: inline-flex; }

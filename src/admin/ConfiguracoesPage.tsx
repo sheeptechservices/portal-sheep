@@ -687,7 +687,7 @@ function StatusRow({
             ref={starBtnRef}
             className="status-action-btn"
             onClick={() => onSetConversion(status.is_conversion ? null : status.id)}
-            style={status.is_conversion ? { color: 'var(--yellow)', background: 'rgba(0, 201, 167,0.1)' } : {}}
+            style={status.is_conversion ? { color: 'var(--yellow-tinta)', background: 'var(--yd)' } : {}}
             onMouseEnter={() => {
               const rect = starBtnRef.current?.getBoundingClientRect();
               if (!rect) return;
@@ -2289,7 +2289,7 @@ function EtapaTarefaRow({
               ? 'Etapa de conversão: tarefa aqui conta como feita no percentual da entrega. Só uma etapa pode ter essa marcação.'
               : 'Marcar como etapa de conversão'}
             aria-pressed={!!etapa.is_conclusao}
-            style={etapa.is_conclusao ? { color: 'var(--yellow)', background: 'rgba(0, 201, 167,0.1)' } : {}}
+            style={etapa.is_conclusao ? { color: 'var(--yellow-tinta)', background: 'var(--yd)' } : {}}
             onClick={() => onSetConversao(etapa.is_conclusao ? null : etapa.id)}
           >
             <IconEstrela size={12} preenchida={!!etapa.is_conclusao} />
@@ -2662,7 +2662,7 @@ function SeletorPapeis({ valor, onChange, rotuloVazio = 'Todos', titulo }: {
                   <span className="select-opcao-descricao">{DESCRICAO_PAPEL[p]}</span>
                 </span>
                 <span aria-hidden="true" style={{
-                  display: 'inline-flex', color: 'var(--yellow)',
+                  display: 'inline-flex', color: 'var(--yellow-tinta)',
                   visibility: ativo ? 'visible' : 'hidden',
                 }}>
                   <IconCheck size={13} />

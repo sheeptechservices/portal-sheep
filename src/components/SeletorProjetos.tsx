@@ -126,7 +126,7 @@ export function SeletorProjetos({ projetos, valor, onChange, vazio = 'Escolher p
                   )}
                 </span>
                 {ativo && (
-                  <span style={{ marginLeft: 'auto', flexShrink: 0, color: 'var(--yellow)' }}>
+                  <span style={{ marginLeft: 'auto', flexShrink: 0, color: 'var(--yellow-tinta)' }}>
                     <IconCheck size={12} />
                   </span>
                 )}

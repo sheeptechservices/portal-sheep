@@ -78,7 +78,7 @@ export function SeletorPessoas({ pessoas, valor, onChange, vazio = 'Escolher pes
             </span>
             {ativo && (
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                style={{ marginLeft: 'auto', flexShrink: 0, color: 'var(--yellow)' }}>
+                style={{ marginLeft: 'auto', flexShrink: 0, color: 'var(--yellow-tinta)' }}>
                 <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.2"
                   strokeLinecap="round" strokeLinejoin="round" />
               </svg>

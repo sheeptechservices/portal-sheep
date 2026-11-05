@@ -28,7 +28,7 @@ const convite = /^\/senha\/([A-Za-z0-9_-]{20,})\/?$/.exec(window.location.pathna
 
 const Fallback = (
   <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-    <div style={{ width: 28, height: 28, border: '3px solid #E3E4DE', borderTopColor: '#00C9A7', borderRadius: '50%', animation: 'spin .7s linear infinite' }} />
+    <div style={{ width: 28, height: 28, border: '3px solid #E3E4DE', borderTopColor: '#121316', borderRadius: '50%', animation: 'spin .7s linear infinite' }} />
   </div>
 );
 
