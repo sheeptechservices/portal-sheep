@@ -381,32 +381,9 @@ function Topbar({ onToggle, onLogout, onQuickSearch, usuario, onAbrirPerfil, inb
           </svg>
         </button>
 
-        {/* Brand badge */}
-        <div style={{
-          width: 28, height: 28, borderRadius: 6, flexShrink: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-        }}>
-          <img src="/favicon.png" alt="Sheep Technology" className="brand-logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-        </div>
-
-        {/* Brand text. A altura de linha abre espaço para as pernas das letras:
-            com `lineHeight: 1` e o `overflow: hidden` das reticências, a caixa
-            tinha a altura exata do corpo da letra, e o "g" de "geral" e o "p" de
-            "Portal" saíam cortados embaixo. As medidas vêm da Plus Jakarta Sans,
-            que tem perna longa: com menos que isso, a perna ainda perde um
-            pedaço. O vão entre as linhas sai, porque a entrelinha já separa. */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 0, minWidth: 0 }}>
-          <div className="topbar-marca-nome"
-            style={{ fontSize: 15, fontWeight: 700, color: 'var(--black)', lineHeight: 1.35,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            Portal Sheep
-          </div>
-          <div className="topbar-marca-sub"
-            style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 500, lineHeight: 1.5,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            Gestão geral dos projetos
-          </div>
-        </div>
+        {/* A logo da casa: preta no claro, branca no escuro (ver .brand-logo). */}
+        <img src="/logo-sheep.png" alt="Sheep Technology" className="brand-logo"
+          style={{ height: 30, width: 'auto', flexShrink: 0, display: 'block' }} />
       </div>
 
       {/* Busca rápida: centralizada na tela grande, item da própria linha no

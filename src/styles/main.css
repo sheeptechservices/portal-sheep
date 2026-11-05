@@ -7208,6 +7208,8 @@ button.checklist-texto:focus-visible {
   object-fit: contain;
 }
 :root[data-theme="dark"] .pl-aba-marca-sheep { filter: invert(1); }
+/* A logo do cabecalho: preta no claro, branca no escuro. */
+:root[data-theme="dark"] .brand-logo { filter: invert(1); }
 
 /* Clicavel e arrastavel ao mesmo tempo, mas o gesto principal e abrir: o
    cursor e o do clique. A mao fechada so aparece com uma aba ja sendo levada. */
@@ -10121,8 +10123,6 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
     transform: none !important;
     flex-shrink: 0;
   }
-  .topbar-marca-sub { display: none; }
-  .topbar-marca-nome { font-size: 14px; }
 
   /* ── Conteúdo ─────────────────────────────────────────
      O respiro no rodapé passa a contar com a barra inferior. */
