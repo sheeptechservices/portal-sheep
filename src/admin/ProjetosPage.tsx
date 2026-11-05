@@ -93,6 +93,7 @@ import {
 } from './FormularioTarefa';
 import { PreviaArquivo } from '../components/PreviaArquivo';
 import { SelectSistema } from '../components/SelectSistema';
+import { CorpoRecolhivel, TituloRecolhivel, useSecaoRecolhivel } from '../components/SecaoRecolhivel';
 import { CampoBusca } from '../components/CampoBusca';
 import { DatePicker } from '../components/DatePicker';
 import { COR_ENTREGA, ICONE_ENTREGA } from '../lib/etapasEntrega';
@@ -1484,7 +1485,10 @@ function QuadroDeTarefas({ tarefas, etapas, pessoas, podeEditar, onAbrir, onCria
  * quer a tarefa dentro de uma entrega cria pelo quadro dela, na aba Geral.
  */
 function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCriar, onExcluir,
-  onMover, onFixarRecolhida, onExportar }: {
+  onMover, onFixarRecolhida, onExportar, recolhivel = false }: {
+  /** Na Planning a seção recolhe pelo título. Na ficha ela é a aba inteira, e
+   *  recolher deixaria a aba vazia. */
+  recolhivel?: boolean;
   projeto: Projeto;
   etapas: EtapaTarefa[];
   pessoas: Pessoa[];
@@ -1501,6 +1505,7 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
 }) {
   const todas = projeto.tarefas ?? [];
   const tituloDaEntrega = new Map((projeto.entregas ?? []).map(e => [e.id, e.titulo]));
+  const secao = useSecaoRecolhivel('planning-tarefas', recolhivel);
 
   // Os mesmos filtros da tela de Tarefas, com o mesmo desenho, só que dentro
   // deste projeto: com trinta tarefas no quadro, "o que é do Rafael" e "o que é
@@ -1564,6 +1569,7 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
     <section>
       <div className="admin-section-head">
         <p className="admin-section-title">
+          <TituloRecolhivel ativo={recolhivel} aberta={secao.aberta} onAlternar={secao.alternar}>
           Tarefas
           {/* A mesma bolha do cabeçalho das colunas, logo abaixo: é o mesmo
               subtotal, e dois desenhos para a mesma coisa na mesma tela se leem
@@ -1571,6 +1577,7 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
           <span className="kanban-conta-bolha">
             {temFiltro ? `${tarefas.length}/${todas.length}` : todas.length}
           </span>
+          </TituloRecolhivel>
         </p>
         {/* Com tarefa na tela o quadro se explica sozinho: contar quantas estão
             em aberto e ensinar a arrastar era dizer em texto o que as colunas
@@ -1583,6 +1590,7 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
         )}
       </div>
 
+      <CorpoRecolhivel ativo={recolhivel} aberta={secao.aberta}>
       {/* A barra existe com tarefa para filtrar, e tambem sem nenhuma quando ha
           o que exportar: na semana que so tem objetivos combinados, o arquivo
           continua fazendo sentido. */}
@@ -1705,6 +1713,7 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
         onExcluir={onExcluir}
         onMover={onMover}
         onFixarRecolhida={onFixarRecolhida} />
+      </CorpoRecolhivel>
     </section>
   );
 }
@@ -2197,17 +2206,23 @@ function SecaoEntregas({
   const [recolhidos, setRecolhidos] = useState<Set<string>>(new Set());
   useEffect(() => { setRecolhidos(new Set()); }, [maior, menor]);
 
+  /** Na Planning a seção inteira recolhe pelo título. Na ficha ela fica aberta:
+   *  é um campo obrigatório do formulário do projeto. */
+  const secao = useSecaoRecolhivel('planning-entregas', naPlanning);
+
   return (
     <section className={naPlanning ? 'pl-secao pl-entregas' : undefined}>
       <div className="admin-section-head">
         {naPlanning ? (
           <p className="pl-secao-titulo">
+            <TituloRecolhivel aberta={secao.aberta} onAlternar={secao.alternar}>
             Entregas
             {total > 0 && (
               <span className="kanban-conta-bolha">
                 {busca.trim() ? `${visiveis.length}/${total}` : total}
               </span>
             )}
+            </TituloRecolhivel>
           </p>
         ) : (
           <p className="admin-section-title">
@@ -2221,10 +2236,14 @@ function SecaoEntregas({
         )}
         {/* No alto fica só a escolha de como olhar - lista, quadro ou
             calendário -, que é a decisão que muda a seção inteira. O que opera
-            sobre o que está à vista desceu para a linha da busca. */}
-        <SwitcherVisao valor={visao} onChange={setVisao} />
+            sobre o que está à vista desceu para a linha da busca. Com a seção
+            recolhida não há o que olhar, e a escolha some junto. */}
+        <span className={`secao-recolhe-junto${secao.aberta ? '' : ' recolhido'}`}>
+          <SwitcherVisao valor={visao} onChange={setVisao} />
+        </span>
       </div>
 
+      <CorpoRecolhivel ativo={naPlanning} aberta={secao.aberta}>
       {/* A busca fica à vista, e não atrás de um botão: num projeto com dezenas
           de entregas, procurar uma é o primeiro gesto de quem abre a seção. O
           switcher divide a faixa com ela - procurar e escolher como olhar são o
@@ -2700,6 +2719,7 @@ function SecaoEntregas({
           )
         ))}
       </div>
+      </CorpoRecolhivel>
 
       {excluindoEntrega && (
         <Dialogo
@@ -3251,6 +3271,7 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
 }) {
   const gestor = p.equipe.find(m => m.papel === 'Gestor');
   const ehGeral = p.id === PROJETO_GERAL;
+  const secaoObjetivos = useSecaoRecolhivel('planning-objetivos');
 
   return (
     <div className="pl-folha troca" key={`${p.id}|${iso10(semana)}`}>
@@ -3310,13 +3331,16 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
           o quadro na frente, a sala montava a semana antes de dizer para quê. */}
       <section className="pl-secao pl-combinado">
         <p className="pl-secao-titulo">
+          <TituloRecolhivel aberta={secaoObjetivos.aberta} onAlternar={secaoObjetivos.alternar}>
           Objetivos da semana
           {planning.objetivos.length > 0 && (
             <span className="kanban-conta-bolha">
               {planning.objetivos.filter(o => o.feito).length}/{planning.objetivos.length}
             </span>
           )}
+          </TituloRecolhivel>
         </p>
+        <CorpoRecolhivel aberta={secaoObjetivos.aberta}>
         <ObjetivosDaPlanning
           projetoId={p.id}
           valores={planning.objetivos}
@@ -3325,6 +3349,7 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
           placeholder="O que precisa acontecer nesta semana"
           provas={podeEditar ? provas : undefined}
           onChange={v => onMudarPlanning({ objetivos: v })} />
+        </CorpoRecolhivel>
       </section>
 
       {/* O quadro do projeto, nas etapas do quadro de tarefas - o mesmo da ficha,
@@ -3333,6 +3358,7 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
           tarefa, que e o que a etapa responde. Arrastar aqui muda a etapa. */}
       <section className="pl-secao pl-secao-quadro">
         <TarefasDoProjeto
+          recolhivel
           projeto={p}
           etapas={etapas}
           pessoas={pessoas}
@@ -3454,6 +3480,8 @@ function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
   const contas = contasDoFunil(funil, dias);
   const hoje = hojeIso();
   const etapas = [...funil.etapas].sort((a, b) => a.ordem - b.ordem);
+  const secaoObjetivos = useSecaoRecolhivel('planning-objetivos');
+  const secaoFunil = useSecaoRecolhivel('planning-funil');
 
   return (
     <div className="pl-folha troca" key={`funil|${iso10(semana)}`}>
@@ -3477,13 +3505,16 @@ function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
 
       <section className="pl-secao pl-combinado">
         <p className="pl-secao-titulo">
+          <TituloRecolhivel aberta={secaoObjetivos.aberta} onAlternar={secaoObjetivos.alternar}>
           Objetivos da semana
           {planning.objetivos.length > 0 && (
             <span className="kanban-conta-bolha">
               {planning.objetivos.filter(o => o.feito).length}/{planning.objetivos.length}
             </span>
           )}
+          </TituloRecolhivel>
         </p>
+        <CorpoRecolhivel aberta={secaoObjetivos.aberta}>
         <ObjetivosDaPlanning
           projetoId={PLANNING_FUNIL}
           valores={planning.objetivos}
@@ -3492,13 +3523,17 @@ function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
           placeholder="O que o comercial precisa fazer andar nesta semana"
           provas={podeEditar ? provas : undefined}
           onChange={v => onMudarPlanning({ objetivos: v })} />
+        </CorpoRecolhivel>
       </section>
 
       <section className="pl-secao">
         <p className="pl-secao-titulo">
+          <TituloRecolhivel aberta={secaoFunil.aberta} onAlternar={secaoFunil.alternar}>
           O funil
           <span className="kanban-conta-bolha">{contas.abertas.length}</span>
+          </TituloRecolhivel>
         </p>
+        <CorpoRecolhivel aberta={secaoFunil.aberta}>
         {funil.carregando && funil.oportunidades.length === 0 ? (
           <div className="dux-spinner-row"><span className="dux-spinner sm" /></div>
         ) : funil.erro ? (
@@ -3569,6 +3604,7 @@ function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
             })}
           </div>
         )}
+        </CorpoRecolhivel>
       </section>
     </div>
   );

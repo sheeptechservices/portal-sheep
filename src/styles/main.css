@@ -6559,6 +6559,54 @@ button.checklist-texto:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
+/* ── Secao que recolhe pelo titulo ────────────────────
+   O titulo segue com a letra do paragrafo em volta, e ganha a seta e o hover da
+   cabeca de grupo. A margem negativa deixa o texto no alinhamento de antes: o
+   fundo do hover e que sobra para fora dele. */
+.secao-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: -3px 0 -3px -4px;
+  padding: 3px 6px 3px 4px;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.secao-toggle:hover { background: var(--gray4); color: var(--black); }
+.secao-toggle:focus-visible { outline: none; }
+.secao-toggle.aberto .grupo-seta { transform: rotate(90deg); }
+.secao-toggle .kanban-conta-bolha { margin: 0; }
+
+/* A folga que o `overflow: hidden` do `.revelar` tiraria da sombra dos cartoes e
+   do halo dos campos. Recolhida, a folga nao pode receber clique. */
+.secao-corpo > div {
+  margin: -4px -6px -8px;
+  padding: 4px 6px 8px;
+}
+.secao-corpo:not(.aberto) { pointer-events: none; }
+
+/* O que mora no cabecalho da secao e so vale com ela aberta. */
+.secao-recolhe-junto {
+  display: inline-flex;
+  transition: opacity var(--transition-spring);
+}
+.secao-recolhe-junto.recolhido {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .secao-toggle .grupo-seta,
+  .secao-recolhe-junto { transition: none; }
+}
+
 /* ── Revelar: o abrir e recolher da casa ──────────────
    A altura sai do conteúdo por `grid-template-rows`, sem ninguém medir nada em
    JavaScript, e a opacidade acompanha. É o padrão do sistema para qualquer
