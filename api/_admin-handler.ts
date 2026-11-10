@@ -7783,6 +7783,73 @@ function faltaEmProjeto(p: any): string | null {
       return { status: 200, body: { ok: true } };
     }
 
+    // Troca o texto de um comentario. Mesma regra de apagar: so o autor, em
+    // qualquer papel. Os anexos ficam como estao - a edicao e do que foi dito.
+    if (action === 'editar_tarefa_comentario') {
+      const id = Number(body?.id);
+      const alvo = await db.execute({
+        sql: `SELECT c.id, c.tarefa_id, c.usuario_id,
+                     (SELECT COUNT(*) FROM tarefa_comentario_anexos a WHERE a.comentario_id = c.id) AS anexos
+              FROM tarefa_comentarios c WHERE c.id = ?`,
+        args: [id],
+      });
+      const linha = alvo.rows[0];
+      if (!linha) return { status: 404, body: { error: 'Comentário não encontrado.' } };
+      const tarefaId = Number(linha.tarefa_id);
+      { const barrado = await guardaDaEquipe(db, usuario, tarefaId, 'tarefa'); if (barrado) return barrado; }
+      const dono = !!usuario?.id && String(linha.usuario_id ?? '') === String(usuario.id);
+      if (!dono) {
+        return { status: 403, body: { error: 'Só quem escreveu pode editar este comentário.' } };
+      }
+      const texto = String(body?.texto ?? '').trim();
+      // Comentario so de anexo pode ficar sem texto; sem os dois, nao sobra nada.
+      if (!texto && Number(linha.anexos) === 0) {
+        return { status: 400, body: { error: 'Escreva alguma coisa. Para tirar o comentário, apague.' } };
+      }
+
+      // As marcacoes acompanham o texto novo: quem saiu do texto sai da lista,
+      // e so quem entrou agora e avisado - quem ja estava marcado ja recebeu.
+      const cruas: unknown[] = Array.isArray(body?.mencoes) ? body.mencoes : [];
+      const pedidas: string[] = [...new Set(cruas.map(v => String(v)))];
+      const [validos, antes] = await Promise.all([
+        pedidas.length
+          ? db.execute({
+            sql: `SELECT id, nome, email, papel FROM usuarios
+                  WHERE ativo = 1 AND id IN (${pedidas.map(() => '?').join(',')})`,
+            args: pedidas,
+          })
+          : Promise.resolve({ rows: [] as Record<string, unknown>[] }),
+        db.execute({
+          sql: 'SELECT usuario_id FROM tarefa_comentario_mencoes WHERE comentario_id = ?', args: [id],
+        }),
+      ]);
+      const jaMarcados = new Set(antes.rows.map(r => String(r.usuario_id)));
+      const ficam = validos.rows.map(r => String(r.id));
+
+      const agora = new Date().toISOString();
+      await db.batch([
+        {
+          sql: 'UPDATE tarefa_comentarios SET texto = ?, editado_em = ? WHERE id = ?',
+          args: [texto, agora, id],
+        },
+        {
+          sql: ficam.length
+            ? `DELETE FROM tarefa_comentario_mencoes
+               WHERE comentario_id = ? AND usuario_id NOT IN (${ficam.map(() => '?').join(',')})`
+            : 'DELETE FROM tarefa_comentario_mencoes WHERE comentario_id = ?',
+          args: [id, ...ficam],
+        },
+        ...ficam.map(u => ({
+          sql: 'INSERT OR IGNORE INTO tarefa_comentario_mencoes (comentario_id, usuario_id) VALUES (?,?)',
+          args: [id, u],
+        })),
+      ], 'write');
+
+      const novos = validos.rows.filter(r => !jaMarcados.has(String(r.id)));
+      if (novos.length) await avisarMencionados(db, novos, { tarefaId, texto, autorId, autorNome });
+      return { status: 200, body: { ok: true, editado_em: agora } };
+    }
+
     // Da ou tira o joinha de quem clicou. `ligar` diz o que a tela pintou, e
     // nao "inverta": dois cliques rapidos mandariam dois "inverta" e o
     // resultado dependeria da ordem de chegada.

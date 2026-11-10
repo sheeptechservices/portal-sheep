@@ -315,6 +315,8 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   // O anexo sobe antes do comentário, pela mesma porta de comentar.
   subir_anexo_comentario: 'tarefas:comentar',
   excluir_tarefa_comentario: 'tarefas:comentar',
+  // Editar é como apagar: o servidor ainda limita a quem escreveu.
+  editar_tarefa_comentario: 'tarefas:comentar',
   // O joinha e participar da conversa, como comentar.
   joinha_tarefa_comentario: 'tarefas:comentar',
   salvar_entrega: 'projetos:editar',

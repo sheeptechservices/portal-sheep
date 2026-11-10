@@ -8394,6 +8394,9 @@ button.kanban-card.pl-funil-card:focus-visible { outline: none; border-color: va
 .ativ-comentario:hover .ativ-apagar,
 .ativ-apagar:focus-visible { opacity: 1; }
 .ativ-apagar:hover { background: var(--gray4); color: var(--red); }
+/* O lapis divide o lugar e o comportamento da lixeira, mas editar nao e
+   perigo: o realce do hover e o do texto, e nao o vermelho. */
+.ativ-editar:hover { color: var(--black); }
 .ativ-apagar:focus-visible { outline: none; }
 
 .ativ-texto {

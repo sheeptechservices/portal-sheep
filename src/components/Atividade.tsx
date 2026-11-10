@@ -13,7 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  IconAlert, IconChevronRight, IconClip, IconDownload, IconEye, IconJoinha, IconSpinner, IconTrash, IconX,
+  IconAlert, IconChevronRight, IconClip, IconDownload, IconEdit, IconEye, IconJoinha, IconSpinner, IconTrash, IconX,
 } from './icons';
 import { PreviaArquivo } from './PreviaArquivo';
 import { quando, tamanho as fmtTamanho } from '../lib/datas';
@@ -168,8 +168,25 @@ function TextoDoComentario({ texto, etapas }: { texto: string; etapas?: EtapaMar
   );
 }
 
+/** O texto gravado de volta para a caixa: `@[Nome](id)` vira `@Nome`, que é o
+ *  que se escreve, e o id fica guardado para a gravação refazer a ligação. */
+function paraEscrita(gravado: string) {
+  const marcados = new Map<string, string>();
+  const texto = gravado.replace(MARCA, (_, nome: string, id: string) => {
+    marcados.set(nome, id);
+    return `@${nome}`;
+  });
+  return { texto, marcados };
+}
+
 /** Caixa de escrita, com marcação por `@` e anexos. */
-function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnviar, onCancelar }: {
+function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnviar, onCancelar,
+  inicial, erroInicial }: {
+  /** O texto gravado de um comentário que está sendo editado. */
+  inicial?: string;
+  /** O erro da tentativa anterior, quando a caixa reabre depois de o servidor
+   *  recusar a edição. */
+  erroInicial?: string;
   pessoas: Pessoa[];
   /** Quando existem, `#` abre a lista delas. Só o funil as tem. */
   etapas?: EtapaMarcavel[];
@@ -183,9 +200,10 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
   onEnviar: (texto: string, anexos: AnexoPendente[]) => Promise<string | null>;
   onCancelar?: () => void;
 }) {
-  const [texto, setTexto] = useState('');
+  const [partida] = useState(() => paraEscrita(inicial ?? ''));
+  const [texto, setTexto] = useState(partida.texto);
   const [anexos, setAnexos] = useState<AnexoPendente[]>([]);
-  const [erro, setErro] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(erroInicial ?? null);
   const [enviando, setEnviando] = useState(false);
   /** Busca aberta pelo `@`: o trecho digitado depois dele e onde ele começa. */
   /** A marcação sendo escrita. `paraCima` e `altura` são medidos na hora de
@@ -248,7 +266,7 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
    *  quando alguém muda de nome. Mas o que se escreve é `@Nome`: o formato cru
    *  punha um código de 36 caracteres no meio da frase de quem está escrevendo.
    *  A conversão acontece no envio. */
-  const marcados = useRef(new Map<string, string>());
+  const marcados = useRef(partida.marcados);
 
   /** Devolve o texto com as marcações no formato de gravação. Os nomes mais
    *  longos primeiro: "Ana" não pode comer o "@Ana Paula" de alguém. */
@@ -521,7 +539,12 @@ function Joinha({ c, usuarioId, pode, onAlternar }: {
 
 function Comentario({ c, respostas, pessoas, etapas, usuarioId, podeComentar, permiteAnexo,
   respondendo, onResponder, onEnviarResposta, onExcluir, onBaixar, onVer, onJoinha,
-  ehNovo }: {
+  ehNovo, edicao, onEditar, onSalvarEdicao }: {
+  /** O comentário aberto para edição, nesta conversa ou numa resposta dela. */
+  edicao: { id: number; rascunho?: string; erro?: string } | null;
+  /** Abre (id) ou fecha (null) a edição. Ausente onde a conversa não se edita. */
+  onEditar?: (id: number | null) => void;
+  onSalvarEdicao: (c: ComentarioAtividade, texto: string) => Promise<string | null>;
   /** Ausente onde a conversa não tem joinha. */
   onJoinha?: (c: ComentarioAtividade, ligar: boolean) => void;
   c: ComentarioAtividade;
@@ -552,16 +575,40 @@ function Comentario({ c, respostas, pessoas, etapas, usuarioId, podeComentar, pe
         <p className="ativ-cabeca">
           <strong>{x.usuario_nome}</strong>
           <span title={fmtDataHora(x.criado_em)}>{quando(x.criado_em)}</span>
-          {/* Só o autor apaga o próprio comentário, e só quem pode comentar: é a
-              mesma regra do servidor, e a lixeira não aparece onde ele recusaria. */}
-          {podeComentar && !!usuarioId && x.usuario_id === usuarioId && (
-            <button type="button" className="ativ-apagar" title="Apagar comentário"
-              aria-label="Apagar comentário" onClick={() => onExcluir(x)}>
-              <IconTrash size={12} />
-            </button>
+          {x.editado_em && (
+            <span title={`Editado em ${fmtDataHora(x.editado_em)}`}>editado</span>
+          )}
+          {/* Só o autor edita e apaga o próprio comentário, e só quem pode
+              comentar: é a mesma regra do servidor, e os botões não aparecem
+              onde ele recusaria. */}
+          {podeComentar && !!usuarioId && x.usuario_id === usuarioId && edicao?.id !== x.id && (
+            <>
+              {onEditar && (
+                <button type="button" className="ativ-apagar ativ-editar" title="Editar comentário"
+                  aria-label="Editar comentário" onClick={() => onEditar(x.id)}>
+                  <IconEdit size={12} />
+                </button>
+              )}
+              <button type="button" className="ativ-apagar" title="Apagar comentário"
+                aria-label="Apagar comentário" onClick={() => onExcluir(x)}>
+                <IconTrash size={12} />
+              </button>
+            </>
           )}
         </p>
-        {x.texto && <TextoDoComentario texto={x.texto} etapas={etapas} />}
+        {/* Editar é a mesma área trocando de cara: o texto vira a caixa de
+            escrita da conversa, já com o que estava escrito. Os anexos ficam
+            embaixo como estavam - a edição é do que foi dito. */}
+        {edicao?.id === x.id && onEditar ? (
+          <div className="troca">
+            <Escrever pessoas={pessoas} etapas={etapas} autoFoco rotuloEnvio="Salvar"
+              inicial={edicao.rascunho ?? x.texto} erroInicial={edicao.erro}
+              onEnviar={t => onSalvarEdicao(x, t)}
+              onCancelar={() => onEditar(null)} />
+          </div>
+        ) : (
+          x.texto && <TextoDoComentario texto={x.texto} etapas={etapas} />
+        )}
         {x.anexos.length > 0 && (
           <ul className="ativ-anexos">
             {x.anexos.map(a => (
@@ -672,6 +719,9 @@ export interface DonoDaAtividade {
   ler: () => Promise<{ eventos: EventoAtividade[]; comentarios: ComentarioAtividade[] }>;
   enviar: (texto: string, anexos: AnexoPendente[], paiId: number | null) => Promise<{ error?: string }>;
   excluir: (id: number) => Promise<{ error?: string }>;
+  /** Troca o texto de um comentário do próprio autor. Ausente onde a conversa
+   *  não se edita - e aí o lápis não aparece. */
+  editar?: (id: number, texto: string) => Promise<{ error?: string; editado_em?: string } | null>;
   /** O conteúdo do anexo, na hora de ver ou baixar. Ausente onde comentário não
    *  leva anexo - e aí o clipe também não aparece na caixa de escrita. */
   anexo?: (id: number) => Promise<{ nome: string; tipo: string; base64: string } | null>;
@@ -741,6 +791,37 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
     } catch {
       return 'A conexão caiu antes de o comentário chegar. Tente de novo.';
     }
+  }
+
+  /** O comentário aberto para edição. Volta com o rascunho e o erro quando o
+   *  servidor recusa: a caixa reabre com o que a pessoa tinha escrito. */
+  const [edicao, setEdicao] = useState<{ id: number; rascunho?: string; erro?: string } | null>(null);
+
+  /** O texto novo entra na conversa no gesto e a caixa fecha; recusada a
+   *  gravação, o texto antigo volta e a caixa reabre com o rascunho. */
+  async function salvarEdicao(c: ComentarioAtividade, texto: string): Promise<string | null> {
+    if (!dono.editar) return null;
+    const antes = { texto: c.texto, editado_em: c.editado_em };
+    const pintar = (dados: Partial<ComentarioAtividade>) =>
+      setComentarios(cs => cs.map(x => (x.id === c.id ? { ...x, ...dados } : x)));
+    pintar({ texto, editado_em: new Date().toISOString() });
+    setEdicao(null);
+    void (async () => {
+      let erro: string | null = null;
+      try {
+        const r = await dono.editar!(c.id, texto);
+        if (!r) erro = 'A edição não chegou ao servidor. Tente de novo.';
+        else if (r.error) erro = String(r.error);
+        else if (r.editado_em) pintar({ editado_em: r.editado_em });
+      } catch {
+        erro = 'A conexão caiu antes de a edição chegar. Tente de novo.';
+      }
+      if (erro) {
+        pintar(antes);
+        setEdicao({ id: c.id, rascunho: texto, erro });
+      }
+    })();
+    return null;
   }
 
   async function excluir(c: ComentarioAtividade) {
@@ -863,6 +944,9 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
                   onExcluir={c2 => void excluir(c2)}
                   onBaixar={a => void baixar(a)}
                   onVer={abrirAnexo}
+                  edicao={edicao}
+                  onEditar={dono.editar ? (id => setEdicao(id == null ? null : { id })) : undefined}
+                  onSalvarEdicao={salvarEdicao}
                   onJoinha={dono.joinha ? (c2, ligar) => void alternarJoinha(c2, ligar) : undefined}
                   ehNovo={ehNovo}
                 />

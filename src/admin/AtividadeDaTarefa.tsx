@@ -101,6 +101,11 @@ export function AtividadeDaTarefa({ tarefaId, pessoas, usuarioId, podeComentar, 
       if (r && !r.error) onConversaMudou?.();
       return r;
     },
+    // As marcações vão de novo: o servidor tira quem saiu do texto e avisa só
+    // quem entrou nesta edição.
+    editar: (id: number, texto: string) => api('', 'POST', {
+      action: 'editar_tarefa_comentario', id, texto, mencoes: idsMarcados(texto),
+    }),
     anexo: (id: number) => api(`?action=tarefa_comentario_anexo_base64&id=${id}`),
     joinha: (id: number, ligar: boolean) => api('', 'POST', { action: 'joinha_tarefa_comentario', id, ligar }),
   }), [api, tarefaId, onConversaMudou]);
