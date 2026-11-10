@@ -766,8 +766,19 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
     if (r?.error) pintar(!ligar);
   }
 
-  /** Anexo aberto na janela de prévia. */
-  const [vendo, setVendo] = useState<AnexoDoComentario | null>(null);
+  /** Anexo aberto na janela de prévia, com os irmãos dele: os anexos do mesmo
+   *  comentário são um conjunto, e a prévia passa de um para o outro sem
+   *  precisar fechar e clicar no seguinte. */
+  const [vendo, setVendo] = useState<{ lista: AnexoDoComentario[]; indice: number } | null>(null);
+  const anexoAberto = vendo ? vendo.lista[vendo.indice] : null;
+
+  const abrirAnexo = (a: AnexoDoComentario) => {
+    const lista = comentarios.find(c => c.anexos.some(x => x.id === a.id))?.anexos ?? [a];
+    setVendo({ lista, indice: Math.max(0, lista.findIndex(x => x.id === a.id)) });
+  };
+  /** Anda pelo conjunto, dando a volta nas pontas. */
+  const passarAnexo = (passo: number) => setVendo(v => (v
+    ? { ...v, indice: (v.indice + passo + v.lista.length) % v.lista.length } : v));
 
   async function baixar(a: AnexoDoComentario) {
     const r = await dono.anexo?.(a.id);
@@ -851,7 +862,7 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
                   onEnviarResposta={(t, a) => enviar(t, a, c.id)}
                   onExcluir={c2 => void excluir(c2)}
                   onBaixar={a => void baixar(a)}
-                  onVer={setVendo}
+                  onVer={abrirAnexo}
                   onJoinha={dono.joinha ? (c2, ligar) => void alternarJoinha(c2, ligar) : undefined}
                   ehNovo={ehNovo}
                 />
@@ -895,12 +906,18 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
       {/* A mesma janela que abre anexo de projeto e evidência de entrega: um
           arquivo é um arquivo, e duas prévias diferentes seriam duas telas
           para aprender. */}
-      {vendo && (
+      {vendo && anexoAberto && (
         <PreviaArquivo
-          arquivo={{ nome: vendo.nome }}
-          onCarregar={() => dono.anexo!(vendo.id)}
-          onBaixar={() => void baixar(vendo)}
+          arquivo={{ nome: anexoAberto.nome, chave: anexoAberto.id }}
+          onCarregar={() => dono.anexo!(anexoAberto.id)}
+          onBaixar={() => void baixar(anexoAberto)}
           onFechar={() => setVendo(null)}
+          navegacao={{
+            posicao: vendo.indice + 1,
+            total: vendo.lista.length,
+            onAnterior: () => passarAnexo(-1),
+            onProximo: () => passarAnexo(1),
+          }}
         />
       )}
     </div>
