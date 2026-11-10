@@ -1428,11 +1428,15 @@ function Coluna({ grupo, pessoas, et, etq, podeEditar, arrastando, isOver, onAbr
                 {t.etiquetas.map(e => <ChipEtiqueta key={e} etiqueta={e} cor={etq.cor(e)} />)}
               </div>
             )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* Quebra em vez de vazar: dono, complexidade, conversa e prazo nem
+                sempre cabem numa linha da coluna, e o prazo cortado na borda
+                era justamente o dado que mais se lê. Na segunda linha ele
+                continua à direita, pelo `margin-left: auto`. */}
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px 8px' }}>
               <DonosDaTarefa ids={t.responsaveis} pessoas={pessoas} size={20} />
               <Complexidade valor={t.complexidade} />
               <SinaisDaTarefa t={t} />
-              <span style={{ marginLeft: 'auto' }}>
+              <span style={{ marginLeft: 'auto', whiteSpace: 'nowrap' }}>
                 {/* Etapa desconsiderada não cobra prazo: a tarefa saiu da conta. */}
                 <Prazo iso={t.prazo} concluida={et.fecha(t.status) || !!grupo.desconsiderada} />
               </span>

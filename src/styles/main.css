@@ -3515,14 +3515,18 @@ body.arrastando-painel {
 .nt-cartao:focus-visible { outline: none; border-color: var(--gray2); }
 /* O pe do card: prazo a esquerda, quem cuida e a lixeira a direita. A lixeira
    so aparece com o ponteiro no card - uma por cartao numa coluna cheia seria
-   lixo, e o clique que interessa no card e o de abrir. */
+   lixo, e o clique que interessa no card e o de abrir.
+   Quebra em vez de vazar: com prazo, comentários, anexos e donos a linha passa
+   da largura da coluna, e o que sobra era cortado pela borda do cartão. */
 .painel-kanban-pe {
   display: flex;
   align-items: center;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 4px 6px;
   font-size: 10.5px;
   color: var(--gray2);
 }
+.painel-kanban-pe > span { white-space: nowrap; }
 /* Endereco em modo de leitura: e o proprio link. Sem sublinhado em repouso,
    como o link da ficha da oportunidade, e o traco aparece no hover. */
 .campo-endereco-link {
