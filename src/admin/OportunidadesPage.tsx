@@ -13,8 +13,10 @@ import {
   IconClip, IconComentario, IconDoc, IconFloco, IconTermometro,
   IconDownload, IconEdit, IconExternal, IconEye, IconImage, IconInbox, IconLink,
   IconPlus, IconRecolher, IconRefresh, IconSearch, IconSpinner, IconTrash, IconVisaoLista,
-  IconVisaoQuadro, IconX, IconZip, IconChevronUp, IconChevronUpDown,
+  IconVisaoQuadro, IconX, IconZip, IconChevronUp, IconChevronUpDown, IconArrowRight,
 } from '../components/icons';
+import { AcaoDaBarra, BarraDeSelecao, CaixaDeMarcar } from '../components/BarraDeSelecao';
+import { semTextoNoShift, useSelecao } from '../lib/useSelecao';
 import { SegSwitch } from '../components/SegSwitch';
 import { SelectSistema } from '../components/SelectSistema';
 import { EditorRico } from '../components/EditorRico';
@@ -2816,12 +2818,23 @@ async function pedir(caminho: string): Promise<any> {
   }
 }
 
+/** O que o card e a coluna recebem para marcar oportunidades. Ausente para quem
+ *  não pode mover nem excluir: aí o clique só abre. */
+interface SelecaoDoFunil {
+  selecao: Set<string>;
+  /** Uma oportunidade marcada sendo arrastada junto com outras: todas vão. */
+  loteArrastado: boolean;
+  onMarcar: (sub: Submission, intervalo: boolean) => void;
+  onClicar: (sub: Submission, e: React.MouseEvent) => void;
+}
+
 function KanbanCard({
-  sub, onDragStart, onClick, color, onPrefetch, onCancelPrefetch, onDelete, hideAging,
+  sub, onDragStart, onClick, color, onPrefetch, onCancelPrefetch, onDelete, hideAging, selecao,
 }: {
   sub: Submission; onDragStart: (id: string) => void; onClick: (id: string) => void; color?: string;
   onPrefetch?: (id: string) => void; onCancelPrefetch?: (id: string) => void;
   onDelete?: (id: string) => void;
+  selecao?: SelecaoDoFunil;
   // Em etapas de conversão/desconsideradas o card fica parado permanentemente,
   // então não faz sentido exibir o tempo acumulado ali.
   hideAging?: boolean;
@@ -2832,14 +2845,22 @@ function KanbanCard({
   // O próximo passo é o que faz o funil andar: atrasado, ele vira o aviso do
   // card. Sem próximo passo marcado, o card não cobra nada.
   const acaoAtrasada = !!sub.proxima_acao_em && sub.proxima_acao_em < hojeISO();
+  const marcada = !!selecao?.selecao.has(sub.id);
 
   return (
     <div
-      className="kanban-card"
-      style={{ '--col-color': color, position: 'relative' } as any}
+      className={`kanban-card${marcada ? ' selecionado' : ''}`}
+      style={{
+        '--col-color': color, position: 'relative',
+        ...(selecao?.loteArrastado && marcada ? { opacity: 0.45 } : {}),
+      } as any}
       draggable={!confirmDel}
       onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; definirImagemArrasto(e); onDragStart(sub.id); }}
-      onClick={() => !confirmDel && onClick(sub.id)}
+      onMouseDown={semTextoNoShift}
+      onClick={e => {
+        if (confirmDel) return;
+        if (selecao) selecao.onClicar(sub, e); else onClick(sub.id);
+      }}
       onMouseEnter={() => onPrefetch?.(sub.id)}
       onMouseLeave={() => onCancelPrefetch?.(sub.id)}
     >
@@ -2849,6 +2870,10 @@ function KanbanCard({
       <div className="kanban-card-topo">
         <p className="kanban-card-title">{sub.empresa ?? '-'}</p>
         <span className="kanban-card-acoes">
+          {selecao && (
+            <CaixaDeMarcar marcada={marcada} rotulo={sub.empresa ?? 'oportunidade'}
+              onMarcar={intervalo => selecao.onMarcar(sub, intervalo)} />
+          )}
           <button type="button" className="kanban-card-acao" title="Abrir a oportunidade"
             aria-label={`Abrir ${sub.empresa ?? 'a oportunidade'}`}
             onClick={e => { e.stopPropagation(); onClick(sub.id); }}>
@@ -2974,6 +2999,20 @@ function KanbanCard({
   );
 }
 
+/** A ordem dos cards numa coluna. Na etapa de conversão, pela data de
+ *  execução - a última executada no topo. Fora da coluna ela também vale: é
+ *  nela que o Shift conta o intervalo de uma seleção. */
+function ordemDaColuna(status: StatusConfig, cards: Submission[]): Submission[] {
+  return status.is_conversion
+    ? [...cards].sort((a, b) => String(b.data_execucao ?? '').localeCompare(String(a.data_execucao ?? '')))
+    : cards;
+}
+
+/** A etapa que pede alguma coisa de quem move - a data do fechamento, o motivo
+ *  da perda, as pendências. Mover várias de uma vez não tem onde perguntar isso
+ *  card a card, então estas ficam fora do mover em lote. */
+const etapaPedeAlgo = (st?: StatusConfig) => !!(st?.is_conversion || st?.is_excluded || st?.requires_pendencia);
+
 // ── Kanban Column ───────────────────────────────────
 /** Carência antes de uma etapa recolhida expandida voltar a recolher (ms). */
 const COLLAPSED_STICKY_MS = 2000;
@@ -2983,6 +3022,7 @@ const COLLAPSED_HOVER_INTENT_MS = 200;
 
 function KanbanColumn({
   status, cards, onDragStart, onDrop, onClick, dragOver, setDragOver, onPrefetch, onCancelPrefetch, onDelete, isDragging, onToggleCollapsed, onCriarNaEtapa,
+  selecao,
 }: {
   status: StatusConfig;
   cards: Submission[];
@@ -3000,6 +3040,7 @@ function KanbanColumn({
   onToggleCollapsed?: (id: number, next: boolean) => void;
   /** Abre o cadastro já nesta etapa. */
   onCriarNaEtapa?: (statusId: number) => void;
+  selecao?: SelecaoDoFunil;
 }) {
   const isOver = dragOver === status.id;
 
@@ -3060,10 +3101,7 @@ function KanbanColumn({
 
   // O que está em jogo nesta etapa: a soma do valor estimado das oportunidades dela.
   const colTotal = cards.reduce((sum, c) => sum + (c.valor_estimado ?? 0), 0);
-  // Na etapa de conversão (Executada), ordena pela data de execução - a última executada no topo.
-  const orderedCards = status.is_conversion
-    ? [...cards].sort((a, b) => String(b.data_execucao ?? '').localeCompare(String(a.data_execucao ?? '')))
-    : cards;
+  const orderedCards = ordemDaColuna(status, cards);
 
   const classes = [
     'kanban-column',
@@ -3133,7 +3171,7 @@ function KanbanColumn({
       </div>
       <div className="kanban-column-body">
         {orderedCards.map(sub => (
-          <KanbanCard key={sub.id} sub={sub} onDragStart={onDragStart} onClick={onClick} color={status.cor} onPrefetch={onPrefetch} onCancelPrefetch={onCancelPrefetch} onDelete={onDelete} hideAging={!!(status.is_conversion || status.is_excluded)} />
+          <KanbanCard key={sub.id} sub={sub} onDragStart={onDragStart} onClick={onClick} color={status.cor} onPrefetch={onPrefetch} onCancelPrefetch={onCancelPrefetch} onDelete={onDelete} hideAging={!!(status.is_conversion || status.is_excluded)} selecao={selecao} />
         ))}
         {cards.length === 0 && (
           <div className="kanban-empty-slot">Arraste cards aqui</div>
@@ -3267,6 +3305,7 @@ export default function OportunidadesPage({ token, openCard, onCardOpened }: {
 }) {
   const api = useApi(token);
   const { toast } = useToast();
+  const { pode } = useAuth();
   const [statuses, setStatuses] = useState<StatusConfig[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
@@ -3404,6 +3443,12 @@ export default function OportunidadesPage({ token, openCard, onCardOpened }: {
 
   function handleDrop(statusId: number) {
     if (!draggedId) return;
+    // Arrastar uma marcada leva todas as marcadas.
+    if (sel.selecao.has(draggedId) && sel.selecao.size > 1) {
+      setDraggedId(null);
+      void moverSelecionadas(statusId);
+      return;
+    }
     const sub = submissions.find(s => s.id === draggedId);
     if (!sub || sub.current_status_id === statusId) { setDraggedId(null); return; }
     const subId = draggedId;
@@ -3488,6 +3533,72 @@ export default function OportunidadesPage({ token, openCard, onCardOpened }: {
     commitMove(subId, statusId);
   }
 
+  /** Move todas as marcadas para a etapa. Pinta antes e manda todas ao mesmo
+   *  tempo; a recusada volta para onde estava. Fica de fora o que pediria uma
+   *  pergunta card a card: a etapa que exige data, motivo ou pendência, e sair
+   *  do fechamento, que apaga a data registrada. */
+  async function moverSelecionadas(statusId: number) {
+    const destino = statuses.find(st => Number(st.id) === statusId);
+    if (etapaPedeAlgo(destino)) {
+      toast('error', `"${destino?.nome}" pede um dado de cada oportunidade`,
+        'Mova uma por vez para esta etapa: ela pergunta a data, o motivo ou as pendências de cada card.');
+      return;
+    }
+    const doFechamento = (s: Submission) => !!(statuses.find(st => Number(st.id) === Number(s.current_status_id))
+      ?.is_conversion && s.data_execucao);
+    const alvo = sel.selecionadas.filter(s => s.current_status_id !== statusId && !doFechamento(s));
+    const presas = sel.selecionadas.filter(s => s.current_status_id !== statusId && doFechamento(s)).length;
+    if (presas > 0) {
+      toast('info', presas === 1 ? '1 oportunidade ficou onde estava' : `${presas} oportunidades ficaram onde estavam`,
+        'Sair do fechamento apaga a data registrada: mova essas uma por vez.');
+    }
+    if (alvo.length === 0) return;
+    const antes = new Map(alvo.map(s => [s.id, s]));
+    const agora = new Date().toISOString();
+    setSubmissions(prev => prev.map(s => (antes.has(s.id)
+      ? { ...s, current_status_id: statusId, status_since: agora } : s)));
+    const respostas = await Promise.all(alvo.map(s =>
+      api('', 'POST', { action: 'move', oportunidade_id: s.id, status_id: statusId }).catch(() => null)));
+    const falhas = new Set(alvo.filter((_, i) => !respostas[i] || respostas[i].error).map(s => s.id));
+    if (falhas.size > 0) {
+      setSubmissions(prev => prev.map(s => (falhas.has(s.id) ? antes.get(s.id) ?? s : s)));
+      toast('error',
+        falhas.size === alvo.length ? 'Nada foi movido' : `${falhas.size} de ${alvo.length} não foram movidas`,
+        respostas.find(r => r?.error)?.error ?? 'O servidor não respondeu. Tente de novo.');
+    }
+    const certas = alvo.length - falhas.size;
+    if (certas > 0) {
+      toast('success', `${certas === 1 ? '1 oportunidade' : `${certas} oportunidades`} em "${destino?.nome ?? ''}"`);
+    }
+  }
+
+  /** As marcadas à espera da confirmação de exclusão. */
+  const [excluindoVarias, setExcluindoVarias] = useState<Submission[] | null>(null);
+
+  async function excluirSelecionadas() {
+    const alvo = excluindoVarias ?? [];
+    setExcluindoVarias(null);
+    if (alvo.length === 0) return;
+    const ids = new Set(alvo.map(s => s.id));
+    const antes = submissions;
+    setSubmissions(prev => prev.filter(s => !ids.has(s.id)));
+    if (selectedId && ids.has(selectedId)) setSelectedId(null);
+    const respostas = await Promise.all(alvo.map(s =>
+      api('', 'POST', { action: 'delete_submission', id: s.id }).catch(() => null)));
+    const falhas = new Set(alvo.filter((_, i) => !respostas[i] || respostas[i].error).map(s => s.id));
+    if (falhas.size > 0) {
+      // As recusadas voltam; as outras já foram.
+      setSubmissions(prev => [...antes.filter(s => falhas.has(s.id) && !prev.some(x => x.id === s.id)), ...prev]);
+      toast('error',
+        falhas.size === alvo.length ? 'Nada foi excluído' : `${falhas.size} de ${alvo.length} não foram excluídas`,
+        respostas.find(r => r?.error)?.error ?? 'O servidor não respondeu. Tente de novo.');
+    }
+    const certas = alvo.length - falhas.size;
+    if (certas > 0) {
+      toast('success', certas === 1 ? 'Oportunidade excluída' : `${certas} oportunidades excluídas`);
+    }
+  }
+
   function handleMoved(id: string, statusId: number) {
     setSubmissions(prev => prev.map(s => s.id === id
       ? { ...s, current_status_id: statusId, status_since: new Date().toISOString() }
@@ -3557,6 +3668,27 @@ export default function OportunidadesPage({ token, openCard, onCardOpened }: {
     if (filterStatus.length > 0 && !filterStatus.includes(String(s.current_status_id ?? ''))) return false;
     return casaBusca(s);
   });
+
+  // ── Seleção de várias oportunidades ───────────────────────────────────────
+  // O mesmo gesto da tela de Tarefas, só no quadro: a lista do funil é uma
+  // tabela de leitura. A ordem é a das colunas, que é onde o Shift conta.
+  const podeMover = pode('oportunidades:mover');
+  const podeExcluirOp = pode('oportunidades:excluir');
+  const noQuadro = useMemo(() => (view !== 'kanban' ? [] : [
+    ...statuses.flatMap(st => ordemDaColuna(st, filtered.filter(s => s.current_status_id === Number(st.id)))),
+    ...filtered.filter(s => !s.current_status_id),
+  ]), [view, statuses, filtered]);
+  const sel = useSelecao(noQuadro, {
+    ativo: podeMover || podeExcluirOp,
+    ocupado: !!selectedId || !!showCreate || !!excluindoVarias || !!pendingConv || !!pendingPerdaBoard
+      || !!pendingBoardPend || !!pendingClearExec,
+  });
+  const selecaoDoFunil: SelecaoDoFunil | undefined = (podeMover || podeExcluirOp) ? {
+    selecao: sel.selecao as Set<string>,
+    loteArrastado: !!draggedId && sel.selecao.has(draggedId) && sel.selecao.size > 1,
+    onMarcar: sel.marcar,
+    onClicar: (sub, e) => sel.clicar(sub, e, x => setSelectedId(x.id)),
+  } : undefined;
 
   function toggleSort(col: string) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -3719,7 +3851,7 @@ export default function OportunidadesPage({ token, openCard, onCardOpened }: {
           <p>{busca || hasFilter ? 'Nenhuma oportunidade no recorte atual' : 'Nenhuma oportunidade cadastrado ainda'}</p>
         </div>
       ) : view === 'kanban' ? (
-        <div className="kanban-board" ref={boardRef}>
+        <div className={`kanban-board${sel.selecao.size ? ' selecionando' : ''}`} ref={boardRef}>
           {statuses.map(st => (
             <KanbanColumn
               key={st.id}
@@ -3736,6 +3868,7 @@ export default function OportunidadesPage({ token, openCard, onCardOpened }: {
               isDragging={draggedId !== null}
               onToggleCollapsed={toggleAlwaysCollapsed}
               onCriarNaEtapa={etapa => setShowCreate({ etapa })}
+              selecao={selecaoDoFunil}
             />
           ))}
           {/* Unassigned column */}
@@ -3759,7 +3892,7 @@ export default function OportunidadesPage({ token, openCard, onCardOpened }: {
               </div>
               <div className="kanban-column-body">
                 {semEtapa.map(sub => (
-                  <KanbanCard key={sub.id} sub={sub} onDragStart={setDraggedId} onClick={setSelectedId} onPrefetch={prefetch} onCancelPrefetch={cancelPrefetch} />
+                  <KanbanCard key={sub.id} sub={sub} onDragStart={setDraggedId} onClick={setSelectedId} onPrefetch={prefetch} onCancelPrefetch={cancelPrefetch} selecao={selecaoDoFunil} />
                 ))}
               </div>
             </div>
@@ -3904,6 +4037,45 @@ export default function OportunidadesPage({ token, openCard, onCardOpened }: {
           onConfirm={confirmBoardPendencia}
           onCancel={() => setPendingBoardPend(null)}
         />
+      )}
+
+      {/* O que se faz com várias oportunidades de uma vez. Cada ação só aparece
+          para quem pode fazê-la com uma sozinha. */}
+      {selecaoDoFunil && (
+        <BarraDeSelecao total={sel.selecionadas.length} singular="oportunidade selecionada"
+          plural="oportunidades selecionadas" onLimpar={sel.limpar}>
+          {sel.selecionadas.length < noQuadro.length && (
+            <AcaoDaBarra rotulo={`Selecionar todas (${noQuadro.length})`} icone={<IconCheck size={13} />}
+              onClick={sel.marcarTodas} />
+          )}
+          {podeMover && (
+            <AcaoDaBarra rotulo="Etapa" icone={<IconArrowRight size={13} />}
+              opcoes={statuses.filter(st => !etapaPedeAlgo(st)).map(st => ({
+                valor: String(st.id), label: st.nome,
+                icone: <span className="kanban-dot" style={{ background: st.cor }} />,
+              }))}
+              onEscolher={v => void moverSelecionadas(Number(v))} />
+          )}
+          {podeExcluirOp && (
+            <AcaoDaBarra rotulo="Excluir" icone={<IconTrash size={13} />} perigo
+              onClick={() => setExcluindoVarias(sel.selecionadas)} />
+          )}
+        </BarraDeSelecao>
+      )}
+
+      {excluindoVarias && (
+        <Dialogo
+          titulo={excluindoVarias.length === 1
+            ? 'Excluir esta oportunidade?' : `Excluir ${excluindoVarias.length} oportunidades?`}
+          descricao={excluindoVarias.length === 1
+            ? <><strong>{excluindoVarias[0].empresa ?? 'A oportunidade'}</strong> sai do funil com a conversa e os
+              anexos. O suporte consegue reverter; a tela, não.</>
+            : <>As <strong>{excluindoVarias.length} oportunidades</strong> selecionadas saem do funil com a conversa
+              e os anexos de cada uma. O suporte consegue reverter; a tela, não.</>}
+          rotuloOk={excluindoVarias.length === 1 ? 'Excluir' : `Excluir ${excluindoVarias.length}`}
+          zIndex={1100}
+          onFechar={() => setExcluindoVarias(null)}
+          onConfirmar={() => void excluirSelecionadas()} />
       )}
 
       {pendingClearExec && (
