@@ -52,6 +52,25 @@ export function BarraDeSelecao({ total, singular, plural, onLimpar, children }: 
   );
 }
 
+/** A caixa de marcar de um card ou de uma linha. O clique para nela: chegando
+ *  ao card, ele abriria a ficha junto. */
+export function CaixaDeMarcar({ marcada, rotulo, onMarcar }: {
+  marcada: boolean;
+  /** O nome da peça, para o leitor de tela dizer o que está marcando. */
+  rotulo: string;
+  onMarcar: (intervalo: boolean) => void;
+}) {
+  return (
+    <label className="tarefa-marcar" title="Selecionar (Shift marca o intervalo)"
+      onClick={e => e.stopPropagation()}>
+      <input type="checkbox" className="form-checkbox" checked={marcada}
+        aria-label={`Selecionar "${rotulo}"`}
+        onClick={e => { e.stopPropagation(); onMarcar(e.shiftKey); }}
+        onChange={() => { /* o clique já marcou */ }} />
+    </label>
+  );
+}
+
 export interface OpcaoDaBarra {
   valor: string;
   label: string;

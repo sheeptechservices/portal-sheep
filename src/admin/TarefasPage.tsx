@@ -48,7 +48,8 @@ import {
 } from './FormularioTarefa';
 import { DonosDaTarefa } from '../components/DonosDaTarefa';
 import { SinaisDaTarefa } from '../components/SinaisDaTarefa';
-import { AcaoDaBarra, BarraDeSelecao } from '../components/BarraDeSelecao';
+import { AcaoDaBarra, BarraDeSelecao, CaixaDeMarcar } from '../components/BarraDeSelecao';
+import { semTextoNoShift, useSelecao } from '../lib/useSelecao';
 import { Dialogo } from '../components/Dialogo';
 import { nomesDosDonos } from '../lib/donosDaTarefa';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
@@ -708,82 +709,22 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
 
   // ── Seleção de várias tarefas ─────────────────────────────────────────────
   //
-  // Marcar é pela caixa do card, por Ctrl (ou Cmd) com clique, ou por Shift com
-  // clique, que marca o intervalo desde a última marcada. Com alguma marcada, o
-  // clique simples também marca: é o gesto da vez, e abrir a gaveta no meio de
-  // uma seleção a interromperia. Esc limpa.
+  // O gesto é o de toda tela de cards da casa, e mora em `useSelecao`: caixa
+  // do card, Ctrl ou Shift com clique, clique simples quando já há alguma
+  // marcada, e Esc para limpar.
 
   const podeSelecionar = podeEditar || podeExcluir;
-  const [selecao, setSelecao] = useState<Set<number>>(() => new Set());
-  /** A última tarefa marcada à mão: é dela que o Shift conta o intervalo. */
-  const ancoraSelecao = useRef<number | null>(null);
   const [excluindoLote, setExcluindoLote] = useState(false);
 
   /** As tarefas na ordem em que estão na tela - coluna por coluna no quadro,
    *  grupo por grupo na lista. É nela que o Shift acha o intervalo. */
   const visiveis = useMemo(() => grupos.flatMap(g => g.tarefas), [grupos]);
-  const selecionadas = useMemo(() => visiveis.filter(t => selecao.has(t.id)), [visiveis, selecao]);
-
-  // A seleção vale para o que está na tela. A tarefa que um filtro escondeu
-  // sai dela: senão a barra diria "3 selecionadas" mostrando duas, e excluir
-  // levaria junto uma que ninguém está vendo.
-  useEffect(() => {
-    setSelecao(s => {
-      if (s.size === 0) return s;
-      const ids = new Set(visiveis.map(t => t.id));
-      const fica = new Set([...s].filter(id => ids.has(id)));
-      return fica.size === s.size ? s : fica;
-    });
-  }, [visiveis]);
-
-  const limparSelecao = useCallback(() => {
-    setSelecao(new Set());
-    ancoraSelecao.current = null;
-  }, []);
-
-  // Esc limpa a seleção, mas não por cima de uma gaveta ou de um diálogo:
-  // ali ele é de quem está aberto.
-  useEffect(() => {
-    if (selecao.size === 0 || form || excluindo || excluindoLote) return;
-    const aoTeclar = (e: KeyboardEvent) => { if (e.key === 'Escape') limparSelecao(); };
-    document.addEventListener('keydown', aoTeclar);
-    return () => document.removeEventListener('keydown', aoTeclar);
-  }, [selecao.size, form, excluindo, excluindoLote, limparSelecao]);
-
-  function marcar(t: TarefaComProjeto, intervalo: boolean) {
-    const ancora = ancoraSelecao.current;
-    if (intervalo && ancora != null && ancora !== t.id) {
-      const i = visiveis.findIndex(x => x.id === ancora);
-      const j = visiveis.findIndex(x => x.id === t.id);
-      if (i >= 0 && j >= 0) {
-        const [de, ate] = i < j ? [i, j] : [j, i];
-        setSelecao(s => {
-          const n = new Set(s);
-          for (const x of visiveis.slice(de, ate + 1)) n.add(x.id);
-          return n;
-        });
-        ancoraSelecao.current = t.id;
-        return;
-      }
-    }
-    ancoraSelecao.current = t.id;
-    setSelecao(s => {
-      const n = new Set(s);
-      if (n.has(t.id)) n.delete(t.id); else n.add(t.id);
-      return n;
-    });
-  }
-
-  /** O clique no card ou na linha: marca quando é gesto de seleção, abre
-   *  quando não é. */
-  function clicarTarefa(t: TarefaComProjeto, e: React.MouseEvent) {
-    if (podeSelecionar && (e.shiftKey || e.ctrlKey || e.metaKey || selecao.size > 0)) {
-      e.preventDefault();
-      marcar(t, e.shiftKey);
-      return;
-    }
-    abrirEdicao(t);
-  }
+  const sel = useSelecao(visiveis, {
+    ativo: podeSelecionar,
+    ocupado: !!form || !!excluindo || excluindoLote,
+  });
+  const { selecao, selecionadas, marcar, limpar: limparSelecao } = sel;
+  const clicarTarefa = (t: TarefaComProjeto, e: React.MouseEvent) => sel.clicar(t, e, abrirEdicao);
 
   /** Muda o mesmo campo em todas as marcadas. Pinta antes, grava todas ao
    *  mesmo tempo, e devolve só as que o servidor recusou - as outras ficam.
@@ -1314,10 +1255,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
       ) : (
         <Tabela grupos={grupos} pessoas={pessoas} et={et} etq={etq} podeExcluir={podeExcluir}
           onAbrir={abrirEdicao} onExcluir={setExcluindo} selecao={selecaoProps}
-          onMarcarTodas={podeSelecionar ? (todas => {
-            if (todas) setSelecao(new Set(visiveis.map(t => t.id)));
-            else limparSelecao();
-          }) : undefined} />
+          onMarcarTodas={podeSelecionar ? (todas => (todas ? sel.marcarTodas() : limparSelecao())) : undefined} />
       )}
 
       {/* O que se faz com todas as marcadas de uma vez. Cada ação só aparece
@@ -1327,7 +1265,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
           plural="tarefas selecionadas" onLimpar={limparSelecao}>
           {selecionadas.length < visiveis.length && (
             <AcaoDaBarra rotulo={`Selecionar todas (${visiveis.length})`} icone={<IconCheck size={13} />}
-              onClick={() => setSelecao(new Set(visiveis.map(t => t.id)))} />
+              onClick={sel.marcarTodas} />
           )}
           {podeEditar && (
             <AcaoDaBarra rotulo="Etapa" icone={<IconArrowRight size={13} />}
@@ -1490,23 +1428,13 @@ interface Selecao {
   onClicar: (t: TarefaComProjeto, e: React.MouseEvent) => void;
 }
 
-/** A caixa de marcar de um card ou de uma linha. O clique para nela: chegando
- *  ao card, ele abriria a gaveta junto. */
-function CaixaDeMarcar({ t, sel }: { t: TarefaComProjeto; sel: Selecao }) {
+/** A caixa da casa, presa a uma tarefa. */
+function CaixaDaTarefa({ t, sel }: { t: TarefaComProjeto; sel: Selecao }) {
   return (
-    <label className="tarefa-marcar" title="Selecionar (Shift marca o intervalo)"
-      onClick={e => e.stopPropagation()}>
-      <input type="checkbox" className="form-checkbox" checked={sel.selecao.has(t.id)}
-        aria-label={`Selecionar "${t.titulo}"`}
-        onClick={e => { e.stopPropagation(); sel.onMarcar(t, e.shiftKey); }}
-        onChange={() => { /* o clique já marcou */ }} />
-    </label>
+    <CaixaDeMarcar marcada={sel.selecao.has(t.id)} rotulo={t.titulo}
+      onMarcar={intervalo => sel.onMarcar(t, intervalo)} />
   );
 }
-
-/** Shift com clique marca o intervalo; sem isto o navegador seleciona o texto
- *  entre os dois cliques, e a tela inteira fica azul. */
-const semTextoNoShift = (e: React.MouseEvent) => { if (e.shiftKey) e.preventDefault(); };
 
 // ── Quadro ──────────────────────────────────────────────────────────────────
 
@@ -1679,7 +1607,7 @@ function Coluna({ grupo, pessoas, et, etq, podeEditar, arrastando, loteArrastado
                   por cartão numa coluna cheia, e o clique que interessa no card
                   é o de abrir. */}
               <span className="kanban-card-acoes">
-                {selecao && <CaixaDeMarcar t={t} sel={selecao} />}
+                {selecao && <CaixaDaTarefa t={t} sel={selecao} />}
                 {onDuplicar && (
                   <button
                     type="button"
@@ -1847,7 +1775,7 @@ function Lista({ grupos, pessoas, et, etq, podeExcluir, onAbrir, onExcluir, sele
                 onMouseDown={semTextoNoShift}
                 onClick={e => (selecao ? selecao.onClicar(t, e) : onAbrir(t))} tabIndex={0}
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onAbrir(t); } }}>
-                {selecao && <CaixaDeMarcar t={t} sel={selecao} />}
+                {selecao && <CaixaDaTarefa t={t} sel={selecao} />}
                 <span className="kanban-dot" title={t.status}
                   style={{ background: et.cor(t.status), marginRight: 2 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
