@@ -5026,9 +5026,16 @@ body.arrastando-painel {
 .tarefa-marcar .form-checkbox { margin: 0; }
 .kanban-card:hover .tarefa-marcar,
 .admin-file-item:hover .tarefa-marcar,
+/* A do cabeçalho segue a mesma regra, pela cabeça da coluna ou do grupo. */
+.kanban-column-header:hover .tarefa-marcar,
+.admin-section-title:hover .tarefa-marcar,
+.linha-grupo:hover .tarefa-marcar,
 .tarefa-marcar:focus-within,
 .selecionando .tarefa-marcar,
 .selecionado .tarefa-marcar { opacity: 1; }
+/* Na tabela as caixas das linhas ficam sempre à vista, e a do grupo, que mora
+   na mesma coluna, acompanha. */
+.admin-table .tarefa-marcar { opacity: 1; }
 .tarefa-marcar .form-checkbox:focus-visible { outline: none; border-color: var(--gray2); box-shadow: 0 0 0 3px var(--gray4); }
 @media (hover: none) {
   .tarefa-marcar { opacity: 1; }

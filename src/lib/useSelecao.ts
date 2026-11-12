@@ -113,7 +113,20 @@ export function useSelecao<T extends { id: number | string }>(visiveis: T[], { a
 
   const marcarTodas = useCallback(() => setSelecao(new Set(visiveis.map(t => t.id))), [visiveis]);
 
-  return { selecao, selecionadas, marcar, clicar, limpar, marcarTodas, ativo };
+  /** A caixa de uma coluna ou de um grupo: marca todas as peças dele, ou, se
+   *  já estavam todas marcadas, desmarca. As de outros grupos ficam como estão
+   *  - dá para juntar "Fazer" e "Fazendo" numa seleção só. */
+  const alternarGrupo = useCallback((grupo: T[]) => {
+    if (grupo.length === 0) return;
+    setSelecao(s => {
+      const todas = grupo.every(t => s.has(t.id));
+      const n = new Set(s);
+      for (const t of grupo) { if (todas) n.delete(t.id); else n.add(t.id); }
+      return n;
+    });
+  }, []);
+
+  return { selecao, selecionadas, marcar, clicar, limpar, marcarTodas, alternarGrupo, ativo };
 }
 
 /** Shift com clique marca o intervalo; sem isto o navegador seleciona o texto

@@ -10,7 +10,7 @@
 //  existem e o que cada uma faz. A barra cuida só do desenho, da entrada, da
 //  saída e das listas que abrem a partir dela.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { IconX } from './icons';
 import { useRevelar } from '../lib/useRevelar';
@@ -67,6 +67,32 @@ export function CaixaDeMarcar({ marcada, rotulo, onMarcar }: {
         aria-label={`Selecionar "${rotulo}"`}
         onClick={e => { e.stopPropagation(); onMarcar(e.shiftKey); }}
         onChange={() => { /* o clique já marcou */ }} />
+    </label>
+  );
+}
+
+/** A caixa do cabeçalho de uma coluna ou de um grupo: marca todas as peças
+ *  dele de uma vez. Com parte marcada ela mostra o traço do "algumas", e o
+ *  clique completa a seleção; com todas marcadas, o clique desmarca. */
+export function CaixaDoGrupo({ total, marcadas, nome, onAlternar }: {
+  total: number;
+  marcadas: number;
+  /** O nome da coluna, para a dica e o leitor de tela. */
+  nome: string;
+  onAlternar: () => void;
+}) {
+  const caixa = useRef<HTMLInputElement>(null);
+  // "Algumas" não é estado de um checkbox em HTML: só existe pela
+  // propriedade, e ela só se escreve por código.
+  useEffect(() => {
+    if (caixa.current) caixa.current.indeterminate = marcadas > 0 && marcadas < total;
+  }, [marcadas, total]);
+  const todas = total > 0 && marcadas === total;
+  const rotulo = todas ? `Desmarcar as ${total} de "${nome}"` : `Selecionar as ${total} de "${nome}"`;
+  return (
+    <label className="tarefa-marcar tarefa-marcar-grupo" title={rotulo} onClick={e => e.stopPropagation()}>
+      <input ref={caixa} type="checkbox" className="form-checkbox" checked={todas}
+        aria-label={rotulo} onChange={onAlternar} />
     </label>
   );
 }

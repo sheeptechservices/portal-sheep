@@ -15,7 +15,7 @@ import {
   IconPlus, IconRecolher, IconRefresh, IconSearch, IconSpinner, IconTrash, IconVisaoLista,
   IconVisaoQuadro, IconX, IconZip, IconChevronUp, IconChevronUpDown, IconArrowRight,
 } from '../components/icons';
-import { AcaoDaBarra, BarraDeSelecao, CaixaDeMarcar } from '../components/BarraDeSelecao';
+import { AcaoDaBarra, BarraDeSelecao, CaixaDeMarcar, CaixaDoGrupo } from '../components/BarraDeSelecao';
 import { semTextoNoShift, useSelecao } from '../lib/useSelecao';
 import { SegSwitch } from '../components/SegSwitch';
 import { SelectSistema } from '../components/SelectSistema';
@@ -2826,6 +2826,8 @@ interface SelecaoDoFunil {
   loteArrastado: boolean;
   onMarcar: (sub: Submission, intervalo: boolean) => void;
   onClicar: (sub: Submission, e: React.MouseEvent) => void;
+  /** A caixa do cabeçalho da coluna: todas dela, ou nenhuma. */
+  onAlternarGrupo: (subs: Submission[]) => void;
 }
 
 function KanbanCard({
@@ -3134,6 +3136,12 @@ function KanbanColumn({
             {status.nome}
           </div>
           <span className="kanban-conta-bolha">{cards.length}</span>
+          {/* Marca a coluna inteira, como no quadro de Tarefas. */}
+          {selecao && cards.length > 0 && (
+            <CaixaDoGrupo total={cards.length} nome={status.nome}
+              marcadas={cards.filter(c => selecao.selecao.has(c.id)).length}
+              onAlternar={() => selecao.onAlternarGrupo(orderedCards)} />
+          )}
           {onToggleCollapsed && (
             <button
               type="button"
@@ -3688,6 +3696,7 @@ export default function OportunidadesPage({ token, openCard, onCardOpened }: {
     loteArrastado: !!draggedId && sel.selecao.has(draggedId) && sel.selecao.size > 1,
     onMarcar: sel.marcar,
     onClicar: (sub, e) => sel.clicar(sub, e, x => setSelectedId(x.id)),
+    onAlternarGrupo: sel.alternarGrupo,
   } : undefined;
 
   function toggleSort(col: string) {

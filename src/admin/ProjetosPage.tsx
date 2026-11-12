@@ -19,7 +19,7 @@ import {
   IconTriangulo, IconUser, IconVisaoLista, IconVisaoQuadro,
   IconX, IconZip, IconRamificar
 } from '../components/icons';
-import { AcaoDaBarra, BarraDeSelecao, CaixaDeMarcar } from '../components/BarraDeSelecao';
+import { AcaoDaBarra, BarraDeSelecao, CaixaDeMarcar, CaixaDoGrupo } from '../components/BarraDeSelecao';
 import { semTextoNoShift, useSelecao } from '../lib/useSelecao';
 import FilterDropdown from '../components/FilterDropdown';
 import FiltroPeriodo, { dentroDoPeriodo } from '../components/FiltroPeriodo';
@@ -1277,6 +1277,7 @@ function ColunaDoQuadro({ etapa, tarefas, pessoas, podeEditar, arrastando, loteA
     selecao: Set<number>;
     onMarcar: (t: Tarefa, intervalo: boolean) => void;
     onClicar: (t: Tarefa, e: React.MouseEvent) => void;
+    onAlternarGrupo: (ts: Tarefa[]) => void;
   };
 }) {
   const etiquetario = useContext(EtiquetarioCtx);
@@ -1349,6 +1350,12 @@ function ColunaDoQuadro({ etapa, tarefas, pessoas, podeEditar, arrastando, loteA
         </div>
         {/* O subtotal colado no titulo, como na tela de Tarefas. */}
         <span className="kanban-conta-bolha">{tarefas.length}</span>
+        {/* Marca a coluna inteira, como na tela de Tarefas. */}
+        {selecao && tarefas.length > 0 && (
+          <CaixaDoGrupo total={tarefas.length} nome={etapa.nome}
+            marcadas={tarefas.filter(t => selecao.selecao.has(t.id)).length}
+            onAlternar={() => selecao.onAlternarGrupo(tarefas)} />
+        )}
         {/* Manter a etapa recolhida é decisão sobre o quadro, e se toma olhando
             para ele. É a mesma marca da tela de Tarefas: a etapa marcada aqui
             fica recolhida lá também. Na mesma ordem de lá - marca, contagem e
@@ -1503,6 +1510,7 @@ function QuadroDeTarefas({ tarefas, etapas, pessoas, podeEditar, onAbrir, onCria
     selecao: sel.selecao,
     onMarcar: sel.marcar,
     onClicar: (t: Tarefa, e: React.MouseEvent) => sel.clicar(t, e, onAbrir),
+    onAlternarGrupo: sel.alternarGrupo,
   } : undefined;
   const loteArrastado = arrastando != null && sel.selecao.has(arrastando) && sel.selecao.size > 1;
   const etapaDe = (nome: string) => etapas.find(e => e.nome === nome);

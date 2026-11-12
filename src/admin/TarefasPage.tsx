@@ -48,7 +48,7 @@ import {
 } from './FormularioTarefa';
 import { DonosDaTarefa } from '../components/DonosDaTarefa';
 import { SinaisDaTarefa } from '../components/SinaisDaTarefa';
-import { AcaoDaBarra, BarraDeSelecao, CaixaDeMarcar } from '../components/BarraDeSelecao';
+import { AcaoDaBarra, BarraDeSelecao, CaixaDeMarcar, CaixaDoGrupo } from '../components/BarraDeSelecao';
 import { semTextoNoShift, useSelecao } from '../lib/useSelecao';
 import { Dialogo } from '../components/Dialogo';
 import { nomesDosDonos } from '../lib/donosDaTarefa';
@@ -810,7 +810,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
 
   const nTarefas = (n: number) => (n === 1 ? '1 tarefa' : `${n} tarefas`);
   const selecaoProps = podeSelecionar ? {
-    selecao, onMarcar: marcar, onClicar: clicarTarefa,
+    selecao, onMarcar: marcar, onClicar: clicarTarefa, onAlternarGrupo: sel.alternarGrupo,
   } : undefined;
 
   /** Marca ou desmarca a etapa como recolhida por padrão, direto do quadro.
@@ -1426,6 +1426,18 @@ interface Selecao {
   selecao: Set<number>;
   onMarcar: (t: TarefaComProjeto, intervalo: boolean) => void;
   onClicar: (t: TarefaComProjeto, e: React.MouseEvent) => void;
+  /** A caixa do cabeçalho da coluna ou do grupo: todas dele, ou nenhuma. */
+  onAlternarGrupo: (ts: TarefaComProjeto[]) => void;
+}
+
+/** A caixa do cabeçalho, presa a um grupo de tarefas. */
+function CaixaDoGrupoDeTarefas({ grupo, sel }: { grupo: Grupo; sel: Selecao }) {
+  if (grupo.tarefas.length === 0) return null;
+  return (
+    <CaixaDoGrupo total={grupo.tarefas.length} nome={grupo.rotulo}
+      marcadas={grupo.tarefas.filter(t => sel.selecao.has(t.id)).length}
+      onAlternar={() => sel.onAlternarGrupo(grupo.tarefas)} />
+  );
 }
 
 /** A caixa da casa, presa a uma tarefa. */
@@ -1550,6 +1562,9 @@ function Coluna({ grupo, pessoas, et, etq, podeEditar, arrastando, loteArrastado
         {/* O subtotal colado no titulo: e a contagem daquela etapa, e no canto
             direito ele lia como um numero solto da coluna. */}
         <span className="kanban-conta-bolha">{tarefas.length}</span>
+        {/* Marca a coluna inteira: o pedido comum é "todas desta etapa", e
+            clicar card a card é o que a seleção existe para evitar. */}
+        {selecao && <CaixaDoGrupoDeTarefas grupo={grupo} sel={selecao} />}
         {/* Manter a etapa recolhida é decisão sobre o quadro, e agora se toma
             olhando para ele. Só aparece no agrupamento por status: nas outras
             dimensões a coluna não é uma etapa configurável. */}
@@ -1758,6 +1773,7 @@ function Lista({ grupos, pessoas, et, etq, podeExcluir, onAbrir, onExcluir, sele
         <div key={grupo.chave}>
           <p className="admin-section-title"
             style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+            {selecao && <CaixaDoGrupoDeTarefas grupo={grupo} sel={selecao} />}
             {grupo.icone
               ? <span style={{ display: 'inline-flex', color: grupo.cor }}>{grupo.icone}</span>
               : <span className="kanban-dot" style={{ background: grupo.cor }} />}
@@ -1871,7 +1887,9 @@ function Tabela({ grupos, pessoas, et, etq, podeExcluir, onAbrir, onExcluir, sel
           // ela não se perde ao rolar nem vira uma linha clicável a mais.
           <tbody key={grupo.chave}>
             <tr className="linha-grupo">
-              <td colSpan={colunas}>
+              {/* Na coluna das caixas, alinhada com as das linhas. */}
+              {selecao && <td><CaixaDoGrupoDeTarefas grupo={grupo} sel={selecao} /></td>}
+              <td colSpan={selecao ? colunas - 1 : colunas}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
                   {grupo.icone
                     ? <span style={{ display: 'inline-flex', color: grupo.cor }}>{grupo.icone}</span>
