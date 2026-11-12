@@ -6800,7 +6800,9 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
       action: 'salvar_tarefa',
       id: t.id, projeto_id: t.projeto_id, entrega_id: t.entrega_id,
       titulo: t.titulo, descricao: t.descricao, status: t.status,
-      prioridade: t.prioridade, responsavel_id: t.responsavel_id,
+      // A lista inteira de donos: só com o primeiro, arrastar o card tirava os
+      // outros da tarefa.
+      prioridade: t.prioridade, responsaveis: t.responsaveis ?? [],
       prazo: t.prazo, etiquetas: t.etiquetas, concluida_em: t.concluida_em,
       ...mudancas,
     });

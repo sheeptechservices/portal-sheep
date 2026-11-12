@@ -675,7 +675,9 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
     const r = await api('', 'POST', {
       action: 'salvar_tarefa', id: t.id, projeto_id: t.projeto_id, entrega_id: t.entrega_id,
       titulo: t.titulo, descricao: t.descricao, status: t.status, prioridade: t.prioridade,
-      responsavel_id: t.responsavel_id, prazo: t.prazo, etiquetas: t.etiquetas,
+      // A lista inteira de donos: só com o primeiro, arrastar o card tirava os
+      // outros da tarefa.
+      responsaveis: t.responsaveis ?? [], prazo: t.prazo, etiquetas: t.etiquetas,
       [campo]: valor,
     });
     if (r?.error) {
