@@ -5006,6 +5006,128 @@ body.arrastando-painel {
   .kanban-card-acao { transition: none; }
 }
 
+/* ── Seleção de várias tarefas ─────────────────────────
+   A caixa de marcar mora entre as ações do card e segue a regra delas: aparece
+   com o ponteiro em cima. Com alguma tarefa já marcada ela fica à vista em
+   todos os cards, porque aí marcar é o gesto da vez, e caçar a caixa card a
+   card seria procurar o botão a cada clique. */
+.tarefa-marcar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+.tarefa-marcar .form-checkbox { margin: 0; }
+.kanban-card:hover .tarefa-marcar,
+.admin-file-item:hover .tarefa-marcar,
+.tarefa-marcar:focus-within,
+.selecionando .tarefa-marcar,
+.selecionado .tarefa-marcar { opacity: 1; }
+.tarefa-marcar .form-checkbox:focus-visible { outline: none; border-color: var(--gray2); box-shadow: 0 0 0 3px var(--gray4); }
+@media (hover: none) {
+  .tarefa-marcar { opacity: 1; }
+}
+
+/* Marcado, o card ganha a aresta amarela da casa. A borda esquerda continua
+   sendo a cor da etapa: é ela que diz onde a tarefa está, e a seleção não
+   muda isso. Escrito também para a página de vidro, que repinta a sombra do
+   card no hover e apagaria a marca justo com o ponteiro em cima. */
+.kanban-card.selecionado,
+.pagina-cristal .kanban-card.selecionado,
+.pagina-cristal .kanban-card.selecionado:hover {
+  border-color: var(--yellow);
+  border-left-color: var(--col-color, var(--gray3));
+  box-shadow: var(--shadow-yellow);
+}
+.admin-file-item.selecionado { background: var(--bg); }
+.admin-table tr.selecionado td { background: var(--bg); }
+
+.barra-selecao {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  /* Abaixo das gavetas e dos diálogos (1000): a barra é da tela, e quem abre
+     uma tarefa por cima dela está olhando para outra coisa. */
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: calc(100vw - 32px);
+  padding: 6px 6px 6px 16px;
+  background: var(--white);
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-card-hover);
+  opacity: 0;
+  transform: translate(-50%, 16px);
+  transition: opacity var(--transition-spring), transform var(--transition-spring);
+}
+.barra-selecao.aberta {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.barra-selecao-conta {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--gray);
+  white-space: nowrap;
+  padding-right: 6px;
+}
+.barra-selecao-conta strong {
+  color: var(--black);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.barra-selecao-divisor {
+  width: 1px;
+  height: 20px;
+  margin: 0 6px;
+  background: var(--gray3);
+  flex-shrink: 0;
+}
+.barra-selecao-acao,
+.barra-selecao-fechar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--gray);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.barra-selecao-fechar { width: 32px; padding: 0; color: var(--gray2); }
+.barra-selecao-acao:hover,
+.barra-selecao-acao[aria-expanded="true"],
+.barra-selecao-fechar:hover { background: var(--gray4); color: var(--black); }
+.barra-selecao-acao.perigo:hover { background: var(--red-soft); color: var(--red); }
+.barra-selecao-acao:focus-visible,
+.barra-selecao-fechar:focus-visible { outline: none; background: var(--gray4); color: var(--black); }
+/* No celular a barra não cabe com os rótulos: ficam os ícones, e o nome de
+   cada ação continua no `aria-label` e no `title`. */
+@media (max-width: 720px) {
+  .barra-selecao { bottom: 16px; padding-left: 12px; }
+  .barra-selecao-rotulo { display: none; }
+  .barra-selecao-acao { padding: 0; width: 32px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .barra-selecao, .tarefa-marcar { transition: none; }
+}
+
 .kanban-card-footer {
   display: flex;
   align-items: center;
