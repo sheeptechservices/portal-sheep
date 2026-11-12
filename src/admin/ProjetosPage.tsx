@@ -16,9 +16,11 @@ import {
   IconPlay, IconPlus, IconPrioridadeAlta, IconPrioridadeBaixa, IconPrioridadeMaxima,
   IconRecolher,
   IconPrioridadeMedia, IconTrash,
-  IconTriangulo, IconVisaoLista, IconVisaoQuadro,
+  IconTriangulo, IconUser, IconVisaoLista, IconVisaoQuadro,
   IconX, IconZip, IconRamificar
 } from '../components/icons';
+import { AcaoDaBarra, BarraDeSelecao, CaixaDeMarcar } from '../components/BarraDeSelecao';
+import { semTextoNoShift, useSelecao } from '../lib/useSelecao';
 import FilterDropdown from '../components/FilterDropdown';
 import FiltroPeriodo, { dentroDoPeriodo } from '../components/FiltroPeriodo';
 import { SegSwitch } from '../components/SegSwitch';
@@ -88,6 +90,7 @@ import { Donut, type FatiaDonut } from '../components/Donut';
 // O mesmo formulário da tela de Tarefas: o quadro da semana abre a tarefa aqui,
 // e uma cópia local divergiria dela no primeiro campo novo.
 import {
+  AvatarVazio,
   ChipEtiqueta, ConfirmarExclusao, FormularioTarefa, indexarEtiquetas, tarefaGravada, TITULO_PADRAO,
   type EtapaTarefa, type Etiquetario, type EtiquetaTarefa, type Rascunho as RascunhoTarefa,
 } from './FormularioTarefa';
@@ -1231,8 +1234,26 @@ const INTENCAO_MS = 200;
  */
 const EtiquetarioCtx = createContext<Etiquetario | null>(null);
 
-function ColunaDoQuadro({ etapa, tarefas, pessoas, podeEditar, arrastando, onAbrir, onCriar,
-  onExcluir, onSoltarAqui, onArrastar, onFimDoArraste, onFixarRecolhida, entregaDe }: {
+/** O que os quadros de tarefa fazem com várias tarefas de uma vez. Vem de cima
+ *  por contexto, e não por prop: o quadro mora quatro camadas abaixo de quem
+ *  grava - ficha, entrega, Planning -, e passar à mão por todas elas era abrir
+ *  quatro portas para cada ação nova. Sem provedor, o quadro não oferece a
+ *  seleção. */
+interface AcoesEmMassa {
+  podeEditar: boolean;
+  podeExcluir: boolean;
+  /** Há uma gaveta ou um diálogo por cima: o Esc é de quem está aberto. */
+  ocupado: boolean;
+  alterar: (ts: Tarefa[], campos: Record<string, unknown>, feito: (n: number) => string) => void;
+  /** Pede a confirmação; quem confirma é o diálogo da página. */
+  excluir: (ts: Tarefa[]) => void;
+}
+const AcoesEmMassaCtx = createContext<AcoesEmMassa | null>(null);
+
+const nTarefas = (n: number) => (n === 1 ? '1 tarefa' : `${n} tarefas`);
+
+function ColunaDoQuadro({ etapa, tarefas, pessoas, podeEditar, arrastando, loteArrastado, onAbrir, onCriar,
+  onExcluir, onSoltarAqui, onArrastar, onFimDoArraste, onFixarRecolhida, entregaDe, selecao }: {
   etapa: EtapaTarefa;
   tarefas: Tarefa[];
   pessoas: Pessoa[];
@@ -1241,6 +1262,8 @@ function ColunaDoQuadro({ etapa, tarefas, pessoas, podeEditar, arrastando, onAbr
    *  entrega só, some: repetir o mesmo nome em todo card não informa nada. */
   entregaDe?: (t: Tarefa) => string | null;
   arrastando: number | null;
+  /** O card arrastado está marcado junto com outros: todos eles vão. */
+  loteArrastado: boolean;
   onAbrir: (t: Tarefa) => void;
   onCriar: () => void;
   onExcluir: (t: Tarefa) => void;
@@ -1249,6 +1272,12 @@ function ColunaDoQuadro({ etapa, tarefas, pessoas, podeEditar, arrastando, onAbr
   onFimDoArraste: () => void;
   /** Ausente para quem não configura etapas. */
   onFixarRecolhida?: (etapaId: number) => void;
+  /** Ausente quando o quadro não oferece seleção. */
+  selecao?: {
+    selecao: Set<number>;
+    onMarcar: (t: Tarefa, intervalo: boolean) => void;
+    onClicar: (t: Tarefa, e: React.MouseEvent) => void;
+  };
 }) {
   const etiquetario = useContext(EtiquetarioCtx);
   const [aberta, setAberta] = useState(false);
@@ -1347,17 +1376,23 @@ function ColunaDoQuadro({ etapa, tarefas, pessoas, podeEditar, arrastando, onAbr
       </div>
 
       <div className="kanban-column-body">
-        {tarefas.map(x => (
+        {tarefas.map(x => {
+          const marcada = !!selecao?.selecao.has(x.id);
+          return (
           // Abrir a tarefa é leitura, e não edição: quem não pode editar
           // continua podendo ler o que foi combinado - o formulário abre em
           // modo de leitura sozinho. O que a permissão barra é arrastar,
           // criar e excluir, que são os gestos que mudam alguma coisa.
-          <div key={x.id} className="kanban-card"
+          <div key={x.id} className={`kanban-card${marcada ? ' selecionado' : ''}`}
             draggable={podeEditar}
             onDragStart={() => onArrastar(x.id)}
             onDragEnd={onFimDoArraste}
-            onClick={() => onAbrir(x)}
-            style={{ cursor: 'pointer', opacity: arrastando === x.id ? 0.45 : 1 }}>
+            onMouseDown={semTextoNoShift}
+            onClick={e => (selecao ? selecao.onClicar(x, e) : onAbrir(x))}
+            style={{
+              cursor: 'pointer',
+              opacity: arrastando === x.id || (loteArrastado && marcada) ? 0.45 : 1,
+            }}>
             <p className="kanban-card-title">{x.titulo}</p>
             {entregaDe?.(x) && (
               <p className="kanban-card-entrega" title={entregaDe(x) ?? undefined}>
@@ -1389,6 +1424,12 @@ function ColunaDoQuadro({ etapa, tarefas, pessoas, podeEditar, arrastando, onAbr
                   <DonosDaTarefa ids={x.responsaveis} pessoas={pessoas} size={16} />
                 </span>
               )}
+              {/* A caixa de marcar mora com a lixeira: é o canto das ações do
+                  card, e aparece do mesmo jeito, com o ponteiro em cima. */}
+              {selecao && (
+                <CaixaDeMarcar marcada={marcada} rotulo={x.titulo}
+                  onMarcar={intervalo => selecao.onMarcar(x, intervalo)} />
+              )}
               {podeEditar && (
                 <button type="button" className="kanban-card-acao perigo"
                   title="Excluir tarefa" aria-label={`Excluir ${x.titulo}`}
@@ -1398,7 +1439,8 @@ function ColunaDoQuadro({ etapa, tarefas, pessoas, podeEditar, arrastando, onAbr
               )}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -1446,8 +1488,27 @@ function QuadroDeTarefas({ tarefas, etapas, pessoas, podeEditar, onAbrir, onCria
   const daColuna = (nome: string) =>
     tarefas.filter(x => x.status === nome).sort(porUrgencia);
 
+  // A seleção de várias tarefas, a mesma da tela de Tarefas. A ordem é a das
+  // colunas, da esquerda para a direita: é nela que o Shift conta o intervalo.
+  const acoes = useContext(AcoesEmMassaCtx);
+  const naOrdem = useMemo(
+    () => etapas.flatMap(et => tarefas.filter(x => x.status === et.nome).sort(porUrgencia)),
+    [etapas, tarefas],
+  );
+  // O quadro em leitura - a ficha aberta só para ver - não oferece a seleção:
+  // ela só existe para mudar alguma coisa.
+  const podeSelecionar = !!acoes && podeEditar && (acoes.podeEditar || acoes.podeExcluir);
+  const sel = useSelecao(naOrdem, { ativo: podeSelecionar, ocupado: acoes?.ocupado });
+  const selecao = podeSelecionar ? {
+    selecao: sel.selecao,
+    onMarcar: sel.marcar,
+    onClicar: (t: Tarefa, e: React.MouseEvent) => sel.clicar(t, e, onAbrir),
+  } : undefined;
+  const loteArrastado = arrastando != null && sel.selecao.has(arrastando) && sel.selecao.size > 1;
+  const etapaDe = (nome: string) => etapas.find(e => e.nome === nome);
+
   return (
-    <div className={`kanban-board painel-kanban${alto ? ' painel-kanban-alto' : ''}`}>
+    <div className={`kanban-board painel-kanban${alto ? ' painel-kanban-alto' : ''}${sel.selecao.size ? ' selecionando' : ''}`}>
       {etapas.map(et => (
         <ColunaDoQuadro key={et.id}
           etapa={et}
@@ -1455,6 +1516,8 @@ function QuadroDeTarefas({ tarefas, etapas, pessoas, podeEditar, onAbrir, onCria
           pessoas={pessoas}
           podeEditar={podeEditar}
           arrastando={arrastando}
+          loteArrastado={loteArrastado}
+          selecao={selecao}
           onAbrir={onAbrir}
           entregaDe={entregaDe}
           onCriar={() => onCriar(et.nome)}
@@ -1464,10 +1527,66 @@ function QuadroDeTarefas({ tarefas, etapas, pessoas, podeEditar, onAbrir, onCria
           onSoltarAqui={() => {
             const alvo = tarefas.find(x => x.id === arrastando);
             setArrastando(null);
+            // Arrastar um card marcado leva todos os marcados.
+            if (alvo && loteArrastado && acoes) {
+              acoes.alterar(sel.selecionadas, { status: et.nome }, n => `${nTarefas(n)} em "${et.nome}"`);
+              return;
+            }
             if (alvo && alvo.status !== et.nome) onMover(alvo, et.nome);
           }}
           onFixarRecolhida={onFixarRecolhida} />
       ))}
+
+      {acoes && podeSelecionar && (
+        <BarraDeSelecao total={sel.selecionadas.length} singular="tarefa selecionada"
+          plural="tarefas selecionadas" onLimpar={sel.limpar}>
+          {sel.selecionadas.length < naOrdem.length && (
+            <AcaoDaBarra rotulo={`Selecionar todas (${naOrdem.length})`} icone={<IconCheck size={13} />}
+              onClick={sel.marcarTodas} />
+          )}
+          {acoes.podeEditar && (
+            <AcaoDaBarra rotulo="Etapa" icone={<IconArrowRight size={13} />}
+              opcoes={etapas.map(e => ({
+                valor: e.nome, label: e.nome,
+                icone: <span className="kanban-dot" style={{ background: e.cor }} />,
+              }))}
+              onEscolher={v => acoes.alterar(sel.selecionadas, { status: v },
+                n => `${nTarefas(n)} em "${etapaDe(v)?.nome ?? v}"`)} />
+          )}
+          {acoes.podeEditar && (
+            <AcaoDaBarra rotulo="Prioridade" icone={<IconPrioridadeAlta size={13} />}
+              opcoes={PRIORIDADES.map(nivel => ({
+                valor: nivel, label: nivel,
+                icone: <span style={{ display: 'inline-flex', color: COR_PRIORIDADE[nivel] }}>
+                  {ICONE_PRIORIDADE[nivel]?.({ size: 13 })}
+                </span>,
+              }))}
+              onEscolher={v => acoes.alterar(sel.selecionadas, { prioridade: v },
+                n => `${nTarefas(n)} com prioridade ${v}`)} />
+          )}
+          {acoes.podeEditar && (
+            <AcaoDaBarra rotulo="Responsável" icone={<IconUser size={13} />}
+              opcoes={[
+                { valor: '', label: 'Sem responsável', icone: <AvatarVazio size={18} /> },
+                ...pessoas.map(x => ({
+                  valor: x.id, label: x.nome, icone: <Avatar nome={x.nome} foto={x.foto_url} size={18} />,
+                })),
+              ]}
+              onEscolher={v => {
+                // Troca o dono, e não acrescenta: é o mesmo que escolher uma
+                // pessoa só no campo da tarefa.
+                const dono = pessoas.find(x => x.id === v);
+                acoes.alterar(sel.selecionadas,
+                  { responsaveis: dono ? [dono.id] : [], responsavel_id: dono?.id ?? null },
+                  n => (dono ? `${nTarefas(n)} com ${dono.nome}` : `${nTarefas(n)} sem responsável`));
+              }} />
+          )}
+          {acoes.podeExcluir && (
+            <AcaoDaBarra rotulo="Excluir" icone={<IconTrash size={13} />} perigo
+              onClick={() => acoes.excluir(sel.selecionadas)} />
+          )}
+        </BarraDeSelecao>
+      )}
     </div>
   );
 }
@@ -6784,7 +6903,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
   /** Grava uma mudança pontual numa tarefa, a partir do relatório. Manda a
    *  tarefa inteira e sobrescreve o que mudou: a ação do servidor grava todos
    *  os campos, e um corpo parcial apagaria o resto. */
-  const salvarTarefa = useCallback(async (t: Tarefa, mudancas: Record<string, unknown>) => {
+  const salvarTarefa = useCallback(async (t: Tarefa, mudancas: Record<string, unknown>): Promise<boolean> => {
     // Pinta antes de perguntar: arrastar um card tem de responder no gesto, e
     // o servidor não decide nada aqui que a tela não saiba prever. O nome do
     // responsável anda junto do id, senão o card mostraria a foto antiga.
@@ -6806,14 +6925,15 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
       prazo: t.prazo, etiquetas: t.etiquetas, concluida_em: t.concluida_em,
       ...mudancas,
     });
-    if (r?.error) {
+    if (!r || r.error) {
       pintarTarefa(t.id, t);  // desfaz: a tela volta ao que era antes do gesto
-      toast('error', 'Não foi possível salvar', r.error);
-      return;
+      toast('error', 'Não foi possível salvar', r?.error ?? 'O servidor não respondeu. Tente de novo.');
+      return false;
     }
     // Status e progresso da entrega o servidor deduz das tarefas; é o que a
     // reconciliação vem buscar, já com a tela pintada.
     reconciliar();
+    return true;
   }, [api, pessoas, pintarTarefa, reconciliar, toast]);
 
   /** Marca ou desmarca a etapa como recolhida por padrão, direto do quadro da
@@ -6843,8 +6963,74 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     if (etapaDeConclusao && status !== etapaDeConclusao && t.concluida_em) {
       mudancas.concluida_em = null;
     }
-    salvarTarefa(t, mudancas);
+    void salvarTarefa(t, mudancas);
   }, [etapaDeConclusao, salvarTarefa]);
+
+  /** O mesmo campo em várias tarefas, a partir da barra de seleção de um
+   *  quadro. Cada uma passa pela gravação de uma tarefa sozinha - pinta antes e
+   *  volta se recusada -, todas ao mesmo tempo. A que já está como pedido não
+   *  vai ao servidor. */
+  const alterarTarefas = useCallback(async (
+    ts: Tarefa[], campos: Record<string, unknown>, feito: (n: number) => string,
+  ) => {
+    const chaves = Object.keys(campos);
+    const alvo = ts.filter(t => chaves.some(k =>
+      JSON.stringify((t as unknown as Record<string, unknown>)[k] ?? null) !== JSON.stringify(campos[k] ?? null)));
+    if (alvo.length === 0) return;
+    const certas = await Promise.all(alvo.map(t => {
+      const mudancas: Record<string, unknown> = { ...campos };
+      // A mesma regra do arraste de um card: cair na etapa de conversão
+      // conclui, e sair dela reabre.
+      if (typeof campos.status === 'string' && etapaDeConclusao) {
+        if (campos.status === etapaDeConclusao && !t.concluida_em) mudancas.concluida_em = new Date().toISOString();
+        if (campos.status !== etapaDeConclusao && t.concluida_em) mudancas.concluida_em = null;
+      }
+      return salvarTarefa(t, mudancas);
+    }));
+    const n = certas.filter(Boolean).length;
+    if (n > 0) toast('success', feito(n));
+  }, [etapaDeConclusao, salvarTarefa, toast]);
+
+  /** As tarefas à espera da confirmação de exclusão em lote. */
+  const [excluindoVarias, setExcluindoVarias] = useState<Tarefa[] | null>(null);
+
+  const excluirTarefas = useCallback(async (ts: Tarefa[]) => {
+    setExcluindoVarias(null);
+    if (ts.length === 0) return;
+    const ids = new Set(ts.map(t => t.id));
+    // A tarefa aberta numa das apagadas fecha junto, como no excluir de uma.
+    setRascunhoTarefa(r => (r?.id != null && ids.has(r.id) ? null : r));
+    const antes = projetos;
+    mudancasRef.current++;
+    setProjetos(ps => ps.map(p => ({
+      ...p, tarefas: (p.tarefas ?? []).filter(x => !ids.has(x.id)),
+    })));
+    const respostas = await Promise.all(ts.map(t =>
+      api('', 'POST', { action: 'excluir_tarefa', id: t.id }).catch(() => null)));
+    const falhas = new Set(ts.filter((_, i) => !respostas[i] || respostas[i].error).map(t => t.id));
+    if (falhas.size > 0) {
+      // As recusadas voltam para o projeto de onde saíram; as outras já foram.
+      setProjetos(ps => ps.map(p => {
+        const original = antes.find(a => a.id === p.id)?.tarefas ?? [];
+        const voltam = original.filter(t => falhas.has(t.id) && !(p.tarefas ?? []).some(x => x.id === t.id));
+        return voltam.length ? { ...p, tarefas: [...(p.tarefas ?? []), ...voltam] } : p;
+      }));
+      toast('error',
+        falhas.size === ts.length ? 'Nada foi excluído' : `${falhas.size} de ${ts.length} não foram excluídas`,
+        respostas.find(r => r?.error)?.error ?? 'O servidor não respondeu. Tente de novo.');
+    }
+    const certas = ts.length - falhas.size;
+    if (certas > 0) toast('success', certas === 1 ? 'Tarefa excluída' : `${certas} tarefas excluídas`);
+    reconciliar();
+  }, [api, projetos, reconciliar, toast]);
+
+  const acoesEmMassa = useMemo<AcoesEmMassa>(() => ({
+    podeEditar: pode('tarefas:editar'),
+    podeExcluir: pode('tarefas:excluir'),
+    ocupado: !!rascunhoTarefa || !!excluindoTarefa || !!excluindoVarias,
+    alterar: (ts, campos, feito) => void alterarTarefas(ts, campos, feito),
+    excluir: ts => setExcluindoVarias(ts),
+  }), [pode, rascunhoTarefa, excluindoTarefa, excluindoVarias, alterarTarefas]);
 
   // Link compartilhável: ?projeto=<id> abre o projeto assim que a lista chega.
   // Roda uma vez, e limpa a query para não reabrir a cada recarregamento.
@@ -7533,6 +7719,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
 
   return (
     <EtiquetarioCtx.Provider value={etq}>
+    <AcoesEmMassaCtx.Provider value={acoesEmMassa}>
     <div className="admin-content-wrap pagina-cristal pagina-projetos">
       {/* As abas são o que a matriz liberou. Com uma só, a faixa some: uma
           aba sozinha não é escolha, é um rótulo repetindo o título da página. */}
@@ -8060,6 +8247,22 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
         />
       )}
 
+      {excluindoVarias && (excluindoVarias.length === 1 ? (
+        <ConfirmarExclusao
+          titulo={excluindoVarias[0].titulo}
+          onCancelar={() => setExcluindoVarias(null)}
+          onConfirmar={() => void excluirTarefas(excluindoVarias)}
+        />
+      ) : (
+        <Dialogo
+          titulo={`Excluir ${excluindoVarias.length} tarefas`}
+          descricao={<>As <strong>{excluindoVarias.length} tarefas</strong> selecionadas saem do quadro junto com
+            a conversa, os anexos e o diário de cada uma. Esta ação não pode ser desfeita.</>}
+          rotuloOk={`Excluir ${excluindoVarias.length}`}
+          onFechar={() => setExcluindoVarias(null)}
+          onConfirmar={() => void excluirTarefas(excluindoVarias)} />
+      ))}
+
       {previa && (
         <PreviaArquivo
           arquivo={{
@@ -8090,6 +8293,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           onCancelar={() => setExcluindo(null)} onConfirmar={() => void excluir(excluindo)} />
       )}
     </div>
+    </AcoesEmMassaCtx.Provider>
     </EtiquetarioCtx.Provider>
   );
 }
