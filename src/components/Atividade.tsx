@@ -16,6 +16,7 @@ import {
   IconAlert, IconChevronRight, IconClip, IconDownload, IconEdit, IconEye, IconJoinha, IconSpinner, IconTrash, IconX,
 } from './icons';
 import { PreviaArquivo } from './PreviaArquivo';
+import { Dialogo } from './Dialogo';
 import { quando, tamanho as fmtTamanho } from '../lib/datas';
 import { arquivosColados } from '../lib/colarArquivos';
 import { CampoTexto } from './CampoTexto';
@@ -824,7 +825,13 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
     return null;
   }
 
+  /** O comentário à espera da confirmação de exclusão. Apagar não tem volta, e
+   *  a lixeira mora ao lado do lápis: um clique errado não pode levar a fala,
+   *  as respostas e os anexos de uma vez. */
+  const [apagando, setApagando] = useState<ComentarioAtividade | null>(null);
+
   async function excluir(c: ComentarioAtividade) {
+    setApagando(null);
     // Some da tela na hora: apagar a própria fala é decisão de quem escreveu, e
     // esperar a volta do servidor para ver o efeito é atrito à toa.
     setComentarios(cs => cs.filter(x => x.id !== c.id && x.pai_id !== c.id));
@@ -941,7 +948,7 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
                   respondendo={respondendo === c.id}
                   onResponder={setRespondendo}
                   onEnviarResposta={(t, a) => enviar(t, a, c.id)}
-                  onExcluir={c2 => void excluir(c2)}
+                  onExcluir={setApagando}
                   onBaixar={a => void baixar(a)}
                   onVer={abrirAnexo}
                   edicao={edicao}
@@ -986,6 +993,27 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
         </ul>
       )}
       </div>
+
+      {apagando && (() => {
+        const respostas = comentarios.filter(x => x.pai_id === apagando.id).length;
+        const anexos = apagando.anexos.length;
+        const junto = [
+          respostas && (respostas === 1 ? 'a resposta' : `as ${respostas} respostas`),
+          anexos && (anexos === 1 ? 'o anexo' : `os ${anexos} anexos`),
+        ].filter(Boolean) as string[];
+        return (
+          <Dialogo
+            titulo="Excluir comentário"
+            descricao={<>
+              O comentário sai da conversa
+              {junto.length > 0 && <>, junto com <strong>{junto.join(' e ')}</strong></>}.
+              {' '}Esta ação não pode ser desfeita.
+            </>}
+            rotuloOk="Excluir"
+            onFechar={() => setApagando(null)}
+            onConfirmar={() => void excluir(apagando)} />
+        );
+      })()}
 
       {/* A mesma janela que abre anexo de projeto e evidência de entrega: um
           arquivo é um arquivo, e duas prévias diferentes seriam duas telas
