@@ -9023,7 +9023,7 @@ function faltaEmProjeto(p: any): string | null {
     // ser http ou https: o card o abre direto numa aba nova, e qualquer outro
     // esquema ali seria um clique que roda o que não devia.
     if (action === 'salvar_ferramenta_link') {
-      const AREAS = ['juridico', 'comercial', 'tecnologia'];
+      const AREAS = ['gestao', 'comercial', 'operacional', 'juridico', 'financeiro', 'tecnologia'];
       const nome = String(body?.nome ?? '').trim().slice(0, 120);
       const descricao = String(body?.descricao ?? '').trim().slice(0, 600);
       const area = String(body?.area ?? '').trim();

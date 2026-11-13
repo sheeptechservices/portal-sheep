@@ -8,7 +8,7 @@ import { TextoRico } from '../components/TextoRico';
 import { IconEdit, IconLink, IconPlus, IconTrash } from '../components/icons';
 
 /** Área da operação que é dona da ferramenta - vira uma coluna no hub. */
-type AreaId = 'juridico' | 'comercial' | 'tecnologia';
+type AreaId = 'gestao' | 'comercial' | 'operacional' | 'juridico' | 'financeiro' | 'tecnologia';
 
 interface Ferramenta {
   id: string;
@@ -38,11 +38,15 @@ interface FerramentaLink {
  *  para fora, e a cor própria fica para as da casa, que cada uma tem a sua. */
 const COR_LINK = '#475569';
 
-// Ordem das colunas no hub. A área sem ferramenta ainda aparece, reservando o
-// lugar dela no hub.
+// Ordem das colunas no hub. Só aparece a área que tem ferramenta: com seis
+// áreas, as vazias enchiam o hub de caixas dizendo que não há nada. A lista
+// inteira continua no formulário, que é onde se escolhe para onde vai a nova.
 const AREAS: { id: AreaId; nome: string; descricao: string }[] = [
-  { id: 'juridico', nome: 'Jurídico', descricao: 'Contratos e documentos da casa' },
+  { id: 'gestao', nome: 'Gestão', descricao: 'Indicadores, planejamento e o acompanhamento da casa' },
   { id: 'comercial', nome: 'Comercial', descricao: 'Quem trabalha com a gente, e quem pode vir a trabalhar' },
+  { id: 'operacional', nome: 'Operacional', descricao: 'O dia a dia da entrega: processos, rotinas e atendimento' },
+  { id: 'juridico', nome: 'Jurídico', descricao: 'Contratos e documentos da casa' },
+  { id: 'financeiro', nome: 'Financeiro', descricao: 'Contas, cobranças e o caixa da casa' },
   { id: 'tecnologia', nome: 'Tecnologia', descricao: 'Os acessos e a infraestrutura da casa' },
 ];
 
@@ -426,6 +430,7 @@ export default function FerramentasPage({ token, onNavigate }: {
             ...FERRAMENTAS.filter(f => f.area === area.id && liberada(f)),
             ...(links ?? []).filter(l => l.area === area.id).map(comoCard),
           ];
+          if (!doGrupo.length) return null;
           return (
             <section key={area.id} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ paddingBottom: 10, borderBottom: '1px solid var(--gray3)' }}>
@@ -452,15 +457,6 @@ export default function FerramentasPage({ token, onNavigate }: {
                     onExcluir={f.link && podeCadastrar && f.link.id > 0 ? () => setExcluindo(f.link!) : undefined} />
                 </div>
               ))}
-              {!doGrupo.length && (
-                <div style={{
-                  border: '1.5px dashed var(--gray3)', borderRadius: 'var(--radius-lg)',
-                  padding: '22px 20px', textAlign: 'center',
-                  fontSize: 12, color: 'var(--gray2)', lineHeight: 1.5,
-                }}>
-                  Nenhuma ferramenta por aqui ainda.
-                </div>
-              )}
             </section>
           );
         })}
