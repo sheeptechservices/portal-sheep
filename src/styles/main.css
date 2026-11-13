@@ -5017,11 +5017,14 @@ body.arrastando-painel {
   line-height: 1.5;
 }
 .ferramenta-descricao p { margin: 0; }
+/* Um campo de distância entre um campo e o outro, e o mesmo respiro antes dos
+   botões: o rótulo de cada campo precisa ler como dele, e não como o pé do
+   campo de cima. */
 .ferramenta-form {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-top: 6px;
+  gap: 16px;
+  margin: 8px 0 22px;
   text-align: left;
 }
 .kanban-card-acao:hover { background: var(--gray4); color: var(--black); }
