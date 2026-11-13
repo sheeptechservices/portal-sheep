@@ -47,13 +47,11 @@ export const STATUS_DO_RELATO = [
 const ROTULO_STATUS: Record<string, { label: string; cor: string }> =
   Object.fromEntries(STATUS_DO_RELATO.map(s => [s.valor, s]));
 
-/** O chamado já foi decidido e sai da fila por padrão. Resolvido e descartado
- *  são as duas formas de acabar: um virou trabalho feito, o outro virou "não
- *  vamos fazer". Quem abre a lista quer ver o que ainda está de pé. */
+/** O chamado já foi decidido. Resolvido e descartado são as duas formas de
+ *  acabar: um virou trabalho feito, o outro virou "não vamos fazer". Na fila
+ *  eles ficam riscados, e não escondidos - quem quer só os de pé recorta pelo
+ *  filtro de status. */
 const foraDaFila = (status?: string) => status === 'resolvido' || status === 'descartado';
-
-/** Os status com que o filtro da fila abre: o que ainda está de pé. */
-const FILA_DE_PE = STATUS_DO_RELATO.map(s => s.valor).filter(v => !foraDaFila(v));
 
 /**
  * O que o chamado e. Sao dois, e de proposito: a pergunta que a fila responde e
@@ -162,14 +160,10 @@ export function ListaReportes({
    *  `sem` e o chamado que ninguem classificou ainda. Ele e uma escolha como as
    *  outras porque tambem e uma fila: e a dos que precisam de triagem. */
   const [filtroTipos, setFiltroTipos] = useState<string[]>([]);
-  /** Quais andamentos ficam a vista. Vazio quer dizer todos, como no tipo.
-   *
-   *  A fila abre com Aberto e Em análise marcados: o que se abre a lista para
-   *  ver é o que ainda não aconteceu, e resolvido e descartado já foram
-   *  decididos. Para conferir o histórico, marca-se o status dele no mesmo
-   *  filtro - era o trabalho de uma chave à parte, que saiu: duas peças
-   *  decidindo o mesmo recorte faziam a pessoa adivinhar qual mandava. */
-  const [filtroStatus, setFiltroStatus] = useState<string[]>(FILA_DE_PE);
+  /** Quais andamentos ficam a vista. Vazio quer dizer todos, como no tipo, e
+   *  é assim que a fila abre: um filtro que já nasce marcado parece escolha de
+   *  quem abriu, e esconde o que a pessoa não sabe que está escondido. */
+  const [filtroStatus, setFiltroStatus] = useState<string[]>([]);
   /** O que se procura no conteudo do chamado: o relato e as notas dele. */
   const [busca, setBusca] = useState('');
   const [aberta, setAberta] = useState<number | null>(null);
@@ -185,8 +179,6 @@ export function ListaReportes({
   const campoMotivo = useRef<HTMLTextAreaElement>(null);
   const limparReabertura = () => { setReabrindo(null); setMotivo(''); };
 
-  /** Quantos estão fora da fila agora - o número que a chave mostra. */
-  const encerrados = (lista ?? []).filter(r => foraDaFila(r.status)).length;
   /** O que a tabela desenha. Filtrar aqui, e não esconder por CSS: linha
    *  escondida continua no caminho do teclado e da leitura de tela. */
   const buscando = !!busca.trim();
@@ -199,11 +191,7 @@ export function ListaReportes({
     passaAndamento(r)
     && (filtroTipos.length === 0 || filtroTipos.includes(r.tipo ?? 'sem'))
     && casaBusca(r));
-  /** O recorte saiu do de partida: há busca, tipo, ou um status a mais ou a
-   *  menos que os dois da fila de pé. */
-  const statusDePartida = filtroStatus.length === FILA_DE_PE.length
-    && FILA_DE_PE.every(x => filtroStatus.includes(x));
-  const filtrando = !statusDePartida || filtroTipos.length > 0 || buscando;
+  const filtrando = filtroStatus.length > 0 || filtroTipos.length > 0 || buscando;
   /** As opcoes do status, na ordem do andamento e com a conta de cada um,
    *  sobre a fila inteira. */
   const opcoesDeStatus = useMemo(() => STATUS_DO_RELATO.map(st => ({
@@ -260,9 +248,9 @@ export function ListaReportes({
     if (!expandir || !lista?.length) return;
     if (!lista.some(r => r.id === expandir)) return;
     setAberta(expandir);
-    // O encerrado fica fora do filtro de partida: mirado pelo inbox, ele tem de
-    // aparecer de qualquer jeito, senao a fila abre sem o chamado do aviso. O
-    // status dele entra no filtro, que e onde a pessoa ve por que ele apareceu.
+    // Mirado pelo inbox, o chamado tem de aparecer de qualquer jeito: com um
+    // status escolhido que nao e o dele, o status dele entra no filtro, que e
+    // onde a pessoa ve por que ele apareceu.
     const st = lista.find(r => r.id === expandir)?.status;
     if (st) setFiltroStatus(f => (f.length === 0 || f.includes(st) ? f : [...f, st]));
     // Um quadro depois, para a linha ja estar desenhada quando a rolagem sair.
@@ -492,18 +480,13 @@ export function ListaReportes({
               <p className="reportes-vazio surge">
                 {lista.length === 0
                   ? 'Nada reportado ainda. O que for enviado pelo cartão do menu aparece aqui.'
-                  : filtrando
-                    ? <>
-                      Nenhum chamado para essa busca ou filtro.{' '}
-                      <button type="button" className="admin-toolbar-limpar"
-                        onClick={() => { setBusca(''); setFiltroStatus(FILA_DE_PE); setFiltroTipos([]); }}>
-                        Limpar
-                      </button>
-                    </>
-                    : <>
-                      Nada em aberto. {encerrados === 1 ? 'Há um chamado encerrado' : `Há ${encerrados} chamados encerrados`}
-                      {' '}- marque Resolvido ou Descartado no filtro de status para {encerrados === 1 ? 'vê-lo' : 'vê-los'}.
-                    </>}
+                  : filtrando && <>
+                    Nenhum chamado para essa busca ou filtro.{' '}
+                    <button type="button" className="admin-toolbar-limpar"
+                      onClick={() => { setBusca(''); setFiltroStatus([]); setFiltroTipos([]); }}>
+                      Limpar
+                    </button>
+                  </>}
               </p>
             ) : (
               <table className="reportes-tabela">
