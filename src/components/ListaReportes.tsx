@@ -457,21 +457,26 @@ export function ListaReportes({
                   que e onde o assunto do chamado esta escrito. */}
               <CampoBusca valor={busca} onMudar={setBusca} largura={260}
                 placeholder="Buscar no chamado" rotulo="Buscar no texto do chamado e nas notas" />
-              <FilterDropdown
-                label="Status"
-                values={filtroStatus}
-                options={opcoesDeStatus}
-                onChange={setFiltroStatus}
-              />
-              <FilterDropdown
-                label="Tipo"
-                values={filtroTipos}
-                options={opcoesDeTipo}
-                onChange={setFiltroTipos}
-              />
-              <button type="button" className="admin-modal-close" onClick={fechar} aria-label="Fechar">
-                <IconX size={16} />
-              </button>
+              {/* Os dois filtros e o fechar andam juntos: quando a barra
+                  quebra, quem desce é a busca inteira, e nunca um filtro
+                  separado do outro. */}
+              <span className="reportes-filtros">
+                <FilterDropdown
+                  label="Status"
+                  values={filtroStatus}
+                  options={opcoesDeStatus}
+                  onChange={setFiltroStatus}
+                />
+                <FilterDropdown
+                  label="Tipo"
+                  values={filtroTipos}
+                  options={opcoesDeTipo}
+                  onChange={setFiltroTipos}
+                />
+                <button type="button" className="admin-modal-close" onClick={fechar} aria-label="Fechar">
+                  <IconX size={16} />
+                </button>
+              </span>
             </div>
           </div>
 
