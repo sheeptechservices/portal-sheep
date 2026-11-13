@@ -13,7 +13,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  IconAlert, IconBug, IconChevronDown, IconChevronRight, IconChevronUp, IconChevronUpDown,
+  IconAlert, IconBug, IconCheck, IconChevronDown, IconChevronRight, IconChevronUp, IconChevronUpDown,
   IconDoc, IconEdit, IconImage, IconImagemSem, IconSparkles, IconSpinner, IconTrash, IconUndo, IconX,
 } from './icons';
 import { Dialogo } from './Dialogo';
@@ -28,6 +28,8 @@ import { instante, tempoRelativo } from '../lib/datas';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import { useToast } from '../lib/toast';
+import { useDropdownDismiss } from '../lib/useDropdownDismiss';
+import { ancorar } from '../lib/ancorar';
 
 /**
  * Andamento do relato. Quatro estados e nada de "reaberto": se voltou, volta
@@ -581,20 +583,12 @@ export function ListaReportes({
                             volta a ser da linha. */}
                         <td onClick={admin && mudarTipo ? (e => e.stopPropagation()) : undefined}>
                           {admin && mudarTipo ? (
-                            <div style={{ width: 124 }}>
-                              <SelectSistema
-                                valor={r.tipo ?? ''}
-                                onChange={v => void trocarTipo(r.id, v)}
-                                placeholder="Classificar"
-                                minWidth={124}
-                                estiloGatilho={{ height: 30, fontSize: 12, padding: '0 10px' }}
-                                opcoes={TIPOS_DO_RELATO.map(t => ({
-                                  valor: t.valor,
-                                  label: t.label,
-                                  icone: <t.Icone size={13} />,
-                                }))}
-                              />
-                            </div>
+                            <ChipEscolha rotulo="Tipo" valor={r.tipo ?? ''}
+                              chip={<ChipDoTipo tipo={r.tipo} seta />}
+                              onEscolher={v => void trocarTipo(r.id, v)}
+                              opcoes={TIPOS_DO_RELATO.map(t => ({
+                                valor: t.valor, label: t.label, cor: t.cor, icone: <t.Icone size={13} />,
+                              }))} />
                           ) : (
                             <ChipDoTipo tipo={r.tipo} />
                           )}
@@ -646,23 +640,14 @@ export function ListaReportes({
                             a ser da linha - expandir é de todo mundo. */}
                         <td onClick={admin && mudarStatus ? (e => e.stopPropagation()) : undefined}>
                           {admin && mudarStatus ? (
-                            <div style={{ width: 138 }}>
-                              <SelectSistema
-                                valor={r.status}
-                                // Escolher o andamento abre a pergunta do
-                                // e-mail; a troca acontece na resposta dela.
-                                onChange={v => setConfirmando({ id: r.id, status: v })}
-                                opcoes={STATUS_DO_RELATO.map(st => ({
-                                  valor: st.valor,
-                                  label: st.label,
-                                  icone: <PontoStatus cor={st.cor} />,
-                                }))}
-                                estiloGatilho={{
-                                  height: 30, padding: '0 10px', fontSize: 12,
-                                  borderRadius: 'var(--radius-pill)',
-                                }}
-                              />
-                            </div>
+                            <ChipEscolha rotulo="Status" valor={r.status}
+                              chip={<ChipStatus status={r.status} seta />}
+                              // Escolher o andamento abre a pergunta do e-mail;
+                              // a troca acontece na resposta dela.
+                              onEscolher={v => { if (v !== r.status) setConfirmando({ id: r.id, status: v }); }}
+                              opcoes={STATUS_DO_RELATO.map(st => ({
+                                valor: st.valor, label: st.label, cor: st.cor, icone: <PontoStatus cor={st.cor} />,
+                              }))} />
                           ) : (
                             <ChipStatus status={r.status} />
                           )}
@@ -1010,13 +995,14 @@ function PontoStatus({ cor }: { cor: string }) {
 /** O tipo de quem não pode mudá-lo, na mesma pílula do status. Sem tipo ele
  *  fica cinza e diz isso com todas as letras: um traço deixaria a dúvida entre
  *  "ninguém classificou" e "não tem coluna aqui". */
-function ChipDoTipo({ tipo }: { tipo: string | null }) {
+function ChipDoTipo({ tipo, seta }: { tipo: string | null; seta?: boolean }) {
   const t = tipo ? ROTULO_TIPO[tipo] : undefined;
   if (!t) {
     return (
       <span className="reportes-status" style={{ '--cor': 'var(--gray2)' } as React.CSSProperties}>
         <PontoStatus cor="var(--gray2)" />
         Sem tipo
+        {seta && <IconChevronDown size={10} />}
       </span>
     );
   }
@@ -1024,19 +1010,80 @@ function ChipDoTipo({ tipo }: { tipo: string | null }) {
     <span className="reportes-status" style={{ '--cor': t.cor } as React.CSSProperties}>
       <t.Icone size={12} />
       {t.label}
+      {seta && <IconChevronDown size={10} />}
     </span>
   );
 }
 
 /** O status de quem não pode mudá-lo: a mesma pílula de status do resto do
  *  sistema, com o ponto na cor do andamento. */
-function ChipStatus({ status }: { status: string }) {
+function ChipStatus({ status, seta }: { status: string; seta?: boolean }) {
   const st = ROTULO_STATUS[status] ?? { label: status, cor: 'var(--gray2)' };
   return (
     <span className="reportes-status" style={{ '--cor': st.cor } as React.CSSProperties}>
       <PontoStatus cor={st.cor} />
       {st.label}
+      {seta && <IconChevronDown size={10} />}
     </span>
+  );
+}
+
+/**
+ * A mesma pílula de quem só lê, clicável para quem pode trocar.
+ *
+ * O campo de escolha da casa, com moldura e altura de formulário, ocupava a
+ * coluna inteira e tirava da fila a leitura de relance: quem administra via
+ * caixas brancas onde quem reporta via a cor do bug e da melhoria. Aqui a peça
+ * continua sendo a pílula colorida, com uma seta pequena dentro dizendo que
+ * ela abre. A lista é a da casa: no portal, acima de tudo, e o gatilho alterna.
+ */
+function ChipEscolha({ rotulo, valor, chip, opcoes, onEscolher }: {
+  rotulo: string;
+  valor: string;
+  chip: React.ReactNode;
+  opcoes: { valor: string; label: string; cor: string; icone: React.ReactNode }[];
+  onEscolher: (valor: string) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+  const gatilho = useRef<HTMLButtonElement>(null);
+  const lista = useRef<HTMLDivElement>(null);
+  useDropdownDismiss(aberto, [gatilho, lista], () => setAberto(false));
+  const atual = opcoes.find(o => o.valor === valor);
+  return (
+    <>
+      <button ref={gatilho} type="button" className="reportes-chip-escolha"
+        aria-label={`${rotulo}: ${atual?.label ?? 'sem escolha'}. Trocar`}
+        aria-expanded={aberto}
+        onClick={() => {
+          if (!gatilho.current) return;
+          setPos(ancorar(gatilho.current, opcoes.length, 170));
+          setAberto(a => !a);
+        }}>
+        {chip}
+      </button>
+      {aberto && createPortal(
+        <div ref={lista} className="status-select-dropdown"
+          style={{ top: pos.top, left: pos.left, width: pos.width }}>
+          {opcoes.map(o => {
+            const ativo = o.valor === valor;
+            return (
+              <div key={o.valor} className={`status-select-option${ativo ? ' active' : ''}`}
+                onClick={() => { setAberto(false); onEscolher(o.valor); }}>
+                <span style={{ display: 'inline-flex', color: o.cor }}>{o.icone}</span>
+                <span>{o.label}</span>
+                {ativo && (
+                  <span style={{ marginLeft: 'auto', color: o.cor, display: 'inline-flex' }}>
+                    <IconCheck size={12} />
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
 

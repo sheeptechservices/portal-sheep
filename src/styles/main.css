@@ -1993,6 +1993,9 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
    espremer o titulo numa coluna de uma palavra por linha. */
 .reportes-modal .gravacao-topo { flex-wrap: wrap; row-gap: 10px; }
 .reportes-modal .gravacao-titulo { flex: 1 1 240px; min-width: 0; }
+/* Descendo, a barra toma a linha inteira, e a busca estica ou encolhe para
+   caber com os filtros na mesma linha. So numa tela de celular a busca vai
+   para a linha dela, e ai ela desce inteira. */
 .reportes-modal .reportes-acoes { flex: 1 1 440px; flex-wrap: wrap; justify-content: flex-end; }
 .reportes-modal .reportes-acoes .campo-busca { flex: 1 1 200px; max-width: none; }
 .reportes-filtros {
@@ -18515,6 +18518,30 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   font-weight: 700;
   color: var(--cor);
   white-space: nowrap;
+  transition: background var(--transition);
+}
+/* A mesma pilula, clicavel para quem administra: o botao some e fica so a
+   etiqueta, com a seta dizendo que ela abre. O realce e o fundo na propria cor
+   um pouco mais forte, como em qualquer item que so muda de cor. */
+.reportes-chip-escolha {
+  display: inline-flex;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-pill);
+}
+.reportes-chip-escolha .reportes-status svg:last-child { opacity: .7; }
+.reportes-chip-escolha:hover .reportes-status,
+.reportes-chip-escolha[aria-expanded="true"] .reportes-status {
+  background: color-mix(in srgb, var(--cor) 22%, transparent);
+}
+.reportes-chip-escolha:focus-visible .reportes-status {
+  box-shadow: 0 0 0 2px var(--gray4);
+}
+@media (prefers-reduced-motion: reduce) {
+  .reportes-status { transition: none; }
 }
 .reportes-ponto {
   width: 6px;
