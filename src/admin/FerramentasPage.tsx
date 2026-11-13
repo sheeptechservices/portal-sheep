@@ -1,6 +1,11 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth, useToast } from './AdminApp';
 import { podeAbrirPagina, podeVerUsuarios } from './papeis';
+import { Dialogo, ConfirmarExclusao } from '../components/Dialogo';
+import { SelectSistema } from '../components/SelectSistema';
+import { CampoTexto } from '../components/CampoTexto';
+import { TextoRico } from '../components/TextoRico';
+import { IconEdit, IconLink, IconPlus, IconTrash } from '../components/icons';
 
 /** Área da operação que é dona da ferramenta - vira uma coluna no hub. */
 type AreaId = 'juridico' | 'comercial' | 'tecnologia';
@@ -16,7 +21,22 @@ interface Ferramenta {
   breve?: boolean;
   /** Ferramenta externa: abre este link em nova aba em vez de navegar internamente. */
   href?: string;
+  /** Cadastrada pelo hub, e não escrita no código: dá para corrigir e tirar. */
+  link?: FerramentaLink;
 }
+
+/** Uma ferramenta de fora, como o servidor a guarda. */
+interface FerramentaLink {
+  id: number;
+  area: AreaId;
+  nome: string;
+  descricao: string | null;
+  url: string;
+}
+
+/** Cor do card das ferramentas por link. Uma só para todas: elas são atalhos
+ *  para fora, e a cor própria fica para as da casa, que cada uma tem a sua. */
+const COR_LINK = '#475569';
 
 // Ordem das colunas no hub. A área sem ferramenta ainda aparece, reservando o
 // lugar dela no hub.
@@ -150,7 +170,13 @@ const FERRAMENTAS: (Ferramenta & { page?: string })[] = [
   },
 ];
 
-function ToolCard({ ferramenta, onClick }: { ferramenta: Ferramenta; onClick: () => void }) {
+function ToolCard({ ferramenta, onClick, onEditar, onExcluir }: {
+  ferramenta: Ferramenta;
+  onClick: () => void;
+  /** Só nas ferramentas por link, e só para quem cadastra. */
+  onEditar?: () => void;
+  onExcluir?: () => void;
+}) {
   const [hovered, setHovered] = useState(false);
   const { toast } = useToast();
   // Card já com o visual definitivo; só a página é que ainda não existe, então o
@@ -167,6 +193,7 @@ function ToolCard({ ferramenta, onClick }: { ferramenta: Ferramenta; onClick: ()
 
   return (
     <div
+      className="ferramenta-card"
       onClick={abrir}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -198,6 +225,28 @@ function ToolCard({ ferramenta, onClick }: { ferramenta: Ferramenta; onClick: ()
         }} />
       )}
 
+      {/* Corrigir e tirar moram no canto do card, e aparecem com o ponteiro em
+          cima: em repouso o card é o atalho, e duas lixeiras por coluna
+          competiriam com o que ele diz. O clique delas não abre o link. */}
+      {(onEditar || onExcluir) && (
+        <span className="ferramenta-acoes kanban-card-acoes">
+          {onEditar && (
+            <button type="button" className="kanban-card-acao" title="Editar ferramenta"
+              aria-label={`Editar ${ferramenta.nome}`}
+              onClick={e => { e.stopPropagation(); onEditar(); }}>
+              <IconEdit size={13} />
+            </button>
+          )}
+          {onExcluir && (
+            <button type="button" className="kanban-card-acao perigo" title="Excluir ferramenta"
+              aria-label={`Excluir ${ferramenta.nome}`}
+              onClick={e => { e.stopPropagation(); onExcluir(); }}>
+              <IconTrash size={13} />
+            </button>
+          )}
+        </span>
+      )}
+
       <div style={{
         width: 44, height: 44, borderRadius: 12,
         background: ferramenta.cor + '14',
@@ -215,9 +264,15 @@ function ToolCard({ ferramenta, onClick }: { ferramenta: Ferramenta; onClick: ()
         <p style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--black)', marginBottom: 4, lineHeight: 1.3 }}>
           {ferramenta.nome}
         </p>
-        <p style={{ fontSize: 12.5, color: 'var(--gray)', lineHeight: 1.5 }}>
-          {ferramenta.descricao}
-        </p>
+        {ferramenta.link
+          // A descrição cadastrada é escrita no campo da casa, com as marcas
+          // leves; quem a mostra traduz pela regra única.
+          ? <TextoRico texto={ferramenta.descricao} className="ferramenta-descricao" />
+          : (
+            <p style={{ fontSize: 12.5, color: 'var(--gray)', lineHeight: 1.5 }}>
+              {ferramenta.descricao}
+            </p>
+          )}
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -247,19 +302,116 @@ function ToolCard({ ferramenta, onClick }: { ferramenta: Ferramenta; onClick: ()
   );
 }
 
-export default function FerramentasPage({ onNavigate }: { onNavigate?: (page: string) => void }) {
+/** O rascunho do formulário de ferramenta por link. Sem `id`, é uma nova. */
+interface RascunhoLink {
+  id?: number;
+  nome: string;
+  descricao: string;
+  url: string;
+  area: AreaId | '';
+}
+
+export default function FerramentasPage({ token, onNavigate }: {
+  token: string;
+  onNavigate?: (page: string) => void;
+}) {
   // O hub some com o card que a matriz não abre. Sem isto ele anuncia uma
   // ferramenta que devolve "sem acesso" no clique, e o card vira um convite
   // para uma porta trancada.
-  const { pode, usuario } = useAuth();
+  const { pode, usuario, onSessionExpired } = useAuth();
+  const { toast } = useToast();
   const veUsuarios = podeVerUsuarios(usuario);
   const liberada = (f: { page?: string }) => !f.page || podeAbrirPagina(pode, f.page, veUsuarios);
+  const podeCadastrar = pode('ferramentas:cadastrar');
+
+  const api = useCallback(async (path: string, method = 'GET', body?: unknown) => {
+    const res = await fetch(`/api/admin-data${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'x-admin-session': token },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (res.status === 401) { onSessionExpired(); return null; }
+    return res.json().catch(() => null);
+  }, [token, onSessionExpired]);
+
+  /** As ferramentas de fora. Nulas enquanto não chegaram: as da casa aparecem
+   *  na hora, e as de link entram no fim da coluna quando a leitura volta. */
+  const [links, setLinks] = useState<FerramentaLink[] | null>(null);
+  useEffect(() => {
+    void api('?action=ferramentas_links').then(r => setLinks((r?.links ?? []) as FerramentaLink[]));
+  }, [api]);
+
+  const [rascunho, setRascunho] = useState<RascunhoLink | null>(null);
+  const [excluindo, setExcluindo] = useState<FerramentaLink | null>(null);
+
+  /** Grava a ferramenta. Pinta na hora e fecha o formulário no gesto; a nova
+   *  entra com um id provisório que o do servidor substitui, e a recusa desfaz
+   *  e reabre o formulário com o que a pessoa escreveu. */
+  async function gravar(r: RascunhoLink) {
+    const nome = r.nome.trim();
+    const url = r.url.trim();
+    if (!nome || !url || !r.area) return;
+    const dados = { nome, descricao: r.descricao.trim() || null, url, area: r.area as AreaId };
+    const antes = links ?? [];
+    const provisorio = -Date.now();
+    setLinks(r.id
+      ? antes.map(x => (x.id === r.id ? { ...x, ...dados } : x))
+      : [...antes, { id: provisorio, ...dados }]);
+    setRascunho(null);
+    const resp = await api('', 'POST', { action: 'salvar_ferramenta_link', id: r.id, ...dados });
+    if (!resp || resp.error) {
+      setLinks(antes);
+      setRascunho(r);
+      toast('error', 'Não foi possível gravar', resp?.error ?? 'O servidor não respondeu. Tente de novo.');
+      return;
+    }
+    // O servidor completa o endereço (o https da frente) e devolve o id da nova.
+    setLinks(ls => (ls ?? []).map(x => (x.id === (r.id ?? provisorio)
+      ? { ...x, id: Number(resp.id), url: String(resp.url ?? x.url) } : x)));
+    toast('success', r.id ? 'Ferramenta atualizada' : 'Ferramenta cadastrada');
+  }
+
+  async function excluir(l: FerramentaLink) {
+    setExcluindo(null);
+    const antes = links ?? [];
+    setLinks(antes.filter(x => x.id !== l.id));
+    const resp = await api('', 'POST', { action: 'excluir_ferramenta_link', id: l.id });
+    if (!resp || resp.error) {
+      setLinks(antes);
+      toast('error', 'Não foi possível excluir', resp?.error ?? 'O servidor não respondeu. Tente de novo.');
+      return;
+    }
+    toast('success', 'Ferramenta excluída');
+  }
+
+  /** As de link no formato de card, para morar na mesma coluna das da casa. */
+  const comoCard = (l: FerramentaLink): Ferramenta => ({
+    id: `link-${l.id}`,
+    area: l.area,
+    nome: l.nome,
+    descricao: l.descricao ?? '',
+    icon: <IconLink size={22} />,
+    cor: COR_LINK,
+    href: l.url,
+    link: l,
+  });
 
   return (
     <div className="admin-content-wrap">
-      <div>
-        <h1 className="admin-page-title">Ferramentas</h1>
-        <p className="admin-page-desc">Hub de utilitários da operação</p>
+      <div className="admin-page-header">
+        <div>
+          <h1 className="admin-page-title">Ferramentas</h1>
+          <p className="admin-page-desc">Hub de utilitários da operação</p>
+        </div>
+        {podeCadastrar && (
+          <div className="admin-page-acoes">
+            <button type="button" className="btn btn-primary"
+              style={{ height: 38, padding: '0 18px', fontSize: 13, flexShrink: 0 }}
+              onClick={() => setRascunho({ nome: '', descricao: '', url: '', area: '' })}>
+              <IconPlus size={13} /> Nova ferramenta
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Uma coluna por área da operação; os cards da área ficam empilhados nela. */}
@@ -270,7 +422,10 @@ export default function FerramentasPage({ onNavigate }: { onNavigate?: (page: st
         alignItems: 'start',
       }}>
         {AREAS.map(area => {
-          const doGrupo = FERRAMENTAS.filter(f => f.area === area.id && liberada(f));
+          const doGrupo = [
+            ...FERRAMENTAS.filter(f => f.area === area.id && liberada(f)),
+            ...(links ?? []).filter(l => l.area === area.id).map(comoCard),
+          ];
           return (
             <section key={area.id} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ paddingBottom: 10, borderBottom: '1px solid var(--gray3)' }}>
@@ -287,7 +442,15 @@ export default function FerramentasPage({ onNavigate }: { onNavigate?: (page: st
                 </p>
               </div>
               {doGrupo.map(f => (
-                <ToolCard key={f.id} ferramenta={f} onClick={() => { if (f.page) onNavigate?.(f.page); }} />
+                <div key={f.id} className={f.link ? 'surge' : undefined}>
+                  <ToolCard ferramenta={f}
+                    onClick={() => { if ('page' in f && f.page) onNavigate?.(f.page as string); }}
+                    onEditar={f.link && podeCadastrar && f.link.id > 0 ? () => setRascunho({
+                      id: f.link!.id, nome: f.link!.nome, descricao: f.link!.descricao ?? '',
+                      url: f.link!.url, area: f.link!.area,
+                    }) : undefined}
+                    onExcluir={f.link && podeCadastrar && f.link.id > 0 ? () => setExcluindo(f.link!) : undefined} />
+                </div>
               ))}
               {!doGrupo.length && (
                 <div style={{
@@ -302,6 +465,55 @@ export default function FerramentasPage({ onNavigate }: { onNavigate?: (page: st
           );
         })}
       </div>
+
+      {rascunho && (
+        <Dialogo
+          titulo={rascunho.id ? 'Editar ferramenta' : 'Nova ferramenta'}
+          descricao="Um atalho para uma ferramenta de fora do portal. O card abre o link numa aba nova."
+          perigo={false}
+          rotuloOk={rascunho.id ? 'Salvar' : 'Cadastrar'}
+          ocupado={!rascunho.nome.trim() || !rascunho.url.trim() || !rascunho.area}
+          largura={520}
+          onFechar={() => setRascunho(null)}
+          onConfirmar={() => void gravar(rascunho)}>
+          <div className="ferramenta-form">
+            <div className="form-group">
+              <label className="form-label" htmlFor="ferramenta-nome">Nome<span>*</span></label>
+              <input id="ferramenta-nome" className="form-input" autoFocus maxLength={120}
+                value={rascunho.nome} placeholder="Mapeamento de Processos"
+                onChange={e => setRascunho(r => r && { ...r, nome: e.target.value })} />
+            </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="ferramenta-url">Link de acesso<span>*</span></label>
+              <input id="ferramenta-url" className="form-input" maxLength={500} inputMode="url"
+                value={rascunho.url} placeholder="https://"
+                onChange={e => setRascunho(r => r && { ...r, url: e.target.value })} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Área<span>*</span></label>
+              <SelectSistema
+                valor={rascunho.area}
+                onChange={v => setRascunho(r => r && { ...r, area: v as AreaId })}
+                placeholder="Em que coluna ela entra"
+                opcoes={AREAS.map(a => ({ valor: a.id, label: a.nome, descricao: a.descricao }))}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Descrição</label>
+              <CampoTexto valor={rascunho.descricao} linhas={2} alturaMaxima={160}
+                ariaLabel="Descrição da ferramenta"
+                placeholder="O que ela faz, em uma ou duas frases"
+                onMudar={t => setRascunho(r => r && { ...r, descricao: t })} />
+            </div>
+          </div>
+        </Dialogo>
+      )}
+
+      {excluindo && (
+        <ConfirmarExclusao titulo={excluindo.nome} oQue="ferramenta"
+          onCancelar={() => setExcluindo(null)}
+          onConfirmar={() => void excluir(excluindo)} />
+      )}
     </div>
   );
 }

@@ -1847,7 +1847,7 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
             {paginaNaTela === 'dashboard'     && <DashboardPage     token={token} />}
             {paginaNaTela === 'oportunidades'  && <OportunidadesPage  token={token} openCard={openCard?.page === 'oportunidades' ? openCard : undefined} onCardOpened={() => setOpenCard(null)} />}
             {paginaNaTela === 'configuracoes' && <ConfiguracoesPage token={token} />}
-            {paginaNaTela === 'ferramentas'   && <FerramentasPage onNavigate={p => setPage(p as Page)} />}
+            {paginaNaTela === 'ferramentas'   && <FerramentasPage token={token} onNavigate={p => setPage(p as Page)} />}
             {paginaNaTela === 'gerador-documentos' && <GeradorContratos token={token} />}
             {paginaNaTela === 'gerador-propostas' && (
               <GeradorPropostas token={token}

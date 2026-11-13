@@ -121,6 +121,8 @@ export const CATALOGO: PermGrupo[] = [
     nota: 'A página que lista as ferramentas. Cada uma delas vem aninhada aqui.',
     acoes: [
       { chave: 'ferramentas:ver', label: 'Abrir o hub de ferramentas', acesso: true },
+      { chave: 'ferramentas:cadastrar', label: 'Cadastrar, editar e excluir ferramentas por link',
+        nota: 'As de fora, que o card abre numa aba nova. As da casa são páginas do portal e não passam por aqui.' },
     ],
   },
   {
@@ -230,6 +232,10 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   cofre_revelar: 'cofre:ver',
   cofre_acessos: 'cofre:auditar',
   salvar_segredo: 'cofre:editar',
+  // As ferramentas de fora no hub: ler é de quem abre o hub.
+  ferramentas_links: 'ferramentas:ver',
+  salvar_ferramenta_link: 'ferramentas:cadastrar',
+  excluir_ferramenta_link: 'ferramentas:cadastrar',
   excluir_segredo: 'cofre:excluir',
   // Alimenta as duas telas: quem vê tarefas precisa da mesma carga, e ela já
   // vem cortada por equipe no servidor.

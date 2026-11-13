@@ -4998,7 +4998,32 @@ body.arrastando-painel {
   transition: background var(--transition), color var(--transition), opacity var(--transition);
 }
 .kanban-card:hover .kanban-card-acao,
+.ferramenta-card:hover .kanban-card-acao,
 .kanban-card-acao:focus-visible { opacity: 1; }
+
+/* ── Ferramentas por link no hub ───────────────────────
+   Editar e tirar no canto do card, como no card do quadro: aparecem com o
+   ponteiro em cima, e no toque ficam sempre a vista pela regra de cima. */
+.ferramenta-acoes {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  margin: 0;
+}
+/* A descrição cadastrada tem a mesma voz da escrita no código. */
+.ferramenta-descricao {
+  font-size: 12.5px;
+  color: var(--gray);
+  line-height: 1.5;
+}
+.ferramenta-descricao p { margin: 0; }
+.ferramenta-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  text-align: left;
+}
 .kanban-card-acao:hover { background: var(--gray4); color: var(--black); }
 .kanban-card-acao.perigo:hover { background: var(--red-soft); color: var(--red); }
 .kanban-card-acao:focus-visible { outline: none; }

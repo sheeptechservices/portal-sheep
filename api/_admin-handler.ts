@@ -1796,6 +1796,25 @@ async function migrarSchema(db: Client) {
     )
   `);
 
+  // As ferramentas de fora que o hub lista ao lado das da casa: um nome, uma
+  // frase do que ela faz, o link e a coluna (área) em que ela mora. As da casa
+  // continuam no código, porque cada uma é uma página do portal; estas são só
+  // um atalho para outro endereço, e por isso cabem numa tabela.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS ferramenta_links (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      area            TEXT NOT NULL,
+      nome            TEXT NOT NULL,
+      descricao       TEXT,
+      url             TEXT NOT NULL,
+      ordem           INTEGER NOT NULL DEFAULT 0,
+      criado_em       TEXT NOT NULL,
+      criado_por_id   TEXT,
+      criado_por_nome TEXT,
+      atualizado_em   TEXT
+    )
+  `);
+
   await ddl(`
     CREATE TABLE IF NOT EXISTS cofre_tokens (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -6218,6 +6237,15 @@ async function despacharAdminData(
      * é a que qualquer aba de rede mostra. Quem quiser um segredo pede aquele
      * segredo, com o cofre aberto.
      */
+    // As ferramentas de fora, para o hub. Quem abre o hub vê todas: um atalho
+    // não guarda nada além do endereço, e o endereço é o que se quer achar.
+    if (action === 'ferramentas_links') {
+      const r = await db.execute(
+        `SELECT id, area, nome, descricao, url, ordem FROM ferramenta_links ORDER BY ordem, id`,
+      );
+      return { status: 200, body: { links: r.rows } };
+    }
+
     if (action === 'cofre') {
       // O segredo pessoal alheio não vem nem na prateleira: o título dele é da
       // pessoa, e o recorte é aqui, na consulta, e não na tela.
@@ -8989,6 +9017,53 @@ function faltaEmProjeto(p: any): string | null {
         status: 200,
         body: { id: novo, visibilidade, meu: 1, criado_em: agora, criado_por_nome: autorNome },
       };
+    }
+
+    // Cria (sem id) ou corrige (com id) uma ferramenta de fora. O link precisa
+    // ser http ou https: o card o abre direto numa aba nova, e qualquer outro
+    // esquema ali seria um clique que roda o que não devia.
+    if (action === 'salvar_ferramenta_link') {
+      const AREAS = ['juridico', 'comercial', 'tecnologia'];
+      const nome = String(body?.nome ?? '').trim().slice(0, 120);
+      const descricao = String(body?.descricao ?? '').trim().slice(0, 600);
+      const area = String(body?.area ?? '').trim();
+      const bruto = String(body?.url ?? '').trim();
+      if (!nome) return { status: 400, body: { error: 'Dê um nome à ferramenta.' } };
+      if (!AREAS.includes(area)) return { status: 400, body: { error: 'Escolha a área da ferramenta.' } };
+      let url: string;
+      try {
+        const u = new URL(/^https?:\/\//i.test(bruto) ? bruto : `https://${bruto}`);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('esquema');
+        url = u.toString();
+      } catch {
+        return { status: 400, body: { error: 'O link não é um endereço válido.' } };
+      }
+      const agora = new Date().toISOString();
+      if (body?.id != null && body.id !== '') {
+        const id = Number(body.id);
+        const r = await db.execute({
+          sql: `UPDATE ferramenta_links SET area = ?, nome = ?, descricao = ?, url = ?, atualizado_em = ?
+                WHERE id = ?`,
+          args: [area, nome, descricao || null, url, agora, id],
+        });
+        if (!r.rowsAffected) return { status: 404, body: { error: 'Ferramenta não encontrada.' } };
+        return { status: 200, body: { ok: true, id, url } };
+      }
+      // No fim da coluna: a mais nova entra depois das que já estavam.
+      const r = await db.execute({
+        sql: `INSERT INTO ferramenta_links (area, nome, descricao, url, ordem, criado_em, criado_por_id, criado_por_nome)
+              VALUES (?,?,?,?, (SELECT COALESCE(MAX(ordem), -1) + 1 FROM ferramenta_links), ?,?,?)
+              RETURNING id`,
+        args: [area, nome, descricao || null, url, agora, autorId, autorNome],
+      });
+      return { status: 200, body: { ok: true, id: Number(r.rows[0]?.id ?? r.lastInsertRowid), url } };
+    }
+
+    if (action === 'excluir_ferramenta_link') {
+      const id = Number(body?.id);
+      if (!Number.isFinite(id)) return { status: 400, body: { error: 'id ausente.' } };
+      await db.execute({ sql: 'DELETE FROM ferramenta_links WHERE id = ?', args: [id] });
+      return { status: 200, body: { ok: true } };
     }
 
     if (action === 'excluir_segredo') {
