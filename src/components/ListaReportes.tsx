@@ -13,8 +13,8 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  IconAlert, IconBug, IconChevronRight, IconDoc, IconEdit, IconImage, IconImagemSem,
-  IconSparkles, IconSpinner, IconTrash, IconUndo, IconX,
+  IconAlert, IconBug, IconChevronDown, IconChevronRight, IconChevronUp, IconChevronUpDown,
+  IconDoc, IconEdit, IconImage, IconImagemSem, IconSparkles, IconSpinner, IconTrash, IconUndo, IconX,
 } from './icons';
 import { Dialogo } from './Dialogo';
 import { PreviaArquivo } from './PreviaArquivo';
@@ -199,12 +199,50 @@ export function ListaReportes({
     label: `${st.label} (${(lista ?? []).filter(r => r.status === st.valor).length})`,
   })), [lista]);
 
+  /**
+   * A ordem escolhida no cabeçalho. Nula é a do servidor, por urgência, que é a
+   * pergunta que a fila responde quando se abre: o que atacar primeiro. Clicar
+   * numa coluna ordena por ela, clicar de novo inverte.
+   *
+   * Urgência e status seguem a escala da casa, e não o alfabeto: em ordem
+   * alfabética "Baixa" viria antes de "Urgente", e "Aberto" antes de "Em
+   * análise" por acaso.
+   */
+  const [ordem, setOrdem] = useState<{ col: ColunaOrdem; dir: 'asc' | 'desc' } | null>(null);
+  const ordenadas = useMemo(() => {
+    if (!ordem) return visiveis;
+    const chave: Record<ColunaOrdem, (r: ReporteNaLista) => string | number> = {
+      urgencia: r => PRIORIDADES.indexOf(r.urgencia as typeof PRIORIDADES[number]),
+      tipo: r => ROTULO_TIPO[r.tipo ?? '']?.label ?? '',
+      relato: r => r.texto.toLocaleLowerCase('pt-BR'),
+      status: r => STATUS_DO_RELATO.findIndex(st => st.valor === r.status),
+      autor: r => r.autor_nome.toLocaleLowerCase('pt-BR'),
+      quando: r => r.criado_em,
+    };
+    const de = chave[ordem.col];
+    const sinal = ordem.dir === 'asc' ? 1 : -1;
+    // A posição do servidor desempata: dois chamados do mesmo status ficam na
+    // ordem de urgência entre si, e não embaralhados.
+    const posicao = new Map(visiveis.map((r, i) => [r.id, i]));
+    return [...visiveis].sort((a, b) => {
+      const va = de(a), vb = de(b);
+      const c = typeof va === 'number' && typeof vb === 'number'
+        ? va - vb : String(va).localeCompare(String(vb), 'pt-BR');
+      return c * sinal || (posicao.get(a.id)! - posicao.get(b.id)!);
+    });
+  }, [visiveis, ordem]);
+  /** Clicar no título: a mesma coluna inverte; outra começa pelo lado que se
+   *  procura primeiro nela - o mais urgente, o mais novo, de A a Z. */
+  const ordenarPor = (col: ColunaOrdem) => setOrdem(o => (o?.col === col
+    ? { col, dir: o.dir === 'asc' ? 'desc' : 'asc' }
+    : { col, dir: col === 'quando' ? 'desc' : 'asc' }));
+
   /** A chave que remonta a fila e faz a entrada tocar. Feita dos filtros, e da
    *  assinatura do resultado so quando ha busca: digitar uma letra que nao muda
    *  o que aparece nao reanima nada, e resolver um chamado tambem nao. Com a
    *  correcao de um chamado aberta ela congela - remontar no meio apagaria o
    *  rascunho de quem esta escrevendo. */
-  const chaveFila = `${filtroTipos.join(',')}|${filtroStatus.join(',')}|`
+  const chaveFila = `${filtroTipos.join(',')}|${filtroStatus.join(',')}|${ordem ? `${ordem.col}-${ordem.dir}` : ''}|`
     + (busca.trim() ? visiveis.map(r => r.id).join(',') : '');
   const chaveCongelada = useRef(chaveFila);
   if (!editando) chaveCongelada.current = chaveFila;
@@ -492,15 +530,15 @@ export function ListaReportes({
               <table className="reportes-tabela">
                 <thead>
                   <tr>
-                    <th>Urgência</th>
-                    <th>Tipo</th>
-                    <th>Relato</th>
+                    <ThOrdem col="urgencia" ordem={ordem} onOrdenar={ordenarPor}>Urgência</ThOrdem>
+                    <ThOrdem col="tipo" ordem={ordem} onOrdenar={ordenarPor}>Tipo</ThOrdem>
+                    <ThOrdem col="relato" ordem={ordem} onOrdenar={ordenarPor}>Relato</ThOrdem>
                     <th>Print</th>
-                    <th>Status</th>
+                    <ThOrdem col="status" ordem={ordem} onOrdenar={ordenarPor}>Status</ThOrdem>
                     {/* Quem só vê os próprios chamados não precisa da coluna:
                         ela diria o nome dele em toda linha. */}
-                    {admin && <th>Solicitado por</th>}
-                    <th>Quando</th>
+                    {admin && <ThOrdem col="autor" ordem={ordem} onOrdenar={ordenarPor}>Solicitado por</ThOrdem>}
+                    <ThOrdem col="quando" ordem={ordem} onOrdenar={ordenarPor}>Quando</ThOrdem>
                   </tr>
                 </thead>
                 {/* A chave remonta o corpo da tabela, e é a troca da chave que
@@ -510,7 +548,7 @@ export function ListaReportes({
                     reclassificar um chamado não reanima a fila inteira, e só
                     quem mexeu num filtro vê a entrada tocar. */}
                 <tbody className="lista-anima" key={chaveCongelada.current}>
-                  {visiveis.map(r => {
+                  {ordenadas.map(r => {
                     const Icone = ICONE_PRIORIDADE[r.urgencia];
                     const abertaAqui = aberta === r.id;
                     const editandoAqui = editando?.id === r.id;
@@ -933,6 +971,34 @@ export function ListaReportes({
       )}
     </>,
     document.body,
+  );
+}
+
+/** As colunas que se ordenam. Print fica de fora: anexo não tem ordem. */
+type ColunaOrdem = 'urgencia' | 'tipo' | 'relato' | 'status' | 'autor' | 'quando';
+
+/** O título de coluna que ordena, no mesmo desenho do cabeçalho da lista do
+ *  Funil: a seta de três estados diz se a coluna manda e para que lado. */
+function ThOrdem({ col, ordem, onOrdenar, children }: {
+  col: ColunaOrdem;
+  ordem: { col: ColunaOrdem; dir: 'asc' | 'desc' } | null;
+  onOrdenar: (col: ColunaOrdem) => void;
+  children: React.ReactNode;
+}) {
+  const ativa = ordem?.col === col;
+  return (
+    <th className={`sortable-th${ativa ? ' sorted' : ''}`}
+      aria-sort={ativa ? (ordem!.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+      tabIndex={0}
+      onClick={() => onOrdenar(col)}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOrdenar(col); } }}>
+      {children}
+      <span className="sort-arrow" style={{ display: 'inline-flex', verticalAlign: 'middle' }}>
+        {ativa
+          ? (ordem!.dir === 'asc' ? <IconChevronUp size={12} /> : <IconChevronDown size={12} />)
+          : <IconChevronUpDown size={12} />}
+      </span>
+    </th>
   );
 }
 
