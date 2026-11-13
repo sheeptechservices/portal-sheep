@@ -56,7 +56,7 @@ import type { Transcricao } from '../components/BotaoTranscricao';
 import { Dialogo } from '../components/Dialogo';
 import {
   exportar as exportarPacote, type ComentarioExport, type ObjetivoExport,
-  type Pacote as PacoteExport, type SubtarefaExport,
+  type Pacote as PacoteExport, type SubtarefaExport, passosEmOrdem,
 } from '../lib/exportarTarefas';
 import { dia as fmtData, diaCurto as fmtDataCurta, tamanho as fmtTamanho } from '../lib/datas';
 import { ancorar } from '../lib/ancorar';
@@ -6507,12 +6507,12 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
         comentarios.set(id, lista);
       }
       const passos = new Map<number, SubtarefaExport[]>();
+      const linhasDe = new Map<number, any[]>();
       for (const x of (ps?.subtarefas ?? []) as any[]) {
         const id = Number(x.tarefa_id);
-        const lista = passos.get(id) ?? [];
-        lista.push({ titulo: String(x.titulo ?? ''), feita: Number(x.feita) === 1 });
-        passos.set(id, lista);
+        linhasDe.set(id, [...(linhasDe.get(id) ?? []), x]);
       }
+      for (const [id, linhas] of linhasDe) passos.set(id, passosEmOrdem(linhas));
       return { comentarios, passos };
     })();
 

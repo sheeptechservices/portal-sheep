@@ -245,7 +245,11 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
         concluida_em: t.concluida_em ?? null,
         criado_em: t.criado_em,
         criado_por: t.criado_por_nome ?? null,
-        subtarefas: (sub.subtarefas ?? []).map((s: any) => ({ id: Number(s.id), titulo: s.titulo, feita: Number(s.feita) === 1 })),
+        subtarefas: (sub.subtarefas ?? []).map((s: any) => ({
+          id: Number(s.id), titulo: s.titulo, feita: Number(s.feita) === 1,
+          // O passo de cima, quando este é subitem dele. Nulo no primeiro nível.
+          pai_id: s.pai_id == null ? null : Number(s.pai_id),
+        })),
         comentarios: comentarios.filter(c => c.pai_id == null).map(c => ({
           ...linha(c),
           respostas: comentarios.filter(r => Number(r.pai_id) === Number(c.id)).map(linha),

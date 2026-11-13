@@ -6126,6 +6126,25 @@ button.checklist-texto:focus-visible {
 .checklist-tirar:focus-visible { opacity: 1; }
 .checklist-tirar:hover { background: var(--gray3); color: var(--red); }
 .checklist-tirar:focus-visible { outline: none; }
+/* O "+" do subitem mora ao lado do "x" e aparece do mesmo jeito, mas
+   acrescentar nao e perigo: o realce e o do texto, e nao o vermelho. */
+.checklist-novo-sub:hover { color: var(--black); }
+
+/* O subitem desce um degrau, alinhado pela caixa do passo de cima: o recuo e
+   o que diz de quem ele e, sem precisar de linha ligando os dois. */
+.checklist-item.sub,
+.checklist-novo.sub { margin-left: 24px; }
+.checklist-novo.sub { width: calc(100% - 24px); }
+/* Quanto do passo ja andou, pelos subitens: o mesmo cinza da contagem do
+   checklist inteiro. */
+.checklist-sub-conta {
+  flex-shrink: 0;
+  margin-top: 2px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--gray2);
+  font-variant-numeric: tabular-nums;
+}
 /* Acrescentar comeca num "+" discreto, e nao numa caixa aberta esperando
    alguem: em repouso a lista termina no ultimo passo, e a caixa vazia com
    moldura pesava mais que os proprios itens. */

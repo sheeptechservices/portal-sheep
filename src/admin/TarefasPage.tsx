@@ -30,7 +30,7 @@ import { CartaoKpi, CartoesKpiEsqueleto } from '../components/CartaoKpi';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import {
   exportar, type ComentarioExport, type Formato as FormatoExport, type Pacote as PacoteExport,
-  type SubtarefaExport,
+  type SubtarefaExport, passosEmOrdem,
 } from '../lib/exportarTarefas';
 // Só tipos: um valor vindo daqui fecharia um ciclo com ProjetosPage, que
 // importa o formulário de tarefa.
@@ -930,12 +930,12 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
     if (ids.length === 0) return mapa;
     try {
       const dados = await api(`?action=tarefas_subtarefas&ids=${ids.join(',')}`);
+      const porTarefa = new Map<number, any[]>();
       for (const p of (dados?.subtarefas ?? []) as any[]) {
         const id = Number(p.tarefa_id);
-        const lista = mapa.get(id) ?? [];
-        lista.push({ titulo: String(p.titulo ?? ''), feita: Number(p.feita) === 1 });
-        mapa.set(id, lista);
+        porTarefa.set(id, [...(porTarefa.get(id) ?? []), p]);
       }
+      for (const [id, linhas] of porTarefa) mapa.set(id, passosEmOrdem(linhas));
     } catch { /* segue sem o checklist */ }
     return mapa;
   }

@@ -19,7 +19,7 @@ import {
 import { SelectSistema } from '../components/SelectSistema';
 import { SeletorPessoas } from '../components/SeletorPessoas';
 import { DatePicker } from '../components/DatePicker';
-import { markdownDaTarefa, type ComentarioExport } from '../lib/exportarTarefas';
+import { markdownDaTarefa, passosEmOrdem, type ComentarioExport } from '../lib/exportarTarefas';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { ancorar } from '../lib/ancorar';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
@@ -156,6 +156,24 @@ export interface Subtarefa {
   id?: number;
   titulo: string;
   feita: number;
+  /** O passo de cima, quando este é subitem dele. Um nível só: subitem não
+   *  tem filho. Nulo, ou ausente, é passo de primeiro nível. */
+  pai_id?: number | null;
+}
+
+/** A lista na ordem da tela: cada passo seguido dos subitens dele. O servidor
+ *  manda pela ordem gravada, e o subitem escrito por último teria a maior ordem
+ *  da tarefa - sem agrupar, ele cairia no fim da lista, longe do passo dele. O
+ *  subitem cujo passo de cima sumiu sobe para o primeiro nível. */
+function emOrdem(lista: Subtarefa[]): Subtarefa[] {
+  const ids = new Set(lista.map(x => x.id));
+  const doPai = (id: number | undefined) => lista.filter(x => x.pai_id != null && x.pai_id === id);
+  return lista
+    .filter(x => x.pai_id == null || !ids.has(x.pai_id))
+    .flatMap(x => [
+      x.pai_id != null ? { ...x, pai_id: null } : x,
+      ...(x.id != null ? doPai(x.id) : []),
+    ]);
 }
 
 /** O título com que uma tarefa nasce, antes de alguém escrever o dela. O
@@ -273,6 +291,9 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
   const [itens, setItens] = useState<Subtarefa[]>(
     () => (gravado ? passosLidos.get(tarefaId!) ?? [] : rascunho));
   const [novo, setNovo] = useState('');
+  /** O passo que está recebendo um subitem, e o texto dele. */
+  const [subDe, setSubDe] = useState<Subtarefa | null>(null);
+  const [novoSub, setNovoSub] = useState('');
   /** O campo de acrescentar só existe depois do "+". Em repouso a lista termina
    *  no último passo, e não numa caixa vazia esperando alguém. */
   const [escrevendo, setEscrevendo] = useState(false);
@@ -309,7 +330,7 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
     else if (!acabouDeNascer) setItens([]);
     let vivo = true;
     void api!(`?action=tarefa_subtarefas&id=${tarefaId}`).then(r => {
-      const lista = (r?.subtarefas ?? []) as Subtarefa[];
+      const lista = emOrdem((r?.subtarefas ?? []) as Subtarefa[]);
       passosLidos.set(tarefaId!, lista);
       // Um passo escrito enquanto a leitura vinha não pode sumir por causa
       // dela: a resposta é velha em relação ao que acabou de ser digitado.
@@ -375,34 +396,90 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
     );
   }
 
-  function adicionar() {
-    const titulo = novo.trim();
+  /** Acrescenta um passo. Com `pai`, ele entra como subitem daquele passo, logo
+   *  depois dos subitens que ele já tem; sem, vai para o fim da lista. */
+  function adicionar(pai?: Subtarefa) {
+    const titulo = (pai ? novoSub : novo).trim();
     if (!titulo) return;
-    setNovo('');
+    if (pai) setNovoSub(''); else setNovo('');
     if (!gravado) { aplicar([...itens, { titulo, feita: 0 }]); return; }
     // O passo entra no gesto, com uma chave provisória, e o id do servidor a
     // substitui quando chega. Esperar a resposta para só então mostrar fazia
     // quem escreve uma lista de dez passos esperar dez vezes.
     const chave = proximaChave.current--;
-    const provisorio: Subtarefa = { id: chave, titulo, feita: 0 };
-    setItens(atual => { const n = [...atual, provisorio]; lembrar(n); return n; });
-    const promessa = api!('', 'POST', {
-      action: 'add_tarefa_subtarefa', tarefa_id: tarefaId, titulo,
-    }).then(r => {
+    const provisorio: Subtarefa = { id: chave, titulo, feita: 0, pai_id: pai?.id ?? null };
+    setItens(atual => {
+      let n: Subtarefa[];
+      if (pai) {
+        // Depois do último subitem do passo, ou do próprio passo se for o
+        // primeiro: é ali que o olho procura o que acabou de escrever.
+        const ip = atual.findIndex(x => x.id === pai.id);
+        let fim = ip;
+        while (fim + 1 < atual.length && atual[fim + 1].pai_id === pai.id) fim++;
+        n = [...atual.slice(0, fim + 1), provisorio, ...atual.slice(fim + 1)];
+        // Subitem novo num passo marcado como feito: o passo deixa de estar
+        // completo, como quando se desmarca um subitem.
+        if (Number(pai.feita) === 1) n = n.map(x => (x.id === pai.id ? { ...x, feita: 0 } : x));
+      } else {
+        n = [...atual, provisorio];
+      }
+      lembrar(n);
+      return n;
+    });
+    if (pai && Number(pai.feita) === 1) {
+      void idDoPasso(pai).then(id => id && api!('', 'POST', { action: 'atualizar_tarefa_subtarefa', id, feita: false }));
+    }
+    const promessa = (async () => {
+      // O passo de cima pode ter acabado de nascer: o subitem espera o id dele.
+      const paiId = pai ? await idDoPasso(pai) : null;
+      if (pai && !paiId) return { error: 'O passo de cima não chegou a ser gravado.' };
+      return api!('', 'POST', {
+        action: 'add_tarefa_subtarefa', tarefa_id: tarefaId, titulo, pai_id: paiId,
+      });
+    })().then(r => {
       nascendo.current.delete(chave);
       if (r?.error || !r?.subtarefa) {
         // Não vingou: o passo sai da lista de onde tinha acabado de entrar.
         setItens(atual => { const n = atual.filter(x => x.id !== chave); lembrar(n); return n; });
         return null;
       }
+      const real = Number(r.subtarefa.id);
       setItens(atual => {
-        const n = atual.map(x => (x.id === chave ? (r.subtarefa as Subtarefa) : x));
+        // Os subitens escritos enquanto este passo nascia apontam para a chave
+        // provisória: passam a apontar para o id de verdade.
+        const n = atual.map(x => (x.id === chave
+          ? (r.subtarefa as Subtarefa)
+          : x.pai_id === chave ? { ...x, pai_id: real } : x));
         lembrar(n);
         return n;
       });
-      return Number(r.subtarefa.id);
+      return real;
     });
     nascendo.current.set(chave, promessa);
+  }
+
+  /** Marca ou desmarca, com a regra do passo e dos subitens dele: marcar o
+   *  passo marca todos os subitens; marcar o último subitem que faltava marca
+   *  o passo; desmarcar um subitem desmarca o passo. Cada linha que mudou grava
+   *  sozinha, todas ao mesmo tempo. */
+  function marcar(item: Subtarefa, feita: number) {
+    let novos = itens.map(x => (x === item ? { ...x, feita } : x));
+    if (item.pai_id == null && item.id != null) {
+      novos = novos.map(x => (x.pai_id != null && x.pai_id === item.id ? { ...x, feita } : x));
+    } else if (item.pai_id != null) {
+      const irmaos = novos.filter(x => x.pai_id === item.pai_id);
+      const todos = irmaos.every(x => Number(x.feita) === 1) ? 1 : 0;
+      novos = novos.map(x => (x.id === item.pai_id ? { ...x, feita: todos } : x));
+    }
+    const mudaram = novos.filter((x, j) => Number(x.feita) !== Number(itens[j].feita));
+    aplicar(novos, async () => {
+      const ids = await Promise.all(mudaram.map(idDoPasso));
+      if (ids.some(id => !id)) return { error: 'O passo não chegou a ser gravado.' };
+      const respostas = await Promise.all(mudaram.map((x, k) => api!('', 'POST', {
+        action: 'atualizar_tarefa_subtarefa', id: ids[k], feita: Number(x.feita) === 1,
+      })));
+      return respostas.find(r => r?.error) ?? { ok: true };
+    });
   }
 
   /**
@@ -421,7 +498,24 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
     setArrastando(null);
     setAlvo(null);
     if (origem == null || origem === destino) return;
-    const novos = moverNaLista(itens, origem, destino, lado);
+    const o = itens[origem], d = itens[destino];
+    const nivel = o.pai_id ?? null;
+    // Só entre irmãos: o passo troca de lugar com passos, e o subitem com os
+    // subitens do mesmo passo. Levar um subitem para outro passo é outra
+    // decisão, e não um arrasto.
+    if ((d.pai_id ?? null) !== nivel) return;
+    let novos: Subtarefa[];
+    if (nivel == null) {
+      // O passo leva os subitens dele junto.
+      const tops = itens.filter(x => x.pai_id == null);
+      const movidos = moverNaLista(tops, tops.indexOf(o), tops.indexOf(d), lado);
+      novos = movidos.flatMap(t => [t, ...itens.filter(x => x.pai_id != null && x.pai_id === t.id)]);
+    } else {
+      const irmaos = itens.filter(x => x.pai_id === nivel);
+      const movidos = moverNaLista(irmaos, irmaos.indexOf(o), irmaos.indexOf(d), lado);
+      let k = 0;
+      novos = itens.map(x => (x.pai_id === nivel ? movidos[k++] : x));
+    }
     if (mesmaOrdem(novos, itens)) return;
     aplicar(novos, async () => {
       const ids = await Promise.all(novos.map(idDoPasso));
@@ -447,13 +541,23 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
 
       {itens.length > 0 && (
         <div className="checklist">
-          {itens.map((item, i) => {
+          {itens.flatMap((item, i) => {
             // Arrastar sai do caminho de quem está escrevendo: com o campo
             // aberto, selecionar o texto com o mouse viraria um arrasto.
             const podeArrastar = !desabilitado && reescrevendo !== i;
-            return (
+            const sub = item.pai_id != null;
+            const filhos = !sub && item.id != null ? itens.filter(x => x.pai_id === item.id) : [];
+            // O campo do subitem nasce depois do último subitem do passo.
+            const fimDoBloco = !(i + 1 < itens.length && itens[i + 1].pai_id != null
+              && itens[i + 1].pai_id === (item.pai_id ?? item.id));
+            const passoDoBloco = sub ? itens.find(x => x.id === item.pai_id) : item;
+            // A linha e o campo do subitem são irmãos na mesma lista, cada um
+            // com a sua chave: quando um subitem entra, o React só insere a
+            // linha nova antes do campo, e o campo continua o mesmo, com o
+            // foco, em vez de ser recriado a cada Enter.
+            return [
             <div key={item.id ?? `novo-${i}`}
-              className={`checklist-item${Number(item.feita) === 1 ? ' feito' : ''}`
+              className={`checklist-item${sub ? ' sub' : ''}${Number(item.feita) === 1 ? ' feito' : ''}`
                 + `${arrastando === i ? ' arrastando' : ''}`
                 + `${alvo?.i === i && arrastando !== i ? ` solta-${alvo.lado}` : ''}`}
               draggable={podeArrastar}
@@ -461,6 +565,8 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
               onDragEnd={() => { setArrastando(null); setAlvo(null); }}
               onDragOver={e => {
                 if (arrastando === null) return;
+                // Só acende onde o passo pode cair: entre os irmãos dele.
+                if ((itens[arrastando]?.pai_id ?? null) !== (item.pai_id ?? null)) return;
                 e.preventDefault();
                 const r = e.currentTarget.getBoundingClientRect();
                 setAlvo({ i, lado: e.clientY < r.top + r.height / 2 ? 'antes' : 'depois' });
@@ -487,19 +593,7 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
                   checked={Number(item.feita) === 1}
                   disabled={desabilitado}
                   aria-label={`Marcar "${item.titulo}" como feito`}
-                  onChange={e => {
-                    const feita = e.target.checked ? 1 : 0;
-                    aplicar(
-                      itens.map((x, j) => (j === i ? { ...x, feita } : x)),
-                      async () => {
-                        const id = await idDoPasso(item);
-                        if (!id) return { error: 'O passo não chegou a ser gravado.' };
-                        return api!('', 'POST', {
-                          action: 'atualizar_tarefa_subtarefa', id, feita: !!feita,
-                        });
-                      },
-                    );
-                  }} />
+                  onChange={e => marcar(item, e.target.checked ? 1 : 0)} />
               </label>
               {/* O texto é lido e escrito no mesmo lugar, então a troca é só de
                   opacidade: um deslocamento aqui leria como se o passo tivesse
@@ -521,11 +615,27 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
                   {item.titulo}
                 </button>
               )}
+              {/* Quanto do passo já andou, contado pelos subitens dele. */}
+              {filhos.length > 0 && (
+                <span className="checklist-sub-conta">
+                  {filhos.filter(x => Number(x.feita) === 1).length}/{filhos.length}
+                </span>
+              )}
+              {/* Subitem só no passo de primeiro nível, e só na tarefa que já
+                  existe: antes disso não há passo com id para pendurar nada. */}
+              {!desabilitado && gravado && !sub && (
+                <button type="button" className="checklist-tirar checklist-novo-sub"
+                  aria-label={`Adicionar subitem em "${item.titulo}"`} title="Adicionar subitem"
+                  onClick={() => { setNovoSub(''); setSubDe(item); }}>
+                  <IconPlus size={11} />
+                </button>
+              )}
               {!desabilitado && (
                 <button type="button" className="checklist-tirar"
-                  aria-label={`Tirar "${item.titulo}"`} title="Tirar da lista"
+                  aria-label={`Tirar "${item.titulo}"`}
+                  title={filhos.length ? 'Tirar da lista, com os subitens' : 'Tirar da lista'}
                   onClick={() => aplicar(
-                    itens.filter((_, j) => j !== i),
+                    itens.filter((x, j) => j !== i && !(item.id != null && x.pai_id === item.id)),
                     async () => {
                       const id = await idDoPasso(item);
                       if (!id) return { error: 'O passo não chegou a ser gravado.' };
@@ -535,8 +645,21 @@ function Checklist({ tarefaId, api, rascunho, desabilitado, onMudarRascunho }: {
                   <IconX size={11} />
                 </button>
               )}
-            </div>
-            );
+            </div>,
+            // O campo do subitem, recuado no lugar onde ele vai entrar. Enter
+            // acrescenta e o campo continua, como no "Outro passo".
+            fimDoBloco && passoDoBloco && subDe?.id === passoDoBloco.id && !desabilitado ? (
+              <input key={`sub-${passoDoBloco.id}`} className="checklist-novo sub surge" value={novoSub} autoFocus
+                placeholder="Subitem"
+                aria-label={`Subitem de "${passoDoBloco.titulo}"`}
+                onChange={e => setNovoSub(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { e.preventDefault(); adicionar(passoDoBloco); }
+                  if (e.key === 'Escape') { setNovoSub(''); setSubDe(null); }
+                }}
+                onBlur={() => { adicionar(passoDoBloco); setSubDe(null); }} />
+            ) : null,
+            ];
           })}
         </div>
       )}
@@ -856,8 +979,7 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
         etiquetas: rascunho.etiquetas,
         concluida_em: null,
         entrega_titulo: entrega?.titulo ?? null,
-        subtarefas: ((passos?.subtarefas ?? []) as Subtarefa[])
-          .map(s => ({ titulo: s.titulo, feita: !!s.feita })),
+        subtarefas: passosEmOrdem((passos?.subtarefas ?? []) as Subtarefa[]),
         comentarios: conversa,
         projeto: projeto?.nome ?? '',
         codigo: projeto?.codigo ?? null,

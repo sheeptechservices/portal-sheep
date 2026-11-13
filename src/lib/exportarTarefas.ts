@@ -41,6 +41,29 @@ export interface ComentarioExport {
 export interface SubtarefaExport {
   titulo: string;
   feita: boolean;
+  /** Subitem do passo logo acima: sai recuado, como na tela. */
+  sub?: boolean;
+}
+
+/** As linhas do checklist como o servidor as devolve, na ordem da tela: cada
+ *  passo seguido dos subitens dele. O servidor manda pela ordem gravada, e o
+ *  subitem escrito por último teria a maior ordem da tarefa - sem agrupar, ele
+ *  sairia no fim da lista, longe do passo a que pertence. */
+export function passosEmOrdem(
+  linhas: { id?: unknown; pai_id?: unknown; titulo?: unknown; feita?: unknown }[],
+): SubtarefaExport[] {
+  const doPai = new Map<number, typeof linhas>();
+  const ids = new Set(linhas.map(l => Number(l.id)));
+  for (const l of linhas) {
+    if (l.pai_id == null || !ids.has(Number(l.pai_id))) continue;
+    const k = Number(l.pai_id);
+    doPai.set(k, [...(doPai.get(k) ?? []), l]);
+  }
+  const passo = (l: (typeof linhas)[number], sub: boolean): SubtarefaExport =>
+    ({ titulo: String(l.titulo ?? ''), feita: Number(l.feita) === 1, ...(sub ? { sub } : {}) });
+  return linhas
+    .filter(l => l.pai_id == null || !ids.has(Number(l.pai_id)))
+    .flatMap(l => [passo(l, false), ...(doPai.get(Number(l.id)) ?? []).map(f => passo(f, true))]);
 }
 
 export interface TarefaExport {
@@ -186,7 +209,7 @@ const conversaEmTexto = (cs: ComentarioExport[] | undefined) =>
 /** O checklist numa célula, um passo por linha e com a marca do que está feito
  *  na frente - a mesma forma que ele tem na tela. */
 const checklistEmTexto = (ps: SubtarefaExport[] | undefined) =>
-  (ps ?? []).map(p => `[${p.feita ? 'x' : ' '}] ${p.titulo}`).join('\n');
+  (ps ?? []).map(p => `${p.sub ? '    ' : ''}[${p.feita ? 'x' : ' '}] ${p.titulo}`).join('\n');
 
 /** "3/5", e vazio quando a tarefa não tem passo nenhum. Numa planilha o quanto
  *  já andou vale mais que o texto: dá para ordenar e filtrar por ele. */
@@ -466,7 +489,7 @@ function markdown(pacote: Pacote): string {
         if (t.subtarefas?.length) {
           const feitos = t.subtarefas.filter(x => x.feita).length;
           L.push(`  - Checklist (${feitos}/${t.subtarefas.length}):`);
-          for (const p of t.subtarefas) L.push(`    - [${p.feita ? 'x' : ' '}] ${p.titulo}`);
+          for (const p of t.subtarefas) L.push(`    ${p.sub ? '  ' : ''}- [${p.feita ? 'x' : ' '}] ${p.titulo}`);
         }
         // A conversa entra depois da descrição, na ordem em que aconteceu: é
         // onde costuma estar a decisão que o título não conta.
@@ -537,7 +560,7 @@ export function markdownDaTarefa(t: FichaDaTarefa): string {
   if (t.subtarefas?.length) {
     const feitos = t.subtarefas.filter(x => x.feita).length;
     L.push(`## Checklist (${feitos}/${t.subtarefas.length})`, '');
-    for (const p of t.subtarefas) L.push(`- [${p.feita ? 'x' : ' '}] ${p.titulo}`);
+    for (const p of t.subtarefas) L.push(`${p.sub ? '  ' : ''}- [${p.feita ? 'x' : ' '}] ${p.titulo}`);
     L.push('');
   }
 
@@ -602,7 +625,7 @@ function exportarPdf(pacote: Pacote) {
         const feitos = t.subtarefas.filter(x => x.feita).length;
         abaixo.push(`<div class="t-passos"><b>Checklist ${feitos}/${t.subtarefas.length}</b>`
           + t.subtarefas.map(p =>
-            `<span class="t-passo${p.feita ? ' feito' : ''}">`
+            `<span class="t-passo${p.feita ? ' feito' : ''}${p.sub ? ' sub' : ''}">`
             + `${p.feita ? '[x]' : '[ ]'} ${escHtml(p.titulo)}</span>`).join('')
           + '</div>');
       }
@@ -658,6 +681,7 @@ td { padding:1.5mm 2mm; border-bottom:1px solid #C8C8C8; vertical-align:top; }
 /* Um passo por linha, com a marca alinhada: em texto corrido a lista deixa de
    se ler como lista. */
 .t-passo { display:block; }
+.t-passo.sub { padding-left:4mm; }
 .t-passo.feito { color:#8A8A8A; text-decoration:line-through; }
 .t-conversa { margin-top:1.5mm; padding-left:2mm; border-left:2px solid #C8C8C8; }
 .t-conversa p { margin:0 0 1.2mm; font-size:8pt; color:#3F3F3F; white-space:pre-wrap; }

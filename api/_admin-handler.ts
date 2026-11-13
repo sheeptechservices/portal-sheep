@@ -2309,6 +2309,10 @@ async function migrarSchema(db: Client) {
     await ddl(`CREATE INDEX IF NOT EXISTS idx_subtarefa_tarefa
                ON tarefa_subtarefas (tarefa_id, ordem, id)`);
   } catch { /* índice já existe */ }
+  // O passo dentro de outro passo: o subitem aponta para o item de cima. Um
+  // nível só, como nas respostas da conversa - o subitem não tem filho. Nulo é
+  // passo de primeiro nível, que é como toda linha anterior a esta coluna fica.
+  try { await ddl(`ALTER TABLE tarefa_subtarefas ADD COLUMN pai_id INTEGER`); } catch { /* já existe */ }
 
   await ddl(`
     CREATE TABLE IF NOT EXISTS tarefa_comentarios (
@@ -5165,7 +5169,7 @@ async function despacharAdminData(
       for (let i = 0; i < ids.length; i += 400) {
         const lote = ids.slice(i, i + 400);
         const r = await db.execute({
-          sql: `SELECT s.tarefa_id, s.titulo, s.feita
+          sql: `SELECT s.tarefa_id, s.id, s.pai_id, s.titulo, s.feita
                 FROM tarefa_subtarefas s
                 JOIN projeto_tarefas t ON t.id = s.tarefa_id
                 WHERE s.tarefa_id IN (${lote.map(() => '?').join(',')})
@@ -5193,7 +5197,7 @@ async function despacharAdminData(
       const barrado = await guardaDaEquipe(db, usuario, tarefaId, 'tarefa');
       if (barrado) return barrado;
       const r = await db.execute({
-        sql: `SELECT id, titulo, feita, ordem FROM tarefa_subtarefas
+        sql: `SELECT id, pai_id, titulo, feita, ordem FROM tarefa_subtarefas
               WHERE tarefa_id = ? ORDER BY ordem, id`,
         args: [tarefaId],
       });
@@ -7535,16 +7539,30 @@ function faltaEmProjeto(p: any): string | null {
       if (!Number.isFinite(tarefaId)) return { status: 400, body: { error: 'tarefa_id ausente.' } };
       { const barrado = await guardaDaEquipe(db, usuario, tarefaId, 'tarefa'); if (barrado) return barrado; }
       if (!titulo) return { status: 400, body: { error: 'Escreva o que precisa ser feito.' } };
+      // Subitem: o pai tem de ser passo desta mesma tarefa. Se o pai já for
+      // subitem, o novo entra ao lado dele, no mesmo item de cima - é o que
+      // segura a lista em um nível só.
+      let paiId: number | null = null;
+      if (body?.pai_id != null && body.pai_id !== '') {
+        const pai = (await db.execute({
+          sql: 'SELECT id, pai_id, tarefa_id FROM tarefa_subtarefas WHERE id = ?',
+          args: [Number(body.pai_id)],
+        })).rows[0];
+        if (!pai || Number(pai.tarefa_id) !== tarefaId) {
+          return { status: 400, body: { error: 'O passo de cima não é desta tarefa.' } };
+        }
+        paiId = pai.pai_id != null ? Number(pai.pai_id) : Number(pai.id);
+      }
       // A posição sai no próprio INSERT, e não numa consulta antes dele: quem
       // escreve uma lista escreve vários passos seguidos, e cada ida a mais ao
       // banco aparecia como espera entre um passo e o seguinte.
       const r = await db.execute({
-        sql: `INSERT INTO tarefa_subtarefas (tarefa_id, titulo, feita, ordem, criado_em)
-              VALUES (?,?,0,
+        sql: `INSERT INTO tarefa_subtarefas (tarefa_id, pai_id, titulo, feita, ordem, criado_em)
+              VALUES (?,?,?,0,
                 (SELECT COALESCE(MAX(ordem), -1) + 1 FROM tarefa_subtarefas WHERE tarefa_id = ?),
                 ?)
               RETURNING id, ordem`,
-        args: [tarefaId, titulo, tarefaId, new Date().toISOString()],
+        args: [tarefaId, paiId, titulo, tarefaId, new Date().toISOString()],
       });
       const linha = r.rows[0];
       return {
@@ -7552,7 +7570,7 @@ function faltaEmProjeto(p: any): string | null {
         body: {
           subtarefa: {
             id: Number(linha?.id ?? r.lastInsertRowid),
-            titulo, feita: 0, ordem: Number(linha?.ordem ?? 0),
+            pai_id: paiId, titulo, feita: 0, ordem: Number(linha?.ordem ?? 0),
           },
         },
       };
@@ -7611,7 +7629,8 @@ function faltaEmProjeto(p: any): string | null {
       });
       if (!alvo.rows[0]) return { status: 404, body: { error: 'Item não encontrado.' } };
       { const barrado = await guardaDaEquipe(db, usuario, alvo.rows[0].tarefa_id, 'tarefa'); if (barrado) return barrado; }
-      await db.execute({ sql: 'DELETE FROM tarefa_subtarefas WHERE id = ?', args: [id] });
+      // Os subitens vão junto: sem o passo de cima, eles ficam sem assunto.
+      await db.execute({ sql: 'DELETE FROM tarefa_subtarefas WHERE id = ? OR pai_id = ?', args: [id, id] });
       return { status: 200, body: { ok: true } };
     }
 
