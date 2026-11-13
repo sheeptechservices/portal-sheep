@@ -102,10 +102,26 @@ export function AtividadeDaTarefa({ tarefaId, pessoas, usuarioId, podeComentar, 
       return r;
     },
     // As marcações vão de novo: o servidor tira quem saiu do texto e avisa só
-    // quem entrou nesta edição.
-    editar: (id: number, texto: string) => api('', 'POST', {
-      action: 'editar_tarefa_comentario', id, texto, mencoes: idsMarcados(texto),
-    }),
+    // quem entrou nesta edição. Os anexos novos sobem antes, cada um no seu
+    // pedido e todos ao mesmo tempo, como no envio; a edição leva os ids deles
+    // e os dos anexos que a pessoa tirou.
+    editar: async (id: number, texto: string, anexos?: { remover: number[]; novos: AnexoPendente[] }) => {
+      const novos = anexos?.novos ?? [];
+      const subidos = await Promise.all(novos.map(a => api('', 'POST', {
+        action: 'subir_anexo_comentario', nome: a.nome, tipo: a.tipo, base64: a.base64,
+      }).catch(() => null)));
+      const falhou = subidos.findIndex(r => !r?.ok || !r.id);
+      if (falhou >= 0) {
+        return { error: subidos[falhou]?.error ?? `"${novos[falhou].nome}" não subiu. Tente de novo.` };
+      }
+      const r = await api('', 'POST', {
+        action: 'editar_tarefa_comentario', id, texto, mencoes: idsMarcados(texto),
+        anexos_ids: subidos.map(x => String(x.id)), remover_anexos: anexos?.remover ?? [],
+      });
+      // O cartão no quadro conta os anexos: mexeu neles, ele precisa saber.
+      if (r && !r.error && (novos.length || anexos?.remover.length)) onConversaMudou?.();
+      return r;
+    },
     anexo: (id: number) => api(`?action=tarefa_comentario_anexo_base64&id=${id}`),
     joinha: (id: number, ligar: boolean) => api('', 'POST', { action: 'joinha_tarefa_comentario', id, ligar }),
   }), [api, tarefaId, onConversaMudou]);

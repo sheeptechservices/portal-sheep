@@ -182,9 +182,13 @@ function paraEscrita(gravado: string) {
 
 /** Caixa de escrita, com marcação por `@` e anexos. */
 function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnviar, onCancelar,
-  inicial, erroInicial }: {
+  inicial, erroInicial, anexosExistentes }: {
   /** O texto gravado de um comentário que está sendo editado. */
   inicial?: string;
+  /** Os anexos que o comentário editado já tem. Aparecem na caixa com o X de
+   *  tirar, ao lado dos novos: editar o comentário é editar tudo o que ele
+   *  leva, e não só o texto. */
+  anexosExistentes?: AnexoDoComentario[];
   /** O erro da tentativa anterior, quando a caixa reabre depois de o servidor
    *  recusar a edição. */
   erroInicial?: string;
@@ -197,13 +201,16 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
   permiteAnexo?: boolean;
   rotuloEnvio: string;
   /** Envia e espera. Devolve o erro do servidor, ou `null` quando gravou - e só
-   *  então a caixa se esvazia. */
-  onEnviar: (texto: string, anexos: AnexoPendente[]) => Promise<string | null>;
+   *  então a caixa se esvazia. `removidos` são os ids dos anexos existentes que
+   *  a pessoa tirou; fora da edição, vem sempre vazio. */
+  onEnviar: (texto: string, anexos: AnexoPendente[], removidos: number[]) => Promise<string | null>;
   onCancelar?: () => void;
 }) {
   const [partida] = useState(() => paraEscrita(inicial ?? ''));
   const [texto, setTexto] = useState(partida.texto);
   const [anexos, setAnexos] = useState<AnexoPendente[]>([]);
+  /** Dos anexos que o comentário já tinha, os que continuam. */
+  const [ficam, setFicam] = useState<AnexoDoComentario[]>(anexosExistentes ?? []);
   const [erro, setErro] = useState<string | null>(erroInicial ?? null);
   const [enviando, setEnviando] = useState(false);
   /** Busca aberta pelo `@`: o trecho digitado depois dele e onde ele começa. */
@@ -338,10 +345,11 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
     // O campo editável escreve o espaço do fim como espaço que não quebra; no
     // texto guardado ele volta a ser espaço comum.
     const limpo = texto.replace(/\u00a0/g, ' ').trim();
-    if ((!limpo && anexos.length === 0) || enviando) return;
+    if ((!limpo && anexos.length === 0 && ficam.length === 0) || enviando) return;
     setEnviando(true);
     setErro(null);
-    const falha = await onEnviar(comMarcacoes(limpo), anexos);
+    const removidos = (anexosExistentes ?? []).filter(a => !ficam.some(f => f.id === a.id)).map(a => a.id);
+    const falha = await onEnviar(comMarcacoes(limpo), anexos, removidos);
     setEnviando(false);
     if (falha) { setErro(falha); return; }
     setTexto('');
@@ -430,8 +438,22 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
         )}
       </div>
 
-      {anexos.length > 0 && (
+      {(anexos.length > 0 || ficam.length > 0) && (
         <ul className="ativ-anexos">
+          {/* Os que o comentário já tinha vêm primeiro, na ordem de antes, e saem
+              pelo mesmo X dos novos. Tirar aqui só vale quando salvar: cancelar
+              devolve tudo como estava. */}
+          {ficam.map(a => (
+            <li key={`ja-${a.id}`}>
+              <IconClip size={12} />
+              <span className="ativ-anexo-nome">{a.nome}</span>
+              <span className="ativ-anexo-peso">{fmtTamanho(a.tamanho)}</span>
+              <button type="button" aria-label={`Tirar ${a.nome}`} title="Tirar do comentário"
+                onClick={() => setFicam(x => x.filter(k => k.id !== a.id))}>
+                <IconX size={11} />
+              </button>
+            </li>
+          ))}
           {anexos.map((a, i) => (
             <li key={i}>
               <IconClip size={12} />
@@ -464,7 +486,8 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
         {onCancelar && (
           <button type="button" className="ativ-botao-fraco" onClick={onCancelar}>Cancelar</button>
         )}
-        <button type="button" className="ativ-botao" disabled={enviando || (!texto.trim() && !anexos.length)}
+        <button type="button" className="ativ-botao"
+          disabled={enviando || (!texto.trim() && !anexos.length && !ficam.length)}
           aria-busy={enviando} onClick={() => void enviar()}>
           {enviando && <IconSpinner size={13} />}
           {rotuloEnvio}
@@ -545,7 +568,8 @@ function Comentario({ c, respostas, pessoas, etapas, usuarioId, podeComentar, pe
   edicao: { id: number; rascunho?: string; erro?: string } | null;
   /** Abre (id) ou fecha (null) a edição. Ausente onde a conversa não se edita. */
   onEditar?: (id: number | null) => void;
-  onSalvarEdicao: (c: ComentarioAtividade, texto: string) => Promise<string | null>;
+  onSalvarEdicao: (c: ComentarioAtividade, texto: string, novos: AnexoPendente[],
+    removidos: number[]) => Promise<string | null>;
   /** Ausente onde a conversa não tem joinha. */
   onJoinha?: (c: ComentarioAtividade, ligar: boolean) => void;
   c: ComentarioAtividade;
@@ -598,19 +622,21 @@ function Comentario({ c, respostas, pessoas, etapas, usuarioId, podeComentar, pe
           )}
         </p>
         {/* Editar é a mesma área trocando de cara: o texto vira a caixa de
-            escrita da conversa, já com o que estava escrito. Os anexos ficam
-            embaixo como estavam - a edição é do que foi dito. */}
+            escrita da conversa, já com o que estava escrito e com os anexos que
+            o comentário leva - dá para tirar os que estão e anexar outros. */}
         {edicao?.id === x.id && onEditar ? (
           <div className="troca">
             <Escrever pessoas={pessoas} etapas={etapas} autoFoco rotuloEnvio="Salvar"
               inicial={edicao.rascunho ?? x.texto} erroInicial={edicao.erro}
-              onEnviar={t => onSalvarEdicao(x, t)}
+              permiteAnexo={permiteAnexo} anexosExistentes={x.anexos}
+              onEnviar={(t, novos, removidos) => onSalvarEdicao(x, t, novos, removidos)}
               onCancelar={() => onEditar(null)} />
           </div>
         ) : (
           x.texto && <TextoDoComentario texto={x.texto} etapas={etapas} />
         )}
-        {x.anexos.length > 0 && (
+        {/* Na edição os anexos moram dentro da caixa, com o X de tirar. */}
+        {x.anexos.length > 0 && edicao?.id !== x.id && (
           <ul className="ativ-anexos">
             {x.anexos.map(a => (
               <li key={a.id}>
@@ -720,9 +746,11 @@ export interface DonoDaAtividade {
   ler: () => Promise<{ eventos: EventoAtividade[]; comentarios: ComentarioAtividade[] }>;
   enviar: (texto: string, anexos: AnexoPendente[], paiId: number | null) => Promise<{ error?: string }>;
   excluir: (id: number) => Promise<{ error?: string }>;
-  /** Troca o texto de um comentário do próprio autor. Ausente onde a conversa
-   *  não se edita - e aí o lápis não aparece. */
-  editar?: (id: number, texto: string) => Promise<{ error?: string; editado_em?: string } | null>;
+  /** Troca o texto de um comentário do próprio autor, e os anexos dele: tira
+   *  os `remover` e junta os `novos`. Ausente onde a conversa não se edita - e
+   *  aí o lápis não aparece. Com anexos mexidos, devolve a lista final. */
+  editar?: (id: number, texto: string, anexos?: { remover: number[]; novos: AnexoPendente[] }) =>
+    Promise<{ error?: string; editado_em?: string; anexos?: AnexoDoComentario[] } | null>;
   /** O conteúdo do anexo, na hora de ver ou baixar. Ausente onde comentário não
    *  leva anexo - e aí o clipe também não aparece na caixa de escrita. */
   anexo?: (id: number) => Promise<{ nome: string; tipo: string; base64: string } | null>;
@@ -799,24 +827,50 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
   const [edicao, setEdicao] = useState<{ id: number; rascunho?: string; erro?: string } | null>(null);
 
   /** O texto novo entra na conversa no gesto e a caixa fecha; recusada a
-   *  gravação, o texto antigo volta e a caixa reabre com o rascunho. */
-  async function salvarEdicao(c: ComentarioAtividade, texto: string): Promise<string | null> {
+   *  gravação, o texto antigo volta e a caixa reabre com o rascunho.
+   *
+   *  Com anexo novo, a caixa espera a volta do servidor, girando, como no envio
+   *  de um comentário: o arquivo só abre com o id que nasce lá, e pintá-lo antes
+   *  punha na conversa um anexo que não abre. Tirar anexo não espera. */
+  async function salvarEdicao(
+    c: ComentarioAtividade, texto: string, novos: AnexoPendente[] = [], removidos: number[] = [],
+  ): Promise<string | null> {
     if (!dono.editar) return null;
-    const antes = { texto: c.texto, editado_em: c.editado_em };
+    const antes = { texto: c.texto, editado_em: c.editado_em, anexos: c.anexos };
     const pintar = (dados: Partial<ComentarioAtividade>) =>
       setComentarios(cs => cs.map(x => (x.id === c.id ? { ...x, ...dados } : x)));
-    pintar({ texto, editado_em: new Date().toISOString() });
+    const mexeuAnexos = novos.length > 0 || removidos.length > 0;
+    const gravar = async (): Promise<string | null> => {
+      try {
+        const r = await dono.editar!(c.id, texto, mexeuAnexos ? { remover: removidos, novos } : undefined);
+        if (!r) return 'A edição não chegou ao servidor. Tente de novo.';
+        if (r.error) return String(r.error);
+        pintar({
+          ...(r.editado_em ? { editado_em: r.editado_em } : {}),
+          ...(r.anexos ? { anexos: r.anexos } : {}),
+        });
+        return null;
+      } catch {
+        return 'A conexão caiu antes de a edição chegar. Tente de novo.';
+      }
+    };
+
+    if (novos.length > 0) {
+      const erro = await gravar();
+      if (!erro) {
+        pintar({ texto });
+        setEdicao(null);
+      }
+      return erro;
+    }
+
+    pintar({
+      texto, editado_em: new Date().toISOString(),
+      anexos: c.anexos.filter(a => !removidos.includes(a.id)),
+    });
     setEdicao(null);
     void (async () => {
-      let erro: string | null = null;
-      try {
-        const r = await dono.editar!(c.id, texto);
-        if (!r) erro = 'A edição não chegou ao servidor. Tente de novo.';
-        else if (r.error) erro = String(r.error);
-        else if (r.editado_em) pintar({ editado_em: r.editado_em });
-      } catch {
-        erro = 'A conexão caiu antes de a edição chegar. Tente de novo.';
-      }
+      const erro = await gravar();
       if (erro) {
         pintar(antes);
         setEdicao({ id: c.id, rascunho: texto, erro });

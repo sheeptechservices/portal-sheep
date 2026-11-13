@@ -7783,8 +7783,10 @@ function faltaEmProjeto(p: any): string | null {
       return { status: 200, body: { ok: true } };
     }
 
-    // Troca o texto de um comentario. Mesma regra de apagar: so o autor, em
-    // qualquer papel. Os anexos ficam como estao - a edicao e do que foi dito.
+    // Troca o texto de um comentario, e tambem os anexos: tira os que a pessoa
+    // removeu (`remover_anexos`) e junta os que subiram pela area de espera
+    // (`anexos_ids`), como no envio. Mesma regra de apagar: so o autor, em
+    // qualquer papel.
     if (action === 'editar_tarefa_comentario') {
       const id = Number(body?.id);
       const alvo = await db.execute({
@@ -7802,8 +7804,35 @@ function faltaEmProjeto(p: any): string | null {
         return { status: 403, body: { error: 'Só quem escreveu pode editar este comentário.' } };
       }
       const texto = String(body?.texto ?? '').trim();
+
+      // Os anexos a tirar: so os deste comentario. Id de outro e ignorado, e nao
+      // vira recusa - a conta abaixo usa so os que de fato saem daqui.
+      const pedidosRemover: number[] = Array.isArray(body?.remover_anexos)
+        ? [...new Set((body.remover_anexos as unknown[]).map(Number).filter(Number.isFinite))] : [];
+      const removidos = pedidosRemover.length
+        ? (await db.execute({
+          sql: `SELECT id FROM tarefa_comentario_anexos
+                WHERE comentario_id = ? AND id IN (${pedidosRemover.map(() => '?').join(',')})`,
+          args: [id, ...pedidosRemover],
+        })).rows.map(r => Number(r.id))
+        : [];
+      // Os novos, que ja subiram pela area de espera, conferidos antes de
+      // qualquer gravacao: faltando um, nada muda, e a caixa continua aberta.
+      const idsNovos: string[] = Array.isArray(body?.anexos_ids)
+        ? [...new Set((body.anexos_ids as unknown[]).map(v => String(v)))].slice(0, 30) : [];
+      if (idsNovos.length) {
+        const achados = await db.execute({
+          sql: `SELECT id FROM comentario_anexos_pendentes
+                WHERE id IN (${idsNovos.map(() => '?').join(',')}) AND usuario_id IS ?`,
+          args: [...idsNovos, autorId ?? null],
+        });
+        if (achados.rows.length !== idsNovos.length) {
+          return { status: 400, body: { error: 'Um dos anexos não chegou. Anexe de novo e salve.' } };
+        }
+      }
       // Comentario so de anexo pode ficar sem texto; sem os dois, nao sobra nada.
-      if (!texto && Number(linha.anexos) === 0) {
+      const anexosNoFim = Number(linha.anexos) - removidos.length + idsNovos.length;
+      if (!texto && anexosNoFim <= 0) {
         return { status: 400, body: { error: 'Escreva alguma coisa. Para tirar o comentário, apague.' } };
       }
 
@@ -7843,11 +7872,37 @@ function faltaEmProjeto(p: any): string | null {
           sql: 'INSERT OR IGNORE INTO tarefa_comentario_mencoes (comentario_id, usuario_id) VALUES (?,?)',
           args: [id, u],
         })),
+        ...(removidos.length ? [{
+          sql: `DELETE FROM tarefa_comentario_anexos
+                WHERE comentario_id = ? AND id IN (${removidos.map(() => '?').join(',')})`,
+          args: [id, ...removidos],
+        }] : []),
+        // Os da area de espera passam para o comentario e saem de la no mesmo
+        // lote, como no envio.
+        ...idsNovos.map(p => ({
+          sql: `INSERT INTO tarefa_comentario_anexos (comentario_id, nome, tipo, tamanho, base64, criado_em)
+                SELECT ?, nome, tipo, tamanho, base64, ? FROM comentario_anexos_pendentes WHERE id = ?`,
+          args: [id, agora, p],
+        })),
+        ...(idsNovos.length ? [{
+          sql: `DELETE FROM comentario_anexos_pendentes WHERE id IN (${idsNovos.map(() => '?').join(',')})`,
+          args: idsNovos,
+        }] : []),
       ], 'write');
 
       const novos = validos.rows.filter(r => !jaMarcados.has(String(r.id)));
       if (novos.length) await avisarMencionados(db, novos, { tarefaId, texto, autorId, autorNome });
-      return { status: 200, body: { ok: true, editado_em: agora } };
+      // A lista final volta quando os anexos mudaram: o anexo novo so abre com
+      // o id que nasceu aqui, e a tela monta a lista com ele, sem reler a
+      // conversa inteira.
+      const anexos = removidos.length || idsNovos.length
+        ? (await db.execute({
+          sql: `SELECT id, nome, tipo, tamanho FROM tarefa_comentario_anexos
+                WHERE comentario_id = ? ORDER BY id`,
+          args: [id],
+        })).rows.map(r => ({ id: Number(r.id), nome: String(r.nome), tipo: String(r.tipo), tamanho: Number(r.tamanho) }))
+        : undefined;
+      return { status: 200, body: { ok: true, editado_em: agora, ...(anexos ? { anexos } : {}) } };
     }
 
     // Da ou tira o joinha de quem clicou. `ligar` diz o que a tela pintou, e
