@@ -39,7 +39,7 @@ export function enderecoDoPortal(): string {
   const url = daCasa
     || (daVercel ? `https://${daVercel.replace(/^https?:\/\//, '')}` : '')
     // O endereço oficial do portal, para o caso de nem uma nem outra existirem.
-    || 'https://portal-sheep.vercel.app';
+    || 'https://portal.sheeptechnology.com.br';
   return url.replace(/\/+$/, '');
 }
 
