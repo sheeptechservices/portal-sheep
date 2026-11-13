@@ -21,7 +21,8 @@ import { PreviaArquivo } from './PreviaArquivo';
 import FilterDropdown from './FilterDropdown';
 import { SelectSistema } from './SelectSistema';
 import { Avatar } from '../admin/FormularioTarefa';
-import { Chave } from './Chave';
+import { CampoBusca } from './CampoBusca';
+import { contemTermo } from '../lib/texto';
 import { ICONE_PRIORIDADE, PRIORIDADES } from '../lib/prioridades';
 import { instante, tempoRelativo } from '../lib/datas';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
@@ -50,6 +51,9 @@ const ROTULO_STATUS: Record<string, { label: string; cor: string }> =
  *  são as duas formas de acabar: um virou trabalho feito, o outro virou "não
  *  vamos fazer". Quem abre a lista quer ver o que ainda está de pé. */
 const foraDaFila = (status?: string) => status === 'resolvido' || status === 'descartado';
+
+/** Os status com que o filtro da fila abre: o que ainda está de pé. */
+const FILA_DE_PE = STATUS_DO_RELATO.map(s => s.valor).filter(v => !foraDaFila(v));
 
 /**
  * O que o chamado e. Sao dois, e de proposito: a pergunta que a fila responde e
@@ -151,11 +155,6 @@ export function ListaReportes({
   const limparPergunta = () => { setConfirmando(null); setComentario(''); };
   /** Uma linha aberta por vez: a fila é para varrer, e três detalhes abertos
    *  juntos empurram o resto para fora da tela. */
-  /** Resolvido e descartado saem da fila por padrão: o que se abre a lista
-   *  para ver é o que ainda não aconteceu, e os dois já foram decididos. A
-   *  chave traz os dois de volta para quem quer conferir o histórico, e vale
-   *  para todo mundo - não é ajuste de administrador. */
-  const [verResolvidos, setVerResolvidos] = useState(false);
   /** Quais tipos ficam a vista. Lista vazia quer dizer todos, que e como o
    *  filtro da casa trabalha: escolher nada e nao filtrar, e nao um estado
    *  "Todos" que precisa ser clicado de volta.
@@ -163,6 +162,16 @@ export function ListaReportes({
    *  `sem` e o chamado que ninguem classificou ainda. Ele e uma escolha como as
    *  outras porque tambem e uma fila: e a dos que precisam de triagem. */
   const [filtroTipos, setFiltroTipos] = useState<string[]>([]);
+  /** Quais andamentos ficam a vista. Vazio quer dizer todos, como no tipo.
+   *
+   *  A fila abre com Aberto e Em análise marcados: o que se abre a lista para
+   *  ver é o que ainda não aconteceu, e resolvido e descartado já foram
+   *  decididos. Para conferir o histórico, marca-se o status dele no mesmo
+   *  filtro - era o trabalho de uma chave à parte, que saiu: duas peças
+   *  decidindo o mesmo recorte faziam a pessoa adivinhar qual mandava. */
+  const [filtroStatus, setFiltroStatus] = useState<string[]>(FILA_DE_PE);
+  /** O que se procura no conteudo do chamado: o relato e as notas dele. */
+  const [busca, setBusca] = useState('');
   const [aberta, setAberta] = useState<number | null>(null);
   /** O chamado em edicao, com o rascunho dentro. Um por vez: dois formularios
    *  abertos na mesma fila e o comeco de gravar um achando que era o outro. */
@@ -180,25 +189,53 @@ export function ListaReportes({
   const encerrados = (lista ?? []).filter(r => foraDaFila(r.status)).length;
   /** O que a tabela desenha. Filtrar aqui, e não esconder por CSS: linha
    *  escondida continua no caminho do teclado e da leitura de tela. */
+  const buscando = !!busca.trim();
+  const casaBusca = (r: ReporteNaLista) => !buscando
+    || contemTermo(r.texto, busca)
+    || (r.notas ?? []).some(n => contemTermo(n.texto, busca));
+  const passaAndamento = (r: ReporteNaLista) =>
+    filtroStatus.length === 0 || filtroStatus.includes(r.status);
   const visiveis = (lista ?? []).filter(r =>
-    (verResolvidos || !foraDaFila(r.status))
-    && (filtroTipos.length === 0 || filtroTipos.includes(r.tipo ?? 'sem')));
+    passaAndamento(r)
+    && (filtroTipos.length === 0 || filtroTipos.includes(r.tipo ?? 'sem'))
+    && casaBusca(r));
+  /** O recorte saiu do de partida: há busca, tipo, ou um status a mais ou a
+   *  menos que os dois da fila de pé. */
+  const statusDePartida = filtroStatus.length === FILA_DE_PE.length
+    && FILA_DE_PE.every(x => filtroStatus.includes(x));
+  const filtrando = !statusDePartida || filtroTipos.length > 0 || buscando;
+  /** As opcoes do status, na ordem do andamento e com a conta de cada um,
+   *  sobre a fila inteira. */
+  const opcoesDeStatus = useMemo(() => STATUS_DO_RELATO.map(st => ({
+    value: st.valor,
+    label: `${st.label} (${(lista ?? []).filter(r => r.status === st.valor).length})`,
+  })), [lista]);
+
+  /** A chave que remonta a fila e faz a entrada tocar. Feita dos filtros, e da
+   *  assinatura do resultado so quando ha busca: digitar uma letra que nao muda
+   *  o que aparece nao reanima nada, e resolver um chamado tambem nao. Com a
+   *  correcao de um chamado aberta ela congela - remontar no meio apagaria o
+   *  rascunho de quem esta escrevendo. */
+  const chaveFila = `${filtroTipos.join(',')}|${filtroStatus.join(',')}|`
+    + (busca.trim() ? visiveis.map(r => r.id).join(',') : '');
+  const chaveCongelada = useRef(chaveFila);
+  if (!editando) chaveCongelada.current = chaveFila;
   /** As opcoes do filtro, com a conta de cada uma: um filtro que nao diz o
    *  tamanho do que oferece faz quem clica descobrir por tentativa.
    *
-   *  A conta e sobre a fila que a chave de resolvidos deixa passar - dizer "3
-   *  bugs" e mostrar um so, porque dois estao resolvidos, e pior que nao dizer
-   *  nada. E `Sem tipo` so aparece quando existe algum: opcao que sempre
-   *  devolve lista vazia e so mais uma linha para ler. */
+   *  A conta e sobre os status que o filtro deixa passar - dizer "3 bugs" e
+   *  mostrar um so, porque dois estao resolvidos, e pior que nao dizer nada. E
+   *  `Sem tipo` so aparece quando existe algum: opcao que sempre devolve lista
+   *  vazia e so mais uma linha para ler. */
   const opcoesDeTipo = useMemo(() => {
-    const naFila = (lista ?? []).filter(r => verResolvidos || !foraDaFila(r.status));
+    const naFila = (lista ?? []).filter(r => filtroStatus.length === 0 || filtroStatus.includes(r.status));
     const quantos = (t: string) => naFila.filter(r => (r.tipo ?? 'sem') === t).length;
     const semTipo = quantos('sem');
     return [
       ...TIPOS_DO_RELATO.map(t => ({ value: t.valor, label: `${t.label} (${quantos(t.valor)})` })),
       ...(semTipo ? [{ value: 'sem', label: `Sem tipo (${semTipo})` }] : []),
     ];
-  }, [lista, verResolvidos]);
+  }, [lista, filtroStatus]);
   const { toast } = useToast();
   const { saindo, fechar } = useSaidaSuave(onFechar);
   const fundo = useFecharNoFundo(fechar);
@@ -223,9 +260,11 @@ export function ListaReportes({
     if (!expandir || !lista?.length) return;
     if (!lista.some(r => r.id === expandir)) return;
     setAberta(expandir);
-    // O encerrado so aparece com a chave ligada: mirado pelo inbox, ele tem de
-    // aparecer de qualquer jeito, senao a fila abre sem o chamado do aviso.
-    if (foraDaFila(lista.find(r => r.id === expandir)?.status)) setVerResolvidos(true);
+    // O encerrado fica fora do filtro de partida: mirado pelo inbox, ele tem de
+    // aparecer de qualquer jeito, senao a fila abre sem o chamado do aviso. O
+    // status dele entra no filtro, que e onde a pessoa ve por que ele apareceu.
+    const st = lista.find(r => r.id === expandir)?.status;
+    if (st) setFiltroStatus(f => (f.length === 0 || f.includes(st) ? f : [...f, st]));
     // Um quadro depois, para a linha ja estar desenhada quando a rolagem sair.
     const t = setTimeout(() => {
       document.getElementById(`reporte-${expandir}`)
@@ -413,19 +452,22 @@ export function ListaReportes({
               </span>
             </p>
             <div className="reportes-acoes">
-              {/* O filtro do tipo antes da chave: ele recorta a fila, e a chave
-                  so decide se o que ja acabou continua aparecendo. */}
+              {/* A busca primeiro: ela varre o conteudo, e os filtros ao lado
+                  recortam por classificacao. Procura no relato e nas notas,
+                  que e onde o assunto do chamado esta escrito. */}
+              <CampoBusca valor={busca} onMudar={setBusca} largura={260}
+                placeholder="Buscar no chamado" rotulo="Buscar no texto do chamado e nas notas" />
+              <FilterDropdown
+                label="Status"
+                values={filtroStatus}
+                options={opcoesDeStatus}
+                onChange={setFiltroStatus}
+              />
               <FilterDropdown
                 label="Tipo"
                 values={filtroTipos}
                 options={opcoesDeTipo}
                 onChange={setFiltroTipos}
-              />
-              <Chave
-                ligada={verResolvidos}
-                onChange={setVerResolvidos}
-                rotulo={`Mostrar encerrados${encerrados ? ` (${encerrados})` : ''}`}
-                dica="Chamado resolvido ou descartado fica fora da fila por padrão"
               />
               <button type="button" className="admin-modal-close" onClick={fechar} aria-label="Fechar">
                 <IconX size={16} />
@@ -442,10 +484,21 @@ export function ListaReportes({
             ) : !lista ? (
               <div className="dux-spinner-row" style={{ padding: 48 }}><span className="dux-spinner" /></div>
             ) : visiveis.length === 0 ? (
-              <p className="reportes-vazio">
+              <p className="reportes-vazio surge">
                 {lista.length === 0
                   ? 'Nada reportado ainda. O que for enviado pelo cartão do menu aparece aqui.'
-                  : `Nada em aberto. ${encerrados === 1 ? 'Há um chamado encerrado' : `Há ${encerrados} chamados encerrados`} - ligue a chave acima para vê-${encerrados === 1 ? 'lo' : 'los'}.`}
+                  : filtrando
+                    ? <>
+                      Nenhum chamado para essa busca ou filtro.{' '}
+                      <button type="button" className="admin-toolbar-limpar"
+                        onClick={() => { setBusca(''); setFiltroStatus(FILA_DE_PE); setFiltroTipos([]); }}>
+                        Limpar
+                      </button>
+                    </>
+                    : <>
+                      Nada em aberto. {encerrados === 1 ? 'Há um chamado encerrado' : `Há ${encerrados} chamados encerrados`}
+                      {' '}- marque Resolvido ou Descartado no filtro de status para {encerrados === 1 ? 'vê-lo' : 'vê-los'}.
+                    </>}
               </p>
             ) : (
               <table className="reportes-tabela">
@@ -468,7 +521,7 @@ export function ListaReportes({
                     filtro, e não da assinatura das linhas: assim resolver ou
                     reclassificar um chamado não reanima a fila inteira, e só
                     quem mexeu num filtro vê a entrada tocar. */}
-                <tbody className="lista-anima" key={`${verResolvidos}|${filtroTipos.join(',')}`}>
+                <tbody className="lista-anima" key={chaveCongelada.current}>
                   {visiveis.map(r => {
                     const Icone = ICONE_PRIORIDADE[r.urgencia];
                     const abertaAqui = aberta === r.id;

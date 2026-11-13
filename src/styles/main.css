@@ -1988,6 +1988,12 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   gap: 12px;
   flex-shrink: 0;
 }
+/* Com busca e filtros, a barra dos chamados nao cabe ao lado do titulo numa
+   janela estreita. Ela desce para a linha de baixo, inteira, em vez de
+   espremer o titulo numa coluna de uma palavra por linha. */
+.reportes-modal .gravacao-topo { flex-wrap: wrap; row-gap: 10px; }
+.reportes-modal .gravacao-titulo { flex: 1 1 240px; min-width: 0; }
+.reportes-modal .reportes-acoes { flex-wrap: wrap; flex-shrink: 1; justify-content: flex-end; }
 
 /* -- A chave de liga e desliga -----------------------------------------
    A anatomia e a da referencia da casa: o pino e um circulo MAIOR que o
