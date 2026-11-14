@@ -17,6 +17,7 @@ import {
   podeGerenciarUsuarios, podeVerUsuarios, rotuloPapel, type Papel,
 } from './papeis';
 import MatrizPermissoes from './MatrizPermissoes';
+import { ContaAnimada } from '../components/ContaAnimada';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Usuários. Duas coisas, na ordem em que se usam:
@@ -165,7 +166,7 @@ function Estatistica({ label, valor, desc }: { label: string; valor: number; des
   return (
     <div className="admin-stat-card">
       <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray2)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{label}</p>
-      <p style={{ fontSize: 22, fontWeight: 800, color: 'var(--black)', lineHeight: 1.2, marginTop: 4 }}>{valor}</p>
+      <p style={{ fontSize: 22, fontWeight: 800, color: 'var(--black)', lineHeight: 1.2, marginTop: 4 }}><ContaAnimada valor={valor} /></p>
       <p style={{ fontSize: 11, color: 'var(--gray2)', marginTop: 2 }}>{desc}</p>
     </div>
   );

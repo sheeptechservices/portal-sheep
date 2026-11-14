@@ -33,6 +33,7 @@ import {
 } from '../components/VisoesEntregas';
 import { porNivelDeContato } from '../lib/papeisDeEquipe';
 import { PedidoDoCliente } from './PedidoDoCliente';
+import { ContaAnimada } from '../components/ContaAnimada';
 
 interface Evidencia {
   id: number;
@@ -508,7 +509,7 @@ function Indicadores({ entregas }: { entregas: Entrega[] }) {
           style={{ '--accent-color': c.cor, animationDelay: `${i * 0.05}s` } as React.CSSProperties}>
           <p className="stat-v2-label">{c.rotulo}</p>
           <p className="stat-v2-value">
-            {c.valor}
+            <ContaAnimada valor={c.valor} />
             {c.fracao && <span className="stat-v2-fracao">{c.fracao}</span>}
           </p>
           <p className="stat-v2-desc">{c.nota}</p>

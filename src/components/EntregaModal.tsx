@@ -18,6 +18,7 @@ import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import { TextoRico } from './TextoRico';
 import { ChipReuniao } from './VinculoReuniao';
 import { dia } from '../lib/datas';
+import { ContaAnimada } from './ContaAnimada';
 
 /** O que este modal precisa saber de uma entrega. Estrutural de propósito: o
  *  `Entrega` da tela de Projetos serve sem conversão, e este arquivo não passa
@@ -109,7 +110,7 @@ export function EntregaModal({
               <span className="entrega-modal-barra">
                 <span style={{ width: `${entrega.progresso}%`, background: cor }} />
               </span>
-              <strong>{entrega.progresso}%</strong>
+              <strong><ContaAnimada valor={`${entrega.progresso}%`} /></strong>
             </span>
           </div>
 

@@ -6,6 +6,7 @@ import { SelectSistema } from '../components/SelectSistema';
 import { CampoTexto } from '../components/CampoTexto';
 import { TextoRico } from '../components/TextoRico';
 import { IconEdit, IconLink, IconPlus, IconTrash } from '../components/icons';
+import { ContaAnimada } from '../components/ContaAnimada';
 
 /** Área da operação que é dona da ferramenta - vira uma coluna no hub. */
 type AreaId = 'gestao' | 'comercial' | 'operacional' | 'juridico' | 'financeiro' | 'tecnologia';
@@ -440,7 +441,7 @@ export default function FerramentasPage({ token, onNavigate }: {
                     fontSize: 10, fontWeight: 800, color: 'var(--gray2)', background: 'var(--gray3)',
                     minWidth: 18, height: 18, padding: '0 5px', borderRadius: 'var(--radius-pill)',
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  }}>{doGrupo.length}</span>
+                  }}><ContaAnimada valor={doGrupo.length} /></span>
                 </div>
                 <p style={{ fontSize: 11.5, color: 'var(--gray2)', lineHeight: 1.45, marginTop: 3 }}>
                   {area.descricao}

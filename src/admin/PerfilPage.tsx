@@ -3,6 +3,7 @@ import { useAuth, useToast, iniciais } from './AdminApp';
 import { IconAlert, IconClipboard } from '../components/icons';
 import { rotuloPapel } from './papeis';
 import { instante as formatarData, tempoRelativo } from '../lib/datas';
+import { ContaAnimada } from '../components/ContaAnimada';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Perfil - a conta de quem está logado, o histórico de acesso e o retrato do
@@ -69,7 +70,7 @@ function Estatistica({ label, valor, desc }: { label: string; valor: number; des
   return (
     <div className="admin-stat-card">
       <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray2)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{label}</p>
-      <p style={{ fontSize: 22, fontWeight: 800, color: 'var(--black)', lineHeight: 1.2, marginTop: 4 }}>{valor}</p>
+      <p style={{ fontSize: 22, fontWeight: 800, color: 'var(--black)', lineHeight: 1.2, marginTop: 4 }}><ContaAnimada valor={valor} /></p>
       <p style={{ fontSize: 11, color: 'var(--gray2)', marginTop: 2 }}>{desc}</p>
     </div>
   );

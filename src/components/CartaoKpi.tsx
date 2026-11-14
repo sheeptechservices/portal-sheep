@@ -9,6 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import type { CSSProperties } from 'react';
 import { Skeleton } from './Skeleton';
+import { ContaAnimada } from './ContaAnimada';
 
 export function CartaoKpi({ rotulo, valor, nota, cor, atraso = 0, ativo, onClick }: {
   rotulo: string;
@@ -44,7 +45,7 @@ export function CartaoKpi({ rotulo, valor, nota, cor, atraso = 0, ativo, onClick
         : undefined}
     >
       <p className="stat-v2-label">{rotulo}</p>
-      <p className="stat-v2-value">{valor}</p>
+      <p className="stat-v2-value"><ContaAnimada valor={valor} /></p>
       <p className="stat-v2-desc">{nota}</p>
     </div>
   );
