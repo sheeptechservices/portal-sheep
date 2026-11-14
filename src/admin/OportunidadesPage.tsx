@@ -12,8 +12,8 @@ import {
   IconAlert, IconBandeiraFinal, IconCalendario, IconChama, IconCheck, IconChevronDown, IconCiclo,
   IconClip, IconComentario, IconDoc, IconFloco, IconTermometro,
   IconDownload, IconEdit, IconExternal, IconEye, IconImage, IconInbox, IconLink,
-  IconPlus, IconRecolher, IconRefresh, IconSearch, IconSpinner, IconTrash, IconVisaoLista,
-  IconVisaoQuadro, IconX, IconZip, IconChevronUp, IconChevronUpDown, IconArrowRight,
+  IconFiltros, IconPlus, IconRecolher, IconSearch, IconUser, IconSpinner, IconTrash,
+  IconX, IconZip, IconChevronUp, IconChevronUpDown, IconArrowRight,
 } from '../components/icons';
 import { AcaoDaBarra, BarraDeSelecao, CaixaDeMarcar, CaixaDoGrupo } from '../components/BarraDeSelecao';
 import { semTextoNoShift, useSelecao } from '../lib/useSelecao';
@@ -21,7 +21,9 @@ import { SegSwitch } from '../components/SegSwitch';
 import { SelectSistema } from '../components/SelectSistema';
 import { EditorRico } from '../components/EditorRico';
 import { TextoRico } from '../components/TextoRico';
-import { CartaoKpi, CartoesKpiEsqueleto } from '../components/CartaoKpi';
+import { AbasPilula, FaixaDaPagina } from '../components/FaixaDaPagina';
+import { useSubpagina } from '../lib/subpagina';
+import { ContaAnimada } from '../components/ContaAnimada';
 import { CategoriaTag, ANEXO_CATEGORIAS, normalizaCategoria } from '../components/CategoriaTag';
 import { PreviaArquivo } from '../components/PreviaArquivo';
 import { tipoDePlanilha } from '../lib/planilha';
@@ -2870,6 +2872,11 @@ function KanbanCard({
           seriam duas lixeiras por cartão numa coluna cheia, e o clique que
           interessa no card é o de abrir. */}
       <div className="kanban-card-topo">
+        {/* A inicial da empresa num selo quadrado: o mesmo marcador do
+            projeto no menu, e o que o olho acha primeiro numa coluna cheia. */}
+        <span className="kanban-card-inicial" aria-hidden="true">
+          {(sub.empresa ?? '?').trim().charAt(0).toUpperCase() || '?'}
+        </span>
         <p className="kanban-card-title">{sub.empresa ?? '-'}</p>
         <span className="kanban-card-acoes">
           {selecao && (
@@ -2891,8 +2898,8 @@ function KanbanCard({
         </span>
       </div>
       {(sub.contato_nome || sub.interesse) && (
-        <p className="kanban-card-sub">
-          {[sub.contato_nome, sub.interesse].filter(Boolean).join(' · ')}
+        <p className="kanban-card-desc">
+          {[sub.interesse, sub.contato_nome].filter(Boolean).join(' · ')}
         </p>
       )}
       <div className="kanban-card-meta">
@@ -2903,21 +2910,6 @@ function KanbanCard({
               vezes. Sem parcela lançada o card fica como sempre foi. */}
           {sub.parcelas != null && sub.parcelas > 0 && (
             <span className="kanban-card-parcelas">{fmtParcelas(sub.parcelas)}</span>
-          )}
-        </span>
-        {/* Idade e dono no fim da linha, juntos: os dois são sinais da mesma
-            leitura de relance - há quanto tempo isto está parado, e com quem.
-            A foto vem sem o nome, como no quadro de tarefas: numa coluna de
-            cards estreitos o rosto reconhece mais rápido, e o nome fica no
-            `title` para quem entrou ontem e ainda não sabe de quem é a cara. */}
-        <span className="kanban-card-meta-fim">
-          {!hideAging && days > 0 && (
-            <span className={`kanban-card-days${days >= 7 ? ' late' : ''}`}>
-              {days}d
-            </span>
-          )}
-          {sub.responsavel_nome && (
-            <Avatar nome={sub.responsavel_nome} foto={sub.responsavel_foto} size={20} />
           )}
         </span>
       </div>
@@ -2935,8 +2927,16 @@ function KanbanCard({
       {(sub.propostas?.length ?? 0) > 0 && (
         <ChipsDeProposta propostas={sub.propostas!} empresa={sub.empresa} />
       )}
-      {(sub.arquivo_count > 0 || (sub.comentario_count ?? 0) > 0 || (sub.pendencia_total_count ?? 0) > 0) && (
-        <div className="kanban-card-footer">
+      {/* O pe do card, como no mockup: com quem esta, de onde veio, os sinais
+          do que tem dentro e ha quanto tempo esta parado nesta etapa. A foto
+          vem sem o nome: numa coluna estreita o rosto reconhece mais rapido, e
+          o nome fica na dica. */}
+      <div className="kanban-card-rodape">
+        {sub.responsavel_nome && (
+          <Avatar nome={sub.responsavel_nome} foto={sub.responsavel_foto} size={20} />
+        )}
+        {sub.origem && <span className="kanban-card-origem">{sub.origem}</span>}
+        <span className="kanban-card-sinais">
           {sub.arquivo_count > 0 && (
             <button
               type="button"
@@ -2971,8 +2971,14 @@ function KanbanCard({
               </span>
             );
           })()}
-        </div>
-      )}
+        </span>
+        {!hideAging && (
+          <span className={`kanban-card-days${days >= 14 ? ' late' : ''}`}
+            title={`Nesta etapa há ${days} dia${days === 1 ? '' : 's'}`}>
+            {days === 0 ? 'hoje' : `${days} dia${days === 1 ? '' : 's'}`}
+          </span>
+        )}
+      </div>
       {showAnexos && (
         <div onClick={e => e.stopPropagation()}>
           <AnexosModal oportunidadeId={sub.id} onClose={() => setShowAnexos(false)} />
@@ -3130,12 +3136,14 @@ function KanbanColumn({
         {/* O mesmo desenho do quadro de Tarefas: nome, contagem colada nele, e
             os dois botoes no canto. Dois quadros lado a lado no mesmo sistema
             com cabecalhos diferentes fazem a pessoa reaprender a mesma coisa. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <div className="kanban-column-title">
+        <div className="kanban-column-linha">
+          <div className="kanban-column-title" title={status.nome}>
             <span className="kanban-dot" style={{ background: status.cor }} />
             {status.nome}
           </div>
-          <span className="kanban-conta-bolha">{cards.length}</span>
+          <span className="kanban-column-conta">
+            <ContaAnimada valor={cards.length} /> {cards.length === 1 ? 'oportunidade' : 'oportunidades'}
+          </span>
           {/* Marca a coluna inteira, como no quadro de Tarefas. */}
           {selecao && cards.length > 0 && (
             <CaixaDoGrupo total={cards.length} nome={status.nome}
@@ -3171,11 +3179,9 @@ function KanbanColumn({
             </button>
           )}
         </div>
-        {colTotal > 0 && (
-          <div style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--gray)', letterSpacing: '-0.01em' }}>
-            {colTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-          </div>
-        )}
+        <div className="kanban-column-valor">
+          <ContaAnimada valor={colTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })} />
+        </div>
       </div>
       <div className="kanban-column-body">
         {orderedCards.map(sub => (
@@ -3313,11 +3319,21 @@ export default function OportunidadesPage({ token, openCard, onCardOpened }: {
 }) {
   const api = useApi(token);
   const { toast } = useToast();
-  const { pode } = useAuth();
+  const { pode, usuario } = useAuth();
   const [statuses, setStatuses] = useState<StatusConfig[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'kanban' | 'lista'>('kanban');
+  // As quatro abas do painel: o quadro, a lista, e duas listas de desfecho -
+  // as que fecharam e as que se perderam. As de desfecho sao a lista com a
+  // etapa travada, e nao uma tela a mais.
+  // A aba mora fora da tela: o menu lateral acende e abre cada uma.
+  const [aba, setAba] = useSubpagina<'quadro' | 'lista' | 'fechados' | 'perdidos'>('oportunidades', 'quadro');
+  const view: 'kanban' | 'lista' = aba === 'quadro' ? 'kanban' : 'lista';
+  // "So as minhas": o recorte de quem abre o funil para ver o proprio trabalho.
+  const [soMinhas, setSoMinhas] = useState(false);
+  // A fileira de filtros mora recolhida no cabecalho do painel, como no mockup:
+  // o que fica a vista e a busca e o "so as minhas", que sao o uso de todo dia.
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   // A busca varre o que os filtros deixaram passar - é a mesma faixa de
   // Projetos e de Tarefas, no mesmo lugar da tela.
   const [busca, setBusca] = useState('');
@@ -3669,13 +3685,23 @@ export default function OportunidadesPage({ token, openCard, onCardOpened }: {
     return digitos.length >= 3 && String(s.cnpj ?? '').replace(/\D/g, '').includes(digitos);
   };
 
-  const filtered = submissions.filter(s => {
+  const ehMinha = (s: Submission) => !!usuario
+    && (s.responsavel_id === usuario.id || s.responsavel_nome === usuario.nome);
+  // O recorte dos filtros e da busca, sem a aba: os numeros da faixa contam
+  // sobre ele, para "Fechados" nao zerar o "Em aberto" do alto.
+  const recorte = submissions.filter(s => {
+    if (soMinhas && !ehMinha(s)) return false;
     if (filterResponsavel.length > 0 && !filterResponsavel.includes(s.responsavel_nome ?? '')) return false;
     if (filterOrigem.length > 0 && !filterOrigem.includes(s.origem ?? '')) return false;
     if (filterInteresse.length > 0 && !filterInteresse.includes(s.interesse ?? '')) return false;
     if (filterStatus.length > 0 && !filterStatus.includes(String(s.current_status_id ?? ''))) return false;
     return casaBusca(s);
   });
+  const etapaDaAba = aba === 'fechados' ? statuses.find(st => st.is_conversion)
+    : aba === 'perdidos' ? statuses.find(st => st.is_excluded) : undefined;
+  const filtered = etapaDaAba
+    ? recorte.filter(s => s.current_status_id === Number(etapaDaAba.id))
+    : recorte;
 
   // ── Seleção de várias oportunidades ───────────────────────────────────────
   // O mesmo gesto da tela de Tarefas, só no quadro: a lista do funil é uma
@@ -3727,131 +3753,115 @@ export default function OportunidadesPage({ token, openCard, onCardOpened }: {
     return 0;
   });
 
-  // Os cartões contam sobre `filtered`, e não sobre `submissions`: mexer num
-  // filtro e ver o número parado faria duvidar de qual dos dois está certo.
-  const contarNaEtapa = (st?: StatusConfig) =>
-    st ? filtered.filter(s => s.current_status_id === Number(st.id)).length : 0;
-  // Quem fecha e quem descarta vem da marcação da etapa em Configurações, e não
-  // do nome dela: o funil do comercial chama "Venda realizada" e "Perdido", e
-  // procurar por nome deixava os dois cartões sempre em zero.
+  // Os numeros da faixa contam sobre o recorte, e nao sobre `submissions`:
+  // mexer num filtro e ver o numero parado faria duvidar de qual esta certo.
+  // Quem fecha e quem descarta vem da marcacao da etapa em Configuracoes, e nao
+  // do nome dela: o funil do comercial chama "Venda realizada" e "Perdido".
   const ganhaSt = statuses.find(st => st.is_conversion);
   const perdidaSt = statuses.find(st => st.is_excluded);
   const doneIds = new Set([ganhaSt?.id, perdidaSt?.id].filter(Boolean).map(Number));
-  const pendentes = filtered.filter(s => !doneIds.has(s.current_status_id as number)).length;
-
-  // Tempo médio de vida de cada oportunidade (criação → conclusão, ou → agora se em aberto)
-  const oportunidadeTimeMedioMs = (() => {
-    if (filtered.length === 0) return 0;
-    const now = Date.now();
-    const total = filtered.reduce((acc, s) => {
-      const start = s.created_at ? new Date(s.created_at).getTime() : now;
-      const done = doneIds.has(s.current_status_id as number) && s.status_since ? new Date(s.status_since).getTime() : now;
-      return acc + Math.max(0, done - start);
-    }, 0);
-    return total / filtered.length;
-  })();
+  const naEtapa = (st?: StatusConfig) =>
+    st ? recorte.filter(s => s.current_status_id === Number(st.id)).length : 0;
+  const ganhas = naEtapa(ganhaSt);
+  const perdidas = naEtapa(perdidaSt);
+  const emAberto = recorte.filter(s => !doneIds.has(s.current_status_id as number));
+  const valorEmAberto = emAberto.reduce((soma, s) => soma + (s.valor_estimado ?? 0), 0);
+  const taxa = ganhas + perdidas > 0 ? Math.round((ganhas / (ganhas + perdidas)) * 100) : null;
+  const filtrosLigados = filterResponsavel.length + filterOrigem.length
+    + filterInteresse.length + filterStatus.length;
 
   return (
     <div className="admin-content-wrap pagina-cristal pagina-funil">
-      <div className="admin-page-header">
-        <div>
-          <h1 className="admin-page-title">Funil</h1>
-          <p className="admin-page-desc">Acompanhe as oportunidades em negociação, do primeiro contato ao desfecho.</p>
-        </div>
-        <div className="admin-page-acoes">
-          <button className="admin-toolbar-btn" onClick={loadBoard} title="Atualizar"
-            aria-label="Atualizar o funil" disabled={loading}>
-            <span style={{ display: 'inline-flex', animation: loading ? 'spin 0.7s linear infinite' : undefined }}>
-              <IconRefresh size={13} />
-            </span>
-          </button>
-          <button onClick={() => setShowCreate({})} className="btn btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13, flexShrink: 0 }}>
-            + Nova oportunidade
-          </button>
-        </div>
-      </div>
-
-      {/* Os mesmos cartões de Projetos e de Tarefas: o desenho saiu daqui e
-          voltou como componente, para as três telas não divergirem. */}
-      {loading ? (
-        <CartoesKpiEsqueleto cartoes={5} />
-      ) : (
-        <div className="admin-stats" style={{ marginBottom: 18 }}>
-          <CartaoKpi rotulo="Total de oportunidades" valor={filtered.length}
-            nota={hasFilter || busca ? 'no recorte atual' : 'no funil'}
-            cor="var(--yellow)" atraso={0} />
-          <CartaoKpi rotulo="Em negociação" valor={pendentes} nota="ainda sem desfecho"
-            cor="#6366F1" atraso={0.05} />
-          {ganhaSt && (
-            <CartaoKpi rotulo={ganhaSt.nome} valor={contarNaEtapa(ganhaSt)} nota="fecharam negócio"
-              cor={ganhaSt.cor} atraso={0.1}
-              ativo={filterStatus.includes(String(ganhaSt.id))}
-              onClick={() => setFilterStatus(f => f.includes(String(ganhaSt.id))
-                ? f.filter(x => x !== String(ganhaSt.id))
-                : [...f, String(ganhaSt.id)])} />
-          )}
-          {perdidaSt && (
-            <CartaoKpi rotulo={perdidaSt.nome} valor={contarNaEtapa(perdidaSt)} nota="não avançaram"
-              cor={perdidaSt.cor} atraso={0.15}
-              ativo={filterStatus.includes(String(perdidaSt.id))}
-              onClick={() => setFilterStatus(f => f.includes(String(perdidaSt.id))
-                ? f.filter(x => x !== String(perdidaSt.id))
-                : [...f, String(perdidaSt.id)])} />
-          )}
-          <CartaoKpi rotulo="Ciclo médio" valor={fmtDuracao(oportunidadeTimeMedioMs)}
-            nota="da entrada ao desfecho" cor="#0EA5E9" atraso={0.2} />
-        </div>
-      )}
-
-      {/* Toolbar */}
-      {!loading && <div className="admin-toolbar">
-        <span className="admin-toolbar-label">Filtrar</span>
-        <FilterDropdown label="Etapa" values={filterStatus} options={statusOptions} onChange={setFilterStatus} />
-        <FilterDropdown label="Responsável" values={filterResponsavel} options={responsavelOptions} onChange={setFilterResponsavel} />
-        <FilterDropdown label="Origem" values={filterOrigem} options={origemOptions} onChange={setFilterOrigem} />
-        <FilterDropdown label="Interesse" values={filterInteresse} options={interesseOptions} onChange={setFilterInteresse} />
-        {hasFilter && (
-          <button
-            style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray2)', background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}
-            onClick={clearFilters}
-          >
-            Limpar
+      {/* A faixa do alto: a area e o nome da tela, os dois numeros que dizem
+          como o funil vai e a acao principal - a faixa do mockup. */}
+      <FaixaDaPagina
+        secao="Comercial"
+        titulo="Funil de oportunidades"
+        itens={loading ? [] : [
+          {
+            rotulo: 'Em aberto',
+            animar: true,
+            valor: valorEmAberto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }),
+            dica: `${emAberto.length} oportunidade${emAberto.length === 1 ? '' : 's'} ainda sem desfecho`,
+          },
+          {
+            rotulo: 'Taxa de fechamento',
+            animar: true,
+            valor: taxa == null ? '-' : `${taxa}%`,
+            nota: taxa == null ? undefined : `${ganhas} de ${ganhas + perdidas}`,
+            dica: 'Das que chegaram a um desfecho, quantas fecharam negócio',
+          },
+        ]}
+        acoes={(
+          <button onClick={() => setShowCreate({})} className="btn btn-primary">
+            <IconPlus size={15} />
+            Nova oportunidade
           </button>
         )}
-        <div className="admin-toolbar-spacer" />
-        <div className="view-toggle">
-          <div className="view-toggle-pill" style={{ left: view === 'kanban' ? 3 : 35 }} />
-          <button className={view === 'kanban' ? 'active' : ''} onClick={() => setView('kanban')}
-            title="Quadro" aria-label="Ver em quadro">
-            <IconVisaoQuadro size={14} />
-          </button>
-          <button className={view === 'lista' ? 'active' : ''} onClick={() => setView('lista')}
-            title="Lista" aria-label="Ver em lista">
-            <IconVisaoLista size={14} />
-          </button>
-        </div>
-      </div>}
+      />
 
-      {/* A busca fica à vista, e não atrás de um botão: é a mesma faixa da tela
-          de Projetos e da de Tarefas. Os filtros ficam acima porque estreitam o
-          conjunto; a busca varre o que sobrou. */}
-      {!loading && submissions.length > 0 && (
-        <div className="secao-busca">
-          <span className="secao-busca-campo">
-            <IconSearch size={13} />
-            <input value={busca} aria-label="Buscar oportunidade"
-              onChange={e => setBusca(e.target.value)}
-              placeholder="Buscar por empresa, contato, CNPJ ou próximo passo"
-              onKeyDown={e => { if (e.key === 'Escape') setBusca(''); }} />
-            {busca && (
-              <button type="button" aria-label="Limpar a busca" onClick={() => setBusca('')}>
-                <IconX size={12} />
+      <section className="painel-principal">
+        <div className="painel-principal-cabeca">
+          <AbasPilula
+            rotulo="Visão do funil"
+            ativa={aba}
+            onTrocar={setAba}
+            abas={[
+              { id: 'quadro', rotulo: 'Quadro' },
+              { id: 'lista', rotulo: 'Lista' },
+              ...(ganhaSt ? [{ id: 'fechados' as const, rotulo: 'Fechados', conta: loading ? undefined : ganhas }] : []),
+              ...(perdidaSt ? [{ id: 'perdidos' as const, rotulo: 'Perdidos', conta: loading ? undefined : perdidas }] : []),
+            ]}
+          />
+          <div className="painel-principal-ferramentas">
+            <label className="painel-busca">
+              <IconSearch size={14} />
+              <input value={busca} aria-label="Buscar cliente"
+                onChange={e => setBusca(e.target.value)}
+                placeholder="Buscar cliente"
+                onKeyDown={e => { if (e.key === 'Escape') setBusca(''); }} />
+              {busca && (
+                <button type="button" className="painel-busca-limpar surge" aria-label="Limpar a busca"
+                  onClick={() => setBusca('')}>
+                  <IconX size={12} />
+                </button>
+              )}
+            </label>
+            {usuario && (
+              <button type="button" className={`botao-fantasma${soMinhas ? ' ativo' : ''}`}
+                aria-pressed={soMinhas} onClick={() => setSoMinhas(v => !v)}>
+                <IconUser size={15} />
+                Só as minhas
               </button>
             )}
-          </span>
+            <button type="button" className={`botao-fantasma${filtrosAbertos || filtrosLigados ? ' ativo' : ''}`}
+              aria-expanded={filtrosAbertos} onClick={() => setFiltrosAbertos(v => !v)}>
+              <IconFiltros size={15} />
+              Filtros
+              {filtrosLigados > 0 && <span className="botao-fantasma-conta surge">{filtrosLigados}</span>}
+            </button>
+          </div>
         </div>
-      )}
 
+        {/* Os filtros finos nascem embaixo do cabecalho, empurrando o quadro:
+            ficam montados desde a entrada para a abertura ter de onde sair. */}
+        <div className={`revelar${filtrosAbertos ? ' aberto' : ''}`}>
+          <div>
+            <div className="painel-filtros">
+              <FilterDropdown label="Etapa" values={filterStatus} options={statusOptions} onChange={setFilterStatus} />
+              <FilterDropdown label="Responsável" values={filterResponsavel} options={responsavelOptions} onChange={setFilterResponsavel} />
+              <FilterDropdown label="Origem" values={filterOrigem} options={origemOptions} onChange={setFilterOrigem} />
+              <FilterDropdown label="Interesse" values={filterInteresse} options={interesseOptions} onChange={setFilterInteresse} />
+              {hasFilter && (
+                <button type="button" className="painel-filtros-limpar surge" onClick={clearFilters}>
+                  Limpar filtros
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="painel-principal-corpo troca" key={aba}>
       {loading ? (
         <OportunidadesSkeleton view={view} />
       ) : filtered.length === 0 ? (
@@ -3887,17 +3897,17 @@ export default function OportunidadesPage({ token, openCard, onCardOpened }: {
             return (
             <div className="kanban-column" style={{ '--col-color': '#aaa' } as any}>
               <div className="kanban-column-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div className="kanban-column-linha">
                   <div className="kanban-column-title">
-                    <span className="kanban-dot" style={{ background: '#aaa' }} />Sem etapa
+                    <span className="kanban-dot" style={{ background: 'var(--gray2)' }} />Sem etapa
                   </div>
-                  <span className="kanban-count">{semEtapa.length}</span>
+                  <span className="kanban-column-conta">
+                    {semEtapa.length} {semEtapa.length === 1 ? 'oportunidade' : 'oportunidades'}
+                  </span>
                 </div>
-                {total > 0 && (
-                  <div style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--gray)', letterSpacing: '-0.01em' }}>
-                    {total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                  </div>
-                )}
+                <div className="kanban-column-valor">
+                  {total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+                </div>
               </div>
               <div className="kanban-column-body">
                 {semEtapa.map(sub => (
@@ -3992,6 +4002,8 @@ export default function OportunidadesPage({ token, openCard, onCardOpened }: {
           </table>
         </div>
       )}
+        </div>
+      </section>
 
       {selectedId && (
         <DetailPanel
