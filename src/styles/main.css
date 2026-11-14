@@ -110,13 +110,16 @@
 /* ─── Tema escuro - redefine os tokens; o app usa as variáveis semânticas ─── */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg:     #0A0A0C;   /* fundo da página (quase preto) */
-  --white:  #141518;   /* superfícies/cards */
-  --black:  #F4F4F2;   /* texto principal */
-  --gray:   #B0B0AB;
-  --gray2:  #74756F;
-  --gray3:  #2A2B30;   /* bordas/divisores */
-  --gray4:  #1C1D21;   /* superfície neutra sutil (chips/triggers) */
+  /* A noite da identidade de 11/2026: um quase preto puxado para o verde, que
+     faz o limão da marca parecer aceso e não colado. Os cinzas seguem o mesmo
+     puxado - neutro puro ao lado do limão lia como cinza de outro produto. */
+  --bg:     #050A08;   /* fundo da página */
+  --white:  #0E1612;   /* superfícies/cards */
+  --black:  #E7EEEA;   /* texto principal */
+  --gray:   #CAD6CF;
+  --gray2:  #94A39B;
+  --gray3:  #223029;   /* bordas/divisores */
+  --gray4:  #16211B;   /* superfície neutra sutil (chips/triggers) */
 
   --radar-casa:      var(--yellow);
   --radar-declarado: #9481E6;
@@ -125,7 +128,7 @@
      Uma chapa clara devolve a elas o fundo para que foram desenhadas. */
   --logo-fundo: #F4F4F2;
   --logo-respiro: 3px;
-  --card-hover-bg: #1E1F24; /* elevação do card no hover (mais claro que a superfície) */
+  --card-hover-bg: #13201A; /* elevação do card no hover (mais claro que a superfície) */
   /* No escuro o `--gray4` quase encosta na superficie do painel, e a faixa lavada
      sumia. Aqui ela usa os degraus que o tema ja tem para "sob o ponteiro" e para
      "em relevo". */
@@ -139,32 +142,10 @@
   --spinner: #E9FC00;
   --grafico-linha: #E9FC00;
   --shadow-card: 0 2px 10px rgba(0,0,0,0.55);
-  --shadow-card-hover: 0 8px 32px rgba(0,0,0,0.65), 0 2px 8px rgba(0,0,0,0.5);
+  --shadow-card-hover: 0 14px 40px -12px rgba(0,0,0,0.85), 0 2px 8px rgba(0,0,0,0.5);
   /* O azul do tema claro fica escuro demais sobre a folha quase preta: aqui
      ele sobe de luminosidade para continuar legível sem virar néon. */
   --link: #6FB2FF;
-}
-
-/* ─── Troca de tema: revelação circular (View Transitions API) ─────────── */
-/* O círculo cresce do ponto do clique, revelando o tema novo por cima do antigo. */
-html.tema-revelando::view-transition-group(root) { animation: none; }
-html.tema-revelando::view-transition-old(root) { z-index: 0; animation: none; }
-html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-revela 620ms var(--curva-anti); }
-@keyframes tema-revela {
-  from { clip-path: circle(0 at var(--tema-x, 50%) var(--tema-y, 50%)); }
-  to   { clip-path: circle(var(--tema-r, 150vmax) at var(--tema-x, 50%) var(--tema-y, 50%)); }
-}
-/* Fallback (navegadores sem View Transitions): as cores deslizam em vez de piscar. */
-.tema-trocando, .tema-trocando * {
-  transition:
-    background-color 620ms var(--curva-anti),
-    border-color 620ms var(--curva-anti),
-    color 620ms var(--curva-anti) !important;
-}
-@media (prefers-reduced-motion: reduce) {
-  html.tema-revelando::view-transition-old(root),
-  html.tema-revelando::view-transition-new(root) { animation: none; }
-  .tema-trocando, .tema-trocando * { transition: none !important; }
 }
 
 /* Ícone dos itens do sidebar - "pop" com bounce no hover (e leve recuo no clique) */
@@ -200,62 +181,6 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
 .dux-icon-spin { animation: spin .7s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .dux-icon-spin { animation: none; } }
 
-/* Switch de tema (sol/lua) na Topbar.
-   É UM botão só: qualquer ponto dele leva ao outro tema - os dois ícones são
-   decorativos (pointer-events: none), não alvos separados. O destaque do lado
-   ativo não é o fundo de um botão: é um pino solto que desliza entre os dois
-   lados. Toda a animação é dele - os ícones ficam parados e só trocam de cor,
-   sem girar nem escalar (deformar os dois desenhos a cada clique cansa a vista). */
-.theme-seg {
-  --seg-w: 30px;          /* largura de cada opção */
-  --seg-gap: 2px;
-  /* Mesmo movimento do switch quadro/lista das Oportunidades (.view-toggle-pill) */
-  --seg-curva: cubic-bezier(0.4, 0, 0.2, 1);
-  --seg-dur: 0.22s;
-  position: relative;
-  display: inline-flex; align-items: center; gap: var(--seg-gap);
-  padding: 3px; border-radius: 999px; flex-shrink: 0;
-  background: var(--bg); border: 1px solid var(--gray3);
-  cursor: pointer;
-  transition: border-color .22s var(--curva-anti);
-}
-
-/* Hover discreto: só a borda escurece de leve - o bastante para o controle se
-   anunciar como clicável. */
-.theme-seg:hover { border-color: color-mix(in srgb, var(--gray2) 35%, var(--gray3)); }
-
-.theme-seg-thumb {
-  position: absolute; top: 3px; left: 3px;
-  width: var(--seg-w); height: 26px; border-radius: 999px;
-  background: var(--white);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.14);
-  pointer-events: none;
-  will-change: transform;
-  transition: transform var(--seg-dur) var(--seg-curva), background .3s var(--curva-anti);
-}
-
-.theme-seg[data-tema="escuro"] .theme-seg-thumb {
-  transform: translateX(calc(var(--seg-w) + var(--seg-gap)));
-}
-
-/* Só marcam onde cada ícone fica; o clique é sempre do botão de fora. */
-.theme-seg-opt {
-  position: relative; z-index: 1;
-  display: flex; align-items: center; justify-content: center;
-  width: var(--seg-w); height: 26px;
-  pointer-events: none;
-  /* Mesmo par de cores dos ícones de navegação da sidebar: cinza quando inativo,
-     preto quando ativo. Nada de opacidade - a cor sozinha marca o lado. */
-  color: var(--gray);
-  transition: color .18s;
-}
-
-.theme-seg-opt.on { color: var(--black); }
-
-@media (prefers-reduced-motion: reduce) {
-  .theme-seg-thumb, .theme-seg-opt, .theme-seg-opt svg { transition: none; }
-}
-
 /* ─── Reset ──────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 button, input, select, textarea { font-family: inherit; font-size: inherit; }
@@ -276,7 +201,7 @@ html {
 }
 
 body {
-  font-family: 'Manrope', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 15px;
   line-height: 1.6;
   color: var(--black);
@@ -485,7 +410,7 @@ body {
 .form-select {
   width: 100%;
   padding: 10px 14px;
-  font-family: 'Manrope', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 14px;
   font-weight: 500;
   color: var(--gray);
@@ -806,7 +731,7 @@ textarea.form-input {
 .form-input-float {
   width: 100%;
   padding: 22px 14px 8px;
-  font-family: 'Manrope', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 15px;
   font-weight: 600;
   color: var(--black);
@@ -905,10 +830,12 @@ textarea.form-input {
   justify-content: center;
   gap: 8px;
   padding: 10px 20px;
-  font-family: 'Manrope', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 13px;
   font-weight: 700;
-  border-radius: var(--radius-pill);
+  /* Botao de canto medio, e nao pilula: e o desenho da identidade de 11/2026,
+     que reserva a pilula para etiquetas e abas. */
+  border-radius: var(--radius-md);
   border: 1.5px solid transparent;
   cursor: pointer;
   transition: all var(--transition-spring);
@@ -1235,7 +1162,7 @@ textarea.form-input {
   width: 270px;
   background: var(--black);
   color: var(--white);
-  font-family: 'Manrope', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 13px;
   font-weight: 400;
   font-style: normal;
@@ -1274,7 +1201,7 @@ body.has-footer-banner .app-content {
   background: var(--white);
   border-top: 3px solid var(--yellow);
   color: var(--black);
-  font-family: 'Manrope', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 11.5px;
   font-weight: 500;
   line-height: 1.5;
@@ -1399,7 +1326,7 @@ body.has-footer-banner .app-content {
   background: var(--white);
   cursor: pointer;
   transition: all var(--transition-spring);
-  font-family: 'Manrope', sans-serif;
+  font-family: 'Inter', sans-serif;
   min-height: 120px;
 }
 
@@ -1762,7 +1689,7 @@ body.has-footer-banner .app-content {
   justify-content: center;
   background: var(--yellow);
   color: var(--on-yellow);
-  font-family: 'Manrope', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 14px;
   font-weight: 700;
   border: none;
@@ -4561,7 +4488,9 @@ body.arrastando-painel {
 .kanban-column {
   flex: 0 0 270px;
   min-width: 250px;
-  background: var(--bg, #F5F5F3);
+  /* Meio vidro: o brilho que deriva no fundo da casca passa de leve por tras
+     da coluna, como na identidade de 11/2026. */
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
   border: 1.5px solid var(--gray3);
   border-radius: 12px;
   display: flex;
@@ -6413,19 +6342,19 @@ button.checklist-texto:focus-visible {
   color: var(--gray2);
 }
 
-/* O item do menu. O escolhido e um chip levantado da folha: a chapa amarela ja
-   o marcava, e o acabamento e o que faz ele parecer pousado em cima, e nao
-   pintado por baixo. O trilho da esquerda continua sendo a marca de "voce esta
-   aqui" - ele existe em todos os itens, transparente, para o texto nao andar
-   1px quando a escolha muda. */
+/* O item do menu. O escolhido e uma pilula cheia de limao com o texto escuro
+   por cima - a mesma marca de "voce esta aqui" do botao principal, e a peca
+   mais acesa da casca. Ela nasce com uma mola curta quando a escolha muda: o
+   olho acompanha para onde a luz foi, em vez de descobrir que ela trocou. */
 .nav-leaf {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 100%;
-  padding: 9px 20px;
+  width: calc(100% - 20px);
+  margin: 1px 10px;
+  padding: 9px 12px;
   border: none;
-  border-left: 2px solid transparent;
+  border-radius: var(--radius-sm);
   background: none;
   font-family: inherit;
   font-size: 13px;
@@ -6434,21 +6363,29 @@ button.checklist-texto:focus-visible {
   text-align: left;
   cursor: pointer;
   transition: background var(--transition), color var(--transition),
-    box-shadow var(--transition-spring);
+    box-shadow var(--transition-spring), transform var(--transition-spring);
 }
 .nav-leaf-texto { flex: 1; min-width: 0; }
 .nav-leaf:not(:disabled):hover {
   background: var(--gray4);
   color: var(--black);
+  transform: translateX(2px);
 }
+.nav-leaf:not(:disabled):active { transform: scale(0.98); }
 .nav-leaf:focus-visible { outline: none; background: var(--gray4); color: var(--black); }
-.nav-leaf.ativo {
-  border-left-color: var(--yellow);
-  background: var(--yd);
-  color: var(--black);
-  box-shadow: inset 0 1px 0 var(--cristal-luz),
-    inset 0 -1px 0 var(--cristal-base),
-    var(--cristal-sombra);
+.nav-leaf.ativo,
+.nav-leaf.ativo:not(:disabled):hover,
+.nav-leaf.ativo:focus-visible {
+  background: var(--yellow);
+  color: var(--on-yellow);
+  transform: none;
+  box-shadow: 0 8px 24px -10px rgba(233, 252, 0, .65);
+}
+.nav-leaf.ativo { animation: nav-acende .34s var(--curva-anti); }
+@keyframes nav-acende {
+  0%   { transform: scale(.94); box-shadow: 0 0 0 0 rgba(233, 252, 0, .55); }
+  55%  { transform: scale(1.02); }
+  100% { transform: scale(1); box-shadow: 0 8px 24px -10px rgba(233, 252, 0, .65); }
 }
 .nav-leaf:disabled {
   color: var(--gray2);
@@ -6464,8 +6401,9 @@ button.checklist-texto:focus-visible {
   align-items: center;
   color: var(--gray2);
 }
-.nav-leaf:not(:disabled):hover .nav-leaf-ico,
-.nav-leaf.ativo .nav-leaf-ico { color: var(--black); }
+.nav-leaf:not(:disabled):hover .nav-leaf-ico { color: var(--black); }
+.nav-leaf.ativo .nav-leaf-ico,
+.nav-leaf.ativo:not(:disabled):hover .nav-leaf-ico { color: var(--on-yellow); }
 
 /* "Em breve": a etiqueta do que ainda nao abriu. */
 .nav-leaf-breve {
@@ -6501,7 +6439,372 @@ button.checklist-texto:focus-visible {
   .app-menu,
   .topo-icone,
   .nav-leaf { transition: none; }
+  .nav-leaf.ativo { animation: none; }
 }
+
+/* ── A noite: o fundo vivo e o vidro da casca (identidade 11/2026) ─────
+   Atras de tudo, dois brilhos largos derivam devagar: o limao no alto, um
+   oliva embaixo. Eles moram na casca e nao na pagina, entao nao trocam nem
+   piscam quando a tela muda - sao o ambiente, e o ambiente nao corta.
+
+   O topo e o menu viram vidro sobre esse ambiente. O vidro mora num
+   pseudo-elemento, e nao na peca: `backdrop-filter` na propria peca faria dela
+   o bloco de referencia de tudo que e `position: fixed` la dentro (o inbox, os
+   objetivos), e eles passariam a se medir pelo topo em vez da tela. */
+:root {
+  --brilho-1: rgba(233, 252, 0, .22);
+  --brilho-2: rgba(170, 200, 0, .12);
+  --vidro-casca: rgba(255, 255, 255, .62);
+}
+:root[data-theme="dark"] {
+  --brilho-1: rgba(200, 232, 0, .15);
+  --brilho-2: rgba(110, 140, 0, .17);
+  --vidro-casca: rgba(9, 16, 12, .56);
+}
+
+.admin-casca {
+  position: relative;
+  isolation: isolate;
+  background: var(--bg);
+}
+.admin-casca::before,
+.admin-casca::after {
+  content: '';
+  position: fixed;
+  z-index: -1;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.admin-casca::before {
+  width: min(70vw, 980px);
+  aspect-ratio: 1;
+  right: -16vw;
+  top: -34vw;
+  background: radial-gradient(closest-side, var(--brilho-1), transparent);
+  animation: brilho-deriva-1 28s var(--curva-anti) infinite alternate;
+}
+.admin-casca::after {
+  width: min(64vw, 900px);
+  aspect-ratio: 1;
+  left: -20vw;
+  bottom: -36vw;
+  background: radial-gradient(closest-side, var(--brilho-2), transparent);
+  animation: brilho-deriva-2 34s var(--curva-anti) infinite alternate;
+}
+@keyframes brilho-deriva-1 {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(-9vw, 7vw) scale(1.14); }
+}
+@keyframes brilho-deriva-2 {
+  from { transform: translate(0, 0) scale(1.06); }
+  to   { transform: translate(11vw, -5vw) scale(.94); }
+}
+
+:root {
+  --vidro-janela: rgba(255, 255, 255, .58);
+  --janela-borda: rgba(20, 24, 18, .08);
+  --faixa: color-mix(in srgb, var(--white) 70%, transparent);
+  --faixa-borda: var(--gray3);
+}
+:root[data-theme="dark"] {
+  --vidro-janela: rgba(12, 20, 16, .62);
+  --janela-borda: rgba(255, 255, 255, .08);
+  --faixa: rgba(255, 255, 255, .035);
+  --faixa-borda: rgba(255, 255, 255, .06);
+}
+
+/* A casca tem um respiro em volta da janela no computador: e esse vao que
+   deixa o brilho do ambiente aparecer nas bordas e faz a janela pousar. */
+.admin-casca {
+  height: 100vh;
+  padding: 14px;
+  overflow: clip;
+}
+
+/* A janela: uma peca so de vidro, de cantos largos, com o menu, o topo e a
+   pagina dentro - sem divisorias entre eles, como nos mockups. O vidro mora
+   no `::before` pelo mesmo motivo do topo: `backdrop-filter` na propria
+   janela faria dela a referencia de tudo que e `position: fixed` la dentro. */
+.casca-janela {
+  position: relative;
+  isolation: isolate;
+  border-radius: 24px;
+  border: 1px solid var(--janela-borda);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05),
+    0 40px 90px -40px rgba(0, 0, 0, .55);
+  animation: janela-pousa .5s var(--curva-anti) backwards;
+}
+.casca-janela::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--vidro-janela);
+  backdrop-filter: blur(28px) saturate(140%);
+  -webkit-backdrop-filter: blur(28px) saturate(140%);
+  pointer-events: none;
+}
+@keyframes janela-pousa {
+  from { opacity: 0; transform: translateY(10px) scale(.992); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Dentro da janela, o topo e o menu sao transparentes e sem fio: a janela ja e
+   o vidro, e um segundo vidro por cima viraria mancha. */
+.casca-janela .app-topo {
+  background: transparent;
+  border-bottom-color: transparent;
+  box-shadow: none;
+  padding: 0 22px 0 14px;
+}
+.casca-janela .app-menu,
+.casca-janela .app-menu.aberto {
+  background: transparent;
+  border-right-color: transparent;
+  box-shadow: none;
+}
+/* Solto, o menu paira sobre a pagina, e ai ele precisa do proprio vidro. */
+.app-menu.solto { isolation: isolate; }
+.app-menu.solto::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--vidro-casca);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  pointer-events: none;
+}
+
+/* A marca no alto do menu, na mesma altura do topo da pagina. */
+.menu-marca {
+  flex-shrink: 0;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  padding: 0 22px;
+}
+.menu-marca .brand-logo { height: 28px; width: auto; display: block; }
+
+/* O pe do menu vira o cartao de quem esta usando, com a troca de tema ao
+   lado - o mesmo bloco do mockup, em vez da linha solta "Tema". */
+.casca-janela .app-menu-rodape,
+.app-menu-rodape {
+  margin: 12px 10px 0;
+  padding: 10px;
+  border-top: none;
+  border-radius: var(--radius-md);
+  background: var(--gray4);
+  justify-content: flex-start;
+  gap: 10px;
+}
+.app-menu-rodape > .menu-usuario-avatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--gray3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--black);
+}
+.menu-usuario-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.app-menu-rodape > .menu-usuario-texto {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+.menu-usuario-nome,
+.menu-usuario-papel {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.menu-usuario-nome { font-size: 13px; font-weight: 600; color: var(--black); }
+.menu-usuario-papel { font-size: 11px; color: var(--gray2); }
+
+/* O nome ja mora no pe do menu: no topo fica so a foto, como no mockup. */
+.casca-janela .topbar-conta-texto { display: none; }
+
+/* ── Cartoes e colunas no desenho dos mockups ─────────
+   Chapa translucida de canto largo, sem a faixa colorida da esquerda: a cor
+   da situacao fica no numero do cartao de indicador e na bolinha do titulo da
+   coluna, e o cartao vira peca so de conteudo. Os estados (escolhido, alvo de
+   filtro) continuam acesos em limao. */
+:root {
+  --cartao: var(--white);
+  --cartao-hover: var(--card-hover-bg);
+  --coluna: rgba(20, 24, 18, .03);
+}
+:root[data-theme="dark"] {
+  --cartao: rgba(255, 255, 255, .055);
+  --cartao-hover: rgba(255, 255, 255, .085);
+  --coluna: rgba(255, 255, 255, .022);
+}
+
+.casca-janela .admin-stat-card-v2,
+.casca-janela .pagina-cristal .admin-stat-card-v2 {
+  background: var(--faixa);
+  border: 1px solid var(--faixa-borda);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  box-shadow: none;
+}
+.casca-janela .admin-stat-card-v2:hover,
+.casca-janela .pagina-cristal .admin-stat-card-v2:hover {
+  border-color: color-mix(in srgb, var(--accent-color, var(--yellow)) 45%, var(--faixa-borda));
+  box-shadow: var(--shadow-card-hover);
+}
+.casca-janela .admin-stat-card-v2.active-filter {
+  border-color: var(--yellow);
+  box-shadow: var(--shadow-yellow);
+}
+.casca-janela .stat-v2-label { letter-spacing: .08em; }
+
+.casca-janela .kanban-column:not(.drag-over) {
+  background: var(--coluna);
+  border-color: transparent;
+}
+.casca-janela .kanban-column-header { border-bottom-color: var(--faixa-borda); }
+.casca-janela .kanban-column-title {
+  font-size: 10.5px;
+  letter-spacing: .08em;
+  color: var(--gray);
+}
+
+.casca-janela .kanban-card,
+.casca-janela .pagina-cristal .kanban-card {
+  background: var(--cartao);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+.casca-janela .kanban-card:not(.selecionado),
+.casca-janela .pagina-cristal .kanban-card:not(.selecionado) {
+  border-color: transparent;
+  border-left-color: transparent;
+}
+:root:not([data-theme="dark"]) .casca-janela .kanban-card:not(.selecionado) {
+  border-color: var(--gray3);
+  border-left-color: var(--gray3);
+}
+.casca-janela .kanban-card:hover,
+.casca-janela .pagina-cristal .kanban-card:hover {
+  background: var(--cartao-hover);
+  box-shadow: var(--shadow-card-hover);
+}
+.casca-janela .kanban-card.selecionado,
+.casca-janela .pagina-cristal .kanban-card.selecionado {
+  border-color: var(--yellow);
+  border-left-color: var(--yellow);
+  box-shadow: var(--shadow-yellow);
+}
+
+/* O Dashboard leva os numeros dentro da faixa: o titulo na linha de cima e a
+   fileira de cartoes inteira embaixo, em grade, em vez de os cartoes
+   quebrarem de dois em dois ao lado do titulo. */
+@media (min-width: 769px) {
+  .admin-page-header.painel-cabecalho { flex-wrap: wrap; align-items: stretch; }
+  .painel-cabecalho > div:first-child { flex: 1 1 100%; }
+  .painel-cabecalho .painel-kpis {
+    flex: 1 1 100%;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 10px;
+  }
+  .painel-cabecalho .painel-kpis .admin-stat-card-v2 { flex: none; }
+}
+
+/* A faixa do cabecalho da pagina: o titulo pousa numa chapa de vidro, com as
+   acoes da pagina do lado direito - a faixa do projeto dos mockups. */
+.admin-page-header {
+  margin-bottom: 0;
+  padding: 16px 20px;
+  border-radius: var(--radius-lg);
+  background: var(--faixa);
+  border: 1px solid var(--faixa-borda);
+  align-items: center;
+  gap: 16px;
+}
+.admin-page-title {
+  font-size: 19px;
+  font-weight: 700;
+  margin: 0 0 3px;
+}
+.admin-page-desc { font-size: 12.5px; }
+
+@media (max-width: 768px) {
+  .admin-casca { padding: 0; }
+  .casca-janela {
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+  }
+  .admin-page-header { padding: 14px 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .casca-janela { animation: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-casca::before,
+  .admin-casca::after { animation: none; }
+}
+
+/* ── A luz que segue o ponteiro ────────────────────────
+   Um halo largo de limao acompanha o ponteiro dentro do card que esta sob ele.
+   Quem marca o card e o calcula e o `useLuzDoPonteiro`: ele so escreve duas
+   variaveis e a classe, e o desenho inteiro fica aqui. Mora na imagem de fundo
+   e nao num `::after`, porque varios cards ja usam os pseudo-elementos. A
+   especificidade dobrada vence o `background` curto que cada card declara. */
+.luz-ponteiro.luz-ponteiro.luz-ponteiro {
+  background-image: radial-gradient(320px circle at var(--luz-x, 50%) var(--luz-y, 50%),
+    var(--luz-cor), transparent 62%);
+}
+:root { --luz-cor: rgba(233, 252, 0, .16); }
+
+/* ── A entrada em escada ───────────────────────────────
+   Ao abrir a tela, os cartoes de numero e as colunas do quadro sobem um depois
+   do outro, da esquerda para a direita - a leitura acompanha a ordem em que o
+   olho percorre a linha, em vez de tudo estalar junto. O atraso e curto (55ms)
+   para a fileira inteira estar de pe em menos de meio segundo. */
+.admin-stats > .admin-stat-card-v2:nth-child(2) { animation-delay: 55ms; }
+.admin-stats > .admin-stat-card-v2:nth-child(3) { animation-delay: 110ms; }
+.admin-stats > .admin-stat-card-v2:nth-child(4) { animation-delay: 165ms; }
+.admin-stats > .admin-stat-card-v2:nth-child(5) { animation-delay: 220ms; }
+.admin-stats > .admin-stat-card-v2:nth-child(n+6) { animation-delay: 275ms; }
+
+.kanban-column { animation: coluna-entra .42s var(--curva-anti) backwards; }
+.kanban-column:nth-child(2) { animation-delay: 55ms; }
+.kanban-column:nth-child(3) { animation-delay: 110ms; }
+.kanban-column:nth-child(4) { animation-delay: 165ms; }
+.kanban-column:nth-child(5) { animation-delay: 220ms; }
+.kanban-column:nth-child(n+6) { animation-delay: 275ms; }
+@keyframes coluna-entra {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* O avatar do topo acende um anel de limao sob o ponteiro: e a porta da conta,
+   e a casa inteira responde ao ponteiro do mesmo jeito. */
+.topbar-conta-avatar { transition: box-shadow var(--transition-spring), transform var(--transition-spring); }
+.topbar-conta:hover .topbar-conta-avatar {
+  box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--yellow);
+  transform: scale(1.04);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kanban-column { animation: none; }
+  .admin-stats > .admin-stat-card-v2 { animation-delay: 0ms; }
+  .topbar-conta-avatar { transition: none; }
+}
+:root[data-theme="dark"] { --luz-cor: rgba(233, 252, 0, .13); }
 
 /* Na pagina, a faixa de busca nao precisa do vao proprio: o `gap` da tela ja
    separa ela da lista, e os dois somados abriam um buraco no meio. Dentro do
@@ -9464,15 +9767,18 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   flex-shrink: 0;
 }
 
+/* A pilula que corre por baixo da opcao escolhida e o limao da marca, como a
+   aba escolhida em toda a identidade de 11/2026; o texto em cima dela vai para
+   a tinta escura do `--on-yellow`. */
 .scope-switch-pill {
   position: absolute;
   top: 3px;
   bottom: 3px;
   width: calc(50% - 3px);
-  background: var(--white);
+  background: var(--yellow);
   border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.06);
-  transition: left 0.22s cubic-bezier(0.4,0,0.2,1);
+  box-shadow: 0 4px 14px -6px rgba(233, 252, 0, .7);
+  transition: left var(--transition-spring), width var(--transition-spring);
   pointer-events: none;
 }
 
@@ -9497,8 +9803,12 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   color: var(--black);
 }
 
-.scope-switch button.active {
-  color: var(--black);
+.scope-switch button.active,
+.scope-switch button.active:hover {
+  color: var(--on-yellow);
+}
+@media (prefers-reduced-motion: reduce) {
+  .scope-switch-pill { transition: none; }
 }
 
 /* ── Integrações ────────────────────────────────────── */
@@ -10302,32 +10612,48 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
     z-index: 300;
     display: flex;
     align-items: stretch;
-    background: var(--white);
+    padding: 6px 8px;
+    /* Vidro sobre o conteudo que rola por baixo, como o topo. */
+    background: var(--vidro-casca);
+    backdrop-filter: blur(22px) saturate(150%);
+    -webkit-backdrop-filter: blur(22px) saturate(150%);
     border-top: 1px solid var(--gray3);
     /* A faixa de gestos do aparelho fica por baixo da barra; sem isto o último
        item cai debaixo dela. */
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
   }
 
   .nav-inferior-item {
     flex: 1 1 0;
     min-width: 0;
+    min-height: 52px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 3px;
-    padding: 8px 2px 7px;
+    gap: 4px;
+    padding: 4px 2px;
     border: none;
     background: none;
     font-family: inherit;
-    font-size: 10px;
+    font-size: 10.5px;
     font-weight: 600;
     letter-spacing: -0.01em;
     color: var(--gray2);
     cursor: pointer;
     position: relative;
-    transition: color var(--transition);
+    -webkit-tap-highlight-color: transparent;
+    transition: color var(--transition), transform var(--transition-spring);
+  }
+  .nav-inferior-item:active { transform: scale(0.92); }
+
+  /* O icone fica acima da pilula, que mora no `::before`. */
+  .nav-inferior-item svg {
+    position: relative;
+    z-index: 1;
+    width: 20px;
+    height: 20px;
+    transition: transform var(--transition-spring);
   }
 
   .nav-inferior-item span {
@@ -10337,28 +10663,56 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
     white-space: nowrap;
   }
 
+  /* O escolhido: a pilula de limao atras do icone, como no menu do
+     computador, e o rotulo na tinta da marca. A pilula nasce com mola - abre
+     do centro para os lados - e o icone da um pulinho junto. */
   .nav-inferior-item.ativo {
-    color: var(--black);
+    color: var(--yellow-tinta);
+    font-weight: 700;
   }
-
-  /* Traço curto no topo do item, no lugar do fundo cheio: a barra fica com
-     menos peso e o item ativo continua evidente. */
-  .nav-inferior-item.ativo::before {
+  .nav-inferior-item::before {
     content: '';
     position: absolute;
-    top: 0;
+    top: 4px;
     left: 50%;
-    transform: translateX(-50%);
-    width: 26px;
-    height: 2.5px;
-    border-radius: 0 0 3px 3px;
-    background: var(--yellow);
+    width: 52px;
+    height: 30px;
+    margin-left: -26px;
+    border-radius: var(--radius-pill);
+    background: var(--yd);
+    opacity: 0;
+    transform: scaleX(.4);
+    transition: opacity var(--transition), transform var(--transition-spring);
   }
+  .nav-inferior-item.ativo::before {
+    opacity: 1;
+    transform: scaleX(1);
+    animation: aba-acende .38s var(--curva-anti);
+  }
+  .nav-inferior-item.ativo svg { animation: aba-pula .38s var(--curva-anti); }
 
   .nav-inferior-item:focus-visible {
     outline: none;
     border-radius: var(--radius-sm);
+    background: var(--gray4);
   }
+}
+@keyframes aba-acende {
+  0%   { opacity: 0; transform: scaleX(.3); }
+  60%  { opacity: 1; transform: scaleX(1.08); }
+  100% { opacity: 1; transform: scaleX(1); }
+}
+@keyframes aba-pula {
+  0%   { transform: translateY(0); }
+  40%  { transform: translateY(-3px); }
+  100% { transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-inferior-item,
+  .nav-inferior-item svg,
+  .nav-inferior-item::before { transition: none; }
+  .nav-inferior-item.ativo::before,
+  .nav-inferior-item.ativo svg { animation: none; }
 }
 
 @media (max-width: 768px) {
@@ -13134,7 +13488,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   --ac-g100: #F3F3F1; --ac-g200: var(--gray3); --ac-g300: #D2D3CC;
   --ac-g400: var(--gray2); --ac-g500: #7C7C76; --ac-g600: var(--gray);
   --ac-g700: #3F3F40; --ac-g900: var(--black);
-  font-family: 'Manrope', sans-serif;
+  font-family: 'Inter', sans-serif;
 }
 
 /* Análise de Crédito no tema escuro - inverte a escala de cinzas e ameniza os
@@ -13769,23 +14123,40 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   color: var(--gray);
 }
 /* Gatilho da busca na topbar */
+/* A busca do topo tem cara de campo largo, como na identidade de 11/2026: e a
+   porta de entrada para qualquer coisa do portal, e um botaozinho de 32px a
+   escondia. No hover a borda acende em limao e a lupa da um passo a frente. */
 .qs-trigger {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 32px;
-  padding: 0 9px 0 10px;
+  gap: 10px;
+  width: clamp(220px, 34vw, 460px);
+  height: 38px;
+  padding: 0 8px 0 14px;
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--gray2);
-  background: var(--bg);
+  background: color-mix(in srgb, var(--white) 60%, transparent);
   border: 1px solid var(--gray3);
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: border-color .15s, color .15s, background .15s;
+  transition: border-color var(--transition), color var(--transition),
+    background var(--transition), box-shadow var(--transition-spring);
 }
-.qs-trigger:hover { border-color: var(--gray2); color: var(--black); background: var(--white); }
+.qs-trigger svg { transition: transform var(--transition-spring); }
+.qs-trigger-label { flex: 1; text-align: left; }
+.qs-trigger:hover {
+  border-color: color-mix(in srgb, var(--yellow) 55%, var(--gray3));
+  color: var(--black);
+  background: var(--white);
+  box-shadow: 0 0 0 4px var(--yd);
+}
+.qs-trigger:hover svg { transform: scale(1.12) rotate(-8deg); }
+.qs-trigger:active { transform: scale(0.99); }
+@media (prefers-reduced-motion: reduce) {
+  .qs-trigger, .qs-trigger svg { transition: none; }
+}
 .qs-trigger-kbd {
   font-size: 10.5px;
   font-weight: 700;
@@ -13797,7 +14168,14 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 }
 @media (max-width: 640px) {
   .qs-trigger-label, .qs-trigger-kbd { display: none; }
-  .qs-trigger { padding: 0 8px; }
+  /* No celular a busca vira so a lupa, num botao redondo do tamanho do dedo. */
+  .qs-trigger {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
+  }
   .qs-overlay { padding-top: 8vh; }
 }
 
@@ -17141,7 +17519,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
    recortado enquanto a coluna anima, em vez de requebrar as linhas. */
 .objetivos-coluna {
   grid-column: 3;
-  grid-row: 2;
+  grid-row: 1 / -1;
   min-width: 0;
   overflow: hidden;
   background: var(--cristal);
@@ -17555,6 +17933,19 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 }
 .painel-kpis .admin-stat-card-v2 { flex: 0 1 160px; padding: 10px 14px; }
 .painel-kpis .stat-v2-value { font-size: 22px; }
+/* No celular o cabecalho vira coluna, e as bases de 260px e 520px de cima
+   passavam a valer como ALTURA: o titulo ganhava um vao enorme e os cartoes
+   viravam pilares de meia tela. Aqui cada um mede o proprio conteudo, e a
+   fileira de cartoes rola de lado na largura da tela. */
+@media (max-width: 768px) {
+  .painel-cabecalho > div:first-child,
+  .painel-kpis { flex: 0 0 auto; }
+  .painel-kpis {
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
+  }
+}
 
 /* ── Os graficos pequenos ─────────────────────────────────────────────────────
    Barras em CSS, como a serie do painel Comercial: a altura sai de uma
@@ -18884,7 +19275,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   fill: var(--white);
   font-size: 12px;
   font-weight: 800;
-  font-family: 'Manrope', sans-serif;
+  font-family: 'Inter', sans-serif;
 }
 /* O desenho inteiro recua um degrau enquanto um eixo esta em foco. */
 .talentos-radar.com-foco .talentos-radar-area { opacity: .45; }
@@ -18907,7 +19298,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   fill: var(--gray2);
   font-size: 10.5px;
   font-weight: 700;
-  font-family: 'Manrope', sans-serif;
+  font-family: 'Inter', sans-serif;
 }
 
 .talentos-lista-notas {
@@ -20827,3 +21218,2737 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 }
 .envio-proposta-leitura.vazio { color: var(--gray2); }
 .envio-proposta-titulo-vazio { color: var(--gray2); font-weight: 600; display: flex; align-items: center; min-height: 1.4em; }
+
+/* ══ Noite: a casca e as paginas no desenho exato do mockup (11/2026) ══════
+   Os numeros daqui sao os do mockup aprovado, medidos peca a peca: a janela de
+   26px de canto, o menu de 224px, a faixa de 72px, o painel com as abas em
+   pilula. Os tons das superficies sao camadas de branco sobre a noite (e de
+   preto sobre o claro), e por isso moram em tokens proprios: o vidro so le
+   como vidro se cada degrau for uma transparencia, e nao uma cor chapada. */
+:root {
+  --radius-campo: 10px;
+  --texto-forte: var(--black);
+  --sup-faixa: rgba(255, 255, 255, .72);
+  --sup-faixa-borda: rgba(20, 24, 18, .08);
+  --sup-painel: rgba(255, 255, 255, .55);
+  --sup-painel-borda: rgba(20, 24, 18, .07);
+  --sup-coluna: rgba(20, 24, 18, .035);
+  --sup-cartao: var(--white);
+  --sup-cartao-hover: var(--card-hover-bg);
+  --sup-selo: rgba(20, 24, 18, .07);
+  --sup-campo: rgba(255, 255, 255, .7);
+  --sup-campo-borda: rgba(20, 24, 18, .12);
+  --sup-etiqueta: rgba(20, 24, 18, .06);
+  --avatar-fundo: #D9E3DD;
+}
+:root[data-theme="dark"] {
+  --texto-forte: #FFFFFF;
+  --vidro-janela: rgba(14, 22, 18, .72);
+  --sup-faixa: rgba(255, 255, 255, .04);
+  --sup-faixa-borda: rgba(255, 255, 255, .06);
+  --sup-painel: rgba(255, 255, 255, .035);
+  --sup-painel-borda: rgba(255, 255, 255, .06);
+  --sup-coluna: rgba(255, 255, 255, .024);
+  --sup-cartao: rgba(255, 255, 255, .06);
+  --sup-cartao-hover: rgba(255, 255, 255, .09);
+  --sup-selo: rgba(255, 255, 255, .10);
+  --sup-campo: rgba(255, 255, 255, .03);
+  --sup-campo-borda: rgba(255, 255, 255, .12);
+  --sup-etiqueta: rgba(255, 255, 255, .08);
+  --avatar-fundo: #2E4A3B;
+}
+
+/* ── A janela ─────────────────────────────────────── */
+.casca-janela { border-radius: 26px; }
+.casca-janela::before {
+  backdrop-filter: blur(30px) saturate(140%);
+  -webkit-backdrop-filter: blur(30px) saturate(140%);
+}
+
+/* ── O menu ───────────────────────────────────────── */
+.app-menu > div {
+  padding: 26px 16px 20px;
+  gap: 26px;
+}
+.menu-marca {
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 8px;
+  gap: 10px;
+  color: var(--black);
+}
+.menu-marca-selo {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1.6px solid currentColor;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform var(--transition-spring);
+}
+.menu-marca:hover .menu-marca-selo { transform: rotate(-10deg) scale(1.04); }
+.menu-marca-nome {
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: .22em;
+}
+/* Recolher o menu preso: some em repouso, aparece com o ponteiro no menu. */
+.menu-recolher {
+  margin-left: auto;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition), background var(--transition), color var(--transition);
+}
+.app-menu:hover .menu-recolher,
+.menu-recolher:focus-visible { opacity: 1; }
+.menu-recolher:hover { background: var(--gray4); color: var(--black); }
+
+.menu-navegacao {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+.menu-navegacao::-webkit-scrollbar { display: none; }
+.menu-grupo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.casca-janela .app-menu-secao,
+.app-menu .app-menu-secao {
+  margin: 0;
+  padding: 0 10px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  color: var(--gray2);
+}
+
+.app-menu .nav-leaf {
+  width: 100%;
+  margin: 0;
+  height: 36px;
+  padding: 0 10px;
+  font-weight: 400;
+  color: var(--gray);
+}
+.app-menu .nav-leaf-ico { color: inherit; }
+.app-menu .nav-leaf:not(:disabled):hover .nav-leaf-ico { color: inherit; }
+.app-menu .nav-leaf.ativo,
+.app-menu .nav-leaf.ativo:not(:disabled):hover,
+.app-menu .nav-leaf.ativo:focus-visible {
+  font-weight: 600;
+  box-shadow: none;
+}
+.app-menu .nav-leaf.ativo { animation: nav-acende-limpo .34s var(--curva-anti); }
+@keyframes nav-acende-limpo {
+  0%   { transform: scale(.94); }
+  55%  { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+
+/* O cartao de chamados mora no pe do menu, colado ao cartao de quem usa. */
+.app-menu .reportar-cartao { margin: 0; }
+
+/* O cartao de quem esta usando: o pe do menu, com sair no canto. */
+.casca-janela .app-menu-rodape,
+.app-menu .app-menu-rodape {
+  margin: 0;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  background: var(--sup-faixa);
+}
+.app-menu-rodape > .menu-usuario-avatar {
+  background: var(--avatar-fundo);
+  font-weight: 600;
+}
+.menu-sair {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition), transform var(--transition-spring);
+}
+.menu-sair:hover { background: var(--gray4); color: var(--black); transform: translateX(2px); }
+
+/* ── O topo, na coluna do conteudo ───────────────── */
+.casca-janela.menu-preso .app-topo { padding: 20px 20px 0 4px; }
+.casca-janela .topbar-busca { flex: 1 1 auto; min-width: 0; display: flex; }
+.casca-janela .qs-trigger {
+  flex: 0 1 640px;
+  width: auto;
+  min-width: 0;
+  padding: 0 12px;
+  gap: 10px;
+  font-weight: 400;
+  border-radius: var(--radius-campo);
+  background: var(--sup-campo);
+  border-color: var(--sup-campo-borda);
+}
+.casca-janela .qs-trigger:hover { background: var(--sup-campo); }
+.casca-janela .qs-trigger-kbd { background: transparent; border-color: var(--sup-campo-borda); }
+.casca-janela .app-topo .topo-icone {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  color: var(--black);
+}
+.casca-janela .topbar-conta-avatar {
+  background: var(--avatar-fundo);
+  color: var(--black);
+  font-size: 11px;
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1.5px var(--sup-campo-borda);
+}
+
+/* O conteudo comeca a 14px do topo e encosta 4px no menu, como no mockup. */
+.casca-janela.menu-preso .admin-content-wrap { padding: 14px 20px 20px 4px; }
+
+/* ── A faixa da pagina ───────────────────────────── */
+.faixa-pagina {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 56px;
+  min-height: 72px;
+  padding: 14px 20px;
+  border-radius: var(--radius-lg);
+  background: var(--sup-faixa);
+  border: 1px solid var(--sup-faixa-borda);
+  animation: faixa-entra .4s var(--curva-anti) backwards;
+}
+@keyframes faixa-entra {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.faixa-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  animation: faixa-entra .4s var(--curva-anti) backwards;
+}
+.faixa-item:nth-child(2) { animation-delay: 60ms; }
+.faixa-item:nth-child(3) { animation-delay: 120ms; }
+.faixa-item:nth-child(n+4) { animation-delay: 180ms; }
+.faixa-rotulo {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--gray2);
+  white-space: nowrap;
+}
+.faixa-valor {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--texto-forte);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.faixa-nota {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--gray2);
+}
+.faixa-nota.bom { color: var(--green); }
+.faixa-nota.ruim { color: var(--red); }
+/* O numero que filtra: botao sem moldura, que acende em limao quando ligado. */
+.faixa-item-botao {
+  align-items: flex-start;
+  margin: -8px -10px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-campo);
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition), box-shadow var(--transition);
+}
+.faixa-item-botao:hover { background: var(--gray4); }
+.faixa-item-botao.ativo { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--yellow) 60%, transparent); }
+.faixa-acoes {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.faixa-acoes .btn {
+  height: 38px;
+  padding: 0 14px;
+  border-radius: var(--radius-campo);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ── O painel principal ──────────────────────────── */
+.painel-principal {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  background: var(--sup-painel);
+  border: 1px solid var(--sup-painel-borda);
+  overflow: hidden;
+  animation: faixa-entra .45s var(--curva-anti) 80ms backwards;
+}
+.painel-principal-cabeca {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 60px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--sup-painel-borda);
+}
+.painel-principal-ferramentas {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.painel-principal-corpo {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+.painel-principal > .revelar { flex-shrink: 0; }
+.painel-filtros {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--sup-painel-borda);
+}
+.painel-filtros-limpar {
+  height: 30px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.painel-filtros-limpar:hover { background: var(--gray4); color: var(--black); }
+
+/* As abas em pilula: a escolhida e a pilula de limao que corre por baixo. */
+.abas-pilula {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.abas-pilula-pino {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 36px;
+  border-radius: var(--radius-campo);
+  background: var(--yellow);
+  transition: transform var(--transition-spring), width var(--transition-spring);
+  pointer-events: none;
+}
+.aba-pilula {
+  position: relative;
+  z-index: 1;
+  height: 36px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: var(--radius-campo);
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--gray);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--transition), background var(--transition);
+}
+.aba-pilula:not(.ativa):hover { background: var(--gray4); color: var(--black); }
+.aba-pilula.ativa { color: var(--on-yellow); font-weight: 600; }
+.aba-pilula-conta {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: .65;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A busca do painel e os botoes sem moldura ao lado dela. */
+.painel-busca {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 260px;
+  height: 36px;
+  padding: 0 8px 0 12px;
+  border-radius: var(--radius-campo);
+  background: var(--sup-campo);
+  border: 1px solid var(--sup-campo-borda);
+  color: var(--gray2);
+  cursor: text;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.painel-busca:hover { border-color: var(--gray2); }
+.painel-busca:focus-within { border-color: var(--gray2); box-shadow: 0 0 0 3px var(--gray4); }
+.painel-busca input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--black);
+}
+.painel-busca input::placeholder { color: var(--gray2); }
+.painel-busca-limpar {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.painel-busca-limpar:hover { background: var(--gray4); color: var(--black); }
+.botao-fantasma {
+  height: 36px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: none;
+  border-radius: var(--radius-campo);
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--gray);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition), color var(--transition), box-shadow var(--transition);
+}
+.botao-fantasma:hover { background: var(--gray4); color: var(--black); }
+.botao-fantasma.ativo {
+  color: var(--black);
+  background: color-mix(in srgb, var(--yellow) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--yellow) 50%, transparent);
+}
+.botao-fantasma-conta {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  background: var(--yellow);
+  color: var(--on-yellow);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* ── O quadro dentro do painel ───────────────────── */
+.painel-principal .kanban-board {
+  padding: 12px;
+  gap: 10px;
+}
+.painel-principal .kanban-column:not(.kanban-column-collapsible),
+.painel-principal .kanban-column.kanban-column-collapsible.is-open {
+  flex: 1 1 0;
+  min-width: 210px;
+}
+.painel-principal .kanban-column {
+  padding: 8px;
+  gap: 8px;
+  border: none;
+  border-radius: var(--radius-md);
+}
+.casca-janela .painel-principal .kanban-column:not(.drag-over) { background: var(--sup-coluna); }
+.painel-principal .kanban-column.drag-over {
+  background: color-mix(in srgb, var(--yellow) 6%, var(--sup-coluna));
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--yellow) 55%, transparent);
+}
+.painel-principal .kanban-column-header {
+  padding: 6px 6px 8px;
+  gap: 6px;
+  border-bottom: 1px solid var(--sup-painel-borda);
+}
+.kanban-column-linha {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.casca-janela .painel-principal .kanban-column-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: var(--gray);
+  min-width: 0;
+}
+.kanban-column-conta {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--gray2);
+  white-space: nowrap;
+}
+/* Os botoes da coluna (recolher, criar) aparecem com o ponteiro nela: em
+   repouso a linha e so o nome e a contagem, como no mockup. */
+.painel-principal .kanban-column-linha .kanban-column-fixar {
+  opacity: 0;
+  transition: opacity var(--transition), background var(--transition), color var(--transition);
+}
+.painel-principal .kanban-column:hover .kanban-column-linha .kanban-column-fixar,
+.painel-principal .kanban-column-linha .kanban-column-fixar[aria-pressed="true"],
+.painel-principal .kanban-column-linha .kanban-column-fixar:focus-visible { opacity: 1; }
+.kanban-column-valor {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--texto-forte);
+  font-variant-numeric: tabular-nums;
+}
+.painel-principal .kanban-column-body {
+  padding: 0;
+  gap: 8px;
+}
+
+/* O card do quadro: chapa sem moldura, selo com a inicial, o valor em
+   destaque e o pe com dono, origem e idade. */
+.casca-janela .painel-principal .kanban-card,
+.casca-janela .painel-principal .kanban-card:not(.selecionado) {
+  padding: 12px;
+  gap: 8px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--sup-cartao);
+  box-shadow: none;
+}
+:root:not([data-theme="dark"]) .casca-janela .painel-principal .kanban-card:not(.selecionado) {
+  box-shadow: inset 0 0 0 1px var(--sup-painel-borda);
+}
+.casca-janela .painel-principal .kanban-card:hover {
+  background: var(--sup-cartao-hover);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+}
+.casca-janela .painel-principal .kanban-card.selecionado {
+  background: color-mix(in srgb, var(--yellow) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--yellow) 55%, transparent);
+}
+.painel-principal .kanban-card-topo { align-items: center; gap: 8px; }
+.kanban-card-inicial {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--sup-selo);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--black);
+}
+.kanban-card.selecionado .kanban-card-inicial { background: color-mix(in srgb, var(--texto-forte) 22%, transparent); }
+.painel-principal .kanban-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--texto-forte);
+  -webkit-line-clamp: 1;
+}
+.kanban-card-desc {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--gray);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.painel-principal .kanban-card-meta { margin-top: 0; }
+.painel-principal .kanban-card-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--texto-forte);
+}
+.kanban-card-rodape {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--sup-painel-borda);
+}
+.kanban-card-origem {
+  min-width: 0;
+  font-size: 11px;
+  color: var(--gray2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kanban-card-sinais {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.kanban-card-sinais:empty { display: none; }
+.kanban-card-sinais .kanban-card-files-btn { margin-top: 0; }
+.kanban-card-sinais .kanban-card-comments,
+.kanban-card-sinais .kanban-card-pend { padding: 2px 5px; font-size: 10.5px; }
+.kanban-card-rodape .kanban-card-days {
+  flex-shrink: 0;
+  height: 18px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 4px;
+  background: var(--sup-etiqueta);
+  color: var(--gray);
+  font-size: 10px;
+  font-weight: 600;
+}
+.kanban-card-sinais:empty + .kanban-card-days { margin-left: auto; }
+.kanban-card-rodape .kanban-card-days.late {
+  background: color-mix(in srgb, var(--red) 22%, transparent);
+  color: color-mix(in srgb, var(--red) 55%, var(--texto-forte));
+}
+
+/* A lista dentro do painel dispensa a moldura propria: o painel ja e ela. */
+.painel-principal .admin-table-wrap {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.painel-principal .admin-empty { margin: auto; padding: 48px 20px; }
+
+@media (max-width: 768px) {
+  .faixa-pagina { flex-wrap: wrap; gap: 14px 28px; padding: 14px 16px; }
+  .faixa-titulo { flex: 1 1 100%; }
+  .faixa-acoes { margin-left: 0; flex: 1 1 100%; }
+  .faixa-acoes .btn { flex: 1; }
+  .painel-principal-cabeca { padding: 10px 12px; }
+  .abas-pilula { flex: 1 1 100%; overflow-x: auto; scrollbar-width: none; }
+  .abas-pilula::-webkit-scrollbar { display: none; }
+  .painel-principal-ferramentas { margin-left: 0; flex: 1 1 100%; flex-wrap: wrap; }
+  .painel-busca { flex: 1 1 100%; width: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .faixa-pagina, .faixa-item, .painel-principal { animation: none; }
+  .abas-pilula-pino, .menu-marca-selo, .menu-sair { transition: none; }
+  .app-menu .nav-leaf.ativo { animation: none; }
+}
+
+/* O nome da etapa nunca quebra em duas linhas: corta com reticencias e o
+   nome inteiro continua na dica. A contagem fica inteira ao lado. */
+.casca-janela .painel-principal .kanban-column-title {
+  display: block;
+  flex: 0 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 16px;
+}
+.painel-principal .kanban-column-title .kanban-dot { margin-right: 8px; vertical-align: 1px; }
+.kanban-column-conta { flex-shrink: 0; }
+/* As acoes do card pairam no canto, por cima: em repouso elas nao ocupam a
+   linha, e o nome da empresa usa a largura inteira. */
+.painel-principal .kanban-card-acoes {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  margin: 0;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--sup-cartao-hover);
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+.painel-principal .kanban-card:hover .kanban-card-acoes,
+.painel-principal .kanban-card-acoes:focus-within { opacity: 1; }
+.painel-principal .kanban-board.selecionando .kanban-card-acoes,
+.painel-principal .kanban-card.selecionado .kanban-card-acoes { opacity: 1; }
+
+/* Em repouso a linha da coluna e o nome e a contagem; com o ponteiro na
+   coluna, a contagem da a vez aos botoes (marcar, recolher, criar), no mesmo
+   lugar - a area troca de cara, so em opacidade. */
+.painel-principal .kanban-column-linha > .kanban-column-fixar,
+.painel-principal .kanban-column-linha > .tarefa-marcar-grupo { display: none; }
+.painel-principal .kanban-column:hover .kanban-column-linha > .kanban-column-fixar,
+.painel-principal .kanban-column:hover .kanban-column-linha > .tarefa-marcar-grupo,
+.painel-principal .kanban-column-linha > .kanban-column-fixar[aria-pressed="true"],
+.painel-principal .kanban-board.selecionando .kanban-column-linha > .tarefa-marcar-grupo {
+  display: inline-flex;
+  opacity: 1;
+  animation: apareceSuave .16s var(--curva-anti) backwards;
+}
+.painel-principal .kanban-column:hover .kanban-column-conta + * { margin-left: auto; }
+.painel-principal .kanban-column:hover .kanban-column-conta { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .painel-principal .kanban-column-linha > * { animation: none; }
+}
+
+/* ── Tarefas no desenho do mockup ─────────────────────
+   A segunda linha do painel (busca e atalhos), o botao contornado de criar,
+   o quadro numa chapa so com divisorias entre as colunas e a lista no
+   desenho do backlog: grupos em cartao, colunas em caixa alta e linhas de
+   31px que acendem em limao quando escolhidas. */
+.botao-contorno {
+  height: 36px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--yellow-tinta);
+  border-radius: var(--radius-campo);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--yellow-tinta);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition), color var(--transition), transform var(--transition-spring);
+}
+.botao-contorno:hover { background: var(--yellow); border-color: var(--yellow); color: var(--on-yellow); }
+.botao-contorno:active { transform: scale(.97); }
+
+.painel-principal-barra {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  min-height: 56px;
+  padding: 10px 16px;
+}
+.painel-busca-larga { width: 320px; }
+.painel-principal-divisor {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--sup-painel-borda);
+}
+.painel-principal-barra .admin-toolbar-btn {
+  height: 32px;
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--gray);
+  box-shadow: none;
+}
+.painel-principal-barra .admin-toolbar-btn:hover:not(:disabled) { background: var(--gray4); color: var(--black); }
+.painel-principal-barra + .revelar .painel-filtros { border-top: 1px solid var(--sup-painel-borda); }
+
+/* A faixa: as caras de quem esta com trabalho, uma sobre a outra. */
+.fileira-caras { display: inline-flex; align-items: center; height: 26px; }
+.fileira-cara {
+  display: inline-flex;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg);
+  transition: transform var(--transition-spring);
+}
+.fileira-cara + .fileira-cara { margin-left: -7px; }
+.fileira-caras:hover .fileira-cara { transform: translateX(0); }
+.fileira-cara:hover { transform: translateY(-2px); z-index: 1; }
+.fileira-mais {
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  background: var(--sup-selo);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--black);
+}
+
+/* ── O quadro de tarefas: uma chapa so, colunas com divisoria ── */
+.quadro-titulo {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  margin: 0;
+  padding: 0 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--texto-forte);
+}
+.quadro-titulo span { font-weight: 400; color: var(--gray2); }
+.visao-quadro .kanban-board {
+  margin: 0 16px 16px;
+  padding: 0;
+  gap: 0;
+  border-radius: 14px;
+  background: var(--sup-coluna);
+  overflow-x: auto;
+}
+.casca-janela .visao-quadro .kanban-column:not(.drag-over),
+.visao-quadro .kanban-column {
+  background: transparent;
+  border-radius: 0;
+  padding: 6px 8px 8px;
+}
+.visao-quadro .kanban-column + .kanban-column { box-shadow: inset 1px 0 0 var(--sup-painel-borda); }
+.visao-quadro .kanban-column.drag-over {
+  background: color-mix(in srgb, var(--yellow) 6%, transparent);
+}
+.visao-quadro .kanban-column-header {
+  padding: 8px 4px 2px;
+  border-bottom: none;
+  gap: 6px;
+}
+.casca-janela .visao-quadro .kanban-column-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: var(--gray2);
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.visao-quadro .kanban-conta-bolha {
+  height: 16px;
+  min-width: 16px;
+  padding: 0 5px;
+  background: transparent;
+  font-size: 10px;
+  color: var(--gray2);
+}
+.visao-quadro .kanban-column-header .kanban-column-fixar,
+.visao-quadro .kanban-column-header .tarefa-marcar-grupo {
+  opacity: 0;
+  transition: opacity var(--transition), background var(--transition), color var(--transition);
+}
+.visao-quadro .kanban-column:hover .kanban-column-header .kanban-column-fixar,
+.visao-quadro .kanban-column-header .kanban-column-fixar[aria-pressed="true"],
+.visao-quadro .kanban-column-header .kanban-column-fixar:focus-visible,
+.visao-quadro .kanban-board.selecionando .kanban-column-header .tarefa-marcar-grupo,
+.visao-quadro .kanban-column:hover .kanban-column-header .tarefa-marcar-grupo { opacity: 1; }
+
+/* O cartao da tarefa: chave em cima, titulo, pe com quem faz e o prazo. */
+.tarefa-cartao-topo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding-right: 4px;
+  font-size: 12px;
+  color: var(--gray);
+}
+.tarefa-cartao-chave { flex-shrink: 0; font-variant-numeric: tabular-nums; opacity: .85; }
+.tarefa-cartao-projeto {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--gray2);
+}
+.tarefa-cartao-projeto::before { content: '·'; margin-right: 6px; }
+.tarefa-cartao-titulo {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--texto-forte);
+}
+.tarefa-cartao-etiquetas { display: flex; flex-wrap: wrap; gap: 4px; }
+.tarefa-cartao-rodape {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 7px;
+  font-size: 12px;
+  color: var(--gray);
+}
+.tarefa-cartao-dono { white-space: nowrap; }
+.tarefa-cartao-prazo { margin-left: auto; white-space: nowrap; }
+.tarefa-cartao.concluida .tarefa-cartao-titulo { color: var(--gray2); text-decoration: line-through; }
+/* A escolhida acende inteira em limao, com o texto escuro por cima. */
+.casca-janela .painel-principal .kanban-card.tarefa-cartao.selecionado {
+  background: var(--yellow);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--yellow) 28%, transparent);
+}
+.tarefa-cartao.selecionado,
+.tarefa-cartao.selecionado .tarefa-cartao-topo,
+.tarefa-cartao.selecionado .tarefa-cartao-projeto,
+.tarefa-cartao.selecionado .tarefa-cartao-titulo,
+.tarefa-cartao.selecionado .tarefa-cartao-rodape,
+.tarefa-cartao.selecionado .tarefa-cartao-rodape * { color: var(--on-yellow); }
+.painel-principal .tarefa-cartao .kanban-card-acoes { top: 7px; right: 7px; }
+
+/* ── A lista: o backlog do mockup ──────────────────── */
+.backlog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+.backlog-grupo {
+  padding: 6px 8px 8px;
+  border-radius: 14px;
+  background: var(--sup-faixa);
+  border: 1px solid var(--sup-faixa-borda);
+  animation: faixa-entra .35s var(--curva-anti) backwards;
+}
+.backlog-grupo:nth-child(2) { animation-delay: 50ms; }
+.backlog-grupo:nth-child(3) { animation-delay: 100ms; }
+.backlog-grupo:nth-child(n+4) { animation-delay: 150ms; }
+.backlog-grupo-cabeca {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 6px;
+}
+.backlog-grupo-selo {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--cor);
+  background: color-mix(in srgb, var(--cor) 18%, transparent);
+}
+.backlog-grupo-nome { font-size: 13px; font-weight: 600; color: var(--texto-forte); }
+.backlog-grupo-qtd { font-size: 13px; color: var(--gray2); }
+.backlog-colunas,
+.backlog-linha {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 160px 96px 104px 104px 28px;
+  align-items: center;
+  column-gap: 8px;
+  padding: 0 8px;
+}
+.backlog-colunas {
+  height: 26px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.backlog-linha {
+  height: 34px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--black);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.backlog-linha:hover { background: var(--gray4); }
+.backlog-linha:focus-visible { outline: none; background: var(--gray4); }
+.backlog-linha.selecionado { background: var(--yellow); color: var(--on-yellow); }
+.backlog-linha.selecionado .backlog-linha-sub,
+.backlog-linha.selecionado .backlog-linha-prio,
+.backlog-linha.selecionado span { color: var(--on-yellow); }
+.backlog-linha.concluida .backlog-linha-texto { color: var(--gray2); text-decoration: line-through; }
+.backlog-linha-marca {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+.backlog-linha-marca .tarefa-marcar { position: absolute; inset: 0; justify-content: center; }
+.backlog-linha:hover .backlog-linha-marca .kanban-dot,
+.backlog.selecionando .backlog-linha-marca .kanban-dot { opacity: 0; }
+.backlog-linha-titulo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.backlog-linha-texto {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.backlog-linha-sub {
+  font-size: 12px;
+  color: var(--gray);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.backlog-linha-prio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--gray);
+}
+.backlog-linha-excluir { width: 24px; height: 24px; }
+.backlog-linha:hover .backlog-linha-excluir { opacity: 1; }
+.visao-tabela .admin-table-wrap { margin: 0 16px 16px; }
+
+@media (max-width: 900px) {
+  .backlog-colunas { display: none; }
+  .backlog-linha { grid-template-columns: 28px minmax(0, 1fr) auto auto; height: auto; min-height: 38px; padding: 6px 8px; }
+  .backlog-linha > :nth-child(3),
+  .backlog-linha > :nth-child(6),
+  .backlog-linha > :nth-child(7) { display: none; }
+}
+@media (max-width: 768px) {
+  .painel-busca-larga { width: auto; flex: 1 1 100%; }
+  .painel-principal-barra { gap: 8px; padding: 10px 12px; }
+  .painel-principal-divisor { display: none; }
+  .quadro-titulo { padding: 0 14px; }
+  .visao-quadro .kanban-board { margin: 0 10px 10px; }
+  .backlog { padding: 0 10px 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .backlog-grupo { animation: none; }
+  .fileira-cara, .botao-contorno { transition: none; }
+}
+
+/* O item escolhido do menu leva o texto escuro sobre o limao. A regra de cor
+   do item, acima, tem o mesmo peso e vinha depois, e pintava o texto do
+   escolhido de cinza claro. */
+.app-menu .nav-leaf.ativo,
+.app-menu .nav-leaf.ativo:not(:disabled):hover,
+.app-menu .nav-leaf.ativo:focus-visible { color: var(--on-yellow); }
+
+/* ── O menu em trilho ──────────────────────────────────
+   No computador o menu mora recolhido num trilho de 72px, so com os icones.
+   Com o ponteiro em cima (ou o teclado dentro), o painel cresce por cima da
+   pagina e mostra os nomes; saiu, ele recolhe. Quem cresce e o painel, e nao
+   a coluna da grade: a pagina fica parada em vez de andar de lado a cada
+   passada do mouse. A seta do alto fixa o menu aberto, e a escolha fica
+   guardada. Os filhos do painel tem a largura do menu aberto o tempo todo:
+   o recolher so recorta, e nada requebra de linha no meio do movimento. */
+:root { --menu-flutuante: rgba(255, 255, 255, .46); }
+:root[data-theme="dark"] { --menu-flutuante: rgba(14, 22, 18, .5); }
+
+.app-menu-painel { display: flex; flex-direction: column; height: 100%; }
+.menu-trilho > .app-menu-painel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 72px;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 26px 0 0 26px;
+  transition: width var(--transition-spring), box-shadow var(--transition-spring);
+}
+.menu-trilho > .app-menu-painel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  /* O mesmo vidro da janela: a pagina passa por tras, borrada, em vez de
+     uma chapa quase solida tampar o que o menu cobre. */
+  background: var(--menu-flutuante);
+  backdrop-filter: blur(30px) saturate(160%);
+  -webkit-backdrop-filter: blur(30px) saturate(160%);
+  border-right: 1px solid var(--janela-borda);
+  opacity: 0;
+  transition: opacity var(--transition-spring);
+  pointer-events: none;
+}
+.menu-trilho > .app-menu-painel > * { width: 192px; flex-shrink: 0; }
+.menu-trilho > .app-menu-painel > .menu-navegacao { flex: 1 1 auto; }
+
+/* Aberto pelo ponteiro: um respiro curto antes de crescer, para so atravessar
+   o trilho a caminho da pagina nao abrir o menu. */
+.menu-trilho:hover > .app-menu-painel,
+.menu-trilho:has(:focus-visible) > .app-menu-painel {
+  width: 224px;
+  box-shadow: 24px 0 50px -24px rgba(0, 0, 0, .55);
+  transition: width var(--transition-spring) .09s, box-shadow var(--transition-spring) .09s;
+}
+.menu-trilho:hover > .app-menu-painel::before,
+.menu-trilho:has(:focus-visible) > .app-menu-painel::before { opacity: 1; }
+
+/* Os icones alinham no meio do trilho: o selo, os itens e a foto. */
+.menu-marca { padding: 0 3px; }
+.app-menu .nav-leaf { padding: 0 12px; overflow: hidden; white-space: nowrap; }
+.casca-janela .app-menu-rodape,
+.app-menu .app-menu-rodape { padding: 8px 8px 8px 4px; overflow: hidden; }
+
+/* Recolhido, o que e texto some em opacidade e os itens encolhem para o
+   tamanho do icone - a pilula do escolhido vira um quadrado limao. */
+.menu-trilho .nav-leaf,
+.menu-trilho .app-menu-rodape {
+  transition: width var(--transition-spring), background var(--transition), color var(--transition);
+}
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .nav-leaf { width: 40px; }
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .app-menu-rodape {
+  width: 40px;
+  background: transparent;
+}
+.menu-trilho .nav-leaf-texto,
+.menu-trilho .nav-leaf-breve,
+.menu-trilho .menu-marca-nome,
+.menu-trilho .menu-recolher,
+.menu-trilho .app-menu-secao,
+.menu-trilho .menu-usuario-texto,
+.menu-trilho .menu-sair,
+.menu-trilho .reportar-cartao {
+  transition: opacity var(--transition-spring), visibility 0s linear .18s;
+}
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .nav-leaf-texto,
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .nav-leaf-breve,
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .menu-marca-nome,
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .menu-recolher,
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .app-menu-secao,
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .menu-usuario-texto,
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .menu-sair,
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .reportar-cartao {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.menu-trilho:hover .nav-leaf-texto,
+.menu-trilho:hover .menu-marca-nome,
+.menu-trilho:hover .app-menu-secao,
+.menu-trilho:hover .menu-usuario-texto,
+.menu-trilho:hover .reportar-cartao { transition: opacity var(--transition-spring) .12s, visibility 0s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-trilho > .app-menu-painel,
+  .menu-trilho > .app-menu-painel::before,
+  .menu-trilho .nav-leaf,
+  .menu-trilho .app-menu-rodape,
+  .menu-trilho .nav-leaf-texto,
+  .menu-trilho .menu-marca-nome,
+  .menu-trilho .app-menu-secao,
+  .menu-trilho .menu-usuario-texto,
+  .menu-trilho .reportar-cartao { transition: none; }
+}
+
+/* A logo no alto do menu: o carneiro sozinho no trilho, a assinatura inteira
+   com o menu aberto. As duas moram no mesmo lugar e trocam em opacidade. */
+.menu-marca-logos {
+  position: relative;
+  display: block;
+  flex-shrink: 0;
+  width: 112px;
+  height: 32px;
+}
+.menu-marca-logos img {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  display: block;
+  width: auto;
+  transform: translateY(-50%);
+  transition: opacity var(--transition-spring), transform var(--transition-spring);
+}
+.menu-marca-simbolo { height: 26px; opacity: 0; }
+.menu-marca-assinatura { height: 32px; }
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .menu-marca-simbolo { opacity: 1; }
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .menu-marca-assinatura { opacity: 0; }
+.menu-marca:hover .menu-marca-assinatura { transform: translateY(-50%) scale(1.03); }
+@media (prefers-reduced-motion: reduce) {
+  .menu-marca-logos img { transition: none; }
+}
+
+/* ── O painel da casa no desenho do mockup ─────────────
+   Faixa, quatro numeros, o comercial ao lado da semana e a tabela dos
+   projetos. A pagina inteira cabe na janela: so a tabela rola, por dentro. */
+:root {
+  --proj-0: #8A9A00; --proj-0-fundo: rgba(138, 154, 0, .16);
+  --proj-1: #C0367A; --proj-1-fundo: rgba(236, 72, 153, .14);
+  --proj-2: #0F8F80; --proj-2-fundo: rgba(45, 212, 191, .16);
+  --proj-3: #A86A00; --proj-3-fundo: rgba(251, 191, 36, .2);
+  --proj-4: #2F6FD6; --proj-4-fundo: rgba(96, 165, 250, .18);
+  --proj-5: #7A4BD8; --proj-5-fundo: rgba(167, 139, 250, .18);
+  --sit-prazo: #1E8A3E; --sit-prazo-fundo: rgba(34, 197, 94, .16);
+  --sit-atencao: #A86A00; --sit-atencao-fundo: rgba(245, 158, 11, .18);
+  --sit-atrasado: #C42B21; --sit-atrasado-fundo: rgba(239, 68, 68, .14);
+  --delta-bom: var(--green);
+  --delta-ruim: var(--red);
+}
+:root[data-theme="dark"] {
+  --proj-0: #E9FC00; --proj-0-fundo: rgba(233, 252, 0, .2);
+  --proj-1: #F9A8D4; --proj-1-fundo: rgba(236, 72, 153, .22);
+  --proj-2: #5EEAD4; --proj-2-fundo: rgba(45, 212, 191, .2);
+  --proj-3: #FCD34D; --proj-3-fundo: rgba(251, 191, 36, .2);
+  --proj-4: #93C5FD; --proj-4-fundo: rgba(96, 165, 250, .2);
+  --proj-5: #C4B5FD; --proj-5-fundo: rgba(167, 139, 250, .2);
+  --sit-prazo: #86EFAC; --sit-prazo-fundo: rgba(34, 197, 94, .2);
+  --sit-atencao: #FCD34D; --sit-atencao-fundo: rgba(245, 158, 11, .22);
+  --sit-atrasado: #FCA5A5; --sit-atrasado-fundo: rgba(239, 68, 68, .22);
+  --delta-bom: #86EFAC;
+  --delta-ruim: #FCA5A5;
+}
+
+/* Numa janela alta tudo cabe e so a tabela rola; numa baixa, a pagina rola. */
+.pagina-painel { overflow: auto; }
+.pagina-painel .painel-projetos { min-height: 220px; }
+
+/* Os quatro numeros. */
+.painel-numeros {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.painel-numero {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  border-radius: var(--radius-lg);
+  background: var(--sup-faixa);
+  border: 1px solid var(--sup-faixa-borda);
+  animation: faixa-entra .4s var(--curva-anti) backwards;
+  transition: transform var(--transition-spring), box-shadow var(--transition-spring);
+}
+.painel-numero:nth-child(2) { animation-delay: 50ms; }
+.painel-numero:nth-child(3) { animation-delay: 100ms; }
+.painel-numero:nth-child(4) { animation-delay: 150ms; }
+.painel-numero:hover { transform: translateY(-2px); box-shadow: var(--shadow-card-hover); }
+.painel-numero-rotulo {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.painel-numero-linha { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.painel-numero-valor {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -.02em;
+  line-height: 1.1;
+  color: var(--texto-forte);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.painel-numero-delta {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--delta-ruim);
+  white-space: nowrap;
+}
+.painel-numero-delta.bom { color: var(--delta-bom); }
+.painel-numero-detalhe { font-size: 12px; color: var(--gray2); }
+
+/* O meio: o grafico largo e a semana ao lado. */
+.painel-meio {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 12px;
+  height: 300px;
+}
+.painel-cartao {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+  border-radius: var(--radius-lg);
+  background: var(--sup-painel);
+  border: 1px solid var(--sup-painel-borda);
+  animation: faixa-entra .45s var(--curva-anti) 120ms backwards;
+}
+.painel-cartao-topo { display: flex; align-items: center; gap: 4px; }
+.painel-cartao-titulo {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--texto-forte);
+}
+.painel-janelas { margin-left: auto; display: flex; gap: 4px; }
+.painel-janela {
+  height: 30px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  color: var(--gray);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.painel-janela:not(.ativa):hover { background: var(--gray4); color: var(--black); }
+.painel-janela.ativa { background: var(--yellow); color: var(--on-yellow); font-weight: 600; }
+.painel-link {
+  margin-left: auto;
+  padding: 4px 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--yellow-tinta);
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.painel-link:hover { background: var(--gray4); }
+.painel-cartao .painel-vazio { margin: auto; font-size: 13px; color: var(--gray2); }
+.painel-cartao .dux-spinner-row { flex: 1; }
+
+/* As barras do comercial. */
+.barras-mes { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.barras-mes-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding-top: 18px;
+  border-bottom: 1px solid var(--sup-campo-borda);
+}
+.barras-mes-col {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  cursor: default;
+}
+.barras-mes-numero {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--texto-forte);
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity var(--transition), transform var(--transition-spring);
+}
+.barras-mes-col.atual .barras-mes-numero,
+.barras-mes-col:hover .barras-mes-numero { opacity: 1; transform: none; }
+.barras-mes-barra {
+  width: 100%;
+  max-width: 30px;
+  border-radius: 6px 6px 2px 2px;
+  background: color-mix(in srgb, var(--yellow) 26%, transparent);
+  transform-origin: bottom;
+  animation: barra-sobe .5s var(--curva-anti) backwards;
+  transition: background var(--transition);
+}
+:root:not([data-theme="dark"]) .barras-mes-barra { background: color-mix(in srgb, var(--yellow-tinta) 30%, transparent); }
+.barras-mes-col:hover .barras-mes-barra { background: color-mix(in srgb, var(--yellow) 55%, transparent); }
+.barras-mes-col.atual .barras-mes-barra { background: var(--yellow); }
+@keyframes barra-sobe {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+.barras-mes-eixo { display: flex; gap: 12px; }
+.barras-mes-eixo span { flex: 1; text-align: center; font-size: 11px; color: var(--gray2); }
+
+/* A semana de quem abriu. */
+.painel-semana { gap: 6px; padding: 18px 16px; }
+.painel-semana .painel-cartao-topo { padding: 0 4px 6px; }
+.painel-semana .lista-anima { display: flex; flex-direction: column; min-height: 0; overflow: auto; scrollbar-width: none; }
+.semana-linha {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 40px;
+  flex-shrink: 0;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.semana-linha:hover { background: var(--gray4); }
+.semana-icone {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  background: var(--cor);
+}
+.semana-texto { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.semana-titulo {
+  font-size: 13px;
+  color: var(--texto-forte);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.semana-sub {
+  font-size: 11px;
+  color: var(--gray2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.semana-status {
+  flex-shrink: 0;
+  height: 20px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 5px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  background: color-mix(in srgb, var(--cor) 22%, transparent);
+  color: color-mix(in srgb, var(--cor) 60%, var(--texto-forte));
+}
+
+/* A tabela dos projetos. */
+.painel-projetos {
+  flex: 1;
+  min-height: 160px;
+  gap: 0;
+  padding: 6px 12px 8px;
+  overflow: hidden;
+  animation-delay: 180ms;
+}
+.painel-projetos-cabeca,
+.projeto-linha {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1.3fr) 110px 120px;
+  align-items: center;
+  padding: 0 8px;
+}
+.painel-projetos-cabeca {
+  flex-shrink: 0;
+  height: 36px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.painel-projetos-corpo { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; }
+.projeto-linha {
+  width: 100%;
+  height: 48px;
+  border: none;
+  border-top: 1px solid var(--sup-painel-borda);
+  border-radius: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--black);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.projeto-linha:hover { background: var(--gray4); }
+.projeto-nome { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.projeto-sigla {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--proj-fundo);
+  color: var(--proj-cor);
+  transition: transform var(--transition-spring);
+}
+.projeto-linha:hover .projeto-sigla { transform: scale(1.08); }
+.projeto-textos { display: flex; flex-direction: column; min-width: 0; }
+.projeto-titulo,
+.projeto-cliente,
+.projeto-entrega { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.projeto-titulo { font-weight: 500; color: var(--texto-forte); }
+.projeto-cliente { font-size: 11px; color: var(--gray2); }
+.projeto-entrega { padding-right: 12px; }
+.projeto-progresso { display: flex; align-items: center; gap: 10px; padding-right: 24px; }
+.projeto-trilho {
+  flex: 1;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--sup-etiqueta);
+  overflow: hidden;
+}
+.projeto-barra {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--proj-cor);
+  transform-origin: left;
+  animation: barra-cresce .6s var(--curva-anti) backwards;
+}
+@keyframes barra-cresce {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+.projeto-pct { width: 34px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.projeto-prazo { color: var(--gray); }
+.cor-projeto-0 { --proj-cor: var(--proj-0); --proj-fundo: var(--proj-0-fundo); }
+.cor-projeto-1 { --proj-cor: var(--proj-1); --proj-fundo: var(--proj-1-fundo); }
+.cor-projeto-2 { --proj-cor: var(--proj-2); --proj-fundo: var(--proj-2-fundo); }
+.cor-projeto-3 { --proj-cor: var(--proj-3); --proj-fundo: var(--proj-3-fundo); }
+.cor-projeto-4 { --proj-cor: var(--proj-4); --proj-fundo: var(--proj-4-fundo); }
+.cor-projeto-5 { --proj-cor: var(--proj-5); --proj-fundo: var(--proj-5-fundo); }
+.chip-situacao {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 5px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  background: var(--sup-etiqueta);
+  color: var(--gray);
+}
+.chip-situacao.prazo { background: var(--sit-prazo-fundo); color: var(--sit-prazo); }
+.chip-situacao.atencao { background: var(--sit-atencao-fundo); color: var(--sit-atencao); }
+.chip-situacao.atrasado { background: var(--sit-atrasado-fundo); color: var(--sit-atrasado); }
+
+@media (max-width: 1100px) {
+  .painel-numeros { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .painel-meio { grid-template-columns: 1fr; height: auto; }
+  .painel-meio .painel-cartao:first-child { height: 280px; }
+  .pagina-painel { overflow: auto; }
+  .painel-projetos { flex: none; }
+}
+@media (max-width: 768px) {
+  .painel-numero-valor { font-size: 24px; }
+  .painel-projetos-cabeca { display: none; }
+  .projeto-linha {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "nome sit" "prog prog";
+    height: auto;
+    row-gap: 8px;
+    padding: 10px 8px;
+  }
+  .projeto-linha > :nth-child(1) { grid-area: nome; }
+  .projeto-linha > :nth-child(3) { grid-area: prog; padding-right: 0; }
+  .projeto-linha > :nth-child(5) { grid-area: sit; }
+  .projeto-linha > :nth-child(2),
+  .projeto-linha > :nth-child(4) { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .painel-numero, .painel-cartao, .barras-mes-barra, .projeto-barra { animation: none; }
+  .painel-numero, .barras-mes-numero, .projeto-sigla { transition: none; }
+}
+.barras-mes { position: relative; }
+.barras-mes-aviso {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 38%;
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--gray2);
+}
+
+/* A secao PROJETOS do menu: o selo com a inicial na cor do projeto faz o
+   papel do icone, entao ele se alinha com os icones no trilho. */
+.menu-projeto-selo {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin: 0 -1.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background: var(--proj-fundo, var(--sup-selo));
+  color: var(--proj-cor, var(--gray));
+  transition: transform var(--transition-spring);
+}
+.app-menu .nav-leaf.menu-projeto .nav-leaf-ico,
+.app-menu .nav-leaf.menu-projeto:not(:disabled):hover .nav-leaf-ico { color: var(--proj-cor); }
+.menu-projeto:hover .menu-projeto-selo { transform: scale(1.1); }
+.menu-projetos-todos .menu-projeto-selo { font-size: 9px; }
+.menu-projeto .nav-leaf-texto { overflow: hidden; text-overflow: ellipsis; }
+@media (prefers-reduced-motion: reduce) {
+  .menu-projeto-selo { transition: none; }
+}
+
+/* A contagem ao lado do nome da tela: bolinha discreta no canto do item. No
+   escolhido ela escurece junto com o texto, sobre o limao. Quando o numero
+   muda ela remonta e da um pulinho, para a mudanca ser notada. */
+.nav-leaf-conta {
+  margin-left: auto;
+  flex-shrink: 0;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  background: var(--sup-selo);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--black);
+  font-variant-numeric: tabular-nums;
+  animation: conta-pula .32s var(--curva-anti);
+}
+:root[data-theme="dark"] .nav-leaf-conta { background: rgba(255, 255, 255, .14); }
+.app-menu .nav-leaf.ativo .nav-leaf-conta {
+  background: color-mix(in srgb, var(--on-yellow) 14%, transparent);
+  color: var(--on-yellow);
+}
+@keyframes conta-pula {
+  0%   { transform: scale(.6); opacity: 0; }
+  60%  { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); }
+}
+/* No trilho a contagem some com o nome, e volta quando o menu abre. */
+.menu-trilho .nav-leaf-conta { transition: opacity var(--transition-spring); }
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .nav-leaf-conta { opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .nav-leaf-conta { animation: none; }
+}
+
+/* ══ Movimento de entrada das paginas ══════════════════════════════════════
+   Toda vez que se abre uma tela ela se monta diante do olho, de cima para
+   baixo e da esquerda para a direita: a pagina sobe de leve, a faixa passa um
+   brilho, os numeros contam (o `ContaAnimada`), as barras crescem e os cards
+   entram em escada, coluna a coluna. Os atrasos sao curtos - a tela inteira
+   esta de pe em menos de um segundo - para o movimento ser vida, e nao espera. */
+
+/* A pagina inteira chega subindo. Cada tela remonta ao ser aberta, entao isto
+   toca a cada acesso. */
+.casca-janela .admin-content-wrap { animation: pagina-entra .42s var(--curva-anti) backwards; }
+@keyframes pagina-entra {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* O brilho que atravessa a faixa uma vez, logo depois de ela pousar. */
+.faixa-pagina { position: relative; overflow: hidden; isolation: isolate; }
+.faixa-pagina::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(100deg, transparent 30%,
+    color-mix(in srgb, var(--yellow) 10%, transparent) 50%, transparent 70%);
+  transform: translateX(-100%);
+  animation: faixa-brilho 1.4s var(--curva-anti) .35s forwards;
+  pointer-events: none;
+}
+@keyframes faixa-brilho {
+  to { transform: translateX(100%); }
+}
+/* O botao principal da faixa acende uma vez ao chegar, como quem diz "comece
+   por aqui". */
+.faixa-acoes .btn-primary { animation: botao-acende .9s var(--curva-anti) .5s backwards; }
+@keyframes botao-acende {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--yellow) 55%, transparent); transform: scale(.96); opacity: 0; }
+  40%  { opacity: 1; transform: scale(1.02); }
+  100% { box-shadow: 0 0 0 14px transparent; transform: none; }
+}
+
+/* Os numeros pulsam de leve enquanto contam: a conta e o movimento, o
+   pulso so marca a chegada. */
+.conta-animada { display: inline-block; animation: conta-chega .5s var(--curva-anti) backwards; }
+@keyframes conta-chega {
+  from { opacity: 0; transform: translateY(6px); filter: blur(2px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+
+/* ── Cards do quadro em escada ─────────────────────── */
+.kanban-board > .kanban-column:nth-child(1) { --atraso-col: 0ms; }
+.kanban-board > .kanban-column:nth-child(2) { --atraso-col: 55ms; }
+.kanban-board > .kanban-column:nth-child(3) { --atraso-col: 110ms; }
+.kanban-board > .kanban-column:nth-child(4) { --atraso-col: 165ms; }
+.kanban-board > .kanban-column:nth-child(5) { --atraso-col: 220ms; }
+.kanban-board > .kanban-column:nth-child(n+6) { --atraso-col: 275ms; }
+.painel-principal .kanban-column-body > .kanban-card {
+  animation: card-entra .45s var(--curva-anti) backwards;
+  animation-delay: calc(var(--atraso-col, 0ms) + 120ms + var(--atraso-card, 0ms));
+}
+.painel-principal .kanban-column-body > .kanban-card:nth-child(2) { --atraso-card: 45ms; }
+.painel-principal .kanban-column-body > .kanban-card:nth-child(3) { --atraso-card: 90ms; }
+.painel-principal .kanban-column-body > .kanban-card:nth-child(4) { --atraso-card: 135ms; }
+.painel-principal .kanban-column-body > .kanban-card:nth-child(5) { --atraso-card: 180ms; }
+.painel-principal .kanban-column-body > .kanban-card:nth-child(n+6) { --atraso-card: 225ms; }
+@keyframes card-entra {
+  from { opacity: 0; transform: translateY(12px) scale(.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── Linhas de lista e tabela em escada ────────────── */
+.backlog-grupo .lista-anima > .backlog-linha,
+.painel-principal .admin-table tbody tr,
+.painel-projetos-corpo > .projeto-linha,
+.painel-semana .lista-anima > .semana-linha {
+  animation: linha-entra .38s var(--curva-anti) backwards;
+}
+.backlog-grupo .lista-anima > :nth-child(2),
+.painel-principal .admin-table tbody tr:nth-child(2),
+.painel-projetos-corpo > :nth-child(2),
+.painel-semana .lista-anima > :nth-child(2) { animation-delay: 40ms; }
+.backlog-grupo .lista-anima > :nth-child(3),
+.painel-principal .admin-table tbody tr:nth-child(3),
+.painel-projetos-corpo > :nth-child(3),
+.painel-semana .lista-anima > :nth-child(3) { animation-delay: 80ms; }
+.backlog-grupo .lista-anima > :nth-child(4),
+.painel-principal .admin-table tbody tr:nth-child(4),
+.painel-projetos-corpo > :nth-child(4),
+.painel-semana .lista-anima > :nth-child(4) { animation-delay: 120ms; }
+.backlog-grupo .lista-anima > :nth-child(5),
+.painel-principal .admin-table tbody tr:nth-child(5),
+.painel-projetos-corpo > :nth-child(5),
+.painel-semana .lista-anima > :nth-child(5) { animation-delay: 160ms; }
+.backlog-grupo .lista-anima > :nth-child(n+6),
+.painel-principal .admin-table tbody tr:nth-child(n+6),
+.painel-projetos-corpo > :nth-child(n+6),
+.painel-semana .lista-anima > :nth-child(n+6) { animation-delay: 200ms; }
+@keyframes linha-entra {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* As barras do painel crescem mais devagar e com uma sobra no fim, como mola. */
+.barras-mes-barra { animation: barra-sobe-mola .7s cubic-bezier(.34, 1.4, .64, 1) backwards; }
+@keyframes barra-sobe-mola {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+.projeto-barra { animation-duration: .9s; }
+
+/* O selo do projeto gira de leve ao chegar. */
+.projeto-sigla { animation: selo-chega .5s var(--curva-anti) backwards; animation-delay: inherit; }
+@keyframes selo-chega {
+  from { transform: rotate(-12deg) scale(.7); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+
+/* ── O menu se monta na primeira entrada ───────────── */
+.app-menu .menu-grupo > .nav-leaf { animation: linha-entra .36s var(--curva-anti) backwards; }
+.app-menu .menu-grupo > .nav-leaf:nth-child(2) { animation-delay: 40ms; }
+.app-menu .menu-grupo > .nav-leaf:nth-child(3) { animation-delay: 80ms; }
+.app-menu .menu-grupo > .nav-leaf:nth-child(4) { animation-delay: 120ms; }
+.app-menu .menu-grupo > .nav-leaf:nth-child(5) { animation-delay: 160ms; }
+.app-menu .menu-grupo > .nav-leaf:nth-child(n+6) { animation-delay: 200ms; }
+/* O escolhido mantem a sua propria entrada, a do limao acendendo. */
+.app-menu .menu-grupo > .nav-leaf.ativo { animation: nav-acende-limpo .34s var(--curva-anti); }
+
+
+@media (prefers-reduced-motion: reduce) {
+  .casca-janela .admin-content-wrap,
+  .faixa-pagina::after,
+  .faixa-acoes .btn-primary,
+  .conta-animada,
+  .painel-principal .kanban-column-body > .kanban-card,
+  .backlog-grupo .lista-anima > .backlog-linha,
+  .painel-principal .admin-table tbody tr,
+  .painel-projetos-corpo > .projeto-linha,
+  .painel-semana .lista-anima > .semana-linha,
+  .barras-mes-barra,
+  .projeto-sigla,
+  .app-menu .menu-grupo > .nav-leaf { animation: none; }
+  .faixa-pagina::after { display: none; }
+}
+
+/* ══ Dicas ricas do painel ══════════════════════════════════════════════════
+   O cartao de vidro que abre sobre um numero, uma barra ou uma linha e mostra
+   o que ela resume. Nasce crescendo a partir da peca (a origem do movimento e
+   a borda virada para ela), o conteudo entra em escada logo depois, as barras
+   de dentro crescem, e na saida ele encolhe antes de desmontar. */
+:root { --dica-fundo: rgba(255, 255, 255, .9); --dica-borda: rgba(20, 24, 18, .1); }
+:root[data-theme="dark"] { --dica-fundo: rgba(16, 26, 21, .88); --dica-borda: rgba(255, 255, 255, .1); }
+
+.dica-rica {
+  position: fixed;
+  z-index: 10060;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  transition: left var(--transition-spring);
+}
+.dica-rica.abaixo { transform: translate(-50%, 0); }
+.dica-rica-corpo {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--dica-fundo);
+  border: 1px solid var(--dica-borda);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  box-shadow: 0 24px 60px -18px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .05);
+  color: var(--black);
+  transform-origin: 50% 100%;
+  animation: dica-abre .26s var(--curva-anti) both;
+}
+.dica-rica.abaixo .dica-rica-corpo { transform-origin: 50% 0; }
+.dica-rica.saindo .dica-rica-corpo { animation: dica-fecha .16s var(--curva-anti) both; }
+@keyframes dica-abre {
+  from { opacity: 0; transform: translateY(8px) scale(.94); filter: blur(3px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+.dica-rica.abaixo .dica-rica-corpo { animation-name: dica-abre-baixo; }
+@keyframes dica-abre-baixo {
+  from { opacity: 0; transform: translateY(-8px) scale(.94); filter: blur(3px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+@keyframes dica-fecha {
+  to { opacity: 0; transform: scale(.96); }
+}
+/* O conteudo entra depois do cartao, em escada. */
+.dica-rica-corpo > * { animation: linha-entra .3s var(--curva-anti) backwards; }
+.dica-rica-corpo > :nth-child(2) { animation-delay: 50ms; }
+.dica-rica-corpo > :nth-child(3) { animation-delay: 90ms; }
+.dica-rica-corpo > :nth-child(4) { animation-delay: 130ms; }
+.dica-rica-corpo > :nth-child(n+5) { animation-delay: 170ms; }
+
+.dica-topo { display: flex; flex-direction: column; gap: 3px; }
+.dica-rotulo {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.dica-valor {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--texto-forte);
+  line-height: 1.25;
+}
+.dica-nota { margin-left: 8px; font-size: 12px; font-weight: 500; color: var(--gray2); }
+.dica-secao {
+  margin: 2px 0 -4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.dica-rodape { margin: 0; font-size: 11.5px; color: var(--gray2); }
+
+/* A composicao: uma barra de fatias e a legenda embaixo. */
+.dica-composicao { display: flex; flex-direction: column; gap: 8px; }
+.dica-composicao-barra {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: var(--sup-etiqueta);
+}
+.dica-composicao-barra > span {
+  height: 100%;
+  transform-origin: left;
+  animation: barra-cresce .55s var(--curva-anti) backwards;
+}
+.dica-legenda { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.dica-legenda-item { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--gray); }
+.dica-legenda-item strong { color: var(--texto-forte); font-weight: 600; }
+.dica-legenda-ponto { width: 7px; height: 7px; flex-shrink: 0; border-radius: 2px; }
+
+/* A lista de itens, com nome, apoio em italico, mini barra e o numero. */
+.dica-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.dica-lista li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12.5px;
+  animation: linha-entra .3s var(--curva-anti) backwards;
+}
+.dica-lista li.destaque .dica-lista-nome { color: var(--texto-forte); font-weight: 600; }
+.dica-lista-nome {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  color: var(--black);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dica-lista-nome em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--gray2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dica-lista strong { flex-shrink: 0; font-size: 12px; font-weight: 600; color: var(--texto-forte); font-variant-numeric: tabular-nums; }
+.dica-lista strong.ruim { color: var(--delta-ruim); }
+.dica-mini-barra {
+  flex: 0 0 64px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--sup-etiqueta);
+  overflow: hidden;
+}
+.dica-mini-barra > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--yellow);
+  transform-origin: left;
+  animation: barra-cresce .6s var(--curva-anti) backwards;
+}
+:root:not([data-theme="dark"]) .dica-mini-barra > span:not([style*="background"]) { background: var(--yellow-tinta); }
+
+.dica-pilulas { display: flex; flex-wrap: wrap; gap: 6px; }
+.dica-pilulas > span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--sup-etiqueta);
+  font-size: 11.5px;
+  color: var(--gray);
+}
+.dica-pilulas strong { color: var(--texto-forte); font-weight: 600; }
+.dica-pilulas > span.ruim { background: var(--sit-atrasado-fundo); color: var(--sit-atrasado); }
+.dica-pilulas > span.ruim strong { color: inherit; }
+
+.dica-linhas {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px 12px;
+  font-size: 12.5px;
+  color: var(--gray);
+}
+.dica-linhas strong { color: var(--texto-forte); font-weight: 600; text-align: right; }
+
+.dica-barrinhas { display: flex; align-items: flex-end; gap: 8px; height: 56px; }
+.dica-barrinha { flex: 1; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; }
+.dica-barrinha > span {
+  width: 100%;
+  max-width: 22px;
+  border-radius: 4px 4px 1px 1px;
+  background: color-mix(in srgb, var(--yellow) 55%, transparent);
+  transform-origin: bottom;
+  animation: barra-sobe-mola .55s cubic-bezier(.34, 1.4, .64, 1) backwards;
+}
+.dica-barrinha:last-child > span { background: var(--yellow); }
+.dica-barrinha em { font-style: normal; font-size: 10px; color: var(--gray2); }
+
+/* A peca com a dica aberta fica marcada, para o olho ligar uma a outra. */
+.painel-numero.com-dica { cursor: help; }
+.painel-numero.dica-aberta {
+  border-color: color-mix(in srgb, var(--yellow) 45%, var(--sup-faixa-borda));
+  transform: translateY(-2px);
+}
+.painel-numero:focus-visible { outline: none; border-color: var(--gray2); box-shadow: 0 0 0 3px var(--gray4); }
+.projeto-linha.dica-aberta { background: var(--gray4); }
+
+/* ── A dica do grafico: uma so, que desliza de barra em barra ── */
+.barras-dica {
+  position: absolute;
+  top: 0;
+  left: clamp(120px, var(--x), calc(100% - 120px));
+  width: 240px;
+  z-index: 2;
+  pointer-events: none;
+  transform: translateX(-50%);
+  transition: left var(--transition-spring);
+  animation: dica-abre .24s var(--curva-anti) both;
+}
+.barras-dica-conteudo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--dica-fundo);
+  border: 1px solid var(--dica-borda);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  box-shadow: 0 20px 50px -18px rgba(0, 0, 0, .55);
+}
+.barras-dica-valor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--texto-forte);
+}
+.barras-dica-variacao {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.barras-dica-variacao.bom { color: var(--delta-bom); }
+.barras-dica-variacao.ruim { color: var(--delta-ruim); }
+.barras-dica-sub { font-size: 12px; color: var(--gray2); }
+.barras-dica .dica-lista { margin-top: 2px; }
+/* Com uma barra em foco, as outras recuam e o mes dela acende no eixo. */
+.barras-mes-col .barras-mes-barra { transition: background var(--transition), opacity var(--transition), transform var(--transition-spring); }
+.barras-mes.focando .barras-mes-col:not(.foco) .barras-mes-barra { opacity: .4; }
+.barras-mes-col.foco .barras-mes-barra {
+  background: var(--yellow);
+  box-shadow: 0 0 22px -4px color-mix(in srgb, var(--yellow) 70%, transparent);
+}
+.barras-mes-col.foco .barras-mes-numero { opacity: 1; transform: none; }
+.barras-mes-eixo span { transition: color var(--transition); }
+.barras-mes-eixo span.foco { color: var(--texto-forte); font-weight: 600; }
+.barras-mes-col { cursor: crosshair; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dica-rica, .barras-dica { transition: none; }
+  .dica-rica-corpo, .dica-rica-corpo > *, .dica-lista li, .dica-composicao-barra > span,
+  .dica-mini-barra > span, .dica-barrinha > span, .barras-dica { animation: none; }
+}
+
+/* ── Barras e aneis de progresso: crescem ao aparecer, em toda tela ──
+   A mesma regra do painel, levada para todas as barras do sistema: o
+   preenchimento nasce do zero e corre ate o valor junto com o numero que
+   conta ao lado. A barra que ja esta na tela e muda de valor continua andando
+   pela transicao de largura de cada uma. */
+.barra-cresce,
+.nt-progresso-barra > span,
+.entrega-modal-barra > span,
+.admin-stat-card-v2 .stat-v2-barra > span {
+  transform-origin: left;
+  animation: barra-cresce .8s var(--curva-anti) .1s backwards;
+}
+.anel-enche { animation: anel-enche .9s var(--curva-anti) .1s backwards; }
+@keyframes anel-enche {
+  from { stroke-dasharray: 0 var(--volta); }
+  to   { stroke-dasharray: var(--anel) var(--volta); }
+}
+/* Os cartoes de numero antigos (Usuarios, Perfil) entram como os novos. */
+.admin-stat-card { animation: faixa-entra .4s var(--curva-anti) backwards; }
+.admin-stat-card:nth-child(2) { animation-delay: 50ms; }
+.admin-stat-card:nth-child(3) { animation-delay: 100ms; }
+.admin-stat-card:nth-child(n+4) { animation-delay: 150ms; }
+/* A linha de tabela de toda pagina entra em escada, como as do painel. */
+.casca-janela .admin-table tbody tr { animation: linha-entra .36s var(--curva-anti) backwards; }
+.casca-janela .admin-table tbody tr:nth-child(2) { animation-delay: 30ms; }
+.casca-janela .admin-table tbody tr:nth-child(3) { animation-delay: 60ms; }
+.casca-janela .admin-table tbody tr:nth-child(4) { animation-delay: 90ms; }
+.casca-janela .admin-table tbody tr:nth-child(5) { animation-delay: 120ms; }
+.casca-janela .admin-table tbody tr:nth-child(6) { animation-delay: 150ms; }
+.casca-janela .admin-table tbody tr:nth-child(n+7) { animation-delay: 180ms; }
+@media (prefers-reduced-motion: reduce) {
+  .barra-cresce, .nt-progresso-barra > span, .entrega-modal-barra > span,
+  .anel-enche, .admin-stat-card, .casca-janela .admin-table tbody tr { animation: none; }
+}
+
+/* ══ Projetos no desenho da casa ═══════════════════════════════════════════
+   A faixa com as abas Geral e Planning logo depois do titulo, o painel com a
+   lista e o quadro, o selo colorido de cada projeto (a mesma cor do menu e do
+   painel) e os cards com progresso, equipe e prazo. */
+.faixa-apos { display: flex; align-items: center; margin-left: -28px; }
+.faixa-pagina .pl-secoes { display: flex; }
+
+/* O selo: a inicial na cor do projeto. */
+.projeto-selo {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  background: var(--proj-fundo);
+  color: var(--proj-cor);
+  animation: selo-chega .5s var(--curva-anti) backwards;
+  transition: transform var(--transition-spring);
+}
+
+/* ── A lista ───────────────────────────────────────── */
+.painel-principal .admin-table th {
+  padding: 12px 16px 10px;
+  font-size: 10px;
+  letter-spacing: .06em;
+  color: var(--gray2);
+  border-bottom: 1px solid var(--sup-painel-borda);
+  background: transparent;
+}
+.painel-principal .admin-table td {
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--sup-painel-borda);
+}
+.painel-principal .admin-table tbody tr { transition: background var(--transition); }
+.painel-principal .admin-table tbody tr:hover { background: var(--gray4); }
+.painel-principal .admin-table tbody tr:hover .projeto-selo { transform: scale(1.08) rotate(-4deg); }
+.projeto-celula-nome { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.projeto-celula-textos { display: flex; flex-direction: column; min-width: 0; }
+.projeto-celula-titulo {
+  font-weight: 600;
+  color: var(--texto-forte);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.projeto-celula-sub {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--gray2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── O quadro ──────────────────────────────────────── */
+.projeto-cartao { gap: 9px; }
+.projeto-cartao-topo { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.projeto-cartao-nome {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--texto-forte);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.projeto-cartao-cliente {
+  margin: 0;
+  font-size: 12px;
+  color: var(--gray2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.projeto-cartao-entrega {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--gray);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.projeto-cartao-progresso { display: flex; align-items: center; gap: 10px; }
+.projeto-cartao-progresso .projeto-barra { animation-delay: .2s; }
+.projeto-cartao-rodape {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--sup-painel-borda);
+}
+.projeto-cartao-rodape .fileira-caras { height: 22px; }
+.projeto-cartao-rodape .fileira-mais { width: 20px; height: 20px; }
+.projeto-cartao-prazo {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 5px;
+  background: var(--sup-etiqueta);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray);
+  white-space: nowrap;
+}
+.projeto-cartao-prazo.atrasado { background: var(--sit-atrasado-fundo); color: var(--sit-atrasado); }
+.projeto-cartao:hover .projeto-selo { transform: scale(1.08) rotate(-4deg); }
+.projeto-cartao.dica-aberta { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--proj-cor) 45%, transparent); }
+
+/* A lista e o quadro dentro do painel: a tabela ocupa a largura e rola. */
+.visao-projetos-lista .admin-table-wrap { overflow: auto; }
+.visao-projetos-quadro .kanban-board { flex: 1; }
+
+@media (max-width: 768px) {
+  .faixa-apos { margin-left: 0; flex: 1 1 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .projeto-selo { animation: none; transition: none; }
+}
+/* No painel, a lista de projetos cabe na janela: o piso cai para que a
+   tabela so role de lado em tela estreita de verdade. */
+.visao-projetos-lista .admin-table.largura-fixa { min-width: 980px; }
+
+/* A logo e um botao: leva ao Dashboard. Sem moldura, so o pulinho no hover. */
+.menu-marca-logos,
+.topo-marca {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: transform var(--transition-spring), opacity var(--transition);
+}
+.topo-marca { display: inline-flex; }
+.menu-marca-logos:hover,
+.topo-marca:hover { transform: translateY(-1px); }
+.menu-marca-logos:active,
+.topo-marca:active { transform: scale(.97); }
+.menu-marca-logos:focus-visible,
+.topo-marca:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--gray4); }
+@media (prefers-reduced-motion: reduce) {
+  .menu-marca-logos, .topo-marca { transition: none; }
+}
+
+/* ── O menu em trilho, mais fluido ─────────────────────
+   O painel nao muda mais de largura: ele tem sempre a largura do menu aberto
+   e e recortado (`clip-path`) ate o trilho. Recorte se anima na placa de
+   video, sem refazer o layout a cada quadro, e por isso desliza liso onde a
+   largura engasgava. O recorte tambem vale para o clique: a parte escondida
+   nao intercepta nada da pagina.
+
+   O tempo e o da curva longa da casa, com uma folga na saida (o menu nao
+   fecha no instante em que o ponteiro escorrega para fora) e uma menor na
+   entrada (atravessar o trilho nao abre o menu). Os nomes chegam em escada,
+   deslizando de leve, e saem rapido e todos juntos. */
+.menu-trilho > .app-menu-painel,
+.menu-trilho:hover > .app-menu-painel,
+.menu-trilho:has(:focus-visible) > .app-menu-painel { width: 224px; }
+.menu-trilho > .app-menu-painel {
+  clip-path: inset(0 152px 0 0 round 26px 0 0 26px);
+  transition: clip-path .44s var(--curva-anti) .12s, box-shadow .44s var(--curva-anti) .12s;
+  will-change: clip-path;
+}
+.menu-trilho:hover > .app-menu-painel,
+.menu-trilho:has(:focus-visible) > .app-menu-painel {
+  clip-path: inset(0 -90px 0 0 round 26px 0 0 26px);
+  transition: clip-path .44s var(--curva-anti) .06s, box-shadow .44s var(--curva-anti) .06s;
+}
+.menu-trilho > .app-menu-painel::before { transition: opacity .44s var(--curva-anti) .12s; }
+.menu-trilho:hover > .app-menu-painel::before,
+.menu-trilho:has(:focus-visible) > .app-menu-painel::before { transition: opacity .3s var(--curva-anti) .06s; }
+
+/* Os itens alargam no mesmo ritmo do recorte. */
+.menu-trilho .nav-leaf,
+.menu-trilho .app-menu-rodape {
+  transition: width .44s var(--curva-anti) .12s, background var(--transition), color var(--transition),
+    transform var(--transition-spring);
+}
+.menu-trilho:hover .nav-leaf,
+.menu-trilho:hover .app-menu-rodape,
+.menu-trilho:has(:focus-visible) .nav-leaf,
+.menu-trilho:has(:focus-visible) .app-menu-rodape {
+  transition: width .44s var(--curva-anti) .06s, background var(--transition), color var(--transition),
+    transform var(--transition-spring);
+}
+
+/* Os textos: saem juntos e rapido; entram em escada, deslizando da esquerda. */
+.menu-trilho .nav-leaf-texto,
+.menu-trilho .nav-leaf-breve,
+.menu-trilho .nav-leaf-conta,
+.menu-trilho .menu-marca-nome,
+.menu-trilho .menu-recolher,
+.menu-trilho .app-menu-secao,
+.menu-trilho .menu-usuario-texto,
+.menu-trilho .menu-sair,
+.menu-trilho .reportar-cartao {
+  transition: opacity .16s ease, transform .16s ease, visibility 0s linear .16s;
+}
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .nav-leaf-texto,
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .nav-leaf-conta,
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .app-menu-secao,
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .menu-usuario-texto {
+  transform: translateX(-8px);
+}
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .reportar-cartao { transform: translateX(-12px) scale(.97); }
+.menu-trilho:hover :is(.nav-leaf-texto, .nav-leaf-breve, .nav-leaf-conta, .menu-marca-nome, .menu-recolher,
+  .app-menu-secao, .menu-usuario-texto, .menu-sair, .reportar-cartao),
+.menu-trilho:has(:focus-visible) :is(.nav-leaf-texto, .nav-leaf-breve, .nav-leaf-conta, .menu-marca-nome,
+  .menu-recolher, .app-menu-secao, .menu-usuario-texto, .menu-sair, .reportar-cartao) {
+  transition: opacity .32s var(--curva-anti) var(--atraso-texto, .14s),
+    transform .38s var(--curva-anti) var(--atraso-texto, .14s), visibility 0s;
+}
+.menu-trilho .menu-grupo > :nth-child(1) { --atraso-texto: .12s; }
+.menu-trilho .menu-grupo > :nth-child(2) { --atraso-texto: .15s; }
+.menu-trilho .menu-grupo > :nth-child(3) { --atraso-texto: .18s; }
+.menu-trilho .menu-grupo > :nth-child(4) { --atraso-texto: .21s; }
+.menu-trilho .menu-grupo > :nth-child(5) { --atraso-texto: .24s; }
+.menu-trilho .menu-grupo > :nth-child(n+6) { --atraso-texto: .27s; }
+.menu-trilho .reportar-cartao { --atraso-texto: .22s; }
+.menu-trilho .app-menu-rodape { --atraso-texto: .24s; }
+
+/* A logo troca de forma no mesmo tempo do recorte. */
+.menu-trilho .menu-marca-logos img { transition: opacity .3s var(--curva-anti) .1s, transform var(--transition-spring); }
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-trilho > .app-menu-painel,
+  .menu-trilho > .app-menu-painel::before,
+  .menu-trilho .nav-leaf,
+  .menu-trilho .app-menu-rodape,
+  .menu-trilho :is(.nav-leaf-texto, .nav-leaf-breve, .nav-leaf-conta, .menu-marca-nome, .menu-recolher,
+    .app-menu-secao, .menu-usuario-texto, .menu-sair, .reportar-cartao),
+  .menu-trilho .menu-marca-logos img { transition: none !important; }
+}
+
+/* O vidro do menu aberto mora no proprio painel. Com o recorte, o painel
+   vira a raiz do fundo dos filhos, e um `backdrop-filter` no `::before` so
+   enxergaria o proprio painel - o desfoque da pagina sumia. No painel ele
+   ve a pagina por tras. (Nada dentro dele usa `position: fixed` sem portal:
+   a fila de chamados e as listas ja nascem no `body`.) */
+.menu-trilho > .app-menu-painel::before { display: none; }
+.menu-trilho > .app-menu-painel {
+  background-color: transparent;
+  -webkit-backdrop-filter: blur(0px) saturate(100%);
+  backdrop-filter: blur(0px) saturate(100%);
+  transition: clip-path .44s var(--curva-anti) .12s, box-shadow .44s var(--curva-anti) .12s,
+    background-color .44s var(--curva-anti) .12s, backdrop-filter .44s var(--curva-anti) .12s,
+    -webkit-backdrop-filter .44s var(--curva-anti) .12s;
+}
+.menu-trilho:hover > .app-menu-painel,
+.menu-trilho:has(:focus-visible) > .app-menu-painel {
+  background-color: var(--menu-flutuante);
+  -webkit-backdrop-filter: blur(30px) saturate(160%);
+  backdrop-filter: blur(30px) saturate(160%);
+  box-shadow: inset -1px 0 0 var(--janela-borda), 24px 0 50px -24px rgba(0, 0, 0, .55);
+  transition: clip-path .44s var(--curva-anti) .06s, box-shadow .44s var(--curva-anti) .06s,
+    background-color .3s var(--curva-anti) .06s, backdrop-filter .3s var(--curva-anti) .06s,
+    -webkit-backdrop-filter .3s var(--curva-anti) .06s;
+}
+
+/* ══ A ficha da tarefa ao lado do quadro ════════════════════════════════════
+   Em janela larga a tarefa abre num painel dentro da pagina, a direita do
+   quadro, como no mockup: o quadro continua a vista e clicavel, e abrir outra
+   tarefa so troca a ficha. A ficha e a mesma da gaveta, com outro arranjo:
+   detalhes primeiro, em linhas de rotulo e valor, depois a descricao com o
+   checklist, as reunioes e a conversa - cada parte com o seu rotulo em caixa
+   alta. Ela nasce abrindo de lado, empurrando o quadro, e sai encolhendo. */
+.tarefas-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+}
+.tarefas-area > .painel-principal { min-width: 0; }
+
+.tarefa-detalhe {
+  flex: 0 0 380px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--sup-painel);
+  border: 1px solid var(--sup-painel-borda);
+  animation: detalhe-abre .42s var(--curva-anti) both;
+}
+.tarefa-detalhe.saindo { animation: detalhe-fecha .18s var(--curva-anti) both; }
+@keyframes detalhe-abre {
+  from { flex-basis: 0; opacity: 0; transform: translateX(16px); }
+  to   { flex-basis: 380px; opacity: 1; transform: none; }
+}
+@keyframes detalhe-fecha {
+  from { flex-basis: 380px; opacity: 1; }
+  to   { flex-basis: 0; opacity: 0; transform: translateX(16px); }
+}
+/* A folha tem a largura cheia o tempo todo: abrir e fechar so recortam, e o
+   conteudo nao requebra de linha no meio do movimento. */
+.tarefa-detalhe-folha {
+  width: 380px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.tarefa-detalhe .admin-modal-header {
+  position: static;
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid var(--sup-painel-borda);
+  background: transparent;
+  align-items: flex-start;
+}
+.tarefa-detalhe .painel-titulo { font-size: 16px; }
+.tarefa-detalhe .admin-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  scrollbar-width: thin;
+}
+.tarefa-detalhe .admin-modal-body > * {
+  padding: 16px 0;
+  border-top: 1px solid var(--sup-painel-borda);
+  animation: linha-entra .36s var(--curva-anti) backwards;
+}
+.tarefa-detalhe .bloco-detalhes { order: 1; border-top: none; padding-top: 0; animation-delay: .1s; }
+.tarefa-detalhe .bloco-descricao { order: 2; animation-delay: .16s; }
+.tarefa-detalhe .bloco-checklist { order: 3; border-top: none; padding-top: 0; animation-delay: .2s; }
+.tarefa-detalhe .bloco-reunioes { order: 4; animation-delay: .24s; }
+.tarefa-detalhe .bloco-atividade { order: 5; animation-delay: .28s; }
+.tarefa-detalhe .admin-modal-body > :not([class*="bloco-"]) { order: 6; }
+
+.detalhe-secao {
+  margin: 0 0 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.tarefa-detalhe .bloco-descricao > .form-label { display: none; }
+
+/* Os detalhes em linhas: rotulo a esquerda, o campo a direita. */
+.tarefa-detalhe .bloco-detalhes > div {
+  display: flex !important;
+  flex-direction: column;
+  gap: 6px;
+}
+.tarefa-detalhe .bloco-detalhes > div + div { margin-top: 6px; }
+.tarefa-detalhe .bloco-detalhes .form-group {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 10px;
+  margin: 0;
+  flex: none !important;
+}
+.tarefa-detalhe .bloco-detalhes .form-group > .form-label {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--gray);
+}
+.tarefa-detalhe .bloco-detalhes .form-group > :not(.form-label) { grid-column: 2; min-width: 0; }
+.tarefa-detalhe .bloco-detalhes .form-input { min-height: 34px; }
+.tarefa-detalhe .painel-rodape {
+  padding: 12px 18px;
+  border-top: 1px solid var(--sup-painel-borda);
+  background: transparent;
+}
+
+/* A tarefa aberta na ficha acende no quadro, como a escolhida do mockup. */
+.casca-janela .painel-principal .kanban-card.tarefa-cartao.aberta {
+  background: var(--yellow);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--yellow) 28%, transparent);
+}
+.tarefa-cartao.aberta,
+.tarefa-cartao.aberta .tarefa-cartao-topo,
+.tarefa-cartao.aberta .tarefa-cartao-projeto,
+.tarefa-cartao.aberta .tarefa-cartao-titulo,
+.tarefa-cartao.aberta .tarefa-cartao-rodape,
+.tarefa-cartao.aberta .tarefa-cartao-rodape * { color: var(--on-yellow); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tarefa-detalhe, .tarefa-detalhe.saindo, .tarefa-detalhe .admin-modal-body > * { animation: none; }
+}
+/* A linha de etiquetas e um campo direto do bloco: volta a ser rotulo e valor. */
+.tarefa-detalhe .bloco-detalhes > div.form-group { display: grid !important; margin-top: 6px; }
+/* O titulo usa a largura inteira da ficha: os botoes de copiar e fechar sobem
+   para a linha do rotulo, no canto. */
+.tarefa-detalhe .admin-modal-header { position: relative; }
+.tarefa-detalhe .admin-modal-header > span:last-child {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+.tarefa-detalhe .admin-modal-header .painel-rotulo { padding-right: 104px; min-height: 22px; display: flex; align-items: center; }
+
+/* ── As portas no menu: notificacoes e objetivos ───────
+   Moravam no topo; agora sao itens do menu, logo depois da navegacao. A
+   gaveta delas abre ao lado do menu. A contagem de nao lidas e vermelha, e no
+   trilho recolhido um ponto no icone avisa que ha o que ler. */
+.nav-porta .nav-leaf-ico { position: relative; }
+.nav-porta.aberta { background: var(--gray4); color: var(--black); }
+.nav-porta-ponto {
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 0 2px var(--bg);
+  animation: ponto-pulsa 2.4s var(--curva-anti) infinite;
+}
+@keyframes ponto-pulsa {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.25); }
+}
+.app-menu .nav-leaf-conta.alerta,
+:root[data-theme="dark"] .app-menu .nav-leaf-conta.alerta { background: var(--red); color: #FFFFFF; }
+.menu-trilho:hover .nav-porta-ponto,
+.menu-trilho:has(:focus-visible) .nav-porta-ponto { opacity: 0; }
+.nav-porta-ponto { transition: opacity var(--transition); }
+
+/* O cartao de quem usa abre o Perfil. */
+.menu-usuario-perfil {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.menu-usuario-perfil .menu-usuario-avatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--avatar-fundo);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--black);
+  transition: box-shadow var(--transition-spring), transform var(--transition-spring);
+}
+.menu-usuario-perfil .menu-usuario-texto { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+.menu-usuario-perfil:hover .menu-usuario-avatar { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--yellow); transform: scale(1.04); }
+.menu-usuario-perfil:hover .menu-usuario-nome { color: var(--texto-forte); }
+.menu-usuario-perfil:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--gray4); }
+@media (prefers-reduced-motion: reduce) {
+  .nav-porta-ponto { animation: none; }
+  .menu-usuario-perfil .menu-usuario-avatar { transition: none; }
+}
+
+/* ══ A busca rapida no alto do menu ═════════════════════════════════════════
+   Saiu do topo da pagina para liberar a faixa de cima. E um item do menu com
+   moldura de campo: no trilho so a lupa, aberto o rotulo e o atalho de
+   teclado. Abre a mesma busca do Ctrl+K. */
+.menu-busca-linha {
+  flex-shrink: 0;
+  padding: 0 0 6px;
+}
+.app-menu .nav-leaf.menu-busca {
+  background: var(--sup-campo);
+  border: 1px solid var(--sup-campo-borda);
+  border-radius: var(--radius-campo);
+  color: var(--gray2);
+}
+.app-menu .nav-leaf.menu-busca:not(:disabled):hover {
+  background: var(--sup-campo);
+  border-color: var(--gray2);
+  color: var(--black);
+}
+.app-menu .nav-leaf.menu-busca .nav-leaf-ico svg { transition: transform var(--transition-spring); }
+.app-menu .nav-leaf.menu-busca:hover .nav-leaf-ico svg { transform: scale(1.12) rotate(-8deg); }
+.nav-leaf-conta.menu-busca-atalho {
+  background: transparent;
+  border: 1px solid var(--sup-campo-borda);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  color: var(--gray2);
+  animation: none;
+}
+:root[data-theme="dark"] .nav-leaf-conta.menu-busca-atalho { background: transparent; }
+@media (prefers-reduced-motion: reduce) {
+  .app-menu .nav-leaf.menu-busca .nav-leaf-ico svg { transition: none; }
+}
+
+/* ══ Subpaginas no menu ═════════════════════════════════════════════════════
+   Como no mockup: o item que tem paginas dentro ganha uma seta a direita, e
+   abre por baixo a lista delas, recuada e presa a um fio vertical que desce do
+   icone. A pagina aberta abre a sua sozinha; a seta abre e fecha qualquer uma
+   sem trocar de tela. No trilho a lista recolhe e volta junto com o texto. */
+.nav-com-sub { position: relative; }
+.app-menu .nav-com-sub > .nav-leaf { padding-right: 34px; }
+.nav-sub-seta {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition), opacity .16s ease;
+}
+.nav-sub-seta .entrega-seta { color: inherit; }
+.nav-sub-seta:hover { background: var(--gray4); color: var(--black); }
+.nav-sub-seta:focus-visible { outline: none; background: var(--gray4); color: var(--black); }
+/* Sobre o item aceso (limao), a seta segue a tinta dele. */
+.nav-com-sub:has(> .nav-leaf.ativo) > .nav-sub-seta { color: var(--on-yellow); }
+.nav-com-sub:has(> .nav-leaf.ativo) > .nav-sub-seta:hover {
+  background: color-mix(in srgb, var(--on-yellow) 12%, transparent);
+}
+
+/* O ramo: cada subpagina sai do fio por um galho reto proprio, como em
+   arvore. O fio desce do icone do item pai; cada linha desenha o trecho dela -
+   o galho ate o texto (::after) e, menos a ultima, a continuacao do fio ate a
+   proxima (::before). Assim o fio termina no galho da ultima, sem sobrar
+   rabo para baixo. */
+.nav-sub {
+  --ramo-x: -14px;   /* onde o fio passa, a esquerda do item */
+  /* Opaca: os trechos do fio se encostam, e uma cor translucida somaria na
+     emenda, deixando um ponto mais claro entre uma linha e outra. */
+  --ramo-cor: color-mix(in srgb, var(--gray2) 40%, var(--bg));
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0 0 6px 19px;
+  padding: 8px 0 0 14px;
+}
+.nav-sub-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--gray);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition), transform var(--transition-spring);
+}
+.nav-sub-item { overflow: visible; }
+.nav-sub-item > .nav-sub-rotulo { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nav-sub-item:hover { background: var(--gray4); color: var(--black); transform: translateX(2px); }
+/* O ramo: do alto da linha ate o meio dela, dobrando reto para a direita. */
+.nav-sub-item::after {
+  content: "";
+  position: absolute;
+  left: var(--ramo-x);
+  top: -1px;
+  width: 10px;
+  height: calc(50% + 1px);
+  border-left: 1px solid var(--ramo-cor);
+  border-bottom: 1px solid var(--ramo-cor);
+  pointer-events: none;
+  transition: border-color var(--transition);
+}
+/* A primeira sobe ate encostar no item pai. */
+.nav-sub-item:first-child::after { top: -8px; height: calc(50% + 8px); }
+/* O fio segue reto ate a proxima linha. */
+.nav-sub-item:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: var(--ramo-x);
+  top: 50%;
+  bottom: -1px;
+  border-left: 1px solid var(--ramo-cor);
+  pointer-events: none;
+}
+.nav-sub-item:hover::after { border-color: var(--gray2); }
+.nav-sub-item:focus-visible { outline: none; background: var(--gray4); color: var(--black); }
+/* A subpagina aberta: o texto acende e um traco limao marca o fio na altura dela. */
+.nav-sub-item.ativo { color: var(--black); font-weight: 600; }
+/* O ramo da subpagina aberta acende em limao, por cima do fio cinza. */
+.nav-sub-item.ativo::after { z-index: 1; border-color: var(--yellow); }
+.nav-sub-revelar.aberto .nav-sub-item { animation: linha-entra .3s var(--curva-anti) backwards; }
+.nav-sub-revelar.aberto .nav-sub-item:nth-child(2) { animation-delay: .03s; }
+.nav-sub-revelar.aberto .nav-sub-item:nth-child(3) { animation-delay: .06s; }
+.nav-sub-revelar.aberto .nav-sub-item:nth-child(4) { animation-delay: .09s; }
+.nav-sub-revelar.aberto .nav-sub-item:nth-child(n+5) { animation-delay: .12s; }
+
+/* No trilho a seta some com o texto e a lista recolhe; ao passar o mouse elas
+   voltam com o menu. */
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .nav-sub-seta { opacity: 0; visibility: hidden; }
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .nav-sub-revelar.aberto {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+.menu-trilho .nav-sub-revelar { transition: grid-template-rows .44s var(--curva-anti) .06s, opacity .3s var(--curva-anti) .1s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-sub-item, .nav-sub-seta, .menu-trilho .nav-sub-revelar { transition: none; }
+  .nav-sub-item::after, .nav-sub-revelar.aberto .nav-sub-item { transition: none; animation: none; }
+}
+
+/* No trilho o item com subpaginas tem a mesma caixa dos outros: a folga da
+   seta a direita so existe com o menu aberto, senao o quadrado aceso sai
+   mais largo para um lado. */
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .nav-com-sub > .nav-leaf { padding-right: 12px; }
+
+/* No hover a subpagina se projeta sem soltar do fio: quem anda e so o rotulo,
+   e o ramo cresce junto ate ele. Mover a linha inteira levaria o ramo junto e
+   abriria um vao entre ele e o fio. */
+.nav-sub-item:hover { transform: none; }
+.nav-sub-item > .nav-sub-rotulo { transition: transform var(--transition-spring); }
+.nav-sub-item:hover > .nav-sub-rotulo { transform: translateX(3px); }
+.nav-sub-item::after { transition: border-color var(--transition), width var(--transition-spring); }
+.nav-sub-item:hover::after { width: 13px; }
+@media (prefers-reduced-motion: reduce) {
+  .nav-sub-item > .nav-sub-rotulo, .nav-sub-item::after { transition: none; }
+}
+
+/* O realce da subpagina pinta desde o fio: a caixa da linha comeca onde o fio
+   passa, e o ramo corre por dentro dela ate o rotulo. Antes a caixa nascia
+   depois do ramo, e o hover parecia solto do galho. */
+.nav-sub { --ramo-x: 0px; padding-left: 0; }
+.nav-sub-item { padding-left: 24px; }
+.nav-sub-item:hover, .nav-sub-item:focus-visible { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+
+/* O caminho aceso: o fio acende do alto ate a subpagina, e nao so o ramo
+   dela. As linhas de cima acendem o trecho vertical (o ramo delas fica
+   apagado); a propria acende o trecho e o ramo. A subpagina aberta guarda o
+   caminho em limao; o ponteiro desenha o dele por cima, mais claro. */
+.nav-sub-item::before { transition: border-color var(--transition); }
+.nav-sub-item:has(~ .nav-sub-item.ativo)::before,
+.nav-sub-item:has(~ .nav-sub-item.ativo)::after { border-left-color: var(--yellow); }
+.nav-sub-item:has(~ .nav-sub-item:hover)::before,
+.nav-sub-item:has(~ .nav-sub-item:hover)::after { border-left-color: var(--gray); }
+.nav-sub-item:hover::after { border-color: var(--gray); }
+.nav-sub-item.ativo:hover::after { border-color: var(--yellow); }
+@media (prefers-reduced-motion: reduce) {
+  .nav-sub-item::before { transition: none; }
+}

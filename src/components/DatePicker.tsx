@@ -237,7 +237,7 @@ export function DatePicker({ value, onChange, label, required, error, disabled, 
         maxHeight: 'calc(100vh - 16px)',
         overflowY: 'auto',
         userSelect: 'none',
-        fontFamily: "'Manrope', sans-serif",
+        fontFamily: "'Inter', sans-serif",
         boxSizing: 'border-box',
         animation: 'scaleIn .15s ease both',
       }}
@@ -449,7 +449,7 @@ export function DatePicker({ value, onChange, label, required, error, disabled, 
         onClick={toggle}
         style={{
           ['--bc' as string]: borderColor,
-          fontFamily: "'Manrope', sans-serif",
+          fontFamily: "'Inter', sans-serif",
           fontSize: 15,
           fontWeight: display ? 500 : 400,
           padding: '22px 14px 8px',

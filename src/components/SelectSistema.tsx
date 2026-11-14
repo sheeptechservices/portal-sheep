@@ -224,7 +224,7 @@ export function SelectSistema<T extends string>({
           // `minHeight`, e nao `height`: a caixa acompanha o campo de texto ao
           // lado, e ainda cresce se o rotulo da opcao quebrar em duas linhas.
           minHeight: 'var(--campo-altura)', padding: '0 14px', borderRadius: 'var(--radius-md)',
-          fontFamily: "'Manrope', sans-serif", fontSize: 14, fontWeight: 500,
+          fontFamily: "'Inter', sans-serif", fontSize: 14, fontWeight: 500,
           background: 'var(--white)',
           ...estiloGatilho,
           // Aberto, o gatilho usa o mesmo realce de `.form-input`: cinza. O
