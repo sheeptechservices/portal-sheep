@@ -24187,3 +24187,46 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
    botao de reportar: o rodape dela abre espaco para ele, senao o Fechar fica
    embaixo do circulo. */
 .tarefa-detalhe .painel-rodape { padding-right: 76px; }
+
+/* ══ Secoes no trilho ═══════════════════════════════════════════════════════
+   Recolhido, o titulo da secao (SISTEMA, PROJETOS) esta invisivel, mas
+   ocupava a altura dele somada ao vao entre grupos: 52px de nada entre os
+   icones. No trilho o titulo encolhe a zero e no lugar fica um fio curto, na
+   largura de um icone, so para dizer que ali comeca outro grupo. Abrindo o
+   menu, o titulo volta crescendo junto com a largura. */
+.menu-trilho .menu-grupo { position: relative; }
+.menu-trilho .app-menu-secao {
+  height: 24px;
+  overflow: hidden;
+  transition: height .44s var(--curva-anti) .06s, margin .44s var(--curva-anti) .06s,
+    opacity .32s var(--curva-anti) var(--atraso-texto, .14s),
+    transform .38s var(--curva-anti) var(--atraso-texto, .14s), visibility 0s;
+}
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .app-menu-secao {
+  height: 0;
+  padding-bottom: 0;
+  margin-top: -10px;
+  transition: height .44s var(--curva-anti) .12s, margin .44s var(--curva-anti) .12s,
+    opacity .16s ease, transform .16s ease, visibility 0s linear .16s;
+}
+.menu-trilho .menu-grupo:has(> .app-menu-secao)::before {
+  content: "";
+  position: absolute;
+  top: -17px;
+  left: 10px;
+  width: 20px;
+  height: 1px;
+  background: var(--sup-painel-borda);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .16s ease;
+}
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .menu-grupo:has(> .app-menu-secao)::before {
+  opacity: 1;
+  transition: opacity .3s var(--curva-anti) .2s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .menu-trilho .app-menu-secao,
+  .menu-trilho:not(:hover):not(:has(:focus-visible)) .app-menu-secao,
+  .menu-trilho .menu-grupo:has(> .app-menu-secao)::before { transition: none; }
+}
