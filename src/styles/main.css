@@ -24322,3 +24322,70 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 @media (prefers-reduced-motion: reduce) {
   .casca-ondas { animation: none; }
 }
+
+/* ══ O arraste nos quadros ══════════════════════════════════════════════════
+   Ver `lib/arrasteDoQuadro`. O cartao pego fica no lugar, apagado e tracejado;
+   o fantasma que segue o ponteiro sai inclinado. A coluna que recebe abre uma
+   vaga na altura do ponteiro e os cartoes de baixo deslizam para dar lugar a
+   ela. Ao soltar, o movimento de quem muda de lugar e do JavaScript (FLIP). */
+.kanban-column-body { position: relative; }
+
+/* Quem esta na coluna que recebe desliza com a vaga, seguindo o ponteiro. */
+.kanban-column-body.com-vaga > .kanban-card {
+  transition: transform .34s cubic-bezier(.2, .8, .2, 1), background var(--transition),
+    border-color var(--transition), box-shadow var(--transition-spring);
+}
+.kanban-column-body { transition: padding-bottom .34s cubic-bezier(.2, .8, .2, 1); }
+
+/* A vaga: o lugar onde o cartao vai cair, tracejado em limao, respirando. */
+.kanban-vaga {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  border-radius: var(--radius-md);
+  border: 1.5px dashed color-mix(in srgb, var(--yellow) 70%, transparent);
+  background: color-mix(in srgb, var(--yellow) 7%, transparent);
+  pointer-events: none;
+  transition: top .34s cubic-bezier(.2, .8, .2, 1);
+  animation: vaga-abre .28s var(--curva-anti) both, vaga-respira 1.6s ease-in-out .28s infinite;
+}
+@keyframes vaga-abre {
+  from { opacity: 0; transform: scaleY(.6); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes vaga-respira {
+  0%, 100% { background: color-mix(in srgb, var(--yellow) 6%, transparent); }
+  50%      { background: color-mix(in srgb, var(--yellow) 13%, transparent); }
+}
+
+/* O cartao pego: fica no lugar como marca de onde saiu. */
+.kanban-card.sendo-arrastado {
+  opacity: .32 !important;
+  transform: scale(.97) !important;
+  outline: 1.5px dashed var(--gray2);
+  outline-offset: -1.5px;
+  box-shadow: none !important;
+  transition: opacity .18s ease, transform .24s var(--curva-anti);
+}
+/* A copia que vira a imagem do arraste: inclinada e erguida. Mora fora da
+   tela so pelo quadro em que o navegador a fotografa. */
+.kanban-card-fantasma {
+  position: fixed !important;
+  top: -1000px;
+  left: -1000px;
+  transform: rotate(3deg) !important;
+  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, .7), 0 0 0 1.5px var(--yellow) !important;
+  pointer-events: none;
+}
+/* A coluna que recebe acende a borda: o alvo e a coluna inteira. */
+.kanban-column.drag-over {
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--yellow) 45%, transparent);
+  transition: box-shadow var(--transition-spring);
+}
+body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .kanban-column-body, .kanban-column-body.com-vaga > .kanban-card, .kanban-vaga,
+  .kanban-card.sendo-arrastado { transition: none; }
+  .kanban-vaga { animation: none; }
+}

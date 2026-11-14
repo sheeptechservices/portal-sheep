@@ -45,7 +45,7 @@ import { ReuniaoModal } from '../components/ReuniaoModal';
 import { PilulaDeStatus } from '../components/PilulaDeStatus';
 import { Avatar, type Pessoa } from './FormularioTarefa';
 
-import { definirImagemArrasto } from '../lib/dragImage';
+import { comecarArraste, terminarArraste, useMovimentoDosCartoes, useVagaDaColuna } from '../lib/arrasteDoQuadro';
 // ── FormSelect ───────────────────────────────────────
 function FormSelect({ value, onChange, options, placeholder = '- Não definido -' }: {
   value: string;
@@ -2834,7 +2834,12 @@ interface SelecaoDoFunil {
 
 function KanbanCard({
   sub, onDragStart, onClick, color, onPrefetch, onCancelPrefetch, onDelete, hideAging, selecao,
+  coluna = '', estilo,
 }: {
+  /** A coluna em que o cartão está: a de origem não abre vaga para ele. */
+  coluna?: string;
+  /** O empurrão da vaga, quando a coluna está recebendo um cartão. */
+  estilo?: React.CSSProperties;
   sub: Submission; onDragStart: (id: string) => void; onClick: (id: string) => void; color?: string;
   onPrefetch?: (id: string) => void; onCancelPrefetch?: (id: string) => void;
   onDelete?: (id: string) => void;
@@ -2854,12 +2859,15 @@ function KanbanCard({
   return (
     <div
       className={`kanban-card${marcada ? ' selecionado' : ''}`}
+      data-flip={sub.id}
       style={{
         '--col-color': color, position: 'relative',
         ...(selecao?.loteArrastado && marcada ? { opacity: 0.45 } : {}),
+        ...estilo,
       } as any}
       draggable={!confirmDel}
-      onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; definirImagemArrasto(e); onDragStart(sub.id); }}
+      onDragStart={e => { comecarArraste(e, coluna); onDragStart(sub.id); }}
+      onDragEnd={terminarArraste}
       onMouseDown={semTextoNoShift}
       onClick={e => {
         if (confirmDel) return;
@@ -3051,6 +3059,11 @@ function KanbanColumn({
   selecao?: SelecaoDoFunil;
 }) {
   const isOver = dragOver === status.id;
+  // O quadro responde ao arraste: a coluna que recebe abre vaga na altura do
+  // ponteiro, e quem muda de lugar ao soltar desliza até a posição nova.
+  const corpo = useRef<HTMLDivElement>(null);
+  const vagaCol = useVagaDaColuna(corpo, String(status.id), !!isDragging && isOver);
+  useMovimentoDosCartoes(corpo, !!isDragging);
 
   // Etapa recolhida: abre só com intenção (mouse parado em cima por um tempo, ou
   // card arrastado até ela) e continua aberta por uma carência depois que a
@@ -3101,7 +3114,7 @@ function KanbanColumn({
   }
 
   const dropHandlers = {
-    onDragOver: (e: React.DragEvent) => { e.preventDefault(); setDragOver(status.id); if (collapsible) holdOpen(); },
+    onDragOver: (e: React.DragEvent) => { e.preventDefault(); setDragOver(status.id); vagaCol.sobre(e.clientY); if (collapsible) holdOpen(); },
     onDragLeave: () => { setDragOver(null); if (collapsible) scheduleClose(); },
     onDrop: (e: React.DragEvent) => { e.preventDefault(); setDragOver(null); if (collapsible) scheduleClose(); onDrop(status.id); },
     ...(collapsible ? { onMouseEnter: hoverEnter, onMouseLeave: hoverLeave } : {}),
@@ -3183,9 +3196,12 @@ function KanbanColumn({
           <ContaAnimada valor={colTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })} />
         </div>
       </div>
-      <div className="kanban-column-body">
-        {orderedCards.map(sub => (
-          <KanbanCard key={sub.id} sub={sub} onDragStart={onDragStart} onClick={onClick} color={status.cor} onPrefetch={onPrefetch} onCancelPrefetch={onCancelPrefetch} onDelete={onDelete} hideAging={!!(status.is_conversion || status.is_excluded)} selecao={selecao} />
+      <div ref={corpo} className={`kanban-column-body${vagaCol.corpoComVaga?.classe ?? ''}`}
+        style={vagaCol.corpoComVaga?.estilo}>
+        {vagaCol.vaga}
+        {orderedCards.map((sub, i) => (
+          <KanbanCard key={sub.id} sub={sub} coluna={String(status.id)} estilo={vagaCol.estiloDoCard(i)}
+            onDragStart={onDragStart} onClick={onClick} color={status.cor} onPrefetch={onPrefetch} onCancelPrefetch={onCancelPrefetch} onDelete={onDelete} hideAging={!!(status.is_conversion || status.is_excluded)} selecao={selecao} />
         ))}
         {cards.length === 0 && (
           <div className="kanban-empty-slot">Arraste cards aqui</div>

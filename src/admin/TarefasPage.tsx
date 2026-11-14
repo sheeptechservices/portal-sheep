@@ -26,6 +26,7 @@ import FilterDropdown from '../components/FilterDropdown';
 import FiltroPeriodo, { dentroDoPeriodo } from '../components/FiltroPeriodo';
 import { SkeletonCards, SkeletonTabela } from '../components/Skeleton';
 import { AbasPilula, FaixaDaPagina } from '../components/FaixaDaPagina';
+import { comecarArraste, terminarArraste, useMovimentoDosCartoes, useVagaDaColuna } from '../lib/arrasteDoQuadro';
 import { useSubpagina } from '../lib/subpagina';
 import { ContaAnimada } from '../components/ContaAnimada';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
@@ -1582,6 +1583,10 @@ function Coluna({ grupo, pessoas, et, etq, podeEditar, arrastando, loteArrastado
    *  coluna é escondida, então sem este sinal o card cortado no fim lê como
    *  defeito da tela em vez de "role para ver o resto". */
   const corpo = useRef<HTMLDivElement>(null);
+  // O quadro responde ao arraste: a coluna que recebe abre vaga na altura do
+  // ponteiro, e quem muda de lugar ao soltar desliza até a posição nova.
+  const vagaCol = useVagaDaColuna(corpo, grupo.chave, podeEditar && arrastando !== null && isOver);
+  useMovimentoDosCartoes(corpo, arrastando !== null);
   const [noFim, setNoFim] = useState(true);
   const conferirFim = useCallback(() => {
     const el = corpo.current;
@@ -1630,6 +1635,7 @@ function Coluna({ grupo, pessoas, et, etq, podeEditar, arrastando, loteArrastado
         if (!podeEditar || arrastando === null) return;
         e.preventDefault();
         onDragOver();
+        vagaCol.sobre(e.clientY);
         if (recolhivel) segurarAberta();
       }}
       onDragLeave={() => { onDragLeave(); if (recolhivel) agendarFechar(); }}
@@ -1690,21 +1696,27 @@ function Coluna({ grupo, pessoas, et, etq, podeEditar, arrastando, loteArrastado
       </div>
 
       <div ref={corpo} onScroll={conferirFim}
-        className={`kanban-column-body${noFim ? ' no-fim' : ''}`}>
-        {tarefas.map(t => {
+        className={`kanban-column-body${noFim ? ' no-fim' : ''}${vagaCol.corpoComVaga?.classe ?? ''}`}
+        style={vagaCol.corpoComVaga?.estilo}>
+        {vagaCol.vaga}
+        {tarefas.map((t, i) => {
           const marcada = !!selecao?.selecao.has(t.id);
           return (
           <div key={t.id}
             className={`kanban-card tarefa-cartao${marcada ? ' selecionado' : ''}${abertaId === t.id ? ' aberta' : ''}${et.fecha(t.status) ? ' concluida' : ''}`}
+            data-flip={t.id}
             draggable={podeEditar}
-            onDragStart={() => onArrastar(t.id)}
-            onDragEnd={onSoltar}
+            onDragStart={e => { comecarArraste(e, grupo.chave); onArrastar(t.id); }}
+            onDragEnd={() => { terminarArraste(); onSoltar(); }}
             onMouseDown={semTextoNoShift}
             onClick={e => (selecao ? selecao.onClicar(t, e) : onAbrir(t))}
             style={{
               cursor: 'pointer',
               position: 'relative',
-              opacity: arrastando === t.id || (loteArrastado && marcada) ? 0.45 : 1,
+              // O cartão pego se apaga pela classe do arraste; aqui só os
+              // outros marcados que vão junto com ele.
+              opacity: loteArrastado && marcada && arrastando !== t.id ? 0.45 : 1,
+              ...vagaCol.estiloDoCard(i),
             }}>
             {/* A linha de cima, como no mockup: a chave da tarefa e de onde ela
                 e, em letra miuda. A prioridade abre a linha, em icone. */}
