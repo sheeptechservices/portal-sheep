@@ -1,42 +1,35 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  O painel da casa.
+//  O painel da casa, no desenho da identidade de 11/2026.
 //
-//  Começa pelo comercial, que é a pergunta que se faz toda segunda-feira: o
-//  quanto está fechando, e se está fechando mais ou menos do que vinha
-//  fechando. O funil responde isso card a card; aqui ele responde de uma vez.
+//  Uma tela de relance, de cima para baixo: a faixa com a saudacao e o que a
+//  semana pede de quem abriu; quatro numeros da casa; o comercial mes a mes ao
+//  lado da semana de quem esta olhando; e os projetos em andamento, cada um com
+//  a entrega da vez, o quanto andou e se esta no prazo.
 //
-//  A página é um empilhado de painéis, e não uma grade de números soltos: cada
-//  painel tem um assunto e se explica sozinho. O comercial é o primeiro; os
-//  próximos entram embaixo, na mesma moldura.
+//  Tudo aqui vem dos dados do portal - os projetos com as tarefas e as entregas,
+//  as etapas das tarefas e o painel comercial. Nada e maquete.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
-import { useAuth } from './AdminApp';
-import { IconAlert, IconMedalha, IconTrendDown, IconTrendUp } from '../components/icons';
-import { Skeleton } from '../components/Skeleton';
-import { SegSwitch } from '../components/SegSwitch';
-import { CartaoKpi } from '../components/CartaoKpi';
-import { Donut } from '../components/Donut';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { nomeCurto, useAuth } from './AdminApp';
+import { FaixaDaPagina } from '../components/FaixaDaPagina';
+import { ContaAnimada } from '../components/ContaAnimada';
+import { IconAlert, IconPlus, IconTrendDown, IconTrendUp } from '../components/icons';
+import { DicaComposicao, DicaTopo, useDicaRica } from '../components/DicaRica';
+import { ConteudoDaDicaDoProjeto, corDoProjeto } from '../components/DicaDoProjeto';
 import { COR_ENTREGA } from '../lib/etapasEntrega';
+import { Skeleton } from '../components/Skeleton';
+import { ETAPAS_PADRAO, indexar, type EtapaTarefa } from './FormularioTarefa';
+import type { Projeto, Tarefa } from './ProjetosPage';
 
-/** Um projeto fechado no mês, para o detalhe que o clique na coluna abre. */
-interface ProjetoFechado {
-  id: string;
-  empresa: string;
-  interesse: string | null;
-  valor: number;
-}
-
-/** Um mês da série, como o servidor devolve - inclusive os vazios. */
+/** Um mes da serie comercial, como o servidor devolve - inclusive os vazios. */
 interface MesFechado {
   /** `2026-09`. */
   mes: string;
   fechados: number;
   valor: number;
-  /** Quem fechou no mês, do maior valor para o menor. */
-  projetos?: ProjetoFechado[];
+  /** Quem fechou no mes, do maior valor para o menor. */
+  projetos?: { id: string; empresa: string; interesse: string | null; valor: number }[];
 }
-
 interface PainelComercial {
   serie: MesFechado[];
   emAberto: { quantas: number; valor: number };
@@ -44,66 +37,84 @@ interface PainelComercial {
 
 const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
-/** `2026-09` vira `set`, e `set/26` quando o ano vira - é o único ponto em que
- *  o ano precisa aparecer, e escrevê-lo em todo rótulo encheria o eixo. */
-function rotuloDoMes(mes: string, mostrarAno: boolean): string {
-  const [ano, m] = mes.split('-');
-  const nome = MESES_CURTOS[Number(m) - 1] ?? m;
-  return mostrarAno ? `${nome}/${ano.slice(2)}` : nome;
+/** `2026-12-19` vira `19 dez`: o prazo de relance, sem o ano que todo mundo sabe. */
+function diaCurto(iso: string | null): string {
+  if (!iso) return '-';
+  const [, m, d] = iso.slice(0, 10).split('-');
+  return `${Number(d)} ${MESES_CURTOS[Number(m) - 1] ?? m}`;
+}
+
+/** Hoje no formato do banco, no fuso de quem esta olhando. */
+function hojeIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** O domingo que fecha a semana corrente, no mesmo formato. */
+function fimDaSemanaIso(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + ((7 - d.getDay()) % 7));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Dias de `de` ate `ate`, as duas no formato do banco. */
+function diasEntre(de: string, ate: string): number {
+  return Math.round((new Date(ate.slice(0, 10)).getTime() - new Date(de.slice(0, 10)).getTime()) / 86400000);
 }
 
 function mesPorExtenso(mes: string): string {
-  const [ano, m] = mes.split('-');
-  const nome = MESES_CURTOS[Number(m) - 1] ?? m;
-  return `${nome} de ${ano}`;
+  const d = new Date(`${mes}-01T12:00:00`);
+  return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 }
 
 const dinheiro = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 
-/** O mesmo dinheiro, curto, para caber em cima de uma barra: `R$ 187.500` nao
- *  cabe numa coluna de 58px, e menos ainda numa janela longa. */
-const dinheiroCurto = (v: number) =>
-  v.toLocaleString('pt-BR', { notation: 'compact', maximumFractionDigits: 1 });
-
-/** O que a altura da barra mede. */
-const METRICAS = [
-  { valor: 'quantidade', label: 'Projetos' },
-  { valor: 'faturamento', label: 'Faturamento' },
-] as const;
-type Metrica = (typeof METRICAS)[number]['valor'];
-
-/** Quantos meses vao de janeiro de 2023 ate o mes corrente. O historico da casa
- *  comeca ali, e e ate onde o filtro deixa voltar. */
-function mesesDesde2023(): number {
-  const hoje = new Date();
-  return (hoje.getFullYear() - 2023) * 12 + hoje.getMonth() + 1;
+function saudacao(): string {
+  const h = new Date().getHours();
+  return h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
 }
 
-/** As janelas do filtro. A ultima nao e um numero fixo: ela cresce sozinha a
- *  cada mes que passa, senao viraria "desde 2023" mentindo em janeiro. */
-const JANELAS = [
-  { valor: '6', label: '6 meses' },
-  { valor: '12', label: '12 meses' },
-  { valor: '24', label: '24 meses' },
-  { valor: 'tudo', label: 'Desde 2023' },
-] as const;
-type Janela = (typeof JANELAS)[number]['valor'];
-const mesesDaJanela = (j: Janela) => (j === 'tudo' ? mesesDesde2023() : Number(j));
+function hojePorExtenso(): string {
+  return new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })
+    .replace(/\./g, '').replace(/ de /g, ' ');
+}
 
-export default function DashboardPage({ token }: { token: string }) {
-  const { onSessionExpired } = useAuth();
-  const [dados, setDados] = useState<PainelComercial | null>(null);
+/** O que conta como entrega fechada: ja nao cobra prazo. */
+const ENTREGA_FECHADA = ['Entregue', 'Validada', 'Cancelada'];
+
+/** A situacao do projeto pelo prazo: passou e nao fechou e atraso; faltando
+ *  duas semanas com menos de 70% andado e atencao; o resto esta no prazo. */
+type Situacao = 'prazo' | 'atencao' | 'atrasado' | 'sem';
+const ROTULO_SITUACAO: Record<Situacao, string> = {
+  prazo: 'No prazo', atencao: 'Atenção', atrasado: 'Atrasado', sem: 'Sem prazo',
+};
+function situacaoDo(p: Projeto, hoje: string): Situacao {
+  if (!p.previsao_entrega) return 'sem';
+  const prazo = p.previsao_entrega.slice(0, 10);
+  if (prazo < hoje) return 'atrasado';
+  const dias = (new Date(prazo).getTime() - new Date(hoje).getTime()) / 86400000;
+  return dias <= 14 && p.progresso < 70 ? 'atencao' : 'prazo';
+}
+
+const JANELAS = [6, 12] as const;
+
+export default function DashboardPage({ token, onIr, onNovaTarefa }: {
+  token: string;
+  /** Leva a outra tela do portal: "Ver tarefas", a linha de um projeto. */
+  onIr?: (pagina: 'tarefas' | 'projetos') => void;
+  /** Abre a tela de Tarefas ja com uma tarefa nova na gaveta. */
+  onNovaTarefa?: () => void;
+}) {
+  const { onSessionExpired, usuario } = useAuth();
+  const [projetos, setProjetos] = useState<Projeto[] | null>(null);
+  const [etapas, setEtapas] = useState<EtapaTarefa[]>(ETAPAS_PADRAO);
+  // Os numeros esperam as etapas: contados com as do padrao e recontados com as
+  // da casa, eles subiriam ate um valor e desceriam para outro.
+  const [etapasProntas, setEtapasProntas] = useState(false);
+  const [comercial, setComercial] = useState<PainelComercial | null>(null);
   const [erro, setErro] = useState('');
-  /** A janela do painel. Trocar nao volta ao esqueleto: o grafico anterior fica
-   *  na tela ate o novo chegar, senao a pagina pisca a cada troca de filtro. */
-  const [janela, setJanela] = useState<Janela>('12');
-  const meses = mesesDaJanela(janela);
-  /** Contar projetos e somar dinheiro sao duas leituras do mesmo periodo: um mes
-   *  de seis contratos pequenos e um de dois grandes trocam de lugar conforme a
-   *  pergunta. A troca e so de leitura - nao vai ao servidor, que ja manda os
-   *  dois numeros. */
-  const [metrica, setMetrica] = useState<Metrica>('quantidade');
+  const [janela, setJanela] = useState<(typeof JANELAS)[number]>(12);
 
   const api = useCallback(async (busca: string) => {
     const r = await fetch(`/api/admin-data?${busca}`, { headers: { 'x-admin-session': token } });
@@ -111,675 +122,468 @@ export default function DashboardPage({ token }: { token: string }) {
     return await r.json().catch(() => null);
   }, [token, onSessionExpired]);
 
+  // As tres leituras saem juntas: nenhuma espera a outra, e cada bloco da tela
+  // aparece quando a sua chega.
   useEffect(() => {
     let vivo = true;
-    api(`action=painel_comercial&meses=${mesesDesde2023()}`)
-      .then(d => {
-        if (!vivo) return;
-        if (!d || d.error) setErro(d?.error ?? 'Não foi possível carregar o painel.');
-        else setDados(d as PainelComercial);
-      })
-      .catch(() => { if (vivo) setErro('Erro de conexão. Tente de novo.'); });
+    void api('action=projetos').then(d => {
+      if (!vivo) return;
+      if (!d || d.error) setErro(d?.error ?? 'Não foi possível carregar os projetos.');
+      else setProjetos(d.projetos ?? []);
+    });
+    void api('action=tarefa_status_configs').then(d => {
+      if (!vivo) return;
+      if (d?.statuses?.length) setEtapas(d.statuses);
+      setEtapasProntas(true);
+    });
+    void api('action=painel_comercial&meses=12').then(d => {
+      if (vivo && d && !d.error) setComercial(d as PainelComercial);
+    });
     return () => { vivo = false; };
   }, [api]);
 
-  /**
-   * A janela é recorte, e não outra busca.
-   *
-   * Todas as janelas são o fim da mesma série, então o painel pede uma vez a
-   * maior delas e corta o resto aqui. Antes cada clique no filtro ia ao
-   * servidor, e o gráfico só trocava quando a resposta voltava - a troca ficava
-   * com a cara de lenta que não era do desenho, era da espera.
-   */
-  const desenhada = useMemo(
-    () => (dados ? dados.serie.slice(-meses) : []),
-    [dados, meses],
-  );
-  const apoio = `${metrica === 'faturamento' ? 'Faturamento fechado' : 'Oportunidades fechadas'}`
-    + (janela === 'tudo'
-      ? ' desde janeiro de 2023'
-      : ` nos últimos ${meses} meses`);
+  const et = useMemo(() => indexar(etapas), [etapas]);
+  const hoje = hojeIso();
+  const fimDaSemana = fimDaSemanaIso();
+
+  /** Toda tarefa uma vez so: a que vale para dois projetos chega nos dois. */
+  const tarefas = useMemo(() => {
+    const unicas = new Map<number, Tarefa & { projetoNome: string }>();
+    for (const p of projetos ?? []) {
+      for (const t of p.tarefas ?? []) {
+        if (!unicas.has(t.id)) unicas.set(t.id, { ...t, projetoNome: p.nome });
+      }
+    }
+    return [...unicas.values()];
+  }, [projetos]);
+
+  const aberta = (t: Tarefa) => !et.fecha(t.status) && !et.desconsidera(t.status);
+  const minha = (t: Tarefa) => !usuario || (t.responsaveis ?? []).includes(usuario.id);
+
+  /** A semana de quem abriu: o que esta aberto com ele, o prazo mais perto
+   *  primeiro - sem prazo vai para o fim. */
+  const semana = useMemo(() => tarefas
+    .filter(t => aberta(t) && minha(t))
+    .sort((a, b) => String(a.prazo ?? '9999').localeCompare(String(b.prazo ?? '9999')) || a.id - b.id)
+    .slice(0, 5), [tarefas, et, usuario]);
+
+  const resumo = useMemo(() => {
+    const ativos = (projetos ?? []).filter(p => p.status === 'Em andamento');
+    const mes = hoje.slice(0, 7);
+    const comecaram = ativos.filter(p => (p.data_inicio ?? '').slice(0, 7) === mes).length;
+    const entregasAbertas = (projetos ?? []).flatMap(p => p.entregas ?? [])
+      .filter(e => !ENTREGA_FECHADA.includes(e.status) && e.prazo);
+    const atrasadas = entregasAbertas.filter(e => String(e.prazo).slice(0, 10) < hoje).length;
+    const abertas = tarefas.filter(aberta);
+    const tarefasAtrasadas = abertas.filter(t => t.prazo && t.prazo.slice(0, 10) < hoje).length;
+    const daSemana = (prazo: string | null) => !!prazo && prazo.slice(0, 10) >= hoje && prazo.slice(0, 10) <= fimDaSemana;
+    return {
+      ativos: ativos.length,
+      comecaram,
+      noPrazo: entregasAbertas.length
+        ? Math.round(((entregasAbertas.length - atrasadas) / entregasAbertas.length) * 100) : null,
+      entregasAbertas: entregasAbertas.length,
+      entregasAtrasadas: atrasadas,
+      tarefasAbertas: abertas.length,
+      tarefasAtrasadas,
+      tarefasDaSemana: abertas.filter(t => minha(t) && daSemana(t.prazo)).length,
+      entregasDaSemana: (projetos ?? []).flatMap(p => p.entregas ?? [])
+        .filter(e => !ENTREGA_FECHADA.includes(e.status) && daSemana(e.prazo)
+          && (!usuario || (e.responsaveis ?? []).includes(usuario.id))).length,
+    };
+  }, [projetos, tarefas, et, usuario, hoje, fimDaSemana]);
+
+  const emAndamento = useMemo(() => (projetos ?? [])
+    .filter(p => p.status === 'Em andamento')
+    .sort((a, b) => String(a.previsao_entrega ?? '9999').localeCompare(String(b.previsao_entrega ?? '9999'))),
+  [projetos]);
+
+  /** O que esta por tras de cada numero: e o que as dicas abrem. */
+  const detalhe = useMemo(() => {
+    const lista = projetos ?? [];
+    const ativos = lista.filter(p => p.status === 'Em andamento')
+      .sort((a, b) => b.progresso - a.progresso);
+    const contaStatus = (st: string) => lista.filter(p => p.status === st).length;
+    const entregas = lista.flatMap(p => (p.entregas ?? []).map(e => ({ ...e, projetoNome: p.nome })))
+      .filter(e => !ENTREGA_FECHADA.includes(e.status) && e.prazo);
+    const atrasadas = entregas.filter(e => String(e.prazo).slice(0, 10) < hoje)
+      .map(e => ({ ...e, dias: diasEntre(String(e.prazo), hoje) }))
+      .sort((a, b) => b.dias - a.dias);
+    const proximas = entregas.filter(e => String(e.prazo).slice(0, 10) >= hoje)
+      .map(e => ({ ...e, dias: diasEntre(hoje, String(e.prazo)) }))
+      .sort((a, b) => a.dias - b.dias);
+    const abertas = tarefas.filter(aberta);
+    const porEtapa = [...etapas].sort((a, b) => a.ordem - b.ordem)
+      .map(e => ({ rotulo: e.nome, valor: abertas.filter(t => t.status === e.nome).length, cor: e.cor }))
+      .filter(f => f.valor > 0);
+    return {
+      ativos,
+      andamento: contaStatus('Em andamento'),
+      pausados: contaStatus('Pausado'),
+      concluidos: contaStatus('Concluído'),
+      atrasadas,
+      proximas,
+      porEtapa,
+      semDono: abertas.filter(t => !(t.responsaveis ?? []).length).length,
+      paraHoje: abertas.filter(t => t.prazo && t.prazo.slice(0, 10) === hoje).length,
+    };
+  }, [projetos, tarefas, etapas, et, hoje]);
+
+  const carregando = (projetos === null || !etapasProntas) && !erro;
+  const primeiroNome = usuario?.nome.trim().split(/\s+/)[0];
 
   return (
-    // A moldura de toda página do painel: é dela que vem a folga das bordas e o
-    // vão entre os blocos. Sem ela a página encostava na barra lateral.
     <div className="admin-content-wrap pagina-cristal pagina-painel">
-      {/* Os indicadores moram no cabeçalho, à direita do título: é a leitura
-          de relance da página, e ela não deve custar uma rolagem. */}
-      <div className="admin-page-header painel-cabecalho">
-        <div>
-          <h1 className="admin-page-title">Dashboard</h1>
-          <p className="admin-page-desc">
-            Os números da casa, por assunto. O que está marcado como exemplo é
-            maquete: o desenho do painel antes dos dados.
-          </p>
-        </div>
-        <div className="admin-stats painel-kpis">
-          {EXEMPLO.kpis.map((k, i) => (
-            <CartaoKpi key={k.rotulo} rotulo={k.rotulo} valor={k.valor} nota={k.nota}
-              cor={k.cor} atraso={i * 0.05} />
-          ))}
-        </div>
+      <FaixaDaPagina
+        secao="Painel da casa"
+        titulo={primeiroNome ? `${saudacao()}, ${primeiroNome}` : saudacao()}
+        itens={[
+          { rotulo: 'Hoje', valor: hojePorExtenso() },
+          ...(carregando ? [] : [{
+            rotulo: 'Nesta semana',
+            valor: `${resumo.tarefasDaSemana} ${resumo.tarefasDaSemana === 1 ? 'tarefa' : 'tarefas'} | ${resumo.entregasDaSemana} ${resumo.entregasDaSemana === 1 ? 'entrega' : 'entregas'}`,
+            dica: 'Tarefas e entregas suas com prazo até domingo',
+          }]),
+        ]}
+        acoes={onNovaTarefa && (
+          <button type="button" className="btn btn-primary" onClick={onNovaTarefa}>
+            <IconPlus size={15} />
+            Nova tarefa
+          </button>
+        )}
+      />
+
+      {erro && <p className="ff-vazio ff-erro"><IconAlert size={13} /> {erro}</p>}
+
+      {/* Os quatro numeros da casa. */}
+      <div className="painel-numeros">
+        {carregando ? (
+          [0, 1, 2, 3].map(i => <Skeleton key={i} h={108} radius="var(--radius-lg)" />)
+        ) : (
+          <>
+            <Numero rotulo="Projetos ativos" valor={resumo.ativos}
+              delta={resumo.comecaram ? `+${resumo.comecaram}` : undefined} bom
+              detalhe={resumo.comecaram === 1 ? '1 começou neste mês' : `${resumo.comecaram} começaram neste mês`}
+              dica={() => (
+                <>
+                  <DicaTopo rotulo="Carteira de projetos" valor={`${detalhe.andamento} em andamento`} />
+                  <DicaComposicao fatias={[
+                    { rotulo: 'Em andamento', valor: detalhe.andamento, cor: 'var(--yellow)' },
+                    { rotulo: 'Pausados', valor: detalhe.pausados, cor: 'var(--gray2)' },
+                    { rotulo: 'Concluídos', valor: detalhe.concluidos, cor: 'var(--green)' },
+                  ]} />
+                  <p className="dica-secao">Mais adiantados</p>
+                  <ul className="dica-lista">
+                    {detalhe.ativos.slice(0, 5).map((p, i) => (
+                      <li key={p.id} style={{ animationDelay: `${120 + i * 40}ms` }}>
+                        <span className="dica-lista-nome">{p.nome}</span>
+                        <span className="dica-mini-barra">
+                          <span style={{ width: `${Math.min(100, p.progresso)}%`, animationDelay: `${180 + i * 40}ms` }} />
+                        </span>
+                        <strong>{Math.round(p.progresso)}%</strong>
+                      </li>
+                    ))}
+                  </ul>
+                  {detalhe.ativos.length > 5 && <p className="dica-rodape">e mais {detalhe.ativos.length - 5}</p>}
+                </>
+              )} />
+            <Numero rotulo="Entregas no prazo" valor={resumo.noPrazo == null ? '-' : `${resumo.noPrazo}%`}
+              delta={resumo.entregasAtrasadas ? `${resumo.entregasAtrasadas} atrasada${resumo.entregasAtrasadas === 1 ? '' : 's'}` : undefined}
+              detalhe={`das ${resumo.entregasAbertas} entregas abertas com prazo`}
+              dica={() => (
+                <>
+                  <DicaTopo rotulo="Entregas abertas com prazo" valor={resumo.entregasAbertas}
+                    nota={resumo.noPrazo == null ? undefined : `${resumo.noPrazo}% no prazo`} />
+                  <DicaComposicao fatias={[
+                    { rotulo: 'No prazo', valor: resumo.entregasAbertas - resumo.entregasAtrasadas, cor: 'var(--green)' },
+                    { rotulo: 'Atrasadas', valor: resumo.entregasAtrasadas, cor: 'var(--red)' },
+                  ]} />
+                  {detalhe.atrasadas.length > 0 && (
+                    <>
+                      <p className="dica-secao">Mais atrasadas</p>
+                      <ul className="dica-lista">
+                        {detalhe.atrasadas.slice(0, 4).map((e, i) => (
+                          <li key={e.id} style={{ animationDelay: `${120 + i * 40}ms` }}>
+                            <span className="dica-lista-nome">{e.titulo}<em>{e.projetoNome}</em></span>
+                            <strong className="ruim">{e.dias}d</strong>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                  {detalhe.proximas.length > 0 && (
+                    <>
+                      <p className="dica-secao">Vencem em seguida</p>
+                      <ul className="dica-lista">
+                        {detalhe.proximas.slice(0, 3).map((e, i) => (
+                          <li key={e.id} style={{ animationDelay: `${200 + i * 40}ms` }}>
+                            <span className="dica-lista-nome">{e.titulo}<em>{e.projetoNome}</em></span>
+                            <strong>{e.dias === 0 ? 'hoje' : `em ${e.dias}d`}</strong>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </>
+              )} />
+            <Numero rotulo="Tarefas abertas" valor={resumo.tarefasAbertas}
+              delta={resumo.tarefasAtrasadas ? `${resumo.tarefasAtrasadas} atrasada${resumo.tarefasAtrasadas === 1 ? '' : 's'}` : undefined}
+              detalhe="em todos os projetos"
+              dica={() => (
+                <>
+                  <DicaTopo rotulo="Tarefas na mesa" valor={resumo.tarefasAbertas} nota="por etapa" />
+                  <DicaComposicao fatias={detalhe.porEtapa} />
+                  <div className="dica-pilulas">
+                    <span className={resumo.tarefasAtrasadas ? 'ruim' : ''}><strong>{resumo.tarefasAtrasadas}</strong> atrasadas</span>
+                    <span><strong>{detalhe.paraHoje}</strong> vencem hoje</span>
+                    <span><strong>{detalhe.semDono}</strong> sem responsável</span>
+                  </div>
+                </>
+              )} />
+            <Numero rotulo="Funil em aberto"
+              valor={comercial ? comercial.emAberto.valor.toLocaleString('pt-BR', { notation: 'compact', style: 'currency', currency: 'BRL', maximumFractionDigits: 1 }) : '-'}
+              detalhe={comercial ? `${comercial.emAberto.quantas} oportunidade${comercial.emAberto.quantas === 1 ? '' : 's'} sem desfecho` : 'carregando o comercial'}
+              dica={comercial ? () => {
+                const ultimos = comercial.serie.slice(-6);
+                const maior = Math.max(1, ...ultimos.map(m => m.fechados));
+                const fechados = comercial.serie.reduce((t, m) => t + m.fechados, 0);
+                const fechadoValor = comercial.serie.reduce((t, m) => t + m.valor, 0);
+                return (
+                  <>
+                    <DicaTopo rotulo="Funil em aberto" valor={dinheiro(comercial.emAberto.valor)}
+                      nota={`${comercial.emAberto.quantas} oportunidades`} />
+                    <div className="dica-linhas">
+                      <span>Ticket médio em aberto</span>
+                      <strong>{comercial.emAberto.quantas ? dinheiro(comercial.emAberto.valor / comercial.emAberto.quantas) : '-'}</strong>
+                      <span>Fechados em 12 meses</span>
+                      <strong>{fechados} | {dinheiro(fechadoValor)}</strong>
+                    </div>
+                    <p className="dica-secao">Fechamentos nos últimos 6 meses</p>
+                    <div className="dica-barrinhas">
+                      {ultimos.map((m, i) => (
+                        <span key={m.mes} className="dica-barrinha">
+                          <span style={{ height: `${Math.max(6, (m.fechados / maior) * 100)}%`, animationDelay: `${120 + i * 45}ms` }} />
+                          <em>{MESES_CURTOS[Number(m.mes.slice(5, 7)) - 1]}</em>
+                        </span>
+                      ))}
+                    </div>
+                  </>
+                );
+              } : undefined} />
+          </>
+        )}
       </div>
 
-      <section className="painel">
-        <div className="painel-topo">
-          <div>
-            <p className="painel-titulo">Comercial</p>
-            {/* A frase descreve o que está desenhado, e não o que foi pedido: a
-                janela nova só vale quando os dados dela chegam, e trocá-la antes
-                deixaria a legenda mentindo por um instante. O `.troca` é o
-                padrão da casa para a mesma área mudando de conteúdo - só
-                opacidade, porque a peça não nasce nem some, muda de cara. */}
-            <p className="painel-apoio troca" key={apoio}>{apoio}</p>
+      <div className="painel-meio">
+        {/* O comercial mes a mes: o mes corrente aceso, os anteriores em limao
+            lavado, e o numero de cada barra aparece com o ponteiro nela. */}
+        <section className="painel-cartao">
+          <div className="painel-cartao-topo">
+            <h2 className="painel-cartao-titulo">Negócios fechados por mês</h2>
+            <div className="painel-janelas" role="tablist" aria-label="Período">
+              {JANELAS.map(j => (
+                <button key={j} type="button" role="tab" aria-selected={janela === j}
+                  className={`painel-janela${janela === j ? ' ativa' : ''}`} onClick={() => setJanela(j)}>
+                  {j} meses
+                </button>
+              ))}
+            </div>
           </div>
-          {/* Os dois filtros ficam no painel, e não na página: cada painel
-              responde a uma pergunta, e o que se mede e em que período são parte
-              da pergunta deste. */}
-          <div className="painel-filtros">
-            <SegSwitch pequeno valor={metrica} onChange={setMetrica}
-              opcoes={METRICAS.map(m => ({ valor: m.valor, label: m.label }))} />
-            <SegSwitch pequeno valor={janela} onChange={setJanela}
-              opcoes={JANELAS.map(j => ({ valor: j.valor, label: j.label }))} />
-          </div>
-          {dados && (
-            // O que está aberto agora não cabe na série - não tem mês -, mas é
-            // o contexto dela: fechar pouco com o funil cheio é outra história
-            // de fechar pouco com o funil vazio.
-            <p className="painel-contexto">
-              <strong>{dados.emAberto.quantas}</strong> em aberto
-              {dados.emAberto.valor > 0 && <> · {dinheiro(dados.emAberto.valor)}</>}
-            </p>
+          {comercial ? (
+            <BarrasDoMes key={janela} serie={comercial.serie.slice(-janela)} />
+          ) : (
+            <div className="dux-spinner-row"><span className="dux-spinner sm" /></div>
           )}
-        </div>
+        </section>
 
-        {erro ? (
-          <p className="ff-vazio ff-erro"><IconAlert size={13} /> {erro}</p>
-        ) : !dados ? (
-          <Skeleton h={208} radius="var(--radius-md)" />
+        <section className="painel-cartao painel-semana">
+          <div className="painel-cartao-topo">
+            <h2 className="painel-cartao-titulo">Minha semana</h2>
+            {onIr && (
+              <button type="button" className="painel-link" onClick={() => onIr('tarefas')}>Ver tarefas</button>
+            )}
+          </div>
+          {carregando ? (
+            <div className="dux-spinner-row"><span className="dux-spinner sm" /></div>
+          ) : semana.length === 0 ? (
+            <p className="painel-vazio">Nada aberto com você. Semana livre.</p>
+          ) : (
+            <div className="lista-anima" key={semana.map(t => t.id).join(',')}>
+              {semana.map(t => (
+                <button key={t.id} type="button" className="semana-linha" onClick={() => onIr?.('tarefas')}>
+                  <span className="semana-icone" style={{ ['--cor' as string]: et.cor(t.status) }} />
+                  <span className="semana-texto">
+                    <span className="semana-titulo">{t.titulo}</span>
+                    <span className="semana-sub">#{t.id} | {t.projetoNome}{t.prazo ? ` | ${diaCurto(t.prazo)}` : ''}</span>
+                  </span>
+                  <span className="semana-status" style={{ ['--cor' as string]: et.cor(t.status) }}>{t.status}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+
+      {/* Os projetos em andamento: a entrega da vez, o quanto andou e o prazo. */}
+      <section className="painel-cartao painel-projetos">
+        <div className="painel-projetos-cabeca" aria-hidden="true">
+          <span>Projeto</span><span>Entrega atual</span><span>Progresso</span><span>Prazo</span><span>Situação</span>
+        </div>
+        {carregando ? (
+          <div className="dux-spinner-row"><span className="dux-spinner sm" /></div>
+        ) : emAndamento.length === 0 ? (
+          <p className="painel-vazio">Nenhum projeto em andamento.</p>
         ) : (
-          // A `key` refaz o gráfico quando a leitura muda - outra métrica, outro
-          // período -, e é ela que faz a entrada tocar de novo. Muda no instante
-          // em que os dados novos chegam, não no clique: assim o desenho antigo
-          // fica na tela até ter o que o substitua.
-          <GraficoFechados key={`${metrica}-${desenhada.length}`}
-            serie={desenhada} metrica={metrica} />
+          <div className="painel-projetos-corpo lista-anima">
+            {emAndamento.map((p, i) => (
+              <LinhaDoProjeto key={p.id} p={p} i={i} hoje={hoje} fecha={et.fecha}
+                onAbrir={() => onIr?.('projetos')} />
+            ))}
+          </div>
         )}
       </section>
-
-      <MaqueteDoPainel />
     </div>
   );
 }
 
-/**
- * A variação mês a mês, em área.
- *
- * Área, e não barras: o que se lê aqui é o movimento da série - se está subindo
- * ou caindo -, e a linha contínua com o preenchimento embaixo mostra isso de
- * relance. Cada mês continua tendo seu ponto e seu número, então a leitura
- * pontual não se perdeu.
- *
- * Reta, e não suavizada: a curva inventava valores entre dois meses, e num
- * painel de contagem não existe meio de mês. O segmento reto liga o que foi
- * medido ao que foi medido, e o joelho em cima do ponto é a própria virada.
- *
- * O traçado é um desenho só, atravessado por cima das colunas, e não uma fatia
- * por mês. Foi por fatias durante um tempo, e a emenda entre elas nunca fechou:
- * encostadas, as duas bordas antisserrilhadas não somavam um pixel cheio e
- * deixavam um fio claro; sobrepostas, as duas tintas translúcidas somavam alfa
- * e deixavam um fio escuro. Não existe ajuste de meio-termo aí - a única emenda
- * que não aparece é a que não existe.
- *
- * Nada disso depende de medir a largura do painel em JavaScript: o `viewBox` de
- * 0 a 100 se estica sozinho, e o mês `i` fica no centro da coluna `i` por
- * construção - que é onde o ponto dele está.
- */
-function GraficoFechados({ serie, metrica }: { serie: MesFechado[]; metrica: Metrica }) {
-  const total = serie.reduce((s, m) => s + m.fechados, 0);
-  const totalValor = serie.reduce((s, m) => s + m.valor, 0);
-  /** O que a barra mede, mes a mes. Trocar a metrica troca a altura, o numero em
-   *  cima dela e o podio - tudo o mais continua igual. */
-  const medida = (m: MesFechado) => (metrica === 'faturamento' ? m.valor : m.fechados);
-  /** O teto do eixo. Nunca zero, senão a divisão que dá a altura da barra
-   *  explode num painel sem nenhum fechamento. */
-  const teto = Math.max(1, ...serie.map(medida));
-
-  // O ano só aparece no rótulo quando a série atravessa a virada: doze meses
-  // dentro do mesmo ano não precisam repeti-lo doze vezes.
-  const anos = useMemo(() => new Set(serie.map(m => m.mes.slice(0, 4))), [serie]);
-  const mostrarAno = anos.size > 1;
-
-  /**
-   * O pódio do período: ouro, prata e bronze para os três melhores meses. Mês que
-   * não pontuou fica fora - medalha de zero seria troféu de participação -, e
-   * por isso um período magro pode premiar dois ou um só. No empate decide a
-   * outra métrica, e depois o mês mais antigo, que chegou lá primeiro.
-   */
-  /**
-   * O pódio muda com a métrica, e é isso que o torna útil: o mês que mais fechou
-   * contratos raramente é o que mais faturou, e a medalha responde à pergunta
-   * que está na tela. Mês que não pontuou na métrica escolhida fica fora - um mês
-   * com três contratos sem valor lançado não é campeão de faturamento.
-   */
-  const medalhas = useMemo(() => {
-    const podio = new Map<string, 1 | 2 | 3>();
-    serie
-      .filter(m => medida(m) > 0)
-      .slice()
-      .sort((a, b) => medida(b) - medida(a)
-        || (metrica === 'faturamento' ? b.fechados - a.fechados : b.valor - a.valor)
-        || a.mes.localeCompare(b.mes))
-      .slice(0, 3)
-      .forEach((m, i) => podio.set(m.mes, (i + 1) as 1 | 2 | 3));
-    return podio;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serie, metrica]);
-  const LUGAR_POR_EXTENSO = ['melhor mês do período', 'segundo melhor mês', 'terceiro melhor mês'];
-
-  /**
-   * O mês aberto no clique. Com um escolhido, a dica dele para de depender do
-   * ponteiro e os outros meses recuam: a série continua ali para dar a escala,
-   * mas a leitura passa a ser sobre um mês só.
-   *
-   * Mês sem fechamento nenhum não abre - não há o que listar, e apagar onze
-   * colunas para mostrar uma lista vazia seria trocar a informação por nada.
-   */
-  const [aberto, setAberto] = useState<string | null>(null);
-  const area = useRef<HTMLDivElement>(null);
-  /** Sufixo dos ids do SVG: dois gráficos na mesma página dariam degradê e
-   *  recorte com o mesmo nome, e o navegador fica com o primeiro que achar. */
-  const uid = useId().replace(/:/g, '');
-
-  /**
-   * Janela longa: com quarenta e cinco colunas, doze rotulos de mes viram uma
-   * mancha e os numeros em cima das barras se encavalam. Aqui o eixo passa a
-   * marcar de tres em tres - contando do mes mais recente para tras, para o mes
-   * atual nunca ficar sem nome -, e o numero fica so nas barras premiadas. O
-   * valor de cada mes continua a um passar de mouse.
-   */
-  const denso = serie.length > 18;
-
-  /** O y de um mês no quadro do desenho: 0 no topo, 100 na base - que é como o
-   *  SVG conta. */
-  const yDe = (i: number) => 100 - (medida(serie[i]) / teto) * 100;
-  /** O x de um mês: o centro da coluna dele, para o traçado passar exatamente
-   *  por onde está o ponto. */
-  const xDe = (i: number) => ((i + 0.5) / serie.length) * 100;
-  /** O traçado inteiro. Começa e termina plano nas bordas do quadro: a série não
-   *  sabe o que veio antes nem o que vem depois, e inclinar ali seria inventar. */
-  const tracado = `M 0,${yDe(0)} `
-    + serie.map((_, i) => `L ${xDe(i)},${yDe(i)}`).join(' ')
-    + ` L 100,${yDe(serie.length - 1)}`;
-  const preenchimento = `${tracado} L 100,100 L 0,100 Z`;
-  /** A coluna aberta, para o recorte que a mantém acesa enquanto o resto recua. */
-  const iAberto = serie.findIndex(m => m.mes === aberto);
-
-  // Sai pelo Escape e pelo clique fora, como todo painel do sistema. O clique é
-  // ouvido no `mousedown` para fechar no gesto, e não na soltura.
-  useEffect(() => {
-    if (!aberto) return;
-    const naTecla = (e: KeyboardEvent) => { if (e.key === 'Escape') setAberto(null); };
-    const noClique = (e: MouseEvent) => {
-      if (!area.current?.contains(e.target as Node)) setAberto(null);
-    };
-    document.addEventListener('keydown', naTecla);
-    document.addEventListener('mousedown', noClique);
-    return () => {
-      document.removeEventListener('keydown', naTecla);
-      document.removeEventListener('mousedown', noClique);
-    };
-  }, [aberto]);
-
-  if (total === 0) {
-    return (
-      <p className="painel-vazio">
-        Nenhuma oportunidade fechada nos últimos 12 meses. O gráfico aparece
-        quando a primeira ganhar a data em "Fechado em".
-      </p>
-    );
-  }
-
+/** Um numero da casa: rotulo, o valor grande, a variacao colada e a linha de
+ *  apoio embaixo. A variacao e verde quando e boa noticia e vermelha quando
+ *  cobra alguma coisa. */
+function Numero({ rotulo, valor, delta, bom, detalhe, dica }: {
+  rotulo: string;
+  valor: string | number;
+  delta?: string;
+  bom?: boolean;
+  detalhe: string;
+  /** O que o numero resume, aberto ao passar o mouse. */
+  dica?: () => ReactNode;
+}) {
+  const { gatilho, dica: cartao, aberta } = useDicaRica<HTMLDivElement>(dica ?? (() => null), { largura: 300 });
   return (
-    <>
-      {/* Sem `.troca` aqui: a transicao do grafico e o crescimento do chao, e um
-          desvanecer por baixo dele so lavava o comeco. O `.troca` fica na
-          legenda, que e texto trocando de conteudo. */}
-      <div ref={area} className={`grafico-area${aberto ? ' tem-aberto' : ''}`} role="img"
-        aria-label={`${total} oportunidades fechadas nos últimos 12 meses`}>
-        {/* O desenho, atravessando as colunas por baixo delas. */}
-        <svg className="grafico-desenho" viewBox="0 0 100 100"
-          preserveAspectRatio="none" aria-hidden="true">
-          <defs>
-            <linearGradient id={`${uid}-tinta`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" className="grafico-tinta-topo" />
-              <stop offset="100%" className="grafico-tinta-base" />
-            </linearGradient>
-            {/* O recorte do mês aberto: a faixa da coluna dele, de cima a baixo. */}
-            {iAberto >= 0 && (
-              <clipPath id={`${uid}-recorte`}>
-                <rect x={(iAberto / serie.length) * 100} y="0"
-                  width={100 / serie.length} height="100" />
-              </clipPath>
-            )}
-          </defs>
-          {/* O traçado inteiro. Com um mês aberto ele recua, e a cópia recortada
-              abaixo devolve o brilho só ao pedaço escolhido - assim o realce não
-              depende de partir o desenho em fatias. */}
-          <g className="grafico-base">
-            <path className="grafico-tinta" fill={`url(#${uid}-tinta)`} d={preenchimento} />
-            <path className="grafico-linha" vectorEffect="non-scaling-stroke" d={tracado} />
-          </g>
-          {iAberto >= 0 && (
-            <g clipPath={`url(#${uid}-recorte)`}>
-              <path className="grafico-tinta" fill={`url(#${uid}-tinta)`} d={preenchimento} />
-              <path className="grafico-linha" vectorEffect="non-scaling-stroke" d={tracado} />
-            </g>
-          )}
-        </svg>
-        {serie.map((m, i) => {
-          const lugar = medalhas.get(m.mes);
-          // Aberta, a dica sai pelo lado - e pelo lado onde ha espaco. Nos meses
-          // da metade direita ela abre para a esquerda, senao encostaria fora do
-          // painel.
-          const paraEsquerda = i > serie.length / 2 - 1;
-          /** A altura do ponto, em porcentagem do quadro. */
-          const altura = (medida(m) / teto) * 100;
-          return (
-            // `tabIndex` para o teclado alcançar o mês: a dica aparece no
-            // hover e no foco, e sem isso ela seria só do mouse. Com
-            // fechamentos, a coluna também é botão: abre o mês e volta a
-            // fechá-lo no segundo toque, como todo gatilho da casa.
-            <div key={m.mes}
-              className={`grafico-coluna${m.fechados > 0 ? ' abrivel' : ''}`
-                + (aberto === m.mes ? ' aberta' : '')
-                + (paraEsquerda ? ' abre-esquerda' : '')}
-              tabIndex={0}
-              role={m.fechados > 0 ? 'button' : undefined}
-              aria-pressed={m.fechados > 0 ? aberto === m.mes : undefined}
-              onClick={m.fechados > 0 ? () => setAberto(a => (a === m.mes ? null : m.mes)) : undefined}
-              onKeyDown={m.fechados > 0
-                ? e => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setAberto(a => (a === m.mes ? null : m.mes));
-                  }
-                }
-                : undefined}
-              aria-label={`${mesPorExtenso(m.mes)}: ${m.fechados} fechada${m.fechados === 1 ? '' : 's'}`
-                + (m.valor > 0 ? `, ${dinheiro(m.valor)}` : '')
-                + (lugar ? `, ${LUGAR_POR_EXTENSO[lugar - 1]}` : '')}>
-              {/* A dica da casa - a mesma pílula escura do donut -, ancorada na
-                  coluna em vez de seguir o ponteiro: aqui o alvo é fixo, e uma
-                  dica que persegue o mouse sobre doze colunas vizinhas pisca
-                  mais do que informa. */}
-              <span className="grafico-dica" role="tooltip">
-                <span className="grafico-dica-mes">{mesPorExtenso(m.mes)}</span>
-                <span className="grafico-dica-linha">
-                  <strong>{m.fechados}</strong> fechada{m.fechados === 1 ? '' : 's'}
-                  {m.valor > 0 && <span className="grafico-dica-valor">{dinheiro(m.valor)}</span>}
-                </span>
-                {/* A dica diz por extenso o que a medalha diz por desenho: sobre
-                    a coluna cabe o metal, mas não o lugar que ele representa. */}
-                {lugar && <span className="grafico-dica-podio">{LUGAR_POR_EXTENSO[lugar - 1]}</span>}
-                {/* Aberto o mês, a dica deixa de resumir e passa a listar. Cinco
-                    linhas, e o resto vira uma contagem: a lista inteira de um mês
-                    forte sairia pelo topo do painel, e quem precisa das doze
-                    tem o funil. As maiores vêm primeiro - é o servidor que já
-                    manda nessa ordem.
+    <div className={`painel-numero${dica ? ' com-dica' : ''}${aberta ? ' dica-aberta' : ''}`} data-luz
+      tabIndex={dica ? 0 : undefined} {...(dica ? gatilho : {})}>
+      {cartao}
+      <span className="painel-numero-rotulo">{rotulo}</span>
+      <span className="painel-numero-linha">
+        <span className="painel-numero-valor"><ContaAnimada valor={valor} /></span>
+        {delta && <span className={`painel-numero-delta${bom ? ' bom' : ''}`}>{delta}</span>}
+      </span>
+      <span className="painel-numero-detalhe">{detalhe}</span>
+    </div>
+  );
+}
 
-                    A lista fica montada desde sempre e quem decide é a classe:
-                    é o `.revelar` da casa, e ele precisa do conteúdo já na
-                    árvore para ter de onde animar. Montada só enquanto aberta,
-                    ela cresceria de nada para nada. */}
-                {!!m.projetos?.length && (
-                  <span className={`revelar${aberto === m.mes ? ' aberto' : ''}`}>
-                    <span>
-                      <span className="grafico-dica-projetos">
-                        {m.projetos.slice(0, 5).map(p => (
-                          <span key={p.id} className="grafico-dica-projeto">
-                            <span className="grafico-dica-empresa">{p.empresa}</span>
-                            {p.valor > 0 && <span className="grafico-dica-cifra">{dinheiro(p.valor)}</span>}
-                          </span>
-                        ))}
-                        {m.projetos.length > 5 && (
-                          <span className="grafico-dica-resto">e mais {m.projetos.length - 5}</span>
-                        )}
-                      </span>
-                    </span>
-                  </span>
-                )}
-              </span>
-              <div className="grafico-trilho">
-                {/* O ponto é elemento, e não círculo no SVG: dentro do desenho
-                    esticado ele viraria uma elipse. */}
-                <span className={`grafico-ponto${medida(m) === 0 ? ' zero' : ''}`}
-                  style={{ bottom: `${altura}%` }} />
-                {/* O número acompanha o próprio ponto, e não uma fileira fixa no
-                    alto do quadro: todos na mesma altura, era preciso contar
-                    colunas para saber de que mês era cada valor. */}
-                {(!denso || lugar) && (
-                  <span className={`grafico-valor${medida(m) === 0 ? ' zero' : ''}`}
-                    style={{ bottom: `${altura}%` }}>
-                    {lugar && <IconMedalha lugar={lugar} size={15} />}
-                    {metrica === 'faturamento' ? dinheiroCurto(m.valor) : m.fechados}
-                  </span>
-                )}
-              </div>
-              <span className="grafico-mes">
-                {!denso || (serie.length - 1 - i) % 3 === 0 ? rotuloDoMes(m.mes, mostrarAno) : ''}
-              </span>
+/** As barras do comercial: a altura e a contagem de negocios fechados no mes,
+ *  relativa ao maior mes da janela. O mes corrente e o aceso e mostra o numero;
+ *  os outros mostram o seu com o ponteiro em cima. */
+function BarrasDoMes({ serie }: { serie: MesFechado[] }) {
+  const maior = Math.max(1, ...serie.map(m => m.fechados));
+  const vazio = serie.every(m => m.fechados === 0);
+  const total = serie.reduce((t, m) => t + m.fechados, 0);
+  // A barra sob o ponteiro. A dica e uma so, e desliza de uma barra para a
+  // outra em vez de sumir e reaparecer: o olho segue o mes.
+  const [foco, setFoco] = useState<number | null>(null);
+  const m = foco != null ? serie[foco] : null;
+  const anterior = foco != null && foco > 0 ? serie[foco - 1] : null;
+  const variacao = m && anterior && anterior.fechados > 0
+    ? Math.round(((m.fechados - anterior.fechados) / anterior.fechados) * 100) : null;
+  return (
+    <div className={`barras-mes${vazio ? ' vazio' : ''}${foco != null ? ' focando' : ''}`}
+      onMouseLeave={() => setFoco(null)}>
+      {vazio && foco == null && <p className="barras-mes-aviso surge">Nenhum negócio fechado no período.</p>}
+      {m && (
+        <div className="barras-dica" style={{ ['--x' as string]: `${((foco! + 0.5) / serie.length) * 100}%` }}>
+          <div className="barras-dica-conteudo troca" key={m.mes}>
+            <span className="dica-rotulo">{mesPorExtenso(m.mes)}</span>
+            <span className="barras-dica-valor">
+              {m.fechados} {m.fechados === 1 ? 'negócio' : 'negócios'}
+              {variacao != null && variacao !== 0 && (
+                <span className={`barras-dica-variacao ${variacao > 0 ? 'bom' : 'ruim'}`}>
+                  {variacao > 0 ? <IconTrendUp size={12} /> : <IconTrendDown size={12} />}
+                  {variacao > 0 ? '+' : ''}{variacao}%
+                </span>
+              )}
+            </span>
+            <span className="barras-dica-sub">
+              {dinheiro(m.valor)}
+              {total > 0 && ` | ${Math.round((m.fechados / total) * 100)}% do período`}
+            </span>
+            {(m.projetos ?? []).length > 0 ? (
+              <ul className="dica-lista">
+                {(m.projetos ?? []).slice(0, 3).map((pj, i) => (
+                  <li key={pj.id} style={{ animationDelay: `${60 + i * 40}ms` }}>
+                    <span className="dica-lista-nome">{pj.empresa}{pj.interesse && <em>{pj.interesse}</em>}</span>
+                    <strong>{dinheiro(pj.valor)}</strong>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <span className="barras-dica-sub">Nenhum fechamento neste mês.</span>
+            )}
+          </div>
+        </div>
+      )}
+      <div className="barras-mes-area">
+        {serie.map((mes, i) => {
+          const atual = i === serie.length - 1;
+          return (
+            <div key={mes.mes} className={`barras-mes-col${atual ? ' atual' : ''}${foco === i ? ' foco' : ''}`}
+              onMouseEnter={() => setFoco(i)}>
+              <span className="barras-mes-numero"><ContaAnimada valor={mes.fechados} /></span>
+              <span className="barras-mes-barra"
+                style={{ height: `${Math.max(3, (mes.fechados / maior) * 100)}%`, animationDelay: `${i * 35}ms` }} />
             </div>
           );
         })}
       </div>
-      <p className="painel-rodape">
-        <strong>{total}</strong> fechada{total === 1 ? '' : 's'} no período
-        {totalValor > 0 && <> · {dinheiro(totalValor)} somados</>}
-      </p>
-    </>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  A maquete do painel.
-//
-//  Os blocos daqui para baixo são exemplo: números inventados, no lugar e no
-//  formato que os de verdade vão ocupar quando cada consulta existir. Servem
-//  para decidir o desenho do painel - quantos cartões cabem na fileira, que
-//  gráfico responde melhor a cada pergunta - sem esperar o servidor.
-//
-//  Cada um leva a marca "Exemplo" ao lado do título, e ela sai junto com o
-//  mock. Número inventado sem aviso num painel é o tipo de coisa que vira
-//  decisão errada numa reunião, e o aviso custa uma etiqueta.
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** A paleta dos gráficos: o limão da casa, e os tons que as etapas de entrega
- *  já usam. Nada de hex novo - cor de dado no sistema sai daqui. */
-const TINTA = {
-  principal: 'var(--yellow)',
-  apoio: 'var(--gray2)',
-  entregue: COR_ENTREGA['Entregue'],
-  andamento: COR_ENTREGA['Em andamento'],
-  validada: COR_ENTREGA['Validada'],
-  parada: COR_ENTREGA['Planejada'],
-};
-
-const MESES_EXEMPLO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun'];
-
-/** Uma série de barras verticais. Com mais de um valor por grupo elas ficam
- *  lado a lado dentro do mesmo mês, que é o que se lê como comparação. */
-function BarrasVerticais({ grupos, series, altura = 148 }: {
-  grupos: { rotulo: string; valores: number[] }[];
-  series: { nome: string; cor: string }[];
-  altura?: number;
-}) {
-  const teto = Math.max(1, ...grupos.flatMap(g => g.valores));
-  return (
-    <>
-      <div className="mini-grafico" style={{ height: altura }}>
-        {grupos.map(g => (
-          <div key={g.rotulo} className="mini-grupo">
-            <span className="mini-barras">
-              {g.valores.map((v, i) => (
-                <span key={series[i].nome} className="mini-barra"
-                  title={`${series[i].nome}: ${v}`}
-                  style={{ height: `${(v / teto) * 100}%`, background: series[i].cor }} />
-              ))}
-            </span>
-            <span className="mini-rotulo">{g.rotulo}</span>
-          </div>
+      <div className="barras-mes-eixo">
+        {serie.map((mes, i) => (
+          <span key={mes.mes} className={foco === i ? 'foco' : undefined}>{MESES_CURTOS[Number(mes.mes.slice(5, 7)) - 1]}</span>
         ))}
       </div>
-      {series.length > 1 && <Legenda series={series} />}
-    </>
-  );
-}
-
-/** As mesmas barras, uma em cima da outra: aqui a pergunta é de que o total é
- *  feito, e não quanto cada parte deu sozinha. */
-function BarrasEmpilhadas({ grupos, series, altura = 148 }: {
-  grupos: { rotulo: string; valores: number[] }[];
-  series: { nome: string; cor: string }[];
-  altura?: number;
-}) {
-  const soma = (g: { valores: number[] }) => g.valores.reduce((a, b) => a + b, 0);
-  const teto = Math.max(1, ...grupos.map(soma));
-  return (
-    <>
-      <div className="mini-grafico" style={{ height: altura }}>
-        {grupos.map(g => (
-          <div key={g.rotulo} className="mini-grupo">
-            <span className="mini-pilha" style={{ height: `${(soma(g) / teto) * 100}%` }}>
-              {g.valores.map((v, i) => (
-                <span key={series[i].nome} className="mini-fatia"
-                  title={`${series[i].nome}: ${v}`}
-                  style={{ flexGrow: v, background: series[i].cor }} />
-              ))}
-            </span>
-            <span className="mini-rotulo">{g.rotulo}</span>
-          </div>
-        ))}
-      </div>
-      <Legenda series={series} />
-    </>
-  );
-}
-
-/** Barras deitadas: para quando o rótulo é um nome, e não um mês. Em pé, seis
- *  nomes de cliente viram seis textos tombados. */
-function BarrasHorizontais({ itens, cor, rotuloDentro }: {
-  itens: { rotulo: string; valor: number }[];
-  cor: string;
-  /** O nome vai dentro da barra, como no painel de referência. Fora dela, a
-   *  coluna de nomes come metade da largura num painel de um terço de tela. */
-  rotuloDentro?: boolean;
-}) {
-  const teto = Math.max(1, ...itens.map(i => i.valor));
-  return (
-    <div className={`mini-linhas${rotuloDentro ? ' com-nome-dentro' : ''}`}>
-      {itens.map(i => (
-        <div key={i.rotulo} className="mini-linha">
-          {!rotuloDentro && <span className="mini-linha-nome">{i.rotulo}</span>}
-          <span className="mini-trilho">
-            <span className="mini-preenche"
-              style={{ width: `${Math.max(6, (i.valor / teto) * 100)}%`, background: cor }}>
-              {rotuloDentro && <span className="mini-dentro">{i.rotulo}</span>}
-            </span>
-          </span>
-          <span className="mini-linha-valor">{i.valor}</span>
-        </div>
-      ))}
     </div>
   );
 }
 
-/** A legenda das séries. Só aparece quando há mais de uma: com uma só, ela
- *  repetiria o título do painel. */
-function Legenda({ series }: { series: { nome: string; cor: string }[] }) {
-  return (
-    <div className="mini-legenda">
-      {series.map(s => (
-        <span key={s.nome} className="mini-legenda-item">
-          <span className="mini-legenda-cor" style={{ background: s.cor }} />
-          {s.nome}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-/**
- * Um bloco do painel: o título do assunto, uma linha dizendo o que se lê ali, e
- * os gráficos embaixo.
- *
- * O bloco é a moldura, e não cada gráfico. Cada um numa caixa própria, a página
- * virava uma parede de cartões iguais onde nada dizia o que estava junto com o
- * quê - e a leitura passa a ser "que assunto é este", que é a pergunta do
- * bloco, não do gráfico.
- */
-function Bloco({ titulo, apoio, exemplo, children }: {
-  titulo: string;
-  apoio: string;
-  /** Marca o bloco inteiro como maquete. Uma vez por assunto, e não um selo em
-   *  cima de cada gráfico: seis etiquetas iguais na mesma tela viram ruído, e a
-   *  primeira já disse o que era preciso dizer. */
-  exemplo?: boolean;
-  children: ReactNode;
+/** Uma linha da tabela de projetos, com a dica que abre as entregas dele: em
+ *  que etapa cada uma esta, o quanto andou, e quanto falta para o prazo. A dica
+ *  acompanha o ponteiro ao longo da linha. */
+function LinhaDoProjeto({ p, i, hoje, fecha, onAbrir }: {
+  p: Projeto;
+  i: number;
+  hoje: string;
+  fecha: (status: string) => boolean;
+  onAbrir: () => void;
 }) {
-  return (
-    <section className="bloco">
-      <div className="bloco-topo">
-        <p className="bloco-titulo">
-          {titulo}
-          {exemplo && <span className="painel-marca">Exemplo</span>}
-        </p>
-        <p className="bloco-apoio">{apoio}</p>
-      </div>
-      {children}
-    </section>
-  );
-}
+  const entregas = [...(p.entregas ?? [])].sort((a, b) => a.ordem - b.ordem);
+  const atual = entregas.find(e => !ENTREGA_FECHADA.includes(e.status));
+  const sit = situacaoDo(p, hoje);
+  const tarefas = p.tarefas ?? [];
+  const feitas = tarefas.filter(t => fecha(t.status)).length;
+  const { gatilho, dica, aberta } = useDicaRica<HTMLButtonElement>(
+    () => <ConteudoDaDicaDoProjeto p={p} fecha={fecha} />, { largura: 320, seguir: true });
 
-/**
- * Um gráfico no cartão da casa: título, o período que ele cobre, o desenho e a
- * linha de leitura embaixo.
- *
- * O cartão é o mesmo `.painel` do Comercial - mesma moldura, mesmo acabamento
- * de cristal. Um gráfico solto sobre a folha lia como sobra da página; dentro
- * do cartão ele é uma peça, e a fileira de três vira uma fileira de peças.
- */
-function Quadro({ titulo, periodo, tendencia, caindo, nota, children }: {
-  titulo: string;
-  periodo: string;
-  tendencia: string;
-  caindo?: boolean;
-  nota: string;
-  children: ReactNode;
-}) {
   return (
-    <section className="painel quadro">
-      <div className="quadro-cabeca">
-        <p className="quadro-titulo">{titulo}</p>
-        <p className="quadro-periodo">{periodo}</p>
-      </div>
-      {children}
-      <p className="quadro-rodape">
-        <span className={`painel-tendencia-linha${caindo ? ' caindo' : ''}`}>
-          {caindo ? <IconTrendDown size={13} /> : <IconTrendUp size={13} />}
-          <strong>{tendencia}</strong>
+    <button type="button" className={`projeto-linha cor-projeto-${corDoProjeto(p.id)}${aberta ? ' dica-aberta' : ''}`}
+      onClick={onAbrir} {...gatilho}>
+      {dica}
+      <span className="projeto-nome">
+        <span className="projeto-sigla">{p.nome.trim().charAt(0).toUpperCase()}</span>
+        <span className="projeto-textos">
+          <span className="projeto-titulo">{p.nome}</span>
+          <span className="projeto-cliente">{p.cliente_nome ?? 'Sem cliente'}</span>
         </span>
-        <span className="painel-tendencia-nota">{nota}</span>
-      </p>
-    </section>
-  );
-}
-
-/** Os números inventados da maquete, num lugar só - trocar o mock por consulta
- *  é apagar esta constante e o que a lê. */
-const EXEMPLO = {
-  kpis: [
-    { rotulo: 'Projetos ativos', valor: 12, nota: '3 neste mês', cor: 'var(--yellow)' },
-    { rotulo: 'Entregas no prazo', valor: '87%', nota: 'em 6 meses', cor: COR_ENTREGA['Validada'] },
-    { rotulo: 'Horas apontadas', valor: '1.248', nota: 'no mês', cor: COR_ENTREGA['Em andamento'] },
-    { rotulo: 'Chamados abertos', valor: 5, nota: '2 esperando', cor: 'var(--gray2)' },
-  ],
-  entregas: [8, 12, 9, 15, 11, 18, 14, 19, 16, 21, 17, 24],
-  clientes: [
-    { rotulo: 'Grupo 3SA', valor: 9 },
-    { rotulo: 'Cheirin Bão', valor: 7 },
-    { rotulo: 'J17 Bank', valor: 5 },
-    { rotulo: 'Prontomed', valor: 4 },
-    { rotulo: 'Orteconte', valor: 2 },
-  ],
-  planejadoEntregue: [[10, 8], [12, 12], [9, 7], [14, 15], [11, 10], [16, 18]],
-  horas: [
-    { rotulo: 'Guilherme', valor: 168 },
-    { rotulo: 'Thales', valor: 152 },
-    { rotulo: 'Equipe dev', valor: 486 },
-    { rotulo: 'Parceiros', valor: 210 },
-  ],
-  tarefas: [[6, 4, 10], [8, 5, 12], [5, 6, 9], [9, 4, 14], [7, 7, 11], [10, 5, 16]],
-  chamados: [
-    { rotulo: 'Bug', valor: 14 },
-    { rotulo: 'Melhoria', valor: 23 },
-    { rotulo: 'Dúvida', valor: 8 },
-  ],
-  receita: [
-    { chave: 'projetos', rotulo: 'Projetos', valor: 48, cor: 'var(--yellow)' },
-    { chave: 'squad', rotulo: 'Squad alocado', valor: 31, cor: COR_ENTREGA['Entregue'] },
-    { chave: 'manutencao', rotulo: 'Manutenção', valor: 14, cor: COR_ENTREGA['Em andamento'] },
-    { chave: 'consultoria', rotulo: 'Consultoria', valor: 7, cor: COR_ENTREGA['Planejada'] },
-  ],
-};
-
-/** Os doze meses do exemplo temporal, do mais antigo para o mais novo. */
-const DOZE_MESES = ['out', 'nov', 'dez', 'jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set'];
-
-/** A maquete: um bloco largo em cima e dois de três gráficos embaixo. */
-function MaqueteDoPainel() {
-  const mes = (i: number) => MESES_EXEMPLO[i];
-  return (
-    <>
-      <Bloco titulo="Entregas" exemplo
-        apoio="Quanto a casa entregou por mês, nos últimos doze.">
-        {/* Largura cheia: a série temporal é a que mais ganha com espaço - doze
-            meses espremidos num terço de tela viram serrilha. */}
-        <Quadro titulo="Entregas validadas por mês" periodo="outubro de 2025 a setembro de 2026"
-          tendencia="Subindo 5,2% em relação ao mês passado"
-          nota="184 entregas validadas no período">
-          <BarrasVerticais altura={200}
-            series={[{ nome: 'Entregas', cor: TINTA.principal }]}
-            grupos={EXEMPLO.entregas.map((v, i) => ({ rotulo: DOZE_MESES[i], valores: [v] }))} />
-        </Quadro>
-      </Bloco>
-
-      <Bloco titulo="Projetos e time" exemplo
-        apoio="De onde vem o trabalho, como ele foi planejado e onde as horas foram parar.">
-        <div className="bloco-grade">
-          <Quadro titulo="Projetos por cliente" periodo="janeiro a junho de 2026"
-            tendencia="Dois clientes novos no semestre" nota="Projetos abertos por conta">
-            <BarrasHorizontais itens={EXEMPLO.clientes} cor={TINTA.principal} />
-          </Quadro>
-          <Quadro titulo="Planejado x entregue" periodo="janeiro a junho de 2026"
-            tendencia="Acima do planejado em dois meses" nota="Comparação mês a mês">
-            <BarrasVerticais
-              series={[
-                { nome: 'Planejado', cor: TINTA.apoio },
-                { nome: 'Entregue', cor: TINTA.principal },
-              ]}
-              grupos={EXEMPLO.planejadoEntregue.map((v, i) => ({ rotulo: mes(i), valores: v }))} />
-          </Quadro>
-          <Quadro titulo="Horas por frente" periodo="setembro de 2026"
-            tendencia="Equipe dev com 47% do total" nota="Apontamentos do mês corrente">
-            <BarrasHorizontais itens={EXEMPLO.horas} cor={TINTA.entregue} />
-          </Quadro>
-        </div>
-      </Bloco>
-
-      <Bloco titulo="Qualidade e receita" exemplo
-        apoio="O que a fila de trabalho mostra, o que o time reportou e de onde vem o dinheiro.">
-        <div className="bloco-grade">
-          <Quadro titulo="Tarefas por etapa" periodo="janeiro a junho de 2026"
-            tendencia="Fila 8% mais curta que em maio" nota="Composição do quadro no fim do mês">
-            <BarrasEmpilhadas
-              series={[
-                { nome: 'A fazer', cor: TINTA.parada },
-                { nome: 'Em andamento', cor: TINTA.andamento },
-                { nome: 'Concluídas', cor: TINTA.validada },
-              ]}
-              grupos={EXEMPLO.tarefas.map((v, i) => ({ rotulo: mes(i), valores: v }))} />
-          </Quadro>
-          <Quadro titulo="Chamados por tipo" periodo="últimos 90 dias" caindo
-            tendencia="Bugs caindo 12% no trimestre" nota="O que o time reportou no portal">
-            <BarrasHorizontais itens={EXEMPLO.chamados} cor={TINTA.andamento} rotuloDentro />
-          </Quadro>
-          <Quadro titulo="Composição da receita" periodo="primeiro semestre de 2026"
-            tendencia="Recorrente em 45% do total" nota="Participação de cada frente">
-            <Donut fatias={EXEMPLO.receita} unidade="por cento" tamanho={118} esticar />
-          </Quadro>
-        </div>
-      </Bloco>
-    </>
+      </span>
+      <span className="projeto-entrega">{atual?.titulo ?? '-'}</span>
+      <span className="projeto-progresso">
+        <span className="projeto-trilho">
+          <span className="projeto-barra"
+            style={{ width: `${Math.min(100, Math.max(0, p.progresso))}%`, animationDelay: `${120 + i * 70}ms` }} />
+        </span>
+        <span className="projeto-pct"><ContaAnimada valor={`${Math.round(p.progresso)}%`} /></span>
+      </span>
+      <span className="projeto-prazo">{diaCurto(p.previsao_entrega)}</span>
+      <span><span className={`chip-situacao ${sit}`}>{ROTULO_SITUACAO[sit]}</span></span>
+    </button>
   );
 }
