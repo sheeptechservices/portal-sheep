@@ -24567,3 +24567,43 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
   background: var(--sup-cartao);
   border-color: var(--sup-painel-borda);
 }
+
+/* ══ A tarefa no centro da tela ═════════════════════════════════════════════
+   Clicar numa tarefa abre um dialogo centrado, e nao mais a gaveta de lado.
+   Por dentro e a mesma peca (`.painel-gaveta`: cabecalho e rodape parados,
+   corpo rolando); por fora, uma caixa de vidro com cantos largos que nasce
+   crescendo do centro e sai encolhendo de leve, como todo dialogo centrado. */
+.admin-modal-overlay.tarefa-central-fundo {
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.admin-modal.tarefa-central {
+  width: min(820px, 100%);
+  height: min(880px, calc(100vh - 48px));
+  max-width: none;
+  border-radius: 22px;
+  border: 1px solid var(--janela-borda);
+  box-shadow: 0 40px 100px -30px rgba(0, 0, 0, .75), var(--shadow-card-hover);
+  overflow: hidden;
+  animation: tarefa-central-entra .42s cubic-bezier(.2, .9, .25, 1.08) both;
+}
+@keyframes tarefa-central-entra {
+  from { opacity: 0; transform: translateY(14px) scale(.95); }
+  to   { opacity: 1; transform: none; }
+}
+.admin-modal-overlay.saindo .admin-modal.tarefa-central {
+  animation: encolhe .2s var(--curva-anti) both;
+}
+.admin-modal.tarefa-central .admin-modal-header { padding: 22px 26px 16px; }
+.admin-modal.tarefa-central .admin-modal-body { padding: 18px 26px 26px; }
+.admin-modal.tarefa-central .painel-rodape { padding: 14px 26px; }
+
+@media (max-width: 768px) {
+  .admin-modal-overlay.tarefa-central-fundo { padding: 0; align-items: stretch; }
+  .admin-modal.tarefa-central { width: 100%; height: 100dvh; border-radius: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-modal.tarefa-central,
+  .admin-modal-overlay.saindo .admin-modal.tarefa-central { animation: none; }
+}

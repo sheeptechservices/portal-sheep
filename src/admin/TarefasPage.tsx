@@ -254,19 +254,6 @@ function Prioridade({ valor }: { valor: string }) {
   );
 }
 
-/** Se a janela tem pelo menos `px` de largura. Acompanha o redimensionar. */
-function useJanelaLarga(px: number): boolean {
-  const consulta = `(min-width: ${px}px)`;
-  const [larga, setLarga] = useState(() => typeof window !== 'undefined' && window.matchMedia(consulta).matches);
-  useEffect(() => {
-    const m = window.matchMedia(consulta);
-    const mudou = () => setLarga(m.matches);
-    m.addEventListener('change', mudou);
-    return () => m.removeEventListener('change', mudou);
-  }, [consulta]);
-  return larga;
-}
-
 /** O dia de hoje como o mockup escreve: "13 nov 2026". */
 function hojePorExtenso(): string {
   return new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -338,7 +325,6 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
   const [ordem, setOrdem] = useState<string>('prioridade');
   // "Minhas tarefas": so as que tem quem abriu a tela entre os donos.
   const [soMinhas, setSoMinhas] = useState(false);
-  const largo = useJanelaLarga(1180);
   // "Recentes": a ordem de quem procura o que acabou de entrar. Liga e desliga
   // por cima da ordem escolhida, sem perde-la.
   const [recentes, setRecentes] = useState(false);
@@ -1179,7 +1165,6 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
   // na gaveta por cima nas estreitas, onde nao ha lado para ela.
   const fichaDaTarefa = form && (
         <FormularioTarefa
-          embutida={largo}
           rascunho={form}
           projetos={projetos}
           etapas={etapas}
@@ -1240,7 +1225,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
         ]}
       />
 
-      <div className={`tarefas-area${form && largo ? ' com-detalhe' : ''}`}>
+      <div className="tarefas-area">
       <section className="painel-principal">
         <div className="painel-principal-cabeca">
           <AbasPilula
@@ -1358,7 +1343,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
           <span>(<ContaAnimada valor={filtradas.length} /> {filtradas.length === 1 ? 'tarefa' : 'tarefas'})</span>
         </p>
         <Quadro grupos={grupos} pessoas={pessoas} agrupamento={agrupamento} et={et} etq={etq} podeEditar={podeEditar}
-          abertaId={largo ? form?.id ?? null : null}
+          abertaId={form?.id ?? null}
           onAbrir={abrirEdicao} onMover={mover}
           onCriarNaEtapa={podeEditar ? novaTarefa : undefined}
           onFixarRecolhida={pode('configuracoes:etapas') ? fixarRecolhida : undefined}
@@ -1370,7 +1355,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
         </>
       ) : view === 'lista' ? (
         <Lista grupos={grupos} pessoas={pessoas} et={et} etq={etq} podeExcluir={podeExcluir}
-          abertaId={largo ? form?.id ?? null : null}
+          abertaId={form?.id ?? null}
           onAbrir={abrirEdicao} onExcluir={setExcluindo} selecao={selecaoProps} />
       ) : (
         <Tabela grupos={grupos} pessoas={pessoas} et={et} etq={etq} podeExcluir={podeExcluir}
@@ -1379,7 +1364,6 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
       )}
         </div>
       </section>
-      {largo && fichaDaTarefa}
       </div>
 
       {/* O que se faz com todas as marcadas de uma vez. Cada ação só aparece
@@ -1450,7 +1434,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
           onConfirmar={() => void excluirSelecionadas()} />
       )}
 
-      {!largo && fichaDaTarefa}
+      {fichaDaTarefa}
 
       {excluindo && (
         <ConfirmarExclusao titulo={excluindo.titulo}

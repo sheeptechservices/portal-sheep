@@ -31,8 +31,6 @@ import { EditorRico } from '../components/EditorRico';
 import { ChipReuniao } from '../components/VinculoReuniao';
 import { ReuniaoModal } from '../components/ReuniaoModal';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
-import { useLarguraPainel } from '../lib/painelLateral';
-import { PuxadorDoPainel } from '../components/PuxadorDoPainel';
 import { diaCurto as fmtDataCurta } from '../lib/datas';
 // Reexportada: ela morava aqui e as telas a importam deste arquivo. O desenho
 // saiu para os componentes quando as outras telas passaram a usar a mesma caixa.
@@ -1042,12 +1040,17 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
   // caminho que perdia o que estava na pausa da digitação.
   const fundo = useFecharNoFundo(() => fecharGravando());
   // Mesma gaveta do painel de projeto, com largura e modo tela cheia próprios.
-  const { largura, arrastando, setArrastando, porTecla } = useLarguraPainel('tarefa');
   const trava = rascunho.etiquetas.some(e => etq.trava(e));
   useEffect(() => {
-    if (!embutida) return;
+    // Escape fecha a tarefa (gravando o que mudou), como todo diálogo. Não
+    // quando há algo aberto por cima dela - uma lista suspensa, outro modal
+    // -: aí o Escape é daquele. No diálogo, o fundo da própria tarefa já
+    // conta como um modal aberto.
+    const proprios = embutida ? 0 : 1;
     const tecla = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || document.querySelector('.admin-modal-overlay, .status-select-dropdown')) return;
+      if (e.key !== 'Escape') return;
+      if (document.querySelector('.status-select-dropdown, .datepicker-caixa')) return;
+      if (document.querySelectorAll('.admin-modal-overlay').length > proprios) return;
       fecharGravandoRef.current();
     };
     window.addEventListener('keydown', tecla);
@@ -1599,13 +1602,15 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
     );
   }
 
+  // A tarefa abre num diálogo no centro da tela, e não numa gaveta de lado:
+  // é uma ficha para ler e escrever, e no centro ela tem a atenção inteira.
+  // Por dentro é a mesma peça (cabeçalho e rodapé parados, corpo rolando), e
+  // sai encolhendo de leve, como todo diálogo centrado.
   return createPortal(
-    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`}
+    <div className={`admin-modal-overlay tarefa-central-fundo${saindo ? ' saindo' : ''}`}
       style={{ zIndex: 10000 }} {...fundo}>
-      <PuxadorDoPainel largura={largura} arrastando={arrastando}
-        setArrastando={setArrastando} porTecla={porTecla} />
-      <div className="admin-modal painel-gaveta"
-        style={{ width: `min(${largura}px, 96vw)` }}
+      <div className="admin-modal painel-gaveta tarefa-central"
+        role="dialog" aria-modal="true"
         onClick={e => e.stopPropagation()}>
 
         {miolo}
