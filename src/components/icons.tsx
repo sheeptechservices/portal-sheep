@@ -770,3 +770,70 @@ export function IconMedalha({ lugar, size = 14 }: { lugar: 1 | 2 | 3; size?: num
     </svg>
   );
 }
+
+/** A ovelha da marca, em traço: a nuvem de lã sobre duas patas. Vai no selo
+ *  redondo do alto do menu, ao lado do nome SHEEP. */
+export function IconOvelha({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6.5 15a3 3 0 0 1 .3-6 3.6 3.6 0 0 1 6.7-1.4A3.2 3.2 0 0 1 18 10a2.6 2.6 0 0 1-.6 5z" />
+      <path d="M8.5 15v3.5M15.5 15v3.5" />
+    </svg>
+  );
+}
+
+/** Sair da conta: a porta com a seta para fora. Fica no cartão de quem está
+ *  usando, no pé do menu. */
+export function IconSair({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4M15 16l4-4-4-4M19 12H9" />
+    </svg>
+  );
+}
+
+/** Filtros: três linhas que encurtam, o funil deitado das listas. Abre a
+ *  fileira de filtros que fica recolhida no cabeçalho do quadro. */
+export function IconFiltros({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 7h16M7 12h10M10 17h4" />
+    </svg>
+  );
+}
+
+/** Recentes: o relógio com a seta de volta. Ordena pelo que entrou por último. */
+export function IconRecentes({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4M12 8v4l3 2" />
+    </svg>
+  );
+}
+
+/** Ajustes: dois trilhos com os cursores. Abre todos os filtros de uma tela. */
+export function IconAjustes({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />
+      <circle cx="16" cy="7" r="2" />
+      <circle cx="10" cy="17" r="2" />
+    </svg>
+  );
+}
+
+/** Nova tarefa: a folha com o canto dobrado e o sinal de mais. */
+export function IconNovaTarefa({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4" />
+      <path d="M14 3l5 5v3M17 15v6M14 18h6" />
+    </svg>
+  );
+}

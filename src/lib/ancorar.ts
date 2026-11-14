@@ -49,3 +49,16 @@ export function ancorar(el: HTMLElement, itens: number, larguraMin = 150) {
     width,
   };
 }
+
+/** A caixa ao lado do gatilho, a direita dele: e como abrem as gavetas que
+ *  nascem no menu lateral (inbox, objetivos). Alinha o topo com o gatilho e
+ *  sobe o necessario para caber inteira na janela. */
+export function ancorarAoLado(el: HTMLElement, largura: number, altura: number) {
+  const r = el.getBoundingClientRect();
+  const MARGEM = 8;
+  const VAO = 12;
+  return {
+    top: Math.max(MARGEM, Math.min(r.top - 8, window.innerHeight - altura - MARGEM)),
+    left: Math.max(MARGEM, Math.min(r.right + VAO, window.innerWidth - largura - MARGEM)),
+  };
+}
