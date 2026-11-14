@@ -24607,3 +24607,20 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
   .admin-modal.tarefa-central,
   .admin-modal-overlay.saindo .admin-modal.tarefa-central { animation: none; }
 }
+
+/* Os detalhes da tarefa respiram entre as linhas: Projeto e Entrega, a linha
+   de prioridade, complexidade e responsavel, o prazo e as etiquetas eram
+   blocos irmaos sem vao, e o rotulo de uma linha encostava no campo da de
+   cima. 16px entre linhas (tambem quando uma linha quebra), 12px entre os
+   campos lado a lado. */
+.admin-modal .bloco-detalhes {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.admin-modal .bloco-detalhes > div[style*="grid"],
+.admin-modal .bloco-detalhes > div[style*="flex"] {
+  row-gap: 16px !important;
+  column-gap: 12px !important;
+}
+.admin-modal .bloco-detalhes .form-group { margin-bottom: 0; }
