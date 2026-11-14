@@ -106,6 +106,12 @@ import { SeletorPessoas } from '../components/SeletorPessoas';
 import {
   SecaoReunioes, type Reuniao, type ReuniaoFF,
 } from '../components/SecaoReunioes';
+import { ContaAnimada } from '../components/ContaAnimada';
+import { AbasPilula, FaixaDaPagina } from '../components/FaixaDaPagina';
+import { useSubpagina } from '../lib/subpagina';
+import { IconFiltros } from '../components/icons';
+import { useDicaRica } from '../components/DicaRica';
+import { ConteudoDaDicaDoProjeto, corDoProjeto } from '../components/DicaDoProjeto';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Projetos - o cadastro dos projetos da casa e o acompanhamento de cada um.
@@ -508,6 +514,8 @@ function AnelProgresso({ valor, size = 15 }: { valor: number; size?: number }) {
       style={{ flexShrink: 0 }}>
       <circle cx="9" cy="9" r={r} stroke="var(--gray3)" strokeWidth="2.4" />
       <circle cx="9" cy="9" r={r} stroke={cor} strokeWidth="2.4" strokeLinecap="round"
+        className="anel-enche"
+        style={{ ['--anel' as string]: `${(v / 100) * volta}`, ['--volta' as string]: `${volta}` }}
         strokeDasharray={`${(v / 100) * volta} ${volta}`} transform="rotate(-90 9 9)" />
     </svg>
   );
@@ -554,13 +562,13 @@ function Barra({ valor }: { valor: number }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 130 }}>
       <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'var(--gray3)', overflow: 'hidden' }}>
-        <div style={{
+        <div className="barra-cresce" style={{
           width: `${v}%`, height: '100%', borderRadius: 3,
           background: 'var(--yellow)', transition: 'width var(--transition)',
         }} />
       </div>
       <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--gray)', minWidth: 32, textAlign: 'right' }}>
-        {v}%
+        <ContaAnimada valor={`${v}%`} />
       </span>
     </div>
   );
@@ -1349,7 +1357,7 @@ function ColunaDoQuadro({ etapa, tarefas, pessoas, podeEditar, arrastando, loteA
           {etapa.nome}
         </div>
         {/* O subtotal colado no titulo, como na tela de Tarefas. */}
-        <span className="kanban-conta-bolha">{tarefas.length}</span>
+        <span className="kanban-conta-bolha"><ContaAnimada valor={tarefas.length} /></span>
         {/* Marca a coluna inteira, como na tela de Tarefas. */}
         {selecao && tarefas.length > 0 && (
           <CaixaDoGrupo total={tarefas.length} nome={etapa.nome}
@@ -3448,7 +3456,7 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
         {!ehGeral && (
           <div className="pl-numeros">
             <span className="pl-numero pl-numero-progresso" title="Entregas validadas">
-              <strong>{progressoDe(p)}%</strong>
+              <strong><ContaAnimada valor={`${progressoDe(p)}%`} /></strong>
               <span className="nt-progresso-barra"><span style={{ width: `${progressoDe(p)}%` }} /></span>
             </span>
           </div>
@@ -3622,13 +3630,13 @@ function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
           </p>
         </div>
         <div className="pl-numeros">
-          <span className="pl-numero"><strong>{contas.abertas.length}</strong><small>em aberto</small></span>
-          <span className="pl-numero"><strong>{contas.novas}</strong><small>novas</small></span>
-          <span className="pl-numero"><strong>{contas.acoesNaSemana}</strong><small>ações na semana</small></span>
+          <span className="pl-numero"><strong><ContaAnimada valor={contas.abertas.length} /></strong><small>em aberto</small></span>
+          <span className="pl-numero"><strong><ContaAnimada valor={contas.novas} /></strong><small>novas</small></span>
+          <span className="pl-numero"><strong><ContaAnimada valor={contas.acoesNaSemana} /></strong><small>ações na semana</small></span>
           <span className={`pl-numero${contas.atrasadas ? ' alerta' : ''}`}>
-            <strong>{contas.atrasadas}</strong><small>ações atrasadas</small>
+            <strong><ContaAnimada valor={contas.atrasadas} /></strong><small>ações atrasadas</small>
           </span>
-          <span className="pl-numero"><strong>{contas.ganhas}</strong><small>ganhas</small></span>
+          <span className="pl-numero"><strong><ContaAnimada valor={contas.ganhas} /></strong><small>ganhas</small></span>
         </div>
       </header>
 
@@ -3659,7 +3667,7 @@ function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
         <p className="pl-secao-titulo">
           <TituloRecolhivel aberta={secaoFunil.aberta} onAlternar={secaoFunil.alternar}>
           O funil
-          <span className="kanban-conta-bolha">{contas.abertas.length}</span>
+          <span className="kanban-conta-bolha"><ContaAnimada valor={contas.abertas.length} /></span>
           </TituloRecolhivel>
         </p>
         <CorpoRecolhivel aberta={secaoFunil.aberta}>
@@ -3684,7 +3692,7 @@ function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
                       <span className="kanban-dot" style={{ background: etapa.cor }} />
                       {etapa.nome}
                     </div>
-                    <span className="kanban-conta-bolha">{cards.length}</span>
+                    <span className="kanban-conta-bolha"><ContaAnimada valor={cards.length} /></span>
                   </div>
                   {fechada && <p className="pl-funil-nota">Só as desta semana</p>}
                   <div className="kanban-column-body">
@@ -6133,6 +6141,93 @@ function FormularioProjeto({
 
 type Aba = 'geral' | 'planning';
 
+/** O selo do projeto: a inicial na cor dele, a mesma do menu e do painel. */
+function SeloDoProjeto({ p, tamanho = 28 }: { p: Projeto; tamanho?: number }) {
+  return (
+    <span className={`projeto-selo cor-projeto-${corDoProjeto(p.id)}`}
+      style={{ width: tamanho, height: tamanho, fontSize: tamanho * 0.43 }}>
+      {p.nome.trim().charAt(0).toUpperCase()}
+    </span>
+  );
+}
+
+/** O nome do projeto na lista: selo, nome e descricao, com a dica das
+ *  entregas ao passar o mouse - a mesma do painel. */
+function NomeDoProjeto({ p, fecha }: { p: Projeto; fecha: (st: string) => boolean }) {
+  const { gatilho, dica } = useDicaRica<HTMLSpanElement>(
+    () => <ConteudoDaDicaDoProjeto p={p} fecha={fecha} />, { largura: 320 });
+  return (
+    <span className="projeto-celula-nome" {...gatilho}>
+      {dica}
+      <SeloDoProjeto p={p} />
+      <span className="projeto-celula-textos">
+        <span className="projeto-celula-titulo">{p.nome}</span>
+        <span className="projeto-celula-sub">
+          {[p.codigo, p.descricao].filter(Boolean).join(' | ') || (p.cliente_nome ?? 'Sem descrição')}
+        </span>
+      </span>
+    </span>
+  );
+}
+
+/** O card do quadro de projetos: selo e nome, o cliente, a entrega da vez, o
+ *  progresso que cresce ao entrar e o pe com a equipe e o prazo. A dica das
+ *  entregas abre com o ponteiro em cima. */
+function CartaoDoProjeto({ p, fecha, podeEditar, onAbrir }: {
+  p: Projeto;
+  fecha: (st: string) => boolean;
+  podeEditar: boolean;
+  onAbrir: () => void;
+}) {
+  const { gatilho, dica, aberta } = useDicaRica<HTMLDivElement>(
+    () => <ConteudoDaDicaDoProjeto p={p} fecha={fecha} />, { largura: 320 });
+  const atual = [...(p.entregas ?? [])].sort((a, b) => a.ordem - b.ordem)
+    .find(e => e.status !== ENTREGA_VALIDADA && e.status !== ENTREGA_CANCELADA && e.status !== 'Entregue');
+  const dias = diasPara(p.previsao_entrega);
+  const vivo = p.status !== 'Concluído' && p.status !== 'Cancelado';
+  const atrasado = dias !== null && dias < 0 && vivo;
+  const pct = progressoDe(p);
+  return (
+    <div className={`kanban-card projeto-cartao cor-projeto-${corDoProjeto(p.id)}${aberta ? ' dica-aberta' : ''}`}
+      onClick={onAbrir} style={{ cursor: podeEditar ? 'pointer' : 'default', position: 'relative' }}
+      {...gatilho}>
+      {dica}
+      <div className="projeto-cartao-topo">
+        <SeloDoProjeto p={p} tamanho={24} />
+        <span className="projeto-cartao-nome">{p.nome}</span>
+      </div>
+      <p className="projeto-cartao-cliente">{[p.cliente_nome, p.codigo].filter(Boolean).join(' | ') || 'Sem cliente'}</p>
+      {atual && (
+        <p className="projeto-cartao-entrega">
+          <span className="dica-legenda-ponto" style={{ background: COR_ENTREGA[atual.status] ?? 'var(--gray2)' }} />
+          {atual.titulo}
+        </p>
+      )}
+      <div className="projeto-cartao-progresso">
+        <span className="projeto-trilho"><span className="projeto-barra" style={{ width: `${pct}%` }} /></span>
+        <span className="projeto-pct"><ContaAnimada valor={`${pct}%`} /></span>
+      </div>
+      <div className="projeto-cartao-rodape">
+        <span className="fileira-caras">
+          {p.equipe.slice(0, 4).map(m => (
+            <span key={m.id} className="fileira-cara" title={`${m.nome} - ${m.papel}`}>
+              <Avatar nome={m.nome} foto={m.foto_url} size={20} />
+            </span>
+          ))}
+          {p.equipe.length > 4 && <span className="fileira-cara fileira-mais">+{p.equipe.length - 4}</span>}
+        </span>
+        {p.previsao_entrega && (
+          <span className={`projeto-cartao-prazo${atrasado ? ' atrasado' : ''}`}
+            title={atrasado ? `${Math.abs(dias!)} dia(s) de atraso` : undefined}>
+            <IconCalendario size={12} />
+            {fmtData(p.previsao_entrega)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAbriu, onAbrirOportunidade }: {
   token: string;
   /** Leva à tela do Funil com a oportunidade aberta: é de lá que um card é
@@ -6172,7 +6267,8 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     return lista.length ? lista : [{ valor: 'geral' as Aba, label: 'Geral' }];
   }, [pode]);
 
-  const [aba, setAba] = useState<Aba>(() => abasVisiveis[0].valor);
+  // A aba mora fora da tela: o menu lateral acende e abre cada uma.
+  const [aba, setAba] = useSubpagina<Aba>('projetos', () => abasVisiveis[0].valor);
   // A aba escolhida some quando a permissão muda debaixo de quem está olhando.
   useEffect(() => {
     if (!abasVisiveis.some(x => x.valor === aba)) setAba(abasVisiveis[0].valor);
@@ -6229,6 +6325,8 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
   const [planning, setPlanning] = useState<Record<string, PlanningDaSemana>>({});
 
   const [view, setView] = useState<'quadro' | 'lista'>('lista');
+  // A fileira de filtros mora recolhida no cabecalho do painel.
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [fStatus, setFStatus] = useState<string[]>([]);
   const [fCliente, setFCliente] = useState<string[]>([]);
   const [fGestor, setFGestor] = useState<string[]>([]);
@@ -7725,139 +7823,14 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     );
   }
 
-  return (
-    <EtiquetarioCtx.Provider value={etq}>
-    <AcoesEmMassaCtx.Provider value={acoesEmMassa}>
-    <div className="admin-content-wrap pagina-cristal pagina-projetos">
-      {/* As abas são o que a matriz liberou. Com uma só, a faixa some: uma
-          aba sozinha não é escolha, é um rótulo repetindo o título da página. */}
-      {abasVisiveis.length > 1 && (
-        <Abas
-          valor={aba}
-          onChange={setAba}
-          opcoes={abasVisiveis}
-        />
-      )}
+  const filtrosLigados = fStatus.length + fCliente.length + fGestor.length + fTipo.length;
+  const fechaTarefa = (st: string) => st === etapaDeConclusao;
 
-      <div className={`admin-page-header${aba === 'planning' ? ' com-semana' : ''}`}>
-        <div>
-          <h1 className="admin-page-title">Projetos</h1>
-          <p className="admin-page-desc">
-            {aba === 'geral'
-              ? 'Cadastro dos projetos da casa'
-              : secaoPlanning === 'comercial' && veFunil
-                ? 'A semana do comercial: os leads do funil e os objetivos'
-                : 'A semana de cada projeto, montada com o time'}
-          </p>
-        </div>
-        {aba === 'geral' && podeCriar && (
-          <button className="btn btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13, flexShrink: 0 }}
-            onClick={novoProjeto}>
-            + Novo projeto
-          </button>
-        )}
-        {aba === 'planning' && (
-          <SeletorDeSemana semana={semanaDaPlanning} onMudar={setSemanaDaPlanning} />
-        )}
-        {/* As duas reuniões da mesma semana: projeto por projeto, nas
-            divisórias, e a do comercial, que só quem vê o funil alcança. Com
-            uma só, o seletor some - ele não seria escolha. */}
-        {aba === 'planning' && veFunil && (
-          <div className="pl-secoes">
-            <SegSwitch valor={secaoPlanning} onChange={mudarSecaoPlanning}
-              opcoes={[
-                { valor: 'projetos', label: 'Projetos' },
-                { valor: 'comercial', label: 'Comercial' },
-              ]} />
-          </div>
-        )}
-      </div>
-
-      {/* O cabeçalho fica de fora: o título é o mesmo nas duas abas, e vê-lo
-          reanimar a cada troca daria a impressão de que a página inteira
-          recarregou. */}
-      <AbaPainel key={aba} // O mesmo vao da pagina: aqui dentro os blocos sao os mesmos - cartoes,
-        // filtros, busca e lista -, e um vao proprio deixava esta tela mais
-        // solta que as outras.
-        style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* Os cartões são da aba Geral. Na Planning nem o esqueleto deles aparece,
-          senão a tela prometeria uma faixa que não vem. */}
-      {aba === 'planning' ? null : carregando ? (
-        <CartoesKpiEsqueleto cartoes={5} />
-      ) : daCasa.length > 0 && (
-        <div className="admin-stats" style={{ marginBottom: 18 }}>
-          <CartaoKpi rotulo="Projetos" valor={resumo.total}
-            nota={temFiltro ? 'no filtro atual' : 'cadastrados'}
-            cor="var(--yellow)" atraso={0} />
-          <CartaoKpi rotulo="Em andamento" valor={resumo.andamento} nota="com trabalho correndo"
-            cor="#B58300" atraso={0.05}
-            ativo={fStatus.includes('Em andamento')}
-            onClick={() => setFStatus(f => f.includes('Em andamento')
-              ? f.filter(x => x !== 'Em andamento')
-              : [...f, 'Em andamento'])} />
-          <CartaoKpi rotulo="Atrasados" valor={resumo.atrasados} nota="com a entrega vencida"
-            cor="#D93025" atraso={0.1} />
-          <CartaoKpi rotulo="Progresso médio" valor={`${resumo.progresso}%`} nota="das entregas validadas"
-            cor="#0066CC" atraso={0.15} />
-        </div>
-      )}
-
-      {/* A barra de filtros é da aba Geral. Na Planning a reunião percorre a
-          carteira inteira: recortá-la por cliente ou por tipo deixaria projeto
-          de fora da conversa sem ninguém perceber. */}
-      {aba === 'geral' && !carregando && daCasa.length > 0 && (
-        <div className="admin-toolbar">
-          <span className="admin-toolbar-label">Filtrar</span>
-          <FilterDropdown label="Status" values={fStatus} options={opcoes.status} onChange={setFStatus} />
-          <FilterDropdown label="Cliente" values={fCliente} options={opcoes.cliente} onChange={setFCliente} />
-          <FilterDropdown label="Gestor" values={fGestor} options={opcoes.gestor} onChange={setFGestor} />
-          <FilterDropdown label="Tipo" values={fTipo} options={opcoes.tipo} onChange={setFTipo} />
-          {temFiltro && (
-            <button
-              style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray2)', background: 'none', border: 'none', cursor: 'pointer' }}
-              onClick={limparFiltros}
-            >
-              Limpar
-            </button>
-          )}
-          <div className="admin-toolbar-spacer" />
-          {aba === 'geral' && (
-            <div className="view-toggle">
-              <div className="view-toggle-pill" style={{ left: view === 'quadro' ? 3 : 35 }} />
-              <button className={view === 'quadro' ? 'active' : ''} onClick={() => setView('quadro')}
-                title="Quadro" aria-label="Ver em quadro">
-                <IconVisaoQuadro size={14} />
-              </button>
-              <button className={view === 'lista' ? 'active' : ''} onClick={() => setView('lista')}
-                title="Lista" aria-label="Ver em lista">
-                <IconVisaoLista size={14} />
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* A busca fica à vista, e não atrás de um botão: é a mesma faixa da tela
-          de Tarefas e da página do cliente. Os filtros ficam acima porque
-          estreitam o conjunto; a busca varre o que sobrou. */}
-      {aba === 'geral' && !carregando && daCasa.length > 0 && (
-        <div className="secao-busca">
-          <span className="secao-busca-campo">
-            <IconSearch size={13} />
-            <input value={busca} aria-label="Buscar projeto"
-              onChange={e => setBusca(e.target.value)}
-              placeholder="Buscar por nome, código, cliente ou descrição"
-              onKeyDown={e => { if (e.key === 'Escape') setBusca(''); }} />
-            {busca && (
-              <button type="button" aria-label="Limpar a busca" onClick={() => setBusca('')}>
-                <IconX size={12} />
-              </button>
-            )}
-          </span>
-        </div>
-      )}
-
-      {carregando ? (
+  // As visoes da tela: o esqueleto, o vazio, o quadro, a lista e a planning.
+  // Ficam numa constante porque a da Geral mora dentro do painel e a Planning
+  // nao: o painel embrulha uma e deixa a outra solta.
+  const conteudoDaAba = (
+carregando ? (
         // O esqueleto imita a visão que está aberta: quadro vira cartões,
         // lista vira linhas. Um giro no meio da tela não diria nada disso.
         aba === 'geral' && view === 'quadro'
@@ -7889,38 +7862,16 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
             return (
               <div key={st} className="kanban-column">
                 <div className="kanban-column-header">
-                  <div className="kanban-column-title">
+                  <div className="kanban-column-title" title={st}>
                     <span className="kanban-dot" style={{ background: cor }} />
                     {st}
                   </div>
-                  <span className="kanban-conta-bolha">{daColuna.length}</span>
+                  <span className="kanban-conta-bolha"><ContaAnimada valor={daColuna.length} /></span>
                 </div>
                 <div className="kanban-column-body">
                   {daColuna.map(p => (
-                    <div key={p.id} className="kanban-card"
-                      onClick={() => setForm({ editando: p })}
-                      style={{ cursor: podeEditar ? 'pointer' : 'default' }}>
-                      <p style={{ fontWeight: 600, fontSize: 13, color: 'var(--black)', margin: 0 }}>{p.nome}</p>
-                      <p style={{ fontSize: 11, color: 'var(--gray2)', margin: '2px 0 0' }}>
-                        {p.codigo}{p.cliente_nome ? ` · ${p.cliente_nome}` : ''}
-                      </p>
-                      <div style={{ marginTop: 10 }}><Barra valor={p.progresso} /></div>
-                      <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {p.equipe.slice(0, 4).map(m => (
-                          <span key={m.id} title={`${m.nome} - ${m.papel}`}>
-                            <Avatar nome={m.nome} foto={m.foto_url} size={20} />
-                          </span>
-                        ))}
-                        {p.equipe.length > 4 && (
-                          <span style={{ fontSize: 11, color: 'var(--gray2)' }}>+{p.equipe.length - 4}</span>
-                        )}
-                        {p.arquivos.length > 0 && (
-                          <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--gray2)' }}>
-                            {p.arquivos.length} anexo{p.arquivos.length > 1 ? 's' : ''}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                    <CartaoDoProjeto key={p.id} p={p} fecha={fechaTarefa}
+                      podeEditar={podeEditar} onAbrir={() => setForm({ editando: p })} />
                   ))}
                 </div>
               </div>
@@ -7935,7 +7886,9 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
                 {/* A coluna do projeto tomava o espaço que sobrava. Presa em
                     32%, o resto da linha respira e o nome corta com reticências. */}
                 {([
-                  ['projeto', 'Projeto', 400],
+                  // Sem largura: o projeto fica com o que sobra das outras, e a
+                  // tabela cabe na janela com o menu aberto ou fechado.
+                  ['projeto', 'Projeto', undefined],
                   ['prioridade', 'Prioridade', 70],
                   ['cliente', 'Cliente', 150],
                   ['gestor', 'Gestor', 160],
@@ -7944,7 +7897,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
                   // 160px: a pílula mais larga ("Em andamento") pede 128, e a
                   // célula come 32 de recuo. Com 130 ela transbordava, e o corte
                   // da célula desenhava um "..." ao lado de um chip inteiro.
-                  ['status', 'Status', 160],
+                  ['status', 'Status', 176],
                 ] as [string, string, string | number | undefined][]).map(([col, rotulo, largura]) => (
                   <ThOrdenavel key={col} coluna={col} atual={ordemCol} dir={ordemDir}
                     onOrdenar={ordenarPor} style={{ width: largura }}>
@@ -7969,29 +7922,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
                   }}
                   style={{ cursor: 'pointer' }}>
                   <td>
-                    {(() => {
-                      // A entrega em curso é a primeira que ainda não terminou:
-                      // é ela que responde "em que pé está o projeto".
-                      const atual = p.entregas.find(e =>
-                        e.status !== ENTREGA_VALIDADA && e.status !== ENTREGA_CANCELADA);
-                      return (
-                        <span style={{ display: 'block', minWidth: 0 }}>
-                          <span style={{ display: 'block', fontWeight: 600, color: 'var(--black)',
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                            title={atual ? `Em curso: ${atual.titulo} (${atual.status})` : undefined}>
-                            {p.nome}
-                          </span>
-                          {p.descricao && (
-                            <span style={{ display: 'block', marginTop: 3, fontSize: 11.5,
-                              color: 'var(--gray2)', overflow: 'hidden',
-                              textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                              title={p.descricao}>
-                              {p.descricao}
-                            </span>
-                          )}
-                        </span>
-                      );
-                    })()}
+                    <NomeDoProjeto p={p} fecha={fechaTarefa} />
                   </td>
 
                   <td>
@@ -8052,7 +7983,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
                       fontSize: 12, fontWeight: 600, color: 'var(--gray)' }}
                       title={`${p.entregas.filter(e => e.status === ENTREGA_VALIDADA).length} de ${p.entregas.length} entrega(s) validada(s)`}>
                       <AnelProgresso valor={progressoDe(p)} />
-                      {progressoDe(p)}%
+                      <ContaAnimada valor={`${progressoDe(p)}%`} />
                     </span>
                   </td>
 
@@ -8154,7 +8085,128 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           )}
         />
         </SemanaDaPlanningCtx.Provider>
-      )}
+      )
+  );
+
+  return (
+    <EtiquetarioCtx.Provider value={etq}>
+    <AcoesEmMassaCtx.Provider value={acoesEmMassa}>
+    <div className="admin-content-wrap pagina-cristal pagina-projetos">
+      {/* A faixa do alto: a area e o nome da tela, a escolha entre o cadastro
+          e a reuniao de planning, os numeros da carteira e a acao da aba. As
+          abas so aparecem quando a matriz libera as duas: uma sozinha nao e
+          escolha. */}
+      <FaixaDaPagina
+        secao="Operação"
+        titulo="Projetos"
+        apos={abasVisiveis.length > 1 && (
+          <AbasPilula rotulo="Seção de projetos" ativa={aba} onTrocar={setAba}
+            abas={abasVisiveis.map(a => ({ id: a.valor, rotulo: a.label }))} />
+        )}
+        itens={aba === 'geral' && !carregando && daCasa.length > 0 ? [
+          {
+            rotulo: 'Em andamento',
+            valor: resumo.andamento,
+            dica: 'Clique para ver só os em andamento',
+            ativo: fStatus.includes('Em andamento'),
+            onClick: () => setFStatus(f => f.includes('Em andamento')
+              ? f.filter(x => x !== 'Em andamento') : [...f, 'Em andamento']),
+          },
+          {
+            rotulo: 'Atrasados',
+            valor: resumo.atrasados,
+            nota: resumo.atrasados ? 'entrega vencida' : undefined,
+            tom: resumo.atrasados ? 'ruim' as const : undefined,
+          },
+          {
+            rotulo: 'Progresso médio',
+            valor: `${resumo.progresso}%`,
+            animar: true,
+            dica: 'Das entregas validadas, nos projetos ainda abertos',
+          },
+        ] : []}
+        acoes={aba === 'geral' ? (podeCriar && (
+          <button className="btn btn-primary" onClick={novoProjeto}>
+            <IconPlus size={15} />
+            Novo projeto
+          </button>
+        )) : (
+          <>
+            <SeletorDeSemana semana={semanaDaPlanning} onMudar={setSemanaDaPlanning} />
+            {/* As duas reuniões da mesma semana: projeto por projeto e a do
+                comercial, que só quem vê o funil alcança. */}
+            {veFunil && (
+              <div className="pl-secoes">
+                <SegSwitch valor={secaoPlanning} onChange={mudarSecaoPlanning}
+                  opcoes={[
+                    { valor: 'projetos', label: 'Projetos' },
+                    { valor: 'comercial', label: 'Comercial' },
+                  ]} />
+              </div>
+            )}
+          </>
+        )}
+      />
+
+      {/* O cabeçalho fica de fora: o título é o mesmo nas duas abas, e vê-lo
+          reanimar a cada troca daria a impressão de que a página inteira
+          recarregou. */}
+      <AbaPainel key={aba} // O mesmo vao da pagina: aqui dentro os blocos sao os mesmos - cartoes,
+        // filtros, busca e lista -, e um vao proprio deixava esta tela mais
+        // solta que as outras.
+        style={{ display: 'flex', flexDirection: 'column', gap: 14, flex: 1, minHeight: 0 }}>
+      {aba === 'geral' ? (
+        <section className="painel-principal">
+          <div className="painel-principal-cabeca">
+            <AbasPilula rotulo="Visão dos projetos" ativa={view} onTrocar={setView}
+              abas={[
+                { id: 'lista', rotulo: 'Lista', conta: carregando ? undefined : filtrados.length },
+                { id: 'quadro', rotulo: 'Quadro' },
+              ]} />
+            <div className="painel-principal-ferramentas">
+              <label className="painel-busca">
+                <IconSearch size={14} />
+                <input value={busca} aria-label="Buscar projeto"
+                  onChange={e => setBusca(e.target.value)}
+                  placeholder="Buscar projeto ou cliente"
+                  onKeyDown={e => { if (e.key === 'Escape') setBusca(''); }} />
+                {busca && (
+                  <button type="button" className="painel-busca-limpar surge" aria-label="Limpar a busca"
+                    onClick={() => setBusca('')}>
+                    <IconX size={12} />
+                  </button>
+                )}
+              </label>
+              <button type="button"
+                className={`botao-fantasma${filtrosAbertos || filtrosLigados ? ' ativo' : ''}`}
+                aria-expanded={filtrosAbertos} onClick={() => setFiltrosAbertos(v => !v)}>
+                <IconFiltros size={15} />
+                Filtros
+                {filtrosLigados > 0 && <span className="botao-fantasma-conta surge">{filtrosLigados}</span>}
+              </button>
+            </div>
+          </div>
+          {/* Os filtros finos nascem sob o cabecalho e empurram a lista. */}
+          <div className={`revelar${filtrosAbertos ? ' aberto' : ''}`}>
+            <div>
+              <div className="painel-filtros">
+                <FilterDropdown label="Status" values={fStatus} options={opcoes.status} onChange={setFStatus} />
+                <FilterDropdown label="Cliente" values={fCliente} options={opcoes.cliente} onChange={setFCliente} />
+                <FilterDropdown label="Gestor" values={fGestor} options={opcoes.gestor} onChange={setFGestor} />
+                <FilterDropdown label="Tipo" values={fTipo} options={opcoes.tipo} onChange={setFTipo} />
+                {temFiltro && (
+                  <button type="button" className="painel-filtros-limpar surge" onClick={limparFiltros}>
+                    Limpar filtros
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className={`painel-principal-corpo visao-projetos-${view} troca`} key={view}>
+            {conteudoDaAba}
+          </div>
+        </section>
+      ) : conteudoDaAba}
       </AbaPainel>
 
       {form && (
