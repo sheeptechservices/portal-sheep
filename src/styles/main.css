@@ -23766,7 +23766,9 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
    teclado. Abre a mesma busca do Ctrl+K. */
 .menu-busca-linha {
   flex-shrink: 0;
-  padding: 0 0 6px;
+  /* Mais perto da navegacao que os outros blocos do menu: a busca abre a
+     lista, e nao e uma secao a parte. */
+  margin-bottom: -12px;
 }
 .app-menu .nav-leaf.menu-busca {
   background: var(--sup-campo);
