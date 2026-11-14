@@ -24638,3 +24638,88 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
 /* O foco de luz do cartao de reportar so anda com o cartao aberto: fechado,
    ele continua montado (para abrir animando) e nao precisa gastar quadro. */
 .reportar-painel:not(.aberto) .reportar-luz { animation-play-state: paused; }
+
+/* ══ Planning no desenho da identidade ══════════════════════════════════════
+   As divisorias de agenda (abas de pasta fundidas na folha branca) saem. Os
+   projetos viram uma lista de navegacao num painel de vidro proprio, ao lado
+   da folha: cada um e uma linha arredondada, e o escolhido ganha o realce de
+   cartao com o contorno em limao - a mesma marca que desliza ate ele. A
+   folha, os numeros da semana e o combinado passam a ser o painel e os
+   cartoes da casa, sem as sombras de cristal antigas. */
+.pagina-projetos .pl-pagina {
+  grid-template-columns: 252px minmax(0, 1fr);
+  gap: 14px;
+}
+.pagina-projetos .pl-abas {
+  gap: 2px;
+  padding: 8px;
+  top: 0;
+  border-radius: var(--radius-lg);
+  background: var(--sup-painel);
+  border: 1px solid var(--sup-painel-borda);
+  animation: faixa-entra .4s var(--curva-anti) backwards;
+}
+.pagina-cristal .pl-abas .pl-aba,
+.pagina-cristal .pl-abas .pl-aba:last-child {
+  padding: 10px 10px 10px 12px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  box-shadow: none;
+  color: var(--gray);
+  transition: background var(--transition), color var(--transition);
+}
+.pagina-cristal .pl-abas .pl-aba:not(.ativa):hover,
+.pagina-cristal .pl-abas .pl-aba:not(.ativa):last-child:hover {
+  background: var(--sup-cartao);
+  box-shadow: none;
+  color: var(--black);
+}
+.pagina-cristal .pl-abas .pl-aba.ativa { color: var(--black); }
+/* A marca que desliza ate a escolhida: cartao em relevo com o fio limao. */
+.pagina-projetos .pl-abas .pl-aba-marca {
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--sup-cartao-hover);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--yellow) 70%, transparent),
+    0 8px 22px -12px rgba(0, 0, 0, .6);
+}
+.pagina-projetos .pl-aba.ativa .pl-aba-num-texto { color: var(--yellow-tinta); }
+.pagina-projetos .pl-aba-texto strong { font-weight: 600; }
+.pagina-projetos .pl-aba.ativa .pl-aba-texto strong { font-weight: 700; }
+.pagina-projetos .pl-aba-conta { background: var(--sup-selo); color: var(--gray); }
+.pagina-projetos .pl-aba-conta.vazia { background: transparent; color: var(--gray2); opacity: .55; }
+.pagina-projetos .pl-aba.ativa .pl-aba-conta {
+  background: color-mix(in srgb, var(--yellow) 16%, transparent);
+  color: var(--yellow-tinta);
+}
+
+/* A folha: o painel de vidro da casa, com os quatro cantos. */
+.pagina-projetos .pl-sheet,
+.pagina-projetos .pl-sheet.pl-sheet-inteira {
+  background: var(--sup-painel);
+  border: 1px solid var(--sup-painel-borda);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+  animation: faixa-entra .45s var(--curva-anti) 80ms backwards;
+}
+.pagina-projetos .pl-cabeca { border-bottom-color: var(--sup-painel-borda); }
+.pagina-projetos .pl-quem h2 { font-size: 20px; font-weight: 700; letter-spacing: -.015em; }
+
+/* Os numeros da semana e o combinado: cartoes da casa. */
+.pagina-projetos .pl-numeros,
+.pagina-projetos .pl-combinado {
+  background: var(--sup-cartao);
+  border: 1px solid var(--sup-painel-borda);
+  box-shadow: none;
+}
+.pagina-projetos .pl-numero { border-left-color: var(--sup-painel-borda); }
+.pagina-projetos .pl-secao-titulo { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; }
+
+@media (max-width: 900px) {
+  .pagina-projetos .pl-pagina { grid-template-columns: 1fr; }
+  .pagina-projetos .pl-abas { position: static; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pagina-projetos .pl-abas, .pagina-projetos .pl-sheet { animation: none; }
+}

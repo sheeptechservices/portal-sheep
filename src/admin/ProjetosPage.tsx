@@ -23,7 +23,6 @@ import { AcaoDaBarra, BarraDeSelecao, CaixaDeMarcar, CaixaDoGrupo } from '../com
 import { semTextoNoShift, useSelecao } from '../lib/useSelecao';
 import FilterDropdown from '../components/FilterDropdown';
 import FiltroPeriodo, { dentroDoPeriodo } from '../components/FiltroPeriodo';
-import { SegSwitch } from '../components/SegSwitch';
 import { PLANNING_FUNIL, PROJETO_GERAL } from '../lib/projetoGeral';
 import { logoDoCliente } from '../lib/marcas';
 import { LogoDoCliente } from '../components/LogoDoCliente';
@@ -8137,10 +8136,11 @@ carregando ? (
                 comercial, que só quem vê o funil alcança. */}
             {veFunil && (
               <div className="pl-secoes">
-                <SegSwitch valor={secaoPlanning} onChange={mudarSecaoPlanning}
-                  opcoes={[
-                    { valor: 'projetos', label: 'Projetos' },
-                    { valor: 'comercial', label: 'Comercial' },
+                {/* Em pílula, como toda escolha de face de tela no sistema. */}
+                <AbasPilula rotulo="Reunião da semana" ativa={secaoPlanning} onTrocar={mudarSecaoPlanning}
+                  abas={[
+                    { id: 'projetos', rotulo: 'Projetos' },
+                    { id: 'comercial', rotulo: 'Comercial' },
                   ]} />
               </div>
             )}
