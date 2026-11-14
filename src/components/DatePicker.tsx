@@ -221,6 +221,7 @@ export function DatePicker({ value, onChange, label, required, error, disabled, 
     <div
       ref={dropRef}
       role="dialog"
+      className="datepicker-caixa"
       onMouseLeave={() => setTooltip(null)}
       style={{
         position: 'fixed',

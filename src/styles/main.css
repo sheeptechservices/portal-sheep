@@ -24230,3 +24230,49 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   .menu-trilho:not(:hover):not(:has(:focus-visible)) .app-menu-secao,
   .menu-trilho .menu-grupo:has(> .app-menu-secao)::before { transition: none; }
 }
+
+/* ══ Vidro em toda caixa que flutua ═════════════════════════════════════════
+   Modal, gaveta, lista suspensa, calendario, inbox, busca rapida, dica e a
+   ficha ao lado do quadro: todas no mesmo vidro do menu lateral, e nao cada
+   uma numa chapa propria. O fundo e o `--menu-flutuante` (o quase preto
+   verde a meia opacidade), com o mesmo desfoque e saturacao do menu, e o fio
+   da janela na borda. O `!important` e de proposito: estas caixas tem fundo
+   escrito em varios lugares (por tema, por tela, e inline no calendario), e o
+   pedido e que nenhuma fuja do padrao.
+   As paginas publicas de cliente (vitrine, portal do projeto) ficam de fora:
+   la a identidade e a do documento, nao a do sistema. */
+:root { --vidro-flutuante-filtro: blur(30px) saturate(160%); }
+:is(.admin-modal, .delete-confirm-modal, .modal-central, .usuarios-modal, .cofre-popup,
+  .status-select-dropdown, .filter-dropdown-list, .status-color-picker-popover, .notif-dropdown,
+  .model-select-pop, .vinculo-lista, .pl-semana-lista, .inbox-gaveta, .qs-panel, .dica-rica,
+  .tooltip-box, .datepicker-caixa, .tarefa-detalhe):not(.pub-seletor-lista) {
+  background: var(--menu-flutuante) !important;
+  -webkit-backdrop-filter: var(--vidro-flutuante-filtro) !important;
+  backdrop-filter: var(--vidro-flutuante-filtro) !important;
+  border-color: var(--janela-borda) !important;
+}
+/* As faixas de dentro (cabecalho, rodape, campo da busca) deixam de ser
+   chapa: passam a ser o mesmo vidro, mais leve. Onde o cabecalho gruda no
+   alto e o corpo rola por baixo, o desfoque dele borra o texto que passa. */
+:is(.admin-modal, .modal-central, .inbox-gaveta, .qs-panel, .tarefa-detalhe)
+  :is(.admin-modal-header, .admin-modal-footer, .painel-rodape, .inbox-topo, .qs-inputwrap) {
+  background: color-mix(in srgb, var(--menu-flutuante) 55%, transparent) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+}
+/* O fundo escuro atras do modal fica so na tinta, sem desfoque proprio: com
+   ele, o modal viraria a raiz do fundo e o vidro dele enxergaria apenas a
+   tinta, e nao a pagina borrada por tras. O desfoque agora e do vidro. */
+:is(.admin-modal-overlay, .qs-overlay, .usuarios-modal-fundo) {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background: rgba(3, 6, 4, .32) !important;
+}
+/* A entrada do fundo nao fica presa depois de tocar. Com `both`, a opacidade
+   animada continua aplicada no fim, e o navegador trata o fundo como raiz do
+   desfoque: o vidro do modal so enxergaria a tinta, e o texto da pagina
+   aparecia nitido atras dele. Com `backwards`, terminada a entrada nao sobra
+   efeito nenhum. A saida (.saindo) segue como era. */
+:is(.admin-modal-overlay, .qs-overlay, .usuarios-modal-fundo):not(.saindo) {
+  animation-fill-mode: backwards !important;
+}
