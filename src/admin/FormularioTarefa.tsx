@@ -810,7 +810,7 @@ export function SeletorEtiquetas({ valor, opcoes, etq, onChange, desabilitado }:
           width: '100%', justifyContent: 'space-between', margin: 0,
           minHeight: 'var(--campo-altura)',
           padding: '5px 14px', borderRadius: 'var(--radius-md)',
-          fontFamily: "'Manrope', sans-serif", fontSize: 14, fontWeight: 500,
+          fontFamily: "'Inter', sans-serif", fontSize: 14, fontWeight: 500,
           // O mesmo fundo que o `SelectSistema` pinta: sem isto o campo herdava
           // o cinza do gatilho e lia como desabilitado ao lado dos outros.
           background: 'var(--white)',
@@ -877,7 +877,10 @@ export function SeletorEtiquetas({ valor, opcoes, etq, onChange, desabilitado }:
 
 export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etiquetaPorPapel,
   usuarioId, etq, pessoas, salvando, somenteLeitura, podeComentar, api,
-  onMudar, onFechar, onSalvar, onExcluir, onDuplicar, onEntregaCriada, onConversaMudou }: {
+  onMudar, onFechar, onSalvar, onExcluir, onDuplicar, onEntregaCriada, onConversaMudou, embutida }: {
+  /** Painel de detalhe ao lado do quadro, dentro da pagina, em vez da gaveta
+   *  por cima dela: e o desenho do mockup na tela de Tarefas em janela larga. */
+  embutida?: boolean;
   /** Comentário entrou ou saiu, para o cartão atualizar as contagens dele. */
   onConversaMudou?: () => void;
   /** Recebe a entrega que acabou de nascer pelo seletor, para a tela a pôr na
@@ -1041,6 +1044,16 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
   // Mesma gaveta do painel de projeto, com largura e modo tela cheia próprios.
   const { largura, arrastando, setArrastando, porTecla } = useLarguraPainel('tarefa');
   const trava = rascunho.etiquetas.some(e => etq.trava(e));
+  useEffect(() => {
+    if (!embutida) return;
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || document.querySelector('.admin-modal-overlay, .status-select-dropdown')) return;
+      fecharGravandoRef.current();
+    };
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, [embutida]);
+  const fecharGravandoRef = useRef<() => void>(() => {});
 
   /** As etiquetas que a tarefa já tinha quando o painel abriu. Regra é sobre
    *  pôr a etiqueta, não sobre carregá-la: reabrir uma tarefa que já é "pm: bug"
@@ -1156,19 +1169,14 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
     fechar();
   }
 
+  fecharGravandoRef.current = fecharGravando;
+
   // A lista muda com o projeto escolhido: é lá que a pessoa tem um papel.
   const etiquetasVisiveis = etiquetasParaOPapel(etiquetas, etiquetaPorPapel, projeto, usuarioId);
   const escondidas = etiquetas.length - etiquetasVisiveis.length;
 
-  return createPortal(
-    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`}
-      style={{ zIndex: 10000 }} {...fundo}>
-      <PuxadorDoPainel largura={largura} arrastando={arrastando}
-        setArrastando={setArrastando} porTecla={porTecla} />
-      <div className="admin-modal painel-gaveta"
-        style={{ width: `min(${largura}px, 96vw)` }}
-        onClick={e => e.stopPropagation()}>
-
+  const miolo = (
+    <>
         {/* Grudento: rolando a conversa lá embaixo, o título da tarefa e o
             botão de salvar continuam à vista. */}
         <div className="admin-modal-header">
@@ -1177,7 +1185,7 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
               deixando um vão até os botões. */}
           <div style={{ flex: 1, minWidth: 0 }}>
             <p className="painel-rotulo">
-              {rascunho.id ? 'Tarefa' : 'Nova tarefa'}
+              {rascunho.id ? (embutida ? `Tarefa #${rascunho.id}` : 'Tarefa') : 'Nova tarefa'}
             </p>
             {/* O título é editado onde ele é lido, e não num campo lá embaixo.
                 Cresce em várias linhas quando é comprido: cortar com reticências
@@ -1253,7 +1261,8 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
 
         <div className="admin-modal-body">
 
-          <div className="form-group">
+          <div className="form-group bloco-descricao">
+            {embutida && <p className="detalhe-secao">Descrição</p>}
             <label className="form-label">Descrição</label>
             {/* Em repouso o texto aparece formatado; clicar devolve o campo. A
                 marcação continua sendo texto puro no banco - é ela que sai em
@@ -1300,6 +1309,7 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
 
           {/* O passo a passo, logo abaixo do que a tarefa é: um é o enunciado,
               o outro é o caminho. */}
+          <div className="bloco-checklist">
           <Checklist
             tarefaId={rascunho.id}
             api={api}
@@ -1307,10 +1317,13 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
             desabilitado={somenteLeitura}
             onMudarRascunho={v => set('subtarefas', v)}
           />
+          </div>
 
           {/* `minmax(0, 1fr)` e não `1fr`: item de grade não encolhe abaixo do
               próprio conteúdo por padrão, e o rótulo comprido de uma entrega
               esticava a coluna para fora do modal. */}
+          <div className="bloco-detalhes">
+          {embutida && <p className="detalhe-secao">Detalhes</p>}
           <div className="campos-2" style={{ display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
             {/* Um campo só, de escolha múltipla: a tarefa que serve mais de um
@@ -1467,12 +1480,13 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
               </p>
             )}
           </div>
+          </div>
 
           {/* As reuniões vêm da entrega, e não da tarefa: é na entrega que a
               conversa acontece, e a tarefa é um pedaço dela. Aqui só se lê -
               vincular é do lado da entrega ou da própria reunião. */}
           {reunioesDaEntrega.length > 0 && (
-            <section>
+            <section className="bloco-reunioes">
               <div className="admin-section-head">
                 <p className="admin-section-title">
                   Reuniões da entrega
@@ -1496,6 +1510,8 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
           {/* Só em tarefa que já existe: diário de tarefa não gravada não é
               nada, e o comentário não teria onde pendurar. */}
           {rascunho.id != null && api && (
+            <div className="bloco-atividade">
+            {embutida && <p className="detalhe-secao">Comentários e atividade</p>}
             <AtividadeDaTarefa
               tarefaId={rascunho.id}
               pessoas={pessoas}
@@ -1504,6 +1520,7 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
               api={api}
               onConversaMudou={onConversaMudou}
             />
+            </div>
           )}
         </div>
 
@@ -1546,8 +1563,10 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
           </button>
         </div>
 
-      </div>
-
+    </>
+  );
+  const reuniaoModal = (
+    <>
       {/* A reunião aberta pelo chip. Fora da gaveta porque é modal central: ela
           cobre a tela, e não o painel. */}
       {reuniaoAberta && api && (
@@ -1564,6 +1583,35 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
           onFechar={() => setReuniaoAberta(null)}
         />
       )}
+    </>
+  );
+
+  // Ao lado do quadro: a mesma ficha, sem fundo escuro nem gaveta por cima. O
+  // quadro continua a vista e clicavel - abrir outra tarefa troca a ficha.
+  if (embutida) {
+    return (
+      <aside className={`tarefa-detalhe${saindo ? ' saindo' : ''}`} aria-label="Detalhe da tarefa">
+        <div className="tarefa-detalhe-folha">
+          {miolo}
+        </div>
+        {reuniaoModal}
+      </aside>
+    );
+  }
+
+  return createPortal(
+    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`}
+      style={{ zIndex: 10000 }} {...fundo}>
+      <PuxadorDoPainel largura={largura} arrastando={arrastando}
+        setArrastando={setArrastando} porTecla={porTecla} />
+      <div className="admin-modal painel-gaveta"
+        style={{ width: `min(${largura}px, 96vw)` }}
+        onClick={e => e.stopPropagation()}>
+
+        {miolo}
+      </div>
+
+{reuniaoModal}
     </div>,
     document.body,
   );

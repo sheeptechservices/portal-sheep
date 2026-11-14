@@ -13,20 +13,21 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { iniciais, useAuth, useToast } from './AdminApp';
+import { iniciais, nomeCurto, useAuth, useToast } from './AdminApp';
 import {
   IconAgrupar, IconAlert, IconArrowRight, IconCalendario, IconCheck, IconChevronDown, IconInbox,
   IconPrioridadeAlta, IconRecolher,
-  IconDownload, IconDuplicar, IconOrdenar, IconPlus, IconSearch, IconTrash, IconUser,
-  IconVisaoLista, IconVisaoQuadro,
-  IconVisaoTabela, IconX,
+  IconAjustes, IconDownload, IconDuplicar, IconNovaTarefa, IconOrdenar, IconPlus, IconRecentes,
+  IconSearch, IconTrash, IconUser, IconX,
 } from '../components/icons';
 import { SelectSistema } from '../components/SelectSistema';
 import { DatePicker } from '../components/DatePicker';
 import FilterDropdown from '../components/FilterDropdown';
 import FiltroPeriodo, { dentroDoPeriodo } from '../components/FiltroPeriodo';
 import { SkeletonCards, SkeletonTabela } from '../components/Skeleton';
-import { CartaoKpi, CartoesKpiEsqueleto } from '../components/CartaoKpi';
+import { AbasPilula, FaixaDaPagina } from '../components/FaixaDaPagina';
+import { useSubpagina } from '../lib/subpagina';
+import { ContaAnimada } from '../components/ContaAnimada';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import {
   exportar, type ComentarioExport, type Formato as FormatoExport, type Pacote as PacoteExport,
@@ -252,6 +253,40 @@ function Prioridade({ valor }: { valor: string }) {
   );
 }
 
+/** Se a janela tem pelo menos `px` de largura. Acompanha o redimensionar. */
+function useJanelaLarga(px: number): boolean {
+  const consulta = `(min-width: ${px}px)`;
+  const [larga, setLarga] = useState(() => typeof window !== 'undefined' && window.matchMedia(consulta).matches);
+  useEffect(() => {
+    const m = window.matchMedia(consulta);
+    const mudou = () => setLarga(m.matches);
+    m.addEventListener('change', mudou);
+    return () => m.removeEventListener('change', mudou);
+  }, [consulta]);
+  return larga;
+}
+
+/** O dia de hoje como o mockup escreve: "13 nov 2026". */
+function hojePorExtenso(): string {
+  return new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })
+    .replace(/\./g, '').replace(/ de /g, ' ');
+}
+
+/** As caras de quem esta com trabalho aberto, uma sobre a outra, com o resto
+ *  numa bolinha "+N" no fim. */
+function FileiraDeCaras({ pessoas }: { pessoas: Pessoa[] }) {
+  const mostra = pessoas.slice(0, 4);
+  const resto = pessoas.length - mostra.length;
+  return (
+    <span className="fileira-caras">
+      {mostra.map(p => (
+        <span key={p.id} className="fileira-cara"><Avatar nome={p.nome} foto={p.foto_url} size={22} /></span>
+      ))}
+      {resto > 0 && <span className="fileira-cara fileira-mais">+{resto}</span>}
+    </span>
+  );
+}
+
 // ── Página ──────────────────────────────────────────────────────────────────
 
 /** De onde a tela abre já estreitada. Vem da contagem de tarefas de uma entrega,
@@ -263,7 +298,7 @@ export interface FiltroInicialTarefas {
   nonce: number;
 }
 
-export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, abrir, onAbriu }: {
+export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, abrir, onAbriu, criar, onCriou }: {
   token: string;
   filtroInicial?: FiltroInicialTarefas;
   onFiltroAplicado?: () => void;
@@ -271,6 +306,9 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
    *  quando se busca por ela de novo depois de ter fechado a gaveta. */
   abrir?: { id: string; nonce: number };
   onAbriu?: () => void;
+  /** Pedido de tarefa nova vindo de outra tela (o painel). Vale uma vez. */
+  criar?: number;
+  onCriou?: () => void;
 }) {
   const { pode, usuario, onSessionExpired } = useAuth();
   const { toast } = useToast();
@@ -283,7 +321,8 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
   const [carregando, setCarregando] = useState(true);
   const [form, setForm] = useState<Rascunho | null>(null);
   const [excluindo, setExcluindo] = useState<TarefaComProjeto | null>(null);
-  const [view, setView] = useState<'quadro' | 'lista' | 'tabela'>('quadro');
+  // A visao mora fora da tela: o menu lateral acende e abre cada uma.
+  const [view, setView] = useSubpagina<'quadro' | 'lista' | 'tabela'>('tarefas', 'quadro');
 
   const [fProjeto, setFProjeto] = useState<string[]>([]);
   const [fStatus, setFStatus] = useState<string[]>([]);
@@ -296,6 +335,14 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
   const [fPrazo, setFPrazo] = useState({ de: '', ate: '' });
   const [busca, setBusca] = useState('');
   const [ordem, setOrdem] = useState<string>('prioridade');
+  // "Minhas tarefas": so as que tem quem abriu a tela entre os donos.
+  const [soMinhas, setSoMinhas] = useState(false);
+  const largo = useJanelaLarga(1180);
+  // "Recentes": a ordem de quem procura o que acabou de entrar. Liga e desliga
+  // por cima da ordem escolhida, sem perde-la.
+  const [recentes, setRecentes] = useState(false);
+  // Os filtros finos moram recolhidos sob a busca, como no mockup.
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [agrupamento, setAgrupamento] = useState<string>('status');
 
   const et = useMemo(() => indexar(etapas), [etapas]);
@@ -430,6 +477,14 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
     if (abrir) setAlvoDaBusca(Number(abrir.id));
   }, [abrir?.nonce]);
 
+  // "Nova tarefa" pedida de outra tela: espera a carga, porque a tarefa nasce
+  // na etapa de entrada, que vem dela, e entao abre a gaveta uma vez.
+  useEffect(() => {
+    if (!criar || carregando) return;
+    onCriou?.();
+    if (podeEditar && projetos.length > 0) novaTarefa();
+  }, [criar, carregando]);
+
   // Chegou de uma entrega: entra com o projeto e a entrega já escolhidos, e a
   // tabela aberta, que é onde os detalhes cabem lado a lado.
   useEffect(() => {
@@ -477,6 +532,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
     const entregaDe = (t: TarefaComProjeto) =>
       t.entrega_id == null ? '' : (t.projeto.entregas?.find(e => e.id === t.entrega_id)?.titulo ?? '');
     const lista = tarefas.filter(t =>
+      (!soMinhas || (!!usuario && (t.responsaveis ?? []).includes(usuario.id))) &&
       // Filtrar por projeto acha a tarefa que apenas passa por ele, e não só a
       // que nasceu lá.
       (fProjeto.length === 0 || t.projetosDela.some(p => fProjeto.includes(p.nome))) &&
@@ -494,6 +550,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
     // Prioridade é a ordem padrão de toda lista de tarefas da casa, com o prazo
     // desempatando dentro dela - e é também o desempate das outras ordens: duas
     // tarefas do mesmo projeto saem da mais urgente para a menos.
+    if (recentes) return [...lista].sort((a, b) => String(b.criado_em ?? '').localeCompare(String(a.criado_em ?? '')) || b.id - a.id);
     if (ordem === 'prioridade') return [...lista].sort((a, b) => porUrgencia(a, b) || a.id - b.id);
     const chave: Record<string, (t: TarefaComProjeto) => string | number> = {
       // Sem prazo vai para o fim: o que tem data é o que cobra decisão hoje.
@@ -506,7 +563,8 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
       const va = de(a), vb = de(b);
       return va < vb ? -1 : va > vb ? 1 : porUrgencia(a, b) || a.id - b.id;
     });
-  }, [tarefas, fProjeto, fStatus, fResponsavel, fEtiqueta, fEntrega, fComplexidade, fPrazo, busca, ordem]);
+  }, [tarefas, fProjeto, fStatus, fResponsavel, fEtiqueta, fEntrega, fComplexidade, fPrazo, busca, ordem,
+    soMinhas, recentes, usuario]);
 
   const grupos = useMemo(
     () => montarGrupos(filtradas, agrupamento, etapas),
@@ -530,6 +588,14 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
       travadas: abertas.filter(t => t.etiquetas.some(e => etq.trava(e))).length,
     };
   }, [filtradas, et, etq]);
+
+  /** Quem esta com trabalho aberto no recorte: as caras da faixa do alto. */
+  const equipe = useMemo(() => {
+    const ids = new Set(filtradas
+      .filter(t => !et.fecha(t.status) && !et.desconsidera(t.status))
+      .flatMap(t => t.responsaveis ?? []));
+    return pessoas.filter(p => ids.has(p.id));
+  }, [filtradas, pessoas, et]);
 
   const nomesConclusivos = etapas.filter(e => Number(e.is_conclusao) === 1).map(e => e.nome);
   const filtrandoFeitas = nomesConclusivos.length > 0
@@ -577,6 +643,8 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
     };
   }, [tarefas]);
 
+  const contagemDeFiltros = fProjeto.length + fStatus.length + fResponsavel.length
+    + fEtiqueta.length + fEntrega.length + fComplexidade.length + (fPrazo.de || fPrazo.ate ? 1 : 0);
   const temFiltro = fProjeto.length + fStatus.length + fResponsavel.length
     + fEtiqueta.length + fEntrega.length + fComplexidade.length > 0 || !!busca.trim()
     || !!(fPrazo.de || fPrazo.ate);
@@ -1106,121 +1174,164 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
     );
   }
 
+  // A ficha da tarefa: ao lado do quadro em janela larga, como no mockup, e
+  // na gaveta por cima nas estreitas, onde nao ha lado para ela.
+  const fichaDaTarefa = form && (
+        <FormularioTarefa
+          embutida={largo}
+          rascunho={form}
+          projetos={projetos}
+          etapas={etapas}
+          etiquetas={etiquetas}
+          etiquetaPorPapel={etiquetaPorPapel}
+          usuarioId={usuario?.id}
+          etq={etq}
+          pessoas={pessoas}
+          salvando={salvando}
+          somenteLeitura={!podeEditar}
+          podeComentar={pode('tarefas:comentar')}
+          api={api}
+          onMudar={setForm}
+          onFechar={() => void fecharTarefa()}
+          onConversaMudou={reconciliar}
+          onSalvar={() => salvar(form)}
+          onExcluir={podeExcluir && form.id ? () => {
+            const alvo = tarefas.find(x => x.id === form.id);
+            if (alvo) setExcluindo(alvo);
+          } : undefined}
+          onDuplicar={podeEditar && form.id ? () => {
+            const alvo = tarefas.find(x => x.id === form.id);
+            if (alvo) void duplicar(alvo);
+          } : undefined}
+          // Criar entrega é editar projeto: sem essa permissão o seletor não
+          // oferece, em vez de oferecer e o servidor recusar.
+          onEntregaCriada={pode('projetos:editar') ? (projetoId, entrega) => {
+            mudancasRef.current++;
+            setProjetos(ps => ps.map(x => (x.id === projetoId
+              ? { ...x, entregas: [...(x.entregas ?? []), entrega] } : x)));
+          } : undefined}
+        />
+  );
+
   return (
     <div className="admin-content-wrap pagina-cristal pagina-tarefas">
-      <div className="admin-page-header">
-        <div>
-          <h1 className="admin-page-title">Tarefas</h1>
-          <p className="admin-page-desc">O trabalho dos projetos, e o que move as entregas</p>
-        </div>
-        {/* Só "Nova tarefa" fica no cabeçalho. Buscar, agrupar, ordenar e
-            exportar desceram para a linha da busca: são o mesmo momento - achar
-            o que se procura e escolher como olhar. */}
-        <div className="admin-page-acoes">
+      {/* A faixa do alto, no desenho do mockup: a area e o nome da tela, o dia
+          de hoje, quem esta com trabalho aberto e quanto ainda esta na mesa. */}
+      <FaixaDaPagina
+        secao="Operação"
+        titulo="Tarefas"
+        itens={[
+          { rotulo: 'Hoje', valor: hojePorExtenso() },
+          ...(carregando ? [] : [
+            {
+              rotulo: 'Equipe nas tarefas',
+              valor: equipe.length ? <FileiraDeCaras pessoas={equipe} /> : '-',
+              dica: equipe.map(p => p.nome).join(', ') || 'Ninguém com tarefa aberta no recorte',
+            },
+            {
+              rotulo: 'Em aberto',
+              valor: resumo.abertas,
+              nota: resumo.atrasadas ? `${resumo.atrasadas} atrasada${resumo.atrasadas === 1 ? '' : 's'}` : undefined,
+              tom: resumo.atrasadas ? 'ruim' as const : undefined,
+              dica: 'Tarefas ainda na mesa, e quantas delas passaram do prazo',
+            },
+          ]),
+        ]}
+      />
+
+      <div className={`tarefas-area${form && largo ? ' com-detalhe' : ''}`}>
+      <section className="painel-principal">
+        <div className="painel-principal-cabeca">
+          <AbasPilula
+            rotulo="Visão das tarefas"
+            ativa={view}
+            onTrocar={setView}
+            abas={[
+              { id: 'quadro', rotulo: 'Quadro' },
+              { id: 'lista', rotulo: 'Lista' },
+              { id: 'tabela', rotulo: 'Tabela' },
+            ]}
+          />
           {podeEditar && projetos.length > 0 && (
-            <button className="btn btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13, flexShrink: 0 }}
+            <button type="button" className="botao-contorno" style={{ marginLeft: 'auto' }}
               onClick={() => void novaTarefa()}>
-              + Nova tarefa
+              <IconNovaTarefa size={15} />
+              Criar tarefa
             </button>
           )}
         </div>
-      </div>
 
-      {carregando ? (
-        <CartoesKpiEsqueleto cartoes={5} />
-      ) : tarefas.length > 0 && (
-        <div className="admin-stats" style={{ marginBottom: 18 }}>
-          <CartaoKpi rotulo="Tarefas" valor={resumo.total}
-            nota={temFiltro ? 'no filtro atual' : 'nos projetos que você vê'}
-            cor="var(--yellow)" atraso={0} />
-          <CartaoKpi rotulo="Abertas" valor={resumo.abertas} nota="ainda na mesa"
-            cor="#B58300" atraso={0.05} />
-          <CartaoKpi rotulo="Concluídas" valor={resumo.feitas} nota="na etapa de conversão"
-            cor="#23A455" atraso={0.1}
-            ativo={filtrandoFeitas}
-            onClick={() => setFStatus(f => filtrandoFeitas
-              ? f.filter(x => !nomesConclusivos.includes(x))
-              : [...new Set([...f, ...nomesConclusivos])])} />
-          <CartaoKpi rotulo="Atrasadas" valor={resumo.atrasadas} nota="prazo vencido e abertas"
-            cor="#D93025" atraso={0.15} />
-          <CartaoKpi rotulo="Bloqueadas" valor={resumo.travadas} nota="com etiqueta de bloqueio"
-            cor="#C2410C" atraso={0.2}
-            ativo={filtrandoTravadas}
-            onClick={() => setFEtiqueta(f => filtrandoTravadas
-              ? f.filter(x => !nomesBloqueio.includes(x))
-              : [...new Set([...f, ...nomesBloqueio])])} />
-        </div>
-      )}
-
-      {!carregando && tarefas.length > 0 && (
-        <>
-          <div className="admin-toolbar">
-            <span className="admin-toolbar-label">Filtrar</span>
-            <FilterDropdown label="Projeto" values={fProjeto} options={opcoes.projeto} onChange={setFProjeto} />
-            <FilterDropdown label="Status" values={fStatus} options={opcoes.status} onChange={setFStatus} />
-            <FilterDropdown label="Responsável" values={fResponsavel} options={opcoes.responsavel} onChange={setFResponsavel} />
-            <FilterDropdown label="Entrega" values={fEntrega} options={opcoes.entrega} onChange={setFEntrega} />
-            <FilterDropdown label="Etiqueta" values={fEtiqueta} options={opcoes.etiqueta} onChange={setFEtiqueta} />
-            <FilterDropdown label="Complexidade" values={fComplexidade} options={opcoes.complexidade}
-              onChange={setFComplexidade} />
-            <FiltroPeriodo label="Prazo" de={fPrazo.de} ate={fPrazo.ate}
-              onChange={(de, ate) => setFPrazo({ de, ate })} />
-            {temFiltro && (
-              <button
-                style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray2)', background: 'none', border: 'none', cursor: 'pointer' }}
-                onClick={limparFiltros}>
-                Limpar
+        {/* A busca a vista e os atalhos de todo dia na mesma linha; os filtros
+            finos ficam atras de "Todos os filtros". */}
+        <div className="painel-principal-barra">
+          <label className="painel-busca painel-busca-larga">
+            <IconSearch size={14} />
+            <input value={busca} aria-label="Buscar tarefas"
+              onChange={e => setBusca(e.target.value)}
+              placeholder="Buscar tarefas"
+              onKeyDown={e => { if (e.key === 'Escape') setBusca(''); }} />
+            {busca && (
+              <button type="button" className="painel-busca-limpar surge" aria-label="Limpar a busca"
+                onClick={() => setBusca('')}>
+                <IconX size={12} />
               </button>
             )}
-            <div className="admin-toolbar-spacer" />
-
-            <div className="view-toggle">
-              <div className="view-toggle-pill"
-                style={{ left: view === 'quadro' ? 3 : view === 'lista' ? 35 : 67 }} />
-              <button className={view === 'quadro' ? 'active' : ''} onClick={() => setView('quadro')}
-                title="Quadro" aria-label="Ver em quadro">
-                <IconVisaoQuadro size={14} />
+          </label>
+          <div className="painel-principal-ferramentas">
+            {usuario && (
+              <button type="button" className={`botao-fantasma${soMinhas ? ' ativo' : ''}`}
+                aria-pressed={soMinhas} onClick={() => setSoMinhas(v => !v)}>
+                <IconUser size={15} />
+                Minhas tarefas
               </button>
-              <button className={view === 'lista' ? 'active' : ''} onClick={() => setView('lista')}
-                title="Lista" aria-label="Ver em lista">
-                <IconVisaoLista size={14} />
-              </button>
-              <button className={view === 'tabela' ? 'active' : ''} onClick={() => setView('tabela')}
-                title="Tabela" aria-label="Ver em tabela">
-                <IconVisaoTabela size={14} />
-              </button>
-            </div>
-          </div>
-
-          {/* A busca fica à vista, e não atrás de um botão: com dezenas de
-              tarefas, procurar uma é o primeiro gesto de quem abre a tela. É a
-              mesma faixa do painel de projeto e da página do cliente - campo de
-              um lado, controles da tela do outro. */}
-          <div className="secao-busca">
-            <span className="secao-busca-campo">
-              <IconSearch size={13} />
-              <input value={busca} aria-label="Buscar tarefa"
-                onChange={e => setBusca(e.target.value)}
-                placeholder="Buscar por título, descrição ou entrega"
-                onKeyDown={e => { if (e.key === 'Escape') setBusca(''); }} />
-              {busca && (
-                <button type="button" aria-label="Limpar a busca" onClick={() => setBusca('')}>
-                  <IconX size={12} />
-                </button>
-              )}
-            </span>
+            )}
+            <button type="button" className={`botao-fantasma${recentes ? ' ativo' : ''}`}
+              aria-pressed={recentes} onClick={() => setRecentes(v => !v)}>
+              <IconRecentes size={15} />
+              Recentes
+            </button>
+            <button type="button" className={`botao-fantasma${filtrosAbertos || contagemDeFiltros ? ' ativo' : ''}`}
+              aria-expanded={filtrosAbertos} onClick={() => setFiltrosAbertos(v => !v)}>
+              <IconAjustes size={15} />
+              Todos os filtros
+              {contagemDeFiltros > 0 && <span className="botao-fantasma-conta surge">{contagemDeFiltros}</span>}
+            </button>
+            <span className="painel-principal-divisor" aria-hidden="true" />
             <SeletorLista valor={agrupamento} onChange={setAgrupamento} opcoes={AGRUPAMENTOS}
               icone={IconAgrupar} rotulo="Agrupar tarefas" />
-            <SeletorLista valor={ordem} onChange={setOrdem} opcoes={ORDENS}
+            <SeletorLista valor={ordem} onChange={v => { setOrdem(v); setRecentes(false); }} opcoes={ORDENS}
               icone={IconOrdenar} rotulo="Ordenar tarefas" />
             {/* Exporta o que está filtrado. O `.md` existe para virar contexto
                 de uma IA; os outros três, para planilha e para mandar adiante. */}
             <SeletorLista valor="" onChange={v => void exportarComo(v as FormatoExport)}
               opcoes={FORMATOS} icone={IconDownload} rotulo="Exportar" />
           </div>
-        </>
-      )}
+        </div>
 
+        {/* Os filtros finos nascem sob a barra e empurram o conteudo; ficam
+            montados desde a entrada para a abertura ter de onde sair. */}
+        <div className={`revelar${filtrosAbertos ? ' aberto' : ''}`}>
+          <div>
+            <div className="painel-filtros">
+              <FilterDropdown label="Projeto" values={fProjeto} options={opcoes.projeto} onChange={setFProjeto} />
+              <FilterDropdown label="Status" values={fStatus} options={opcoes.status} onChange={setFStatus} />
+              <FilterDropdown label="Responsável" values={fResponsavel} options={opcoes.responsavel} onChange={setFResponsavel} />
+              <FilterDropdown label="Entrega" values={fEntrega} options={opcoes.entrega} onChange={setFEntrega} />
+              <FilterDropdown label="Etiqueta" values={fEtiqueta} options={opcoes.etiqueta} onChange={setFEtiqueta} />
+              <FilterDropdown label="Complexidade" values={fComplexidade} options={opcoes.complexidade}
+                onChange={setFComplexidade} />
+              <FiltroPeriodo label="Prazo" de={fPrazo.de} ate={fPrazo.ate}
+                onChange={(de, ate) => setFPrazo({ de, ate })} />
+              {temFiltro && (
+                <button type="button" className="painel-filtros-limpar surge" onClick={limparFiltros}>
+                  Limpar filtros
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className={`painel-principal-corpo visao-${view} troca`} key={view}>
       {carregando ? (
         // O esqueleto imita a visão aberta: quadro vira cartões, o resto vira
         // linhas. Um giro no meio da tela não diria nada disso.
@@ -1240,7 +1351,13 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
           )}
         </div>
       ) : view === 'quadro' ? (
+        <>
+        <p className="quadro-titulo">
+          Todas as tarefas
+          <span>(<ContaAnimada valor={filtradas.length} /> {filtradas.length === 1 ? 'tarefa' : 'tarefas'})</span>
+        </p>
         <Quadro grupos={grupos} pessoas={pessoas} agrupamento={agrupamento} et={et} etq={etq} podeEditar={podeEditar}
+          abertaId={largo ? form?.id ?? null : null}
           onAbrir={abrirEdicao} onMover={mover}
           onCriarNaEtapa={podeEditar ? novaTarefa : undefined}
           onFixarRecolhida={pode('configuracoes:etapas') ? fixarRecolhida : undefined}
@@ -1249,14 +1366,20 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
           selecao={selecaoProps}
           onMoverSelecao={(campo, valor) => void alterarSelecionadas(
             { [campo]: valor }, { [campo]: valor }, n => `${nTarefas(n)} em "${valor}"`)} />
+        </>
       ) : view === 'lista' ? (
         <Lista grupos={grupos} pessoas={pessoas} et={et} etq={etq} podeExcluir={podeExcluir}
+          abertaId={largo ? form?.id ?? null : null}
           onAbrir={abrirEdicao} onExcluir={setExcluindo} selecao={selecaoProps} />
       ) : (
         <Tabela grupos={grupos} pessoas={pessoas} et={et} etq={etq} podeExcluir={podeExcluir}
           onAbrir={abrirEdicao} onExcluir={setExcluindo} selecao={selecaoProps}
           onMarcarTodas={podeSelecionar ? (todas => (todas ? sel.marcarTodas() : limparSelecao())) : undefined} />
       )}
+        </div>
+      </section>
+      {largo && fichaDaTarefa}
+      </div>
 
       {/* O que se faz com todas as marcadas de uma vez. Cada ação só aparece
           para quem pode fazê-la com uma tarefa sozinha. */}
@@ -1326,41 +1449,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
           onConfirmar={() => void excluirSelecionadas()} />
       )}
 
-      {form && (
-        <FormularioTarefa
-          rascunho={form}
-          projetos={projetos}
-          etapas={etapas}
-          etiquetas={etiquetas}
-          etiquetaPorPapel={etiquetaPorPapel}
-          usuarioId={usuario?.id}
-          etq={etq}
-          pessoas={pessoas}
-          salvando={salvando}
-          somenteLeitura={!podeEditar}
-          podeComentar={pode('tarefas:comentar')}
-          api={api}
-          onMudar={setForm}
-          onFechar={() => void fecharTarefa()}
-          onConversaMudou={reconciliar}
-          onSalvar={() => salvar(form)}
-          onExcluir={podeExcluir && form.id ? () => {
-            const alvo = tarefas.find(x => x.id === form.id);
-            if (alvo) setExcluindo(alvo);
-          } : undefined}
-          onDuplicar={podeEditar && form.id ? () => {
-            const alvo = tarefas.find(x => x.id === form.id);
-            if (alvo) void duplicar(alvo);
-          } : undefined}
-          // Criar entrega é editar projeto: sem essa permissão o seletor não
-          // oferece, em vez de oferecer e o servidor recusar.
-          onEntregaCriada={pode('projetos:editar') ? (projetoId, entrega) => {
-            mudancasRef.current++;
-            setProjetos(ps => ps.map(x => (x.id === projetoId
-              ? { ...x, entregas: [...(x.entregas ?? []), entrega] } : x)));
-          } : undefined}
-        />
-      )}
+      {!largo && fichaDaTarefa}
 
       {excluindo && (
         <ConfirmarExclusao titulo={excluindo.titulo}
@@ -1460,7 +1549,9 @@ const INTENCAO_MS = 200;
  *  casa) ou quando a etapa foi marcada como pontual em Configurações, e volta a
  *  abrir com intenção: mouse parado em cima, ou uma tarefa arrastada até ela. */
 function Coluna({ grupo, pessoas, et, etq, podeEditar, arrastando, loteArrastado, isOver, onAbrir, onDragOver,
-  onDragLeave, onDrop, onArrastar, onSoltar, onCriarNaEtapa, onFixarRecolhida, onExcluir, onDuplicar, selecao }: {
+  onDragLeave, onDrop, onArrastar, onSoltar, onCriarNaEtapa, onFixarRecolhida, onExcluir, onDuplicar, selecao,
+  abertaId }: {
+  abertaId?: number | null;
   grupo: Grupo;
   pessoas: Pessoa[];
   et: Etapario;
@@ -1561,7 +1652,7 @@ function Coluna({ grupo, pessoas, et, etq, podeEditar, arrastando, loteArrastado
         </div>
         {/* O subtotal colado no titulo: e a contagem daquela etapa, e no canto
             direito ele lia como um numero solto da coluna. */}
-        <span className="kanban-conta-bolha">{tarefas.length}</span>
+        <span className="kanban-conta-bolha"><ContaAnimada valor={tarefas.length} /></span>
         {/* Marca a coluna inteira: o pedido comum é "todas desta etapa", e
             clicar card a card é o que a seleção existe para evitar. */}
         {selecao && <CaixaDoGrupoDeTarefas grupo={grupo} sel={selecao} />}
@@ -1603,7 +1694,8 @@ function Coluna({ grupo, pessoas, et, etq, podeEditar, arrastando, loteArrastado
         {tarefas.map(t => {
           const marcada = !!selecao?.selecao.has(t.id);
           return (
-          <div key={t.id} className={`kanban-card${marcada ? ' selecionado' : ''}`}
+          <div key={t.id}
+            className={`kanban-card tarefa-cartao${marcada ? ' selecionado' : ''}${abertaId === t.id ? ' aberta' : ''}${et.fecha(t.status) ? ' concluida' : ''}`}
             draggable={podeEditar}
             onDragStart={() => onArrastar(t.id)}
             onDragEnd={onSoltar}
@@ -1611,60 +1703,63 @@ function Coluna({ grupo, pessoas, et, etq, podeEditar, arrastando, loteArrastado
             onClick={e => (selecao ? selecao.onClicar(t, e) : onAbrir(t))}
             style={{
               cursor: 'pointer',
+              position: 'relative',
               opacity: arrastando === t.id || (loteArrastado && marcada) ? 0.45 : 1,
             }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 7 }}>
+            {/* A linha de cima, como no mockup: a chave da tarefa e de onde ela
+                e, em letra miuda. A prioridade abre a linha, em icone. */}
+            <div className="tarefa-cartao-topo">
               <Prioridade valor={t.prioridade} />
-              <p style={{ fontWeight: 600, fontSize: 13, color: 'var(--black)', margin: 0, flex: 1 }}>
-                {t.titulo}
-              </p>
-              {/* Aparece com o ponteiro no card. Sempre visível seria um lixo
-                  por cartão numa coluna cheia, e o clique que interessa no card
-                  é o de abrir. */}
-              <span className="kanban-card-acoes">
-                {selecao && <CaixaDaTarefa t={t} sel={selecao} />}
-                {onDuplicar && (
-                  <button
-                    type="button"
-                    className="kanban-card-acao"
-                    title="Duplicar tarefa"
-                    aria-label={`Duplicar "${t.titulo}"`}
-                    onClick={e => { e.stopPropagation(); onDuplicar(t); }}
-                  >
-                    <IconDuplicar size={12} />
-                  </button>
-                )}
-                {onExcluir && (
-                  <button
-                    type="button"
-                    className="kanban-card-acao perigo"
-                    title="Excluir tarefa"
-                    aria-label={`Excluir "${t.titulo}"`}
-                    onClick={e => { e.stopPropagation(); onExcluir(t); }}
-                  >
-                    <IconTrash size={12} />
-                  </button>
-                )}
-              </span>
+              <span className="tarefa-cartao-chave">#{t.id}</span>
+              <span className="tarefa-cartao-projeto">{t.projetosDela.map(p => p.nome).join(' · ')}</span>
             </div>
-            <p style={{ fontSize: 11, color: 'var(--gray2)', margin: 0 }}>
-              {t.projetosDela.map(p => p.nome).join(' · ')}
-            </p>
+            {/* Aparece com o ponteiro no card, por cima do canto. Sempre
+                visivel seria uma lixeira por cartao numa coluna cheia. */}
+            <span className="kanban-card-acoes">
+              {selecao && <CaixaDaTarefa t={t} sel={selecao} />}
+              {onDuplicar && (
+                <button
+                  type="button"
+                  className="kanban-card-acao"
+                  title="Duplicar tarefa"
+                  aria-label={`Duplicar "${t.titulo}"`}
+                  onClick={e => { e.stopPropagation(); onDuplicar(t); }}
+                >
+                  <IconDuplicar size={12} />
+                </button>
+              )}
+              {onExcluir && (
+                <button
+                  type="button"
+                  className="kanban-card-acao perigo"
+                  title="Excluir tarefa"
+                  aria-label={`Excluir "${t.titulo}"`}
+                  onClick={e => { e.stopPropagation(); onExcluir(t); }}
+                >
+                  <IconTrash size={12} />
+                </button>
+              )}
+            </span>
+            <p className="tarefa-cartao-titulo">{t.titulo}</p>
             {t.etiquetas.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              <div className="tarefa-cartao-etiquetas">
                 {t.etiquetas.map(e => <ChipEtiqueta key={e} etiqueta={e} cor={etq.cor(e)} />)}
               </div>
             )}
-            {/* Quebra em vez de vazar: dono, complexidade, conversa e prazo nem
-                sempre cabem numa linha da coluna, e o prazo cortado na borda
-                era justamente o dado que mais se lê. Na segunda linha ele
-                continua à direita, pelo `margin-left: auto`. */}
-            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px 8px' }}>
+            {/* O pe: quem faz, com o nome quando e uma pessoa so, e o que a
+                tarefa carrega. O prazo fica no canto, e quebra para a linha de
+                baixo em vez de vazar quando nao cabe. */}
+            <div className="tarefa-cartao-rodape">
               <DonosDaTarefa ids={t.responsaveis} pessoas={pessoas} size={20} />
+              {(t.responsaveis ?? []).length === 1 && (
+                <span className="tarefa-cartao-dono">
+                  {nomeCurto(pessoas.find(x => x.id === t.responsaveis[0])?.nome ?? '')}
+                </span>
+              )}
               <Complexidade valor={t.complexidade} />
               <SinaisDaTarefa t={t} />
-              <span style={{ marginLeft: 'auto', whiteSpace: 'nowrap' }}>
-                {/* Etapa desconsiderada não cobra prazo: a tarefa saiu da conta. */}
+              <span className="tarefa-cartao-prazo">
+                {/* Etapa desconsiderada nao cobra prazo: a tarefa saiu da conta. */}
                 <Prazo iso={t.prazo} concluida={et.fecha(t.status) || !!grupo.desconsiderada} />
               </span>
             </div>
@@ -1683,8 +1778,10 @@ function Coluna({ grupo, pessoas, et, etq, podeEditar, arrastando, loteArrastado
   );
 }
 
-function Quadro({ grupos, pessoas, agrupamento, et, etq, podeEditar, onAbrir, onMover, onCriarNaEtapa,
+function Quadro({ abertaId, grupos, pessoas, agrupamento, et, etq, podeEditar, onAbrir, onMover, onCriarNaEtapa,
   onFixarRecolhida, onExcluir, onDuplicar, selecao, onMoverSelecao }: {
+  /** A tarefa aberta na ficha ao lado: o card dela acende. */
+  abertaId?: number | null;
   grupos: Grupo[];
   pessoas: Pessoa[];
   agrupamento: string;
@@ -1744,6 +1841,7 @@ function Quadro({ grupos, pessoas, agrupamento, et, etq, podeEditar, onAbrir, on
           onExcluir={onExcluir}
           onDuplicar={onDuplicar}
           selecao={selecao}
+          abertaId={abertaId}
         />
       ))}
     </div>
@@ -1752,7 +1850,8 @@ function Quadro({ grupos, pessoas, agrupamento, et, etq, podeEditar, onAbrir, on
 
 // ── Lista ───────────────────────────────────────────────────────────────────
 
-function Lista({ grupos, pessoas, et, etq, podeExcluir, onAbrir, onExcluir, selecao }: {
+function Lista({ grupos, pessoas, et, etq, podeExcluir, onAbrir, onExcluir, selecao, abertaId }: {
+  abertaId?: number | null;
   grupos: Grupo[];
   pessoas: Pessoa[];
   et: Etapario;
@@ -1767,65 +1866,60 @@ function Lista({ grupos, pessoas, et, etq, podeExcluir, onAbrir, onExcluir, sele
   const cheios = grupos.filter(g => g.tarefas.length > 0);
 
   return (
-    <div className={selecao?.selecao.size ? 'selecionando' : undefined}
-      style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+    <div className={`backlog${selecao?.selecao.size ? ' selecionando' : ''}`}>
       {cheios.map(grupo => (
-        <div key={grupo.chave}>
-          <p className="admin-section-title"
-            style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <section key={grupo.chave} className="backlog-grupo">
+          <div className="backlog-grupo-cabeca">
             {selecao && <CaixaDoGrupoDeTarefas grupo={grupo} sel={selecao} />}
-            {grupo.icone
-              ? <span style={{ display: 'inline-flex', color: grupo.cor }}>{grupo.icone}</span>
-              : <span className="kanban-dot" style={{ background: grupo.cor }} />}
-            {grupo.rotulo}
-            <span style={{ fontWeight: 600 }}>({grupo.tarefas.length})</span>
-          </p>
-          {/* A `key` é a assinatura do bloco: quando a busca ou o filtro muda
-              o resultado, os itens remontam e a entrada toca. */}
-          <div className="admin-file-list lista-anima"
-            key={grupo.tarefas.map(t => t.id).join(',')}>
+            <span className="backlog-grupo-selo" style={{ ['--cor' as string]: grupo.cor }}>
+              {grupo.icone ?? <span className="kanban-dot" style={{ background: grupo.cor }} />}
+            </span>
+            <span className="backlog-grupo-nome">{grupo.rotulo}</span>
+            <span className="backlog-grupo-qtd">
+              (<ContaAnimada valor={grupo.tarefas.length} /> {grupo.tarefas.length === 1 ? 'tarefa' : 'tarefas'})
+            </span>
+          </div>
+          <div className="backlog-colunas" aria-hidden="true">
+            <span /><span>Tarefa</span><span>Projeto</span><span>Equipe</span><span>Prazo</span><span>Prioridade</span><span />
+          </div>
+          {/* A `key` e a assinatura do bloco: quando a busca ou o filtro muda o
+              resultado, as linhas remontam e a entrada toca. */}
+          <div className="lista-anima" key={grupo.tarefas.map(t => t.id).join(',')}>
             {grupo.tarefas.map(t => (
-              <div key={t.id}
-                className={`admin-file-item${selecao?.selecao.has(t.id) ? ' selecionado' : ''}`}
-                style={{ cursor: 'pointer' }}
+              <div key={t.id} role="button" tabIndex={0}
+                className={`backlog-linha${selecao?.selecao.has(t.id) || abertaId === t.id ? ' selecionado' : ''}${et.fecha(t.status) ? ' concluida' : ''}`}
                 onMouseDown={semTextoNoShift}
-                onClick={e => (selecao ? selecao.onClicar(t, e) : onAbrir(t))} tabIndex={0}
+                onClick={e => (selecao ? selecao.onClicar(t, e) : onAbrir(t))}
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onAbrir(t); } }}>
-                {selecao && <CaixaDaTarefa t={t} sel={selecao} />}
-                <span className="kanban-dot" title={t.status}
-                  style={{ background: et.cor(t.status), marginRight: 2 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--black)', margin: 0,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {t.titulo}
-                  </p>
-                  {/* O que a linha diz embaixo depende do que já está no título
-                      do bloco: repetir o agrupamento em toda linha é ruído. */}
-                  <p style={{ fontSize: 11.5, color: 'var(--gray2)', margin: '2px 0 0',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {[t.projeto.nome, t.status, t.descricao]
-                      .filter((x, i) => x && !(i === 0 && grupo.rotulo === t.projeto.nome)
-                        && !(i === 1 && grupo.rotulo === t.status))
-                      .join(' - ')}
-                  </p>
-                </div>
-                {t.etiquetas.map(e => <ChipEtiqueta key={e} etiqueta={e} cor={etq.cor(e)} />)}
-                <Complexidade valor={t.complexidade} />
-                <SinaisDaTarefa t={t} />
-                <Prioridade valor={t.prioridade} />
-                <Prazo iso={t.prazo} concluida={et.fecha(t.status) || !!grupo.desconsiderada} />
-                <DonosDaTarefa ids={t.responsaveis} pessoas={pessoas} size={22} />
-                {podeExcluir && (
-                  <button type="button" className="file-delete-btn" title="Excluir tarefa"
-                    aria-label={`Excluir ${t.titulo}`}
-                    onClick={e => { e.stopPropagation(); onExcluir(t); }}>
-                    <IconTrash size={13} />
-                  </button>
-                )}
+                <span className="backlog-linha-marca">
+                  {selecao && <CaixaDaTarefa t={t} sel={selecao} />}
+                  <span className="kanban-dot" title={t.status} style={{ background: et.cor(t.status) }} />
+                </span>
+                <span className="backlog-linha-titulo">
+                  <span className="backlog-linha-texto">{t.titulo}</span>
+                  {t.etiquetas.map(e => <ChipEtiqueta key={e} etiqueta={e} cor={etq.cor(e)} />)}
+                  <SinaisDaTarefa t={t} />
+                </span>
+                <span className="backlog-linha-sub">{t.projetosDela.map(p => p.nome).join(' · ')}</span>
+                <span><DonosDaTarefa ids={t.responsaveis} pessoas={pessoas} size={20} /></span>
+                <span><Prazo iso={t.prazo} concluida={et.fecha(t.status) || !!grupo.desconsiderada} /></span>
+                <span className="backlog-linha-prio">
+                  <Prioridade valor={t.prioridade} />
+                  {t.prioridade || PRIORIDADE_PADRAO}
+                </span>
+                <span>
+                  {podeExcluir && (
+                    <button type="button" className="kanban-card-acao perigo backlog-linha-excluir"
+                      title="Excluir tarefa" aria-label={`Excluir ${t.titulo}`}
+                      onClick={e => { e.stopPropagation(); onExcluir(t); }}>
+                      <IconTrash size={13} />
+                    </button>
+                  )}
+                </span>
               </div>
             ))}
           </div>
-        </div>
+        </section>
       ))}
     </div>
   );
