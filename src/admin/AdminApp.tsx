@@ -1102,8 +1102,12 @@ function FundoDeOndas() {
     };
     const rever = () => {
       if (!document.hidden && !ondas) {
-        ondas = iniciarOndas(el, { camadas: 5, fps: 30, dprMax: 1 });
+        // Meia resolução e 24 quadros: as ondas são faixas suaves de luz e
+        // aparecem atrás de vidro; em resolução cheia o custo era de tela
+        // inteira de GPU para um desenho que ninguém vê nítido.
+        ondas = iniciarOndas(el, { camadas: 4, fps: 24, dprMax: 0.5 });
         if (!ondas) { setCaiu(true); return; }
+        conferirModal();
         vigia = window.setInterval(() => {
           if (ondas?.morto()) { desligar(); setCaiu(true); }
         }, 4000);
@@ -1111,9 +1115,23 @@ function FundoDeOndas() {
         desligar();
       }
     };
+    // Com modal, gaveta ou busca aberta, o fundo para: o vidro deles desfoca o
+    // que está por baixo, e com as ondas andando esse desfoque seria refeito a
+    // cada quadro. Ninguém olha o fundo atrás de um modal.
+    const SOBREPOSTO = '.admin-modal-overlay, .qs-overlay, .usuarios-modal-fundo';
+    function conferirModal() {
+      if (!ondas) return;
+      if (document.querySelector(SOBREPOSTO)) ondas.pausar(); else ondas.retomar();
+    }
+    const vigiaModal = new MutationObserver(conferirModal);
+    vigiaModal.observe(document.body, { childList: true });
     rever();
     document.addEventListener('visibilitychange', rever);
-    return () => { document.removeEventListener('visibilitychange', rever); desligar(); };
+    return () => {
+      vigiaModal.disconnect();
+      document.removeEventListener('visibilitychange', rever);
+      desligar();
+    };
   }, [reduzido, caiu]);
 
   if (reduzido || caiu) return null;
@@ -1252,14 +1270,32 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
         setContagens(novas);
       });
   }, [token]);
-  // Conta na entrada, a cada troca de tela (o que se fez numa tela muda o
-  // numero dela) e quando a aba volta a ser olhada.
-  useEffect(() => { contar(); }, [contar, page]);
+  // As contagens custam quatro idas ao servidor. Contar a cada troca de tela
+  // punha essas quatro na frente dos dados da própria tela (o navegador abre
+  // poucas conexões por vez), e a página nova esperava o menu. Agora: na
+  // entrada, depois de a tela carregar o que é dela; na troca de tela e na
+  // volta à aba, no máximo uma vez a cada 30 segundos, e sempre com a tela
+  // já servida.
+  const ultimaConta = useRef(0);
+  const contarSePreciso = useCallback((forcar?: boolean) => {
+    const agora = Date.now();
+    if (!forcar && agora - ultimaConta.current < 30_000) return;
+    ultimaConta.current = agora;
+    contar();
+  }, [contar]);
   useEffect(() => {
-    const aoVoltar = () => { if (document.visibilityState === 'visible') contar(); };
+    const t = window.setTimeout(() => contarSePreciso(true), 1200);
+    return () => window.clearTimeout(t);
+  }, [contarSePreciso]);
+  useEffect(() => {
+    const t = window.setTimeout(() => contarSePreciso(), 2500);
+    return () => window.clearTimeout(t);
+  }, [page, contarSePreciso]);
+  useEffect(() => {
+    const aoVoltar = () => { if (document.visibilityState === 'visible') contarSePreciso(); };
     document.addEventListener('visibilitychange', aoVoltar);
     return () => document.removeEventListener('visibilitychange', aoVoltar);
-  }, [contar]);
+  }, [contarSePreciso]);
 
   const [openCard, setOpenCard] = useState<
     {

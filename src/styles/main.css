@@ -24624,3 +24624,17 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
   column-gap: 12px !important;
 }
 .admin-modal .bloco-detalhes .form-group { margin-bottom: 0; }
+
+/* ══ Desempenho ═════════════════════════════════════════════════════════════
+   A janela deixa de desfocar o que esta atras dela quando o fundo e o das
+   ondas. Esse desfoque cobria a tela inteira e era refeito a cada quadro das
+   ondas - o maior custo de GPU do sistema. As ondas agora sao desenhadas em
+   meia resolucao, e esticadas pela tela ja saem difusas; atras do vidro denso
+   da janela elas chegam como luz, sem precisar do desfoque. */
+.admin-casca:has(> .casca-ondas) .casca-janela::before {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+/* O foco de luz do cartao de reportar so anda com o cartao aberto: fechado,
+   ele continua montado (para abrir animando) e nao precisa gastar quadro. */
+.reportar-painel:not(.aberto) .reportar-luz { animation-play-state: paused; }

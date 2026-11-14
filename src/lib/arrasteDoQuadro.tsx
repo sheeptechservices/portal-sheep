@@ -141,9 +141,20 @@ export function useVagaDaColuna(corpo: RefObject<HTMLElement>, coluna: string, r
  */
 export function useMovimentoDosCartoes(corpo: RefObject<HTMLElement>, pausado: boolean) {
   const antes = useRef<Map<string, { x: number; y: number }> | null>(null);
+  const assinatura = useRef('');
+  const estavaPausado = useRef(false);
   useLayoutEffect(() => {
     const el = corpo.current;
     if (!el) return;
+    // Ler os ids não custa layout; medir posição custa. A tela re-renderiza a
+    // cada tecla da busca e a cada atualização de fundo, e sem esta guarda
+    // cada coluna mediria todos os cartões toda vez. Mede só quando a lista
+    // mudou, quando o arraste começa ou acaba, e durante o arraste.
+    const sig = [...el.querySelectorAll<HTMLElement>(':scope > [data-flip]')].map(c => c.dataset.flip).join(',');
+    const mudou = sig !== assinatura.current || pausado !== estavaPausado.current;
+    assinatura.current = sig;
+    estavaPausado.current = pausado;
+    if (!mudou && !pausado && antes.current) return;
     const base = el.getBoundingClientRect();
     const agora = new Map<string, { x: number; y: number }>();
     const parado = calmo();

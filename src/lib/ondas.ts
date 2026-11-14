@@ -36,6 +36,10 @@ export interface OpcoesOndas {
 
 export interface Ondas {
   parar(): void;
+  /** Congela o quadro atual sem soltar o contexto: o fundo fica parado, e
+   *  quem desfoca por cima dele deixa de refazer o desfoque a cada quadro. */
+  pausar(): void;
+  retomar(): void;
   /** Contexto perdido ou quadros travados: o vigia usa isto para remontar. */
   morto(): boolean;
 }
@@ -166,8 +170,21 @@ export function iniciarOndas(canvas: HTMLCanvasElement, opcoes: OpcoesOndas = {}
   const perdeu = (e: Event) => { e.preventDefault(); cancelAnimationFrame(raf); };
   canvas.addEventListener('webglcontextlost', perdeu);
   quadro();
+  let pausado = false;
 
   return {
+    pausar() {
+      if (pausado) return;
+      pausado = true;
+      cancelAnimationFrame(raf);
+    },
+    retomar() {
+      if (!pausado) return;
+      pausado = false;
+      // O vigia mede o ultimo tique: parado de proposito nao e travado.
+      ultimoTique = performance.now();
+      raf = requestAnimationFrame(quadro);
+    },
     parar() {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', redimensionar);
@@ -177,6 +194,6 @@ export function iniciarOndas(canvas: HTMLCanvasElement, opcoes: OpcoesOndas = {}
       // monta, limpa e remonta) as ondas nunca mais subiriam. Quem libera a GPU
       // é o navegador, quando o elemento é coletado.
     },
-    morto: () => gl.isContextLost() || performance.now() - ultimoTique > 3000,
+    morto: () => gl.isContextLost() || (!pausado && performance.now() - ultimoTique > 3000),
   };
 }
