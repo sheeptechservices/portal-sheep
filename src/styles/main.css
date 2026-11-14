@@ -24389,3 +24389,104 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
   .kanban-card.sendo-arrastado { transition: none; }
   .kanban-vaga { animation: none; }
 }
+
+/* ══ Avisos (toasts) no padrao da casa ══════════════════════════════════════
+   O mesmo vidro do menu e dos popups, e nao uma chapa tingida pela cor do
+   tipo: o tipo vem num selo redondo com o icone, verde, vermelho ou o limao
+   da marca. O pe leva uma barra fina com o tempo que falta; com o ponteiro em
+   cima o aviso espera e a barra volta cheia, que e o que o tempo tambem faz.
+   O cais sobe acima do botao de reportar, que mora no mesmo canto. */
+.toast-cais { bottom: 92px; }
+.toast-balao {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 12px 10px 14px 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--janela-borda);
+  background: var(--menu-flutuante);
+  -webkit-backdrop-filter: var(--vidro-flutuante-filtro, blur(30px) saturate(160%));
+  backdrop-filter: var(--vidro-flutuante-filtro, blur(30px) saturate(160%));
+  box-shadow: var(--shadow-card-hover);
+  cursor: default;
+  --toast-cor: var(--yellow);
+  animation: aviso-entra .46s cubic-bezier(.34, 1.3, .64, 1) both;
+}
+.toast-balao.toast-success { --toast-cor: var(--green-light); }
+.toast-balao.toast-error { --toast-cor: var(--red); }
+.toast-balao.saindo { animation: aviso-sai .3s var(--curva-anti) both; }
+@keyframes aviso-entra {
+  from { opacity: 0; transform: translateX(28px) scale(.96); filter: blur(4px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+@keyframes aviso-sai {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateX(24px) scale(.96); }
+}
+
+.toast-ico {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--toast-cor);
+  background: color-mix(in srgb, var(--toast-cor) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--toast-cor) 34%, transparent);
+  animation: aviso-selo .5s var(--gota-mola, cubic-bezier(.34, 1.56, .64, 1)) .12s backwards;
+}
+@keyframes aviso-selo { from { transform: scale(.4) rotate(-40deg); opacity: 0; } to { transform: none; opacity: 1; } }
+.toast-texto { flex: 1; min-width: 0; padding-top: 1px; }
+.toast-balao .toast-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--black);
+}
+.toast-balao .toast-message {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--gray);
+  /* Link e caminho longos quebram onde der, em vez de vazar do aviso. */
+  overflow-wrap: anywhere;
+}
+.toast-balao .toast-close {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  margin: -1px 0 0;
+  border-radius: var(--radius-sm);
+  color: var(--gray2);
+  background: transparent;
+  transition: background var(--transition), color var(--transition);
+}
+.toast-balao .toast-close:hover,
+.toast-balao .toast-close:focus-visible { outline: none; background: var(--gray4); color: var(--black); }
+
+/* O tempo que falta: uma linha na cor do tipo que encolhe ate sumir. */
+.toast-tempo {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--toast-cor);
+  opacity: .7;
+  transform-origin: left center;
+  animation: aviso-tempo var(--toast-duracao, 4s) linear both;
+}
+.toast-balao.parado .toast-tempo { animation: none; transform: none; }
+@keyframes aviso-tempo { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+@media (max-width: 768px) {
+  .toast-cais { bottom: calc(146px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast-balao, .toast-balao.saindo, .toast-ico { animation: none; }
+  .toast-tempo { animation: none; }
+}

@@ -2,7 +2,7 @@
 import type { ReactNode } from 'react';
 import { ContaAnimada } from '../components/ContaAnimada';
 import { corDoProjeto } from '../components/DicaDoProjeto';
-import { IconAcessos, IconAlert, IconArrowRight, IconChevronRight, IconDashboard, IconGoogle, IconSair, IconSearch, IconSpinner } from '../components/icons';
+import { IconAcessos, IconAlert, IconArrowRight, IconBalao, IconCheck, IconChevronRight, IconX, IconDashboard, IconGoogle, IconSair, IconSearch, IconSpinner } from '../components/icons';
 import { lojaSubpagina, useSubpaginaAtual } from '../lib/subpagina';
 import {
   criarPode, podeAbrirPagina, podeGerenciarUsuarios, podeVerUsuarios, PERMISSAO_DA_PAGINA,
@@ -90,90 +90,53 @@ export function iniciais(nome: string): string {
   return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
 }
 
-const TOAST_ACCENT: Record<ToastItem['type'], string> = {
-  success: '#16A34A',
-  error:   '#D93025',
-  info:    '#2563EB',
+/** O selo de cada tipo de aviso. A cor vem da folha (`.toast-success` etc.),
+ *  pelos tokens: verde, vermelho e o limão da marca para o informativo. */
+const TOAST_ICONE: Record<ToastItem['type'], typeof IconCheck> = {
+  success: IconCheck,
+  error: IconAlert,
+  info: IconBalao,
 };
 
-function ToastIcon({ type, color }: { type: ToastItem['type']; color: string }) {
-  if (type === 'success') return (
-    <svg width={15} height={15} viewBox="0 0 16 16" fill="none">
-      <path d="M3 8.5l3.5 3.5 6.5-7" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-  if (type === 'error') return (
-    <svg width={15} height={15} viewBox="0 0 16 16" fill="none">
-      <path d="M4 4l8 8M12 4L4 12" stroke={color} strokeWidth={2} strokeLinecap="round"/>
-    </svg>
-  );
-  return (
-    <svg width={15} height={15} viewBox="0 0 16 16" fill="none">
-      <path d="M8 7v5M8 5.5v.01" stroke={color} strokeWidth={2} strokeLinecap="round"/>
-    </svg>
-  );
-}
+/** Quanto o aviso fica na tela. A barra do pé conta o mesmo tempo. */
+const TOAST_DURACAO = 4000;
 
 function Toast({ item, onDismiss }: { item: ToastItem; onDismiss: (id: string) => void }) {
   const [exiting, setExiting] = useState(false);
   const [hovered, setHovered] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const accent = TOAST_ACCENT[item.type];
+  const Icone = TOAST_ICONE[item.type];
 
   function leave() {
     setExiting(true);
     setTimeout(() => onDismiss(item.id), 320);
   }
 
+  // Com o ponteiro em cima o aviso espera; saindo, o tempo recomeça inteiro -
+  // e a barra do pé volta cheia junto, para contar a mesma coisa.
   useEffect(() => {
     if (hovered) { if (timerRef.current) clearTimeout(timerRef.current); return; }
-    timerRef.current = setTimeout(leave, 4000);
+    timerRef.current = setTimeout(leave, TOAST_DURACAO);
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [hovered]);
-
-  const border = accent + '40';
-  const shadow = `0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06), 0 0 0 1px ${border}`;
-  const shadowHov = `0 12px 40px rgba(0,0,0,0.15), 0 4px 12px rgba(0,0,0,0.08), 0 0 0 1px ${border}`;
 
   return (
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="toast-balao"
-      style={{
-        display: 'flex', alignItems: 'flex-start', gap: 10,
-        padding: '12px 12px 12px 13px',
-        background: accent + '18',
-        borderRadius: 14,
-        border: `1px solid ${border}`,
-        borderLeft: `3.5px solid ${accent}`,
-        boxShadow: hovered ? shadowHov : shadow,
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
-        animation: exiting
-          ? 'toastOut 0.32s cubic-bezier(0.4,0,1,1) both'
-          : 'toastIn 0.38s cubic-bezier(0.34,1.1,0.64,1) both',
-        transition: 'box-shadow 0.2s ease',
-        cursor: 'default',
-      }}
+      className={`toast-balao toast-${item.type}${exiting ? ' saindo' : ''}${hovered ? ' parado' : ''}`}
+      role={item.type === 'error' ? 'alert' : 'status'}
+      style={{ ['--toast-duracao' as string]: `${TOAST_DURACAO}ms` }}
     >
-      <div style={{ flexShrink: 0, marginTop: 1, display: 'flex', alignItems: 'center' }}>
-        <ToastIcon type={item.type} color={accent} />
+      <span className="toast-ico" aria-hidden="true"><Icone size={14} /></span>
+      <div className="toast-texto">
+        <p className="toast-title">{item.title}</p>
+        {item.message && <p className="toast-message">{item.message}</p>}
       </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ fontSize: 13, fontWeight: 700, color: accent, lineHeight: 1.3 }}>{item.title}</p>
-        {item.message && <p style={{ fontSize: 11.5, color: '#64748B', marginTop: 2, lineHeight: 1.45 }}>{item.message}</p>}
-      </div>
-      <button
-        onClick={leave}
-        style={{ flexShrink: 0, width: 20, height: 20, borderRadius: 5, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF', opacity: 0.7, transition: 'opacity 0.15s', marginTop: 1 }}
-        onMouseEnter={e => { e.currentTarget.style.opacity = '1'; }}
-        onMouseLeave={e => { e.currentTarget.style.opacity = '0.7'; }}
-      >
-        <svg width={8} height={8} viewBox="0 0 9 9" fill="none">
-          <path d="M1 1l7 7M8 1L1 8" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round"/>
-        </svg>
+      <button type="button" className="toast-close" onClick={leave} aria-label="Fechar aviso">
+        <IconX size={12} />
       </button>
+      <span className="toast-tempo" aria-hidden="true" />
     </div>
   );
 }
