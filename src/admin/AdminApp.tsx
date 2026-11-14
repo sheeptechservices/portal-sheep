@@ -528,9 +528,7 @@ function NavInferior({ page, setPage, onMais }: {
 }
 
 function Sidebar({
-  page, setPage, open, pinned, onClose, onReportar, onListarReportes, onPrintDoReporte,
-  onMudarStatusDoReporte, onMudarTipoDoReporte, onEditarReporte, onExcluirReporte,
-  onReabrirReporte, abrirFilaDeChamados, onAbriuFila, onLogout, onAlternarFixo,
+  page, setPage, open, pinned, onClose, onLogout, onAlternarFixo,
   projetosDoMenu, onAbrirProjeto, contagens, portas, onAbrirPerfil, onQuickSearch,
 }: {
   /** A busca rapida mora no alto do menu: o topo da pagina fica livre. */
@@ -549,18 +547,6 @@ function Sidebar({
   page: Page; setPage: (p: Page) => void; open: boolean; pinned: boolean; onClose: () => void;
   /** Sair mora no cartao de quem esta usando, no pe do menu. */
   onLogout: () => void;
-  /** O inbox pede a fila de chamados, e diz qual chamado deve nascer aberto;
-   *  quem a tem e o cartao do pe do menu. */
-  abrirFilaDeChamados: { nonce: number; chamado?: number } | null;
-  onAbriuFila: () => void;
-  onReportar: (relato: Relato) => Promise<{ error?: string; aviso?: string | null } | null>;
-  onListarReportes: () => Promise<{ reportes?: ReporteNaLista[]; error?: string }>;
-  onPrintDoReporte: (id: number) => Promise<{ nome: string; tipo: string; base64: string } | null>;
-  onMudarStatusDoReporte: (id: number, status: string, avisar: boolean, comentario: string) => Promise<{ error?: string; aviso?: string | null } | null>;
-  onMudarTipoDoReporte: (id: number, tipo: string) => Promise<{ error?: string } | null>;
-  onEditarReporte: (id: number, texto: string, urgencia: string) => Promise<{ error?: string } | null>;
-  onExcluirReporte: (id: number) => Promise<{ error?: string } | null>;
-  onReabrirReporte: (id: number, comentario: string) => Promise<{ error?: string; aviso?: string | null; reaberto_em?: string } | null>;
 }) {
   // Só o que depende de estar preso ou solto, e de estar aberto ou fechado: a
   // aparência - folha, fio da borda e sombra - mora na folha de estilo, com o
@@ -608,10 +594,8 @@ function Sidebar({
   // uma seção que fique sem item nenhum não deixa o título órfão. Esconder é
   // cortesia - a trava é o servidor, em cada ação.
   const { pode, usuario } = useAuth();
-  // Duas perguntas diferentes: quem abre a tela de Usuários (o master abre, para
-  // ler) e quem cuida da fila de chamados (só o dono do painel).
+  // Quem abre a tela de Usuários: o master abre, para ler.
   const veUsuarios = podeVerUsuarios(usuario);
-  const admin = podeGerenciarUsuarios(usuario);
   const alcanca = (i: NavLeaf) =>
     (!i.page || podeAbrirPagina(pode, i.page, veUsuarios)) && (!i.perm || pode(i.perm));
   const alcancaPagina = (p: Page) => NAV_SECTIONS.some(g => g.items.some(i => i.page === p && alcanca(i)));
@@ -782,24 +766,6 @@ function Sidebar({
         </div>
       )}
       </div>
-
-      {/* Abaixo da navegação e acima do tema: é o pé do menu, e não mais um
-          destino. O nome da página vai junto para quem lê o e-mail saber de
-          onde veio o relato. */}
-      <CartaoReportar
-        pagina={DESTINOS.find(d => d.page === page)?.titulo ?? page}
-        enviar={onReportar}
-        listar={onListarReportes}
-        carregarPrint={onPrintDoReporte}
-        mudarStatus={onMudarStatusDoReporte}
-        mudarTipo={onMudarTipoDoReporte}
-        editar={onEditarReporte}
-        excluir={onExcluirReporte}
-        reabrir={onReabrirReporte}
-        admin={admin}
-        abrirFila={abrirFilaDeChamados}
-        onAbriuFila={onAbriuFila}
-      />
 
       <div className="app-menu-rodape">
         <button type="button" className="menu-usuario-perfil" onClick={() => { onAbrirPerfil(); if (!pinned) onClose(); }}
@@ -1797,8 +1763,6 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
         )}
 
         <Sidebar
-          abrirFilaDeChamados={filaDeChamados}
-          onAbriuFila={() => setFilaDeChamados(null)}
           page={page}
           setPage={setPage}
           open={open}
@@ -1820,14 +1784,6 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
             setOpenCard({ page: 'projetos', id, nonce: Date.now() });
           }}
           onLogout={onLogout}
-          onReportar={reportar}
-          onListarReportes={listarReportes}
-          onPrintDoReporte={printDoReporte}
-          onMudarStatusDoReporte={mudarStatusDoReporte}
-          onMudarTipoDoReporte={mudarTipoDoReporte}
-          onEditarReporte={editarReporte}
-          onExcluirReporte={excluirReporte}
-          onReabrirReporte={reabrirReporte}
         />
 
         <NavInferior page={page} setPage={setPage} onMais={() => setOpen(true)} />
@@ -1954,6 +1910,26 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
 
       </div>
       </div>
+
+      {/* Reportar mora no canto inferior direito, por cima de qualquer tela: um
+          circulo que se abre em Reportar e Chamados. O nome da pagina vai junto
+          para quem le o e-mail saber de onde veio o relato. O inbox pede a fila
+          por `abrirFila`, dizendo qual chamado deve nascer aberto. */}
+      <CartaoReportar
+        flutuante
+        pagina={DESTINOS.find(d => d.page === page)?.titulo ?? page}
+        enviar={reportar}
+        listar={listarReportes}
+        carregarPrint={printDoReporte}
+        mudarStatus={mudarStatusDoReporte}
+        mudarTipo={mudarTipoDoReporte}
+        editar={editarReporte}
+        excluir={excluirReporte}
+        reabrir={reabrirReporte}
+        admin={podeGerenciarUsuarios(usuario)}
+        abrirFila={filaDeChamados}
+        onAbriuFila={() => setFilaDeChamados(null)}
+      />
 
       {quickOpen && (
         <Suspense fallback={null}>

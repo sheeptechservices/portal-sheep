@@ -23954,3 +23954,236 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 @media (prefers-reduced-motion: reduce) {
   .nav-sub-item::before { transition: none; }
 }
+
+/* ══ Reportar no canto da tela: a gota ═════════════════════════════════════
+   Um circulo limao no canto inferior direito, por cima de qualquer tela.
+   Com o ponteiro, ele estica para a esquerda como uma gota - achata, passa um
+   pouco do ponto e assenta - ate virar a pilula "Reportar", com as letras
+   entrando uma a uma. Logo depois, a pilula de vidro de Chamados se desprende
+   de tras dela. Reportar abre o cartao nascendo do proprio botao, numa
+   revelacao circular a partir do centro dele. Abaixo das gavetas (10000) e
+   das listas em portal (10050). */
+.reportar-flutuante {
+  --gota-mola: cubic-bezier(.34, 1.56, .64, 1);
+  --gota-fechada: 52px;
+  --gota-aberta: 142px;
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 450;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 14px;
+  pointer-events: none;
+}
+.reportar-flutuante > * { pointer-events: auto; }
+
+/* ── O cartao: revelacao circular a partir do centro do botao ── */
+.reportar-painel {
+  width: 300px;
+  --origem: calc(100% - 26px) calc(100% + 40px);
+  clip-path: circle(0 at var(--origem));
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: clip-path .34s var(--curva-anti), opacity .24s var(--curva-anti) .1s, visibility 0s linear .34s;
+}
+.reportar-painel.aberto {
+  clip-path: circle(160% at var(--origem));
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: clip-path .62s var(--curva-anti), opacity .2s var(--curva-anti), visibility 0s;
+}
+.reportar-painel .reportar-cartao { margin: 0; box-shadow: var(--shadow-card-hover); }
+.reportar-painel .reportar-conteudo { padding: 16px 16px 14px; }
+.reportar-painel .reportar-titulo { font-size: 14px; }
+.reportar-painel .reportar-chamada { font-size: 11.5px; }
+.reportar-painel.aberto .reportar-conteudo > * { animation: gota-conteudo .5s var(--curva-anti) backwards; }
+.reportar-painel.aberto .reportar-conteudo > :nth-child(2) { animation-delay: .08s; }
+.reportar-painel.aberto .reportar-conteudo > :nth-child(3) { animation-delay: .14s; }
+.reportar-painel.aberto .reportar-conteudo > :nth-child(n+4) { animation-delay: .2s; }
+@keyframes gota-conteudo {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── A gota ── */
+.reportar-gota {
+  position: relative;
+  height: var(--gota-fechada);
+  display: flex;
+  justify-content: flex-end;
+}
+.reportar-fab-principal {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: var(--gota-fechada);
+  height: var(--gota-fechada);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--yellow);
+  color: var(--on-yellow);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: var(--shadow-yellow);
+  overflow: hidden;
+  cursor: pointer;
+  transform-origin: right center;
+  /* Recolhendo: a gota volta com a mesma mola, e o achatamento de chegada. */
+  transition: width .5s var(--gota-mola), box-shadow var(--transition-spring);
+  animation: gota-volta .55s var(--curva-anti);
+}
+.reportar-fab-principal:active { transform: scale(.95); }
+.reportar-fab-principal:focus-visible { outline: none; box-shadow: var(--shadow-yellow), 0 0 0 3px var(--gray4); }
+.reportar-gota-ico {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: var(--gota-fechada);
+  height: var(--gota-fechada);
+}
+.reportar-gota-texto {
+  display: flex;
+  padding-left: 20px;
+  white-space: nowrap;
+}
+.reportar-gota-texto > span {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(8px) scale(.8);
+  filter: blur(3px);
+  transition: opacity .12s ease, transform .12s ease, filter .12s ease;
+}
+
+/* Esticando: a largura vai com a mola e o corpo achata e assenta, como gota. */
+.reportar-flutuante:not(.com-painel) .reportar-gota:is(:hover, :has(:focus-visible)) .reportar-fab-principal {
+  width: var(--gota-aberta);
+  transition: width .62s var(--gota-mola), box-shadow var(--transition-spring);
+  animation: gota-estica .62s var(--curva-anti);
+}
+.reportar-flutuante:not(.com-painel) .reportar-gota:is(:hover, :has(:focus-visible)) .reportar-gota-texto > span {
+  opacity: 1;
+  transform: none;
+  filter: none;
+  transition: opacity .3s ease calc(.12s + var(--k) * .035s),
+    transform .46s var(--gota-mola) calc(.12s + var(--k) * .035s),
+    filter .3s ease calc(.12s + var(--k) * .035s);
+}
+.reportar-flutuante:not(.com-painel) .reportar-gota:is(:hover, :has(:focus-visible)) .reportar-gota-ico svg {
+  animation: gota-megafone .6s var(--curva-anti) .1s;
+}
+@keyframes gota-estica {
+  0%   { transform: scale(1, 1); }
+  30%  { transform: scale(1.04, .86); }
+  60%  { transform: scale(.98, 1.05); }
+  100% { transform: scale(1, 1); }
+}
+@keyframes gota-volta {
+  0%   { transform: scale(1, 1); }
+  40%  { transform: scale(.94, 1.06); }
+  100% { transform: scale(1, 1); }
+}
+@keyframes gota-megafone {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-14deg); }
+  55% { transform: rotate(9deg); }
+  80% { transform: rotate(-4deg); }
+}
+
+/* A pilula de Chamados: mora atras da gota e se desprende dela depois que
+   ela esticou, correndo para a esquerda com a mesma mola. */
+.reportar-gota-fila {
+  position: absolute;
+  z-index: 1;
+  right: 8px;
+  top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 16px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--janela-borda);
+  background: var(--menu-flutuante);
+  -webkit-backdrop-filter: var(--vidro-flutuante-filtro, blur(30px) saturate(160%));
+  backdrop-filter: var(--vidro-flutuante-filtro, blur(30px) saturate(160%));
+  box-shadow: var(--shadow-card);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--black);
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(.4);
+  transform-origin: right center;
+  transition: transform .22s var(--curva-anti), right .22s var(--curva-anti), opacity .14s ease,
+    visibility 0s linear .22s, background var(--transition), color var(--transition);
+}
+.reportar-gota-fila:hover,
+.reportar-gota-fila:focus-visible { outline: none; background: var(--yellow); color: var(--on-yellow); border-color: transparent; }
+.reportar-flutuante:not(.com-painel) .reportar-gota:is(:hover, :has(:focus-visible)) .reportar-gota-fila {
+  right: calc(var(--gota-aberta) + 10px);
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: transform .56s var(--gota-mola) .2s, right .56s var(--gota-mola) .2s, opacity .2s ease .2s,
+    visibility 0s, background var(--transition), color var(--transition);
+}
+/* A ponte entre as duas pilulas: o ponteiro indo da gota para Chamados
+   passaria pelo vao entre elas, e a gota recolheria no meio do caminho. */
+.reportar-gota::before {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--gota-fechada);
+  pointer-events: none;
+}
+.reportar-flutuante:not(.com-painel) .reportar-gota:hover::before {
+  width: 290px;
+  pointer-events: auto;
+}
+
+/* Sem ponteiro (toque) nao ha hover: Chamados fica a vista, so o icone. */
+@media (hover: none) {
+  .reportar-gota-fila {
+    right: calc(var(--gota-fechada) + 10px);
+    width: 44px;
+    padding: 0;
+    justify-content: center;
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+  }
+  .reportar-gota-fila > span { display: none; }
+}
+/* No celular o canto e da barra de baixo: o botao sobe para cima dela. */
+@media (max-width: 768px) {
+  .reportar-flutuante { right: 14px; bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
+  .reportar-painel { width: min(300px, calc(100vw - 28px)); }
+}
+
+.reportar-fab-giro { display: grid; place-items: center; animation: gota-icone .42s var(--gota-mola); }
+@keyframes gota-icone { from { transform: rotate(-90deg) scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .reportar-painel, .reportar-painel.aberto { transition: opacity .01s, visibility 0s; clip-path: none; }
+  .reportar-painel.aberto .reportar-conteudo > *, .reportar-fab-giro,
+  .reportar-fab-principal, .reportar-gota-ico svg { animation: none !important; }
+  .reportar-fab-principal, .reportar-gota-texto > span, .reportar-gota-fila { transition: none !important; }
+}
+
+/* A ficha da tarefa ao lado do quadro desce ate o canto da tela, onde mora o
+   botao de reportar: o rodape dela abre espaco para ele, senao o Fechar fica
+   embaixo do circulo. */
+.tarefa-detalhe .painel-rodape { padding-right: 76px; }

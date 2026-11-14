@@ -1,5 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  O convite a reportar, no pé do menu.
+//  O convite a reportar. Mora no canto inferior direito da tela, num botão
+//  redondo que se abre com o ponteiro em "Reportar" e "Chamados" (`flutuante`);
+//  sem a marca, é o cartão de antes, para quem o monta no fluxo da página.
 //
 //  Quem usa o portal todo dia é quem encontra o que está errado nele, e até
 //  agora esse achado dependia de a pessoa lembrar de mandar mensagem para
@@ -18,7 +20,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   IconAlert, IconCheck, IconDoc, IconImage, IconInbox, IconMegafone, IconSpinner, IconTrash,
-  IconUpload,
+  IconUpload, IconX,
 } from './icons';
 import { ListaReportes, TIPOS_DO_RELATO, type ReporteNaLista } from './ListaReportes';
 import { SelectSistema } from './SelectSistema';
@@ -112,8 +114,14 @@ const DESCRICAO_DO_TIPO: Record<string, string> = {
 
 export function CartaoReportar({
   pagina, enviar, listar, carregarPrint, mudarStatus, mudarTipo, editar, excluir,
-  reabrir, admin, abrirFila, onAbriuFila,
+  reabrir, admin, abrirFila, onAbriuFila, flutuante,
 }: {
+  /**
+   * O botão do canto: um círculo que, com o ponteiro, se abre em "Reportar" e
+   * "Chamados". Reportar abre o mesmo cartão por cima do botão, crescendo dele,
+   * e o agradecimento fica ali os quatro segundos antes de o cartão recolher.
+   */
+  flutuante?: boolean;
   /** Em que tela a pessoa estava. Vai no e-mail para quem lê não precisar
    *  perguntar "em qual?". */
   pagina: string;
@@ -342,14 +350,32 @@ export function CartaoReportar({
     setErro(null);
   }
 
-  return (
+  const fila = vendoFila && listar && carregarPrint ? (
+    <ListaReportes
+      expandir={chamadoAberto}
+      carregar={listar}
+      carregarPrint={carregarPrint}
+      mudarStatus={mudarStatus}
+      mudarTipo={mudarTipo}
+      editar={editar}
+      excluir={excluir}
+      reabrir={reabrir}
+      admin={admin}
+      onFechar={() => setVendoFila(false)}
+    />
+  ) : null;
+  // Flutuante, o cartão so existe aberto (ou agradecendo): fechado, quem fica
+  // na tela é o botão.
+  const painel = aberto || pronto;
+
+  const cartao = (
     <div className="reportar-cartao" ref={raiz}>
       {/* Duas camadas de luz, atrás de tudo e sem capturar clique. */}
       <span className="reportar-luz" aria-hidden="true" />
       {/* Com a fila aberta, a janela cobre a tela inteira com desfoque, e o
           desfoque e refeito a cada quadro que as ondas pintam por baixo dela -
           era isso que engasgava a rolagem da lista. Elas voltam ao fechar. */}
-      <OndasCartao parado={vendoFila} />
+      <OndasCartao parado={vendoFila || (flutuante && !painel)} />
       <span className="reportar-veu" aria-hidden="true" />
       <div className="reportar-conteudo">
         {/* O agradecimento e o convite trocam de lugar pelos dois lados: um
@@ -484,6 +510,7 @@ export function CartaoReportar({
           </div>
         </div>
 
+        {(!flutuante || aberto) && (
         <div className="reportar-acoes">
           {aberto && (
             <button type="button" className="reportar-voltar surge" onClick={fechar}>
@@ -508,7 +535,7 @@ export function CartaoReportar({
           {/* A fila fica ao lado do Reportar, e some com o formulário aberto:
               em 190px de largura um terceiro botão espremeria os dois que
               importam na hora de enviar. */}
-          {!aberto && listar && carregarPrint && (
+          {!flutuante && !aberto && listar && carregarPrint && (
             <button type="button" className="reportar-botao reportar-botao-ico"
               title="Ver os chamados" aria-label="Ver os chamados"
               onClick={() => setVendoFila(true)}>
@@ -516,22 +543,54 @@ export function CartaoReportar({
             </button>
           )}
         </div>
+        )}
       </div>
+    </div>
+  );
 
-      {vendoFila && listar && carregarPrint && (
-        <ListaReportes
-          expandir={chamadoAberto}
-          carregar={listar}
-          carregarPrint={carregarPrint}
-          mudarStatus={mudarStatus}
-          mudarTipo={mudarTipo}
-          editar={editar}
-          excluir={excluir}
-          reabrir={reabrir}
-          admin={admin}
-          onFechar={() => setVendoFila(false)}
-        />
-      )}
+  if (!flutuante) {
+    return <>{cartao}{fila}</>;
+  }
+
+  return (
+    <div className={`reportar-flutuante${painel ? ' com-painel' : ''}`}>
+      {/* O cartão fica montado e só some (com `visibility`, que também o tira
+          do Tab): montado e desmontado, ele nem entraria nem sairia animando.
+          Ele nasce do botão, numa revelação circular a partir do centro dele. */}
+      <div className={`reportar-painel${painel ? ' aberto' : ''}`} aria-hidden={!painel}>
+        {cartao}
+      </div>
+      {/* A gota: o círculo que estica até virar a pílula "Reportar", e a
+          pílula de Chamados que se desprende dela logo depois. */}
+      <div className="reportar-gota">
+        {listar && carregarPrint && (
+          <button type="button" className="reportar-gota-fila" tabIndex={painel ? -1 : 0}
+            onClick={() => setVendoFila(true)}>
+            <IconInbox size={15} />
+            <span>Chamados</span>
+          </button>
+        )}
+        <button type="button" className="reportar-fab-principal"
+          aria-expanded={painel}
+          aria-label={painel ? 'Fechar o relato' : 'Reportar'}
+          onClick={() => {
+            if (aberto) fechar();
+            else if (pronto) { setPronto(false); setAviso(null); }
+            else setAberto(true);
+          }}>
+          <span className="reportar-gota-texto" aria-hidden="true">
+            {'Reportar'.split('').map((letra, k) => (
+              <span key={k} style={{ '--k': k } as CSSProperties}>{letra}</span>
+            ))}
+          </span>
+          <span className="reportar-gota-ico">
+            <span className={`reportar-fab-giro${painel ? ' fechar' : ''}`} key={painel ? 'x' : 'megafone'}>
+              {painel ? <IconX size={19} /> : <IconMegafone size={19} />}
+            </span>
+          </span>
+        </button>
+      </div>
+      {fila}
     </div>
   );
 }
