@@ -24490,3 +24490,80 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
   .toast-balao, .toast-balao.saindo, .toast-ico { animation: none; }
   .toast-tempo { animation: none; }
 }
+
+/* ══ Configuracoes no desenho das outras telas ══════════════════════════════
+   Faixa no alto com as abas em pilula, e o conteudo num painel de vidro com o
+   cabecalho de sempre: a escolha do quadro (Funil ou Tarefas), o que a aba
+   faz numa linha, e a acao no canto. O corpo rola dentro do painel. */
+.config-cabeca-titulo {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--black);
+}
+.config-cabeca-desc {
+  margin: 0 0 0 6px;
+  font-size: 12.5px;
+  color: var(--gray2);
+  min-width: 0;
+}
+.config-corpo {
+  padding: 16px;
+  gap: 14px;
+}
+/* Dentro do painel, as listas e os blocos das abas deixam a chapa propria:
+   o painel ja e o vidro, e um segundo fundo por cima viraria mancha. As
+   linhas viram cartoes da casa, com o hover de elevacao. */
+.config-corpo .status-row {
+  background: var(--sup-cartao);
+  border: 1px solid var(--sup-painel-borda);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+  transition: background var(--transition), border-color var(--transition),
+    transform var(--transition-spring), box-shadow var(--transition-spring);
+}
+.config-corpo .status-row:hover {
+  background: var(--sup-cartao-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-card);
+}
+.config-corpo .status-list { display: flex; flex-direction: column; gap: 8px; }
+.config-corpo .status-list > * { animation: linha-entra .36s var(--curva-anti) backwards; }
+.config-corpo .status-list > :nth-child(2) { animation-delay: .03s; }
+.config-corpo .status-list > :nth-child(3) { animation-delay: .06s; }
+.config-corpo .status-list > :nth-child(4) { animation-delay: .09s; }
+.config-corpo .status-list > :nth-child(5) { animation-delay: .12s; }
+.config-corpo .status-list > :nth-child(n+6) { animation-delay: .15s; }
+.config-corpo .admin-section-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .config-corpo .status-list > * { animation: none; }
+  .config-corpo .status-row { transition: none; }
+}
+/* Os blocos do corpo nao encolhem: o corpo e uma coluna que rola, e um bloco
+   com `overflow: hidden` aceitava ser espremido, cortando o proprio pe (o
+   "Adicionar usuario" da notificacao sumia). */
+.config-corpo > * { flex-shrink: 0; }
+.config-corpo .nova-notif-section {
+  background: var(--sup-cartao);
+  border: 1px solid var(--sup-painel-borda);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+.config-corpo .nova-notif-icon {
+  background: color-mix(in srgb, var(--yellow) 12%, transparent);
+  color: var(--yellow-tinta);
+}
+/* O mostruario do Desenho: os palcos das amostras sao cartoes da casa sobre o
+   vidro do painel, e nao chapas pretas. As pecas de dentro continuam como
+   sao, porque mostrar a peca como ela e e o proposito da aba. */
+.config-corpo .estilo-palco,
+.config-corpo .estilo-caixa {
+  background: var(--sup-cartao);
+  border-color: var(--sup-painel-borda);
+}

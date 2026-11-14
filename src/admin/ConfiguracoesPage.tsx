@@ -11,10 +11,10 @@ import {
   IconClipboard, IconEntrada, IconEstrela, IconEye, IconEyeOff, IconNuvem, IconPlus, IconProibido,
   IconSpinner, IconTrash, IconUser, IconX,
 } from '../components/icons';
-import { SegSwitch } from '../components/SegSwitch';
 import { Chave } from '../components/Chave';
 import { Dialogo } from '../components/Dialogo';
-import { Abas, AbaPainel } from '../components/Abas';
+import { AbaPainel } from '../components/Abas';
+import { AbasPilula, FaixaDaPagina } from '../components/FaixaDaPagina';
 import EstiloPage from './EstiloPage';
 import { DESCRICAO_PAPEL, PAPEIS_EQUIPE } from '../lib/papeisDeEquipe';
 
@@ -3128,8 +3128,10 @@ function EtiquetasTarefaTab({ token, adicionando, onFecharNova }: {
           para a lista inteira, e cada linha só diz quem a vê. */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
-        border: '1px solid var(--gray3)', borderRadius: 'var(--radius-md)',
-        background: porPapel ? 'var(--yd)' : 'var(--bg)',
+        border: '1px solid var(--sup-painel-borda)', borderRadius: 'var(--radius-md)',
+        // Desligada, a regra é um cartão como as linhas de baixo; ligada,
+        // acende em limão.
+        background: porPapel ? 'var(--yd)' : 'var(--sup-cartao)',
         transition: 'background var(--transition), border-color var(--transition)',
       }}>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -3315,58 +3317,59 @@ export default function ConfiguracoesPage({ token }: { token: string }) {
     toast('success', 'Ordem atualizada');
   }
 
+  // O que a aba aberta faz, numa linha: vai no cabeçalho do painel, ao lado
+  // da escolha do quadro, e não num título grande repetindo o nome da aba.
+  const descricao = activeTab === 'desenho'
+    ? 'As cores, as medidas e as peças da casa, mostradas com elas mesmas.'
+    : activeTab === 'integracoes'
+    ? 'Conecte ferramentas externas ao sistema.'
+    : escopo === 'funil'
+    ? 'As etapas do funil e as notificações de cada uma.'
+    : 'As colunas do quadro de tarefas, quem cada uma avisa, e as etiquetas.';
+
   return (
-    <div className="admin-content-wrap">
-      {/* Com uma aba só a faixa some: ela não seria escolha, e sim o título da
-          página escrito duas vezes. */}
-      {abasVisiveis.length > 1 && (
-        <Abas
-          valor={activeTab}
-          onChange={setActiveTab}
-          opcoes={abasVisiveis}
-        />
-      )}
-
-      <div className="admin-page-header">
-        <div>
-          <h1 className="admin-page-title">
-            {activeTab === 'etapas' ? 'Etapas'
-              : activeTab === 'integracoes' ? 'Integrações'
-              : 'Sistema de desenho'}
-          </h1>
-          <p className="admin-page-desc">
-            {activeTab === 'desenho'
-              ? 'As cores, as medidas e as peças da casa, mostradas com elas mesmas.'
-              : activeTab === 'integracoes'
-              ? 'Conecte ferramentas externas ao sistema.'
-              : escopo === 'funil'
-              ? 'Gerencie as etapas do funil e as notificações de cada uma.'
-              : 'Gerencie as colunas do quadro de tarefas, quem cada uma avisa, e as etiquetas.'}
-          </p>
-        </div>
-        {activeTab === 'etapas' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-            <SegSwitch
-              valor={escopo}
-              onChange={setEscopo}
-              opcoes={[{ valor: 'funil', label: 'Funil' }, { valor: 'tarefas', label: 'Tarefas' }]}
-            />
-            {/* A aba Tarefas tem duas listas, e cada uma ganha o próprio "+"
-                no cabeçalho da sua seção. Um botão só aqui em cima teria que
-                escolher a qual das duas ele serve. */}
-            {escopo === 'funil' && !loading && !adding && (
-              <button className="btn btn-primary" onClick={() => setAdding(true)} style={{ whiteSpace: 'nowrap' }}>
-                + Nova etapa
-              </button>
-            )}
-          </div>
+    <div className="admin-content-wrap pagina-cristal pagina-configuracoes">
+      {/* A faixa do alto, como nas outras telas: a área, o nome e as abas em
+          pílula. Com uma aba só elas somem: não seria escolha, e sim o título
+          escrito duas vezes. */}
+      <FaixaDaPagina
+        secao="Sistema"
+        titulo="Configurações"
+        apos={abasVisiveis.length > 1 && (
+          <AbasPilula rotulo="Seção das configurações" ativa={activeTab} onTrocar={setActiveTab}
+            abas={abasVisiveis.map(a => ({ id: a.valor, rotulo: a.label }))} />
         )}
-      </div>
+        itens={activeTab === 'etapas' && escopo === 'funil' && !loading ? [
+          { rotulo: 'Etapas do funil', valor: statuses.length },
+        ] : []}
+      />
 
-      <AbaPainel key={`${activeTab}-${escopo}`} // O mesmo vao da pagina: aqui dentro os blocos sao os mesmos - cartoes,
-        // filtros, busca e lista -, e um vao proprio deixava esta tela mais
-        // solta que as outras.
-        style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <AbaPainel key={activeTab}
+        style={{ display: 'flex', flexDirection: 'column', gap: 14, flex: 1, minHeight: 0 }}>
+      <section className="painel-principal">
+        <div className="painel-principal-cabeca">
+          {activeTab === 'etapas' ? (
+            <AbasPilula rotulo="Quadro configurado" ativa={escopo} onTrocar={setEscopo}
+              abas={[{ id: 'funil', rotulo: 'Funil' }, { id: 'tarefas', rotulo: 'Tarefas' }]} />
+          ) : (
+            <p className="config-cabeca-titulo">
+              {activeTab === 'integracoes' ? 'Integrações' : 'Sistema de desenho'}
+            </p>
+          )}
+          <p key={descricao} className="config-cabeca-desc troca">{descricao}</p>
+          {/* A aba Tarefas tem duas listas, e cada uma ganha o próprio "+"
+              no cabeçalho da sua seção. Um botão só aqui em cima teria que
+              escolher a qual das duas ele serve. */}
+          {activeTab === 'etapas' && escopo === 'funil' && !loading && !adding && (
+            <div className="painel-principal-ferramentas surge">
+              <button type="button" className="botao-contorno" onClick={() => setAdding(true)}>
+                <IconPlus size={14} /> Nova etapa
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div key={`${activeTab}-${escopo}`} className="painel-principal-corpo config-corpo troca">
       {activeTab === 'desenho' ? (
         <EstiloPage />
       ) : activeTab === 'integracoes' ? (
@@ -3472,6 +3475,8 @@ export default function ConfiguracoesPage({ token }: { token: string }) {
         </div>
       </>
       )}
+        </div>
+      </section>
       </AbaPainel>
     </div>
   );
