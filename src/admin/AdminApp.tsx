@@ -1111,6 +1111,52 @@ function MarcasDoGrupo() {
  */
 const ONDAS_ESPERAS = [1500, 5000, 20000, 60000];
 
+/**
+ * O fundo do sistema: as mesmas ondas da tela de entrada, atrás da janela de
+ * vidro. Elas aparecem nítidas na moldura em volta da janela e difusas através
+ * dela, que é o que dá luz ao vidro sem pintar o fundo de uma cor só.
+ *
+ * Tela cheia custa caro, então a versão é mais leve que a do login: menos
+ * camadas, 30 quadros por segundo e densidade de pixel 1 - por trás do vidro
+ * borrado, a diferença não aparece. Para quando a aba some, e cai para os
+ * focos em CSS da casca se o WebGL não subir ou se perder.
+ */
+function FundoDeOndas() {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const [reduzido] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const [caiu, setCaiu] = useState(false);
+
+  useEffect(() => {
+    const el = canvas.current;
+    if (!el || reduzido || caiu) return;
+    let ondas: ReturnType<typeof iniciarOndas> = null;
+    let vigia = 0;
+    const desligar = () => {
+      window.clearInterval(vigia);
+      vigia = 0;
+      ondas?.parar();
+      ondas = null;
+    };
+    const rever = () => {
+      if (!document.hidden && !ondas) {
+        ondas = iniciarOndas(el, { camadas: 5, fps: 30, dprMax: 1 });
+        if (!ondas) { setCaiu(true); return; }
+        vigia = window.setInterval(() => {
+          if (ondas?.morto()) { desligar(); setCaiu(true); }
+        }, 4000);
+      } else if (document.hidden && ondas) {
+        desligar();
+      }
+    };
+    rever();
+    document.addEventListener('visibilitychange', rever);
+    return () => { document.removeEventListener('visibilitychange', rever); desligar(); };
+  }, [reduzido, caiu]);
+
+  if (reduzido || caiu) return null;
+  return <canvas ref={canvas} className="casca-ondas" aria-hidden="true" />;
+}
+
 /** Painel direito: ondas animadas, o discurso no alto e o rodapé em vidro. */
 function LoginArte() {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -1723,6 +1769,7 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
           peca de vidro que pousa sobre ele, com o menu, o topo e a pagina
           dentro. No celular a janela ocupa a tela toda, sem moldura. */}
       <div className={`admin-casca${saindo ? ' tela-sai' : ''}`}>
+      <FundoDeOndas />
       <div className={`casca-janela${pinned ? ' menu-preso' : ''}`} style={{
         display: 'grid',
         // Duas colunas no desktop: o menu à esquerda e a página. O menu vai do

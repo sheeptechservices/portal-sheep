@@ -24276,3 +24276,49 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 :is(.admin-modal-overlay, .qs-overlay, .usuarios-modal-fundo):not(.saindo) {
   animation-fill-mode: backwards !important;
 }
+
+/* ══ Fundo de ondas e noite neutra (teste) ══════════════════════════════════
+   As ondas da tela de entrada passam a ser o fundo do sistema, atras da
+   janela de vidro: nitidas na moldura em volta dela, difusas atraves dela. O
+   quase preto puxado para o verde sai: fundo, superficies, bordas e vidros
+   vao para um quase preto neutro, levemente frio, que e a base do proprio
+   shader. Assim a unica cor do ambiente e o limao da luz, e nao um verde
+   militar por baixo de tudo. Bloco unico no fim do arquivo, para o teste
+   poder ser desfeito de uma vez. */
+:root[data-theme="dark"] {
+  --bg:     #050608;
+  --white:  #0F1114;
+  --black:  #ECEEF0;
+  --gray:   #C8CCD2;
+  --gray2:  #8D939B;
+  --gray3:  #23262C;
+  --gray4:  #17191D;
+  --card-hover-bg: #16191D;
+  /* Denso o bastante para a luz chegar como brilho de fundo, e nao como
+     mancha atras do texto; a forca das ondas fica na moldura. */
+  --vidro-janela: rgba(8, 9, 12, .8);
+  --menu-flutuante: rgba(12, 13, 16, .62);
+  --vidro-casca: rgba(8, 9, 12, .56);
+  --avatar-fundo: #23262C;
+  /* Os focos em CSS da casca ficam so como reserva (sem WebGL ou com
+     movimento reduzido), e em limao, nao em oliva. */
+  --brilho-1: rgba(214, 236, 0, .12);
+  --brilho-2: rgba(214, 236, 0, .06);
+}
+.casca-ondas {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+  pointer-events: none;
+  animation: casca-ondas-entra 1.2s var(--curva-anti) both;
+}
+@keyframes casca-ondas-entra { from { opacity: 0; } to { opacity: 1; } }
+/* Com as ondas no ar, os focos da casca saem: seriam uma segunda luz. */
+.admin-casca:has(> .casca-ondas)::before,
+.admin-casca:has(> .casca-ondas)::after { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .casca-ondas { animation: none; }
+}
