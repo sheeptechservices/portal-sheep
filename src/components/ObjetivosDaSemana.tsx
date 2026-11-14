@@ -40,7 +40,7 @@ import {
   type StatusDoObjetivo,
 } from '../lib/statusDoObjetivo';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
-import { ancorarCaixa } from '../lib/ancorar';
+import { ancorarAoLado, ancorarCaixa } from '../lib/ancorar';
 import { useToast } from '../lib/toast';
 
 export interface MeuObjetivo {
@@ -675,7 +675,9 @@ function ListaDeObjetivos({ dados, pessoas, onIr, onAtualizar, onDesdobrar, onPr
  * fica aceso e fecha a coluna - é o gesto de quem quer tirá-la da frente, e
  * por isso também desafixa.
  */
-export function ObjetivosDaSemana({ dados, pessoas, fixado, podeFixar, onFixar, onIr, onAtualizar, onDesdobrar }: {
+export function ObjetivosDaSemana({ dados, pessoas, fixado, podeFixar, onFixar, onIr, onAtualizar, onDesdobrar, noMenu }: {
+  /** Mora no menu lateral: o gatilho e um item do menu, e a gaveta abre ao lado. */
+  noMenu?: boolean;
   dados: ObjetivosCarregados;
   pessoas: Pessoa[];
   /** A coluna à direita está na tela. */
@@ -702,7 +704,7 @@ export function ObjetivosDaSemana({ dados, pessoas, fixado, podeFixar, onFixar, 
   useDropdownDismiss(aberto && !preso, [gatilho, gaveta], () => setAberto(false));
   useEffect(() => {
     if (!aberto || !gatilho.current) return;
-    setPos(ancorarCaixa(gatilho.current, LARGURA, ALTURA));
+    setPos((noMenu ? ancorarAoLado : ancorarCaixa)(gatilho.current, LARGURA, ALTURA));
   }, [aberto]);
   // Abrir relê: a lista pode ter mudado desde a última leitura de fundo.
   useEffect(() => { if (aberto) recarregar(); }, [aberto]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -711,6 +713,17 @@ export function ObjetivosDaSemana({ dados, pessoas, fixado, podeFixar, onFixar, 
 
   return (
     <>
+      {noMenu ? (
+        <button ref={gatilho} type="button"
+          className={`nav-leaf nav-porta${aberto || fixado ? ' aberta' : ''}`}
+          onClick={() => { if (fixado) onFixar(false); else setAberto(a => !a); }}
+          aria-expanded={fixado || aberto}
+          aria-label={abertos ? `Objetivos da semana, ${abertos} em aberto` : 'Objetivos da semana'}>
+          <span className="nav-leaf-ico"><IconTarget size={15} /></span>
+          <span className="nav-leaf-texto">Objetivos da semana</span>
+          {abertos > 0 && <span key={abertos} className="nav-leaf-conta">{abertos}</span>}
+        </button>
+      ) : (
       <button ref={gatilho} type="button" className={`topo-icone inbox-gatilho${fixado ? ' ativo' : ''}`}
         onClick={() => { if (fixado) onFixar(false); else setAberto(a => !a); }}
         aria-expanded={fixado || aberto}
@@ -727,6 +740,7 @@ export function ObjetivosDaSemana({ dados, pessoas, fixado, podeFixar, onFixar, 
           </span>
         )}
       </button>
+      )}
 
       {/* A mesma gaveta do inbox: mesma moldura, mesma lista, mesma forma de
           abrir e fechar. São duas portas no mesmo canto, e desenhos diferentes

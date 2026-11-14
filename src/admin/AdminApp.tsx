@@ -1,13 +1,15 @@
-﻿import { useState, useEffect, useRef, createContext, useContext, useCallback, useMemo, lazy, Suspense, useSyncExternalStore } from 'react';
+﻿import { useState, useEffect, useRef, createContext, useContext, useCallback, useMemo, lazy, Suspense } from 'react';
 import type { ReactNode } from 'react';
-import { IconAcessos, IconAlert, IconArrowRight, IconDashboard, IconGoogle, IconSpinner } from '../components/icons';
+import { ContaAnimada } from '../components/ContaAnimada';
+import { corDoProjeto } from '../components/DicaDoProjeto';
+import { IconAcessos, IconAlert, IconArrowRight, IconChevronRight, IconDashboard, IconGoogle, IconSair, IconSearch, IconSpinner } from '../components/icons';
+import { lojaSubpagina, useSubpaginaAtual } from '../lib/subpagina';
 import {
   criarPode, podeAbrirPagina, podeGerenciarUsuarios, podeVerUsuarios, PERMISSAO_DA_PAGINA,
-  type Permissoes, type Pode,
+  rotuloPapel, type Permissoes, type Pode,
 } from './papeis';
-import { createPortal, flushSync } from 'react-dom';
+import { createPortal } from 'react-dom';
 import { CampoSenha } from '../components/CampoSenha';
-import { lojaTema, comRevelacao, type Tema } from '../lib/tema';
 import { MARCAS } from '../lib/marcas';
 import { SkeletonPagina } from '../components/Skeleton';
 import { GOOGLE_CLIENT_ID, GOOGLE_DOMINIO, carregarGis } from '../lib/google';
@@ -40,6 +42,7 @@ import { iniciarOndas } from '../lib/ondas';
 import { ToastContext, type ToastItem } from '../lib/toast';
 import { TrilhaContext, type DegrauTrilha } from '../lib/trilha';
 import { useTrocaDeNivel } from '../lib/useTrocaDeNivel';
+import { useLuzDoPonteiro } from '../lib/useLuzDoPonteiro';
 
 // ── Toast system ─────────────────────────────────────────────────────────────
 // O contrato e o gancho moram em `lib/toast`; aqui fica quem monta o provedor e
@@ -201,7 +204,14 @@ function ToastContainer({ items, onDismiss }: { items: ToastItem[]; onDismiss: (
  *  chave já está no catálogo e já é marcável por papel, mas a tela não nasceu -
  *  e sem `page` o filtro por `podeAbrirPagina` deixava ele passar para todo
  *  mundo, inclusive para quem teve o acesso desmarcado. */
-type NavLeaf = { page?: Page; perm?: string; label: string; icon: JSX.Element; disabled?: boolean };
+type NavLeaf = { page?: Page; perm?: string; label: string; icon: JSX.Element; disabled?: boolean;
+  /** As subpaginas que o item abre no menu, como no mockup: as abas da tela
+   *  (`id` e o valor da aba) ou, com `pagina`, telas proprias (as ferramentas). */
+  subs?: SubDoMenu[];
+  /** Mora como subpagina deste item; so aparece solta no menu quando a pessoa
+   *  nao alcanca o item pai (senao ficaria sem caminho ate ela). */
+  dentroDe?: Page };
+type SubDoMenu = { id: string; label: string; perm?: string; pagina?: Page };
 
 /** Quão fundo a página está. As do menu ficam todas no mesmo andar - trocar
  *  entre elas é trocar de assunto, não descer -, e Ferramentas abre dois
@@ -225,6 +235,12 @@ const NAV_SECTIONS: { section: string; items: NavLeaf[] }[] = [
       {
         page: 'oportunidades',
         label: 'Funil',
+        subs: [
+          { id: 'quadro', label: 'Quadro' },
+          { id: 'lista', label: 'Lista' },
+          { id: 'fechados', label: 'Fechados' },
+          { id: 'perdidos', label: 'Perdidos' },
+        ],
         icon: (
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
             <path d="M3 4h18l-7 8.5V19l-4 2v-8.5L3 4z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
@@ -234,6 +250,10 @@ const NAV_SECTIONS: { section: string; items: NavLeaf[] }[] = [
       {
         page: 'projetos',
         label: 'Projetos',
+        subs: [
+          { id: 'geral', label: 'Geral', perm: 'projetos:geral' },
+          { id: 'planning', label: 'Planning', perm: 'projetos:planning' },
+        ],
         icon: (
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
             <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.2l1.8 2.2h8A2.5 2.5 0 0 1 21 9.7v7.8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
@@ -244,6 +264,11 @@ const NAV_SECTIONS: { section: string; items: NavLeaf[] }[] = [
       {
         page: 'tarefas',
         label: 'Tarefas',
+        subs: [
+          { id: 'quadro', label: 'Quadro' },
+          { id: 'lista', label: 'Lista' },
+          { id: 'tabela', label: 'Tabela' },
+        ],
         icon: (
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
             <rect x="3" y="4" width="18" height="16" rx="2.5" stroke="currentColor" strokeWidth="1.8"/>
@@ -259,6 +284,7 @@ const NAV_SECTIONS: { section: string; items: NavLeaf[] }[] = [
       {
         page: 'ferramentas',
         label: 'Ferramentas',
+        subs: TOOL_PAGES.map(t => ({ id: t, label: TOOL_LABELS[t] ?? t, pagina: t })),
         icon: (
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
             <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
@@ -268,6 +294,12 @@ const NAV_SECTIONS: { section: string; items: NavLeaf[] }[] = [
       {
         page: 'configuracoes',
         label: 'Configurações',
+        subs: [
+          { id: 'etapas', label: 'Etapas', perm: 'configuracoes:etapas' },
+          { id: 'integracoes', label: 'Integrações', perm: 'configuracoes:integracoes' },
+          { id: 'desenho', label: 'Desenho' },
+          { id: 'usuarios', label: 'Usuários', pagina: 'usuarios' },
+        ],
         icon: (
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
             <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
@@ -278,64 +310,66 @@ const NAV_SECTIONS: { section: string; items: NavLeaf[] }[] = [
       {
         page: 'usuarios',
         label: 'Usuários',
+        dentroDe: 'configuracoes',
         icon: <IconAcessos size={15} />,
       },
     ],
   },
 ];
 
+/** As subpaginas de um item do menu, abrindo por baixo dele com o fio na
+ *  esquerda. Ficam montadas o tempo todo: o `.revelar` so anima a altura, e
+ *  montar na abertura faria o bloco crescer de nada para nada. */
+function SubpaginasDoMenu({ pagina, subs, aberto, paginaAtual, onIr }: {
+  pagina: Page;
+  subs: SubDoMenu[];
+  aberto: boolean;
+  paginaAtual: Page;
+  onIr: (s: SubDoMenu) => void;
+}) {
+  const gravada = useSubpaginaAtual(pagina);
+  // Sem escolha ainda, a tela abre na primeira aba que a pessoa alcanca.
+  const abaAtual = gravada ?? subs[0]?.id;
+  return (
+    <div className={`revelar nav-sub-revelar${aberto ? ' aberto' : ''}`} aria-hidden={!aberto}>
+      <div>
+        <div className="nav-sub">
+          {subs.map(sub => {
+            const ativa = sub.pagina ? paginaAtual === sub.pagina : (paginaAtual === pagina && abaAtual === sub.id);
+            return (
+              <button key={sub.id} type="button" tabIndex={aberto ? 0 : -1}
+                className={`nav-sub-item${ativa ? ' ativo' : ''}`}
+                aria-current={ativa ? 'page' : undefined}
+                onClick={() => onIr(sub)}>
+                <span className="nav-sub-rotulo">{sub.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Atalho da busca rápida - ⌘K no Mac, Ctrl+K no resto.
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 const QS_HINT = IS_MAC ? '⌘K' : 'Ctrl K';
 
 // ── Topbar ────────────────────────────────────────────────────────────────────
-// Switch de tema (sol/lua): um botão só - clicar em qualquer ponto dele vai para
-// o outro tema, com a revelação circular a partir do ponto do clique. Quem se
-// move é o pino, que corre entre os dois lados; os ícones ficam parados.
-function ThemeToggle() {
-  const tema = useSyncExternalStore(lojaTema.assinar, lojaTema.agora, lojaTema.servidor);
-  const escuro = tema === 'escuro';
-
-  const alternar = (ev: React.MouseEvent) => {
-    const alvo: Tema = escuro ? 'claro' : 'escuro';
-    // Sem coordenadas (acionado pelo teclado) a revelação nasce do centro da tela.
-    const origem = (ev.clientX || ev.clientY) ? { x: ev.clientX, y: ev.clientY } : null;
-    comRevelacao(origem, () => flushSync(() => lojaTema.definir(alvo)));
-  };
-
-  return (
-    <button
-      type="button"
-      className="theme-seg"
-      data-tema={tema}
-      onClick={alternar}
-      role="switch"
-      aria-checked={escuro}
-      aria-label="Modo escuro"
-      title={escuro ? 'Mudar para o modo claro' : 'Mudar para o modo escuro'}
-    >
-      {/* Pino que corre por baixo dos dois ícones - é ele que dá o movimento. */}
-      <span className="theme-seg-thumb" aria-hidden="true" />
-      <span className={`theme-seg-opt${!escuro ? ' on' : ''}`} aria-hidden="true">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="4" fill="currentColor" />
-          {[0, 45, 90, 135, 180, 225, 270, 315].map(a => (
-            <rect key={a} x="11.25" y="1.5" width="1.5" height="3.2" rx="0.75" fill="currentColor" transform={`rotate(${a} 12 12)`} />
-          ))}
-        </svg>
-      </span>
-      <span className={`theme-seg-opt${escuro ? ' on' : ''}`} aria-hidden="true">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-          <path d="M20 14.5A8 8 0 019.5 4a7 7 0 100 16 8 8 0 0010.5-5.5z" fill="currentColor" />
-        </svg>
-      </span>
-    </button>
-  );
-}
-
-function Topbar({ onToggle, onLogout, onQuickSearch, usuario, onAbrirPerfil, inbox }: {
-  onToggle: () => void; onLogout: () => void; onQuickSearch: () => void; usuario: UsuarioSessao | null;
+function Topbar({ onToggle, onLogout, onQuickSearch, usuario, onAbrirPerfil, inbox, coluna, mostrarMarca, mostrarMenu, onIrInicio }: {
+  onToggle: () => void;
+  /** A logo do topo leva ao Dashboard. */
+  onIrInicio: () => void;
+  /** O botao de menu so aparece quando o menu nao esta a vista: preso e aberto,
+   *  quem recolhe e a seta no alto do proprio menu. */
+  mostrarMenu: boolean; onLogout: () => void; onQuickSearch: () => void; usuario: UsuarioSessao | null;
   onAbrirPerfil: () => void;
+  /** Onde o topo mora na grade: sobre a coluna de conteudo quando o menu esta
+   *  preso (o menu desce ate o topo da janela), a largura toda quando solto. */
+  coluna: string;
+  /** A marca so aparece no topo quando o menu nao a mostra: menu preso e
+   *  aberto ja leva a marca no alto dele. */
+  mostrarMarca: boolean;
   /** O inbox vem montado de cima: quem sabe falar com o servidor e a casca, e
    *  o topo so escolhe onde ele fica. */
   inbox: ReactNode;
@@ -355,18 +389,21 @@ function Topbar({ onToggle, onLogout, onQuickSearch, usuario, onAbrirPerfil, inb
 
   return (
     <header className="app-topo" style={{
-      gridColumn: '1 / -1',
+      gridColumn: coluna,
+      gridRow: 1,
       display: 'flex',
       alignItems: 'center',
-      justifyContent: 'space-between',
+      gap: 14,
       position: 'sticky',
       top: 0,
       zIndex: 300,
-      height: 60,
+      height: '100%',
       flexShrink: 0,
     }}>
-      {/* Left: toggle + brand */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      {/* Esquerda: o menu e, quando o menu nao a mostra, a marca. */}
+      {(mostrarMenu || mostrarMarca) && (
+      <div className="surge" style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+        {mostrarMenu && (
         <button
           type="button"
           className="topo-icone"
@@ -380,103 +417,19 @@ function Topbar({ onToggle, onLogout, onQuickSearch, usuario, onAbrirPerfil, inb
             <line x1="2" y1="12" x2="14" y2="12"/>
           </svg>
         </button>
+        )}
 
         {/* A logo da casa: preta no claro, branca no escuro (ver .brand-logo). */}
-        <img src="/logo-sheep.png" alt="Sheep Technology" className="brand-logo"
-          style={{ height: 30, width: 'auto', flexShrink: 0, display: 'block' }} />
-      </div>
-
-      {/* Busca rápida: centralizada na tela grande, item da própria linha no
-          celular - em posição absoluta ela caía por cima do nome do portal. */}
-      <div className="topbar-busca"
-        style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}>
-        <button type="button" className="qs-trigger" onClick={onQuickSearch} title="Busca rápida (Ctrl+K)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
-            <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="1.8"/>
-            <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-          </svg>
-          <span className="qs-trigger-label">Buscar</span>
-          <span className="qs-trigger-kbd">{QS_HINT}</span>
-        </button>
-      </div>
-
-      {/* Right: inbox e avatar (o switch de tema vive no rodapé da sidebar) */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-      {inbox}
-      <div ref={avatarRef} style={{ position: 'relative' }}>
-        <button
-          type="button"
-          onClick={() => setMenuOpen(v => !v)}
-          title={usuario ? `${usuario.nome} (${usuario.email})` : 'Acesso compartilhado'}
-          aria-label={usuario ? `Conta de ${usuario.nome}` : 'Conta'}
-          className="topbar-conta"
-        >
-          {/* Identidade ao lado da foto. Some no mobile, onde o cabeçalho não
-              comporta - o avatar continua abrindo o mesmo menu. */}
-          <span className="topbar-conta-texto">
-            <span className="topbar-conta-nome">{usuario ? usuario.nome : 'Acesso compartilhado'}</span>
-            <span className="topbar-conta-email">{usuario ? usuario.email : 'Entrada por senha'}</span>
-          </span>
-          <span className="topbar-conta-avatar">
-            {usuario?.foto_url && !semFoto ? (
-              <img
-                src={usuario.foto_url}
-                alt=""
-                referrerPolicy="no-referrer"
-                onError={() => setSemFoto(true)}
-              />
-            ) : (
-              <span>{usuario ? iniciais(usuario.nome) : 'D'}</span>
-            )}
-          </span>
-        </button>
-
-        {menuOpen && createPortal(
-          <>
-            <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={() => setMenuOpen(false)} />
-            <div style={{
-              position: 'fixed', top: 56, right: 16,
-              background: 'var(--white)', border: '1px solid var(--gray3)',
-              borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-              zIndex: 9999, minWidth: 180, overflow: 'hidden',
-              animation: 'panelUp .18s ease both',
-            }}>
-              {/* Nome e e-mail agora vivem no cabeçalho. Aqui sobra só o aviso
-                  de quem entrou pela senha, que o topo não tem espaço para dar. */}
-              {!usuario && (
-                <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--gray3)', background: 'var(--bg)' }}>
-                  <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--gray2)', lineHeight: 1.5 }}>
-                    Entrada por senha compartilhada - as ações não ficam no seu nome.
-                  </div>
-                </div>
-              )}
-              <button
-                onMouseDown={e => e.stopPropagation()}
-                onClick={() => { setMenuOpen(false); onAbrirPerfil(); }}
-                className="conta-menu-item"
-              >
-                Perfil
-              </button>
-
-              <button
-                onMouseDown={e => e.stopPropagation()}
-                onClick={onLogout}
-                style={{
-                  width: '100%', padding: '9px 14px', fontSize: 13, fontWeight: 600,
-                  color: 'var(--red)', background: 'none', border: 'none', cursor: 'pointer',
-                  textAlign: 'left', transition: 'background .2s', fontFamily: 'inherit',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(217,48,37,0.06)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-              >
-                Sair
-              </button>
-            </div>
-          </>,
-          document.body
+        {mostrarMarca && (
+          <button type="button" className="topo-marca surge" onClick={onIrInicio}
+            title="Ir para o Dashboard" aria-label="Sheep Technology - ir para o Dashboard">
+            <img src="/logo-sheep.png" alt="" aria-hidden="true" className="brand-logo"
+              style={{ height: 30, width: 'auto', flexShrink: 0, display: 'block' }} />
+          </button>
         )}
       </div>
-      </div>
+      )}
+
     </header>
   );
 }
@@ -506,6 +459,23 @@ function SemAcesso() {
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
+/** A largura do menu, a mesma do mockup: e ela que a coluna da grade abre. */
+const LARGURA_DO_MENU = 224;
+/** Quantos projetos a secao do menu mostra antes do "Ver todos". */
+const PROJETOS_NO_MENU = 6;
+/** O pouco que o menu precisa saber de um projeto. */
+interface ProjetoDoMenu { id: string; nome: string; cliente: string | null }
+
+/** O trilho de icones: o menu recolhido, que abre com o ponteiro. */
+const LARGURA_DO_TRILHO = 72;
+const CHAVE_MENU_FIXO = 'dux_menu_fixo';
+function lerMenuFixo(): boolean {
+  try { return localStorage.getItem(CHAVE_MENU_FIXO) === '1'; } catch { return false; }
+}
+function gravarMenuFixo(fixo: boolean) {
+  try { localStorage.setItem(CHAVE_MENU_FIXO, fixo ? '1' : '0'); } catch { /* janela privada */ }
+}
+
 /** Navegação do celular: barra fixa no rodapé, ao alcance do polegar.
  *
  *  Leva no máximo quatro destinos e um "Mais", que abre a mesma sidebar - com
@@ -564,9 +534,25 @@ function NavInferior({ page, setPage, onMais }: {
 function Sidebar({
   page, setPage, open, pinned, onClose, onReportar, onListarReportes, onPrintDoReporte,
   onMudarStatusDoReporte, onMudarTipoDoReporte, onEditarReporte, onExcluirReporte,
-  onReabrirReporte, abrirFilaDeChamados, onAbriuFila,
+  onReabrirReporte, abrirFilaDeChamados, onAbriuFila, onLogout, onAlternarFixo,
+  projetosDoMenu, onAbrirProjeto, contagens, portas, onAbrirPerfil, onQuickSearch,
 }: {
+  /** A busca rapida mora no alto do menu: o topo da pagina fica livre. */
+  onQuickSearch: () => void;
+  /** Notificacoes e objetivos: as portas que moravam no topo. */
+  portas: ReactNode;
+  /** O cartao de quem esta usando leva ao Perfil. */
+  onAbrirPerfil: () => void;
+  /** Quantos itens cada tela tem em aberto, para a bolinha ao lado do nome. */
+  contagens: Partial<Record<Page, number>>;
+  /** Os projetos em andamento, para a secao PROJETOS do menu. */
+  projetosDoMenu: ProjetoDoMenu[];
+  onAbrirProjeto: (id: string) => void;
+  /** Preso: alterna entre o trilho de icones e o menu fixado aberto. */
+  onAlternarFixo: () => void;
   page: Page; setPage: (p: Page) => void; open: boolean; pinned: boolean; onClose: () => void;
+  /** Sair mora no cartao de quem esta usando, no pe do menu. */
+  onLogout: () => void;
   /** O inbox pede a fila de chamados, e diz qual chamado deve nascer aberto;
    *  quem a tem e o cartao do pe do menu. */
   abrirFilaDeChamados: { nonce: number; chamado?: number } | null;
@@ -583,32 +569,29 @@ function Sidebar({
   // Só o que depende de estar preso ou solto, e de estar aberto ou fechado: a
   // aparência - folha, fio da borda e sombra - mora na folha de estilo, com o
   // resto do material da casa.
+  // Preso, o menu ocupa a coluna da grade: o trilho de icones (72px) ou, fixado
+  // aberto, a largura inteira. No trilho o painel de dentro cresce por cima da
+  // pagina com o ponteiro - quem cresce e ele, e nao a coluna, para a pagina
+  // nao andar de lado a cada passada do mouse.
   const sidebarStyle: React.CSSProperties = pinned
     ? {
-        overflow: 'hidden',
-        // Ocupa a largura da coluna do grid (220px -> 0px), sem largura fixa
-        // própria: assim o fundo e o recorte encolhem junto com a coluna, em vez
-        // de a largura fixa vazar por cima do conteúdo enquanto recolhe.
+        gridColumn: 1,
+        gridRow: '1 / -1',
+        position: 'relative',
         width: '100%',
         minWidth: 0,
         height: '100%',
-        // Some suave junto com o recolher; ao fechar, a visibilidade só cai
-        // depois do fade (a11y), ao abrir volta na hora.
-        opacity: open ? 1 : 0,
-        visibility: open ? 'visible' : 'hidden',
-        transition: open
-          ? 'opacity 0.2s cubic-bezier(0.4,0,0.2,1), border-color 0.2s ease'
-          : 'opacity 0.2s cubic-bezier(0.4,0,0.2,1), border-color 0.2s ease, visibility 0s linear 0.2s',
-        pointerEvents: open ? 'auto' : 'none',
+        overflow: 'visible',
+        zIndex: 320,
       }
     : {
         overflow: 'hidden',
-        width: 220,
+        width: LARGURA_DO_MENU,
         flexShrink: 0,
         position: 'fixed',
         left: 0,
-        top: 60,
-        height: 'calc(100vh - 60px)',
+        top: 64,
+        height: 'calc(100vh - 64px)',
         zIndex: 300,
         transform: open ? 'translateX(0)' : 'translateX(-100%)',
         transition: 'transform 0.28s cubic-bezier(0.4,0,0.2,1)',
@@ -616,11 +599,11 @@ function Sidebar({
 
   // Conteúdo com largura fixa: enquanto a coluna encolhe, o texto é recortado
   // pelo <aside> (overflow:hidden) em vez de requebrar de linha.
-  const innerStyle: React.CSSProperties = {
-    width: 220,
-    minWidth: 220,
+  const trilho = pinned && !open;
+  const innerStyle: React.CSSProperties = trilho ? {} : {
+    width: LARGURA_DO_MENU,
+    minWidth: LARGURA_DO_MENU,
     height: '100%',
-    padding: '20px 0',
     display: 'flex',
     flexDirection: 'column',
   };
@@ -633,18 +616,52 @@ function Sidebar({
   // ler) e quem cuida da fila de chamados (só o dono do painel).
   const veUsuarios = podeVerUsuarios(usuario);
   const admin = podeGerenciarUsuarios(usuario);
+  const alcanca = (i: NavLeaf) =>
+    (!i.page || podeAbrirPagina(pode, i.page, veUsuarios)) && (!i.perm || pode(i.perm));
+  const alcancaPagina = (p: Page) => NAV_SECTIONS.some(g => g.items.some(i => i.page === p && alcanca(i)));
   const secoes = NAV_SECTIONS
     .map(g => ({
       ...g,
-      items: g.items.filter(i =>
-        (!i.page || podeAbrirPagina(pode, i.page, veUsuarios)) && (!i.perm || pode(i.perm))),
+      // Usuarios mora dentro de Configuracoes; solto, so para quem nao abre
+      // Configuracoes.
+      items: g.items.filter(i => alcanca(i) && !(i.dentroDe && alcancaPagina(i.dentroDe))),
     }))
     .filter(g => g.items.length > 0);
 
+  // As subpaginas abrem com o ponteiro parado sobre a pagina e fecham quando
+  // ele sai do grupo (titulo e lista). A espera de entrada separa o "parei
+  // aqui" da passada a caminho de outro item; a de saida deixa atravessar o
+  // vao ate a lista sem ela fechar. Pelo teclado, o foco faz o mesmo papel, e
+  // no toque (sem ponteiro) a seta abre e fecha.
+  const [pairando, setPairando] = useState<string | null>(null);
+  const esperaAbrir = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const esperaFechar = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const limparEsperas = () => {
+    if (esperaAbrir.current) clearTimeout(esperaAbrir.current);
+    if (esperaFechar.current) clearTimeout(esperaFechar.current);
+    esperaAbrir.current = esperaFechar.current = null;
+  };
+  useEffect(() => limparEsperas, []);
+  const entrarNoGrupo = (p: string) => {
+    limparEsperas();
+    if (pairando === p) return;
+    esperaAbrir.current = setTimeout(() => setPairando(p), 260);
+  };
+  const sairDoGrupo = (p: string) => {
+    limparEsperas();
+    esperaFechar.current = setTimeout(() => setPairando(atual => (atual === p ? null : atual)), 220);
+  };
+  const subsVisiveis = (item: NavLeaf): SubDoMenu[] => (item.subs ?? []).filter(s =>
+    (!s.perm || pode(s.perm)) && (!s.pagina || podeAbrirPagina(pode, s.pagina, veUsuarios)));
+
   const renderLeaf = (item: NavLeaf) => {
-    const active = !!item.page && (page === item.page || (item.page === 'ferramentas' && TOOL_PAGES.includes(page)));
+    // O item pai fica aceso tambem nas subpaginas que sao telas proprias.
+    const active = !!item.page && (page === item.page
+      || (item.subs ?? []).some(sb => sb.pagina === page));
     const disabled = !!item.disabled;
-    return (
+    const subs = disabled || !item.page ? [] : subsVisiveis(item);
+    const aberto = subs.length > 0 && pairando === item.page;
+    const botao = (
       <button
         key={item.label}
         type="button"
@@ -652,28 +669,122 @@ function Sidebar({
         disabled={disabled}
         title={disabled ? 'Em breve' : undefined}
         aria-current={active ? 'page' : undefined}
-        onClick={() => { if (disabled || !item.page) return; setPage(item.page); if (!pinned) onClose(); }}
+        onClick={() => {
+          if (disabled || !item.page) return;
+          setPage(item.page);
+          if (!pinned) onClose();
+        }}
       >
         <span className="nav-leaf-ico">{item.icon}</span>
         <span className="nav-leaf-texto">{item.label}</span>
         {disabled && <span className="nav-leaf-breve">em breve</span>}
+        {/* Quantos itens a tela tem em aberto. A `key` e o numero: quando ele
+            muda, a bolinha remonta e da o pulinho de "mudou". */}
+        {!disabled && item.page && (contagens[item.page] ?? 0) > 0 && (
+          <span key={contagens[item.page]} className="nav-leaf-conta"><ContaAnimada valor={contagens[item.page]!} /></span>
+        )}
       </button>
+    );
+    if (!subs.length) return botao;
+    return (
+      <div key={item.label} className={`nav-com-sub${aberto ? ' aberto' : ''}`}
+        onMouseEnter={() => entrarNoGrupo(item.page!)}
+        onMouseLeave={() => sairDoGrupo(item.page!)}
+        onFocus={() => { limparEsperas(); setPairando(item.page!); }}
+        onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) sairDoGrupo(item.page!); }}>
+        {botao}
+        <button type="button" className="nav-sub-seta" tabIndex={-1}
+          onClick={() => { limparEsperas(); setPairando(aberto ? null : item.page!); }}
+          aria-expanded={aberto} aria-label={`${aberto ? 'Recolher' : 'Abrir'} as páginas de ${item.label}`}>
+          <span className={`entrega-seta${aberto ? ' aberta' : ''}`}><IconChevronRight size={13} /></span>
+        </button>
+        <SubpaginasDoMenu pagina={item.page!} subs={subs} aberto={aberto} paginaAtual={page}
+          onIr={sub => {
+            if (sub.pagina) setPage(sub.pagina);
+            else { lojaSubpagina.definir(item.page!, sub.id); setPage(item.page!); }
+            if (!pinned) onClose();
+          }} />
+      </div>
     );
   };
 
   return (
-    <aside className={`app-menu${pinned ? '' : ' solto'}${open ? ' aberto' : ''}`}
+    <aside className={`app-menu${pinned ? '' : ' solto'}${open ? ' aberto' : ''}${trilho ? ' menu-trilho' : ''}`}
       style={sidebarStyle}>
-      <div style={innerStyle}>
+      <div className="app-menu-painel" style={innerStyle}>
+      {/* A marca no alto do menu, na altura do topo da pagina. So no menu
+          preso: solto, ele nasce abaixo do topo, que ja mostra a marca. */}
+      {/* O selo da casa no alto do menu: a ovelha num circulo e o nome por
+          extenso, espacado. Preso, a seta ao lado recolhe o menu. */}
+      <div className="menu-marca">
+        {/* A logo da casa. No trilho so o carneiro cabe; aberto, entra a
+            assinatura inteira por cima dele, na mesma altura. */}
+        {/* A logo leva ao Dashboard, como em todo site: e a porta de casa. */}
+        <button type="button" className="menu-marca-logos" title="Ir para o Dashboard"
+          aria-label="Sheep Technology - ir para o Dashboard"
+          onClick={() => { setPage('dashboard'); if (!pinned) onClose(); }}>
+          <img src="/logo.png" alt="" aria-hidden="true" className="brand-logo menu-marca-simbolo" />
+          <img src="/logo-sheep.png" alt="" aria-hidden="true" className="brand-logo menu-marca-assinatura" />
+        </button>
+        {pinned && (
+          <button type="button" className="menu-recolher" onClick={onAlternarFixo}
+            title={open ? 'Recolher o menu' : 'Manter o menu aberto'}
+            aria-label={open ? 'Recolher o menu' : 'Manter o menu aberto'}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"
+              stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d={open ? 'M15 18l-6-6 6-6' : 'M9 18l6-6-6-6'} />
+            </svg>
+          </button>
+        )}
+      </div>
+      {/* A busca rapida, logo abaixo da marca: no trilho so a lupa, aberto o
+          campo inteiro com o atalho. Ela abre a mesma busca do Ctrl+K. */}
+      <div className="menu-busca-linha">
+        <button type="button" className="nav-leaf menu-busca"
+          onClick={() => { onQuickSearch(); if (!pinned) onClose(); }}
+          title={`Busca rápida (${QS_HINT})`} aria-label="Buscar pessoas, projetos ou tarefas">
+          <span className="nav-leaf-ico"><IconSearch size={15} /></span>
+          <span className="nav-leaf-texto">Buscar</span>
+          <span className="nav-leaf-conta menu-busca-atalho">{QS_HINT}</span>
+        </button>
+      </div>
       {/* A navegação rola; o rodapé de Aparência fica preso embaixo. */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-      {secoes.map(group => (
-        <div key={group.section || 'topo'}>
-          {group.section && <p className="app-menu-secao">{group.section}</p>}
+      <div className="menu-navegacao">
+      {secoes.map((group, i) => (
+        <div key={group.section || 'topo'} className="menu-grupo">
+          {/* O primeiro grupo e o menu principal, sem rotulo, como no mockup; os
+              seguintes levam o rotulo em caixa alta. */}
+          {i > 0 && group.section && <p className="app-menu-secao">{group.section}</p>}
 
           {group.items.map(item => renderLeaf(item))}
+          {/* As portas do que chega para a pessoa - avisos e objetivos -
+              entram logo depois da navegacao principal. */}
+          {i === 0 && portas}
         </div>
       ))}
+      {/* Os projetos em andamento, cada um com a inicial num selo da cor dele:
+          o atalho para a ficha, sem passar pela lista. So para quem abre a tela
+          de Projetos. */}
+      {podeAbrirPagina(pode, 'projetos', veUsuarios) && projetosDoMenu.length > 0 && (
+        <div className="menu-grupo menu-projetos">
+          <p className="app-menu-secao">PROJETOS</p>
+          {projetosDoMenu.slice(0, PROJETOS_NO_MENU).map((p, i) => (
+            <button key={p.id} type="button" className={`nav-leaf menu-projeto cor-projeto-${corDoProjeto(p.id)}`}
+              title={p.cliente ? `${p.nome} | ${p.cliente}` : p.nome}
+              onClick={() => { onAbrirProjeto(p.id); if (!pinned) onClose(); }}>
+              <span className="nav-leaf-ico menu-projeto-selo">{p.nome.trim().charAt(0).toUpperCase()}</span>
+              <span className="nav-leaf-texto">{p.nome}</span>
+            </button>
+          ))}
+          {projetosDoMenu.length > PROJETOS_NO_MENU && (
+            <button type="button" className="nav-leaf menu-projetos-todos"
+              onClick={() => { setPage('projetos'); if (!pinned) onClose(); }}>
+              <span className="nav-leaf-ico menu-projeto-selo">+{projetosDoMenu.length - PROJETOS_NO_MENU}</span>
+              <span className="nav-leaf-texto">Ver todos</span>
+            </button>
+          )}
+        </div>
+      )}
       </div>
 
       {/* Abaixo da navegação e acima do tema: é o pé do menu, e não mais um
@@ -695,8 +806,24 @@ function Sidebar({
       />
 
       <div className="app-menu-rodape">
-        <span>Tema</span>
-        <ThemeToggle />
+        <button type="button" className="menu-usuario-perfil" onClick={() => { onAbrirPerfil(); if (!pinned) onClose(); }}
+          title="Abrir o seu perfil" aria-label="Abrir o seu perfil">
+        <span className="menu-usuario-avatar" aria-hidden="true">
+          {usuario?.foto_url
+            ? <img src={usuario.foto_url} alt="" referrerPolicy="no-referrer" />
+            : <span>{usuario ? iniciais(usuario.nome) : 'D'}</span>}
+        </span>
+        <span className="menu-usuario-texto">
+          <span className="menu-usuario-nome">{usuario ? usuario.nome : 'Acesso compartilhado'}</span>
+          <span className="menu-usuario-papel">{usuario ? rotuloPapel(usuario.papel) : 'Entrada por senha'}</span>
+        </span>
+        </button>
+        {/* No computador a troca de tema mora no topo; aqui ela so aparece no
+            celular, onde o topo nao tem lugar para ela. */}
+        <button type="button" className="menu-sair" onClick={onLogout}
+          title="Sair" aria-label="Sair da conta">
+          <IconSair size={16} />
+        </button>
       </div>
       </div>
     </aside>
@@ -1110,6 +1237,7 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
   const nivel = useTrocaDeNivel(page, profundidadeDaPagina);
   const paginaNaTela = nivel.mostrado;
   const [quickOpen, setQuickOpen] = useState(false);
+  useLuzDoPonteiro();
   // Card a abrir na página destino. O nonce força o efeito a rodar de novo quando
   // o mesmo card é escolhido duas vezes; a página zera o pedido ao consumi-lo, para
   // não reabrir o detalhe quando o usuário voltar à página pelo menu.
@@ -1117,6 +1245,51 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
    *  caminho do inbox: vincular uma reunião leva à ficha do projeto já na aba
    *  certa, com ela aberta. `aba: 'planning'` vem do alvo dos objetivos: leva
    *  à Planning, na folha do projeto e na `semana` do objetivo. */
+  // Os projetos em andamento para o menu. Carrega na entrada e de novo quando a
+  // aba volta a ser olhada: um projeto criado ou encerrado por outra pessoa
+  // aparece (ou sai) sem precisar recarregar a pagina.
+  const [projetosDoMenu, setProjetosDoMenu] = useState<ProjetoDoMenu[]>([]);
+  // As contagens ao lado do nome de cada tela: oportunidades sem desfecho no
+  // Funil, projetos em andamento, tarefas abertas e as pessoas do portal.
+  const [contagens, setContagens] = useState<Partial<Record<Page, number>>>({});
+  const contar = useCallback(() => {
+    const ler = (acao: string) => fetch(`/api/admin-data?action=${acao}`, { headers: { 'x-admin-session': token } })
+      .then(r => (r.ok ? r.json() : null)).catch(() => null);
+    void Promise.all([ler('projetos'), ler('tarefa_status_configs'), ler('painel_comercial&meses=1'),
+      ler('usuarios_notificaveis')])
+      .then(([proj, etapas, comercial, usuarios]) => {
+        const novas: Partial<Record<Page, number>> = {};
+        if (proj?.projetos) {
+          type P = { id: string; nome: string; cliente_nome: string | null; status: string;
+            tarefas?: { id: number; status: string }[] };
+          const lista = proj.projetos as P[];
+          const ativos = lista.filter(p => p.status === 'Em andamento');
+          setProjetosDoMenu(ativos
+            .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+            .map(p => ({ id: p.id, nome: p.nome, cliente: p.cliente_nome })));
+          novas.projetos = ativos.length;
+          // Aberta e a que nao chegou na etapa de conclusao nem esta numa etapa
+          // desconsiderada - a mesma conta da tela de Tarefas.
+          const fora = new Set(((etapas?.statuses ?? []) as { nome: string; is_conclusao: number; is_excluded: number }[])
+            .filter(e => Number(e.is_conclusao) === 1 || Number(e.is_excluded) === 1).map(e => e.nome));
+          const unicas = new Map<number, string>();
+          for (const p of lista) for (const t of p.tarefas ?? []) unicas.set(t.id, t.status);
+          novas.tarefas = [...unicas.values()].filter(st => !fora.has(st)).length;
+        }
+        if (comercial?.emAberto) novas.oportunidades = Number(comercial.emAberto.quantas) || 0;
+        if (Array.isArray(usuarios?.usuarios)) novas.usuarios = usuarios.usuarios.length;
+        setContagens(novas);
+      });
+  }, [token]);
+  // Conta na entrada, a cada troca de tela (o que se fez numa tela muda o
+  // numero dela) e quando a aba volta a ser olhada.
+  useEffect(() => { contar(); }, [contar, page]);
+  useEffect(() => {
+    const aoVoltar = () => { if (document.visibilityState === 'visible') contar(); };
+    document.addEventListener('visibilitychange', aoVoltar);
+    return () => document.removeEventListener('visibilitychange', aoVoltar);
+  }, [contar]);
+
   const [openCard, setOpenCard] = useState<
     {
       page: Page; id: string; nonce: number; aba?: 'reunioes' | 'planning'; reuniao?: number;
@@ -1471,6 +1644,9 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
     }
   }, [lerAdmin]);
   // Pedido vindo da tela de Projetos: abrir Tarefas já estreitada numa entrega.
+  /** "Nova tarefa" do painel: a tela de Tarefas abre com uma tarefa nova na
+   *  gaveta. O carimbo de hora faz o pedido valer de novo a cada clique. */
+  const [criarTarefa, setCriarTarefa] = useState<number | null>(null);
   const [tarefasDaEntrega, setTarefasDaEntrega] = useState<
     { projeto: string; entrega: number; nonce: number } | null>(null);
 
@@ -1644,7 +1820,9 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
       // Carga inicial: abre no desktop, fecha no mobile. Ao virar mobile: fecha o
       // overlay. Ao VOLTAR pro desktop: preserva a escolha do usuário (não reabre
       // um sidebar que ele tinha recolhido - o zoom não deve expandir de novo).
-      if (primeira) setOpen(isDesktop);
+      // No computador o menu nasce no trilho de icones, a menos que a pessoa o
+      // tenha fixado aberto - essa escolha fica guardada no navegador.
+      if (primeira) setOpen(isDesktop && lerMenuFixo());
       else if (!isDesktop) setOpen(false);
     }
     check();
@@ -1695,37 +1873,37 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
         fechar a gaveta que o comecou e a trocar de pagina. */}
     <ProvedorAtividades navegar={p => setPage(p as Page)}>
     <TrilhaContext.Provider value={{ degrau, definir: definirDegrau }}>
-      <div className={`admin-casca${saindo ? ' tela-sai' : ''}`} style={{
+      {/* A casca e o ambiente - o fundo e o brilho que deriva -, e a janela e a
+          peca de vidro que pousa sobre ele, com o menu, o topo e a pagina
+          dentro. No celular a janela ocupa a tela toda, sem moldura. */}
+      <div className={`admin-casca${saindo ? ' tela-sai' : ''}`}>
+      <div className={`casca-janela${pinned ? ' menu-preso' : ''}`} style={{
         display: 'grid',
         // Três colunas no desktop: o menu à esquerda, a página e os objetivos
         // fixados à direita. As laterais vão a zero quando fechadas, e a mesma
         // transição anima as duas.
         gridTemplateColumns: pinned
-          ? `${open ? '220px' : '0px'} minmax(0, 1fr) ${colunaDeObjetivos ? `${LARGURA_DA_COLUNA}px` : '0px'}`
+          ? `${open ? `${LARGURA_DO_MENU}px` : `${LARGURA_DO_TRILHO}px`} minmax(0, 1fr) ${colunaDeObjetivos ? `${LARGURA_DA_COLUNA}px` : '0px'}`
           : '1fr',
-        gridTemplateRows: '60px 1fr',
-        height: '100vh',
+        // Preso, nao ha faixa de topo: a busca mora no menu e a pagina sobe
+        // ate o alto da janela. Solto (celular), o topo guarda o menu e a marca.
+        gridTemplateRows: pinned ? 'minmax(0, 1fr)' : '64px minmax(0, 1fr)',
+        height: '100%',
         overflow: 'clip',
         transition: 'grid-template-columns 0.28s cubic-bezier(0.4,0,0.2,1)',
       }}>
-        <Topbar
+        {!pinned && <Topbar
+          coluna="1 / -1"
+          mostrarMarca={!pinned}
+          mostrarMenu={!pinned}
           onToggle={toggle}
           onLogout={onLogout}
           onQuickSearch={() => setQuickOpen(true)}
           usuario={usuario}
           onAbrirPerfil={() => setPage('perfil')}
-          inbox={(
-            <>
-              {veObjetivos && (
-                <ObjetivosDaSemana dados={objetivosDaSemana} pessoas={pessoasDosObjetivos} fixado={colunaDeObjetivos}
-                  podeFixar={pinned} onFixar={fixarObjetivos} onIr={irParaObjetivo}
-                  onAtualizar={atualizarObjetivo} onDesdobrar={desdobrarObjetivo} />
-              )}
-              <Inbox listar={listarInbox} marcarLido={marcarInboxLido} limpar={limparInbox}
-                vincularReuniao={vincularReuniaoDoInbox} onIr={irPeloInbox} />
-            </>
-          )}
-        />
+          onIrInicio={() => setPage('dashboard')}
+          inbox={null}
+        />}
 
         {/* Overlay backdrop (mobile / overlay mode) */}
         {open && !pinned && (
@@ -1747,6 +1925,27 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
           open={open}
           pinned={pinned}
           onClose={() => setOpen(false)}
+          onAlternarFixo={() => setOpen(v => { gravarMenuFixo(!v); return !v; })}
+          projetosDoMenu={projetosDoMenu}
+          contagens={contagens}
+          onQuickSearch={() => setQuickOpen(true)}
+          onAbrirPerfil={() => setPage('perfil')}
+          portas={(
+            <>
+              {veObjetivos && (
+                <ObjetivosDaSemana noMenu dados={objetivosDaSemana} pessoas={pessoasDosObjetivos} fixado={colunaDeObjetivos}
+                  podeFixar={pinned} onFixar={fixarObjetivos} onIr={irParaObjetivo}
+                  onAtualizar={atualizarObjetivo} onDesdobrar={desdobrarObjetivo} />
+              )}
+              <Inbox noMenu listar={listarInbox} marcarLido={marcarInboxLido} limpar={limparInbox}
+                vincularReuniao={vincularReuniaoDoInbox} onIr={irPeloInbox} />
+            </>
+          )}
+          onAbrirProjeto={id => {
+            setPage('projetos');
+            setOpenCard({ page: 'projetos', id, nonce: Date.now() });
+          }}
+          onLogout={onLogout}
           onReportar={reportar}
           onListarReportes={listarReportes}
           onPrintDoReporte={printDoReporte}
@@ -1766,10 +1965,14 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
             `position: sticky` lá dentro preso a um scrollport parado - o índice
             do relatório escapava ao rolar. */}
         <main style={{
+          gridColumn: pinned ? 2 : 1,
+          gridRow: pinned ? 1 : 2,
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          background: 'var(--bg)',
+          // Transparente: o fundo e o brilho que deriva moram na casca, e a
+          // pagina passa por cima deles em vez de tampar.
+          background: 'transparent',
           minHeight: 0,
         }}>
           {TOOL_PAGES.includes(paginaNaTela) && (
@@ -1842,9 +2045,17 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
                 onFiltroAplicado={() => setTarefasDaEntrega(null)}
                 abrir={openCard?.page === 'tarefas' ? openCard : undefined}
                 onAbriu={() => setOpenCard(null)}
+                criar={criarTarefa ?? undefined}
+                onCriou={() => setCriarTarefa(null)}
               />
             )}
-            {paginaNaTela === 'dashboard'     && <DashboardPage     token={token} />}
+            {paginaNaTela === 'dashboard'     && (
+              <DashboardPage token={token} onIr={p => setPage(p)}
+                onNovaTarefa={pode('tarefas:editar') ? () => {
+                  setCriarTarefa(Date.now());
+                  setPage('tarefas');
+                } : undefined} />
+            )}
             {paginaNaTela === 'oportunidades'  && <OportunidadesPage  token={token} openCard={openCard?.page === 'oportunidades' ? openCard : undefined} onCardOpened={() => setOpenCard(null)} />}
             {paginaNaTela === 'configuracoes' && <ConfiguracoesPage token={token} />}
             {paginaNaTela === 'ferramentas'   && <FerramentasPage token={token} onNavigate={p => setPage(p as Page)} />}
@@ -1875,6 +2086,7 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
             onDesafixar={() => fixarObjetivos(false)} onIr={irParaObjetivo}
             onAtualizar={atualizarObjetivo} onDesdobrar={desdobrarObjetivo} />
         )}
+      </div>
       </div>
 
       {quickOpen && (

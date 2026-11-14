@@ -24,7 +24,7 @@ import { Dialogo } from './Dialogo';
 import { SelectSistema } from './SelectSistema';
 import { SegSwitch } from './SegSwitch';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
-import { ancorarCaixa } from '../lib/ancorar';
+import { ancorarAoLado, ancorarCaixa } from '../lib/ancorar';
 import { instante, tempoRelativo } from '../lib/datas';
 import { useToast } from '../lib/toast';
 
@@ -86,7 +86,9 @@ const FONTES = {
  *  vez que a página fosse recarregada. */
 const RELEITURA_MS = 60_000;
 
-export function Inbox({ listar, marcarLido, limpar, vincularReuniao, onIr }: {
+export function Inbox({ listar, marcarLido, limpar, vincularReuniao, onIr, noMenu }: {
+  /** Mora no menu lateral: o gatilho e um item do menu, e a gaveta abre ao lado. */
+  noMenu?: boolean;
   /** `leve` deixa o Fireflies de fora: é a leitura repetida em segundo plano,
    *  que não pode custar uma ida a uma API de fora a cada minuto. */
   listar: (leve?: boolean) => Promise<{
@@ -201,7 +203,7 @@ export function Inbox({ listar, marcarLido, limpar, vincularReuniao, onIr }: {
   // botão vive, isso a encosta no canto direito, que é de onde ela sai.
   useEffect(() => {
     if (!aberto || !gatilho.current) return;
-    setPos(ancorarCaixa(gatilho.current, INBOX_LARGURA, INBOX_ALTURA));
+    setPos((noMenu ? ancorarAoLado : ancorarCaixa)(gatilho.current, INBOX_LARGURA, INBOX_ALTURA));
   }, [aberto]);
 
   const naoLidos = (itens ?? []).filter(i => !i.lido).length;
@@ -248,6 +250,21 @@ export function Inbox({ listar, marcarLido, limpar, vincularReuniao, onIr }: {
 
   return (
     <>
+      {noMenu ? (
+        <button ref={gatilho} type="button" className={`nav-leaf nav-porta${aberto ? ' aberta' : ''}`}
+          onClick={() => setAberto(a => !a)}
+          aria-expanded={aberto}
+          aria-label={naoLidos ? `Notificações, ${naoLidos} por ler` : 'Notificações'}>
+          <span className="nav-leaf-ico">
+            <IconInbox size={15} />
+            {naoLidos > 0 && <span className="nav-porta-ponto" aria-hidden="true" />}
+          </span>
+          <span className="nav-leaf-texto">Notificações</span>
+          {naoLidos > 0 && (
+            <span key={naoLidos} className="nav-leaf-conta alerta">{naoLidos > 99 ? '99+' : naoLidos}</span>
+          )}
+        </button>
+      ) : (
       <button ref={gatilho} type="button" className="topo-icone inbox-gatilho"
         onClick={() => setAberto(a => !a)}
         aria-expanded={aberto}
@@ -260,6 +277,7 @@ export function Inbox({ listar, marcarLido, limpar, vincularReuniao, onIr }: {
           </span>
         )}
       </button>
+      )}
 
       {aberto && createPortal(
         <div ref={gaveta} className="inbox-gaveta" role="dialog" aria-label="Inbox"

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useSubpagina } from '../lib/subpagina';
 import { createPortal } from 'react-dom';
 
 import type { StatusConfig, UsuarioNotificavel, Notificacao, NovaNotificacao } from './types';
@@ -3231,8 +3232,8 @@ export default function ConfiguracoesPage({ token }: { token: string }) {
     { valor: 'desenho' as const, label: 'Desenho' },
   ], [pode]);
 
-  const [activeTab, setActiveTab] = useState<ConfigTab>(
-    () => abasVisiveis[0].valor);
+  // A aba mora fora da tela: o menu lateral acende e abre cada uma.
+  const [activeTab, setActiveTab] = useSubpagina<ConfigTab>('configuracoes', () => abasVisiveis[0].valor);
   // A aba escolhida some quando a permissão muda debaixo de quem está olhando.
   useEffect(() => {
     if (!abasVisiveis.some(x => x.valor === activeTab)) {
