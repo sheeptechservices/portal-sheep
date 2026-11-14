@@ -32,10 +32,6 @@ import type { QuickTarget } from './QuickSearch';
 import { DESTINOS, TOOL_PAGES, TOOL_LABELS, type Page } from './destinos';
 import { CartaoReportar, type Relato } from '../components/CartaoReportar';
 import { Inbox, type DestinoDaReuniao, type ItemDoInbox } from '../components/Inbox';
-import {
-  ColunaDeObjetivos, LARGURA_DA_COLUNA, ObjetivosDaSemana, gravarFixado, lerFixado, useMeusObjetivos,
-  type MeuObjetivo, type MudancaDeObjetivo,
-} from '../components/ObjetivosDaSemana';
 import type { Pessoa } from './FormularioTarefa';
 import type { ReporteNaLista } from '../components/ListaReportes';
 import { iniciarOndas } from '../lib/ondas';
@@ -539,7 +535,7 @@ function Sidebar({
 }: {
   /** A busca rapida mora no alto do menu: o topo da pagina fica livre. */
   onQuickSearch: () => void;
-  /** Notificacoes e objetivos: as portas que moravam no topo. */
+  /** As notificacoes: a porta que morava no topo. */
   portas: ReactNode;
   /** O cartao de quem esta usando leva ao Perfil. */
   onAbrirPerfil: () => void;
@@ -757,8 +753,8 @@ function Sidebar({
           {i > 0 && group.section && <p className="app-menu-secao">{group.section}</p>}
 
           {group.items.map(item => renderLeaf(item))}
-          {/* As portas do que chega para a pessoa - avisos e objetivos -
-              entram logo depois da navegacao principal. */}
+          {/* O que chega para a pessoa - os avisos - entra logo depois da
+              navegacao principal. */}
           {i === 0 && portas}
         </div>
       ))}
@@ -1243,8 +1239,8 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
   // não reabrir o detalhe quando o usuário voltar à página pelo menu.
   /** A ficha que uma tela precisa abrir. `aba` e `reuniao` só existem no
    *  caminho do inbox: vincular uma reunião leva à ficha do projeto já na aba
-   *  certa, com ela aberta. `aba: 'planning'` vem do alvo dos objetivos: leva
-   *  à Planning, na folha do projeto e na `semana` do objetivo. */
+   *  certa, com ela aberta. `aba: 'planning'` leva à Planning, na folha do
+   *  projeto e na `semana` pedida. */
   // Os projetos em andamento para o menu. Carrega na entrada e de novo quando a
   // aba volta a ser olhada: um projeto criado ou encerrado por outra pessoa
   // aparece (ou sai) sem precisar recarregar a pagina.
@@ -1337,87 +1333,6 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
    *  mesmo chamado reabrir se alguém clicar no aviso duas vezes. */
   const [filaDeChamados, setFilaDeChamados] =
     useState<{ nonce: number; chamado?: number } | null>(null);
-
-  /** Os objetivos da semana de quem está logado: o alvo do cabeçalho. */
-  const listarMeusObjetivos = useCallback(async (semana: string) => {
-    try {
-      return await lerAdmin(`action=meus_objetivos&semana=${encodeURIComponent(semana)}`)
-        ?? { error: 'Não foi possível carregar os objetivos.' };
-    } catch {
-      return { error: 'Erro de conexão. Tente de novo.' };
-    }
-  }, [lerAdmin]);
-
-  /**
-   * Um objetivo mexido pelo quadro do cabeçalho: texto, data de entrega, feito.
-   * As provas vão junto, lidas em paralelo. Gravado, a Planning aberta relê a
-   * semana - senão a próxima gravação dela, que regrava a lista inteira do
-   * projeto, desfaria o que acabou de mudar aqui.
-   */
-  const atualizarObjetivo = useCallback(async (o: MeuObjetivo, semana: string, m: MudancaDeObjetivo) => {
-    try {
-      const provas = await Promise.all((m.provas ?? []).map(f => new Promise<{
-        nome: string; tipo: string; tamanho: number; base64: string;
-      }>((resolve, reject) => {
-        const leitor = new FileReader();
-        leitor.onload = () => resolve({
-          nome: f.name, tipo: f.type || 'application/octet-stream', tamanho: f.size,
-          base64: String(leitor.result).split(',')[1] ?? '',
-        });
-        leitor.onerror = () => reject(new Error('leitura'));
-        leitor.readAsDataURL(f);
-      })));
-      const r = await fetch('/api/admin-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-session': token },
-        body: JSON.stringify({
-          action: 'atualizar_objetivo', projeto_id: o.projeto_id, semana, objetivo_id: o.id,
-          ...(m.texto !== undefined ? { texto: m.texto } : {}),
-          ...(m.prazo !== undefined ? { prazo: m.prazo } : {}),
-          ...(m.responsaveis !== undefined ? { responsaveis: m.responsaveis } : {}),
-          ...(m.desejavel !== undefined ? { desejavel: m.desejavel } : {}),
-          ...(m.feito !== undefined ? { feito: m.feito } : {}),
-          ...(m.fazendo !== undefined ? { fazendo: m.fazendo } : {}),
-          ...(provas.length ? { provas } : {}),
-        }),
-      });
-      const resposta = await r.json().catch(() => null);
-      if (!resposta?.ok) return { error: resposta?.error ?? 'O servidor não confirmou a gravação.' };
-      window.dispatchEvent(new Event('objetivos:mudou'));
-      return null;
-    } catch {
-      return { error: 'Não foi possível ler o arquivo ou enviar a gravação.' };
-    }
-  }, [token]);
-
-  /** Um objetivo que nasce de outro, criado pelo quadro do cabeçalho. Como na
-   *  edição, a Planning aberta relê a semana. */
-  const desdobrarObjetivo = useCallback(async (mae: MeuObjetivo, semana: string, texto: string) => {
-    try {
-      const r = await fetch('/api/admin-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-session': token },
-        body: JSON.stringify({
-          action: 'desdobrar_objetivo', projeto_id: mae.projeto_id, semana, pai_id: mae.id, texto,
-        }),
-      });
-      const resposta = await r.json().catch(() => null);
-      if (!resposta?.ok) return { error: resposta?.error ?? 'O servidor não confirmou a gravação.' };
-      window.dispatchEvent(new Event('objetivos:mudou'));
-      return { objetivo: resposta.objetivo as { id: string } };
-    } catch {
-      return { error: 'A conexão caiu. Tente de novo.' };
-    }
-  }, [token]);
-
-  /** Do alvo à Planning: a folha do projeto do objetivo, na semana dele. */
-  const irParaObjetivo = useCallback((o: MeuObjetivo, semana: string) => {
-    setPage('projetos');
-    setOpenCard(prev => ({
-      page: 'projetos', id: o.projeto_id, nonce: (prev?.nonce ?? 0) + 1,
-      aba: 'planning', semana,
-    }));
-  }, []);
 
   const listarInbox = useCallback(async (leve?: boolean) => {
     try {
@@ -1718,41 +1633,6 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
 
   const pode = useMemo(() => criarPode(permissoes), [permissoes]);
 
-  // Os objetivos da semana: da Planning, que mora em Projetos. Sem ver
-  // projetos, não há objetivo a mostrar; sem usuário (a sessão da senha
-  // compartilhada), não há "os seus". Nesses casos a leitura nem sai.
-  const veObjetivos = !!usuario?.id && pode('projetos:ver');
-  const listarObjetivosSeVe = useCallback(
-    (semana: string) => (veObjetivos ? listarMeusObjetivos(semana) : Promise.resolve({ objetivos: [] })),
-    [veObjetivos, listarMeusObjetivos],
-  );
-  const objetivosDaSemana = useMeusObjetivos(listarObjetivosSeVe);
-  /** Quem pode responder por um objetivo, na edição pelo quadro: as pessoas do
-   *  portal, a mesma lista que a Planning oferece. Lida uma vez, e só por quem
-   *  vê objetivos. */
-  const [pessoasDosObjetivos, setPessoasDosObjetivos] = useState<Pessoa[]>([]);
-  useEffect(() => {
-    if (!veObjetivos) return;
-    let vivo = true;
-    void lerAdmin('action=usuarios_notificaveis').then(d => {
-      if (!vivo) return;
-      setPessoasDosObjetivos((d?.usuarios ?? []).map((u: any) => ({
-        id: String(u.id), nome: String(u.nome), email: String(u.email ?? ''), foto_url: u.foto_url ?? null,
-      })));
-    }).catch(() => {});
-    return () => { vivo = false; };
-  }, [veObjetivos, lerAdmin]);
-  /** Fixados, os objetivos viram a coluna da direita. A escolha é de quem usa
-   *  e fica no navegador. */
-  const [objetivosFixados, setObjetivosFixados] = useState(lerFixado);
-  const fixarObjetivos = useCallback((v: boolean) => {
-    setObjetivosFixados(v);
-    gravarFixado(v);
-  }, []);
-  // A coluna é coisa de tela larga, como o menu preso: no celular, com o menu
-  // virando gaveta, não há lado para ela, e o alvo continua abrindo o balão.
-  const colunaDeObjetivos = veObjetivos && objetivosFixados && pinned;
-
   // A página de Usuários não entra na matriz: a trava dela é o papel, conferido
   // no servidor. O master abre para ler; mexer continua sendo do administrador
   // do sistema. Ver `PAGINAS_SO_ADMIN`.
@@ -1879,11 +1759,10 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
       <div className={`admin-casca${saindo ? ' tela-sai' : ''}`}>
       <div className={`casca-janela${pinned ? ' menu-preso' : ''}`} style={{
         display: 'grid',
-        // Três colunas no desktop: o menu à esquerda, a página e os objetivos
-        // fixados à direita. As laterais vão a zero quando fechadas, e a mesma
-        // transição anima as duas.
+        // Duas colunas no desktop: o menu à esquerda e a página. O menu vai do
+        // trilho à largura inteira, e a transição anima a troca.
         gridTemplateColumns: pinned
-          ? `${open ? `${LARGURA_DO_MENU}px` : `${LARGURA_DO_TRILHO}px`} minmax(0, 1fr) ${colunaDeObjetivos ? `${LARGURA_DA_COLUNA}px` : '0px'}`
+          ? `${open ? `${LARGURA_DO_MENU}px` : `${LARGURA_DO_TRILHO}px`} minmax(0, 1fr)`
           : '1fr',
         // Preso, nao ha faixa de topo: a busca mora no menu e a pagina sobe
         // ate o alto da janela. Solto (celular), o topo guarda o menu e a marca.
@@ -1932,11 +1811,6 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
           onAbrirPerfil={() => setPage('perfil')}
           portas={(
             <>
-              {veObjetivos && (
-                <ObjetivosDaSemana noMenu dados={objetivosDaSemana} pessoas={pessoasDosObjetivos} fixado={colunaDeObjetivos}
-                  podeFixar={pinned} onFixar={fixarObjetivos} onIr={irParaObjetivo}
-                  onAtualizar={atualizarObjetivo} onDesdobrar={desdobrarObjetivo} />
-              )}
               <Inbox noMenu listar={listarInbox} marcarLido={marcarInboxLido} limpar={limparInbox}
                 vincularReuniao={vincularReuniaoDoInbox} onIr={irPeloInbox} />
             </>
@@ -2078,14 +1952,6 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
           </div>
         </main>
 
-        {/* Os objetivos fixados: a terceira coluna, espelho do menu preso. Fica
-            montada no desktop mesmo fechada, para abrir e fechar animando a
-            largura em vez de surgir de estalo. */}
-        {veObjetivos && pinned && (
-          <ColunaDeObjetivos dados={objetivosDaSemana} pessoas={pessoasDosObjetivos} aberta={colunaDeObjetivos}
-            onDesafixar={() => fixarObjetivos(false)} onIr={irParaObjetivo}
-            onAtualizar={atualizarObjetivo} onDesdobrar={desdobrarObjetivo} />
-        )}
       </div>
       </div>
 
