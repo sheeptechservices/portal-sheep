@@ -24785,3 +24785,43 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
    na largura dela, os nomes dos projetos comecavam cada um num ponto. */
 .pagina-projetos .pl-aba-prio { width: 52px; justify-content: center; }
 .pagina-projetos .pl-aba-marca-sheep { width: 52px; max-width: 52px; }
+
+/* ══ Campos dentro de popups ════════════════════════════════════════════════
+   Sobre o vidro de um popup, o campo na chapa quase preta (`--white` do tema
+   escuro) virava um buraco escuro no meio do vidro. Aqui o campo e uma
+   superficie clara translucida - a mesma das buscas das telas -, com a borda
+   leve da casa: o vidro continua aparecendo por tras, e o campo se le como
+   peca em relevo, e nao como furo. Hover realca a borda; foco segue a regra
+   do sistema (borda em `--gray2`, halo leve, sem anel colorido).
+   `!important` porque os gatilhos de selecao e o campo de data trazem o fundo
+   escrito no proprio elemento. */
+:root { --campo-vidro: rgba(255, 255, 255, .045); --campo-vidro-hover: rgba(255, 255, 255, .07); }
+:is(.admin-modal, .modal-central, .delete-confirm-modal, .cofre-popup, .usuarios-modal, .status-select-dropdown)
+  :is(.form-input, .liquidez-trigger, .campo-data, .texto-rico-caixa, .editor-rico) {
+  background: var(--campo-vidro) !important;
+  border-color: var(--sup-campo-borda) !important;
+  transition: background var(--transition), border-color var(--transition), box-shadow var(--transition);
+}
+:is(.admin-modal, .modal-central, .delete-confirm-modal, .cofre-popup, .usuarios-modal)
+  :is(.form-input, .liquidez-trigger, .campo-data, .texto-rico-caixa, .editor-rico):hover {
+  background: var(--campo-vidro-hover) !important;
+  border-color: color-mix(in srgb, var(--gray2) 55%, transparent) !important;
+}
+:is(.admin-modal, .modal-central, .delete-confirm-modal, .cofre-popup, .usuarios-modal, .status-select-dropdown)
+  :is(.form-input, .texto-rico-caixa, .editor-rico):focus-within {
+  background: var(--campo-vidro-hover) !important;
+  border-color: var(--gray2) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gray2) 16%, transparent);
+}
+/* A caixa do checklist e os botoes secundarios do rodape, na mesma familia. */
+:is(.admin-modal, .modal-central) .form-checkbox {
+  background: var(--campo-vidro);
+  border-color: color-mix(in srgb, var(--gray2) 60%, transparent);
+}
+:is(.admin-modal, .modal-central, .delete-confirm-modal) :is(.delete-confirm-cancel, .secao-add) {
+  background: var(--sup-cartao);
+  border-color: var(--sup-campo-borda);
+}
+:is(.admin-modal, .modal-central, .delete-confirm-modal) :is(.delete-confirm-cancel, .secao-add):hover {
+  background: var(--sup-cartao-hover);
+}
