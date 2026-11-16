@@ -24202,10 +24202,502 @@ a.nav-sub-item { text-decoration: none; gap: 6px; }
   .reportar-fab-principal, .reportar-gota-texto > span, .reportar-gota-fila { transition: none !important; }
 }
 
+/* ══ O diario, ao lado do Reportar ═════════════════════════════════════════
+   Um circulo de vidro na mesma linha da gota, a esquerda dela. A gota estica
+   para a esquerda com o ponteiro e a pilula de Chamados se desprende dela:
+   o diario anda junto, pela linha, e abre o espaco da pilula com a mesma
+   mola e o mesmo atraso dela. O cartao nasce do proprio botao, na mesma
+   revelacao circular do cartao de Reportar. */
+.reportar-flutuante { --fila-largura: 124px; }
+.reportar-linha { display: flex; align-items: center; gap: 12px; }
+
+.diario-fab {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--janela-borda);
+  background: var(--menu-flutuante);
+  -webkit-backdrop-filter: var(--vidro-flutuante-filtro, blur(30px) saturate(160%));
+  backdrop-filter: var(--vidro-flutuante-filtro, blur(30px) saturate(160%));
+  box-shadow: var(--shadow-card);
+  color: var(--black);
+  cursor: pointer;
+  transition: transform .56s var(--gota-mola), box-shadow var(--transition-spring),
+    background var(--transition), color var(--transition);
+  animation: diario-chega .5s var(--curva-anti) .25s backwards;
+}
+.diario-fab:hover { box-shadow: var(--shadow-card-hover); background: var(--card-hover-bg, var(--menu-flutuante)); }
+.diario-fab:active .diario-fab-giro { transform: scale(.9); }
+.diario-fab:focus-visible { outline: none; box-shadow: var(--shadow-card), 0 0 0 3px var(--gray4); }
+.diario-fab.aberto { background: var(--black); color: var(--bg); border-color: transparent; }
+.diario-fab-giro {
+  display: grid;
+  place-items: center;
+  transition: transform var(--transition-spring);
+  animation: gota-icone .42s var(--gota-mola);
+}
+.diario-fab:not(.aberto):hover .diario-fab-giro svg { animation: diario-folheia .6s var(--curva-anti); }
+/* A pilula de Chamados abriu: o diario corre para a esquerda e da lugar. */
+.reportar-flutuante:not(.com-painel) .reportar-linha:has(.reportar-gota:is(:hover, :has(:focus-visible))) .diario-fab {
+  transform: translateX(calc(-1 * (var(--fila-largura) + 16px)));
+  transition: transform .56s var(--gota-mola) .2s, box-shadow var(--transition-spring),
+    background var(--transition), color var(--transition);
+}
+@keyframes diario-chega {
+  from { opacity: 0; transform: translateX(14px) scale(.6); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes diario-folheia {
+  0%, 100% { transform: none; }
+  30% { transform: rotate(-10deg) translateY(-1px); }
+  65% { transform: rotate(6deg); }
+}
+
+/* O numero do que pede atencao hoje. Nasce e some com mola, nunca de estalo. */
+.diario-fab-selo {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--yellow);
+  color: var(--on-yellow);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 2px var(--bg);
+  opacity: 0;
+  transform: scale(0);
+  transition: transform .4s var(--gota-mola), opacity var(--transition), background var(--transition);
+}
+.diario-fab-selo.visivel { opacity: 1; transform: none; }
+.diario-fab-selo.ruim { background: var(--red); color: var(--on-red); }
+
+/* ── O cartao ── */
+.diario-cartao {
+  --origem: calc(100% - 87px) calc(100% + 40px);
+  position: fixed;
+  right: 24px;
+  bottom: 90px;
+  width: min(384px, calc(100vw - 32px));
+  max-height: min(620px, calc(100vh - 130px));
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--janela-borda);
+  background: var(--menu-flutuante);
+  -webkit-backdrop-filter: var(--vidro-flutuante-filtro, blur(30px) saturate(160%));
+  backdrop-filter: var(--vidro-flutuante-filtro, blur(30px) saturate(160%));
+  box-shadow: var(--shadow-card-hover);
+  color: var(--black);
+  overflow: hidden;
+  clip-path: circle(0 at var(--origem));
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: clip-path .34s var(--curva-anti), opacity .24s var(--curva-anti) .1s, visibility 0s linear .34s;
+}
+.diario-cartao.aberto {
+  clip-path: circle(150% at var(--origem));
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: clip-path .62s var(--curva-anti), opacity .2s var(--curva-anti), visibility 0s;
+}
+.diario-cartao.aberto > * { animation: gota-conteudo .5s var(--curva-anti) backwards; }
+.diario-cartao.aberto > :nth-child(2) { animation-delay: .06s; }
+.diario-cartao.aberto > :nth-child(3) { animation-delay: .12s; }
+.diario-cartao.aberto > :nth-child(n+4) { animation-delay: .18s; }
+
+.diario-cabeca {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px 12px;
+}
+.diario-cabeca-textos { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.diario-rotulo {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.diario-data { font-size: 17px; font-weight: 600; color: var(--texto-forte, var(--black)); }
+.diario-data::first-letter { text-transform: uppercase; }
+
+/* O anel: o arco anda com a mesma curva longa das barras do painel. */
+.diario-anel { position: relative; flex-shrink: 0; width: 44px; height: 44px; }
+.diario-anel svg { transform: rotate(-90deg); }
+.diario-anel circle { fill: none; stroke-width: 4; }
+.diario-anel-trilho { stroke: var(--sup-etiqueta, var(--gray4)); }
+.diario-anel-arco {
+  stroke: var(--yellow);
+  stroke-linecap: round;
+  transition: stroke-dashoffset .7s var(--curva-anti), stroke var(--transition);
+}
+:root:not([data-theme="dark"]) .diario-anel-arco { stroke: var(--yellow-tinta); }
+.diario-anel.completo .diario-anel-arco { stroke: var(--green); }
+.diario-anel.completo { animation: diario-anel-pulsa .6s var(--curva-anti); }
+.diario-anel-texto {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.diario-anel-texto em { font-style: normal; font-weight: 500; color: var(--gray2); font-size: 10px; }
+@keyframes diario-anel-pulsa {
+  0%, 100% { transform: none; }
+  40% { transform: scale(1.1); }
+}
+
+/* As abas: a marca corre de uma para a outra, em vez de trocar de estalo. */
+.diario-abas {
+  position: relative;
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 0 18px 10px;
+  padding: 3px;
+  border-radius: var(--radius-md);
+  background: var(--sup-etiqueta, var(--gray4));
+}
+.diario-abas-marca {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
+  border-radius: var(--radius-sm);
+  background: var(--yellow);
+  box-shadow: var(--shadow-card);
+  transform: translateX(calc(var(--aba) * 100%));
+  transition: transform var(--transition-spring);
+}
+.diario-aba {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--gray);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.diario-aba:not(.ativa):hover { color: var(--black); }
+.diario-aba.ativa { color: var(--on-yellow); }
+.diario-aba:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--gray4); }
+.diario-aba-conta {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  font-size: 10.5px;
+  line-height: 17px;
+  background: var(--sup-etiqueta, var(--gray4));
+  transition: background var(--transition);
+}
+.diario-aba.ativa .diario-aba-conta { background: color-mix(in srgb, var(--on-yellow) 14%, transparent); }
+
+.diario-corpo {
+  flex: 1;
+  min-height: 120px;
+  overflow: auto;
+  scrollbar-width: thin;
+  padding: 2px 10px 8px;
+}
+.diario-corpo .dux-spinner-row { padding: 36px 0; }
+.diario-lista { display: flex; flex-direction: column; gap: 6px; }
+
+/* A semana em sete casas. */
+.diario-semana {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  padding: 0 8px 10px;
+}
+.diario-dia {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 7px 0 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+  font: inherit;
+  color: var(--black);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), transform var(--transition-spring);
+}
+.diario-dia:hover { background: var(--gray4); transform: translateY(-2px); }
+.diario-dia:focus-visible { outline: none; border-color: var(--gray2); }
+.diario-dia.passou { opacity: .5; }
+.diario-dia.escolhido { background: var(--gray4); border-color: var(--gray3); }
+.diario-dia-nome { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--gray2); }
+.diario-dia-numero {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transition: background var(--transition), color var(--transition);
+}
+.diario-dia.hoje .diario-dia-numero { background: var(--yellow); color: var(--on-yellow); }
+.diario-dia.hoje .diario-dia-nome { color: var(--black); }
+.diario-dia-pontos { display: flex; align-items: center; gap: 2px; height: 6px; }
+.diario-dia-pontos span {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--gray2);
+  animation: diario-ponto .4s var(--gota-mola, var(--curva-anti)) backwards;
+}
+.diario-dia-pontos span.cheio { background: var(--black); border-color: var(--black); }
+.diario-dia-pontos em { font-style: normal; font-size: 9px; line-height: 1; color: var(--gray2); }
+@keyframes diario-ponto { from { transform: scale(0); } to { transform: none; } }
+
+/* Os grupos. */
+.diario-grupo { display: flex; flex-direction: column; }
+.diario-grupo-titulo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 8px 2px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.diario-grupo-titulo > span:last-child:not(.entrega-seta) {
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  line-height: 16px;
+  letter-spacing: 0;
+  text-align: center;
+  color: var(--gray);
+  background: var(--sup-etiqueta, var(--gray4));
+}
+.diario-grupo-titulo > span:last-child:empty { display: none; }
+.diario-grupo-titulo > span.ruim { background: var(--sit-atrasado-fundo, var(--red-soft)); color: var(--sit-atrasado, var(--red)); }
+.diario-grupo-alternar {
+  width: calc(100% - 16px);
+  padding: 4px 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.diario-grupo-alternar:hover { color: var(--black); }
+.diario-grupo-alternar .entrega-seta { display: inline-flex; }
+
+.diario-itens { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+
+/* Uma linha. */
+.diario-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: var(--radius-md);
+  transition: background var(--transition), opacity var(--transition-spring);
+  animation: linha-entra .34s var(--curva-anti) backwards;
+}
+.diario-item:hover { background: var(--gray4); }
+.diario-item.feita { opacity: .55; }
+.diario-item.feita:hover { opacity: .85; }
+
+.diario-marca {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1.6px solid var(--gray2);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--on-yellow);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), transform var(--transition-spring);
+}
+.diario-marca:not(:disabled):hover { border-color: var(--black); transform: scale(1.08); }
+.diario-marca:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--gray4); }
+.diario-marca:disabled { cursor: default; opacity: .6; }
+/* O tique se desenha: o traco corre do zero ao fim quando a tarefa e feita. */
+.diario-marca svg path { stroke-dasharray: 22; stroke-dashoffset: 22; transition: stroke-dashoffset .1s ease; }
+.diario-marca[aria-pressed="true"] {
+  background: var(--yellow);
+  border-color: var(--yellow);
+  animation: diario-marca-pula .45s var(--gota-mola, var(--curva-anti));
+}
+.diario-marca[aria-pressed="true"] svg path { stroke-dashoffset: 0; transition: stroke-dashoffset .32s var(--curva-anti) .08s; }
+@keyframes diario-marca-pula {
+  0% { transform: scale(.7); }
+  60% { transform: scale(1.15); }
+  100% { transform: none; }
+}
+
+.diario-abrir {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.diario-abrir:focus-visible { outline: none; }
+.diario-item:has(.diario-abrir:focus-visible) { background: var(--gray4); }
+.diario-titulo {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--texto-forte, var(--black));
+}
+/* O risco de feito corre da esquerda para a direita sobre o titulo. */
+.diario-titulo > span {
+  background: linear-gradient(currentColor, currentColor) no-repeat 0 55% / 0 1.5px;
+  transition: background-size .32s var(--curva-anti);
+}
+.diario-item.feita .diario-titulo > span { background-size: 100% 1.5px; }
+.diario-abrir:hover .diario-titulo { text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--gray3); }
+.diario-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--gray2);
+}
+.diario-projeto-ponto {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--proj-cor, var(--gray2));
+}
+.diario-projeto { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diario-etapa { flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; }
+.diario-etapa::before { content: "|"; margin-right: 2px; color: var(--gray3); }
+.diario-etapa-ponto { width: 6px; height: 6px; border-radius: var(--radius-pill); }
+
+.diario-lado { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; }
+.diario-atraso {
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  background: var(--sit-atrasado-fundo, var(--red-soft));
+  color: var(--sit-atrasado, var(--red));
+}
+.diario-prioridade { display: inline-flex; color: var(--gray2); }
+
+.diario-vazio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 12px 24px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--gray);
+}
+.diario-vazio p { margin: 0; }
+.diario-vazio-ico { display: inline-flex; color: var(--green); animation: diario-marca-pula .5s var(--gota-mola, var(--curva-anti)); }
+.diario-limpo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 8px 2px;
+  padding: 9px 12px;
+  border-radius: var(--radius-md);
+  font-size: 12.5px;
+  font-weight: 500;
+  background: var(--sit-prazo-fundo, var(--green-soft));
+  color: var(--sit-prazo, var(--green));
+}
+
+.diario-rodape {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--janela-borda);
+}
+.diario-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--black);
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.diario-link:hover { background: var(--gray4); }
+.diario-link svg { transition: transform var(--transition-spring); }
+.diario-link:hover svg { transform: translateX(2px); }
+
+@media (max-width: 768px) {
+  .diario-cartao { right: 14px; bottom: calc(146px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .diario-cartao, .diario-cartao.aberto { transition: opacity .01s, visibility 0s; clip-path: none; }
+  .diario-cartao.aberto > *, .diario-fab, .diario-fab-giro, .diario-fab svg, .diario-item,
+  .diario-marca, .diario-anel, .diario-dia-pontos span, .diario-vazio-ico { animation: none !important; }
+  .diario-fab, .diario-fab-selo, .diario-abas-marca, .diario-anel-arco, .diario-titulo > span,
+  .diario-marca svg path, .diario-dia { transition: none !important; }
+}
+
 /* A ficha da tarefa ao lado do quadro desce ate o canto da tela, onde mora o
-   botao de reportar: o rodape dela abre espaco para ele, senao o Fechar fica
+   botao de reportar e o do diario: o rodape abre espaco para os dois, senao o Fechar fica
    embaixo do circulo. */
-.tarefa-detalhe .painel-rodape { padding-right: 76px; }
+.tarefa-detalhe .painel-rodape { padding-right: 136px; }
 
 /* ══ Secoes no trilho ═══════════════════════════════════════════════════════
    Recolhido, o titulo da secao (SISTEMA, PROJETOS) esta invisivel, mas

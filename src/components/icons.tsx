@@ -573,6 +573,10 @@ export function IconEntrada({ size = 14 }: { size?: number }) {
     </Ico>
   );
 }
+// O diário: o caderno com a lombada e uma tarefa riscada de feita.
+export function IconDiario({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><rect x="4.8" y="3" width="14.4" height="18" rx="2.4" /><path d="M9 3v18" /><path d="M11.8 10.2l1.7 1.7 3.1-3.3" /><path d="M12 15.6h4.2" /></Ico>;
+}
 // Data-alvo numa linha de tabela.
 export function IconCalendario({ size = 14 }: { size?: number }) {
   return <Ico size={size}><rect x="3.2" y="4.8" width="17.6" height="16" rx="2.4" /><path d="M3.2 9.6h17.6M8 3.2v3M16 3.2v3" /></Ico>;

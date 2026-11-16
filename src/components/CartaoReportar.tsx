@@ -17,7 +17,7 @@
 //  porque o cartão precisa se separar dos itens de navegação sem gritar: parado
 //  e chapado, ele viraria mais uma linha do menu.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   IconAlert, IconCheck, IconDoc, IconImage, IconInbox, IconMegafone, IconSpinner, IconTrash,
   IconUpload, IconX,
@@ -111,7 +111,7 @@ const ESTILO_DO_GATILHO: CSSProperties = {
 
 export function CartaoReportar({
   pagina, enviar, listar, carregarPrint, mudarStatus, mudarTipo, editar, excluir,
-  reabrir, admin, abrirFila, onAbriuFila, flutuante,
+  reabrir, admin, abrirFila, onAbriuFila, flutuante, aoLado,
 }: {
   /**
    * O botão do canto: um círculo que, com o ponteiro, se abre em "Reportar" e
@@ -148,6 +148,9 @@ export function CartaoReportar({
    */
   abrirFila?: { nonce: number; chamado?: number } | null;
   onAbriuFila?: () => void;
+  /** O que mora na mesma linha do botão, à esquerda dele - o diário. Fica na
+   *  linha, e não solto na tela, para andar junto quando a gota estica. */
+  aoLado?: ReactNode;
 }) {
   const [aberto, setAberto] = useState(false);
   const [texto, setTexto] = useState('');
@@ -561,6 +564,8 @@ export function CartaoReportar({
       </div>
       {/* A gota: o círculo que estica até virar a pílula "Reportar", e a
           pílula de Chamados que se desprende dela logo depois. */}
+      <div className="reportar-linha">
+      {aoLado}
       <div className="reportar-gota">
         {listar && carregarPrint && (
           <button type="button" className="reportar-gota-fila" tabIndex={painel ? -1 : 0}
@@ -588,6 +593,7 @@ export function CartaoReportar({
             </span>
           </span>
         </button>
+      </div>
       </div>
       {fila}
     </div>

@@ -33,6 +33,7 @@ const QuickSearch = lazy(() => import('./QuickSearch'));
 import type { QuickTarget } from './QuickSearch';
 import { DESTINOS, TOOL_PAGES, TOOL_LABELS, type Page } from './destinos';
 import { CartaoReportar, type Relato } from '../components/CartaoReportar';
+import { DiarioDoDia } from './DiarioDoDia';
 import { Inbox, type DestinoDaReuniao, type ItemDoInbox } from '../components/Inbox';
 import type { Pessoa } from './FormularioTarefa';
 import type { ReporteNaLista } from '../components/ListaReportes';
@@ -2064,6 +2065,17 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
         admin={podeGerenciarUsuarios(usuario)}
         abrirFila={filaDeChamados}
         onAbriuFila={() => setFilaDeChamados(null)}
+        // O diário, ao lado: as tarefas de quem está olhando para hoje e para
+        // a semana. Abrir uma leva à ficha dela na tela de Tarefas, pelo mesmo
+        // caminho da busca rápida.
+        aoLado={pode('tarefas:ver') && (
+          <DiarioDoDia token={token}
+            onAbrirTarefa={id => {
+              setPage('tarefas');
+              setOpenCard(prev => ({ page: 'tarefas', id: String(id), nonce: (prev?.nonce ?? 0) + 1 }));
+            }}
+            onVerTodas={() => setPage('tarefas')} />
+        )}
       />
 
       {quickOpen && (
