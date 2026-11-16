@@ -15469,7 +15469,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 /* Os donos de uma tarefa, empilhados. O anel separa uma foto da outra na
    sobreposicao, como na pilha da entrega. */
 .tarefa-donos { display: inline-flex; align-items: center; flex-shrink: 0; }
-.tarefa-donos > span { display: inline-flex; margin-left: -6px; box-shadow: 0 0 0 2px var(--white); border-radius: 50%; }
+.tarefa-donos > span { display: inline-flex; margin-left: -6px; border-radius: 50%; }
 .tarefa-donos > span:first-child { margin-left: 0; }
 .tarefa-donos-mais {
   display: inline-flex;
@@ -21995,7 +21995,6 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 .fileira-cara {
   display: inline-flex;
   border-radius: 50%;
-  box-shadow: 0 0 0 2px var(--bg);
   transition: transform var(--transition-spring);
 }
 .fileira-cara + .fileira-cara { margin-left: -7px; }
@@ -25212,3 +25211,24 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   .calor-celula, .calor-dica { animation: none; transition: none; }
 }
 
+/* ══ Fotos empilhadas sem anel ═════════════════════════════════════════════
+   O anel que separava uma foto da outra era pintado na cor da chapa
+   (`--white`, `--bg`), que no escuro e quase preta: sobre o card de vidro ele
+   virava um contorno escuro em toda foto, inclusive na que esta sozinha.
+   No lugar dele, a foto de baixo leva um recorte do tamanho da de cima, mais
+   um respiro: o que aparece no vao e o proprio fundo do card, seja ele qual
+   for. `--cara` e o tamanho da foto, e o deslocamento e o da sobreposicao. */
+.tarefa-donos > span:not(:last-child) {
+  -webkit-mask: radial-gradient(circle at calc(var(--cara, 20px) * 1.5 - 6px) 50%,
+    transparent calc(var(--cara, 20px) / 2 + 1.5px), #000 calc(var(--cara, 20px) / 2 + 2px));
+  mask: radial-gradient(circle at calc(var(--cara, 20px) * 1.5 - 6px) 50%,
+    transparent calc(var(--cara, 20px) / 2 + 1.5px), #000 calc(var(--cara, 20px) / 2 + 2px));
+}
+.fileira-cara:has(+ .fileira-cara) {
+  -webkit-mask: radial-gradient(circle at calc(var(--cara, 20px) * 1.5 - 7px) 50%,
+    transparent calc(var(--cara, 20px) / 2 + 1.5px), #000 calc(var(--cara, 20px) / 2 + 2px));
+  mask: radial-gradient(circle at calc(var(--cara, 20px) * 1.5 - 7px) 50%,
+    transparent calc(var(--cara, 20px) / 2 + 1.5px), #000 calc(var(--cara, 20px) / 2 + 2px));
+}
+/* A que sobe no hover sai da fila: o recorte dela some junto. */
+.fileira-cara:hover { -webkit-mask: none; mask: none; }

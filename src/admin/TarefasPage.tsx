@@ -228,7 +228,7 @@ function FileiraDeCaras({ pessoas }: { pessoas: Pessoa[] }) {
   const mostra = pessoas.slice(0, 4);
   const resto = pessoas.length - mostra.length;
   return (
-    <span className="fileira-caras">
+    <span className="fileira-caras" style={{ ['--cara' as string]: '22px' }}>
       {mostra.map(p => (
         <span key={p.id} className="fileira-cara"><Avatar nome={p.nome} foto={p.foto_url} size={22} /></span>
       ))}

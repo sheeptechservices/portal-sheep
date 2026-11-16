@@ -37,7 +37,7 @@ export function DonosDaTarefa({ ids, pessoas, size = 20 }: {
   const todos = lista.map(x => x.p?.nome ?? 'Usuário removido').join(', ');
 
   return (
-    <span className="tarefa-donos" title={todos}>
+    <span className="tarefa-donos" title={todos} style={{ ['--cara' as string]: `${size}px` }}>
       {mostrados.map(({ id, p }) => (
         <span key={id}>
           <Avatar nome={p?.nome ?? '?'} foto={p?.foto_url} size={size} />
