@@ -721,54 +721,67 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
                             <div className={`revelar${abertaAqui ? ' aberto' : ''}`}>
                               <div>
                                 <div className="reportes-detalhe-corpo chm-detalhe">
-                                  {/* A descrição oficial, já com os ajustes. O
-                                      caminho até ela fica no histórico, no fim. */}
-                                  <TextoRico texto={c.descricaoEmVigor} className="reportes-detalhe-texto" />
-                                  <ListaDeLinks links={c.links} />
-                                  <ChipsDeAnexos chamado={c} anexos={c.anexos.filter(a => !a.reabertura)}
-                                    onVer={i => setVendo({ chamado: c, indice: i })} />
-                                  {/* O que o time escreveu para o cliente, logo
-                                      abaixo do pedido: é a conversa que ele
-                                      veio ler. */}
-                                  {(c.respostas?.length ?? 0) > 0 && (
-                                    <>
-                                      <p className="chm-historico-titulo">
-                                        {c.respostas!.length === 1 ? 'Resposta do time' : `Respostas do time (${c.respostas!.length})`}
-                                      </p>
-                                      {/* Cada resposta é um balão de mensagem:
-                                          a data e hora no alto e o texto. Sem
-                                          nome - quem responde é o time. */}
-                                      <ol className="chm-baloes">
-                                        {c.respostas!.map(r => (
-                                          <li key={r.seq} className="chm-balao">
-                                            <time className="chm-balao-quando" dateTime={r.em}>{instante(r.em)}</time>
-                                            <TextoRico texto={r.texto} className="reportes-detalhe-texto" />
-                                          </li>
-                                        ))}
-                                      </ol>
-                                    </>
-                                  )}
-                                  {/* As reaberturas, uma embaixo da outra: o que
-                                      o cliente escreveu cada vez que pediu o
-                                      chamado de volta. Só aparecem se houver. */}
-                                  {c.reaberturas.length > 0 && (
-                                    <>
-                                      <p className="chm-historico-titulo">
-                                        {c.reaberturas.length === 1 ? 'Reabertura' : `Reaberturas (${c.reaberturas.length})`}
-                                      </p>
-                                      <ol className="chm-reaberturas">
-                                        {c.reaberturas.map((ev, i) => (
-                                          <PassoDaReabertura key={`${ev.seq ?? 'nova'}-${i}`} ev={ev} chamado={c}
-                                            onVer={j => setVendo({ chamado: c, indice: j })} />
-                                        ))}
-                                      </ol>
-                                    </>
-                                  )}
-                                  {/* O histórico dos ajustes, no fim e enxuto:
-                                      uma linha por ajuste, com quando, quem e o
-                                      que mudou. Os dados novos já estão na linha
-                                      e no texto acima; aqui fica só o caminho. */}
-                                  {c.ajustes.length > 0 && <HistoricoDeAjustes chamado={c} />}
+                                  {/* Duas colunas na tela larga: à esquerda o
+                                      pedido, à direita a conversa (respostas do
+                                      time e reaberturas). Uma coluna só, o texto
+                                      ficava na largura de leitura e a metade da
+                                      linha sobrava vazia. Sem conversa, o pedido
+                                      fica sozinho; em tela estreita, as duas
+                                      empilham. */}
+                                  <div className="chm-detalhe-grade">
+                                    <div className="chm-detalhe-pedido">
+                                      {/* A descrição oficial, já com as edições. O
+                                          caminho até ela fica no histórico. */}
+                                      <TextoRico texto={c.descricaoEmVigor} className="reportes-detalhe-texto" />
+                                      <ListaDeLinks links={c.links} />
+                                      <ChipsDeAnexos chamado={c} anexos={c.anexos.filter(a => !a.reabertura)}
+                                        onVer={i => setVendo({ chamado: c, indice: i })} />
+                                      {/* O histórico das edições, enxuto: uma
+                                          linha por edição, com quando, quem e o
+                                          que mudou. */}
+                                      {c.ajustes.length > 0 && <HistoricoDeAjustes chamado={c} />}
+                                    </div>
+                                    {((c.respostas?.length ?? 0) > 0 || c.reaberturas.length > 0) && (
+                                      <div className="chm-detalhe-conversa">
+                                        {/* O que o time escreveu para o cliente: é
+                                            a conversa que ele veio ler. */}
+                                        {(c.respostas?.length ?? 0) > 0 && (
+                                          <>
+                                            <p className="chm-historico-titulo">
+                                              {c.respostas!.length === 1 ? 'Resposta do time' : `Respostas do time (${c.respostas!.length})`}
+                                            </p>
+                                            {/* Cada resposta é um balão de mensagem:
+                                                a data e hora no alto e o texto. Sem
+                                                nome - quem responde é o time. */}
+                                            <ol className="chm-baloes">
+                                              {c.respostas!.map(r => (
+                                                <li key={r.seq} className="chm-balao">
+                                                  <time className="chm-balao-quando" dateTime={r.em}>{instante(r.em)}</time>
+                                                  <TextoRico texto={r.texto} className="reportes-detalhe-texto" />
+                                                </li>
+                                              ))}
+                                            </ol>
+                                          </>
+                                        )}
+                                        {/* As reaberturas, uma embaixo da outra:
+                                            o que o cliente escreveu cada vez que
+                                            pediu o chamado de volta. */}
+                                        {c.reaberturas.length > 0 && (
+                                          <>
+                                            <p className="chm-historico-titulo">
+                                              {c.reaberturas.length === 1 ? 'Reabertura' : `Reaberturas (${c.reaberturas.length})`}
+                                            </p>
+                                            <ol className="chm-reaberturas">
+                                              {c.reaberturas.map((ev, i) => (
+                                                <PassoDaReabertura key={`${ev.seq ?? 'nova'}-${i}`} ev={ev} chamado={c}
+                                                  onVer={j => setVendo({ chamado: c, indice: j })} />
+                                              ))}
+                                            </ol>
+                                          </>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
                                   {encerrado && !c.reabrindo && (
                                     <div className="chm-detalhe-acoes surge">
                                       <span>Precisa de mais alguma coisa neste chamado?</span>
