@@ -2,6 +2,16 @@
 <html lang="pt-BR" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
+    <!-- O tema escolhido entra antes da primeira pintura: sem isto, quem usa o
+         claro veria a página nascer escura e piscar. A chave é a de
+         `src/lib/tema.ts`. -->
+    <script>
+      try {
+        if (localStorage.getItem('sheep_tema') === 'claro') {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      } catch (e) { /* janela privada sem armazenamento: fica o escuro */ }
+    </script>
     <!-- O favicon oficial: o carneiro verde-limão sobre o fundo escuro. A marca
          preta fica para a sidebar e o login, onde ela convive com texto e precisa
          do contraste sólido. O .ico atende quem pede o caminho padrão; os PNG,

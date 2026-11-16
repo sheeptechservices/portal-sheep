@@ -24266,7 +24266,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 :is(.admin-modal-overlay, .qs-overlay, .usuarios-modal-fundo) {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
-  background: rgba(3, 6, 4, .32) !important;
+  background: var(--tinta-popup) !important;
 }
 /* A entrada do fundo nao fica presa depois de tocar. Com `both`, a opacidade
    animada continua aplicada no fim, e o navegador trata o fundo como raiz do
@@ -24682,7 +24682,7 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
   border-radius: var(--radius-md);
   background: var(--sup-cartao-hover);
   box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--yellow) 70%, transparent),
-    0 8px 22px -12px rgba(0, 0, 0, .6);
+    0 8px 22px -12px var(--sombra-marca);
 }
 .pagina-projetos .pl-aba.ativa .pl-aba-num-texto { color: var(--yellow-tinta); }
 .pagina-projetos .pl-aba-texto strong { font-weight: 600; }
@@ -24734,7 +24734,7 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
 :is(.admin-modal-overlay, .qs-overlay, .usuarios-modal-fundo) {
   -webkit-backdrop-filter: blur(10px) saturate(115%) !important;
   backdrop-filter: blur(10px) saturate(115%) !important;
-  background: rgba(3, 5, 6, .42) !important;
+  background: var(--tinta-popup) !important;
 }
 
 /* O quadro de tarefas na Planning tem teto. Solto na folha, sem a altura da
@@ -24795,7 +24795,8 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
    do sistema (borda em `--gray2`, halo leve, sem anel colorido).
    `!important` porque os gatilhos de selecao e o campo de data trazem o fundo
    escrito no proprio elemento. */
-:root { --campo-vidro: rgba(255, 255, 255, .045); --campo-vidro-hover: rgba(255, 255, 255, .07); }
+:root { --campo-vidro: rgba(255, 255, 255, .75); --campo-vidro-hover: rgba(255, 255, 255, .95); }
+:root[data-theme="dark"] { --campo-vidro: rgba(255, 255, 255, .045); --campo-vidro-hover: rgba(255, 255, 255, .07); }
 :is(.admin-modal, .modal-central, .delete-confirm-modal, .cofre-popup, .usuarios-modal, .status-select-dropdown)
   :is(.form-input, .liquidez-trigger, .campo-data, .texto-rico-caixa, .editor-rico) {
   background: var(--campo-vidro) !important;
@@ -24841,13 +24842,13 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
 .usuarios-modal-fundo > .usuarios-modal {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
-  background: rgba(12, 13, 16, .74) !important;
+  background: var(--vidro-modal) !important;
 }
 :is(.admin-modal, .modal-central, .inbox-gaveta, .qs-panel, .tarefa-detalhe)
   :is(.admin-modal-header, .admin-modal-footer, .painel-rodape, .inbox-topo, .qs-inputwrap) {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
-  background: rgba(12, 13, 16, .9) !important;
+  background: var(--vidro-faixa) !important;
 }
 .admin-modal.painel-gaveta :is(.admin-modal-header, .admin-modal-footer, .painel-rodape) {
   background: transparent !important;
@@ -24879,7 +24880,12 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
 :root {
   --caixa-borda: color-mix(in srgb, var(--gray) 46%, transparent);
   --caixa-borda-forte: color-mix(in srgb, var(--gray) 78%, transparent);
+  --caixa-fundo: var(--white);
+  --caixa-fundo-hover: var(--gray4);
+}
+:root[data-theme="dark"] {
   --caixa-fundo: rgba(255, 255, 255, .045);
+  --caixa-fundo-hover: rgba(255, 255, 255, .08);
 }
 input:is(.form-checkbox, .perm-check) {
   appearance: none;
@@ -24900,7 +24906,7 @@ input:is(.form-checkbox, .perm-check) {
 }
 input:is(.form-checkbox, .perm-check):hover:not(:disabled) {
   border-color: var(--caixa-borda-forte) !important;
-  background: rgba(255, 255, 255, .08) !important;
+  background: var(--caixa-fundo-hover) !important;
 }
 input:is(.form-checkbox, .perm-check):checked,
 input:is(.form-checkbox, .perm-check):indeterminate {
@@ -25018,7 +25024,7 @@ input:is(.form-checkbox, .perm-check):disabled { opacity: .45; cursor: default; 
   position: sticky;
   top: 0;
   z-index: 1;
-  background: rgba(12, 13, 16, .92);
+  background: var(--vidro-cabeca-tabela);
 }
 .perfil-trilha-vazia { margin: 16px 0; font-size: 13px; color: var(--gray2); }
 .pagina-perfil .perfil-trilha-corpo .perfil-nota { margin-top: 14px; }
@@ -25030,3 +25036,70 @@ input:is(.form-checkbox, .perm-check):disabled { opacity: .45; cursor: default; 
 @media (prefers-reduced-motion: reduce) {
   .pagina-perfil .perfil-coluna > * { animation: none; }
 }
+
+/* ══ O modo claro de volta ═════════════════════════════════════════════════
+   O escuro e a identidade e e onde todo mundo entra; o claro e escolha de
+   quem prefere, no botao de sol e lua do pe do menu (ver `lib/tema`). Os
+   blocos escritos so para o escuro enquanto ele era fixo passaram a ler
+   estes tokens, e cada um tem aqui o valor claro e o escuro. */
+:root {
+  /* O fundo atras de todo popup: no claro, uma sombra leve, e nao a noite. */
+  --tinta-popup: rgba(18, 20, 24, .18);
+  /* O vidro do modal pousado sobre o fundo borrado, e as faixas fixas das
+     gavetas antigas, por onde o conteudo rola por baixo. */
+  --vidro-modal: rgba(255, 255, 255, .86);
+  --vidro-faixa: rgba(255, 255, 255, .95);
+  --vidro-cabeca-tabela: rgba(255, 255, 255, .94);
+  --sombra-marca: rgba(20, 24, 30, .16);
+  /* O vidro das caixas que flutuam (listas, calendario, inbox, menu aberto).
+     O .46 de antes era pensado para o fundo da casca; sobre um cartao
+     claro de texto escuro, o texto de baixo atravessava a lista. */
+  --menu-flutuante: rgba(255, 255, 255, .8);
+}
+:root[data-theme="dark"] {
+  --tinta-popup: rgba(3, 5, 6, .42);
+  --vidro-modal: rgba(12, 13, 16, .74);
+  --vidro-faixa: rgba(12, 13, 16, .9);
+  --vidro-cabeca-tabela: rgba(12, 13, 16, .92);
+  --sombra-marca: rgba(0, 0, 0, .6);
+}
+
+/* A troca de tema: o tema novo se revela num circulo que cresce do ponto do
+   clique (View Transitions). Sem a API, as cores deslizam em vez de piscar. */
+html.tema-revelando::view-transition-group(root) { animation: none; }
+html.tema-revelando::view-transition-old(root) { z-index: 0; animation: none; }
+html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-revela 620ms var(--curva-anti); }
+@keyframes tema-revela {
+  from { clip-path: circle(0 at var(--tema-x, 50%) var(--tema-y, 50%)); }
+  to   { clip-path: circle(var(--tema-r, 150vmax) at var(--tema-x, 50%) var(--tema-y, 50%)); }
+}
+.tema-trocando, .tema-trocando * {
+  transition:
+    background-color 620ms var(--curva-anti),
+    border-color 620ms var(--curva-anti),
+    color 620ms var(--curva-anti) !important;
+}
+
+/* O botao de tema e o irmao do de sair, com a mesma moldura e o mesmo hover
+   de fundo; so nao anda para o lado, que e o gesto da seta de sair. O icone
+   entra girando quando o tema troca: a chave dele muda e ele remonta. */
+.menu-tema:hover { transform: none; }
+.menu-tema-ico {
+  display: inline-flex;
+  animation: menu-tema-entra .42s var(--curva-anti) both;
+}
+.menu-tema:hover .menu-tema-ico svg { transform: rotate(18deg); }
+.menu-tema-ico svg { transition: transform var(--transition-spring); }
+@keyframes menu-tema-entra {
+  from { opacity: 0; transform: rotate(-90deg) scale(.6); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.tema-revelando::view-transition-old(root),
+  html.tema-revelando::view-transition-new(root) { animation: none; }
+  .tema-trocando, .tema-trocando * { transition: none !important; }
+  .menu-tema-ico { animation: none; }
+  .menu-tema-ico svg { transition: none; }
+}
+

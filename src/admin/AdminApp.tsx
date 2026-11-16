@@ -1,8 +1,10 @@
-﻿import { useState, useEffect, useRef, createContext, useContext, useCallback, useMemo, lazy, Suspense } from 'react';
+﻿import { useState, useEffect, useRef, createContext, useContext, useCallback, useMemo, lazy, Suspense, useSyncExternalStore } from 'react';
+import { flushSync } from 'react-dom';
 import type { ReactNode } from 'react';
 import { ContaAnimada } from '../components/ContaAnimada';
 import { corDoProjeto } from '../components/DicaDoProjeto';
-import { IconAcessos, IconAlert, IconArrowRight, IconBalao, IconCheck, IconChevronRight, IconX, IconDashboard, IconGoogle, IconSair, IconSearch, IconSpinner } from '../components/icons';
+import { IconAcessos, IconAlert, IconArrowRight, IconBalao, IconCheck, IconChevronRight, IconX, IconDashboard, IconGoogle, IconLua, IconSair, IconSearch, IconSol, IconSpinner } from '../components/icons';
+import { lojaTema, comRevelacao } from '../lib/tema';
 import { lojaSubpagina, useSubpaginaAtual } from '../lib/subpagina';
 import {
   criarPode, podeAbrirPagina, podeGerenciarUsuarios, podeVerUsuarios, PERMISSAO_DA_PAGINA,
@@ -756,8 +758,7 @@ function Sidebar({
           <span className="menu-usuario-papel">{usuario ? rotuloPapel(usuario.papel) : 'Entrada por senha'}</span>
         </span>
         </button>
-        {/* No computador a troca de tema mora no topo; aqui ela so aparece no
-            celular, onde o topo nao tem lugar para ela. */}
+        <BotaoDoTema />
         <button type="button" className="menu-sair" onClick={onLogout}
           title="Sair" aria-label="Sair da conta">
           <IconSair size={16} />
@@ -1097,6 +1098,41 @@ const ONDAS_ESPERAS = [1500, 5000, 20000, 60000];
  * borrado, a diferença não aparece. Para quando a aba some, e cai para os
  * focos em CSS da casca se o WebGL não subir ou se perder.
  */
+/** O tema do portal, lido da loja: quem muda de tema re-renderiza junto. */
+function useTema() {
+  return useSyncExternalStore(lojaTema.assinar, lojaTema.agora, lojaTema.servidor);
+}
+
+/**
+ * A troca de tema, no pé do menu, ao lado de sair. Um botão de ícone só: mostra
+ * o tema para onde vai (o sol no escuro, a lua no claro), e a troca se revela
+ * em círculo a partir do ponto do clique. Usa a moldura do botão de sair, que é
+ * o irmão dele na mesma linha, e por isso some junto com ele no trilho.
+ */
+function BotaoDoTema() {
+  const tema = useTema();
+  const escuro = tema === 'escuro';
+  const rotulo = escuro ? 'Mudar para o modo claro' : 'Mudar para o modo escuro';
+  const alternar = (ev: React.MouseEvent) => {
+    // Pelo teclado não há coordenada, e a revelação nasce do centro da tela.
+    const origem = (ev.clientX || ev.clientY) ? { x: ev.clientX, y: ev.clientY } : null;
+    comRevelacao(origem, () => flushSync(() => lojaTema.definir(escuro ? 'claro' : 'escuro')));
+  };
+  return (
+    <button type="button" className="menu-sair menu-tema" onClick={alternar}
+      title={rotulo} aria-label={rotulo}>
+      <span key={tema} className="menu-tema-ico">{escuro ? <IconSol size={16} /> : <IconLua size={16} />}</span>
+    </button>
+  );
+}
+
+/** As ondas são a luz do escuro: o desenho delas nasce de um quase preto, e no
+ *  claro elas pintariam uma mancha escura atrás da janela. No claro o fundo
+ *  volta a ser o da casca, com os focos em CSS. */
+function FundoDoTema() {
+  return useTema() === 'escuro' ? <FundoDeOndas /> : null;
+}
+
 function FundoDeOndas() {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [reduzido] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -1784,7 +1820,7 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
           peca de vidro que pousa sobre ele, com o menu, o topo e a pagina
           dentro. No celular a janela ocupa a tela toda, sem moldura. */}
       <div className={`admin-casca${saindo ? ' tela-sai' : ''}`}>
-      <FundoDeOndas />
+      <FundoDoTema />
       <div className={`casca-janela${pinned ? ' menu-preso' : ''}`} style={{
         display: 'grid',
         // Duas colunas no desktop: o menu à esquerda e a página. O menu vai do
