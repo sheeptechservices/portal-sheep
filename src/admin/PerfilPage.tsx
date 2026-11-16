@@ -4,6 +4,7 @@ import { IconAlert, IconClipboard } from '../components/icons';
 import { rotuloPapel } from './papeis';
 import { instante as formatarData, tempoRelativo } from '../lib/datas';
 import { ContaAnimada } from '../components/ContaAnimada';
+import { FaixaDaPagina } from '../components/FaixaDaPagina';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Perfil - a conta de quem está logado, o histórico de acesso e o retrato do
@@ -63,17 +64,6 @@ function rotuloAcao(acao: string): string {
   // Fallback para ação nova ainda sem rótulo: "liquidez:create" -> "liquidez create"
   const cru = acao.replace(/[:_-]+/g, ' ').trim();
   return cru.charAt(0).toUpperCase() + cru.slice(1);
-}
-
-/** "há 3 dias" - contexto rápido ao lado da data cheia. */
-function Estatistica({ label, valor, desc }: { label: string; valor: number; desc: string }) {
-  return (
-    <div className="admin-stat-card">
-      <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray2)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{label}</p>
-      <p style={{ fontSize: 22, fontWeight: 800, color: 'var(--black)', lineHeight: 1.2, marginTop: 4 }}><ContaAnimada valor={valor} /></p>
-      <p style={{ fontSize: 11, color: 'var(--gray2)', marginTop: 2 }}>{desc}</p>
-    </div>
-  );
 }
 
 function Linha({ rotulo, valor }: { rotulo: string; valor: React.ReactNode }) {
@@ -259,13 +249,8 @@ export default function PerfilPage({ token }: { token: string }) {
   // Sessão sem dono: entrou pela senha compartilhada, então não há perfil a mostrar.
   if (!dados?.usuario) {
     return (
-      <div className="admin-content-wrap">
-        <div className="admin-page-header">
-          <div>
-            <h1 className="admin-page-title">Perfil</h1>
-            <p className="admin-page-desc">Sua conta e o que você já fez no sistema</p>
-          </div>
-        </div>
+      <div className="admin-content-wrap pagina-cristal pagina-perfil">
+        <FaixaDaPagina secao="Conta" titulo="Perfil" />
         <div className="perfil-cartao perfil-vazio">
           <IconAlert size={18} />
           <div>
@@ -287,92 +272,93 @@ export default function PerfilPage({ token }: { token: string }) {
   const foto = fotoSessao ?? u.foto_url;
 
   return (
-    <div className="admin-content-wrap">
-      <div className="admin-page-header">
-        <div>
-          <h1 className="admin-page-title">Perfil</h1>
-          <p className="admin-page-desc">Sua conta, seus acessos e o que você já fez no sistema</p>
-        </div>
-      </div>
+    <div className="admin-content-wrap pagina-cristal pagina-perfil">
+      {/* A faixa do alto, como nas outras telas: a área, o nome e os números do
+          que a pessoa já fez - eram quatro cartões soltos no meio da página. */}
+      <FaixaDaPagina
+        secao="Conta"
+        titulo="Perfil"
+        itens={[
+          { rotulo: 'Comentários', valor: resumo.comentarios, nota: 'escritos por você' },
+          { rotulo: 'Movimentações', valor: resumo.eventos, nota: 'no histórico' },
+          { rotulo: 'Oportunidades', valor: resumo.oportunidades, nota: 'criadas por você' },
+          { rotulo: 'Ações', valor: resumo.acoes, nota: 'na auditoria' },
+        ]}
+      />
 
-      {/* Identidade */}
-      <div className="perfil-cartao perfil-identidade">
-        <div className="perfil-avatar">
-          {foto && !semFoto
-            ? <img src={foto} alt="" referrerPolicy="no-referrer" onError={() => setSemFoto(true)} />
-            : <span>{iniciais(u.nome)}</span>}
-        </div>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <h2 className="perfil-nome">{u.nome}</h2>
-          <p className="perfil-email">{u.email}</p>
-          <div className="perfil-chips">
-            <span className="perfil-chip">{rotuloPapel(u.papel)}</span>
-            <span className="perfil-chip">Conta Google</span>
-          </div>
-        </div>
-      </div>
+      <div className="perfil-grade">
+        {/* À esquerda, quem é a pessoa e como ela entra; à direita, a trilha do
+            que ela fez, que é a parte longa e rola por dentro do painel. */}
+        <div className="perfil-coluna">
+          <section className="perfil-cartao perfil-identidade">
+            <div className="perfil-avatar">
+              {foto && !semFoto
+                ? <img src={foto} alt="" referrerPolicy="no-referrer" onError={() => setSemFoto(true)} />
+                : <span>{iniciais(u.nome)}</span>}
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <h2 className="perfil-nome">{u.nome}</h2>
+              <p className="perfil-email">{u.email}</p>
+              <div className="perfil-chips">
+                <span className="perfil-chip">{rotuloPapel(u.papel)}</span>
+                <span className="perfil-chip">Conta Google</span>
+              </div>
+            </div>
+          </section>
 
-      {/* O que essa pessoa já fez */}
-      <div>
-        <p className="admin-section-title">Sua atividade</p>
-        <div className="admin-stats">
-          <Estatistica label="Comentários" valor={resumo.comentarios} desc="escritos por você" />
-          <Estatistica label="Movimentações" valor={resumo.eventos} desc="eventos no histórico" />
-          <Estatistica label="Oportunidades" valor={resumo.oportunidades} desc="criadas por você" />
-          <Estatistica label="Ações" valor={resumo.acoes} desc="registradas na auditoria" />
+          <section>
+            <p className="admin-section-title">Acesso</p>
+            <div className="perfil-cartao">
+              <Linha rotulo="Primeiro acesso" valor={<>{formatarData(u.criado_em)} <span className="perfil-relativo">{tempoRelativo(u.criado_em)}</span></>} />
+              <Linha rotulo="Último acesso" valor={<>{formatarData(u.ultimo_acesso)} <span className="perfil-relativo">{tempoRelativo(u.ultimo_acesso)}</span></>} />
+              <Linha rotulo="Forma de entrada" valor="Conta Google do domínio, verificada no servidor" />
+              <Linha rotulo="Duração da sessão" valor="8 horas, renovada a cada entrada" />
+            </div>
+          </section>
+
+          {usuarioSessao?.mcp && <ConectarIa token={token} />}
         </div>
-      </div>
 
-      {/* Acesso */}
-      <div>
-        <p className="admin-section-title">Acesso</p>
-        <div className="perfil-cartao">
-          <Linha rotulo="Primeiro acesso" valor={<>{formatarData(u.criado_em)} <span className="perfil-relativo">{tempoRelativo(u.criado_em)}</span></>} />
-          <Linha rotulo="Último acesso" valor={<>{formatarData(u.ultimo_acesso)} <span className="perfil-relativo">{tempoRelativo(u.ultimo_acesso)}</span></>} />
-          <Linha rotulo="Forma de entrada" valor="Conta Google do domínio, verificada no servidor" />
-          <Linha rotulo="Duração da sessão" valor="8 horas, renovada a cada entrada" />
-        </div>
-      </div>
-
-      {usuarioSessao?.mcp && <ConectarIa token={token} />}
-
-      {/* Trilha */}
-      <div>
-        <p className="admin-section-title">Últimas ações {acoes.length > 0 && <span style={{ fontWeight: 500, color: 'var(--gray2)' }}>· {acoes.length}</span>}</p>
-        {acoes.length === 0 ? (
-          <div className="perfil-cartao">
-            <p style={{ fontSize: 13, color: 'var(--gray2)' }}>
-              Nada registrado ainda. Toda alteração que você fizer no painel aparece aqui.
+        <section className="painel-principal perfil-trilha">
+          <div className="painel-principal-cabeca">
+            <p className="perfil-trilha-titulo">
+              Últimas ações
+              {acoes.length > 0 && <span className="kanban-conta-bolha"><ContaAnimada valor={acoes.length} /></span>}
             </p>
           </div>
-        ) : (
-          <div className="admin-table-wrap">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Ação</th>
-                  <th>Alvo</th>
-                  <th style={{ whiteSpace: 'nowrap' }}>Quando</th>
-                </tr>
-              </thead>
-              <tbody>
-                {acoes.map((a, i) => (
-                  <tr key={`${a.criado_em}-${i}`}>
-                    <td style={{ fontWeight: 600 }}>{rotuloAcao(a.acao)}</td>
-                    <td style={{ color: 'var(--gray2)', fontSize: 12 }}>{a.alvo ?? '-'}</td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      {formatarData(a.criado_em)} <span className="perfil-relativo">{tempoRelativo(a.criado_em)}</span>
-                    </td>
+          <div className="painel-principal-corpo perfil-trilha-corpo">
+            {acoes.length === 0 ? (
+              <p className="perfil-trilha-vazia">
+                Nada registrado ainda. Toda alteração que você fizer no painel aparece aqui.
+              </p>
+            ) : (
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Ação</th>
+                    <th>Alvo</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Quando</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {acoes.map((a, i) => (
+                    <tr key={`${a.criado_em}-${i}`}>
+                      <td style={{ fontWeight: 600 }}>{rotuloAcao(a.acao)}</td>
+                      <td style={{ color: 'var(--gray2)', fontSize: 12 }}>{a.alvo ?? '-'}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        {formatarData(a.criado_em)} <span className="perfil-relativo">{tempoRelativo(a.criado_em)}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <p className="perfil-nota">
+              A auditoria registra o que é <strong>escrito</strong> no sistema. Consultar, abrir um card ou
+              baixar um anexo não deixa rastro - por isso o número de ações é menor do que o seu uso real.
+            </p>
           </div>
-        )}
-        <p className="perfil-nota">
-          A auditoria registra o que é <strong>escrito</strong> no sistema. Consultar, abrir um card ou
-          baixar um anexo não deixa rastro - por isso o número de ações é menor do que o seu uso real.
-        </p>
+        </section>
       </div>
     </div>
   );

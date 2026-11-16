@@ -24958,3 +24958,75 @@ input:is(.form-checkbox, .perm-check):disabled { opacity: .45; cursor: default; 
   border-radius: 50%;
   transform: scale(1.1);
 }
+
+/* ══ Perfil no desenho da identidade ════════════════════════════════════════
+   Faixa no alto com os numeros da atividade; embaixo, duas colunas: quem e a
+   pessoa e como ela entra a esquerda, a trilha do que ela fez a direita, num
+   painel de vidro que rola por dentro. Os cartoes viram o vidro da casa. */
+.pagina-perfil .perfil-grade {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+.pagina-perfil .perfil-coluna {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.pagina-perfil .perfil-coluna > * { animation: linha-entra .4s var(--curva-anti) backwards; }
+.pagina-perfil .perfil-coluna > :nth-child(2) { animation-delay: .06s; }
+.pagina-perfil .perfil-coluna > :nth-child(3) { animation-delay: .12s; }
+.pagina-perfil .perfil-cartao {
+  background: var(--sup-painel);
+  border: 1px solid var(--sup-painel-borda);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+}
+.pagina-perfil .perfil-identidade { padding: 20px; }
+.pagina-perfil .perfil-nome { font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+.pagina-perfil .perfil-chip {
+  background: var(--sup-selo);
+  border: 1px solid var(--sup-painel-borda);
+}
+.pagina-perfil .admin-section-title {
+  margin: 0 0 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.pagina-perfil .perfil-trilha { min-height: 360px; }
+.perfil-trilha-titulo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--black);
+}
+.pagina-perfil .perfil-trilha-corpo { padding: 4px 16px 16px; }
+.pagina-perfil .perfil-trilha-corpo .admin-table { width: 100%; }
+.pagina-perfil .perfil-trilha-corpo .admin-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(12, 13, 16, .92);
+}
+.perfil-trilha-vazia { margin: 16px 0; font-size: 13px; color: var(--gray2); }
+.pagina-perfil .perfil-trilha-corpo .perfil-nota { margin-top: 14px; }
+
+@media (max-width: 1000px) {
+  .pagina-perfil .perfil-grade { grid-template-columns: 1fr; }
+  .pagina-perfil .perfil-coluna { overflow: visible; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pagina-perfil .perfil-coluna > * { animation: none; }
+}
