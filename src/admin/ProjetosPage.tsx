@@ -106,6 +106,7 @@ import {
 import { ContaAnimada } from '../components/ContaAnimada';
 import { AbasPilula, FaixaDaPagina } from '../components/FaixaDaPagina';
 import { entregasDa } from '../lib/entregasDaTarefa';
+import { comecarArraste, terminarArraste, useMovimentoDosCartoes, useVagaDaColuna } from '../lib/arrasteDoQuadro';
 import { useSubpagina } from '../lib/subpagina';
 import { IconFiltros } from '../components/icons';
 import { useDicaRica } from '../components/DicaRica';
@@ -1293,6 +1294,12 @@ function ColunaDoQuadro({ etapa, tarefas, pessoas, podeEditar, arrastando, loteA
   const etiquetario = useContext(EtiquetarioCtx);
   const [aberta, setAberta] = useState(false);
   const [sobre, setSobre] = useState(false);
+  // O mesmo movimento de arraste da tela de Tarefas e do Funil: a coluna que
+  // recebe abre vaga na altura do ponteiro, e quem muda de lugar ao soltar
+  // desliza até a posição nova (ver `lib/arrasteDoQuadro`).
+  const corpo = useRef<HTMLDivElement>(null);
+  const vagaCol = useVagaDaColuna(corpo, etapa.nome, podeEditar && arrastando !== null && sobre);
+  useMovimentoDosCartoes(corpo, arrastando !== null);
   const abrirTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fecharTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const limparAbrir = () => {
@@ -1334,6 +1341,7 @@ function ColunaDoQuadro({ etapa, tarefas, pessoas, podeEditar, arrastando, loteA
         if (!podeEditar || arrastando === null) return;
         ev.preventDefault();
         setSobre(true);
+        vagaCol.sobre(ev.clientY);
         if (recolhivel) segurarAberta();
       }}
       onDragLeave={() => { setSobre(false); if (recolhivel) agendarFechar(); }}
@@ -1392,8 +1400,10 @@ function ColunaDoQuadro({ etapa, tarefas, pessoas, podeEditar, arrastando, loteA
         )}
       </div>
 
-      <div className="kanban-column-body">
-        {tarefas.map(x => {
+      <div ref={corpo} className={`kanban-column-body${vagaCol.corpoComVaga?.classe ?? ''}`}
+        style={vagaCol.corpoComVaga?.estilo}>
+        {vagaCol.vaga}
+        {tarefas.map((x, i) => {
           const marcada = !!selecao?.selecao.has(x.id);
           return (
           // Abrir a tarefa é leitura, e não edição: quem não pode editar
@@ -1401,14 +1411,18 @@ function ColunaDoQuadro({ etapa, tarefas, pessoas, podeEditar, arrastando, loteA
           // modo de leitura sozinho. O que a permissão barra é arrastar,
           // criar e excluir, que são os gestos que mudam alguma coisa.
           <div key={x.id} className={`kanban-card${marcada ? ' selecionado' : ''}`}
+            data-flip={x.id}
             draggable={podeEditar}
-            onDragStart={() => onArrastar(x.id)}
-            onDragEnd={onFimDoArraste}
+            onDragStart={e => { comecarArraste(e, etapa.nome); onArrastar(x.id); }}
+            onDragEnd={() => { terminarArraste(); onFimDoArraste(); }}
             onMouseDown={semTextoNoShift}
             onClick={e => (selecao ? selecao.onClicar(x, e) : onAbrir(x))}
             style={{
               cursor: 'pointer',
-              opacity: arrastando === x.id || (loteArrastado && marcada) ? 0.45 : 1,
+              // O cartão pego se apaga pela classe do arraste; aqui só os
+              // outros marcados que vão junto com ele.
+              opacity: loteArrastado && marcada && arrastando !== x.id ? 0.45 : 1,
+              ...vagaCol.estiloDoCard(i),
             }}>
             <p className="kanban-card-title">{x.titulo}</p>
             {entregaDe?.(x) && (
