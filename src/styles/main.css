@@ -24723,3 +24723,16 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
 @media (prefers-reduced-motion: reduce) {
   .pagina-projetos .pl-abas, .pagina-projetos .pl-sheet { animation: none; }
 }
+
+/* ══ Fundo desfocado atras de todo popup ════════════════════════════════════
+   Com um modal, uma gaveta, a busca rapida ou um dialogo aberto, a tela de
+   tras fica borrada, e nao so escurecida: o que esta em cima vira o unico
+   assunto. O desfoque e do fundo escuro; o vidro do popup desfoca por cima
+   dele. Barato porque, com popup aberto, as ondas do fundo param - o
+   desfoque e calculado uma vez, e nao a cada quadro. A entrada do fundo
+   continua sem efeito preso (`backwards`, mais acima). */
+:is(.admin-modal-overlay, .qs-overlay, .usuarios-modal-fundo) {
+  -webkit-backdrop-filter: blur(10px) saturate(115%) !important;
+  backdrop-filter: blur(10px) saturate(115%) !important;
+  background: rgba(3, 5, 6, .42) !important;
+}
