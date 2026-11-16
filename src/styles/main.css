@@ -23200,7 +23200,10 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   width: 240px;
   z-index: 2;
   pointer-events: none;
-  transform: translateX(-50%);
+  /* Centrada pelo `translate`, e nao pelo `transform`: a entrada (`dica-abre`)
+     anima o transform e termina em `none`, o que apagava o -50% e deixava a
+     dica pendurada para a direita, vazando do cartao na ponta. */
+  translate: -50% 0;
   transition: left var(--transition-spring);
   animation: dica-abre .24s var(--curva-anti) both;
 }
