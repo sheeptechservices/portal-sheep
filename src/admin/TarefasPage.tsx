@@ -243,11 +243,11 @@ function FileiraDeCaras({ pessoas }: { pessoas: Pessoa[] }) {
 /** De onde a tela abre já estreitada. Vem da contagem de tarefas de uma entrega,
  *  na tela de Projetos: o `nonce` faz a mesma entrega reabrir o filtro quando
  *  se volta a ela depois de tê-lo limpado. */
-export interface FiltroInicialTarefas {
-  projeto: string;
-  entrega: number;
-  nonce: number;
-}
+/** Como a tela chega filtrada de outro lugar: estreitada numa entrega (vindo
+ *  de Projetos) ou só com as tarefas de quem abriu (vindo do diário). */
+export type FiltroInicialTarefas =
+  | { projeto: string; entrega: number; nonce: number; minhas?: undefined }
+  | { minhas: true; nonce: number; projeto?: undefined; entrega?: undefined };
 
 export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, abrir, onAbriu, criar, onCriou }: {
   token: string;
@@ -441,15 +441,26 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
   }, [criar, carregando]);
 
   // Chegou de uma entrega: entra com o projeto e a entrega já escolhidos, e a
-  // tabela aberta, que é onde os detalhes cabem lado a lado.
+  // tabela aberta, que é onde os detalhes cabem lado a lado. Chegou do diário:
+  // entra com "Minhas tarefas" ligado e o resto dos filtros limpo, para não
+  // esconder nenhuma das dela atrás de um filtro esquecido; a visão fica a que
+  // a pessoa já usa.
   useEffect(() => {
     if (!filtroInicial) return;
     setFProjeto([]);
     setFStatus([]);
     setFResponsavel([]);
     setFEtiqueta([]);
-    setFEntrega([String(filtroInicial.entrega)]);
-    setView('tabela');
+    if (filtroInicial.minhas) {
+      setFEntrega([]);
+      setFComplexidade([]);
+      setFPrazo({ de: '', ate: '' });
+      setBusca('');
+      setSoMinhas(true);
+    } else {
+      setFEntrega([String(filtroInicial.entrega)]);
+      setView('tabela');
+    }
     onFiltroAplicado?.();
   }, [filtroInicial?.nonce]);
 

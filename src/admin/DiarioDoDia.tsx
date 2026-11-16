@@ -407,7 +407,7 @@ export function DiarioDoDia({ token, onAbrirTarefa, onVerTodas }: {
         <div className="diario-rodape">
           <button type="button" className="diario-link" tabIndex={aberto ? 0 : -1}
             onClick={() => { setAberto(false); onVerTodas(); }}>
-            Ver todas as tarefas <IconArrowRight size={12} />
+            Ver todas as minhas tarefas <IconArrowRight size={12} />
           </button>
         </div>
       </div>

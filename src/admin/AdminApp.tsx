@@ -20,6 +20,7 @@ const DashboardPage = lazy(() => import('./DashboardPage'));
 const OportunidadesPage = lazy(() => import('./OportunidadesPage'));
 const ProjetosPage = lazy(() => import('./ProjetosPage'));
 const TarefasPage = lazy(() => import('./TarefasPage'));
+import type { FiltroInicialTarefas } from './TarefasPage';
 const ConfiguracoesPage = lazy(() => import('./ConfiguracoesPage'));
 const FerramentasPage = lazy(() => import('./FerramentasPage'));
 const GeradorContratos = lazy(() => import('./GeradorContratos'));
@@ -1661,8 +1662,8 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
   /** "Nova tarefa" do painel: a tela de Tarefas abre com uma tarefa nova na
    *  gaveta. O carimbo de hora faz o pedido valer de novo a cada clique. */
   const [criarTarefa, setCriarTarefa] = useState<number | null>(null);
-  const [tarefasDaEntrega, setTarefasDaEntrega] = useState<
-    { projeto: string; entrega: number; nonce: number } | null>(null);
+  // Ou vindo do diário: Tarefas abre com "Minhas tarefas" ligado.
+  const [tarefasDaEntrega, setTarefasDaEntrega] = useState<FiltroInicialTarefas | null>(null);
 
   // Quem é o dono desta sessão. Vem do servidor, nunca do que o navegador
   // guardou: é essa identidade que assina cada ação daqui pra frente.
@@ -2074,7 +2075,10 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
               setPage('tarefas');
               setOpenCard(prev => ({ page: 'tarefas', id: String(id), nonce: (prev?.nonce ?? 0) + 1 }));
             }}
-            onVerTodas={() => setPage('tarefas')} />
+            onVerTodas={() => {
+              setTarefasDaEntrega({ minhas: true, nonce: Date.now() });
+              setPage('tarefas');
+            }} />
         )}
       />
 
