@@ -1788,8 +1788,10 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
 
   // Alvo da busca rápida: página ou ferramenta só troca de tela; card também pede
   // à página destino que abra o detalhe.
+  // A busca rápida leva a tela para o destino na hora e sai sozinha, com a
+  // animação dela (é ela que chama o `onClose` no fim). Fechar daqui
+  // desmontaria a busca antes da saída tocar.
   function irPara(t: QuickTarget) {
-    setQuickOpen(false);
     setPage(t.page);
     if (t.kind === 'card') {
       setOpenCard(prev => ({ page: t.page, id: t.id, nonce: (prev?.nonce ?? 0) + 1 }));

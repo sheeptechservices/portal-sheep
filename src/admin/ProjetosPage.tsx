@@ -97,6 +97,7 @@ import { CorpoRecolhivel, TituloRecolhivel, useSecaoRecolhivel } from '../compon
 import { CampoBusca } from '../components/CampoBusca';
 import { DatePicker } from '../components/DatePicker';
 import { BotaoTelaCheia } from '../components/BotaoTelaCheia';
+import { COR_STATUS_PROJETO } from '../lib/statusDoProjeto';
 import { useTelaCheia } from '../lib/useTelaCheia';
 import { COR_ENTREGA, ICONE_ENTREGA } from '../lib/etapasEntrega';
 import { DonosDaTarefa } from '../components/DonosDaTarefa';
@@ -127,14 +128,9 @@ import { ConteudoDaDicaDoProjeto, corDoProjeto } from '../components/DicaDoProje
 
 export const STATUS_PROJETO = ['Em andamento', 'Pausado', 'Concluído', 'Cancelado'] as const;
 
-/** Cor de cada status. Verde só para concluído: no resto do sistema verde é
- *  desfecho positivo, e "em andamento" não é desfecho nenhum. */
-const COR_STATUS: Record<string, string> = {
-  'Em andamento': '#B58300',
-  'Pausado': '#6E6F69',
-  'Concluído': '#23A455',
-  'Cancelado': '#D93025',
-};
+/** Cor de cada status. A tabela mora em `lib/statusDoProjeto`, que a busca
+ *  rápida também lê. */
+const COR_STATUS = COR_STATUS_PROJETO;
 
 /** Como a lista de entregas pode ser ordenada. A prioridade é o padrão: é a
  *  fila combinada com o cliente, e é por ela que a lista deve ser lida - tanto

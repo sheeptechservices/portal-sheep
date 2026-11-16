@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom';
 import { DESTINOS, buscarDestinos, type Page, type Destino } from './destinos';
 import { useAuth } from './AdminApp';
 import { podeAbrirPagina, podeVerUsuarios } from './papeis';
+import { IconSearch, IconSpinner } from '../components/icons';
+import { useSaidaSuave } from '../lib/useSaidaSuave';
+import { COR_STATUS_PROJETO } from '../lib/statusDoProjeto';
 
 // Alvo de navegação devolvido ao shell. Um alvo é ou um card (abre a página e
 // destaca o card) ou um destino de navegação (só troca de página).
@@ -36,6 +39,8 @@ interface TarefaHit {
   status: string | null;
   projeto_id: string;
   projeto_nome: string | null;
+  /** A cor da etapa no quadro, para a pílula sair na mesma cor. */
+  status_cor: string | null;
 }
 
 type Row = { target: QuickTarget; badge?: string | null; badgeCor?: string | null; meta?: string | null };
@@ -73,34 +78,12 @@ function maskDoc(v: string | null): string {
   return v;
 }
 
-/* Os mesmos desenhos que o menu usa para cada pagina: a linha da busca e um
-   atalho para la, e o icone e o que faz o olho reconhecer o destino antes de
-   ler o titulo. */
-const CardIcon: Record<string, JSX.Element> = {
-  oportunidades: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-      <rect x="3" y="3" width="7" height="18" rx="2" stroke="currentColor" strokeWidth="1.8"/>
-      <rect x="14" y="3" width="7" height="11" rx="2" stroke="currentColor" strokeWidth="1.8"/>
-    </svg>
-  ),
-  projetos: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-      <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.2l1.8 2.2h8A2.5 2.5 0 0 1 21 9.7v7.8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M8 13h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-    </svg>
-  ),
-  tarefas: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-      <rect x="3" y="4" width="18" height="16" rx="2.5" stroke="currentColor" strokeWidth="1.8"/>
-      <path d="M9 11l2 2 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  ),
-};
-
-/** Ícone da linha: o do destino, quando é navegação; o da página, quando é card. */
+/** O ícone da linha: o mesmo que o menu usa para a página - de destino de
+ *  navegação ou da página do card. É o que faz o olho reconhecer o destino
+ *  antes de ler o título, e vem da mesma lista de destinos, sem desenho solto
+ *  aqui dentro. */
 function iconeDe(t: QuickTarget): JSX.Element | null {
-  if (t.kind === 'nav') return DESTINOS.find(d => d.page === t.page)?.icon ?? null;
-  return CardIcon[t.page] ?? null;
+  return DESTINOS.find(d => d.page === t.page)?.icon ?? null;
 }
 
 function linhaDestino(d: Destino): Row {
@@ -202,6 +185,7 @@ export default function QuickSearch({ token, onClose, onSelect }: {
               sub: p.cliente_nome,
             },
             badge: p.status,
+            badgeCor: p.status ? COR_STATUS_PROJETO[p.status] ?? null : null,
             meta: p.codigo,
           })),
         },
@@ -218,6 +202,7 @@ export default function QuickSearch({ token, onClose, onSelect }: {
               sub: t.projeto_nome,
             },
             badge: t.status,
+            badgeCor: t.status_cor,
           })),
         },
       ].filter(g => g.rows.length > 0)
@@ -230,13 +215,19 @@ export default function QuickSearch({ token, onClose, onSelect }: {
   // A lista encurta enquanto se digita; a seleção acompanha em vez de sumir.
   const sel = flat.length ? Math.min(active, flat.length - 1) : 0;
 
+  // A busca sai como todo diálogo: encolhendo, e não de estalo. Escolher um
+  // destino leva a tela para ele na hora, e a busca sai por cima, já em
+  // movimento - ninguém espera a animação para ver a página.
+  const { saindo, fechar } = useSaidaSuave(onClose, 160);
+
   const escolher = useCallback((t: QuickTarget) => {
     pushRecent(t);
     onSelect(t);
-  }, [onSelect]);
+    fechar();
+  }, [onSelect, fechar]);
 
   function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
+    if (e.key === 'Escape') { e.preventDefault(); fechar(); return; }
     if (e.key === 'ArrowDown') { e.preventDefault(); setActive(flat.length ? (sel + 1) % flat.length : 0); return; }
     if (e.key === 'ArrowUp') { e.preventDefault(); setActive(flat.length ? (sel - 1 + flat.length) % flat.length : 0); return; }
     if (e.key === 'Enter') {
@@ -252,76 +243,78 @@ export default function QuickSearch({ token, onClose, onSelect }: {
   }, [sel]);
 
   let idx = -1;
+  // A assinatura do resultado: quando a lista muda, os grupos remontam e a
+  // entrada toca; uma tecla que não muda o resultado não reanima nada.
+  const assinatura = flat.map(r => chaveAlvo(r.target)).join('|');
 
   return createPortal(
-    <div className="qs-overlay" onMouseDown={onClose}>
-      <div className="qs-panel" onMouseDown={e => e.stopPropagation()} onKeyDown={onKeyDown}>
+    <div className={`qs-overlay${saindo ? ' saindo' : ''}`} onMouseDown={fechar}>
+      <div className="qs-panel" role="dialog" aria-modal="true" aria-label="Busca rápida"
+        onMouseDown={e => e.stopPropagation()} onKeyDown={onKeyDown}>
         <div className="qs-inputwrap">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" className="qs-searchicon">
-            <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="1.8"/>
-            <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-          </svg>
+          <span className="qs-searchicon"><IconSearch size={16} /></span>
           <input
             ref={inputRef}
             className="qs-input"
             value={q}
             onChange={e => setQ(e.target.value)}
-            placeholder="Buscar páginas, ferramentas e oportunidades…"
+            placeholder="Buscar páginas, ferramentas, oportunidades, projetos e tarefas"
+            aria-label="Buscar no portal"
             spellCheck={false}
           />
-          {loading && <span className="qs-spinner" aria-hidden />}
-          <button type="button" className="qs-esc" onClick={onClose}>esc</button>
+          {loading && <span className="qs-carregando"><IconSpinner size={14} /></span>}
+          <button type="button" className="qs-esc" onClick={fechar} aria-label="Fechar a busca">esc</button>
         </div>
 
         <div className="qs-results" ref={listRef}>
           {termo && !loading && flat.length === 0 && (
-            <p className="qs-empty">
+            <p className="qs-empty surge">
               {termo.length === 1
                 ? 'Digite ao menos 2 caracteres para buscar cards.'
-                : `Nada encontrado para “${termo}”.`}
+                : `Nada encontrado para "${termo}".`}
             </p>
           )}
 
-          {grupos.map(g => (
-            <div key={g.titulo} className="qs-group">
-              <div className="qs-grouphead">{g.titulo}</div>
-              {g.rows.map(row => {
-                idx += 1;
-                const i = idx;
-                const icone = iconeDe(row.target);
-                return (
-                  <button
-                    key={chaveAlvo(row.target)}
-                    type="button"
-                    className={`qs-row${i === sel ? ' active' : ''}`}
-                    onMouseEnter={() => setActive(i)}
-                    onClick={() => escolher(row.target)}
-                  >
-                    <span className="qs-rowicon">{icone}</span>
-                    <span className="qs-rowtext">
-                      <span className="qs-rowtitle">{row.target.titulo}</span>
-                      {row.target.sub && <span className="qs-rowsub">{row.target.sub}</span>}
-                    </span>
-                    {row.meta && <span className="qs-rowmeta">{row.meta}</span>}
-                    {row.badge && (
-                      <span
-                        className="qs-rowbadge"
-                        style={{
-                          background: (row.badgeCor ?? '#8A8F98') + '1F',
-                          color: row.badgeCor ?? '#8A8F98',
-                        }}
-                      >
-                        {row.badge}
+          <div className="lista-anima" key={assinatura}>
+            {grupos.map(g => (
+              <div key={g.titulo} className="qs-group">
+                <div className="qs-grouphead">{g.titulo}</div>
+                {g.rows.map(row => {
+                  idx += 1;
+                  const i = idx;
+                  const icone = iconeDe(row.target);
+                  const cor = row.badgeCor ?? 'var(--gray2)';
+                  return (
+                    <button
+                      key={chaveAlvo(row.target)}
+                      type="button"
+                      className={`qs-row${i === sel ? ' active' : ''}`}
+                      onMouseEnter={() => setActive(i)}
+                      onClick={() => escolher(row.target)}
+                    >
+                      <span className="qs-rowicon">{icone}</span>
+                      <span className="qs-rowtext">
+                        <span className="qs-rowtitle">{row.target.titulo}</span>
+                        {row.target.sub && <span className="qs-rowsub">{row.target.sub}</span>}
                       </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
+                      {row.meta && <span className="qs-rowmeta">{row.meta}</span>}
+                      {/* A pílula de status da casa, na cor da etapa: a mesma
+                          que a pessoa vê no quadro e na fila. */}
+                      {row.badge && (
+                        <span className="reportes-status qs-rowbadge" style={{ ['--cor' as string]: cor }}>
+                          <span className="reportes-ponto" style={{ background: cor }} />
+                          {row.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div className="qs-footer">
+        <div className="qs-footer" aria-hidden="true">
           <span><kbd>↑</kbd><kbd>↓</kbd> navegar</span>
           <span><kbd>↵</kbd> abrir</span>
           <span><kbd>esc</kbd> fechar</span>

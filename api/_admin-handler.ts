@@ -4782,7 +4782,10 @@ async function despacharAdminData(
 
       const tarefas = !veTarefas ? { rows: [] as Record<string, unknown>[] } : await db.execute({
         sql: `
-          SELECT t.id, t.titulo, t.status, t.projeto_id, p.nome AS projeto_nome
+          SELECT t.id, t.titulo, t.status, t.projeto_id, p.nome AS projeto_nome,
+                 -- A cor da etapa, para a pílula da busca sair na cor do quadro.
+                 (SELECT sc.cor FROM tarefa_status_configs sc WHERE sc.nome = t.status
+                  ORDER BY sc.ativo DESC, sc.id LIMIT 1) AS status_cor
           FROM projeto_tarefas t
           JOIN projetos p ON p.id = t.projeto_id
           WHERE (p.ativo = 1 OR p.id = ?)
