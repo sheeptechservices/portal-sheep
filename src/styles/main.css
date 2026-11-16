@@ -24754,3 +24754,7 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
   min-height: 0;
   overflow-y: auto;
 }
+
+/* O projeto no centro, como a tarefa: a mesma caixa, mais larga, porque a
+   aba Tarefas dele mostra o quadro com as colunas. */
+.admin-modal.tarefa-central.projeto-central { width: min(1040px, 100%); }

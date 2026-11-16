@@ -82,8 +82,6 @@ import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import {
   CalendarioEntregas, QuadroEntregas, SwitcherVisao, type ItemVisao, type Visao,
 } from '../components/VisoesEntregas';
-import { useLarguraPainel } from '../lib/painelLateral';
-import { PuxadorDoPainel } from '../components/PuxadorDoPainel';
 import { useRevelar } from '../lib/useRevelar';
 import { Donut, type FatiaDonut } from '../components/Donut';
 // O mesmo formulário da tela de Tarefas: o quadro da semana abre a tarefa aqui,
@@ -5442,7 +5440,6 @@ function FormularioProjeto({
     editando?.publico_token ?? null);
   useEffect(() => { setTokenPublico(editando?.publico_token ?? null); }, [editando?.publico_token]);
   const linkPublico = tokenPublico ? `${window.location.origin}/p/${tokenPublico}` : null;
-  const { largura, arrastando, setArrastando, porTecla } = useLarguraPainel('projeto');
   const { saindo, fechar } = useSaidaSuave(() => onFechar(intactoRef.current));
   const fundo = useFecharNoFundo(fechar);
 
@@ -5575,6 +5572,22 @@ function FormularioProjeto({
     }
     fechar();
   }
+  // Escape fecha o projeto gravando o que mudou, como todo diálogo. Não quando
+  // há algo aberto por cima - uma lista, o calendário, a tarefa aberta de
+  // dentro do projeto -: aí o Escape é daquele. O fundo do próprio projeto
+  // conta como um modal aberto.
+  const fecharGravandoRef = useRef(fecharGravando);
+  fecharGravandoRef.current = fecharGravando;
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (document.querySelector('.status-select-dropdown, .datepicker-caixa, .filter-dropdown-list')) return;
+      if (document.querySelectorAll('.admin-modal-overlay').length > 1) return;
+      fecharGravandoRef.current();
+    };
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, []);
 
   async function escolherArquivos(lista: FileList | null) {
     if (!lista?.length) return;
@@ -5593,12 +5606,14 @@ function FormularioProjeto({
   }
 
 
+  // O projeto abre num diálogo no centro da tela, como a tarefa, e não mais
+  // numa gaveta de lado. Por dentro é a peça da casa (`.painel-gaveta`:
+  // cabeçalho e rodapé parados, corpo rolando entre os dois); mais largo que o
+  // da tarefa porque a aba Tarefas mostra o quadro do projeto.
   return createPortal(
-    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`} {...fundo}>
-      <PuxadorDoPainel largura={largura} arrastando={arrastando}
-        setArrastando={setArrastando} porTecla={porTecla} />
-      <div className="admin-modal"
-        style={{ width: `min(${largura}px, 96vw)` }}
+    <div className={`admin-modal-overlay tarefa-central-fundo${saindo ? ' saindo' : ''}`} {...fundo}>
+      <div className="admin-modal painel-gaveta tarefa-central projeto-central"
+        role="dialog" aria-modal="true"
         onClick={e => e.stopPropagation()}>
 
 
