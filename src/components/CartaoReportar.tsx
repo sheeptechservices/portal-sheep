@@ -433,7 +433,9 @@ export function CartaoReportar({
                 valor: t.valor,
                 label: t.label,
                 descricao: DESCRICAO_DO_TIPO[t.valor],
-                icone: <t.Icone size={14} />,
+                // Na cor do tipo, como a urgência traz a dela: vermelho para o
+                // bug, verde para a melhoria - as mesmas da etiqueta na fila.
+                icone: <span style={{ display: 'inline-flex', color: t.cor }}><t.Icone size={14} /></span>,
               }))}
             />
 
