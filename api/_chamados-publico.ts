@@ -15,7 +15,8 @@
 //     título, da descrição, de quem pediu, da urgência, dos links e dos anexos
 //     (`chamados_cliente`), cada reabertura guarda a dela
 //     (`chamado_cliente_eventos`) e cada correção também
-//     (`chamado_cliente_ajustes`). Da tarefa do time desce só a etapa atual -
+//     (`chamado_cliente_ajustes`). Da tarefa do time desce só a etapa atual e
+//     o prazo (a previsão de entrega, só o dia) -
 //     nem as trocas de etapa, nem quem mexeu, comentário, etiqueta ou descrição
 //     interna.
 //  4. Abrir cria a tarefa na etapa de entrada (a Triagem), com o gestor do
@@ -377,9 +378,10 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
       .catch(() => []);
     const [chamados, anexos, eventos, etapas] = await Promise.all([
       db.execute({
-        // Da tarefa, só a etapa. Título, descrição e etiquetas dela são do time.
+        // Da tarefa, só a etapa e o prazo. Título, descrição e etiquetas dela
+        // são do time.
         sql: `SELECT ch.id, ch.numero, ch.titulo, ch.descricao, ch.solicitante, ch.urgencia,
-                     ch.links, ch.criado_em, t.status AS etapa
+                     ch.links, ch.criado_em, t.status AS etapa, t.prazo
               FROM chamados_cliente ch
               LEFT JOIN projeto_tarefas t ON ${TAREFA_DO_PROJETO}
               WHERE ch.projeto_id = ?
@@ -449,6 +451,9 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
           links: linksDe(c.links),
           criado_em: String(c.criado_em),
           status,
+          // O prazo da tarefa, que o cliente vê como previsão de entrega. Só
+          // o dia: a hora, se houver, não sai. Sem prazo, ou sem tarefa, nulo.
+          previsao: /^\d{4}-\d{2}-\d{2}/.test(String(c.prazo ?? '')) ? String(c.prazo).slice(0, 10) : null,
           cor: etapa?.cor ?? '#8D939B',
           grupo: c.etapa == null ? 'cancelado' : grupoDa(etapa, etapas),
           anexos: doChamado,

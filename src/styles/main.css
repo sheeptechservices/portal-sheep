@@ -25388,7 +25388,7 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
 .chm-barra .campo-busca { flex: 1 1 240px; max-width: 420px; }
 .chm-filtros { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
 .chm-tabela-caixa { overflow-x: auto; padding: 0 16px 10px; }
-.chm-tabela { min-width: 780px; }
+.chm-tabela { min-width: 880px; }
 /* Fora do modal o cabeçalho não gruda: a página inteira é que rola. */
 .chm-tabela th { position: static; background: transparent; }
 .chm-numero {
@@ -25399,6 +25399,10 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   color: var(--gray);
 }
 .chm-quem { white-space: nowrap; }
+/* A previsão de entrega: data em algarismos alinhados, e o "A definir" um tom
+   abaixo, para não competir com as datas de verdade. */
+.chm-previsao { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.chm-previsao-vazia { color: var(--gray2); font-size: 12px; }
 /* A linha que ainda vai para o servidor: já está na fila, um tom abaixo. */
 .chm-enviando > td { color: var(--gray2); }
 .chm-rodape { margin: 4px 0 0; text-align: center; font-size: 12px; color: var(--gray2); }

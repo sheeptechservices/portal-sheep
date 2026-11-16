@@ -30,7 +30,7 @@ import { PreviaArquivo } from '../components/PreviaArquivo';
 import { ContaAnimada } from '../components/ContaAnimada';
 import { ThOrdem, type OrdemDaTabela } from '../components/ThOrdem';
 import { ICONE_PRIORIDADE, PRIORIDADES, posicaoDaPrioridade } from '../lib/prioridades';
-import { instante, tempoRelativo, tamanho as fmtTamanho } from '../lib/datas';
+import { dia, instante, tempoRelativo, tamanho as fmtTamanho } from '../lib/datas';
 import { contemTermo } from '../lib/texto';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { iniciarOndas } from '../lib/ondas';
@@ -70,6 +70,9 @@ interface Chamado {
   urgencia: string;
   criado_em: string;
   status: string;
+  /** A previsão de entrega: o prazo da tarefa do time, só o dia. Nula enquanto
+   *  o time não marcou um prazo. */
+  previsao?: string | null;
   cor: string;
   grupo: Grupo;
   links: string[];
@@ -114,7 +117,7 @@ interface Dados {
 type Recorte = 'abertos' | Grupo;
 
 /** As colunas que ordenam. */
-type Coluna = 'numero' | 'titulo' | 'urgencia' | 'anexos' | 'status' | 'solicitante' | 'aberto';
+type Coluna = 'numero' | 'titulo' | 'urgencia' | 'anexos' | 'status' | 'previsao' | 'solicitante' | 'aberto';
 /** A fila abre do mais novo para o mais velho: é a pergunta de quem volta ao
  *  painel - o que eu pedi por último e como ele está. */
 const ORDEM_PADRAO: OrdemDaTabela<Coluna> = { col: 'aberto', dir: 'desc' };
@@ -305,6 +308,9 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
       urgencia: c => posicaoDaPrioridade(c.urgencia),
       anexos: c => c.anexos.length,
       status: c => posEtapa(c.status),
+      // Sem previsão vai para o fim na ordem crescente, que é a que se usa:
+      // o que entrega primeiro em cima, o que ainda não tem data embaixo.
+      previsao: c => c.previsao ?? '9999-12-31',
       solicitante: c => c.solicitante.toLocaleLowerCase('pt-BR'),
       aberto: c => c.criado_em,
     };
@@ -608,6 +614,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
                     <ThOrdem col="urgencia" ordem={ordem} onOrdenar={ordenarPor}>Urgência</ThOrdem>
                     <ThOrdem col="anexos" ordem={ordem} onOrdenar={ordenarPor}>Anexos</ThOrdem>
                     <ThOrdem col="status" ordem={ordem} onOrdenar={ordenarPor}>Status</ThOrdem>
+                    <ThOrdem col="previsao" ordem={ordem} onOrdenar={ordenarPor}>Previsão</ThOrdem>
                     <ThOrdem col="solicitante" ordem={ordem} onOrdenar={ordenarPor}>Solicitante</ThOrdem>
                     <ThOrdem col="aberto" ordem={ordem} onOrdenar={ordenarPor}>Aberto em</ThOrdem>
                   </tr>
@@ -679,6 +686,14 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
                               {c.status}
                             </span>
                           </td>
+                          {/* A data que o time marcou para entregar. Aberto e
+                              sem data, diz que ainda vai ser definida; já
+                              encerrado e sem data, não há o que prever. */}
+                          <td className="chm-previsao">
+                            {c.previsao
+                              ? dia(c.previsao)
+                              : <span className="chm-previsao-vazia">{encerrado ? '-' : 'A definir'}</span>}
+                          </td>
                           <td><span className="chm-quem">{c.solicitante}</span></td>
                           <td className="reportes-quando">
                             {instante(c.criado_em)}
@@ -688,7 +703,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
                         {/* O detalhe nasce montado com a linha, e assim fica: é
                             dele que a abertura tira a altura de destino. */}
                         <tr className={`reportes-detalhe${encerrado ? ' resolvida' : ''}`}>
-                          <td colSpan={7}>
+                          <td colSpan={8}>
                             <div className={`revelar${abertaAqui ? ' aberto' : ''}`}>
                               <div>
                                 <div className="reportes-detalhe-corpo chm-detalhe">
