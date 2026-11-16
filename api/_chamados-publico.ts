@@ -15,7 +15,8 @@
 //     título, da descrição, de quem pediu, da urgência, dos links e dos anexos
 //     (`chamados_cliente`), cada reabertura guarda a dela
 //     (`chamado_cliente_eventos`) e cada correção também
-//     (`chamado_cliente_ajustes`). Da tarefa do time desce só a etapa atual e
+//     (`chamado_cliente_ajustes`). Do time desce o que ele escreveu PARA o
+//     cliente (`chamado_cliente_respostas`), e da tarefa só a etapa atual e
 //     o prazo (a previsão de entrega, só o dia) -
 //     nem as trocas de etapa, nem quem mexeu, comentário, etiqueta ou descrição
 //     interna.
@@ -97,6 +98,19 @@ export const DDL_AJUSTES_DO_CHAMADO = [
     criado_em   TEXT NOT NULL
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_chamado_cliente_ajustes ON chamado_cliente_ajustes (chamado_id, seq)`,
+  // As respostas do time ao cliente, escritas pela ficha da tarefa. O texto vai
+  // com as marcas leves do CampoTexto (negrito, itálico, lista), e o painel as
+  // traduz. `autor_id` fica para saber quem pode apagar; para fora sai só o nome.
+  `CREATE TABLE IF NOT EXISTS chamado_cliente_respostas (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    chamado_id  INTEGER NOT NULL,
+    seq         INTEGER NOT NULL,
+    texto       TEXT NOT NULL,
+    autor_id    TEXT,
+    autor_nome  TEXT NOT NULL,
+    criado_em   TEXT NOT NULL
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_chamado_cliente_respostas ON chamado_cliente_respostas (chamado_id, seq)`,
   // Acréscimos de coluna: falham quando a coluna já existe, e isso é o normal.
   `ALTER TABLE chamado_cliente_ajustes ADD COLUMN tipo TEXT`,
   `ALTER TABLE chamados_cliente ADD COLUMN tipo TEXT`,
@@ -398,6 +412,14 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
       }))
       .then(r => r.rows)
       .catch(() => []);
+    // As respostas do time, com a mesma rede: sem elas o painel abre igual.
+    const lendoRespostas = db.execute({
+      sql: `SELECT rs.chamado_id, rs.seq, rs.texto, rs.criado_em
+            FROM chamado_cliente_respostas rs
+            JOIN chamados_cliente ch ON ch.id = rs.chamado_id
+            WHERE ch.projeto_id = ? ORDER BY rs.chamado_id, rs.seq`,
+      args: [projetoId],
+    }).then(r => r.rows).catch(() => []);
     const [chamados, anexos, eventos, etapas] = await Promise.all([
       db.execute({
         // Da tarefa, só a etapa e o prazo. Título, descrição e etiquetas dela
@@ -430,6 +452,7 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
       lerEtapas(db),
     ]);
     const ajustes = await lendoAjustes;
+    const respostas = await lendoRespostas;
 
     return res.status(200).json({
       projeto: { nome: String(p.nome), cliente: p.cliente_nome != null ? String(p.cliente_nome) : null },
@@ -487,6 +510,13 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
             for (const k of CAMPOS_AJUSTAVEIS) if (a[k] != null && a[k] !== '') mudou[k] = String(a[k]);
             return { seq: Number(a.seq), em: String(a.criado_em), autor: String(a.autor), mudou };
           }),
+          // O que o time escreveu para o cliente, da mais antiga para a mais
+          // nova. Só isto desce da conversa do time: o comentário interno da
+          // tarefa continua de dentro. Sem o nome de quem escreveu - para o
+          // cliente, quem responde é o time.
+          respostas: respostas.filter(r => Number(r.chamado_id) === id).map(r => ({
+            seq: Number(r.seq), em: String(r.criado_em), texto: String(r.texto),
+          })),
         };
       }),
     });

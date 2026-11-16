@@ -5610,7 +5610,7 @@ async function despacharAdminData(
       });
       const c = ch.rows[0];
       if (!c) return { status: 200, body: { chamado: null } };
-      const [eventos, anexos, ajustes] = await Promise.all([
+      const [eventos, anexos, ajustes, respostas] = await Promise.all([
         db.execute({
           sql: `SELECT id, seq, autor, texto, links, criado_em FROM chamado_cliente_eventos
                 WHERE chamado_id = ? ORDER BY seq DESC`,
@@ -5626,6 +5626,12 @@ async function despacharAdminData(
         db.execute({
           sql: `SELECT seq, titulo, descricao, solicitante, urgencia, tipo, autor, criado_em
                 FROM chamado_cliente_ajustes WHERE chamado_id = ? ORDER BY seq`,
+          args: [c.id],
+        }).catch(() => ({ rows: [] as Record<string, unknown>[] })),
+        // O que o time já respondeu ao cliente, na ordem em que foi escrito.
+        db.execute({
+          sql: `SELECT id, texto, autor_id, autor_nome, criado_em FROM chamado_cliente_respostas
+                WHERE chamado_id = ? ORDER BY seq`,
           args: [c.id],
         }).catch(() => ({ rows: [] as Record<string, unknown>[] })),
       ]);
@@ -5663,6 +5669,14 @@ async function despacharAdminData(
               solicitante: a.solicitante != null ? String(a.solicitante) : null,
               urgencia: a.urgencia != null ? String(a.urgencia) : null,
               tipo: a.tipo != null && a.tipo !== '' ? String(a.tipo) : null,
+            })),
+            // `minha` diz se quem lê pode apagar: só quem escreveu.
+            respostas: respostas.rows.map(r => ({
+              id: Number(r.id),
+              texto: String(r.texto),
+              autor: String(r.autor_nome),
+              criado_em: String(r.criado_em),
+              minha: !!usuario?.id && String(r.autor_id ?? '') === usuario.id,
             })),
           },
         },
@@ -7856,6 +7870,57 @@ function faltaEmProjeto(p: any): string | null {
           ...gravada,
         },
       };
+    }
+
+    // ── Resposta ao cliente, pelo chamado da tarefa ─────────────────────────
+    // O que o time escreve aqui aparece no painel de chamados do cliente, dentro
+    // do chamado. É a única coisa da conversa do time que sai para fora: o
+    // comentário da tarefa continua interno. O chamado sai da tarefa, e a
+    // tarefa passa pelo mesmo corte de equipe de comentar.
+    if (action === 'responder_chamado_cliente') {
+      const tarefaId = Number(body?.tarefa_id);
+      if (!Number.isFinite(tarefaId)) return { status: 400, body: { error: 'tarefa_id ausente.' } };
+      { const barrado = await guardaDaEquipe(db, usuario, tarefaId, 'tarefa'); if (barrado) return barrado; }
+      const texto = String(body?.texto ?? '').trim().slice(0, 6000);
+      if (texto.length < 2) return { status: 400, body: { error: 'Escreva a resposta para o cliente.' } };
+      const ch = await db.execute({
+        sql: 'SELECT id FROM chamados_cliente WHERE tarefa_id = ? ORDER BY id DESC LIMIT 1',
+        args: [tarefaId],
+      });
+      const chamadoId = ch.rows[0]?.id;
+      if (chamadoId == null) return { status: 404, body: { error: 'Esta tarefa não veio de um chamado do cliente.' } };
+      const agora = new Date().toISOString();
+      const r = await db.execute({
+        sql: `INSERT INTO chamado_cliente_respostas (chamado_id, seq, texto, autor_id, autor_nome, criado_em)
+              SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?
+              FROM chamado_cliente_respostas WHERE chamado_id = ?
+              RETURNING id, seq`,
+        args: [chamadoId, texto, autorId, autorNome ?? 'Time Sheep', agora, chamadoId],
+      });
+      return { status: 200, body: { ok: true, id: Number(r.rows[0]?.id), seq: Number(r.rows[0]?.seq), criado_em: agora } };
+    }
+
+    // Apagar uma resposta já enviada: só quem escreveu, como no comentário.
+    // Some do painel do cliente na próxima leitura dele.
+    if (action === 'apagar_resposta_chamado_cliente') {
+      const id = Number(body?.id);
+      if (!Number.isFinite(id)) return { status: 400, body: { error: 'id ausente.' } };
+      const alvo = await db.execute({
+        sql: `SELECT rs.autor_id, ch.tarefa_id FROM chamado_cliente_respostas rs
+              JOIN chamados_cliente ch ON ch.id = rs.chamado_id WHERE rs.id = ?`,
+        args: [id],
+      });
+      const linha = alvo.rows[0];
+      if (!linha) return { status: 404, body: { error: 'Resposta não encontrada.' } };
+      if (linha.tarefa_id != null) {
+        const barrado = await guardaDaEquipe(db, usuario, Number(linha.tarefa_id), 'tarefa');
+        if (barrado) return barrado;
+      }
+      if (!autorId || String(linha.autor_id ?? '') !== autorId) {
+        return { status: 403, body: { error: 'Só quem escreveu a resposta pode apagá-la.' } };
+      }
+      await db.execute({ sql: 'DELETE FROM chamado_cliente_respostas WHERE id = ?', args: [id] });
+      return { status: 200, body: { ok: true } };
     }
 
     if (action === 'excluir_tarefa') {

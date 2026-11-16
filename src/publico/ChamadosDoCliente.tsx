@@ -85,6 +85,9 @@ interface Chamado {
   /** As correções, da mais antiga para a mais nova. Título, descrição, quem
    *  pediu e urgência acima são os do envio original. */
   ajustes: Ajuste[];
+  /** O que o time escreveu para o cliente, da mais antiga para a mais nova.
+   *  Sem autor: para o cliente, quem responde é o time. */
+  respostas?: { seq: number; em: string; texto: string }[];
   /** Ainda indo para o servidor: a linha já está na fila, sem o número. */
   enviando?: boolean;
   /** A reabertura ainda indo para o servidor. */
@@ -724,6 +727,27 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
                                   <ListaDeLinks links={c.links} />
                                   <ChipsDeAnexos chamado={c} anexos={c.anexos.filter(a => !a.reabertura)}
                                     onVer={i => setVendo({ chamado: c, indice: i })} />
+                                  {/* O que o time escreveu para o cliente, logo
+                                      abaixo do pedido: é a conversa que ele
+                                      veio ler. */}
+                                  {(c.respostas?.length ?? 0) > 0 && (
+                                    <>
+                                      <p className="chm-historico-titulo">
+                                        {c.respostas!.length === 1 ? 'Resposta do time' : `Respostas do time (${c.respostas!.length})`}
+                                      </p>
+                                      {/* Cada resposta é um balão de mensagem:
+                                          a data e hora no alto e o texto. Sem
+                                          nome - quem responde é o time. */}
+                                      <ol className="chm-baloes">
+                                        {c.respostas!.map(r => (
+                                          <li key={r.seq} className="chm-balao">
+                                            <time className="chm-balao-quando" dateTime={r.em}>{instante(r.em)}</time>
+                                            <TextoRico texto={r.texto} className="reportes-detalhe-texto" />
+                                          </li>
+                                        ))}
+                                      </ol>
+                                    </>
+                                  )}
                                   {/* As reaberturas, uma embaixo da outra: o que
                                       o cliente escreveu cada vez que pediu o
                                       chamado de volta. Só aparecem se houver. */}

@@ -10,10 +10,15 @@
 //
 //  Tarefa que não veio de chamado não mostra nada: o bloco nem nasce.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-  IconArrowRight, IconChamado, IconDoc, IconEdit, IconExternal, IconImage, IconLink, IconUndo,
+  IconArrowRight, IconBalao, IconChamado, IconDoc, IconEdit, IconEnviar, IconExternal, IconImage, IconLink,
+  IconSpinner, IconTrash, IconUndo,
 } from '../components/icons';
+import { CampoTexto } from '../components/CampoTexto';
+import { ConfirmarExclusao } from '../components/Dialogo';
+import { useToast } from '../lib/toast';
+import { useAuth } from './AdminApp';
 import { TextoRico } from '../components/TextoRico';
 import { PreviaArquivo } from '../components/PreviaArquivo';
 import { instante } from '../lib/datas';
@@ -31,8 +36,13 @@ const NOME_DO_CAMPO: Record<CampoAjustavel, string> = {
 };
 /** Uma correção do cliente: nulo é o campo que ficou como estava. */
 interface Ajuste extends Record<CampoAjustavel, string | null> { seq: number; autor: string; criado_em: string }
+/** O que o time escreveu para o cliente. `id` negativo é o que ainda vai para
+ *  o servidor; `minha` diz se quem lê pode apagar. */
+interface Resposta { id: number; texto: string; autor: string; criado_em: string; minha: boolean }
+
 interface Chamado {
   numero: number; titulo: string; solicitante: string; email: string | null; urgencia: string;
+  respostas?: Resposta[];
   /** 'bug' ou 'melhoria', o que o cliente marcou. Nulo no chamado antigo. */
   tipo?: string | null;
   links: string[]; criado_em: string; reaberturas: Reabertura[]; ajustes?: Ajuste[];
@@ -78,6 +88,130 @@ function Links({ links }: { links: string[] }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * A conversa com o cliente, dentro do bloco do chamado. O que se escreve aqui
+ * aparece no painel de chamados dele, dentro do chamado - e é a única coisa
+ * que sai da ficha para fora: o comentário da tarefa continua interno. Por
+ * isso o campo mora aqui, longe da conversa do time, e o botão diz para onde
+ * o texto vai.
+ *
+ * O campo é o CampoTexto da casa (negrito, itálico, sublinhado, lista), e a
+ * resposta aparece na hora: vai ao servidor por baixo e volta atrás se ele
+ * recusar.
+ */
+function RespostasAoCliente({ tarefaId, api, respostas, onMudar }: {
+  tarefaId: number;
+  api: (path: string, method?: string, body?: unknown) => Promise<any>;
+  respostas: Resposta[];
+  onMudar: (r: Resposta[]) => void;
+}) {
+  const { usuario } = useAuth();
+  const { toast } = useToast();
+  const [escrevendo, setEscrevendo] = useState(false);
+  const [texto, setTexto] = useState('');
+  const [apagando, setApagando] = useState<Resposta | null>(null);
+  const caixa = useRef<HTMLDivElement | null>(null);
+  // O lado de dentro do `.revelar` fica montado; o foco vai quando ele abre.
+  useEffect(() => {
+    if (escrevendo) window.setTimeout(() => caixa.current?.focus(), 60);
+  }, [escrevendo]);
+
+  async function enviar() {
+    const limpo = texto.trim();
+    if (limpo.length < 2) return;
+    const provisoria: Resposta = {
+      id: -Date.now(), texto: limpo, autor: usuario?.nome ?? 'Você', criado_em: new Date().toISOString(), minha: true,
+    };
+    const antes = respostas;
+    onMudar([...antes, provisoria]);
+    setTexto('');
+    setEscrevendo(false);
+    const r = await api('', 'POST', { action: 'responder_chamado_cliente', tarefa_id: tarefaId, texto: limpo })
+      .catch(() => null);
+    if (!r || r.error) {
+      onMudar(antes);
+      setTexto(limpo);
+      setEscrevendo(true);
+      toast('error', 'A resposta não foi enviada', r?.error ?? 'O servidor não respondeu. Tente de novo.');
+      return;
+    }
+    onMudar([...antes, { ...provisoria, id: Number(r.id), criado_em: String(r.criado_em ?? provisoria.criado_em) }]);
+  }
+
+  async function apagar(alvo: Resposta) {
+    setApagando(null);
+    const antes = respostas;
+    onMudar(antes.filter(x => x.id !== alvo.id));
+    const r = await api('', 'POST', { action: 'apagar_resposta_chamado_cliente', id: alvo.id }).catch(() => null);
+    if (!r || r.error) {
+      onMudar(antes);
+      toast('error', 'A resposta não foi apagada', r?.error ?? 'O servidor não respondeu. Tente de novo.');
+    }
+  }
+
+  return (
+    <div className="chamado-tarefa-respostas">
+      <p className="chamado-tarefa-respostas-titulo">
+        <IconBalao size={12} /> Respostas ao cliente
+        <span>aparecem no painel de chamados dele</span>
+      </p>
+
+      {respostas.length > 0 && (
+        <ol className="chamado-tarefa-reaberturas">
+          {respostas.map(r => (
+            <li key={r.id} className={`chamado-tarefa-reabertura resposta${r.id < 0 ? ' enviando' : ''}`}>
+              <p className="chamado-tarefa-reabertura-topo">
+                <strong>{r.autor}</strong>
+                <span>{instante(r.criado_em)}</span>
+                {r.id < 0 && <IconSpinner size={11} />}
+                {r.minha && r.id > 0 && (
+                  <button type="button" className="chamado-tarefa-resposta-apagar"
+                    title="Apagar esta resposta" aria-label="Apagar esta resposta"
+                    onClick={() => setApagando(r)}>
+                    <IconTrash size={12} />
+                  </button>
+                )}
+              </p>
+              <TextoRico texto={r.texto} className="chamado-tarefa-texto" />
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {/* O botão vira o campo. O campo fica montado o tempo todo: é o que dá
+          à abertura de onde tirar a altura. */}
+      {!escrevendo && (
+        <button type="button" className="secao-add chamado-tarefa-responder troca" onClick={() => setEscrevendo(true)}>
+          <IconBalao size={13} /> Responder ao cliente
+        </button>
+      )}
+      <div className={`revelar${escrevendo ? ' aberto' : ''}`}>
+        <div>
+          <div className="chamado-tarefa-compor">
+            <CampoTexto valor={texto} onMudar={setTexto} linhas={3} alturaMaxima={240} caixaRef={caixa}
+              ariaLabel="Resposta para o cliente"
+              placeholder="O que o cliente vai ler no painel de chamados. Ctrl+B negrito, Ctrl+I itálico, - para lista." />
+            <div className="chamado-tarefa-compor-acoes">
+              <button type="button" className="delete-confirm-cancel" onClick={() => setEscrevendo(false)}>Cancelar</button>
+              <button type="button" className="btn btn-primary" disabled={texto.trim().length < 2}
+                onClick={() => void enviar()}>
+                <IconEnviar size={13} /> Enviar ao cliente
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {apagando && (
+        <ConfirmarExclusao titulo={apagando.texto.slice(0, 80)} oQue="resposta ao cliente"
+          zIndex={10200}
+          onCancelar={() => setApagando(null)}
+          onConfirmar={() => void apagar(apagando)} />
+      )}
+    </div>
   );
 }
 
@@ -162,6 +296,10 @@ export function ChamadoDaTarefa({ tarefaId, api }: {
           ))}
         </ol>
       )}
+
+      <RespostasAoCliente tarefaId={tarefaId} api={api}
+        respostas={chamado.respostas ?? []}
+        onMudar={respostas => setChamado(c => c && { ...c, respostas })} />
 
       {chamado.reaberturas.length > 0 && (
         <ol className="chamado-tarefa-reaberturas">

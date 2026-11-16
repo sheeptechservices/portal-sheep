@@ -324,6 +324,10 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   tarefas_filtradas: 'tarefas:ver',
   tarefas_projetos: 'tarefas:ver',
   add_tarefa_comentario: 'tarefas:comentar',
+  // Responder ao cliente pelo chamado da tarefa é comentar, só que para fora;
+  // apagar a resposta segue a mesma porta (o servidor limita a quem escreveu).
+  responder_chamado_cliente: 'tarefas:comentar',
+  apagar_resposta_chamado_cliente: 'tarefas:comentar',
   // O anexo sobe antes do comentário, pela mesma porta de comentar.
   subir_anexo_comentario: 'tarefas:comentar',
   excluir_tarefa_comentario: 'tarefas:comentar',
