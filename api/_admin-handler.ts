@@ -18,6 +18,7 @@ import {
   notifyEmail, remetenteDeEmail, remetenteEndereco, textoEmail,
 } from './_email.js';
 import { obterDdl } from './_schema.js';
+import { DDL_FILA_DE_EMAILS, enfileirarAvisos, enviarResumosVencidos } from './_resumo-email.js';
 import {
   ETAPAS_TAREFA_PADRAO, ETIQUETAS_TAREFA_PADRAO, etapasDeTarefa, progressoDaEntrega,
   statusDeduzido, type EtapasDeTarefa,
@@ -1528,6 +1529,8 @@ async function migrarSchema(db: Client) {
     )
   `);
   await ddl(`CREATE INDEX IF NOT EXISTS idx_emails_enviados_data ON emails_enviados (criado_em DESC)`);
+  // A fila dos avisos de etapa, que saem juntos num resumo - ver `_resumo-email.ts`.
+  for (const sql of DDL_FILA_DE_EMAILS) await ddl(sql);
 
   // Os relatos do cartão do menu.
   //
@@ -3994,6 +3997,12 @@ export async function handleAdminData(
   db: Client,
   usuario?: UsuarioAdmin | null
 ): Promise<{ status: number; body: any }> {
+  // O resumo dos avisos de etapa vai de carona: corre ao lado do despacho, e
+  // não na frente dele, então quem pediu só espera se o envio demorar mais do
+  // que a própria ação. Uma vez por minuto por instância - ver `_resumo-email.ts`.
+  const carona = ensureAdminSchema(db)
+    .then(() => enviarResumosVencidos(db))
+    .catch(e => console.error('[resumo-email]', (e as Error).message));
   const resultado = await despacharAdminData(method, query, body, db, usuario);
   // Toda ação que gravou alguma coisa deixa registro de quem fez. Fica fora do
   // despacho de propósito: assim nenhuma ação nova nasce sem auditoria.
@@ -4001,6 +4010,7 @@ export async function handleAdminData(
     const acao = String(body?.action ?? '');
     if (acao) await registrarAuditoria(db, usuario, acao, alvoDaAcao(body, resultado.body));
   }
+  await carona;
   return resultado;
 }
 
@@ -7532,21 +7542,29 @@ function faltaEmProjeto(p: any): string | null {
                 })
                 : Promise.resolve({ rows: [] as Record<string, unknown>[] }),
             ]);
-            const corpo = fichaEmail([
-              ['Tarefa', titulo],
-              ['Projeto', String(projeto.rows[0]?.nome ?? '-')],
-              [donos.length > 1 ? 'Responsáveis' : 'Responsável',
-                resp.rows.map(x => String(x.nome)).join(', ') || 'sem responsável'],
-              ['Etapa', statusPedido],
-            ]);
-            for (const dest of inscritos) {
-              notifyEmail(db, dest.email, `Tarefa "${titulo}" chegou em "${statusPedido}"`, corpo, 'etapa_tarefa',
-                {
-                  previa: `${titulo} - ${statusPedido}`,
-                  rodape: `Você recebe este aviso pelo seu papel na equipe deste projeto,`
-                    + ` que a etapa "${statusPedido}" avisa.`,
-                });
-            }
+            const nomeProjeto = String(projeto.rows[0]?.nome ?? '-');
+            const nomesDonos = resp.rows.map(x => String(x.nome)).join(', ');
+            // O e-mail não sai agora: entra na fila de cada um e chega junto
+            // com os outros avisos de etapa, quando o quadro parar de mexer.
+            await enfileirarAvisos(db, inscritos.map(d => d.email), {
+              tipo: 'etapa_tarefa',
+              alvo: String(novaId ?? t.id),
+              titulo,
+              grupo: nomeProjeto,
+              etapa: statusPedido,
+              detalhe: nomesDonos || 'sem responsável',
+              autor: autorNome,
+              assunto: `Tarefa "${titulo}" chegou em "${statusPedido}"`,
+              ficha: [
+                ['Tarefa', titulo],
+                ['Projeto', nomeProjeto],
+                [donos.length > 1 ? 'Responsáveis' : 'Responsável', nomesDonos || 'sem responsável'],
+                ['Etapa', statusPedido],
+              ],
+              previa: `${titulo} - ${statusPedido}`,
+              rodape: `Você recebe este aviso pelo seu papel na equipe deste projeto,`
+                + ` que a etapa "${statusPedido}" avisa.`,
+            });
           }
         }
       }
@@ -9444,18 +9462,25 @@ function faltaEmProjeto(p: any): string | null {
           const s = (await db.execute({ sql: 'SELECT nome_contratado, cnpj_contratado, valor FROM oportunidades WHERE id = ?', args: [oportunidade_id] })).rows[0];
           const contratado = String(s?.nome_contratado ?? '-');
           const cnpj = String(s?.cnpj_contratado ?? '');
-          const corpo = fichaEmail([
-            ['Contratado', cnpj ? `${contratado} (${cnpj})` : contratado],
-            ['Valor', String(s?.valor ?? '-')],
-            ['Etapa', nome],
-          ]);
-          for (const dest of inscritos) {
-            notifyEmail(db, dest.email, `Oportunidade movida para "${nome}"`, corpo, 'etapa_oportunidade',
-              {
-                previa: `${contratado} - ${nome}`,
-                rodape: `Você recebe este aviso porque acompanha a etapa "${nome}" do funil.`,
-              });
-          }
+          const valor = String(s?.valor ?? '-');
+          // Como a etapa de tarefa: vai para a fila e sai no resumo.
+          await enfileirarAvisos(db, inscritos.map(d => d.email), {
+            tipo: 'etapa_oportunidade',
+            alvo: String(oportunidade_id),
+            titulo: contratado,
+            grupo: 'Funil',
+            etapa: nome,
+            detalhe: valor !== '-' ? `Valor ${valor}` : undefined,
+            autor: autorNome,
+            assunto: `Oportunidade movida para "${nome}"`,
+            ficha: [
+              ['Contratado', cnpj ? `${contratado} (${cnpj})` : contratado],
+              ['Valor', valor],
+              ['Etapa', nome],
+            ],
+            previa: `${contratado} - ${nome}`,
+            rodape: `Você recebe este aviso porque acompanha a etapa "${nome}" do funil.`,
+          });
         }
       }
       return { status: 200, body: { ok: true } };
