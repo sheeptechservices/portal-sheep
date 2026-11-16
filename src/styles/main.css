@@ -25958,6 +25958,7 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   color: var(--gray2);
   font-variant-numeric: tabular-nums;
 }
+.chm-balao-editado { color: var(--gray2); font-style: italic; }
 .chm-balao .reportes-detalhe-texto { margin: 0; }
 .revelar.aberto .chm-balao { animation: linha-entra .32s var(--curva-anti) backwards; }
 .revelar.aberto .chm-balao:nth-child(2) { animation-delay: 40ms; }
@@ -26226,6 +26227,11 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   transition: background var(--transition), color var(--transition);
 }
 .chamado-tarefa-resposta-apagar:hover { background: var(--gray4); color: var(--red); }
+/* O lápis vem antes da lixeira: ele leva a margem que empurra o par para a
+   direita, e a lixeira encosta nele. Realça sem o vermelho, que é do apagar. */
+.chamado-tarefa-resposta-editar + .chamado-tarefa-resposta-apagar { margin-left: 0; }
+.chamado-tarefa-resposta-apagar.chamado-tarefa-resposta-editar:hover { color: var(--black); }
+.chamado-tarefa-resposta-editado { color: var(--gray2); }
 /* A moldura do `.secao-add`, que é a dos botões de ícone do cabeçalho, mas com
    rótulo: a largura segue o texto, e não os 26px do botão quadrado. */
 .chamado-tarefa-responder {

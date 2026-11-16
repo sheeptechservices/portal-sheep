@@ -5630,7 +5630,7 @@ async function despacharAdminData(
         }).catch(() => ({ rows: [] as Record<string, unknown>[] })),
         // O que o time já respondeu ao cliente, na ordem em que foi escrito.
         db.execute({
-          sql: `SELECT id, texto, autor_id, autor_nome, criado_em FROM chamado_cliente_respostas
+          sql: `SELECT id, texto, autor_id, autor_nome, criado_em, editado_em FROM chamado_cliente_respostas
                 WHERE chamado_id = ? ORDER BY seq`,
           args: [c.id],
         }).catch(() => ({ rows: [] as Record<string, unknown>[] })),
@@ -5676,6 +5676,7 @@ async function despacharAdminData(
               texto: String(r.texto),
               autor: String(r.autor_nome),
               criado_em: String(r.criado_em),
+              editado_em: r.editado_em != null ? String(r.editado_em) : null,
               minha: !!usuario?.id && String(r.autor_id ?? '') === usuario.id,
             })),
           },
@@ -7898,6 +7899,36 @@ function faltaEmProjeto(p: any): string | null {
         args: [chamadoId, texto, autorId, autorNome ?? 'Time Sheep', agora, chamadoId],
       });
       return { status: 200, body: { ok: true, id: Number(r.rows[0]?.id), seq: Number(r.rows[0]?.seq), criado_em: agora } };
+    }
+
+    // Editar uma resposta já enviada: só quem escreveu, como no comentário. O
+    // texto novo substitui o antigo, e a resposta fica marcada como editada -
+    // no painel do cliente também, para ele saber que o que leu mudou.
+    if (action === 'editar_resposta_chamado_cliente') {
+      const id = Number(body?.id);
+      if (!Number.isFinite(id)) return { status: 400, body: { error: 'id ausente.' } };
+      const texto = String(body?.texto ?? '').trim().slice(0, 6000);
+      if (texto.length < 2) return { status: 400, body: { error: 'Escreva a resposta para o cliente.' } };
+      const alvo = await db.execute({
+        sql: `SELECT rs.autor_id, ch.tarefa_id FROM chamado_cliente_respostas rs
+              JOIN chamados_cliente ch ON ch.id = rs.chamado_id WHERE rs.id = ?`,
+        args: [id],
+      });
+      const linha = alvo.rows[0];
+      if (!linha) return { status: 404, body: { error: 'Resposta não encontrada.' } };
+      if (linha.tarefa_id != null) {
+        const barrado = await guardaDaEquipe(db, usuario, Number(linha.tarefa_id), 'tarefa');
+        if (barrado) return barrado;
+      }
+      if (!autorId || String(linha.autor_id ?? '') !== autorId) {
+        return { status: 403, body: { error: 'Só quem escreveu a resposta pode editá-la.' } };
+      }
+      const agora = new Date().toISOString();
+      await db.execute({
+        sql: 'UPDATE chamado_cliente_respostas SET texto = ?, editado_em = ? WHERE id = ?',
+        args: [texto, agora, id],
+      });
+      return { status: 200, body: { ok: true, editado_em: agora } };
     }
 
     // Apagar uma resposta já enviada: só quem escreveu, como no comentário.

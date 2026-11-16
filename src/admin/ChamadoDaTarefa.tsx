@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   IconArrowRight, IconBalao, IconChamado, IconChevronRight, IconDoc, IconEdit, IconEnviar, IconExternal, IconImage, IconLink,
-  IconSpinner, IconTrash, IconUndo,
+  IconCheck, IconSpinner, IconTrash, IconUndo,
 } from '../components/icons';
 import { CampoTexto } from '../components/CampoTexto';
 import { ConfirmarExclusao } from '../components/Dialogo';
@@ -38,7 +38,11 @@ const NOME_DO_CAMPO: Record<CampoAjustavel, string> = {
 interface Ajuste extends Record<CampoAjustavel, string | null> { seq: number; autor: string; criado_em: string }
 /** O que o time escreveu para o cliente. `id` negativo é o que ainda vai para
  *  o servidor; `minha` diz se quem lê pode apagar. */
-interface Resposta { id: number; texto: string; autor: string; criado_em: string; minha: boolean }
+interface Resposta {
+  id: number; texto: string; autor: string; criado_em: string; minha: boolean;
+  /** Quando quem escreveu corrigiu o texto depois de mandar; nulo se nunca. */
+  editado_em?: string | null;
+}
 
 interface Chamado {
   numero: number; titulo: string; solicitante: string; email: string | null; urgencia: string;
@@ -131,6 +135,12 @@ function RespostasAoCliente({ tarefaId, api, respostas, onMudar }: {
     if (n.has(id)) n.delete(id); else n.add(id);
     return n;
   });
+  /** A resposta em edição e o rascunho dela. Uma por vez. */
+  const [editando, setEditando] = useState<{ id: number; texto: string } | null>(null);
+  const caixaEdicao = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (editando) window.setTimeout(() => caixaEdicao.current?.focus(), 60);
+  }, [editando?.id]);
   const caixa = useRef<HTMLDivElement | null>(null);
   // O lado de dentro do `.revelar` fica montado; o foco vai quando ele abre.
   useEffect(() => {
@@ -160,6 +170,37 @@ function RespostasAoCliente({ tarefaId, api, respostas, onMudar }: {
     onMudar([...antes, { ...provisoria, id: Number(r.id), criado_em: String(r.criado_em ?? provisoria.criado_em) }]);
     // A aberta troca de chave junto com o id: a provisória vira a definitiva.
     setAbertas(a => { const n = new Set(a); n.delete(provisoria.id); n.add(Number(r.id)); return n; });
+  }
+
+  /** Editar: o lápis troca o texto pelo campo, já com o que estava escrito, e
+   *  a resposta abre se estava recolhida. */
+  function comecarEdicao(r: Resposta) {
+    setEditando({ id: r.id, texto: r.texto });
+    setAbertas(a => new Set(a).add(r.id));
+  }
+
+  /** Salvar a edição: o texto novo aparece na hora e vai ao servidor por
+   *  baixo; recusado, volta o anterior e o campo reabre com o rascunho. */
+  async function salvarEdicao() {
+    if (!editando) return;
+    const alvo = respostas.find(x => x.id === editando.id);
+    const limpo = editando.texto.trim();
+    if (!alvo || limpo.length < 2) return;
+    setEditando(null);
+    if (limpo === alvo.texto) return;
+    const antes = respostas;
+    const agora = new Date().toISOString();
+    onMudar(antes.map(x => (x.id === alvo.id ? { ...x, texto: limpo, editado_em: agora } : x)));
+    const r = await api('', 'POST', { action: 'editar_resposta_chamado_cliente', id: alvo.id, texto: limpo })
+      .catch(() => null);
+    if (!r || r.error) {
+      onMudar(antes);
+      setEditando({ id: alvo.id, texto: limpo });
+      toast('error', 'A resposta não foi editada', r?.error ?? 'O servidor não respondeu. Tente de novo.');
+      return;
+    }
+    onMudar(antes.map(x => (x.id === alvo.id
+      ? { ...x, texto: limpo, editado_em: String(r.editado_em ?? agora) } : x)));
   }
 
   async function apagar(alvo: Resposta) {
@@ -194,7 +235,12 @@ function RespostasAoCliente({ tarefaId, api, respostas, onMudar }: {
                     onClick={() => alternar(r.id)}>
                     <span className={`entrega-seta${aberta ? ' aberta' : ''}`}><IconChevronRight size={12} /></span>
                     <strong>{r.autor}</strong>
-                    <span className="chamado-tarefa-resposta-quando">{instante(r.criado_em)}</span>
+                    <span className="chamado-tarefa-resposta-quando">
+                      {instante(r.criado_em)}
+                      {r.editado_em && (
+                        <span className="chamado-tarefa-resposta-editado" title={`Editada em ${instante(r.editado_em)}`}> | editada</span>
+                      )}
+                    </span>
                     {/* Recolhida, o começo do texto: dá para saber qual é
                         sem abrir. Aberta, o texto inteiro mora embaixo. */}
                     <span className={`chamado-tarefa-resposta-previa${aberta ? ' some' : ''}`} aria-hidden={aberta}>
@@ -202,19 +248,45 @@ function RespostasAoCliente({ tarefaId, api, respostas, onMudar }: {
                     </span>
                     {r.id < 0 && <IconSpinner size={11} />}
                   </button>
+                  {/* O lápis ao lado da lixeira: só para quem escreveu, como
+                      o apagar. */}
                   {r.minha && r.id > 0 && (
-                    <button type="button" className="chamado-tarefa-resposta-apagar"
-                      title="Apagar esta resposta" aria-label="Apagar esta resposta"
-                      onClick={() => setApagando(r)}>
-                      <IconTrash size={12} />
-                    </button>
+                    <>
+                      <button type="button" className="chamado-tarefa-resposta-apagar chamado-tarefa-resposta-editar"
+                        title="Editar esta resposta" aria-label="Editar esta resposta"
+                        onClick={() => comecarEdicao(r)}>
+                        <IconEdit size={12} />
+                      </button>
+                      <button type="button" className="chamado-tarefa-resposta-apagar"
+                        title="Apagar esta resposta" aria-label="Apagar esta resposta"
+                        onClick={() => setApagando(r)}>
+                        <IconTrash size={12} />
+                      </button>
+                    </>
                   )}
                 </div>
                 {/* O texto fica montado o tempo todo: é dele que a abertura
                     tira a altura. */}
                 <div className={`revelar${aberta ? ' aberto' : ''}`}>
                   <div>
-                    <TextoRico texto={r.texto} className="chamado-tarefa-texto chamado-tarefa-resposta-texto" />
+                    {/* Editar é a mesma área trocando de cara: o texto vira o
+                        campo, já com o que estava escrito. */}
+                    {editando?.id === r.id ? (
+                      <div className="chamado-tarefa-compor chamado-tarefa-resposta-texto troca">
+                        <CampoTexto valor={editando.texto} onMudar={t => setEditando({ id: r.id, texto: t })}
+                          linhas={3} alturaMaxima={320} caixaRef={caixaEdicao}
+                          ariaLabel="Editar a resposta para o cliente" />
+                        <div className="chamado-tarefa-compor-acoes">
+                          <button type="button" className="delete-confirm-cancel" onClick={() => setEditando(null)}>Cancelar</button>
+                          <button type="button" className="btn btn-primary" disabled={editando.texto.trim().length < 2}
+                            onClick={() => void salvarEdicao()}>
+                            <IconCheck size={13} /> Salvar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <TextoRico texto={r.texto} className="chamado-tarefa-texto chamado-tarefa-resposta-texto troca" />
+                    )}
                   </div>
                 </div>
               </li>

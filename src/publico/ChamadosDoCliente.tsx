@@ -87,7 +87,7 @@ interface Chamado {
   ajustes: Ajuste[];
   /** O que o time escreveu para o cliente, da mais antiga para a mais nova.
    *  Sem autor: para o cliente, quem responde é o time. */
-  respostas?: { seq: number; em: string; texto: string }[];
+  respostas?: { seq: number; em: string; texto: string; editado?: boolean }[];
   /** Ainda indo para o servidor: a linha já está na fila, sem o número. */
   enviando?: boolean;
   /** A reabertura ainda indo para o servidor. */
@@ -742,7 +742,10 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
                                       <ol className="chm-baloes">
                                         {c.respostas!.map(r => (
                                           <li key={r.seq} className="chm-balao">
-                                            <time className="chm-balao-quando" dateTime={r.em}>{instante(r.em)}</time>
+                                            <time className="chm-balao-quando" dateTime={r.em}>
+                                              {instante(r.em)}
+                                              {r.editado && <span className="chm-balao-editado"> | editada</span>}
+                                            </time>
                                             <TextoRico texto={r.texto} className="reportes-detalhe-texto" />
                                           </li>
                                         ))}

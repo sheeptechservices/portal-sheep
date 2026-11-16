@@ -112,6 +112,8 @@ export const DDL_AJUSTES_DO_CHAMADO = [
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_chamado_cliente_respostas ON chamado_cliente_respostas (chamado_id, seq)`,
   // Acréscimos de coluna: falham quando a coluna já existe, e isso é o normal.
+  // `editado_em` marca a resposta que quem escreveu corrigiu depois de mandar.
+  `ALTER TABLE chamado_cliente_respostas ADD COLUMN editado_em TEXT`,
   `ALTER TABLE chamado_cliente_ajustes ADD COLUMN tipo TEXT`,
   `ALTER TABLE chamados_cliente ADD COLUMN tipo TEXT`,
 ];
@@ -414,7 +416,7 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
       .catch(() => []);
     // As respostas do time, com a mesma rede: sem elas o painel abre igual.
     const lendoRespostas = db.execute({
-      sql: `SELECT rs.chamado_id, rs.seq, rs.texto, rs.criado_em
+      sql: `SELECT rs.chamado_id, rs.seq, rs.texto, rs.criado_em, rs.editado_em
             FROM chamado_cliente_respostas rs
             JOIN chamados_cliente ch ON ch.id = rs.chamado_id
             WHERE ch.projeto_id = ? ORDER BY rs.chamado_id, rs.seq`,
@@ -517,6 +519,9 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
           // cliente, quem responde é o time.
           respostas: respostas.filter(r => Number(r.chamado_id) === id).map(r => ({
             seq: Number(r.seq), em: String(r.criado_em), texto: String(r.texto),
+            // Só que foi editada, sem o quando nem o antes: o cliente lê a
+            // versão em vigor, e o aviso diz que ela mudou depois de chegar.
+            editado: r.editado_em != null,
           })),
         };
       }),
