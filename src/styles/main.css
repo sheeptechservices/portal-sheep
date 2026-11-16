@@ -25718,27 +25718,12 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
    (só para onde foi e quando) e cada reabertura, com o que o cliente escreveu,
    os links e os anexos dela. */
 .chm-detalhe { display: flex; flex-direction: column; gap: 10px; }
-/* O chamado aberto em duas colunas na tela larga: o pedido à esquerda e a
-   conversa (respostas do time, reaberturas) à direita, separadas por um fio.
-   Numa coluna só, o texto parava na largura de leitura e metade da linha
-   sobrava vazia. Sem conversa, o pedido ocupa a largura toda; em tela
-   estreita, as duas colunas empilham. */
-.chm-detalhe-grade {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 18px 32px;
-  align-items: start;
-}
-.chm-detalhe-grade:has(> .chm-detalhe-conversa) { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
-.chm-detalhe-pedido,
-.chm-detalhe-conversa { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.chm-detalhe-conversa { padding-left: 28px; border-left: 1px solid var(--gray4); }
-.chm-detalhe-conversa > .chm-historico-titulo:first-child { margin-top: 0; }
-.chm-detalhe-conversa .chm-balao { max-width: 100%; }
-@media (max-width: 1100px) {
-  .chm-detalhe-grade:has(> .chm-detalhe-conversa) { grid-template-columns: minmax(0, 1fr); }
-  .chm-detalhe-conversa { padding-left: 0; border-left: 0; }
-}
+/* No chamado aberto, uma coluna só, e o conteúdo ocupa a largura dela: o
+   texto do pedido e os balões de resposta não param na largura de leitura
+   (90 caracteres, a regra geral do relato), que deixava metade da linha
+   vazia numa tela larga. */
+.chm-detalhe .reportes-detalhe-texto { max-width: none; }
+.chm-detalhe .chm-balao { align-self: stretch; max-width: none; }
 .chm-detalhe .reportes-anexos { margin: 0; }
 .chm-links {
   display: flex;
