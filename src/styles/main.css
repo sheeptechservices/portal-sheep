@@ -24711,10 +24711,13 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
   padding: 0;
   border-radius: 0;
   background: none;
-  filter: brightness(0) invert(1);
+  /* A silhueta no tom do texto: escura no claro, clara no escuro. Branca
+     nos dois, ela sumia sobre o vidro claro. */
+  filter: brightness(0);
   opacity: .72;
   transition: opacity var(--transition);
 }
+:root[data-theme="dark"] .pagina-projetos .pl-aba-logo:not([data-detalhe]) { filter: brightness(0) invert(1); }
 .pagina-projetos .pl-aba-logo[data-detalhe] { filter: none; opacity: .9; }
 .pagina-projetos .pl-aba:hover .pl-aba-logo,
 .pagina-projetos .pl-aba.ativa .pl-aba-logo { opacity: 1; }
