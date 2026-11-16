@@ -22285,10 +22285,17 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 
 /* O item escolhido do menu leva o texto escuro sobre o limao. A regra de cor
    do item, acima, tem o mesmo peso e vinha depois, e pintava o texto do
-   escolhido de cinza claro. */
+   escolhido de cinza claro. Vale em todo estado - pairado, em foco, no
+   instante do clique -, e no texto e no icone direto, e nao so no botao:
+   clicar de novo no item ja escolhido as vezes deixava o texto branco. */
 .app-menu .nav-leaf.ativo,
-.app-menu .nav-leaf.ativo:not(:disabled):hover,
-.app-menu .nav-leaf.ativo:focus-visible { color: var(--on-yellow); }
+.app-menu .nav-leaf.ativo:is(:hover, :focus, :focus-visible, :active),
+.app-menu .nav-leaf.ativo :is(.nav-leaf-texto, .nav-leaf-ico) { color: var(--on-yellow); }
+/* O texto do menu nao se seleciona: o item e um botao, e nao algo para ler e
+   copiar. Uma selecao que o alcancasse - clique triplo, arrasto que comeca
+   fora dele - pintava a palavra com a cor de selecao do navegador, branca
+   sobre o limao. */
+.app-menu .nav-leaf { -webkit-user-select: none; user-select: none; }
 
 /* ── O menu em trilho ──────────────────────────────────
    No computador o menu mora recolhido num trilho de 72px, so com os icones.
