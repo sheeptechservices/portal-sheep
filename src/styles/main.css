@@ -25754,3 +25754,12 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
 @media (prefers-reduced-motion: reduce) {
   .chm-pagina:has(> .casca-ondas) .chm-centro { animation: none; }
 }
+
+/* O bloco do chamado é um `section`, e o corpo do modal zera o recuo lateral
+   de toda seção dele (`.admin-modal-body section`): o conteúdo encostava nas
+   paredes da caixa. Aqui o recuo dele volta, com força para vencer aquela. */
+.admin-modal-body .chamado-tarefa {
+  padding: 14px 16px 16px;
+  /* A mesma regra trocava a borda de baixo por outra cor. */
+  border-bottom: 1px solid var(--sup-campo-borda);
+}
