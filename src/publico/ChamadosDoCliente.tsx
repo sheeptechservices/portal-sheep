@@ -33,6 +33,7 @@ import { ICONE_PRIORIDADE, PRIORIDADES, posicaoDaPrioridade } from '../lib/prior
 import { instante, tempoRelativo, tamanho as fmtTamanho } from '../lib/datas';
 import { contemTermo } from '../lib/texto';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
+import { iniciarOndas } from '../lib/ondas';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 
 type Grupo = 'triagem' | 'andamento' | 'concluido' | 'cancelado';
@@ -372,6 +373,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
   if (erro && !dados) {
     return (
       <div className="chm-pagina">
+        <FundoDeOndas />
         <div className="chm-centro">
           <p className="ff-vazio ff-erro"><IconAlert size={13} /> {erro}</p>
         </div>
@@ -381,6 +383,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
 
   return (
     <div className="chm-pagina">
+      <FundoDeOndas />
       <div className="chm-centro">
         <header className="chm-topo">
           <div className="chm-titulo">
@@ -625,6 +628,63 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
       })()}
     </div>
   );
+}
+
+/**
+ * As ondas de luz do portal, no fundo do painel: o mesmo desenho e o mesmo
+ * movimento da casca de dentro, para o cliente reconhecer a casa. A versão é a
+ * leve (meia resolução, 24 quadros), e o fundo para quando a aba some ou um
+ * formulário abre por cima - ninguém olha o fundo atrás de um modal. Sem
+ * WebGL, ou com movimento reduzido, fica o foco de luz em CSS da página.
+ */
+function FundoDeOndas() {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const [reduzido] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const [caiu, setCaiu] = useState(false);
+  // O tema vem do navegador de quem abre (a mesma escolha do portal), e não
+  // muda com a página aberta: lido uma vez basta.
+  const [claro] = useState(() => document.documentElement.getAttribute('data-theme') === 'light');
+
+  useEffect(() => {
+    const el = canvas.current;
+    if (!el || reduzido || caiu) return;
+    let ondas: ReturnType<typeof iniciarOndas> = null;
+    let vigia = 0;
+    const desligar = () => {
+      window.clearInterval(vigia);
+      vigia = 0;
+      ondas?.parar();
+      ondas = null;
+    };
+    const conferirModal = () => {
+      if (!ondas) return;
+      if (document.querySelector('.admin-modal-overlay')) ondas.pausar(); else ondas.retomar();
+    };
+    const rever = () => {
+      if (!document.hidden && !ondas) {
+        ondas = iniciarOndas(el, { camadas: 4, fps: 24, dprMax: 0.5, claro });
+        if (!ondas) { setCaiu(true); return; }
+        conferirModal();
+        vigia = window.setInterval(() => {
+          if (ondas?.morto()) { desligar(); setCaiu(true); }
+        }, 4000);
+      } else if (document.hidden && ondas) {
+        desligar();
+      }
+    };
+    const vigiaModal = new MutationObserver(conferirModal);
+    vigiaModal.observe(document.body, { childList: true });
+    rever();
+    document.addEventListener('visibilitychange', rever);
+    return () => {
+      vigiaModal.disconnect();
+      document.removeEventListener('visibilitychange', rever);
+      desligar();
+    };
+  }, [reduzido, caiu, claro]);
+
+  if (reduzido || caiu) return null;
+  return <canvas ref={canvas} className="casca-ondas" aria-hidden="true" />;
 }
 
 /** Um número do alto: rótulo, valor que conta ao aparecer, e a linha de apoio.
