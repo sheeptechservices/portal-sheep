@@ -5752,43 +5752,29 @@ function FormularioProjeto({
                       ) : <IconGlobo size={15} />}
                     </button>
                   )}
-                  {/* O painel de chamados do cliente, no mesmo arranjo da
-                      página de acompanhamento: desligado é um ícone; ligado
-                      vira o chip com abrir e copiar, e o clique nele desliga. */}
-                  {tokenChamados ? (
-                    <span className={`ao-vivo-caixa${ligandoChamados ? ' publicando' : ''}`}>
-                      <button type="button" className="ao-vivo"
-                        disabled={ligandoChamados || somenteLeitura}
-                        title="O painel de chamados do cliente está ligado. Clique para desligar."
-                        aria-label="Desligar o painel de chamados do cliente"
-                        aria-pressed
-                        onClick={() => void alternarChamados()}>
-                        {ligandoChamados
-                          ? <span className="dux-spinner sm na-cor" aria-hidden="true" />
-                          : <IconChamado size={13} />}
-                        <span className="ao-vivo-texto" aria-hidden="true">
-                          {ligandoChamados ? 'Desligando' : 'Chamados'}
-                        </span>
-                        {!ligandoChamados && <span className="ao-vivo-acao" aria-hidden="true">Desligar</span>}
+                  {/* O painel de chamados do cliente: todo projeto tem o dele,
+                      e ele não se desliga. O chip é fixo - clicar abre o
+                      painel numa aba nova, e o ícone ao lado copia o link para
+                      mandar ao cliente. O botão de criar só aparece no projeto
+                      que, por algum motivo, ainda não ganhou o link. */}
+                  {tokenChamados && linkChamados ? (
+                    <span className="ao-vivo-caixa">
+                      <a className="ao-vivo ao-vivo-fixo" href={linkChamados}
+                        target="_blank" rel="noopener noreferrer"
+                        title="Abrir o painel de chamados do cliente numa aba nova"
+                        aria-label="Abrir o painel de chamados do cliente numa aba nova">
+                        <IconChamado size={13} />
+                        <span className="ao-vivo-texto">Chamados</span>
+                        <IconExternal size={11} />
+                      </a>
+                      <span className="ao-vivo-fio" aria-hidden="true" />
+                      <button type="button" className="ao-vivo-icone"
+                        title={copiadoChamados ? 'Link copiado' : 'Copiar o link do painel de chamados'}
+                        aria-label="Copiar o link do painel de chamados"
+                        onClick={() => void copiar(linkChamados, setCopiadoChamados,
+                          'Copie o link do painel de chamados:')}>
+                        {copiadoChamados ? <IconCheck size={13} /> : <IconLink size={13} />}
                       </button>
-                      {linkChamados && !ligandoChamados && (
-                        <>
-                          <span className="ao-vivo-fio" aria-hidden="true" />
-                          <a className="ao-vivo-icone" href={linkChamados}
-                            target="_blank" rel="noopener noreferrer"
-                            title="Abrir o painel de chamados numa aba nova"
-                            aria-label="Abrir o painel de chamados numa aba nova">
-                            <IconExternal size={13} />
-                          </a>
-                          <button type="button" className="ao-vivo-icone"
-                            title={copiadoChamados ? 'Link copiado' : 'Copiar o link do painel de chamados'}
-                            aria-label="Copiar o link do painel de chamados"
-                            onClick={() => void copiar(linkChamados, setCopiadoChamados,
-                              'Copie o link do painel de chamados:')}>
-                            {copiadoChamados ? <IconCheck size={13} /> : <IconLink size={13} />}
-                          </button>
-                        </>
-                      )}
                     </span>
                   ) : (
                     <button type="button"

@@ -948,6 +948,23 @@ async function temProva(db: Client, entregaId: number, etapa: string) {
 }
 
 
+/**
+ * Todo projeto tem o painel de chamados do cliente: o que ainda não tem ganha
+ * o link agora. O link é a única credencial do painel, então vem da
+ * aleatoriedade criptográfica (32 hexadecimais), e não do `randomblob` do
+ * banco. Projeto em dia custa uma consulta que volta vazia.
+ */
+async function garantirPaineisDeChamados(db: Client) {
+  const sem = await db.execute('SELECT id FROM projetos WHERE chamados_token IS NULL');
+  if (!sem.rows.length) return;
+  const agora = new Date().toISOString();
+  await db.batch(sem.rows.map(r => ({
+    sql: `UPDATE projetos SET chamados_token = ?, chamados_ativado_em = ?
+          WHERE id = ? AND chamados_token IS NULL`,
+    args: [randomUUID().replace(/-/g, ''), agora, String(r.id)],
+  })), 'write');
+}
+
 export function ensureAdminSchema(db: Client): Promise<void> {
   if (!_schemaPromessa) {
     _schemaPromessa = migrarSchema(db).catch(err => {
@@ -1191,8 +1208,9 @@ async function migrarSchema(db: Client) {
   } catch { /* índice já existe */ }
 
   // O painel de chamados do cliente: um link próprio por projeto, separado da
-  // página de acompanhamento (ligar um não liga o outro). Desligar apaga o
-  // token, como na publicação: religar gera link novo, e o antigo morre.
+  // página de acompanhamento (ligar um não liga o outro). Todo projeto tem o
+  // dele, desde que nasce, e ele não se desliga: o projeto que ainda não tinha
+  // ganha o link aqui, uma vez por processo.
   try { await ddl(`ALTER TABLE projetos ADD COLUMN chamados_token TEXT`); } catch {}
   try { await ddl(`ALTER TABLE projetos ADD COLUMN chamados_ativado_em TEXT`); } catch {}
   try { await ddl(`ALTER TABLE projetos ADD COLUMN chamados_ativado_por TEXT`); } catch {}
@@ -1200,6 +1218,7 @@ async function migrarSchema(db: Client) {
     await ddl(`CREATE UNIQUE INDEX IF NOT EXISTS idx_projetos_chamados
                ON projetos (chamados_token) WHERE chamados_token IS NOT NULL`);
   } catch { /* índice já existe */ }
+  try { await garantirPaineisDeChamados(db); } catch { /* tenta de novo no próximo processo */ }
   // O que o cliente escreveu no chamado, guardado à parte da tarefa: é o que
   // ele vê no painel, e a tarefa do time pode mudar por dentro sem que isso
   // desça. Da tarefa o painel lê só a etapa, que é o status do chamado.
@@ -7287,7 +7306,14 @@ function faltaEmProjeto(p: any): string | null {
         });
       }
       await recalcularProgresso(db, id);
-      return { status: 200, body: { id } };
+      // O projeto nasce com o painel de chamados do cliente, como todo projeto.
+      const chamadosToken = randomUUID().replace(/-/g, '');
+      await db.execute({
+        sql: `UPDATE projetos SET chamados_token = ?, chamados_ativado_em = ?, chamados_ativado_por = ?
+              WHERE id = ? AND chamados_token IS NULL`,
+        args: [chamadosToken, new Date().toISOString(), autorNome, id],
+      });
+      return { status: 200, body: { id, chamados_token: chamadosToken } };
     }
 
     if (action === 'update_projeto') {
@@ -7401,20 +7427,15 @@ function faltaEmProjeto(p: any): string | null {
       return { status: 200, body: { ok: true, token } };
     }
 
-    // O painel de chamados do cliente: liga gerando o link, desliga apagando-o.
-    // Mesma regra da publicação - apertar ligar duas vezes devolve o mesmo
-    // link, e desligar mata o antigo de vez.
+    // O painel de chamados do cliente. Todo projeto tem o dele e ele não se
+    // desliga; ativar fica para o projeto que ainda não ganhou o link (devolve
+    // o que já existe, se houver), e desligar é recusado.
     if (action === 'ativar_chamados_projeto' || action === 'desativar_chamados_projeto') {
       const id = String(body?.id ?? '');
       if (!id) return { status: 400, body: { error: 'id ausente.' } };
       { const barrado = await guardaDaEquipe(db, usuario, id); if (barrado) return barrado; }
       if (action === 'desativar_chamados_projeto') {
-        await db.execute({
-          sql: `UPDATE projetos SET chamados_token = NULL, chamados_ativado_em = NULL,
-                       chamados_ativado_por = NULL WHERE id = ?`,
-          args: [id],
-        });
-        return { status: 200, body: { ok: true, token: null } };
+        return { status: 400, body: { error: 'O painel de chamados faz parte de todo projeto e não se desliga.' } };
       }
       const atual = await db.execute({
         sql: 'SELECT chamados_token FROM projetos WHERE id = ? AND ativo = 1',

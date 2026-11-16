@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import type { ReactNode } from 'react';
 import { ContaAnimada } from '../components/ContaAnimada';
 import { corDoProjeto } from '../components/DicaDoProjeto';
-import { IconAcessos, IconAlert, IconArrowRight, IconBalao, IconCheck, IconChevronRight, IconX, IconDashboard, IconGoogle, IconLua, IconSair, IconSearch, IconSol, IconSpinner } from '../components/icons';
+import { IconAcessos, IconAlert, IconArrowRight, IconBalao, IconCheck, IconChevronRight, IconX, IconDashboard, IconExternal, IconGoogle, IconLua, IconSair, IconSearch, IconSol, IconSpinner } from '../components/icons';
 import { lojaTema, comRevelacao } from '../lib/tema';
 import { lojaSubpagina, useSubpaginaAtual } from '../lib/subpagina';
 import {
@@ -425,7 +425,8 @@ const LARGURA_DO_MENU = 224;
 /** Quantos projetos a secao do menu mostra antes do "Ver todos". */
 const PROJETOS_NO_MENU = 6;
 /** O pouco que o menu precisa saber de um projeto. */
-interface ProjetoDoMenu { id: string; nome: string; cliente: string | null }
+/** `chamados` é o link do painel de chamados do cliente: todo projeto tem um. */
+interface ProjetoDoMenu { id: string; nome: string; cliente: string | null; chamados: string | null }
 
 /** Como o projeto aparece no menu: pelo cliente, que é como ele é chamado em
  *  voz alta. Sem cliente (a Geral, um projeto interno), fica o nome dele. Dois
@@ -589,6 +590,9 @@ function Sidebar({
   // vao ate a lista sem ela fechar. Pelo teclado, o foco faz o mesmo papel, e
   // no toque (sem ponteiro) a seta abre e fecha.
   const [pairando, setPairando] = useState<string | null>(null);
+  /** O projeto do menu com os caminhos abertos (Geral, Chamados). Um por vez:
+   *  abrir outro recolhe o anterior. */
+  const [projetoAberto, setProjetoAberto] = useState<string | null>(null);
   const esperaAbrir = useRef<ReturnType<typeof setTimeout> | null>(null);
   const esperaFechar = useRef<ReturnType<typeof setTimeout> | null>(null);
   const limparEsperas = () => {
@@ -725,13 +729,43 @@ function Sidebar({
           <p className="app-menu-secao">PROJETOS</p>
           {projetosDoMenu.slice(0, PROJETOS_NO_MENU).map(p => {
             const rotulo = rotuloNoMenu(p, projetosDoMenu);
+            const aberto = projetoAberto === p.id;
             return (
-              <button key={p.id} type="button" className={`nav-leaf menu-projeto cor-projeto-${corDoProjeto(p.id)}`}
-                title={p.cliente ? `${p.cliente} | ${p.nome}` : p.nome}
-                onClick={() => { onAbrirProjeto(p.id); if (!pinned) onClose(); }}>
-                <span className="nav-leaf-ico menu-projeto-selo">{rotulo.trim().charAt(0).toUpperCase()}</span>
-                <span className="nav-leaf-texto">{rotulo}</span>
-              </button>
+              // Clicar no projeto abre os caminhos dele: Geral, a ficha do
+              // projeto; Chamados, o painel do cliente numa aba nova. O de
+              // baixo fica montado o tempo todo, e é dele que a abertura tira
+              // a altura.
+              <div key={p.id} className={`menu-projeto-grupo${aberto ? ' aberto' : ''}`}>
+                <button type="button" className={`nav-leaf menu-projeto cor-projeto-${corDoProjeto(p.id)}`}
+                  title={p.cliente ? `${p.cliente} | ${p.nome}` : p.nome}
+                  aria-expanded={aberto}
+                  onClick={() => setProjetoAberto(a => (a === p.id ? null : p.id))}>
+                  <span className="nav-leaf-ico menu-projeto-selo">{rotulo.trim().charAt(0).toUpperCase()}</span>
+                  <span className="nav-leaf-texto">{rotulo}</span>
+                  <span className={`menu-projeto-seta entrega-seta${aberto ? ' aberta' : ''}`} aria-hidden="true">
+                    <IconChevronRight size={12} />
+                  </span>
+                </button>
+                <div className={`revelar nav-sub-revelar${aberto ? ' aberto' : ''}`} aria-hidden={!aberto}>
+                  <div>
+                    <div className="nav-sub">
+                      <button type="button" className="nav-sub-item" tabIndex={aberto ? 0 : -1}
+                        onClick={() => { onAbrirProjeto(p.id); setProjetoAberto(null); if (!pinned) onClose(); }}>
+                        <span className="nav-sub-rotulo">Geral</span>
+                      </button>
+                      {p.chamados && (
+                        <a className="nav-sub-item" href={`/chamados/${p.chamados}`}
+                          target="_blank" rel="noopener noreferrer" tabIndex={aberto ? 0 : -1}
+                          title="Abrir o painel de chamados do cliente numa aba nova"
+                          onClick={() => { setProjetoAberto(null); if (!pinned) onClose(); }}>
+                          <span className="nav-sub-rotulo">Chamados</span>
+                          <span className="nav-sub-externo" aria-hidden="true"><IconExternal size={11} /></span>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
             );
           })}
           {projetosDoMenu.length > PROJETOS_NO_MENU && (
@@ -1299,14 +1333,14 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
       .then(([proj, etapas, comercial, usuarios]) => {
         const novas: Partial<Record<Page, number>> = {};
         if (proj?.projetos) {
-          type P = { id: string; nome: string; cliente_nome: string | null; status: string;
+          type P = { id: string; nome: string; cliente_nome: string | null; status: string; chamados_token?: string | null;
             tarefas?: { id: number; status: string }[] };
           const lista = proj.projetos as P[];
           const ativos = lista.filter(p => p.status === 'Em andamento');
           // Em ordem do que aparece na linha: o cliente, ou o nome de quem
           // não tem cliente.
           setProjetosDoMenu(ativos
-            .map(p => ({ id: p.id, nome: p.nome, cliente: p.cliente_nome }))
+            .map(p => ({ id: p.id, nome: p.nome, cliente: p.cliente_nome, chamados: p.chamados_token ?? null }))
             .sort((a, b) => (a.cliente ?? a.nome).localeCompare(b.cliente ?? b.nome, 'pt-BR')
               || a.nome.localeCompare(b.nome, 'pt-BR')));
           novas.projetos = ativos.length;

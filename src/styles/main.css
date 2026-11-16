@@ -16176,6 +16176,15 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
    empilhadas. */
 .ao-vivo-caixa:has(.ao-vivo:hover:not(:disabled)),
 .ao-vivo-caixa:has(.ao-vivo:focus-visible) { --tom: var(--red); }
+/* O selo fixo (o painel de chamados, que todo projeto tem e não se desliga):
+   o clique abre, e não tira nada do ar - então o hover não vira vermelho, só
+   realça a chapa no tom dele. */
+.ao-vivo-caixa:has(.ao-vivo.ao-vivo-fixo:hover:not(:disabled)),
+.ao-vivo-caixa:has(.ao-vivo.ao-vivo-fixo:focus-visible) {
+  --tom: var(--green);
+  background: color-mix(in srgb, var(--tom) 16%, transparent);
+}
+.ao-vivo.ao-vivo-fixo { text-decoration: none; }
 
 .ao-vivo {
   display: inline-flex;
@@ -23884,6 +23893,28 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 .nav-sub-item.ativo { color: var(--black); font-weight: 600; }
 /* O ramo da subpagina aberta acende em limao, por cima do fio cinza. */
 .nav-sub-item.ativo::after { z-index: 1; border-color: var(--yellow); }
+/* O subitem que é link (o painel de chamados, que abre numa aba nova) veste o
+   mesmo desenho do botão, com a seta de "fora daqui" no fim. */
+a.nav-sub-item { text-decoration: none; gap: 6px; }
+.nav-sub-externo { display: inline-flex; color: var(--gray2); }
+.nav-sub-item:hover .nav-sub-externo { color: var(--black); }
+
+/* ── Os caminhos de cada projeto no menu ───────────────────────────────────
+   Clicar no projeto abre Geral (a ficha) e Chamados (o painel do cliente), no
+   mesmo ramo das subpáginas. A seta no fim da linha gira, nunca troca. No
+   trilho recolhido a seta some com o texto, e o ramo aberto também: lá só
+   cabe o selo. */
+.menu-projeto-seta {
+  display: inline-flex;
+  margin-left: auto;
+  color: var(--gray2);
+  flex-shrink: 0;
+}
+.menu-projeto-grupo.aberto > .nav-leaf { background: var(--gray4); color: var(--black); }
+.menu-projeto-grupo .nav-sub { margin-left: 21px; }
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .menu-projeto-seta { opacity: 0; }
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .menu-projeto-grupo .nav-sub-revelar { display: none; }
+
 .nav-sub-revelar.aberto .nav-sub-item { animation: linha-entra .3s var(--curva-anti) backwards; }
 .nav-sub-revelar.aberto .nav-sub-item:nth-child(2) { animation-delay: .03s; }
 .nav-sub-revelar.aberto .nav-sub-item:nth-child(3) { animation-delay: .06s; }
