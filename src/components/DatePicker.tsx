@@ -95,11 +95,18 @@ interface DatePickerProps {
   chip?: boolean
   /** O que o leitor de tela e a dica dizem, já que o chip não tem rótulo. */
   titulo?: string
+  /**
+   * Na barra de seleção: o gatilho vira um botão da barra, com o mesmo desenho
+   * dos vizinhos, e o calendário abre para cima dele. Como a data das marcadas
+   * pode não ser uma só, o botão de tirar a data aparece sempre, com o nome que
+   * a tela der a ele.
+   */
+  acao?: { rotulo: string; icone: React.ReactNode; semData: string }
 }
 
 type DropPos = { top?: number; bottom?: number; left: number; width: number }
 
-export function DatePicker({ value, onChange, label, required, error, disabled, compact, allowPast, chip, titulo }: DatePickerProps) {
+export function DatePicker({ value, onChange, label, required, error, disabled, compact, allowPast, chip, titulo, acao }: DatePickerProps) {
   const now = new Date()
   const todayY = now.getFullYear()
   const todayM = now.getMonth()
@@ -304,13 +311,13 @@ export function DatePicker({ value, onChange, label, required, error, disabled, 
 
       {/* Footer */}
       <div style={{ borderTop: '1.5px solid var(--gray3)', marginTop: 12, paddingTop: 12, display: 'flex', gap: 8 }}>
-        {value && (
+        {(value || acao) && (
           <button
             onClick={(e) => { e.stopPropagation(); onChange(''); setOpen(false) }}
             className="btn btn-secondary btn-sm"
             style={{ flex: 1, justifyContent: 'center', borderRadius: 100 }}
           >
-            Limpar
+            {acao ? acao.semData : 'Limpar'}
           </button>
         )}
         <button
@@ -355,6 +362,31 @@ export function DatePicker({ value, onChange, label, required, error, disabled, 
     </div>,
     document.body
   )
+
+  if (acao) {
+    return (
+      <>
+        {/* O próprio botão é a âncora: embrulhado, ele sairia do espaçamento
+            da barra, que é contado entre os botões. A barra mora no pé da
+            tela, então o calendário, sem lugar embaixo, abre para cima. */}
+        <button
+          ref={triggerRef as unknown as React.RefObject<HTMLButtonElement>}
+          type="button"
+          className="barra-selecao-acao"
+          disabled={disabled}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          title={acao.rotulo}
+          aria-label={acao.rotulo}
+          onClick={toggle}
+        >
+          {acao.icone}
+          <span className="barra-selecao-rotulo">{acao.rotulo}</span>
+        </button>
+        {dropdown}
+      </>
+    )
+  }
 
   if (chip) {
     return (

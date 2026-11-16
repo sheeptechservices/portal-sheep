@@ -27,6 +27,14 @@ export function diaCurto(v: string | null | undefined, vazio = ''): string {
   return d && m ? `${d}/${m}` : vazio;
 }
 
+/** O prazo que todas as peças têm em comum, ou vazio se elas divergem. É o
+ *  que o calendário da barra de seleção abre marcado: com cinco tarefas para o
+ *  mesmo dia, ele mostra o dia; com prazos diferentes, não finge um. */
+export function prazoEmComum(itens: { prazo?: string | null }[]): string {
+  const prazos = new Set(itens.map(t => (t.prazo ?? '').slice(0, 10)));
+  return prazos.size === 1 ? [...prazos][0] : '';
+}
+
 /** Um instante, com hora: `04/09/2026, 14:30`. Para carimbo de acesso e de
  *  auditoria, onde o dia sozinho não basta. */
 export function instante(iso: string | null | undefined, vazio = '-'): string {

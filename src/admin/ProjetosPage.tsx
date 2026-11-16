@@ -57,7 +57,7 @@ import {
   exportar as exportarPacote, type ComentarioExport, type ObjetivoExport,
   type Pacote as PacoteExport, type SubtarefaExport, passosEmOrdem,
 } from '../lib/exportarTarefas';
-import { dia as fmtData, diaCurto as fmtDataCurta, tamanho as fmtTamanho } from '../lib/datas';
+import { dia as fmtData, diaCurto as fmtDataCurta, prazoEmComum, tamanho as fmtTamanho } from '../lib/datas';
 import { ancorar } from '../lib/ancorar';
 import { contemTermo } from '../lib/texto';
 import { arquivosColados } from '../lib/colarArquivos';
@@ -1588,6 +1588,12 @@ function QuadroDeTarefas({ tarefas, etapas, pessoas, podeEditar, onAbrir, onCria
                   { responsaveis: dono ? [dono.id] : [], responsavel_id: dono?.id ?? null },
                   n => (dono ? `${nTarefas(n)} com ${dono.nome}` : `${nTarefas(n)} sem responsável`));
               }} />
+          )}
+          {acoes.podeEditar && (
+            <DatePicker allowPast value={prazoEmComum(sel.selecionadas)}
+              acao={{ rotulo: 'Prazo', icone: <IconCalendario size={13} />, semData: 'Sem prazo' }}
+              onChange={v => acoes.alterar(sel.selecionadas, { prazo: v || null },
+                n => (v ? `${nTarefas(n)} com prazo em ${fmtData(v)}` : `${nTarefas(n)} sem prazo`))} />
           )}
           {acoes.podeExcluir && (
             <AcaoDaBarra rotulo="Excluir" icone={<IconTrash size={13} />} perigo

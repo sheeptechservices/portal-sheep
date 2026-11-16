@@ -16,13 +16,14 @@ import { createPortal } from 'react-dom';
 import { iniciais, useAuth, useToast } from './AdminApp';
 import { CartaoDaTarefa, Complexidade, Prazo, Prioridade } from './CartaoDaTarefa';
 import {
-  IconAgrupar, IconAlert, IconArrowRight, IconCheck, IconChevronDown, IconInbox,
+  IconAgrupar, IconAlert, IconArrowRight, IconCalendario, IconCheck, IconChevronDown, IconInbox,
   IconPrioridadeAlta, IconRecolher,
   IconAjustes, IconDownload, IconDuplicar, IconNovaTarefa, IconOrdenar, IconPlus, IconRecentes,
   IconSearch, IconTrash, IconUser, IconX,
 } from '../components/icons';
 import { SelectSistema } from '../components/SelectSistema';
 import { DatePicker } from '../components/DatePicker';
+import { dia, prazoEmComum } from '../lib/datas';
 import FilterDropdown from '../components/FilterDropdown';
 import FiltroPeriodo, { dentroDoPeriodo } from '../components/FiltroPeriodo';
 import { SkeletonCards, SkeletonTabela } from '../components/Skeleton';
@@ -1383,6 +1384,13 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
                 }, { responsaveis: lista }, n => (dono
                   ? `${nTarefas(n)} com ${dono.nome}` : `${nTarefas(n)} sem responsável`));
               }} />
+          )}
+          {podeEditar && (
+            <DatePicker allowPast value={prazoEmComum(selecionadas)}
+              acao={{ rotulo: 'Prazo', icone: <IconCalendario size={13} />, semData: 'Sem prazo' }}
+              onChange={v => void alterarSelecionadas(
+                { prazo: v || null }, { prazo: v || null },
+                n => (v ? `${nTarefas(n)} com prazo em ${dia(v)}` : `${nTarefas(n)} sem prazo`))} />
           )}
           {podeExcluir && (
             <AcaoDaBarra rotulo="Excluir" icone={<IconTrash size={13} />} perigo
