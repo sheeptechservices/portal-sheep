@@ -574,6 +574,17 @@ export function IconCalendario({ size = 14 }: { size?: number }) {
 export function IconRelogio({ size = 14 }: { size?: number }) {
   return <Ico size={size}><circle cx="12" cy="12" r="9" /><path d="M12 7.2V12l3.2 1.9" /></Ico>;
 }
+/** O ingresso picotado: o painel de chamados do cliente, no topo do projeto. */
+export function IconChamado({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4z" />
+      <path d="M14 6v2M14 11v2M14 16v2" />
+    </svg>
+  );
+}
+
 // Falar com alguem - o balao de conversa.
 export function IconBalao({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M21 11.5a8.4 8.4 0 01-9 8.4 9.5 9.5 0 01-2.9-.4L3 21l1.6-4.6A8.2 8.2 0 013.2 12 8.4 8.4 0 0112 3.5a8.4 8.4 0 019 8z" /></Ico>;

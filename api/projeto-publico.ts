@@ -29,6 +29,10 @@ import { citacaoEmail, fichaEmail, notaEmail, notifyEmail } from './_email.js';
 // Só o endereço do dono do painel: é o mesmo que o aviso de chamado do time usa,
 // e repetir a regra aqui abriria a chance de os dois divergirem.
 import { emailAdmin } from './_papeis.js';
+// O painel de chamados do cliente passa por esta mesma rota (`modo=chamados`):
+// o projeto está no teto de funções do plano, e uma rota a mais travaria o
+// deploy. A lógica e as regras dele moram no módulo.
+import { atenderChamados } from './_chamados-publico.js';
 
 /** As entregas de uma tarefa: a principal (`entrega_id`) e as da lista
  *  `entregas`, quando ela serve a mais de uma. Mesma regra do painel. */
@@ -142,6 +146,7 @@ const ORDEM_STATUS = [
 ];
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.query.modo === 'chamados') return atenderChamados(req, res);
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }

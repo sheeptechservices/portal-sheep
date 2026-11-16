@@ -276,6 +276,9 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   toggle_bloqueio_tarefa_etiqueta: 'configuracoes:etapas',
   // Publicar é decidir o que o cliente vê: mesma permissão de editar o projeto.
   publicar_projeto: 'projetos:editar',
+  // O painel de chamados também muda o que existe fora do portal.
+  ativar_chamados_projeto: 'projetos:editar',
+  desativar_chamados_projeto: 'projetos:editar',
   // O combinado da planning e do projeto: quem ve o projeto le, quem edita
   // escreve. A leitura vem cortada por equipe na propria consulta de projetos,
   // que e o que decide quais projetos aparecem na tela.

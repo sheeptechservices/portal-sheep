@@ -9,7 +9,7 @@ import {
   IconFunil,
   IconImage, IconInbox,
   IconChevronDown, IconChevronRight, IconChevronUp, IconChevronUpDown,
-  IconDrive, IconEdit, IconEye, IconEyeOff, IconGitHub, IconGlobo, IconLink, IconMarcoAndamento,
+  IconChamado, IconDrive, IconEdit, IconEye, IconEyeOff, IconGitHub, IconGlobo, IconLink, IconMarcoAndamento,
   IconMarcoBloqueado, IconSpinner,
   IconAgrupar, IconArrastar, IconCalendario, IconCheck, IconExternal, IconOrdenar, IconSearch,
   IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado, IconMarcoValidado,
@@ -375,6 +375,8 @@ export interface Projeto {
   criado_em: string;
   /** Chave da página de acompanhamento do cliente. Nulo é não publicado. */
   publico_token: string | null;
+  /** Link do painel de chamados do cliente. Nulo com o painel desligado. */
+  chamados_token?: string | null;
   publicado_em: string | null;
   /** Posição do projeto na reunião de planning, arrumada arrastando as
    *  divisórias. Nula é "ainda não ordenado". */
@@ -5298,7 +5300,7 @@ function FormularioProjeto({
   onBuscarReunioesFireflies, onBuscarGravacaoFireflies, onBuscarTranscricaoFireflies,
   onAnexarReuniaoFireflies,
   onExcluirReuniao,
-  onPublicar, onSalvarEntrega, onExcluirEntrega, onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
+  onPublicar, onChamados, onSalvarEntrega, onExcluirEntrega, onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
   onAnexarNaEntrega, onRemoverAnexoDaEntrega, onVerAnexoDaEntrega, onBaixarAnexoDaEntrega,
   acessos,
 }: {
@@ -5351,6 +5353,9 @@ function FormularioProjeto({
   /** Publica ou tira do ar. Devolve o token novo, `null` ao despublicar, ou
    *  `undefined` quando a gravação falhou. */
   onPublicar: (p: Projeto, publicar: boolean) => Promise<string | null | undefined>;
+  /** Liga ou desliga o painel de chamados do cliente. Mesmo retorno de
+   *  `onPublicar`: o token novo, `null` ao desligar, `undefined` na falha. */
+  onChamados: (p: Projeto, ligar: boolean) => Promise<string | null | undefined>;
   /** Guardar, tirar e abrir os acessos deste projeto. Ausente enquanto ele
    *  ainda não existe: não há a que prender um login. */
   acessos?: AcessosDoProjeto;
@@ -5429,6 +5434,13 @@ function FormularioProjeto({
     editando?.publico_token ?? null);
   useEffect(() => { setTokenPublico(editando?.publico_token ?? null); }, [editando?.publico_token]);
   const linkPublico = tokenPublico ? `${window.location.origin}/p/${tokenPublico}` : null;
+  // O painel de chamados: o mesmo arranjo da página de acompanhamento, com link
+  // e estado próprios - ligar um não liga o outro.
+  const [tokenChamados, setTokenChamados] = useState<string | null>(editando?.chamados_token ?? null);
+  useEffect(() => { setTokenChamados(editando?.chamados_token ?? null); }, [editando?.chamados_token]);
+  const [ligandoChamados, setLigandoChamados] = useState(false);
+  const [copiadoChamados, setCopiadoChamados] = useState(false);
+  const linkChamados = tokenChamados ? `${window.location.origin}/chamados/${tokenChamados}` : null;
   const { saindo, fechar } = useSaidaSuave(() => onFechar(intactoRef.current));
   const fundo = useFecharNoFundo(fechar);
 
@@ -5459,6 +5471,22 @@ function FormularioProjeto({
         'Copie o link de acompanhamento:');
     } finally {
       setPublicando(false);
+    }
+  }
+
+  async function alternarChamados() {
+    if (!editando) return;
+    setLigandoChamados(true);
+    try {
+      const r = await onChamados(editando, !tokenChamados);
+      if (r === undefined) return;
+      setTokenChamados(r);
+      // Ligou agora: o link já vai para a área de transferência, que é o
+      // passo seguinte - mandar para o cliente.
+      if (r) void copiar(`${window.location.origin}/chamados/${r}`, setCopiadoChamados,
+        'Copie o link do painel de chamados:');
+    } finally {
+      setLigandoChamados(false);
     }
   }
 
@@ -5714,6 +5742,60 @@ function FormularioProjeto({
                           <span aria-hidden="true">Publicando</span>
                         </>
                       ) : <IconGlobo size={15} />}
+                    </button>
+                  )}
+                  {/* O painel de chamados do cliente, no mesmo arranjo da
+                      página de acompanhamento: desligado é um ícone; ligado
+                      vira o chip com abrir e copiar, e o clique nele desliga. */}
+                  {tokenChamados ? (
+                    <span className={`ao-vivo-caixa${ligandoChamados ? ' publicando' : ''}`}>
+                      <button type="button" className="ao-vivo"
+                        disabled={ligandoChamados || somenteLeitura}
+                        title="O painel de chamados do cliente está ligado. Clique para desligar."
+                        aria-label="Desligar o painel de chamados do cliente"
+                        aria-pressed
+                        onClick={() => void alternarChamados()}>
+                        {ligandoChamados
+                          ? <span className="dux-spinner sm na-cor" aria-hidden="true" />
+                          : <IconChamado size={13} />}
+                        <span className="ao-vivo-texto" aria-hidden="true">
+                          {ligandoChamados ? 'Desligando' : 'Chamados'}
+                        </span>
+                        {!ligandoChamados && <span className="ao-vivo-acao" aria-hidden="true">Desligar</span>}
+                      </button>
+                      {linkChamados && !ligandoChamados && (
+                        <>
+                          <span className="ao-vivo-fio" aria-hidden="true" />
+                          <a className="ao-vivo-icone" href={linkChamados}
+                            target="_blank" rel="noopener noreferrer"
+                            title="Abrir o painel de chamados numa aba nova"
+                            aria-label="Abrir o painel de chamados numa aba nova">
+                            <IconExternal size={13} />
+                          </a>
+                          <button type="button" className="ao-vivo-icone"
+                            title={copiadoChamados ? 'Link copiado' : 'Copiar o link do painel de chamados'}
+                            aria-label="Copiar o link do painel de chamados"
+                            onClick={() => void copiar(linkChamados, setCopiadoChamados,
+                              'Copie o link do painel de chamados:')}>
+                            {copiadoChamados ? <IconCheck size={13} /> : <IconLink size={13} />}
+                          </button>
+                        </>
+                      )}
+                    </span>
+                  ) : (
+                    <button type="button"
+                      className={`secao-add${ligandoChamados ? ' publicando' : ''}`}
+                      style={ligandoChamados ? undefined : { width: 30, height: 30 }}
+                      disabled={ligandoChamados || somenteLeitura}
+                      title="Criar o painel de chamados do cliente"
+                      aria-label="Criar o painel de chamados do cliente"
+                      onClick={() => void alternarChamados()}>
+                      {ligandoChamados ? (
+                        <>
+                          <span className="dux-spinner sm na-cor" aria-hidden="true" />
+                          <span aria-hidden="true">Criando</span>
+                        </>
+                      ) : <IconChamado size={15} />}
                     </button>
                   )}
                   <button type="button" className="secao-add" style={{ width: 30, height: 30 }}
@@ -7331,6 +7413,22 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     return token;
   }
 
+  async function alternarChamadosDoProjeto(p: Projeto, ligar: boolean) {
+    const r = await api('', 'POST', {
+      action: ligar ? 'ativar_chamados_projeto' : 'desativar_chamados_projeto', id: p.id,
+    });
+    if (r?.error) {
+      toast('error', ligar ? 'Não foi possível criar o painel' : 'Não foi possível desligar o painel', r.error);
+      return undefined;
+    }
+    const token: string | null = r?.token ?? null;
+    mudancasRef.current++;
+    setProjetos(ps => ps.map(x => (x.id === p.id ? { ...x, chamados_token: token } : x)));
+    toast('success', ligar ? 'Painel de chamados criado' : 'Painel de chamados desligado',
+      ligar ? 'O link foi copiado para a área de transferência.' : 'O link antigo deixou de funcionar.');
+    return token;
+  }
+
   async function salvarEntrega(p: Projeto, dados: EntregaPendente, id?: number) {
     // Entrega que já existe muda na tela primeiro: trocar o status de uma linha
     // é o gesto mais repetido do painel, e ele esperava a listagem inteira
@@ -8250,6 +8348,7 @@ carregando ? (
           onAnexarReuniaoFireflies={anexarReuniaoFireflies}
           onExcluirReuniao={excluirReuniao}
           onPublicar={publicarProjeto}
+          onChamados={alternarChamadosDoProjeto}
           // Quem está na equipe vê os acessos e revela a senha, mesmo sem
           // editar o projeto: o login é do trabalho, e quem executa e quem
           // testa precisam dele. Quem não edita recebe a seção em leitura, sem

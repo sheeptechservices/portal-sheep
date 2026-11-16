@@ -15,6 +15,7 @@ const ProjetoPublico = lazy(() => import('./publico/ProjetoPublico'));
 const CriarSenha = lazy(() => import('./publico/CriarSenha'));
 const VitrinePublica = lazy(() => import('./publico/VitrinePublica'));
 const PropostaPublica = lazy(() => import('./publico/PropostaPublica'));
+const ChamadosDoCliente = lazy(() => import('./publico/ChamadosDoCliente'));
 
 const publico = /^\/p\/([0-9a-f]{32})\/?$/.exec(window.location.pathname);
 // `/v/<token>` é a vitrine de profissionais: a seleção de uma vaga mostrada a
@@ -23,6 +24,9 @@ const vitrine = /^\/v\/([0-9a-f]{32})\/?$/.exec(window.location.pathname);
 // `/proposta/<token>` é a apresentação de uma proposta, mandada por link no
 // lugar do PDF.
 const proposta = /^\/proposta\/([0-9a-f]{32})\/?$/.exec(window.location.pathname);
+// `/chamados/<token>` é o painel de chamados do cliente: abrir e acompanhar os
+// chamados de um projeto, sem login.
+const chamados = /^\/chamados\/([0-9a-f]{32})\/?$/.exec(window.location.pathname);
 // O token do convite é base64url de 32 bytes - 43 caracteres do alfabeto dele.
 const convite = /^\/senha\/([A-Za-z0-9_-]{20,})\/?$/.exec(window.location.pathname);
 
@@ -38,6 +42,7 @@ createRoot(document.getElementById('root')!).render(
       {publico ? <ProjetoPublico token={publico[1]} />
         : vitrine ? <VitrinePublica token={vitrine[1]} />
           : proposta ? <PropostaPublica token={proposta[1]} />
+          : chamados ? <ChamadosDoCliente token={chamados[1]} />
             : convite ? <CriarSenha token={convite[1]} />
               : <AdminApp />}
     </Suspense>

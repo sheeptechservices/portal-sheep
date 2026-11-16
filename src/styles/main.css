@@ -25243,3 +25243,372 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
    `text-box` corta a linha na altura do algarismo, e o centro passa a ser o
    dele. */
 .kanban-conta-bolha > * { line-height: 1; text-box: trim-both cap alphabetic; }
+
+/* ══ O painel de chamados do cliente ═══════════════════════════════════════
+   `/chamados/<token>`: a página que o cliente abre para pedir e acompanhar. O
+   mesmo vocabulário do portal - a faixa do alto, os números em cartão, o
+   painel com a busca e os filtros, e a fila em tabela no desenho dos chamados
+   de dentro (`.reportes-*`) -, sem a casca: aqui não há menu nem janela. */
+.chm-pagina {
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--black);
+}
+/* Um foco de luz no alto, o mesmo limão da casa, para a página não ser uma
+   chapa lisa. */
+.chm-pagina::before {
+  content: '';
+  position: fixed;
+  z-index: -1;
+  top: -30vw;
+  right: -14vw;
+  width: min(70vw, 900px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--brilho-1), transparent);
+  pointer-events: none;
+}
+.chm-centro {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 24px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.chm-topo {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 18px 22px;
+  border-radius: var(--radius-lg);
+  background: var(--sup-faixa);
+  border: 1px solid var(--sup-faixa-borda);
+  animation: faixa-entra .45s var(--curva-anti) backwards;
+}
+.chm-titulo { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.chm-rotulo {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.chm-nome {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  color: var(--texto-forte);
+}
+.chm-nome-vazio {
+  display: block;
+  width: 220px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: var(--gray4);
+}
+.chm-cliente { font-size: 13px; color: var(--gray); }
+
+.chm-numeros {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+/* O cartão de número é botão: filtra a fila. Aceso, ele leva o fio limão. */
+.chm-numero-cartao {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.chm-numero-cartao.ativo {
+  border-color: color-mix(in srgb, var(--yellow) 70%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--yellow) 55%, transparent);
+}
+.chm-numero-cartao:focus-visible { outline: none; border-color: var(--gray2); }
+
+.chm-painel {
+  border-radius: var(--radius-lg);
+  background: var(--sup-painel);
+  border: 1px solid var(--sup-painel-borda);
+  animation: faixa-entra .45s var(--curva-anti) 120ms backwards;
+}
+.chm-barra {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--sup-painel-borda);
+}
+.chm-barra .campo-busca { flex: 1 1 240px; max-width: 420px; }
+.chm-filtros { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.chm-tabela-caixa { overflow-x: auto; padding: 0 16px 10px; }
+.chm-tabela { min-width: 780px; }
+/* Fora do modal o cabeçalho não gruda: a página inteira é que rola. */
+.chm-tabela th { position: static; background: transparent; }
+.chm-numero {
+  width: 1%;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--gray);
+}
+.chm-quem { white-space: nowrap; }
+/* A linha que ainda vai para o servidor: já está na fila, um tom abaixo. */
+.chm-enviando > td { color: var(--gray2); }
+.chm-rodape { margin: 4px 0 0; text-align: center; font-size: 12px; color: var(--gray2); }
+
+/* O formulário do chamado, no centro. */
+.chm-form { width: min(620px, calc(100vw - 32px)); }
+.chm-form-topo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 22px 10px;
+}
+.chm-form-sub { margin: 4px 0 0; font-size: 13px; color: var(--gray); }
+.chm-form-corpo {
+  min-height: 0;
+  padding: 8px 22px 18px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.chm-form-corpo .form-group { display: flex; flex-direction: column; gap: 6px; margin: 0; }
+.chm-form-dupla { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.chm-form-urgencia { max-width: 240px; }
+.chm-opcional {
+  font-style: normal;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--gray2);
+}
+.chm-form-rodape {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--sup-painel-borda);
+}
+
+@media (max-width: 720px) {
+  .chm-centro { padding: 18px 16px 36px; }
+  .chm-numeros { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .chm-form-dupla { grid-template-columns: 1fr; }
+  .chm-filtros { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chm-topo, .chm-painel { animation: none; }
+}
+
+/* ══ Chamados do cliente: links, histórico e reabrir ═══════════════════════
+   O detalhe do chamado conta tudo o que aconteceu com ele, da abertura até
+   agora, numa linha do tempo de pontos ligados por um fio: as trocas de etapa
+   (só para onde foi e quando) e cada reabertura, com o que o cliente escreveu,
+   os links e os anexos dela. */
+.chm-detalhe { display: flex; flex-direction: column; gap: 10px; }
+.chm-detalhe .reportes-anexos { margin: 0; }
+.chm-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.chm-links a,
+.chm-links-edicao li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 320px;
+  padding: 4px 10px;
+  border: 1px solid var(--gray4);
+  border-radius: var(--radius-pill);
+  background: var(--white);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--gray);
+  text-decoration: none;
+  transition: border-color var(--transition), color var(--transition);
+}
+.chm-links a span,
+.chm-links-edicao li > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chm-links a:hover { border-color: var(--gray2); color: var(--black); }
+.chm-links-edicao li > span { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+.chm-links-edicao button {
+  display: inline-flex;
+  padding: 2px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.chm-links-edicao button:hover { background: var(--gray4); color: var(--black); }
+.chm-link-novo { display: flex; gap: 8px; }
+.chm-link-novo .form-input { flex: 1; min-width: 0; }
+.chm-link-novo button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+
+.chm-historico-titulo {
+  margin: 6px 0 0;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.chm-historico { margin: 0; padding: 0; list-style: none; }
+.chm-passo {
+  position: relative;
+  padding: 0 0 14px 22px;
+}
+/* O fio que liga um passo ao próximo. O último não tem para onde ir. */
+.chm-passo::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 14px;
+  bottom: 0;
+  width: 1.5px;
+  background: var(--gray4);
+}
+.chm-passo:last-child { padding-bottom: 2px; }
+.chm-passo:last-child::before { display: none; }
+.chm-passo-ponto {
+  position: absolute;
+  left: 0;
+  top: 3px;
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--gray2);
+  box-shadow: 0 0 0 3px var(--card-hover-bg);
+}
+.chm-passo-reaberto .chm-passo-ponto {
+  width: 16px;
+  height: 16px;
+  left: -2px;
+  top: 1px;
+  background: var(--yellow);
+  color: var(--on-yellow);
+}
+.chm-passo-linha {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--gray);
+}
+.chm-passo-linha strong { color: var(--black); font-weight: 700; }
+.chm-passo-quando { margin: 2px 0 0; font-size: 11px; color: var(--gray2); }
+.chm-passo-corpo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--gray4);
+}
+.chm-passo-corpo .reportes-detalhe-texto { margin: 0; }
+.chm-passo-corpo .reportes-anexos { margin: 0; }
+.chm-passo-reaberto.enviando .chm-passo-corpo { opacity: .75; }
+/* Os passos entram em escada quando o detalhe abre. */
+.revelar.aberto .chm-passo { animation: linha-entra .38s var(--curva-anti) backwards; }
+.revelar.aberto .chm-passo:nth-child(2) { animation-delay: 40ms; }
+.revelar.aberto .chm-passo:nth-child(3) { animation-delay: 80ms; }
+.revelar.aberto .chm-passo:nth-child(n+4) { animation-delay: 120ms; }
+
+.chm-detalhe-acoes {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--gray4);
+  font-size: 12px;
+  color: var(--gray2);
+}
+.chm-form-titulo {
+  margin: 4px 0 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--texto-forte);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .revelar.aberto .chm-passo { animation: none; }
+}
+
+/* A marca da Sheep no painel do cliente: a assinatura no alto da faixa, e o
+   carneiro com o nome da casa no pé da página. */
+.chm-marca {
+  display: block;
+  /* Na coluna flexível a imagem esticava até a largura toda e o desenho ia
+     para o meio: fica do tamanho dela, encostada à esquerda do título. */
+  align-self: flex-start;
+  width: auto;
+  height: 26px;
+  margin-bottom: 14px;
+  object-fit: contain;
+}
+.chm-assinatura {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--gray2);
+}
+.chm-assinatura img { width: auto; height: 18px; opacity: .8; }
+
+/* O campo de anexo dos formulários de chamado (abrir e reabrir) com a mesma
+   chapa dos campos de cima: o fundo de vidro, a borda leve e o mesmo hover.
+   Era o desenho do pedido da página do projeto, de borda tracejada e hover em
+   limão, e lia como peça de outro formulário. Arrastando um arquivo por cima,
+   ele fica no estado de hover, que já diz "solte aqui". Os arquivos que
+   entraram ganham a mesma chapa. */
+.chm-form .pub-pedido-solta {
+  border: 1px solid var(--sup-campo-borda);
+  background: var(--campo-vidro);
+  color: var(--gray2);
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.chm-form .pub-pedido-solta:hover,
+.chm-form .pub-pedido-solta.sobre {
+  border-color: color-mix(in srgb, var(--gray2) 55%, transparent);
+  background: var(--campo-vidro-hover);
+  color: var(--black);
+}
+.chm-form .pub-pedido-solta:focus-visible {
+  outline: none;
+  border-color: var(--gray2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gray2) 16%, transparent);
+}
+.chm-form .pub-pedido-anexo {
+  border-color: var(--sup-campo-borda);
+  background: var(--campo-vidro);
+}

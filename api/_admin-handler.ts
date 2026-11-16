@@ -1189,6 +1189,89 @@ async function migrarSchema(db: Client) {
                ON projetos (publico_token) WHERE publico_token IS NOT NULL`);
   } catch { /* índice já existe */ }
 
+  // O painel de chamados do cliente: um link próprio por projeto, separado da
+  // página de acompanhamento (ligar um não liga o outro). Desligar apaga o
+  // token, como na publicação: religar gera link novo, e o antigo morre.
+  try { await ddl(`ALTER TABLE projetos ADD COLUMN chamados_token TEXT`); } catch {}
+  try { await ddl(`ALTER TABLE projetos ADD COLUMN chamados_ativado_em TEXT`); } catch {}
+  try { await ddl(`ALTER TABLE projetos ADD COLUMN chamados_ativado_por TEXT`); } catch {}
+  try {
+    await ddl(`CREATE UNIQUE INDEX IF NOT EXISTS idx_projetos_chamados
+               ON projetos (chamados_token) WHERE chamados_token IS NOT NULL`);
+  } catch { /* índice já existe */ }
+  // O que o cliente escreveu no chamado, guardado à parte da tarefa: é o que
+  // ele vê no painel, e a tarefa do time pode mudar por dentro sem que isso
+  // desça. Da tarefa o painel lê só a etapa, que é o status do chamado.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS chamados_cliente (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      projeto_id  TEXT NOT NULL,
+      -- O número que o cliente vê: a contagem dentro do projeto. O id e o da
+      -- tarefa são sequências da casa inteira e não saem para fora.
+      numero      INTEGER,
+      tarefa_id   INTEGER,
+      titulo      TEXT NOT NULL,
+      descricao   TEXT NOT NULL,
+      solicitante TEXT NOT NULL,
+      email       TEXT,
+      urgencia    TEXT NOT NULL,
+      -- Links que o cliente mandou junto, em JSON. Só http e https.
+      links       TEXT,
+      criado_em   TEXT NOT NULL
+    )
+  `);
+  try { await ddl(`ALTER TABLE chamados_cliente ADD COLUMN numero INTEGER`); } catch {}
+  try { await ddl(`ALTER TABLE chamados_cliente ADD COLUMN links TEXT`); } catch {}
+  try {
+    await ddl(`CREATE INDEX IF NOT EXISTS idx_chamados_cliente_projeto
+               ON chamados_cliente (projeto_id, criado_em DESC)`);
+  } catch { /* índice já existe */ }
+  try {
+    await ddl(`CREATE UNIQUE INDEX IF NOT EXISTS idx_chamados_cliente_numero
+               ON chamados_cliente (projeto_id, numero)`);
+  } catch { /* índice já existe */ }
+  // Os anexos do chamado, do lado do cliente. Uma cópia também vai para o
+  // primeiro comentário da tarefa; esta é a que o cliente vê para sempre.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS chamado_cliente_anexos (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      chamado_id INTEGER NOT NULL,
+      -- A posição no chamado (1, 2, 3): é por ela que o painel pede o arquivo.
+      ordem      INTEGER,
+      -- A reabertura em que o arquivo veio. Nulo: veio na abertura.
+      evento_id  INTEGER,
+      nome       TEXT NOT NULL,
+      tipo       TEXT NOT NULL,
+      tamanho    INTEGER NOT NULL,
+      base64     TEXT NOT NULL,
+      criado_em  TEXT NOT NULL
+    )
+  `);
+  try { await ddl(`ALTER TABLE chamado_cliente_anexos ADD COLUMN ordem INTEGER`); } catch {}
+  try { await ddl(`ALTER TABLE chamado_cliente_anexos ADD COLUMN evento_id INTEGER`); } catch {}
+  // As reaberturas do chamado, do lado do cliente: o que ele escreveu, os links
+  // e quando. `seq` é a contagem dentro do chamado, que é o que sai para fora.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS chamado_cliente_eventos (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      chamado_id INTEGER NOT NULL,
+      seq        INTEGER NOT NULL,
+      tipo       TEXT NOT NULL,
+      texto      TEXT,
+      links      TEXT,
+      autor      TEXT NOT NULL,
+      criado_em  TEXT NOT NULL
+    )
+  `);
+  try {
+    await ddl(`CREATE UNIQUE INDEX IF NOT EXISTS idx_chamado_cliente_eventos
+               ON chamado_cliente_eventos (chamado_id, seq)`);
+  } catch { /* índice já existe */ }
+  try {
+    await ddl(`CREATE INDEX IF NOT EXISTS idx_chamado_cliente_anexos
+               ON chamado_cliente_anexos (chamado_id)`);
+  } catch { /* índice já existe */ }
+
   // Dono da sessão. Fica nulo nas sessões abertas pela senha compartilhada, que
   // segue existindo como plano B - nesse caso a autoria é a da casa, não a de
   // uma pessoa (ver AUTOR_COMPARTILHADO).
@@ -7208,6 +7291,39 @@ function faltaEmProjeto(p: any): string | null {
       const token = randomUUID().replace(/-/g, '');
       await db.execute({
         sql: `UPDATE projetos SET publico_token = ?, publicado_em = ?, publicado_por_nome = ?
+              WHERE id = ?`,
+        args: [token, new Date().toISOString(), autorNome, id],
+      });
+      return { status: 200, body: { ok: true, token } };
+    }
+
+    // O painel de chamados do cliente: liga gerando o link, desliga apagando-o.
+    // Mesma regra da publicação - apertar ligar duas vezes devolve o mesmo
+    // link, e desligar mata o antigo de vez.
+    if (action === 'ativar_chamados_projeto' || action === 'desativar_chamados_projeto') {
+      const id = String(body?.id ?? '');
+      if (!id) return { status: 400, body: { error: 'id ausente.' } };
+      { const barrado = await guardaDaEquipe(db, usuario, id); if (barrado) return barrado; }
+      if (action === 'desativar_chamados_projeto') {
+        await db.execute({
+          sql: `UPDATE projetos SET chamados_token = NULL, chamados_ativado_em = NULL,
+                       chamados_ativado_por = NULL WHERE id = ?`,
+          args: [id],
+        });
+        return { status: 200, body: { ok: true, token: null } };
+      }
+      const atual = await db.execute({
+        sql: 'SELECT chamados_token FROM projetos WHERE id = ? AND ativo = 1',
+        args: [id],
+      });
+      if (!atual.rows[0]) return { status: 404, body: { error: 'Projeto não encontrado.' } };
+      const jaTem = atual.rows[0].chamados_token;
+      if (jaTem) return { status: 200, body: { ok: true, token: String(jaTem) } };
+      // O link é a única credencial do painel: 32 hexadecimais de aleatoriedade
+      // criptográfica, como o da página de acompanhamento.
+      const token = randomUUID().replace(/-/g, '');
+      await db.execute({
+        sql: `UPDATE projetos SET chamados_token = ?, chamados_ativado_em = ?, chamados_ativado_por = ?
               WHERE id = ?`,
         args: [token, new Date().toISOString(), autorNome, id],
       });
