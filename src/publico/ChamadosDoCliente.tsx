@@ -18,7 +18,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  IconAlert, IconChevronRight, IconDoc, IconExternal, IconImage, IconImagemSem, IconLink, IconPlus,
+  IconAlert, IconArrowRight, IconChevronRight, IconDoc, IconEdit, IconExternal, IconImage, IconImagemSem, IconLink, IconPlus,
   IconSpinner, IconTrash, IconUndo, IconUpload, IconX,
 } from '../components/icons';
 import { CampoBusca } from '../components/CampoBusca';
@@ -49,6 +49,15 @@ interface Anexo {
  *  a que ainda está indo para o servidor. */
 interface Reabertura { em: string; seq: number | null; autor: string; texto: string; links: string[] }
 
+/** Os campos que o cliente pode corrigir depois de enviar. */
+type CampoAjustavel = 'titulo' | 'descricao' | 'solicitante' | 'urgencia';
+const CAMPOS_AJUSTAVEIS: CampoAjustavel[] = ['titulo', 'descricao', 'solicitante', 'urgencia'];
+type Versao = Record<CampoAjustavel, string>;
+
+/** Uma correção do chamado, só com o que mudou nela. `seq` nulo é a que ainda
+ *  está indo para o servidor. */
+interface Ajuste { seq: number | null; em: string; autor: string; mudou: Partial<Versao> }
+
 interface Chamado {
   /** A chave da linha: o número no projeto, ou um provisório negativo enquanto
    *  o chamado ainda vai para o servidor. Nenhum id interno chega aqui. */
@@ -66,10 +75,33 @@ interface Chamado {
   links: string[];
   anexos: Anexo[];
   reaberturas: Reabertura[];
+  /** As correções, da mais antiga para a mais nova. Título, descrição, quem
+   *  pediu e urgência acima são os do envio original. */
+  ajustes: Ajuste[];
   /** Ainda indo para o servidor: a linha já está na fila, sem o número. */
   enviando?: boolean;
   /** A reabertura ainda indo para o servidor. */
   reabrindo?: boolean;
+  /** Uma correção ainda indo para o servidor. */
+  ajustando?: boolean;
+}
+
+/** A versão que vale agora: o envio original com as correções por cima, na
+ *  ordem em que vieram. */
+function versaoEmVigor(c: Chamado): Versao {
+  const v: Versao = { titulo: c.titulo, descricao: c.descricao, solicitante: c.solicitante, urgencia: c.urgencia };
+  for (const a of c.ajustes ?? []) for (const k of CAMPOS_AJUSTAVEIS) if (a.mudou[k] != null) v[k] = a.mudou[k]!;
+  return v;
+}
+
+/** O chamado como a tabela mostra: título, quem pediu e urgência já na versão
+ *  em vigor, que é o que filtra e ordena. A descrição fica a original, porque
+ *  o detalhe a mostra como foi enviada e as correções embaixo dela. */
+interface ChamadoNaTela extends Chamado { original: Versao; descricaoEmVigor: string }
+function naTela(c: Chamado): ChamadoNaTela {
+  const original: Versao = { titulo: c.titulo, descricao: c.descricao, solicitante: c.solicitante, urgencia: c.urgencia };
+  const v = versaoEmVigor(c);
+  return { ...c, titulo: v.titulo, solicitante: v.solicitante, urgencia: v.urgencia, original, descricaoEmVigor: v.descricao };
 }
 
 interface Dados {
@@ -147,6 +179,9 @@ interface Rascunho {
 /** O que se manda ao reabrir: por que, quem, e o que vem junto. */
 interface RascunhoDeReabertura { texto: string; autor: string; links: string[]; anexos: Anexo[] }
 
+/** A correção: a versão nova dos quatro campos, e quem está corrigindo. */
+interface RascunhoDeAjuste extends Versao { autor: string }
+
 /** Até quantos links por envio. O servidor confere de novo. */
 const MAX_LINKS = 5;
 
@@ -192,6 +227,11 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
   const [reabrindo, setReabrindo] = useState<number | null>(null);
   const [reabertura, setReabertura] = useState<RascunhoDeReabertura>(() => reaberturaVazia(token));
   const [erroReabertura, setErroReabertura] = useState<string | null>(null);
+  /** O chamado que está sendo corrigido, e o rascunho da correção. O rascunho
+   *  nasce da versão em vigor quando o formulário abre. */
+  const [ajustandoNumero, setAjustandoNumero] = useState<number | null>(null);
+  const [rascunhoDeAjuste, setRascunhoDeAjuste] = useState<RascunhoDeAjuste | null>(null);
+  const [erroAjuste, setErroAjuste] = useState<string | null>(null);
   /** Os nomes que este navegador já usou neste painel. */
   const [lembrados, setLembrados] = useState<NomeLembrado[]>(() => lerNomes(token));
 
@@ -231,7 +271,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
     if (dados?.projeto.nome) document.title = `Chamados | ${dados.projeto.nome}`;
   }, [dados?.projeto.nome]);
 
-  const chamados = dados?.chamados ?? [];
+  const chamados = useMemo(() => (dados?.chamados ?? []).map(naTela), [dados?.chamados]);
   const contas = useMemo(() => {
     const por = (g: Grupo) => chamados.filter(c => c.grupo === g).length;
     return {
@@ -249,7 +289,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
     if (filtroStatus.length && !filtroStatus.includes(c.status)) return false;
     if (filtroUrgencia.length && !filtroUrgencia.includes(c.urgencia)) return false;
     if (filtroQuem.length && !filtroQuem.includes(c.solicitante)) return false;
-    if (busca.trim() && !contemTermo(`${c.numero ?? ''} ${c.titulo} ${c.descricao} ${c.solicitante}`, busca)) return false;
+    if (busca.trim() && !contemTermo(`${c.numero ?? ''} ${c.titulo} ${c.descricao} ${c.descricaoEmVigor} ${c.solicitante}`, busca)) return false;
     return true;
   }), [chamados, recorte, filtroStatus, filtroUrgencia, filtroQuem, busca]);
 
@@ -328,6 +368,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
       status: entrada?.nome ?? 'Triagem', cor: entrada?.cor ?? '#8D939B', grupo: 'triagem',
       links: r.links, anexos: r.anexos, enviando: true,
       reaberturas: [],
+      ajustes: [],
     };
     setDados(d => d && { ...d, chamados: [linha, ...d.chamados] });
     setRascunho(rascunhoVazio(token));
@@ -413,6 +454,62 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
       setReabertura(r);
       setErroReabertura((e as Error).message || 'A conexão falhou. Tente de novo.');
       setReabrindo(numero);
+    }
+  }
+
+  // ── Corrigir um chamado aberto ─────────────────────────────────────────
+  //  O mesmo gesto: o formulário fecha, a linha já mostra a versão nova e a
+  //  correção aparece dentro do chamado na hora. Recusada, tudo volta ao que
+  //  era e o formulário reabre com o rascunho e o motivo.
+  function abrirAjuste(c: ChamadoNaTela) {
+    const v = versaoEmVigor(c);
+    setRascunhoDeAjuste({ ...v, autor: lerNomes(token)[0]?.nome ?? '' });
+    setErroAjuste(null);
+    setAjustandoNumero(c.numero);
+  }
+
+  async function ajustar(numero: number, r: RascunhoDeAjuste) {
+    setLembrados(lembrarNome(token, r.autor));
+    const antes = dados?.chamados.find(c => c.numero === numero);
+    if (!antes) return;
+    const vigente = versaoEmVigor(antes);
+    const mudou: Partial<Versao> = {};
+    for (const k of CAMPOS_AJUSTAVEIS) if (r[k].trim() !== vigente[k]) mudou[k] = r[k].trim();
+    if (Object.keys(mudou).length === 0) return;
+    setDados(d => d && {
+      ...d,
+      chamados: d.chamados.map(c => c.numero !== numero ? c : {
+        ...c, ajustando: true,
+        ajustes: [...c.ajustes, { seq: null, em: new Date().toISOString(), autor: r.autor.trim(), mudou }],
+      }),
+    });
+    setRascunhoDeAjuste(null);
+    setErroAjuste(null);
+    try {
+      const resp = await fetch(`${base}&acao=ajustar&chamado=${numero}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          titulo: r.titulo.trim(), descricao: r.descricao.trim(), solicitante: r.solicitante.trim(),
+          urgencia: r.urgencia, autor: r.autor.trim(),
+        }),
+      });
+      const d = await resp.json().catch(() => null);
+      if (!resp.ok) throw new Error(d?.error ?? 'Não foi possível ajustar o chamado. Tente de novo.');
+      setDados(atual => atual && {
+        ...atual,
+        chamados: atual.chamados.map(c => c.numero !== numero ? c : {
+          ...c, ajustando: false,
+          ajustes: c.ajustes.map(a => a.seq === null ? { ...a, seq: Number(d.ajuste), em: String(d.em ?? a.em) } : a),
+        }),
+      });
+    } catch (e) {
+      setDados(atual => atual && {
+        ...atual, chamados: atual.chamados.map(c => c.numero !== numero ? c : antes),
+      });
+      setRascunhoDeAjuste(r);
+      setErroAjuste((e as Error).message || 'A conexão falhou. Tente de novo.');
+      setAjustandoNumero(numero);
     }
   }
 
@@ -550,6 +647,15 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
                                 </span>
                               )}
                               <p className="reportes-texto" title={c.titulo}>{c.titulo}</p>
+                              {/* Depois do título, discreto: a linha já mostra
+                                  a versão corrigida, e o selo avisa que o
+                                  detalhe tem as correções. */}
+                              {c.ajustes.length > 0 && (
+                                <span className="chm-ajustado"
+                                  title={`Ajustado em ${instante(c.ajustes[c.ajustes.length - 1].em)}`}>
+                                  <IconEdit size={10} /> Ajustado
+                                </span>
+                              )}
                             </div>
                           </td>
                           <td>
@@ -586,10 +692,28 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
                             <div className={`revelar${abertaAqui ? ' aberto' : ''}`}>
                               <div>
                                 <div className="reportes-detalhe-corpo chm-detalhe">
+                                  {/* Com correções, o envio ganha nome: é a
+                                      versão de partida, e as mudanças vêm
+                                      embaixo dela. */}
+                                  {c.ajustes.length > 0 && <p className="chm-historico-titulo">Como foi enviado</p>}
                                   <TextoRico texto={c.descricao} className="reportes-detalhe-texto" />
                                   <ListaDeLinks links={c.links} />
                                   <ChipsDeAnexos chamado={c} anexos={c.anexos.filter(a => !a.reabertura)}
                                     onVer={i => setVendo({ chamado: c, indice: i })} />
+                                  {/* As correções, logo abaixo do envio: cada
+                                      uma só com o que mudou nela. */}
+                                  {c.ajustes.length > 0 && (
+                                    <>
+                                      <p className="chm-historico-titulo">
+                                        {c.ajustes.length === 1 ? 'Ajuste' : `Ajustes (${c.ajustes.length})`}
+                                      </p>
+                                      <ol className="chm-historico">
+                                        {passosDosAjustes(c).map(({ ajuste, de }, i) => (
+                                          <PassoDoAjuste key={`${ajuste.seq ?? 'novo'}-${i}`} ajuste={ajuste} de={de} />
+                                        ))}
+                                      </ol>
+                                    </>
+                                  )}
                                   {/* As reaberturas, uma embaixo da outra: o que
                                       o cliente escreveu cada vez que pediu o
                                       chamado de volta. Só aparecem se houver. */}
@@ -612,6 +736,17 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
                                       <button type="button" className="reportes-acao"
                                         onClick={e => { e.stopPropagation(); setErroReabertura(null); setReabrindo(c.numero); }}>
                                         <IconUndo size={12} /> Reabrir chamado
+                                      </button>
+                                    </div>
+                                  )}
+                                  {/* Aberto, o chamado ainda se corrige: o envio
+                                      fica como foi, e a correção vai junto. */}
+                                  {!encerrado && c.numero != null && !c.enviando && !c.ajustando && (
+                                    <div className="chm-detalhe-acoes surge">
+                                      <span>Mandou algo errado ou faltou alguma informação?</span>
+                                      <button type="button" className="reportes-acao"
+                                        onClick={e => { e.stopPropagation(); abrirAjuste(c); }}>
+                                        <IconEdit size={12} /> Ajustar chamado
                                       </button>
                                     </div>
                                   )}
@@ -654,6 +789,17 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
             onMudar={setReabertura}
             onFechar={() => setReabrindo(null)}
             onEnviar={r => { setReabrindo(null); void reabrir(alvo.numero!, r); }} />
+        );
+      })()}
+
+      {ajustandoNumero != null && rascunhoDeAjuste && (() => {
+        const alvo = chamados.find(c => c.numero === ajustandoNumero);
+        if (!alvo) return null;
+        return (
+          <FormularioDeAjuste chamado={alvo} rascunho={rascunhoDeAjuste} erro={erroAjuste} nomes={sugestoesDeNome}
+            onMudar={setRascunhoDeAjuste}
+            onFechar={() => setAjustandoNumero(null)}
+            onEnviar={r => { setAjustandoNumero(null); void ajustar(alvo.numero!, r); }} />
         );
       })()}
 
@@ -796,6 +942,65 @@ function ChipsDeAnexos({ chamado, anexos, onVer }: {
         </li>
       ))}
     </ul>
+  );
+}
+
+/** Cada correção com o que valia antes dela: o envio original somado às
+ *  correções anteriores. É o "de" do "de → para". */
+function passosDosAjustes(c: ChamadoNaTela): { ajuste: Ajuste; de: Versao }[] {
+  let v: Versao = { ...c.original };
+  return c.ajustes.map(ajuste => {
+    const de = v;
+    v = { ...v };
+    for (const k of CAMPOS_AJUSTAVEIS) if (ajuste.mudou[k] != null) v[k] = ajuste.mudou[k]!;
+    return { ajuste, de };
+  });
+}
+
+const NOME_DO_CAMPO: Record<CampoAjustavel, string> = {
+  titulo: 'Título', descricao: 'Descrição', solicitante: 'Quem pede', urgencia: 'Urgência',
+};
+
+/** Uma correção: quem corrigiu, quando, e só os campos que mudaram. Os curtos
+ *  em "de → para" numa linha; a descrição nova inteira, porque a antiga está
+ *  logo acima, no envio. */
+function PassoDoAjuste({ ajuste, de }: { ajuste: Ajuste; de: Versao }) {
+  // Os curtos primeiro, a descrição por último: no meio, o texto longo
+  // separaria as linhas de "de → para" umas das outras.
+  const campos = (['titulo', 'solicitante', 'urgencia', 'descricao'] as CampoAjustavel[])
+    .filter(k => ajuste.mudou[k] != null);
+  const enviando = ajuste.seq == null;
+  const comIcone = (k: CampoAjustavel, valor: string) => {
+    const Icone = k === 'urgencia' ? ICONE_PRIORIDADE[valor] : undefined;
+    return <>{Icone && <Icone size={12} />}{valor}</>;
+  };
+  return (
+    <li className={`chm-passo chm-passo-ajuste${enviando ? ' enviando' : ''}`}>
+      <span className="chm-passo-ponto"><IconEdit size={9} /></span>
+      <p className="chm-passo-linha">
+        <strong>{ajuste.autor}</strong> ajustou o chamado
+        {enviando && <IconSpinner size={11} />}
+      </p>
+      <p className="chm-passo-quando">{instante(ajuste.em)}</p>
+      <dl className="chm-passo-corpo chm-ajuste">
+        {campos.map(k => (
+          <div key={k} className={`chm-ajuste-campo${k === 'descricao' ? ' longo' : ''}`}>
+            <dt>{NOME_DO_CAMPO[k]}</dt>
+            <dd>
+              {k === 'descricao' ? (
+                <TextoRico texto={ajuste.mudou.descricao!} className="reportes-detalhe-texto" />
+              ) : (
+                <>
+                  <span className="chm-ajuste-de">{comIcone(k, de[k])}</span>
+                  <span className="chm-ajuste-seta" aria-label="para"><IconArrowRight size={11} /></span>
+                  <span className="chm-ajuste-para">{comIcone(k, ajuste.mudou[k]!)}</span>
+                </>
+              )}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </li>
   );
 }
 
@@ -1192,6 +1397,76 @@ function FormularioDeReabertura({ chamado, rascunho, erro, nomes, onMudar, onFec
       {(erro || erroCampo) && (
         <p className="pub-pedido-erro surge"><IconX size={11} /> {erroCampo ?? erro}</p>
       )}
+    </Janela>
+  );
+}
+
+/** Corrigir um chamado que ainda está com o time. O formulário abre com a
+ *  versão em vigor; o que for trocado vira uma correção guardada junto do
+ *  chamado, e o envio original continua como foi. */
+function FormularioDeAjuste({ chamado, rascunho, erro, nomes, onMudar, onFechar, onEnviar }: {
+  chamado: ChamadoNaTela;
+  rascunho: RascunhoDeAjuste;
+  erro: string | null;
+  nomes: NomeLembrado[];
+  onMudar: (r: RascunhoDeAjuste) => void;
+  onFechar: () => void;
+  onEnviar: (r: RascunhoDeAjuste) => void;
+}) {
+  const r = rascunho;
+  const mudar = (parte: Partial<RascunhoDeAjuste>) => onMudar({ ...r, ...parte });
+  const vigente = versaoEmVigor(chamado);
+  const mudou = CAMPOS_AJUSTAVEIS.some(k => r[k].trim() !== vigente[k]);
+  const valido = r.titulo.trim().length >= 3 && r.descricao.trim().length >= 5
+    && r.solicitante.trim().length >= 2 && r.autor.trim().length >= 2;
+
+  return (
+    <Janela rotulo={`AJUSTAR O CHAMADO #${chamado.numero}`} titulo={chamado.titulo}
+      sub="O que você mandou continua guardado. A correção aparece junto do chamado, e o time é avisado."
+      onFechar={onFechar}
+      rodape={fechar => (
+        <>
+          <button type="button" className="delete-confirm-cancel" onClick={fechar}>Cancelar</button>
+          <button type="button" className="btn btn-primary" disabled={!mudou || !valido}
+            title={!mudou ? 'Troque alguma informação para enviar o ajuste' : undefined}
+            onClick={() => onEnviar(r)}>
+            <IconEdit size={14} /> Enviar ajuste
+          </button>
+        </>
+      )}>
+      <label className="form-group">
+        <span className="form-label">Título</span>
+        <input className="form-input" value={r.titulo} maxLength={140} autoFocus
+          onChange={e => mudar({ titulo: e.target.value })} />
+      </label>
+
+      <div className="form-group">
+        <span className="form-label">Descrição</span>
+        <CampoTexto valor={r.descricao} onMudar={v => mudar({ descricao: v })} linhas={5} alturaMaxima={260}
+          ariaLabel="Descrição do chamado" />
+      </div>
+
+      <div className="chm-form-dupla">
+        <label className="form-group">
+          <span className="form-label">Quem está pedindo</span>
+          <CampoDeNome valor={r.solicitante} nomes={nomes}
+            onMudar={v => mudar({ solicitante: v })} onEscolher={n => mudar({ solicitante: n.nome })} />
+        </label>
+        <div className="form-group">
+          <span className="form-label">Urgência</span>
+          <SelectSistema valor={r.urgencia} onChange={v => mudar({ urgencia: v })}
+            opcoes={[...PRIORIDADES].sort((a, b) => posicaoDaPrioridade(a) - posicaoDaPrioridade(b))
+              .map(p => ({ valor: p as string, label: p, icone: ICONE_PRIORIDADE[p]({ size: 13 }) }))} />
+        </div>
+      </div>
+
+      <label className="form-group">
+        <span className="form-label">Quem está ajustando</span>
+        <CampoDeNome valor={r.autor} nomes={nomes}
+          onMudar={v => mudar({ autor: v })} onEscolher={n => mudar({ autor: n.nome })} />
+      </label>
+
+      {erro && <p className="pub-pedido-erro surge"><IconX size={11} /> {erro}</p>}
     </Janela>
   );
 }

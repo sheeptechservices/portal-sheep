@@ -13,8 +13,9 @@
 //  2. Token errado, desligado ou de projeto removido: 404, igual para todos.
 //  3. O cliente vê só o que ELE escreveu. O chamado guarda uma cópia própria do
 //     título, da descrição, de quem pediu, da urgência, dos links e dos anexos
-//     (`chamados_cliente`), e cada reabertura guarda a dela
-//     (`chamado_cliente_eventos`). Da tarefa do time desce só a etapa atual -
+//     (`chamados_cliente`), cada reabertura guarda a dela
+//     (`chamado_cliente_eventos`) e cada correção também
+//     (`chamado_cliente_ajustes`). Da tarefa do time desce só a etapa atual -
 //     nem as trocas de etapa, nem quem mexeu, comentário, etiqueta ou descrição
 //     interna.
 //  4. Abrir cria a tarefa na etapa de entrada (a Triagem), com o gestor do
@@ -68,6 +69,40 @@ function ipDe(req: VercelRequest): string {
 
 /** A escala de urgência da casa, a mesma das tarefas. */
 const URGENCIAS = ['Urgente', 'Alta', 'Média', 'Baixa'];
+
+// ── Ajustes ─────────────────────────────────────────────────────────────────
+//  O cliente corrige um chamado que ainda está com o time - o título, a
+//  descrição, quem pediu, a urgência - sem reescrever o que mandou: cada
+//  correção é uma linha nova, só com os campos que mudaram (os outros ficam
+//  nulos), e o original continua como foi enviado. O painel mostra a versão
+//  em vigor na linha e as correções dentro do chamado.
+//  A tabela nasce aqui e também no esquema do portal: o painel pode ser a
+//  primeira coisa a rodar depois de um deploy, e a ficha da tarefa lê a mesma
+//  tabela por dentro.
+export const DDL_AJUSTES_DO_CHAMADO = [
+  `CREATE TABLE IF NOT EXISTS chamado_cliente_ajustes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    chamado_id  INTEGER NOT NULL,
+    seq         INTEGER NOT NULL,
+    titulo      TEXT,
+    descricao   TEXT,
+    solicitante TEXT,
+    urgencia    TEXT,
+    autor       TEXT NOT NULL,
+    criado_em   TEXT NOT NULL
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_chamado_cliente_ajustes ON chamado_cliente_ajustes (chamado_id, seq)`,
+];
+let ajustesProntos: Promise<void> | null = null;
+/** Uma vez por instância: depois disso a tabela já existe. Falhou, tenta de
+ *  novo na próxima chamada em vez de guardar o erro. */
+function garantirAjustes(db: Client): Promise<void> {
+  ajustesProntos ??= (async () => { for (const sql of DDL_AJUSTES_DO_CHAMADO) await db.execute(sql); })()
+    .catch(e => { ajustesProntos = null; throw e; });
+  return ajustesProntos;
+}
+type CampoAjustavel = 'titulo' | 'descricao' | 'solicitante' | 'urgencia';
+const CAMPOS_AJUSTAVEIS: CampoAjustavel[] = ['titulo', 'descricao', 'solicitante', 'urgencia'];
 
 /** Anexos: imagem ou PDF, até cinco por envio. O teto que vale de verdade é o
  *  do corpo da requisição na Vercel (4,5 MB), e por isso a soma tem teto. */
@@ -299,6 +334,7 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
         return res.status(429).json({ error: 'Muitos envios seguidos. Tente de novo em alguns minutos.' });
       }
       if (req.query.acao === 'reabrir') return await reabrirChamado(req, res, db, projetoId, String(p.nome));
+      if (req.query.acao === 'ajustar') return await ajustarChamado(req, res, db, projetoId, String(p.nome));
       return await abrirChamado(req, res, db, projetoId, String(p.nome));
     }
 
@@ -326,6 +362,19 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
     }
 
     // ── A lista ────────────────────────────────────────────────────────────
+    // Os ajustes à parte: sem a tabela (ou com ela falhando) o painel abre do
+    // mesmo jeito, só sem as correções - perder a lista inteira por elas seria
+    // pior.
+    const lendoAjustes = garantirAjustes(db)
+      .then(() => db.execute({
+        sql: `SELECT aj.chamado_id, aj.seq, aj.titulo, aj.descricao, aj.solicitante, aj.urgencia, aj.autor, aj.criado_em
+              FROM chamado_cliente_ajustes aj
+              JOIN chamados_cliente ch ON ch.id = aj.chamado_id
+              WHERE ch.projeto_id = ? ORDER BY aj.chamado_id, aj.seq`,
+        args: [projetoId],
+      }))
+      .then(r => r.rows)
+      .catch(() => []);
     const [chamados, anexos, eventos, etapas] = await Promise.all([
       db.execute({
         // Da tarefa, só a etapa. Título, descrição e etiquetas dela são do time.
@@ -356,6 +405,7 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
       }),
       lerEtapas(db),
     ]);
+    const ajustes = await lendoAjustes;
 
     // Das etapas da casa, só as que o painel usa: as dos chamados listados e a
     // de entrada, onde nasce o próximo.
@@ -403,6 +453,14 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
           grupo: c.etapa == null ? 'cancelado' : grupoDa(etapa, etapas),
           anexos: doChamado,
           reaberturas,
+          // As correções, da mais antiga para a mais nova, cada uma só com o
+          // que mudou nela. Título, descrição, quem pediu e urgência acima
+          // continuam os do envio original; a versão em vigor sai da soma.
+          ajustes: ajustes.filter(a => Number(a.chamado_id) === id).map(a => {
+            const mudou: Partial<Record<CampoAjustavel, string>> = {};
+            for (const k of CAMPOS_AJUSTAVEIS) if (a[k] != null) mudou[k] = String(a[k]);
+            return { seq: Number(a.seq), em: String(a.criado_em), autor: String(a.autor), mudou };
+          }),
         };
       }),
     });
@@ -625,6 +683,116 @@ async function reabrirChamado(req: VercelRequest, res: VercelResponse, db: Clien
   return res.status(200).json({
     ok: true, status: ctx.etapa, reabertura: seq, em: agora, anexos: anexosDoCliente,
   });
+}
+
+/**
+ * Corrige um chamado que ainda está com o time: título, descrição, quem pediu
+ * e urgência. Nada do envio original é reescrito - a correção é guardada à
+ * parte, só com o que mudou -, e a tarefa do time ganha um comentário com as
+ * novas informações. Os campos da tarefa não mudam: título e prioridade dela
+ * são do time, que pode já ter reclassificado.
+ *
+ * Só vale enquanto o chamado está aberto: encerrado, o caminho é reabrir.
+ */
+async function ajustarChamado(req: VercelRequest, res: VercelResponse, db: Client, projetoId: string,
+  projetoNome: string) {
+  const numero = Number(req.query.chamado ?? 0);
+  if (!Number.isInteger(numero) || numero < 1) return res.status(404).json({ error: 'Chamado não encontrado.' });
+  const corpo = (req.body ?? {}) as Record<string, unknown>;
+
+  const pedido: Record<CampoAjustavel, string> = {
+    titulo: texto(corpo.titulo, 140),
+    descricao: texto(corpo.descricao, 6000),
+    solicitante: texto(corpo.solicitante, 80),
+    urgencia: texto(corpo.urgencia, 20),
+  };
+  if (pedido.titulo.length < 3) return res.status(400).json({ error: 'Dê um título ao chamado.' });
+  if (pedido.descricao.length < 5) return res.status(400).json({ error: 'Descreva o que está acontecendo.' });
+  if (pedido.solicitante.length < 2) return res.status(400).json({ error: 'Diga quem está pedindo.' });
+  if (!URGENCIAS.includes(pedido.urgencia)) return res.status(400).json({ error: 'Escolha a urgência.' });
+  const autorNome = texto(corpo.autor, 80);
+  if (autorNome.length < 2) return res.status(400).json({ error: 'Diga quem está ajustando.' });
+
+  // O chamado deste projeto, e a tarefa dele só se ainda for deste projeto.
+  const achado = await db.execute({
+    sql: `SELECT ch.id, ch.titulo, ch.descricao, ch.solicitante, ch.urgencia, t.id AS tarefa_id, t.status AS etapa
+          FROM chamados_cliente ch
+          LEFT JOIN projeto_tarefas t ON ${TAREFA_DO_PROJETO}
+          WHERE ch.projeto_id = ? AND ch.numero = ?`,
+    args: [projetoId, numero],
+  });
+  const ch = achado.rows[0];
+  if (!ch) return res.status(404).json({ error: 'Chamado não encontrado.' });
+
+  const etapas = await lerEtapas(db);
+  const atual = ch.etapa != null ? etapas.find(e => e.nome === String(ch.etapa)) : undefined;
+  const grupo: Grupo = ch.etapa == null ? 'cancelado' : grupoDa(atual, etapas);
+  if (grupo !== 'triagem' && grupo !== 'andamento') {
+    return res.status(409).json({ error: 'Este chamado já foi encerrado. Para pedir algo nele de novo, reabra.' });
+  }
+
+  // A versão em vigor: o envio original com as correções por cima, em ordem.
+  await garantirAjustes(db);
+  const chamadoId = Number(ch.id);
+  const anteriores = await db.execute({
+    sql: `SELECT titulo, descricao, solicitante, urgencia FROM chamado_cliente_ajustes
+          WHERE chamado_id = ? ORDER BY seq`,
+    args: [chamadoId],
+  });
+  const vigente = {} as Record<CampoAjustavel, string>;
+  for (const k of CAMPOS_AJUSTAVEIS) vigente[k] = String(ch[k] ?? '');
+  for (const a of anteriores.rows) for (const k of CAMPOS_AJUSTAVEIS) if (a[k] != null) vigente[k] = String(a[k]);
+
+  const mudou = CAMPOS_AJUSTAVEIS.filter(k => pedido[k] !== vigente[k]);
+  if (mudou.length === 0) return res.status(400).json({ error: 'Nada mudou em relação ao que está no chamado.' });
+
+  const agora = new Date().toISOString();
+  const ajuste = await db.execute({
+    sql: `INSERT INTO chamado_cliente_ajustes (chamado_id, seq, titulo, descricao, solicitante, urgencia, autor, criado_em)
+          SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?, ?, ?
+          FROM chamado_cliente_ajustes WHERE chamado_id = ?
+          RETURNING seq`,
+    args: [chamadoId,
+      ...CAMPOS_AJUSTAVEIS.map(k => (mudou.includes(k) ? pedido[k] : null)),
+      autorNome, agora, chamadoId],
+  });
+  const seq = Number(ajuste.rows[0]?.seq ?? 1);
+
+  // O que mudou, em linhas curtas: de onde para onde nos campos curtos, e a
+  // descrição nova inteira, porque a antiga já está na tarefa.
+  const NOME: Record<CampoAjustavel, string> = {
+    titulo: 'Título', descricao: 'Descrição', solicitante: 'Quem pede', urgencia: 'Urgência',
+  };
+  const linhas = mudou.filter(k => k !== 'descricao')
+    .map(k => `- **${NOME[k]}:** ${vigente[k]} → ${pedido[k]}`);
+  const textoDaTarefa = `Chamado nº ${numero} ajustado pelo cliente (${autorNome}):`
+    + (linhas.length ? `\n\n${linhas.join('\n')}` : '')
+    + (mudou.includes('descricao') ? `\n\n**Descrição corrigida:**\n${pedido.descricao}` : '');
+
+  const tarefaId = ch.tarefa_id != null ? Number(ch.tarefa_id) : 0;
+  if (tarefaId) {
+    await db.execute({
+      sql: `INSERT INTO tarefa_comentarios (tarefa_id, pai_id, usuario_id, usuario_nome, texto, criado_em)
+            VALUES (?,?,?,?,?,?)`,
+      args: [tarefaId, null, null, `${autorNome} (cliente)`, textoDaTarefa, agora],
+    });
+    const ctx = await contextoDaTriagem(db, projetoId);
+    await avisarGestor(db, {
+      ctx, projetoNome,
+      assunto: `Chamado ajustado em ${projetoNome}: ${pedido.titulo}`,
+      previa: `Ajustado por ${autorNome}`,
+      ficha: [
+        ['Projeto', projetoNome],
+        ['Quem ajustou', autorNome],
+        ['Chamado', `nº ${numero} do painel`],
+        ['O que mudou', mudou.map(k => NOME[k]).join(', ')],
+        ['Tarefa', `#${tarefaId}`],
+      ],
+      citacao: textoDaTarefa, anexos: 0, tarefaId,
+    });
+  }
+
+  return res.status(200).json({ ok: true, ajuste: seq, em: agora });
 }
 
 /** O e-mail ao gestor do projeto, ou a quem cuida do portal se não houver

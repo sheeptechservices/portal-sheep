@@ -25569,6 +25569,85 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
 .chm-passo-corpo .reportes-detalhe-texto { margin: 0; }
 .chm-passo-corpo .reportes-anexos { margin: 0; }
 .chm-passo-reaberto.enviando .chm-passo-corpo { opacity: .75; }
+
+/* ── Ajustes do chamado ──────────────────────────────────────────────────────
+   A correção é um passo da mesma linha do tempo, num tom abaixo da reabertura:
+   o ponto é neutro, porque corrigir não muda o rumo do chamado. Dentro, uma
+   grade de rótulo e valor só com o que mudou - nada de repetir o que ficou
+   igual, que é o que deixaria o bloco poluído. */
+.chm-passo-ajuste .chm-passo-ponto {
+  width: 16px;
+  height: 16px;
+  left: -2px;
+  top: 1px;
+  background: var(--gray4);
+  color: var(--gray);
+  border: 1px solid var(--gray3);
+}
+.chm-passo-ajuste.enviando .chm-passo-corpo { opacity: .75; }
+.chm-ajuste { margin-bottom: 0; gap: 0; }
+.chm-ajuste-campo {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 0;
+}
+.chm-ajuste-campo + .chm-ajuste-campo { border-top: 1px solid color-mix(in srgb, var(--gray3) 70%, transparent); }
+.chm-ajuste-campo:first-child { padding-top: 0; }
+.chm-ajuste-campo:last-child { padding-bottom: 0; }
+.chm-ajuste-campo dt {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.chm-ajuste-campo dd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--black);
+}
+.chm-ajuste-campo.longo dd { display: block; }
+.chm-ajuste-campo dd .reportes-detalhe-texto { margin: 0; }
+/* O que valia antes, riscado e apagado: está ali para dar contexto, e não
+   para ser lido no mesmo peso do que vale agora. */
+.chm-ajuste-de {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--gray2);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--gray2) 60%, transparent);
+}
+.chm-ajuste-para { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; }
+.chm-ajuste-seta { display: inline-flex; color: var(--gray2); }
+@media (max-width: 560px) {
+  .chm-ajuste-campo { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+}
+
+/* O selo da linha: discreto e neutro, depois do título. A linha já mostra a
+   versão corrigida; o selo só avisa que o detalhe tem as correções. */
+.chm-ajustado {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--gray4);
+  color: var(--gray);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
 /* Os passos entram em escada quando o detalhe abre. */
 .revelar.aberto .chm-passo { animation: linha-entra .38s var(--curva-anti) backwards; }
 .revelar.aberto .chm-passo:nth-child(2) { animation-delay: 40ms; }
@@ -25733,6 +25812,13 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   background: color-mix(in srgb, var(--yellow) 7%, transparent);
   animation: linha-entra .38s var(--curva-anti) backwards;
 }
+/* A correção do cliente, um tom abaixo da reabertura: o fio é neutro, porque
+   corrigir não devolve o chamado à fila. */
+.chamado-tarefa-reabertura.ajuste {
+  border-left-color: var(--gray3);
+  background: color-mix(in srgb, var(--gray4) 70%, transparent);
+}
+.chamado-tarefa-reabertura.ajuste .chamado-tarefa-reabertura-num { color: var(--gray); }
 .chamado-tarefa-reabertura:nth-child(2) { animation-delay: 40ms; }
 .chamado-tarefa-reabertura:nth-child(n+3) { animation-delay: 80ms; }
 .chamado-tarefa-reabertura-topo {

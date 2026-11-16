@@ -19,6 +19,7 @@ import {
 } from './_email.js';
 import { obterDdl } from './_schema.js';
 import { DDL_FILA_DE_EMAILS, enfileirarAvisos, enviarResumosVencidos } from './_resumo-email.js';
+import { DDL_AJUSTES_DO_CHAMADO } from './_chamados-publico.js';
 import {
   ETAPAS_TAREFA_PADRAO, ETIQUETAS_TAREFA_PADRAO, etapasDeTarefa, progressoDaEntrega,
   statusDeduzido, type EtapasDeTarefa,
@@ -1271,6 +1272,11 @@ async function migrarSchema(db: Client) {
     await ddl(`CREATE INDEX IF NOT EXISTS idx_chamado_cliente_anexos
                ON chamado_cliente_anexos (chamado_id)`);
   } catch { /* índice já existe */ }
+  // As correções que o cliente faz num chamado aberto. A definição mora com o
+  // painel, que também a garante: ele pode rodar antes deste esquema.
+  for (const sql of DDL_AJUSTES_DO_CHAMADO) {
+    try { await ddl(sql); } catch { /* já existe */ }
+  }
 
   // Dono da sessão. Fica nulo nas sessões abertas pela senha compartilhada, que
   // segue existindo como plano B - nesse caso a autoria é a da casa, não a de
@@ -5576,13 +5582,13 @@ async function despacharAdminData(
       const barrado = await guardaDaEquipe(db, usuario, id, 'tarefa');
       if (barrado) return barrado;
       const ch = await db.execute({
-        sql: `SELECT id, numero, solicitante, email, urgencia, links, criado_em
+        sql: `SELECT id, numero, titulo, solicitante, email, urgencia, links, criado_em
               FROM chamados_cliente WHERE tarefa_id = ? ORDER BY id DESC LIMIT 1`,
         args: [id],
       });
       const c = ch.rows[0];
       if (!c) return { status: 200, body: { chamado: null } };
-      const [eventos, anexos] = await Promise.all([
+      const [eventos, anexos, ajustes] = await Promise.all([
         db.execute({
           sql: `SELECT id, seq, autor, texto, links, criado_em FROM chamado_cliente_eventos
                 WHERE chamado_id = ? ORDER BY seq DESC`,
@@ -5593,6 +5599,13 @@ async function despacharAdminData(
                 WHERE chamado_id = ? AND evento_id IS NOT NULL ORDER BY ordem`,
           args: [c.id],
         }),
+        // As correções do cliente, da mais antiga para a mais nova: a ficha
+        // calcula o "de" de cada uma somando as anteriores ao original.
+        db.execute({
+          sql: `SELECT seq, titulo, descricao, solicitante, urgencia, autor, criado_em
+                FROM chamado_cliente_ajustes WHERE chamado_id = ? ORDER BY seq`,
+          args: [c.id],
+        }).catch(() => ({ rows: [] as Record<string, unknown>[] })),
       ]);
       const links = (v: unknown): string[] => {
         try { const l = JSON.parse(String(v ?? '[]')); return Array.isArray(l) ? l.map(String) : []; } catch { return []; }
@@ -5602,6 +5615,7 @@ async function despacharAdminData(
         body: {
           chamado: {
             numero: Number(c.numero),
+            titulo: String(c.titulo),
             solicitante: String(c.solicitante),
             email: c.email != null ? String(c.email) : null,
             urgencia: String(c.urgencia),
@@ -5616,6 +5630,15 @@ async function despacharAdminData(
               anexos: anexos.rows.filter(a => Number(a.evento_id) === Number(e.id)).map(a => ({
                 id: Number(a.id), nome: String(a.nome), tipo: String(a.tipo), tamanho: Number(a.tamanho ?? 0),
               })),
+            })),
+            ajustes: ajustes.rows.map(a => ({
+              seq: Number(a.seq),
+              autor: String(a.autor),
+              criado_em: String(a.criado_em),
+              titulo: a.titulo != null ? String(a.titulo) : null,
+              descricao: a.descricao != null ? String(a.descricao) : null,
+              solicitante: a.solicitante != null ? String(a.solicitante) : null,
+              urgencia: a.urgencia != null ? String(a.urgencia) : null,
             })),
           },
         },
