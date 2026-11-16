@@ -425,6 +425,16 @@ const PROJETOS_NO_MENU = 6;
 /** O pouco que o menu precisa saber de um projeto. */
 interface ProjetoDoMenu { id: string; nome: string; cliente: string | null }
 
+/** Como o projeto aparece no menu: pelo cliente, que é como ele é chamado em
+ *  voz alta. Sem cliente (a Geral, um projeto interno), fica o nome dele. Dois
+ *  projetos do mesmo cliente levam o nome do projeto junto, senão seriam duas
+ *  linhas iguais. */
+function rotuloNoMenu(p: ProjetoDoMenu, todos: ProjetoDoMenu[]): string {
+  if (!p.cliente) return p.nome;
+  const repetido = todos.filter(x => x.cliente === p.cliente).length > 1;
+  return repetido ? `${p.cliente} · ${p.nome}` : p.cliente;
+}
+
 /** O trilho de icones: o menu recolhido, que abre com o ponteiro. */
 const LARGURA_DO_TRILHO = 72;
 const CHAVE_MENU_FIXO = 'dux_menu_fixo';
@@ -711,14 +721,17 @@ function Sidebar({
       {podeAbrirPagina(pode, 'projetos', veUsuarios) && projetosDoMenu.length > 0 && (
         <div className="menu-grupo menu-projetos">
           <p className="app-menu-secao">PROJETOS</p>
-          {projetosDoMenu.slice(0, PROJETOS_NO_MENU).map((p, i) => (
-            <button key={p.id} type="button" className={`nav-leaf menu-projeto cor-projeto-${corDoProjeto(p.id)}`}
-              title={p.cliente ? `${p.nome} | ${p.cliente}` : p.nome}
-              onClick={() => { onAbrirProjeto(p.id); if (!pinned) onClose(); }}>
-              <span className="nav-leaf-ico menu-projeto-selo">{p.nome.trim().charAt(0).toUpperCase()}</span>
-              <span className="nav-leaf-texto">{p.nome}</span>
-            </button>
-          ))}
+          {projetosDoMenu.slice(0, PROJETOS_NO_MENU).map(p => {
+            const rotulo = rotuloNoMenu(p, projetosDoMenu);
+            return (
+              <button key={p.id} type="button" className={`nav-leaf menu-projeto cor-projeto-${corDoProjeto(p.id)}`}
+                title={p.cliente ? `${p.cliente} | ${p.nome}` : p.nome}
+                onClick={() => { onAbrirProjeto(p.id); if (!pinned) onClose(); }}>
+                <span className="nav-leaf-ico menu-projeto-selo">{rotulo.trim().charAt(0).toUpperCase()}</span>
+                <span className="nav-leaf-texto">{rotulo}</span>
+              </button>
+            );
+          })}
           {projetosDoMenu.length > PROJETOS_NO_MENU && (
             <button type="button" className="nav-leaf menu-projetos-todos"
               onClick={() => { setPage('projetos'); if (!pinned) onClose(); }}>
@@ -1253,9 +1266,12 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
             tarefas?: { id: number; status: string }[] };
           const lista = proj.projetos as P[];
           const ativos = lista.filter(p => p.status === 'Em andamento');
+          // Em ordem do que aparece na linha: o cliente, ou o nome de quem
+          // não tem cliente.
           setProjetosDoMenu(ativos
-            .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
-            .map(p => ({ id: p.id, nome: p.nome, cliente: p.cliente_nome })));
+            .map(p => ({ id: p.id, nome: p.nome, cliente: p.cliente_nome }))
+            .sort((a, b) => (a.cliente ?? a.nome).localeCompare(b.cliente ?? b.nome, 'pt-BR')
+              || a.nome.localeCompare(b.nome, 'pt-BR')));
           novas.projetos = ativos.length;
           // Aberta e a que nao chegou na etapa de conclusao nem esta numa etapa
           // desconsiderada - a mesma conta da tela de Tarefas.
