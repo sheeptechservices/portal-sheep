@@ -29,8 +29,10 @@ const MOLDURA = 20;
 
 export function CampoTexto({
   valor, onMudar, placeholder, linhas = 3, alturaMaxima = 320, ariaLabel, className,
-  autoFocus, onBlur, aoTeclar, aoColar, caixaRef,
+  autoFocus, onBlur, aoTeclar, aoColar, caixaRef, marcados,
 }: {
+  /** Os nomes marcados com `@` no texto de partida: nascem destacados. */
+  marcados?: string[];
   valor: string;
   onMudar: (texto: string) => void;
   placeholder?: string;
@@ -65,7 +67,8 @@ export function CampoTexto({
         onBlur={onBlur}
         aoTeclar={aoTeclar}
         aoColar={aoColar}
-        caixaRef={caixaRef} />
+        caixaRef={caixaRef}
+        marcados={marcados} />
     </div>
   );
 }

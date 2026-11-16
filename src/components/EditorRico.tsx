@@ -23,10 +23,30 @@ import { useEffect, useRef } from 'react';
 import type React from 'react';
 import { ITEM, LINK, enderecoDoLink, marcasEmHtml } from '../lib/marcacao';
 
+/** O nome de alguém marcado com `@`, como peça do campo: uma unidade só, que
+ *  o cursor pula e o Backspace apaga inteira, no desenho da marcação lida. Na
+ *  volta para texto ela é o que diz - `@Nome` -, e quem converte em ligação
+ *  com o id é a caixa que a montou. */
+export function pecaDaMarcacao(nomeEscapado: string): string {
+  return `<span class="ativ-marca" contenteditable="false">@${nomeEscapado}</span>`;
+}
+
+const escapar = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/** Os nomes marcados, destacados no HTML de uma linha. Os mais longos primeiro:
+ *  "Ana" não pode comer o "@Ana Paula" de outra pessoa. */
+function comAsMarcacoes(html: string, marcados?: string[]): string {
+  if (!marcados?.length) return html;
+  const nomes = [...marcados].sort((a, b) => b.length - a.length)
+    .map(n => escapar(n).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return html.replace(new RegExp(`@(${nomes.join('|')})`, 'g'), (_, nome: string) => pecaDaMarcacao(nome));
+}
+
 /** O texto guardado, no HTML que o campo edita. Uma `<div>` por linha, que é o
  *  que o navegador cria sozinho ao apertar Enter - assim o que ele produz e o
- *  que nós produzimos têm a mesma forma. */
-export function textoParaHtml(texto: string): string {
+ *  que nós produzimos têm a mesma forma. `marcados` são os nomes que entram
+ *  destacados. */
+export function textoParaHtml(texto: string, marcados?: string[]): string {
   const linhas = texto.split('\n');
   const blocos: string[] = [];
   let lista: string[] = [];
@@ -38,9 +58,12 @@ export function textoParaHtml(texto: string): string {
   };
 
   for (const linha of linhas) {
-    if (ITEM.test(linha)) { lista.push(`<li>${marcasEmHtml(linha.replace(ITEM, ''))}</li>`); continue; }
+    if (ITEM.test(linha)) {
+      lista.push(`<li>${comAsMarcacoes(marcasEmHtml(linha.replace(ITEM, '')), marcados)}</li>`);
+      continue;
+    }
     fecharLista();
-    blocos.push(`<div>${linha.trim() ? marcasEmHtml(linha) : '<br>'}</div>`);
+    blocos.push(`<div>${linha.trim() ? comAsMarcacoes(marcasEmHtml(linha), marcados) : '<br>'}</div>`);
   }
   fecharLista();
   return blocos.join('');
@@ -107,8 +130,10 @@ export function htmlParaTexto(raiz: HTMLElement): string {
 /** O campo. Guarda texto, mostra formatação. */
 export function EditorRico({
   valor, onMudar, placeholder, autoFocus, onFoco, onBlur, className, ariaLabel, aoTeclar: teclaDeFora,
-  aoColar: colagemDeFora, caixaRef,
+  aoColar: colagemDeFora, caixaRef, marcados,
 }: {
+  /** Os nomes marcados com `@` que o texto de partida traz: nascem destacados. */
+  marcados?: string[];
   valor: string;
   onMudar: (texto: string) => void;
   placeholder?: string;
@@ -139,7 +164,7 @@ export function EditorRico({
     if (meu.current === valor) return;
     // Vazio é vazio de verdade, e não uma linha com um `<br>` dentro: é o que
     // deixa o texto de apoio aparecer.
-    el.innerHTML = valor ? textoParaHtml(valor) : '';
+    el.innerHTML = valor ? textoParaHtml(valor, marcados) : '';
     meu.current = valor;
   }, [valor]);
 

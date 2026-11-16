@@ -21,6 +21,7 @@ import { Dialogo } from './Dialogo';
 import { quando, tamanho as fmtTamanho } from '../lib/datas';
 import { arquivosColados } from '../lib/colarArquivos';
 import { CampoTexto } from './CampoTexto';
+import { pecaDaMarcacao } from './EditorRico';
 import { TextoRico } from './TextoRico';
 import { Avatar, type Pessoa } from '../admin/FormularioTarefa';
 
@@ -320,9 +321,13 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
     return saida;
   }
 
+  /** A pessoa entra no campo como a peça destacada, e não como texto solto: é
+   *  o que deixa ver de relance quem foi marcado. O espaço depois dela é o
+   *  lugar do cursor - colado na peça, ele não teria onde ficar. */
   function marcar(p: Pessoa) {
     marcados.current.set(p.nome, p.id);
-    inserir(`@${p.nome} `);
+    const nome = p.nome.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    inserir(`${pecaDaMarcacao(nome)}&nbsp;`, true);
   }
 
   /** A etapa entra já no formato final, `#[Nome]`: o nome dela tem espaço, e
@@ -334,7 +339,7 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
   /** Troca o `@termo` digitado pela marcação. Pela seleção e pelo comando de
    *  escrever do navegador, como uma digitação: o campo avisa a mudança sozinho,
    *  o cursor fica depois do nome, e o Ctrl+Z desfaz. */
-  function inserir(trecho: string) {
+  function inserir(trecho: string, html = false) {
     const sel = window.getSelection();
     if (!busca || !sel || !sel.rangeCount || !busca.no.isConnected) { setBusca(null); return; }
     const cursor = sel.getRangeAt(0);
@@ -343,7 +348,7 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
     alvo.setEnd(cursor.startContainer, cursor.startOffset);
     sel.removeAllRanges();
     sel.addRange(alvo);
-    document.execCommand('insertText', false, trecho);
+    document.execCommand(html ? 'insertHTML' : 'insertText', false, trecho);
     setBusca(null);
   }
 
@@ -398,6 +403,7 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
             tarefa. */}
         <CampoTexto
           caixaRef={campo}
+          marcados={[...partida.marcados.keys()]}
           className="ativ-campo"
           linhas={2}
           alturaMaxima={240}
