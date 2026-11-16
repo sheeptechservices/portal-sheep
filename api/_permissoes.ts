@@ -381,6 +381,12 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   // Lista de nomes e fotos do time, que alimenta os seletores de pessoas. Não
   // expõe nada além do que já aparece na equipe de um projeto.
   usuarios_notificaveis: LIVRE,
+  // O mural da equipe é de todo mundo do portal: cada um lê o que escreveu e
+  // onde foi marcado, e só mexe no que é seu. Quem confere a autoria e a
+  // marcação é a própria ação.
+  mural_notas: LIVRE,
+  salvar_mural_nota: LIVRE,
+  excluir_mural_nota: LIVRE,
   quick_search: LIVRE, // o resultado é filtrado por permissão dentro do handler
 
   // ── Gestão de usuários e acessos ──────────────────────────────────────────

@@ -561,6 +561,10 @@ export function IconEntrada({ size = 14 }: { size?: number }) {
     </Ico>
   );
 }
+// O mural da equipe: o bilhete com a ponta dobrada e as linhas do recado.
+export function IconMural({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><path d="M6.2 4h11.6A2.2 2.2 0 0120 6.2V14l-6 6H6.2A2.2 2.2 0 014 17.8V6.2A2.2 2.2 0 016.2 4z" /><path d="M14 20v-3.8a2.2 2.2 0 012.2-2.2H20" /><path d="M8 9h8M8 12.6h4.6" /></Ico>;
+}
 // O diário: o caderno com a lombada e uma tarefa riscada de feita.
 export function IconDiario({ size = 14 }: { size?: number }) {
   return <Ico size={size}><rect x="4.8" y="3" width="14.4" height="18" rx="2.4" /><path d="M9 3v18" /><path d="M11.8 10.2l1.7 1.7 3.1-3.3" /><path d="M12 15.6h4.2" /></Ico>;

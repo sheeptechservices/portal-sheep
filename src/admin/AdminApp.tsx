@@ -35,6 +35,7 @@ import type { QuickTarget } from './QuickSearch';
 import { DESTINOS, TOOL_PAGES, TOOL_LABELS, type Page } from './destinos';
 import { CartaoReportar, type Relato } from '../components/CartaoReportar';
 import { DiarioDoDia } from './DiarioDoDia';
+import { MuralDaEquipe } from './MuralDaEquipe';
 import { Inbox, type DestinoDaReuniao, type ItemDoInbox } from '../components/Inbox';
 import type { Pessoa } from './FormularioTarefa';
 import type { ReporteNaLista } from '../components/ListaReportes';
@@ -1429,6 +1430,9 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
   /** A fila de chamados abre pelo cartão do menu; o inbox pede que ela abra,
    *  e diz qual chamado deve estar expandido quando ela abrir. O `nonce` faz o
    *  mesmo chamado reabrir se alguém clicar no aviso duas vezes. */
+  /** O aviso de marcação no mural pede o mural aberto, com a anotação dele em
+   *  destaque. */
+  const [abrirMural, setAbrirMural] = useState<{ nonce: number; nota?: number } | null>(null);
   const [filaDeChamados, setFilaDeChamados] =
     useState<{ nonce: number; chamado?: number } | null>(null);
 
@@ -1561,6 +1565,11 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
     // A reunião não passa por aqui: ela abre a caixa de vincular dentro do
     // próprio inbox, que é onde a pergunta é feita.
     if (item.tipo === 'reuniao') return;
+    // A marcação no mural abre o mural, que mora no canto de qualquer tela.
+    if (item.tipo === 'mural') {
+      setAbrirMural(prev => ({ nonce: (prev?.nonce ?? 0) + 1, nota: Number(item.alvo) || undefined }));
+      return;
+    }
     // O interesse se resolve na vitrine que o cliente abriu: a gaveta dela
     // lista quem foi pedido, que e o que a linha do inbox esta anunciando.
     if (item.tipo === 'vitrine') {
@@ -2064,10 +2073,13 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
         admin={podeGerenciarUsuarios(usuario)}
         abrirFila={filaDeChamados}
         onAbriuFila={() => setFilaDeChamados(null)}
-        // O diário, ao lado: as tarefas de quem está olhando para hoje e para
-        // a semana. Abrir uma leva à ficha dela na tela de Tarefas, pelo mesmo
-        // caminho da busca rápida.
-        aoLado={pode('tarefas:ver') && (
+        // Ao lado, o mural da equipe (as anotações do time) e o diário (as
+        // tarefas de quem está olhando para hoje e para a semana). Abrir uma
+        // tarefa do diário leva à ficha dela, pelo mesmo caminho da busca
+        // rápida.
+        aoLado={<>
+          <MuralDaEquipe token={token} abrir={abrirMural} onAbriu={() => setAbrirMural(null)} />
+          {pode('tarefas:ver') && (
           <DiarioDoDia token={token}
             onAbrirTarefa={id => {
               setPage('tarefas');
@@ -2077,7 +2089,8 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
               setTarefasDaEntrega({ minhas: true, nonce: Date.now() });
               setPage('tarefas');
             }} />
-        )}
+          )}
+        </>}
       />
 
       {quickOpen && (

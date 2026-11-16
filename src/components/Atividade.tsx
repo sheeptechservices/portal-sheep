@@ -112,7 +112,7 @@ function pedacos(texto: string): { tipo: 'texto' | 'marca'; valor: string; id?: 
 }
 
 /** Os ids marcados dentro do texto, para o servidor gravar a ligação. */
-function idsMarcados(texto: string): string[] {
+export function idsMarcados(texto: string): string[] {
   return [...new Set([...texto.matchAll(MARCA)].map(m => m[2]))];
 }
 
@@ -159,13 +159,16 @@ function pedacosSoltos(texto: string, etapas?: EtapaMarcavel[], chave = ''): Rea
 
 /** O comentário lido: as marcas da casa - negrito, itálico, sublinhado, lista,
  *  link -, pela mesma regra da descrição da tarefa, e as menções e etapas como
- *  chips dentro de cada trecho. */
-function TextoDoComentario({ texto, etapas }: { texto: string; etapas?: EtapaMarcavel[] }) {
+ *  chips dentro de cada trecho. `eu` acende a marcação de quem está lendo: é o
+ *  que faz a pessoa achar o próprio nome numa anotação longa. */
+export function TextoDoComentario({ texto, etapas, eu }: {
+  texto: string; etapas?: EtapaMarcavel[]; eu?: string | null;
+}) {
   return (
     <TextoRico texto={texto} className="ativ-texto"
       trecho={(t, chave) => pedacos(t).flatMap((p, i): React.ReactNode[] => (
         p.tipo === 'marca'
-          ? [<span key={`${chave}m${i}`} className="ativ-marca">@{p.valor}</span>]
+          ? [<span key={`${chave}m${i}`} className={`ativ-marca${eu && p.id === eu ? ' ativ-marca-eu' : ''}`}>@{p.valor}</span>]
           : pedacosSoltos(p.valor, etapas, `${chave}s${i}-`)
       ))} />
   );
@@ -182,9 +185,20 @@ function paraEscrita(gravado: string) {
   return { texto, marcados };
 }
 
-/** Caixa de escrita, com marcação por `@` e anexos. */
-function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnviar, onCancelar,
-  inicial, erroInicial, anexosExistentes }: {
+/** Caixa de escrita, com marcação por `@` e anexos. Mora aqui por ser a da
+ *  conversa, e sai daqui para o mural da equipe, que escreve do mesmo jeito. */
+export function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnviar, onCancelar,
+  inicial, erroInicial, anexosExistentes, enterQuebraLinha, placeholder, rotulo, linhas = 2 }: {
+  /** Texto de várias linhas, como uma anotação: Enter quebra a linha, como no
+   *  campo de texto da casa, e quem grava é o botão ou o Ctrl+Enter. Sem isto,
+   *  é caixa de comentário: Enter envia. */
+  enterQuebraLinha?: boolean;
+  /** O convite do campo vazio, quando não é o de comentário. */
+  placeholder?: string;
+  /** O nome do campo para o leitor de tela. */
+  rotulo?: string;
+  /** Quantas linhas o campo mostra vazio. */
+  linhas?: number;
   /** O texto gravado de um comentário que está sendo editado. */
   inicial?: string;
   /** Os anexos que o comentário editado já tem. Aparecem na caixa com o X de
@@ -405,14 +419,14 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
           caixaRef={campo}
           marcados={[...partida.marcados.keys()]}
           className="ativ-campo"
-          linhas={2}
-          alturaMaxima={240}
+          linhas={linhas}
+          alturaMaxima={enterQuebraLinha ? 360 : 240}
           valor={texto}
           autoFocus={autoFoco}
-          ariaLabel="Comentário"
-          placeholder={etapas?.length
+          ariaLabel={rotulo ?? 'Comentário'}
+          placeholder={placeholder ?? (etapas?.length
             ? 'Escreva um comentário. Use @ para marcar alguém e # para uma etapa.'
-            : 'Escreva um comentário. Use @ para marcar alguém.'}
+            : 'Escreva um comentário. Use @ para marcar alguém.')}
           onMudar={t => { setTexto(t); verMarcacao(); }}
           aoTeclar={e => {
             const lista = busca && totalNaLista > 0;
@@ -439,6 +453,12 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
             // Enter faz na descrição da tarefa. Deixado ao navegador, ele põe
             // uma quebra dentro do mesmo bloco, e o "- " da linha de baixo
             // transformaria as duas linhas numa lista só.
+            // Na anotação, Enter é do campo, como na descrição da tarefa, e o
+            // Ctrl+Enter é quem grava.
+            if (enterQuebraLinha) {
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void enviar(); }
+              return;
+            }
             if (e.key === 'Enter' && e.shiftKey) {
               e.preventDefault();
               document.execCommand('insertParagraph');

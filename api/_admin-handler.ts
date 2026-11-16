@@ -1928,6 +1928,32 @@ async function migrarSchema(db: Client) {
   try { await ddl('DROP TABLE IF EXISTS planning_semana'); } catch {}
 
   await ddl(`
+    -- O mural da equipe: recados livres - a reuniao de quarta com o cliente, o
+    -- que cada um precisa deixar pronto. Sem forma fixa: e texto com as marcas
+    -- da casa e as pessoas marcadas nele, no mesmo formato do comentario de
+    -- tarefa (\`@[Nome](id)\`). Cada recado so e lido por quem o escreveu e por
+    -- quem foi marcado nele.
+    CREATE TABLE IF NOT EXISTS mural_notas (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      texto            TEXT NOT NULL,
+      autor_id         TEXT,
+      autor_nome       TEXT,
+      criado_em        TEXT NOT NULL,
+      editado_em       TEXT,
+      editado_por_nome TEXT
+    )
+  `);
+  await ddl(`
+    -- Quem foi marcado em cada recado. Tabela propria, como a das mencoes em
+    -- comentario: e por ela que o inbox acha o aviso de cada pessoa.
+    CREATE TABLE IF NOT EXISTS mural_mencoes (
+      nota_id    INTEGER NOT NULL,
+      usuario_id TEXT NOT NULL,
+      PRIMARY KEY (nota_id, usuario_id)
+    )
+  `);
+
+  await ddl(`
     -- Etapas do quadro de tarefas. Mesma estrutura das etapas do funil
     -- (\`status_configs\`): nome, cor e ordem editáveis em Configurações. As duas
     -- marcações existem porque a entrega lê o andamento daqui - \`is_entrada\` é
@@ -3662,7 +3688,7 @@ function chavesDoInbox(body: any): string[] {
   const cruas = Array.isArray(body?.chaves) ? body.chaves : [body?.chave];
   return [...new Set(cruas
     .map((c: unknown) => String(c ?? '').trim())
-    .filter((c: string) => /^(reporte|tarefa|reuniao|mencao|resposta|joinha|etapa|vitrine):.{1,80}$/.test(c)))] as string[];
+    .filter((c: string) => /^(reporte|tarefa|reuniao|mencao|resposta|joinha|etapa|vitrine|mural):.{1,80}$/.test(c)))] as string[];
 }
 
 /** Um aviso do inbox. O mesmo formato para as tres fontes: a gaveta desenha
@@ -3678,7 +3704,7 @@ interface ItemDoInbox {
    *  que pode ser marcado e limpo, e uma fonte nova que não entre lá nasce com
    *  o gesto recusado pelo servidor. */
   chave: string;
-  tipo: 'chamado' | 'pedido' | 'reuniao' | 'mencao' | 'resposta' | 'joinha' | 'etapa' | 'vitrine';
+  tipo: 'chamado' | 'pedido' | 'reuniao' | 'mencao' | 'resposta' | 'joinha' | 'etapa' | 'vitrine' | 'mural';
   titulo: string;
   descricao: string;
   /** O canto direito da linha: urgencia do chamado, projeto do pedido. */
@@ -4281,6 +4307,53 @@ async function despacharAdminData(
           configurado: matriz.configurado,
           atualizado_em: matriz.atualizado_em,
           atualizado_por_nome: matriz.atualizado_por_nome,
+        },
+      };
+    }
+
+    // O mural de quem pergunta, do recado mais novo para o mais antigo: os que
+    // a pessoa escreveu e os que a marcam. O corte é aqui, e não na tela: o
+    // recado de outros nunca chega ao navegador de quem não foi marcado nele.
+    // Sem conta (a entrada pela senha do painel), não há quem marcar - e o
+    // mural vem vazio.
+    if (action === 'mural_notas') {
+      const eu = usuario?.id ?? '';
+      if (!eu) return { status: 200, body: { notas: [] } };
+      const [notas, marcas] = await Promise.all([
+        db.execute({
+          sql: `SELECT n.id, n.texto, n.autor_id, n.autor_nome, n.criado_em, n.editado_em, n.editado_por_nome
+                FROM mural_notas n
+                WHERE n.autor_id = ?
+                   OR EXISTS (SELECT 1 FROM mural_mencoes m WHERE m.nota_id = n.id AND m.usuario_id = ?)
+                ORDER BY n.criado_em DESC, n.id DESC LIMIT 200`,
+          args: [eu, eu],
+        }),
+        db.execute({
+          sql: `SELECT m.nota_id, m.usuario_id FROM mural_mencoes m
+                JOIN mural_notas n ON n.id = m.nota_id
+                WHERE n.autor_id = ?
+                   OR EXISTS (SELECT 1 FROM mural_mencoes x WHERE x.nota_id = n.id AND x.usuario_id = ?)`,
+          args: [eu, eu],
+        }),
+      ]);
+      const marcadosEm = new Map<number, string[]>();
+      for (const m of marcas.rows) {
+        const id = Number(m.nota_id);
+        marcadosEm.set(id, [...(marcadosEm.get(id) ?? []), String(m.usuario_id)]);
+      }
+      return {
+        status: 200,
+        body: {
+          notas: notas.rows.map(n => ({
+            id: Number(n.id),
+            texto: String(n.texto ?? ''),
+            autor_id: n.autor_id == null ? null : String(n.autor_id),
+            autor_nome: String(n.autor_nome ?? ''),
+            criado_em: String(n.criado_em),
+            editado_em: n.editado_em == null ? null : String(n.editado_em),
+            editado_por_nome: n.editado_por_nome == null ? null : String(n.editado_por_nome),
+            mencoes: marcadosEm.get(Number(n.id)) ?? [],
+          })),
         },
       };
     }
@@ -6211,7 +6284,7 @@ async function despacharAdminData(
       // ela.
       const veVitrine = podeAcao(permissoes, 'vitrines');
 
-      const [chamados, pedidos, lidos, mencoes, respostas, joinhas, etapas, interesses] = await Promise.all([
+      const [chamados, pedidos, lidos, mencoes, respostas, joinhas, etapas, interesses, noMural] = await Promise.all([
         cuidaDaFila
           ? db.execute({
             // Sem filtro de andamento: chamado resolvido continua no inbox, com
@@ -6329,6 +6402,19 @@ async function despacharAdminData(
             args: [desde],
           })
           : Promise.resolve({ rows: [] as Record<string, unknown>[] }),
+        // Marcado num recado do mural, por outra pessoa. Vale a última
+        // gravação: o recado corrigido que passou a marcar alguém avisa agora.
+        db.execute({
+          sql: `SELECT n.id, n.texto, n.autor_nome,
+                       COALESCE(n.editado_em, n.criado_em) AS quando
+                FROM mural_mencoes m
+                JOIN mural_notas n ON n.id = m.nota_id
+                WHERE m.usuario_id = ?
+                  AND (n.autor_id IS NULL OR n.autor_id <> ?)
+                  AND COALESCE(n.editado_em, n.criado_em) >= ?
+                ORDER BY quando DESC LIMIT 40`,
+          args: [usuario?.id ?? '', usuario?.id ?? '', desde],
+        }),
       ]);
 
       const jaLido = new Set(lidos.rows.map(x => String(x.chave)));
@@ -6439,6 +6525,22 @@ async function despacharAdminData(
           lido: jaLido.has(chave),
           // A vitrine, que e onde os pedidos dela sao lidos.
           alvo: String(i.vitrine_id),
+        });
+      }
+
+      for (const n of noMural.rows) {
+        const chave = `mural:${n.id}`;
+        if (jaLimpo.has(chave)) continue;
+        const quem = String(n.autor_nome ?? '').trim() || 'Alguém';
+        itens.push({
+          chave,
+          tipo: 'mural',
+          titulo: `${quem} marcou você no mural`,
+          descricao: trecho(n.texto),
+          etiqueta: 'Mural da equipe',
+          quando: String(n.quando),
+          lido: jaLido.has(chave),
+          alvo: String(n.id),
         });
       }
 
@@ -8457,6 +8559,66 @@ function faltaEmProjeto(p: any): string | null {
       if (!alvo.rows[0]) return { status: 404, body: { error: 'Acesso não encontrado.' } };
       { const barrado = await guardaDaEquipe(db, usuario, alvo.rows[0].projeto_id); if (barrado) return barrado; }
       await db.execute({ sql: 'DELETE FROM projeto_acessos WHERE id = ?', args: [body.id] });
+      return { status: 200, body: { ok: true } };
+    }
+
+    // Escrever e corrigir um recado do mural. Todo mundo escreve; corrigir e
+    // excluir é só de quem escreveu - o recado de outra pessoa não se mexe, e
+    // a tela nem oferece. As marcações são regravadas a cada gravação: tirar
+    // alguém do texto tira o recado da vista dele e o aviso.
+    if (action === 'salvar_mural_nota') {
+      if (!autorId) return { status: 403, body: { error: 'Entre com a sua conta para escrever no mural.' } };
+      const textoNota = String(body?.texto ?? '').trim();
+      if (!textoNota) return { status: 400, body: { error: 'A anotação precisa de texto.' } };
+      if (textoNota.length > 8000) return { status: 400, body: { error: 'Anotação longa demais (até 8000 caracteres).' } };
+      const pedidos = [...new Set((Array.isArray(body?.mencoes) ? body.mencoes : [])
+        .map((x: unknown) => String(x ?? '').trim()).filter(Boolean))].slice(0, 50) as string[];
+      // Só quem existe: um id inventado no corpo não vira aviso de ninguém.
+      const marcados = pedidos.length
+        ? (await db.execute({
+          sql: `SELECT id FROM usuarios WHERE id IN (${pedidos.map(() => '?').join(',')})`,
+          args: pedidos,
+        })).rows.map(r => String(r.id))
+        : [];
+      const agora = new Date().toISOString();
+      let id = Number(body?.id ?? 0);
+      if (id) {
+        const dono = (await db.execute({ sql: 'SELECT autor_id FROM mural_notas WHERE id = ?', args: [id] })).rows[0];
+        if (!dono) return { status: 404, body: { error: 'Esse recado não existe mais.' } };
+        if (String(dono.autor_id ?? '') !== autorId) {
+          return { status: 403, body: { error: 'Só quem escreveu o recado pode mudá-lo.' } };
+        }
+        await db.execute({
+          sql: 'UPDATE mural_notas SET texto = ?, editado_em = ?, editado_por_nome = ? WHERE id = ?',
+          args: [textoNota, agora, autorNome, id],
+        });
+        await db.execute({ sql: 'DELETE FROM mural_mencoes WHERE nota_id = ?', args: [id] });
+      } else {
+        const r = await db.execute({
+          sql: 'INSERT INTO mural_notas (texto, autor_id, autor_nome, criado_em) VALUES (?,?,?,?)',
+          args: [textoNota, autorId, autorNome, agora],
+        });
+        id = Number(r.lastInsertRowid);
+      }
+      if (marcados.length) {
+        await db.batch(marcados.map(u => ({
+          sql: 'INSERT OR IGNORE INTO mural_mencoes (nota_id, usuario_id) VALUES (?,?)',
+          args: [id, u],
+        })), 'write');
+      }
+      return { status: 200, body: { ok: true, id, quando: agora, mencoes: marcados } };
+    }
+
+    if (action === 'excluir_mural_nota') {
+      const id = Number(body?.id ?? 0);
+      if (!id) return { status: 400, body: { error: 'Recado ausente.' } };
+      const dono = (await db.execute({ sql: 'SELECT autor_id FROM mural_notas WHERE id = ?', args: [id] })).rows[0];
+      if (!dono) return { status: 200, body: { ok: true } };
+      if (!autorId || String(dono.autor_id ?? '') !== autorId) {
+        return { status: 403, body: { error: 'Só quem escreveu o recado pode excluí-lo.' } };
+      }
+      await db.execute({ sql: 'DELETE FROM mural_mencoes WHERE nota_id = ?', args: [id] });
+      await db.execute({ sql: 'DELETE FROM mural_notas WHERE id = ?', args: [id] });
       return { status: 200, body: { ok: true } };
     }
 
