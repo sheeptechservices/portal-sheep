@@ -32,6 +32,13 @@ export interface OpcoesOndas {
   dprMax?: number;
   /** Teto de quadros por segundo. 0 usa o do monitor. */
   fps?: number;
+  /**
+   * O desenho para o tema claro. A onda é a mesma; muda a tinta. No escuro a
+   * luz soma sobre um quase preto; no claro não existe luz mais clara que o
+   * fundo, então as faixas tingem o branco de limão, do mais pálido no meio
+   * da onda ao mais firme no brilho.
+   */
+  claro?: boolean;
 }
 
 export interface Ondas {
@@ -54,7 +61,7 @@ export interface Ondas {
  */
 const fragOndas = (camadas: number) => `
 precision highp float;
-uniform vec2 u_res; uniform float u_time; uniform float u_speed; uniform float u_warm;
+uniform vec2 u_res; uniform float u_time; uniform float u_speed; uniform float u_warm; uniform float u_claro;
 void main(){
   vec2 uv = (gl_FragCoord.xy - .5*u_res) / min(u_res.x, u_res.y);
   float t = u_time * u_speed;
@@ -68,12 +75,22 @@ void main(){
   float sheen = pow(s, 6.0);
   float mid = pow(s, 2.2);
   float gold = pow(0.5 + 0.5*sin(q.x*0.9 - q.y*1.3 + t*0.5), 3.0);
+  float vig = smoothstep(1.45, 0.35, length(uv));
+  if (u_claro > 0.5) {
+    // O claro: o off-white da casa (--bg), tingido pela mesma onda.
+    vec3 col = vec3(0.972, 0.972, 0.962);
+    col = mix(col, vec3(0.94, 0.972, 0.72), mid * 0.62);
+    col = mix(col, vec3(0.86, 0.93, 0.30), sheen * 0.62);
+    col = mix(col, vec3(0.80, 0.89, 0.10), gold * mid * sheen * 0.45 * u_warm);
+    col *= 0.955 + 0.045*vig;
+    gl_FragColor = vec4(col, 1.0);
+    return;
+  }
   vec3 base = vec3(0.016, 0.018, 0.026);
   vec3 midC = mix(vec3(0.070, 0.078, 0.004), vec3(0.135, 0.150, 0.006), gold*u_warm);
   vec3 hi   = mix(vec3(0.78, 0.86, 0.02), vec3(0.91, 0.99, 0.10), gold*u_warm);
   vec3 col = base + midC*mid + hi*sheen*0.85;
   col += vec3(0.68, 0.74, 0.01) * gold * mid * sheen * 0.5 * u_warm;
-  float vig = smoothstep(1.45, 0.35, length(uv));
   col *= 0.55 + 0.45*vig;
   gl_FragColor = vec4(col, 1.0);
 }`;
@@ -102,6 +119,7 @@ export function iniciarOndas(canvas: HTMLCanvasElement, opcoes: OpcoesOndas = {}
   const camadas = opcoes.camadas ?? 6;
   const dprMax = opcoes.dprMax ?? 2;
   const intervalo = opcoes.fps ? 1000 / opcoes.fps : 0;
+  const claro = opcoes.claro ? 1 : 0;
   const periodo = periodoDe(velocidade);
 
   const gl = canvas.getContext('webgl', { antialias: true, powerPreference: 'low-power' });
@@ -132,6 +150,7 @@ export function iniciarOndas(canvas: HTMLCanvasElement, opcoes: OpcoesOndas = {}
   const uTime = gl.getUniformLocation(prog, 'u_time');
   const uSpeed = gl.getUniformLocation(prog, 'u_speed');
   const uWarm = gl.getUniformLocation(prog, 'u_warm');
+  const uClaro = gl.getUniformLocation(prog, 'u_claro');
 
   const redimensionar = () => {
     const dpr = Math.min(window.devicePixelRatio || 1, dprMax);
@@ -165,6 +184,7 @@ export function iniciarOndas(canvas: HTMLCanvasElement, opcoes: OpcoesOndas = {}
     gl.uniform1f(uTime, ((agora - inicio) / 1000) % periodo);
     gl.uniform1f(uSpeed, velocidade);
     gl.uniform1f(uWarm, brilho);
+    gl.uniform1f(uClaro, claro);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   };
   const perdeu = (e: Event) => { e.preventDefault(); cancelAnimationFrame(raf); };

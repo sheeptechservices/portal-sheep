@@ -1126,14 +1126,15 @@ function BotaoDoTema() {
   );
 }
 
-/** As ondas são a luz do escuro: o desenho delas nasce de um quase preto, e no
- *  claro elas pintariam uma mancha escura atrás da janela. No claro o fundo
- *  volta a ser o da casca, com os focos em CSS. */
+/** As ondas nos dois temas, cada um com a sua tinta. A chave remonta o canvas
+ *  na troca: as ondas novas entram com o próprio esmaecer, por baixo do
+ *  círculo que revela o tema. */
 function FundoDoTema() {
-  return useTema() === 'escuro' ? <FundoDeOndas /> : null;
+  const tema = useTema();
+  return <FundoDeOndas key={tema} claro={tema === 'claro'} />;
 }
 
-function FundoDeOndas() {
+function FundoDeOndas({ claro }: { claro: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [reduzido] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   const [caiu, setCaiu] = useState(false);
@@ -1154,7 +1155,7 @@ function FundoDeOndas() {
         // Meia resolução e 24 quadros: as ondas são faixas suaves de luz e
         // aparecem atrás de vidro; em resolução cheia o custo era de tela
         // inteira de GPU para um desenho que ninguém vê nítido.
-        ondas = iniciarOndas(el, { camadas: 4, fps: 24, dprMax: 0.5 });
+        ondas = iniciarOndas(el, { camadas: 4, fps: 24, dprMax: 0.5, claro });
         if (!ondas) { setCaiu(true); return; }
         conferirModal();
         vigia = window.setInterval(() => {
@@ -1181,7 +1182,7 @@ function FundoDeOndas() {
       document.removeEventListener('visibilitychange', rever);
       desligar();
     };
-  }, [reduzido, caiu]);
+  }, [reduzido, caiu, claro]);
 
   if (reduzido || caiu) return null;
   return <canvas ref={canvas} className="casca-ondas" aria-hidden="true" />;
