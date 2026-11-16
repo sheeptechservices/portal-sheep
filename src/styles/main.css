@@ -21756,8 +21756,8 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 
 /* O card do quadro: chapa sem moldura, selo com a inicial, o valor em
    destaque e o pe com dono, origem e idade. */
-.casca-janela .painel-principal .kanban-card,
-.casca-janela .painel-principal .kanban-card:not(.selecionado) {
+:is(.casca-janela, .admin-modal) .kanban-card,
+:is(.casca-janela, .admin-modal) .kanban-card:not(.selecionado) {
   padding: 12px;
   gap: 8px;
   border: none;
@@ -21765,19 +21765,19 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   background: var(--sup-cartao);
   box-shadow: none;
 }
-:root:not([data-theme="dark"]) .casca-janela .painel-principal .kanban-card:not(.selecionado) {
+:root:not([data-theme="dark"]) :is(.casca-janela, .admin-modal) .kanban-card:not(.selecionado) {
   box-shadow: inset 0 0 0 1px var(--sup-painel-borda);
 }
-.casca-janela .painel-principal .kanban-card:hover {
+:is(.casca-janela, .admin-modal) .kanban-card:hover {
   background: var(--sup-cartao-hover);
   transform: translateY(-2px);
   box-shadow: var(--shadow-card-hover);
 }
-.casca-janela .painel-principal .kanban-card.selecionado {
+:is(.casca-janela, .admin-modal) .kanban-card.selecionado {
   background: color-mix(in srgb, var(--yellow) 14%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--yellow) 55%, transparent);
 }
-.painel-principal .kanban-card-topo { align-items: center; gap: 8px; }
+:is(.casca-janela, .admin-modal) .kanban-card-topo { align-items: center; gap: 8px; }
 .kanban-card-inicial {
   flex-shrink: 0;
   width: 22px;
@@ -21792,7 +21792,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   color: var(--black);
 }
 .kanban-card.selecionado .kanban-card-inicial { background: color-mix(in srgb, var(--texto-forte) 22%, transparent); }
-.painel-principal .kanban-card-title {
+:is(.casca-janela, .admin-modal) .kanban-card-title {
   font-size: 13px;
   font-weight: 600;
   color: var(--texto-forte);
@@ -21807,8 +21807,8 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
-.painel-principal .kanban-card-meta { margin-top: 0; }
-.painel-principal .kanban-card-value {
+:is(.casca-janela, .admin-modal) .kanban-card-meta { margin-top: 0; }
+:is(.casca-janela, .admin-modal) .kanban-card-value {
   font-size: 14px;
   font-weight: 600;
   color: var(--texto-forte);
@@ -21900,7 +21900,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 .kanban-column-conta { flex-shrink: 0; }
 /* As acoes do card pairam no canto, por cima: em repouso elas nao ocupam a
    linha, e o nome da empresa usa a largura inteira. */
-.painel-principal .kanban-card-acoes {
+:is(.casca-janela, .admin-modal) .kanban-card .kanban-card-acoes {
   position: absolute;
   top: 9px;
   right: 9px;
@@ -21911,10 +21911,10 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   opacity: 0;
   transition: opacity var(--transition);
 }
-.painel-principal .kanban-card:hover .kanban-card-acoes,
-.painel-principal .kanban-card-acoes:focus-within { opacity: 1; }
-.painel-principal .kanban-board.selecionando .kanban-card-acoes,
-.painel-principal .kanban-card.selecionado .kanban-card-acoes { opacity: 1; }
+:is(.casca-janela, .admin-modal) .kanban-card:hover .kanban-card-acoes,
+:is(.casca-janela, .admin-modal) .kanban-card-acoes:focus-within { opacity: 1; }
+:is(.casca-janela, .admin-modal) .kanban-board.selecionando .kanban-card-acoes,
+:is(.casca-janela, .admin-modal) .kanban-card.selecionado .kanban-card-acoes { opacity: 1; }
 
 /* Em repouso a linha da coluna e o nome e a contagem; com o ponteiro na
    coluna, a contagem da a vez aos botoes (marcar, recolher, criar), no mesmo
@@ -22115,7 +22115,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 .tarefa-cartao-prazo { margin-left: auto; white-space: nowrap; }
 .tarefa-cartao.concluida .tarefa-cartao-titulo { color: var(--gray2); text-decoration: line-through; }
 /* A escolhida acende inteira em limao, com o texto escuro por cima. */
-.casca-janela .painel-principal .kanban-card.tarefa-cartao.selecionado {
+:is(.casca-janela, .admin-modal) .kanban-card.tarefa-cartao.selecionado {
   background: var(--yellow);
   box-shadow: 0 12px 30px color-mix(in srgb, var(--yellow) 28%, transparent);
 }
@@ -22125,7 +22125,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 .tarefa-cartao.selecionado .tarefa-cartao-titulo,
 .tarefa-cartao.selecionado .tarefa-cartao-rodape,
 .tarefa-cartao.selecionado .tarefa-cartao-rodape * { color: var(--on-yellow); }
-.painel-principal .tarefa-cartao .kanban-card-acoes { top: 7px; right: 7px; }
+:is(.casca-janela, .admin-modal) .tarefa-cartao .kanban-card-acoes { top: 7px; right: 7px; }
 
 /* ── A lista: o backlog do mockup ──────────────────── */
 .backlog {
@@ -22914,15 +22914,15 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 .kanban-board > .kanban-column:nth-child(4) { --atraso-col: 165ms; }
 .kanban-board > .kanban-column:nth-child(5) { --atraso-col: 220ms; }
 .kanban-board > .kanban-column:nth-child(n+6) { --atraso-col: 275ms; }
-.painel-principal .kanban-column-body > .kanban-card {
+:is(.casca-janela, .admin-modal) .kanban-column-body > .kanban-card {
   animation: card-entra .45s var(--curva-anti) backwards;
   animation-delay: calc(var(--atraso-col, 0ms) + 120ms + var(--atraso-card, 0ms));
 }
-.painel-principal .kanban-column-body > .kanban-card:nth-child(2) { --atraso-card: 45ms; }
-.painel-principal .kanban-column-body > .kanban-card:nth-child(3) { --atraso-card: 90ms; }
-.painel-principal .kanban-column-body > .kanban-card:nth-child(4) { --atraso-card: 135ms; }
-.painel-principal .kanban-column-body > .kanban-card:nth-child(5) { --atraso-card: 180ms; }
-.painel-principal .kanban-column-body > .kanban-card:nth-child(n+6) { --atraso-card: 225ms; }
+:is(.casca-janela, .admin-modal) .kanban-column-body > .kanban-card:nth-child(2) { --atraso-card: 45ms; }
+:is(.casca-janela, .admin-modal) .kanban-column-body > .kanban-card:nth-child(3) { --atraso-card: 90ms; }
+:is(.casca-janela, .admin-modal) .kanban-column-body > .kanban-card:nth-child(4) { --atraso-card: 135ms; }
+:is(.casca-janela, .admin-modal) .kanban-column-body > .kanban-card:nth-child(5) { --atraso-card: 180ms; }
+:is(.casca-janela, .admin-modal) .kanban-column-body > .kanban-card:nth-child(n+6) { --atraso-card: 225ms; }
 @keyframes card-entra {
   from { opacity: 0; transform: translateY(12px) scale(.98); }
   to   { opacity: 1; transform: none; }
@@ -22991,7 +22991,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   .faixa-pagina::after,
   .faixa-acoes .btn-primary,
   .conta-animada,
-  .painel-principal .kanban-column-body > .kanban-card,
+  :is(.casca-janela, .admin-modal) .kanban-column-body > .kanban-card,
   .backlog-grupo .lista-anima > .backlog-linha,
   .painel-principal .admin-table tbody tr,
   .painel-projetos-corpo > .projeto-linha,
@@ -23667,7 +23667,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 }
 
 /* A tarefa aberta na ficha acende no quadro, como a escolhida do mockup. */
-.casca-janela .painel-principal .kanban-card.tarefa-cartao.aberta {
+:is(.casca-janela, .admin-modal) .kanban-card.tarefa-cartao.aberta {
   background: var(--yellow);
   box-shadow: 0 12px 30px color-mix(in srgb, var(--yellow) 28%, transparent);
 }
@@ -25105,5 +25105,77 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   .tema-trocando, .tema-trocando * { transition: none !important; }
   .menu-tema-ico { animation: none; }
   .menu-tema-ico svg { transition: none; }
+}
+
+/* ══ Um card so em todo quadro ═════════════════════════════════════════════
+   O desenho do card do mockup (chapa sem moldura, sobe no hover, acoes
+   pairando no canto, entrada em escada) valia so dentro do painel das telas de
+   Tarefas e do Funil. A Planning, a ficha do projeto (que mora num portal,
+   fora da janela) e o quadro da entrega caiam no card antigo, de borda na cor
+   da etapa e hover proprio. As regras agora valem para todo `.kanban-card`
+   da casa, e o card de tarefa e um componente so (`CartaoDaTarefa`).
+   O movimento: realce de cor no `--transition`, subida e sombra no
+   `--transition-spring`, como todo card que se move. */
+:is(.casca-janela, .admin-modal) .kanban-card {
+  position: relative;
+}
+/* O pego no arraste e os da coluna que abre a vaga tem transicao propria
+   (ver O arraste nos quadros). */
+:is(.casca-janela, .admin-modal) .kanban-column-body:not(.com-vaga) > .kanban-card:not(.sendo-arrastado),
+:is(.casca-janela, .admin-modal) .kanban-card:not(.kanban-column-body > *) {
+  transition: background var(--transition), box-shadow var(--transition-spring),
+    transform var(--transition-spring), opacity var(--transition);
+}
+.tarefa-cartao { cursor: pointer; }
+/* No claro o card em repouso leva um fio por dentro (box-shadow), e essa regra
+   e mais forte que a do hover: a sombra de subir nunca aparecia. */
+:root:not([data-theme="dark"]) :is(.casca-janela, .admin-modal) .kanban-card:not(.selecionado):hover {
+  box-shadow: inset 0 0 0 1px var(--sup-painel-borda), var(--shadow-card-hover);
+}
+
+/* As colunas dos quadros de painel (Planning, ficha do projeto, entrega e o
+   comercial da Planning) com a chapa das colunas da tela de Tarefas e do
+   Funil: fundo de coluna sem moldura, cabeca com o fio embaixo, e os botoes
+   da cabeca (recolher, criar, marcar) so com o ponteiro na coluna. Antes eram
+   caixas de borda, com os botoes sempre a vista. */
+:is(.casca-janela, .admin-modal) .painel-kanban .kanban-column {
+  padding: 8px;
+  gap: 8px;
+  border: none;
+  border-radius: var(--radius-md);
+}
+:is(.casca-janela, .admin-modal) .painel-kanban .kanban-column:not(.drag-over) { background: var(--sup-coluna); }
+:is(.casca-janela, .admin-modal) .painel-kanban .kanban-column.drag-over {
+  background: color-mix(in srgb, var(--yellow) 6%, var(--sup-coluna));
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--yellow) 55%, transparent);
+}
+:is(.casca-janela, .admin-modal) .painel-kanban .kanban-column-header {
+  padding: 6px 6px 8px;
+  gap: 6px;
+  border-bottom: 1px solid var(--sup-painel-borda);
+}
+:is(.casca-janela, .admin-modal) .painel-kanban .kanban-column-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: var(--gray);
+}
+:is(.casca-janela, .admin-modal) .painel-kanban .kanban-column-body { padding: 0; gap: 8px; }
+:is(.casca-janela, .admin-modal) .painel-kanban .kanban-column-header :is(.kanban-column-fixar, .tarefa-marcar-grupo) {
+  opacity: 0;
+  transition: opacity var(--transition), background var(--transition), color var(--transition);
+}
+:is(.casca-janela, .admin-modal) .painel-kanban .kanban-column:hover .kanban-column-header :is(.kanban-column-fixar, .tarefa-marcar-grupo),
+:is(.casca-janela, .admin-modal) .painel-kanban .kanban-column-header .kanban-column-fixar:is([aria-pressed="true"], :focus-visible),
+:is(.casca-janela, .admin-modal) .painel-kanban.selecionando .kanban-column-header .tarefa-marcar-grupo { opacity: 1; }
+/* O card unico pede a largura do quadro grande: na coluna miuda de 170px o pe
+   dele (dono, complexidade, prazo) quebrava em tres linhas. */
+:is(.casca-janela, .admin-modal) .painel-kanban:not(.painel-kanban-alto) .kanban-column:not(.kanban-column-collapsible),
+:is(.casca-janela, .admin-modal) .painel-kanban:not(.painel-kanban-alto) .kanban-column.kanban-column-collapsible.is-open {
+  flex: 0 0 230px;
+  min-width: 230px;
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.casca-janela, .admin-modal) .painel-kanban .kanban-column-header :is(.kanban-column-fixar, .tarefa-marcar-grupo) { transition: none; }
 }
 

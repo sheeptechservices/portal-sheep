@@ -13,9 +13,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { iniciais, nomeCurto, useAuth, useToast } from './AdminApp';
+import { iniciais, useAuth, useToast } from './AdminApp';
+import { CartaoDaTarefa, Complexidade, Prazo, Prioridade } from './CartaoDaTarefa';
 import {
-  IconAgrupar, IconAlert, IconArrowRight, IconCalendario, IconCheck, IconChevronDown, IconInbox,
+  IconAgrupar, IconAlert, IconArrowRight, IconCheck, IconChevronDown, IconInbox,
   IconPrioridadeAlta, IconRecolher,
   IconAjustes, IconDownload, IconDuplicar, IconNovaTarefa, IconOrdenar, IconPlus, IconRecentes,
   IconSearch, IconTrash, IconUser, IconX,
@@ -41,7 +42,7 @@ import { entregasDa } from '../lib/entregasDaTarefa';
 import {
   COR_PRIORIDADE, ICONE_PRIORIDADE, PRIORIDADES, PRIORIDADE_PADRAO, porUrgencia,
 } from '../lib/prioridades';
-import { COMPLEXIDADES, ICONE_COMPLEXIDADE } from '../lib/complexidades';
+import { COMPLEXIDADES } from '../lib/complexidades';
 // O formulário e o vocabulário de tarefa moram fora desta tela: o relatório de
 // Gestão abre o mesmo modal, e duas cópias divergiriam no primeiro campo novo.
 import {
@@ -56,7 +57,6 @@ import { semTextoNoShift, useSelecao } from '../lib/useSelecao';
 import { Dialogo } from '../components/Dialogo';
 import { nomesDosDonos } from '../lib/donosDaTarefa';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
-import { dia as fmtData } from '../lib/datas';
 export { ETAPAS_PADRAO, etiquetasParaOPapel, type EtapaTarefa, type EtiquetaTarefa } from './FormularioTarefa';
 
 
@@ -213,47 +213,8 @@ function ChipStatus({ status, cor }: { status: string; cor: string }) {
   );
 }
 
-/** Prazo em texto, vermelho quando venceu e a tarefa não terminou. */
-function Prazo({ iso, concluida }: { iso: string | null; concluida: boolean }) {
-  if (!iso) return null;
-  const dias = diasPara(iso);
-  const atrasado = dias !== null && dias < 0 && !concluida;
-  return (
-    <span
-      title={atrasado ? `${Math.abs(dias)} dia(s) de atraso` : undefined}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, whiteSpace: 'nowrap',
-        color: atrasado ? 'var(--red)' : 'var(--gray2)', fontWeight: atrasado ? 700 : 500,
-      }}>
-      <IconCalendario size={12} />
-      {fmtData(iso)}
-    </span>
-  );
-}
-
-/** A complexidade na linha: o caminho em degraus, na cor do nível, e a palavra.
- *  Some quando ninguém dimensionou a tarefa - um "sem complexidade" em cada card
- *  seria uma coluna de nada. */
-function Complexidade({ valor }: { valor?: string | null }) {
-  const Icone = ICONE_COMPLEXIDADE[String(valor ?? '')];
-  if (!Icone) return null;
-  return (
-    <span className="chip-complexidade" title={`Complexidade: ${valor}`}>
-      <Icone size={13} />
-      {valor}
-    </span>
-  );
-}
-
-function Prioridade({ valor }: { valor: string }) {
-  const Icone = ICONE_PRIORIDADE[valor || PRIORIDADE_PADRAO];
-  if (!Icone) return null;
-  return (
-    <span title={`Prioridade: ${valor}`} style={{ display: 'inline-flex', color: 'var(--gray)' }}>
-      <Icone size={14} />
-    </span>
-  );
-}
+// Prazo, complexidade e prioridade moram com o card único (`CartaoDaTarefa`):
+// a lista e a tabela daqui usam as mesmas peças que o quadro.
 
 /** O dia de hoje como o mockup escreve: "13 nov 2026". */
 function hojePorExtenso(): string {
@@ -1694,32 +1655,27 @@ function Coluna({ grupo, pessoas, et, etq, podeEditar, arrastando, loteArrastado
         {tarefas.map((t, i) => {
           const marcada = !!selecao?.selecao.has(t.id);
           return (
-          <div key={t.id}
-            className={`kanban-card tarefa-cartao${marcada ? ' selecionado' : ''}${abertaId === t.id ? ' aberta' : ''}${et.fecha(t.status) ? ' concluida' : ''}`}
-            data-flip={t.id}
-            draggable={podeEditar}
+          <CartaoDaTarefa key={t.id}
+            t={t}
+            contexto={t.projetosDela.map(p => p.nome).join(' · ')}
+            pessoas={pessoas}
+            corDaEtiqueta={etq.cor}
+            concluida={et.fecha(t.status)}
+            prazoSemCobranca={!!grupo.desconsiderada}
+            marcada={marcada}
+            aberta={abertaId === t.id}
+            podeArrastar={podeEditar}
             onDragStart={e => { comecarArraste(e, grupo.chave); onArrastar(t.id); }}
             onDragEnd={() => { terminarArraste(); onSoltar(); }}
             onMouseDown={semTextoNoShift}
             onClick={e => (selecao ? selecao.onClicar(t, e) : onAbrir(t))}
             style={{
-              cursor: 'pointer',
-              position: 'relative',
               // O cartão pego se apaga pela classe do arraste; aqui só os
               // outros marcados que vão junto com ele.
               opacity: loteArrastado && marcada && arrastando !== t.id ? 0.45 : 1,
               ...vagaCol.estiloDoCard(i),
-            }}>
-            {/* A linha de cima, como no mockup: a chave da tarefa e de onde ela
-                e, em letra miuda. A prioridade abre a linha, em icone. */}
-            <div className="tarefa-cartao-topo">
-              <Prioridade valor={t.prioridade} />
-              <span className="tarefa-cartao-chave">#{t.id}</span>
-              <span className="tarefa-cartao-projeto">{t.projetosDela.map(p => p.nome).join(' · ')}</span>
-            </div>
-            {/* Aparece com o ponteiro no card, por cima do canto. Sempre
-                visivel seria uma lixeira por cartao numa coluna cheia. */}
-            <span className="kanban-card-acoes">
+            }}
+            acoes={<>
               {selecao && <CaixaDaTarefa t={t} sel={selecao} />}
               {onDuplicar && (
                 <button
@@ -1743,31 +1699,8 @@ function Coluna({ grupo, pessoas, et, etq, podeEditar, arrastando, loteArrastado
                   <IconTrash size={12} />
                 </button>
               )}
-            </span>
-            <p className="tarefa-cartao-titulo">{t.titulo}</p>
-            {t.etiquetas.length > 0 && (
-              <div className="tarefa-cartao-etiquetas">
-                {t.etiquetas.map(e => <ChipEtiqueta key={e} etiqueta={e} cor={etq.cor(e)} />)}
-              </div>
-            )}
-            {/* O pe: quem faz, com o nome quando e uma pessoa so, e o que a
-                tarefa carrega. O prazo fica no canto, e quebra para a linha de
-                baixo em vez de vazar quando nao cabe. */}
-            <div className="tarefa-cartao-rodape">
-              <DonosDaTarefa ids={t.responsaveis} pessoas={pessoas} size={20} />
-              {(t.responsaveis ?? []).length === 1 && (
-                <span className="tarefa-cartao-dono">
-                  {nomeCurto(pessoas.find(x => x.id === t.responsaveis[0])?.nome ?? '')}
-                </span>
-              )}
-              <Complexidade valor={t.complexidade} />
-              <SinaisDaTarefa t={t} />
-              <span className="tarefa-cartao-prazo">
-                {/* Etapa desconsiderada nao cobra prazo: a tarefa saiu da conta. */}
-                <Prazo iso={t.prazo} concluida={et.fecha(t.status) || !!grupo.desconsiderada} />
-              </span>
-            </div>
-          </div>
+            </>}
+          />
           );
         })}
         {tarefas.length === 0 && (

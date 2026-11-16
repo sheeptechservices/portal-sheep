@@ -88,7 +88,7 @@ import { Donut, type FatiaDonut } from '../components/Donut';
 // e uma cópia local divergiria dela no primeiro campo novo.
 import {
   AvatarVazio,
-  ChipEtiqueta, ConfirmarExclusao, entregasDoRascunho, FormularioTarefa, indexarEtiquetas, tarefaGravada, TITULO_PADRAO,
+  ConfirmarExclusao, entregasDoRascunho, FormularioTarefa, indexarEtiquetas, tarefaGravada, TITULO_PADRAO,
   type EtapaTarefa, type Etiquetario, type EtiquetaTarefa, type Rascunho as RascunhoTarefa,
 } from './FormularioTarefa';
 import { PreviaArquivo } from '../components/PreviaArquivo';
@@ -98,7 +98,7 @@ import { CampoBusca } from '../components/CampoBusca';
 import { DatePicker } from '../components/DatePicker';
 import { COR_ENTREGA, ICONE_ENTREGA } from '../lib/etapasEntrega';
 import { DonosDaTarefa } from '../components/DonosDaTarefa';
-import { SinaisDaTarefa } from '../components/SinaisDaTarefa';
+import { CartaoDaTarefa } from './CartaoDaTarefa';
 import { SeletorPessoas } from '../components/SeletorPessoas';
 import {
   SecaoReunioes, type Reuniao, type ReuniaoFF,
@@ -1410,66 +1410,40 @@ function ColunaDoQuadro({ etapa, tarefas, pessoas, podeEditar, arrastando, loteA
           // continua podendo ler o que foi combinado - o formulário abre em
           // modo de leitura sozinho. O que a permissão barra é arrastar,
           // criar e excluir, que são os gestos que mudam alguma coisa.
-          <div key={x.id} className={`kanban-card${marcada ? ' selecionado' : ''}`}
-            data-flip={x.id}
-            draggable={podeEditar}
+          // O card é o mesmo da tela de Tarefas (`CartaoDaTarefa`): a linha de
+          // cima traz a entrega no lugar do projeto, que aqui já se sabe qual é.
+          <CartaoDaTarefa key={x.id}
+            t={x}
+            contexto={entregaDe?.(x)}
+            pessoas={pessoas}
+            corDaEtiqueta={etiquetario?.cor}
+            concluida={!!x.concluida_em}
+            marcada={marcada}
+            podeArrastar={podeEditar}
             onDragStart={e => { comecarArraste(e, etapa.nome); onArrastar(x.id); }}
             onDragEnd={() => { terminarArraste(); onFimDoArraste(); }}
             onMouseDown={semTextoNoShift}
             onClick={e => (selecao ? selecao.onClicar(x, e) : onAbrir(x))}
             style={{
-              cursor: 'pointer',
               // O cartão pego se apaga pela classe do arraste; aqui só os
               // outros marcados que vão junto com ele.
               opacity: loteArrastado && marcada && arrastando !== x.id ? 0.45 : 1,
               ...vagaCol.estiloDoCard(i),
-            }}>
-            <p className="kanban-card-title">{x.titulo}</p>
-            {entregaDe?.(x) && (
-              <p className="kanban-card-entrega" title={entregaDe(x) ?? undefined}>
-                {entregaDe(x)}
-              </p>
-            )}
-            {/* As etiquetas no card, como na tela de Tarefas: "bug", "bloqueado"
-                e companhia mudam o que se olha primeiro, e saber disso só
-                abrindo a tarefa é saber tarde demais. */}
-            {x.etiquetas?.length > 0 && (
-              <div className="kanban-card-etiquetas">
-                {x.etiquetas.map(e => (
-                  <ChipEtiqueta key={e} etiqueta={e} cor={etiquetario?.cor(e)} />
-                ))}
-              </div>
-            )}
-            <div className="painel-kanban-pe">
-              {/* O ícone de prioridade explica a ordem da coluna, que de outro
-                  modo pareceria arbitrária. Mesma marca do índice de projetos. */}
-              <span className="painel-kanban-prio"
-                style={{ color: COR_PRIORIDADE[x.prioridade ?? PRIORIDADE_PADRAO] ?? 'var(--gray2)' }}
-                title={`Prioridade: ${x.prioridade ?? PRIORIDADE_PADRAO}`}>
-                {ICONE_PRIORIDADE[x.prioridade ?? PRIORIDADE_PADRAO]?.({ size: 12 })}
-              </span>
-              {x.prazo && <span>{fmtData(x.prazo)}</span>}
-              <SinaisDaTarefa t={x} />
-              {x.responsaveis?.length > 0 && (
-                <span style={{ marginLeft: 'auto' }}>
-                  <DonosDaTarefa ids={x.responsaveis} pessoas={pessoas} size={16} />
-                </span>
-              )}
-              {/* A caixa de marcar mora com a lixeira: é o canto das ações do
-                  card, e aparece do mesmo jeito, com o ponteiro em cima. */}
+            }}
+            acoes={(selecao || podeEditar) ? <>
               {selecao && (
                 <CaixaDeMarcar marcada={marcada} rotulo={x.titulo}
                   onMarcar={intervalo => selecao.onMarcar(x, intervalo)} />
               )}
               {podeEditar && (
                 <button type="button" className="kanban-card-acao perigo"
-                  title="Excluir tarefa" aria-label={`Excluir ${x.titulo}`}
+                  title="Excluir tarefa" aria-label={`Excluir "${x.titulo}"`}
                   onClick={ev => { ev.stopPropagation(); onExcluir(x); }}>
-                  <IconTrash size={11} />
+                  <IconTrash size={12} />
                 </button>
               )}
-            </div>
-          </div>
+            </> : undefined}
+          />
           );
         })}
       </div>
