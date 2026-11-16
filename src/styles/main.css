@@ -25345,6 +25345,74 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
 }
 .chm-cliente { font-size: 13px; color: var(--gray); }
 
+/* ── A legenda dos status ─────────────────────────────────────────────────────
+   No alto do painel, entre os números e a tabela: as etapas na ordem em que o
+   chamado anda, cada uma com o que quer dizer. A mesma chapa do painel da
+   tabela, e recolhível - quem já conhece o caminho não precisa dele aberto. */
+.chm-legenda {
+  border-radius: var(--radius-lg);
+  background: var(--sup-painel);
+  border: 1px solid var(--sup-painel-borda);
+  animation: faixa-entra .45s var(--curva-anti) 80ms backwards;
+}
+.chm-legenda-topo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  width: 100%;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--gray);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.chm-legenda-topo:hover { background: var(--gray4); }
+.chm-legenda-titulo {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--black);
+}
+.chm-legenda-sub { font-size: 12px; color: var(--gray2); }
+.chm-legenda-etapas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 6px 14px;
+  margin: 0;
+  padding: 2px 16px 16px;
+  list-style: none;
+}
+.chm-legenda-etapa {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 0 4px;
+}
+.chm-legenda-etapa p { margin: 0; font-size: 12px; line-height: 1.45; color: var(--gray); }
+/* As etapas entram em escada quando a legenda abre. */
+.revelar.aberto .chm-legenda-etapa { animation: linha-entra .38s var(--curva-anti) backwards; }
+.revelar.aberto .chm-legenda-etapa:nth-child(2) { animation-delay: 30ms; }
+.revelar.aberto .chm-legenda-etapa:nth-child(3) { animation-delay: 60ms; }
+.revelar.aberto .chm-legenda-etapa:nth-child(4) { animation-delay: 90ms; }
+.revelar.aberto .chm-legenda-etapa:nth-child(n+5) { animation-delay: 120ms; }
+@media (prefers-reduced-motion: reduce) {
+  .chm-legenda, .revelar.aberto .chm-legenda-etapa { animation: none; }
+}
+
+/* O status da linha avisa que explica: o ponteiro de ajuda, e a dica com a
+   pílula e a frase da etapa. */
+.chm-status-dica { cursor: help; }
+.chm-dica-etapa { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.chm-dica-etapa p { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--gray); }
+
 .chm-numeros {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

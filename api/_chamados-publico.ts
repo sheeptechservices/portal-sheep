@@ -431,15 +431,12 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
     ]);
     const ajustes = await lendoAjustes;
 
-    // Das etapas da casa, só as que o painel usa: as dos chamados listados e a
-    // de entrada, onde nasce o próximo.
-    const usadas = new Set(chamados.rows.map(c => String(c.etapa ?? '')));
-    const entrada = etapas.find(e => e.entrada) ?? etapas[0];
-
     return res.status(200).json({
       projeto: { nome: String(p.nome), cliente: p.cliente_nome != null ? String(p.cliente_nome) : null },
-      etapas: etapas.filter(e => usadas.has(e.nome) || e === entrada)
-        .map(e => ({ nome: e.nome, cor: e.cor, grupo: grupoDa(e, etapas) })),
+      // Todas as etapas ativas, na ordem do quadro: a legenda do painel mostra
+      // o caminho inteiro, e não só onde os chamados estão hoje. Sai o nome, a
+      // cor e o grupo - nada da configuração interna delas.
+      etapas: etapas.map(e => ({ nome: e.nome, cor: e.cor, grupo: grupoDa(e, etapas) })),
       chamados: chamados.rows.map(c => {
         const id = Number(c.id);
         // Tarefa apagada ou levada para outro projeto: o chamado continua na

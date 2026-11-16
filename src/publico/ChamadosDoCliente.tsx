@@ -37,6 +37,7 @@ import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { iniciarOndas } from '../lib/ondas';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
+import { useDicaRica } from '../components/DicaRica';
 
 type Grupo = 'triagem' | 'andamento' | 'concluido' | 'cancelado';
 
@@ -593,6 +594,8 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
             ativo={recorte === 'concluido'} onClick={() => setRecorte(r => r === 'concluido' ? null : 'concluido')} />
         </div>
 
+        {dados && <LegendaDasEtapas etapas={dados.etapas} />}
+
         <section className="chm-painel">
           <div className="chm-barra">
             <CampoBusca valor={busca} onMudar={setBusca} largura={280}
@@ -697,10 +700,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
                             )}
                           </td>
                           <td>
-                            <span className="reportes-status" style={{ ['--cor' as string]: c.cor }}>
-                              <span className="reportes-ponto" style={{ background: c.cor }} />
-                              {c.status}
-                            </span>
+                            <StatusComDica nome={c.status} cor={c.cor} grupo={c.grupo} />
                           </td>
                           {/* A data que o time marcou para entregar. Aberto e
                               sem data, diz que ainda vai ser definida; já
@@ -973,6 +973,100 @@ function ChipsDeAnexos({ chamado, anexos, onVer }: {
         </li>
       ))}
     </ul>
+  );
+}
+
+// ── O que cada status quer dizer ─────────────────────────────────────────
+//  Na língua de quem pediu, e não na do quadro: "Backlog" e "Em revisão" são
+//  palavras do time. As etapas da casa são configuráveis, então o texto vem
+//  pelo nome conhecido e, para uma etapa nova, pelo grupo dela - nenhum status
+//  fica sem explicação.
+const SIGNIFICADO_POR_NOME: Record<string, string> = {
+  triagem: 'Recebemos o seu chamado. O time está lendo para entender e classificar o pedido.',
+  backlog: 'Entendido e na fila. Aguarda a vez de entrar no planejamento do time.',
+  fazer: 'Planejado: entra no próximo ciclo de trabalho do time.',
+  'a fazer': 'Planejado: entra no próximo ciclo de trabalho do time.',
+  fazendo: 'O time está trabalhando nele agora.',
+  'em andamento': 'O time está trabalhando nele agora.',
+  'em revisao': 'Pronto do lado do time e em conferência antes de chegar até você.',
+  concluida: 'Entregue. Se algo não ficou certo, você pode reabrir o chamado.',
+  concluido: 'Entregue. Se algo não ficou certo, você pode reabrir o chamado.',
+  cancelada: 'Encerrado sem execução: não vai ser feito. Se ainda precisar, você pode reabrir.',
+  cancelado: 'Encerrado sem execução: não vai ser feito. Se ainda precisar, você pode reabrir.',
+  encerrado: 'Encerrado pelo time. Se ainda precisar, você pode reabrir o chamado.',
+};
+const SIGNIFICADO_POR_GRUPO: Record<Grupo, string> = {
+  triagem: 'Recebemos o seu chamado. O time está analisando o pedido.',
+  andamento: 'O chamado está com o time, em uma das etapas de trabalho.',
+  concluido: 'Entregue. Se algo não ficou certo, você pode reabrir o chamado.',
+  cancelado: 'Encerrado sem execução. Se ainda precisar, você pode reabrir.',
+};
+const normalizar = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLocaleLowerCase('pt-BR').trim();
+function significadoDaEtapa(nome: string, grupo: Grupo): string {
+  return SIGNIFICADO_POR_NOME[normalizar(nome)] ?? SIGNIFICADO_POR_GRUPO[grupo];
+}
+
+/** A pílula do status na linha, com a explicação da etapa ao passar o mouse
+ *  (ou ao chegar pelo teclado). */
+function StatusComDica({ nome, cor, grupo }: { nome: string; cor: string; grupo: Grupo }) {
+  const { gatilho, dica } = useDicaRica<HTMLSpanElement>(() => (
+    <div className="chm-dica-etapa">
+      <span className="reportes-status" style={{ ['--cor' as string]: cor }}>
+        <span className="reportes-ponto" style={{ background: cor }} />
+        {nome}
+      </span>
+      <p>{significadoDaEtapa(nome, grupo)}</p>
+    </div>
+  ), { largura: 260 });
+  return (
+    <>
+      <span className="reportes-status chm-status-dica" style={{ ['--cor' as string]: cor }} tabIndex={0} {...gatilho}>
+        <span className="reportes-ponto" style={{ background: cor }} />
+        {nome}
+      </span>
+      {dica}
+    </>
+  );
+}
+
+/** A chave que lembra, neste navegador, se a legenda ficou recolhida. */
+const CHAVE_LEGENDA = 'sheep_chamados_legenda';
+
+/** A legenda dos status, no alto do painel: as etapas na ordem em que o
+ *  chamado anda, cada uma com o que quer dizer. Quem já conhece recolhe, e a
+ *  escolha fica guardada neste navegador. */
+function LegendaDasEtapas({ etapas }: { etapas: { nome: string; cor: string; grupo: Grupo }[] }) {
+  const [aberta, setAberta] = useState(() => {
+    try { return localStorage.getItem(CHAVE_LEGENDA) !== 'recolhida'; } catch { return true; }
+  });
+  const alternar = () => setAberta(a => {
+    try { localStorage.setItem(CHAVE_LEGENDA, a ? 'recolhida' : 'aberta'); } catch { /* sem armazenamento */ }
+    return !a;
+  });
+  if (!etapas.length) return null;
+  return (
+    <section className="chm-legenda" aria-label="O que significa cada status">
+      <button type="button" className="chm-legenda-topo" aria-expanded={aberta} onClick={alternar}>
+        <span className={`entrega-seta${aberta ? ' aberta' : ''}`}><IconChevronRight size={12} /></span>
+        <span className="chm-legenda-titulo">Como ler o status</span>
+        <span className="chm-legenda-sub">o caminho de um chamado, da chegada à entrega</span>
+      </button>
+      <div className={`revelar${aberta ? ' aberto' : ''}`}>
+        <div>
+          <ol className="chm-legenda-etapas">
+            {etapas.map(e => (
+              <li key={e.nome} className="chm-legenda-etapa">
+                <span className="reportes-status" style={{ ['--cor' as string]: e.cor }}>
+                  <span className="reportes-ponto" style={{ background: e.cor }} />
+                  {e.nome}
+                </span>
+                <p>{significadoDaEtapa(e.nome, e.grupo)}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
+    </section>
   );
 }
 
