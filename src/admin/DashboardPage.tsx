@@ -9,7 +9,7 @@
 //  Tudo aqui vem dos dados do portal - os projetos com as tarefas e as entregas,
 //  as etapas das tarefas e o painel comercial. Nada e maquete.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { nomeCurto, useAuth } from './AdminApp';
 import { FaixaDaPagina } from '../components/FaixaDaPagina';
 import { ContaAnimada } from '../components/ContaAnimada';
@@ -159,13 +159,6 @@ export default function DashboardPage({ token, onIr, onNovaTarefa }: {
 
   const aberta = (t: Tarefa) => !et.fecha(t.status) && !et.desconsidera(t.status);
   const minha = (t: Tarefa) => !usuario || (t.responsaveis ?? []).includes(usuario.id);
-
-  /** A semana de quem abriu: o que esta aberto com ele, o prazo mais perto
-   *  primeiro - sem prazo vai para o fim. */
-  const semana = useMemo(() => tarefas
-    .filter(t => aberta(t) && minha(t))
-    .sort((a, b) => String(a.prazo ?? '9999').localeCompare(String(b.prazo ?? '9999')) || a.id - b.id)
-    .slice(0, 5), [tarefas, et, usuario]);
 
   const resumo = useMemo(() => {
     const ativos = (projetos ?? []).filter(p => p.status === 'Em andamento');
@@ -396,32 +389,7 @@ export default function DashboardPage({ token, onIr, onNovaTarefa }: {
           )}
         </section>
 
-        <section className="painel-cartao painel-semana">
-          <div className="painel-cartao-topo">
-            <h2 className="painel-cartao-titulo">Minha semana</h2>
-            {onIr && (
-              <button type="button" className="painel-link" onClick={() => onIr('tarefas')}>Ver tarefas</button>
-            )}
-          </div>
-          {carregando ? (
-            <div className="dux-spinner-row"><span className="dux-spinner sm" /></div>
-          ) : semana.length === 0 ? (
-            <p className="painel-vazio">Nada aberto com você. Semana livre.</p>
-          ) : (
-            <div className="lista-anima" key={semana.map(t => t.id).join(',')}>
-              {semana.map(t => (
-                <button key={t.id} type="button" className="semana-linha" onClick={() => onIr?.('tarefas')}>
-                  <span className="semana-icone" style={{ ['--cor' as string]: et.cor(t.status) }} />
-                  <span className="semana-texto">
-                    <span className="semana-titulo">{t.titulo}</span>
-                    <span className="semana-sub">#{t.id} | {t.projetoNome}{t.prazo ? ` | ${diaCurto(t.prazo)}` : ''}</span>
-                  </span>
-                  <span className="semana-status" style={{ ['--cor' as string]: et.cor(t.status) }}>{t.status}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </section>
+        <CalorDasConcluidas tarefas={tarefas} carregando={carregando} usuarioId={usuario?.id ?? null} />
       </div>
 
       {/* Os projetos em andamento: a entrega da vez, o quanto andou e o prazo. */}
@@ -443,6 +411,189 @@ export default function DashboardPage({ token, onIr, onNovaTarefa }: {
         )}
       </section>
     </div>
+  );
+}
+
+// ── O mapa de calor das tarefas concluidas ───────────────────────────────────
+
+/** A data local de um carimbo do servidor. O `concluida_em` vem em UTC: as 22h
+ *  de Brasilia ele ja esta no dia seguinte, e o quadrado sairia deslocado. */
+function diaLocalDe(carimbo: string): Date {
+  const d = new Date(carimbo);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+const chaveDoDia = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+const DIAS_DA_SEMANA = ['segunda', 'terça', 'quarta', 'quinta', 'sexta'];
+/** O menor quadrado que ainda se le, e o vao entre eles. A quantidade de
+ *  semanas sai da largura do cartao: no monitor largo cabe meio ano, no
+ *  estreito, os ultimos meses. */
+const CELULA_MIN = 18;
+const VAO_CELULA = 5;
+
+/**
+ * As tarefas concluidas dia a dia, no formato de mapa de calor: uma coluna por
+ * semana, uma linha por dia util, e o tom do quadrado diz quantas fecharam ali.
+ * O que fecha no sabado ou no domingo entra na sexta da mesma semana: o fim de
+ * semana raramente tem trabalho, e duas linhas quase sempre vazias so
+ * encolheriam o resto.
+ *
+ * Equipe mostra a casa inteira; Minhas, o que tem quem abriu entre os
+ * responsaveis. O quadrado sob o ponteiro abre uma dica so, que desliza de um
+ * para o outro, como a das barras ao lado.
+ */
+function CalorDasConcluidas({ tarefas, carregando, usuarioId }: {
+  tarefas: (Tarefa & { projetoNome: string })[];
+  carregando: boolean;
+  usuarioId: string | null;
+}) {
+  const [quem, setQuem] = useState<'equipe' | 'minhas'>('equipe');
+  const caixa = useRef<HTMLDivElement>(null);
+  const [semanas, setSemanas] = useState(18);
+  const [foco, setFoco] = useState<{ semana: number; dia: number } | null>(null);
+
+  useEffect(() => {
+    const el = caixa.current;
+    if (!el) return;
+    const medir = (largura: number) =>
+      setSemanas(Math.max(8, Math.min(30, Math.floor((largura + VAO_CELULA) / (CELULA_MIN + VAO_CELULA)))));
+    medir(el.clientWidth);
+    const observador = new ResizeObserver(([e]) => medir(e.contentRect.width));
+    observador.observe(el);
+    return () => observador.disconnect();
+  }, [carregando]);
+
+  const mapa = useMemo(() => {
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    // A segunda da semana corrente, e dela para tras.
+    const segundaAtual = new Date(hoje);
+    segundaAtual.setDate(hoje.getDate() - ((hoje.getDay() + 6) % 7));
+    const inicio = new Date(segundaAtual);
+    inicio.setDate(segundaAtual.getDate() - (semanas - 1) * 7);
+
+    const porDia = new Map<string, (Tarefa & { projetoNome: string })[]>();
+    let total = 0;
+    for (const t of tarefas) {
+      if (!t.concluida_em) continue;
+      if (quem === 'minhas' && (!usuarioId || !(t.responsaveis ?? []).includes(usuarioId))) continue;
+      const dia = diaLocalDe(t.concluida_em);
+      // Sabado e domingo vao para a sexta da mesma semana.
+      const semana = dia.getDay();
+      if (semana === 6) dia.setDate(dia.getDate() - 1);
+      if (semana === 0) dia.setDate(dia.getDate() - 2);
+      if (dia < inicio || dia > hoje) continue;
+      const chave = chaveDoDia(dia);
+      const lista = porDia.get(chave) ?? [];
+      lista.push(t);
+      porDia.set(chave, lista);
+      total++;
+    }
+    const maior = Math.max(1, ...[...porDia.values()].map(l => l.length));
+
+    const colunas = Array.from({ length: semanas }, (_, s) => Array.from({ length: 5 }, (_, d) => {
+      const data = new Date(inicio);
+      data.setDate(inicio.getDate() + s * 7 + d);
+      const lista = porDia.get(chaveDoDia(data)) ?? [];
+      return {
+        data,
+        futuro: data > hoje,
+        quantas: lista.length,
+        tarefas: lista,
+        // Quatro tons acima do vazio, relativos ao dia mais cheio da janela.
+        nivel: lista.length === 0 ? 0 : Math.max(1, Math.ceil((lista.length / maior) * 4)),
+      };
+    }));
+    // O nome do mes embaixo da primeira semana em que ele aparece. O mes que
+    // abre a janela pela metade so ganha nome se tiver espaco antes do proximo:
+    // colados, "jun jul" se leriam como uma palavra so.
+    const viraMes = (s: number) => s > 0 && colunas[s - 1][0].data.getMonth() !== colunas[s][0].data.getMonth();
+    const meses = colunas.map((col, s) => {
+      const nome = MESES_CURTOS[col[0].data.getMonth()];
+      if (viraMes(s)) return nome;
+      if (s === 0 && !viraMes(1) && !viraMes(2)) return nome;
+      return '';
+    });
+    return { colunas, meses, total };
+  }, [tarefas, quem, usuarioId, semanas]);
+
+  const celula = foco ? mapa.colunas[foco.semana]?.[foco.dia] : null;
+
+  return (
+    <section className="painel-cartao painel-calor">
+      <div className="painel-cartao-topo">
+        <h2 className="painel-cartao-titulo">Tarefas concluídas</h2>
+        <div className="painel-janelas" role="tablist" aria-label="De quem">
+          {(['equipe', 'minhas'] as const).map(q => (
+            <button key={q} type="button" role="tab" aria-selected={quem === q}
+              className={`painel-janela${quem === q ? ' ativa' : ''}`} onClick={() => setQuem(q)}>
+              {q === 'equipe' ? 'Equipe' : 'Minhas'}
+            </button>
+          ))}
+        </div>
+      </div>
+      {carregando ? (
+        <div className="dux-spinner-row"><span className="dux-spinner sm" /></div>
+      ) : (
+        <>
+          <div className="calor-cabeca">
+            <span className="calor-total"><ContaAnimada valor={mapa.total.toLocaleString('pt-BR')} /></span>
+            <span className="calor-legenda" aria-hidden="true">
+              menos
+              {[0, 1, 2, 3, 4].map(n => <span key={n} className="calor-celula" data-nivel={n} />)}
+              mais
+            </span>
+          </div>
+          <div className="calor-mapa" ref={caixa} onMouseLeave={() => setFoco(null)}
+            role="img" aria-label={`${mapa.total} tarefas concluídas nas últimas ${semanas} semanas`}>
+            {/* A chave troca com o filtro: a grade remonta e a entrada toca de
+                novo, coluna a coluna. */}
+            <div className="calor-grade" key={`${quem}-${semanas}`}
+              style={{ gridTemplateColumns: `repeat(${semanas}, minmax(0, 1fr))` }}>
+              {mapa.colunas.map((col, s) => col.map((c, d) => (
+                <span key={`${s}-${d}`}
+                  className={`calor-celula${c.futuro ? ' futuro' : ''}${foco?.semana === s && foco.dia === d ? ' foco' : ''}`}
+                  data-nivel={c.nivel}
+                  style={{ gridColumn: s + 1, gridRow: d + 1, ['--atraso' as string]: `${s * 14 + d * 10}ms` }}
+                  onMouseEnter={() => setFoco(c.futuro ? null : { semana: s, dia: d })} />
+              )))}
+            </div>
+            <div className="calor-meses" style={{ gridTemplateColumns: `repeat(${semanas}, minmax(0, 1fr))` }}>
+              {mapa.meses.map((m, s) => <span key={s}>{m}</span>)}
+            </div>
+            {celula && foco && (
+              // Ao lado do circulo, e nao em cima: em cima ela cobria os numeros
+              // da casa. Na metade da direita abre para a esquerda, e vice-versa.
+              <div className={`calor-dica${foco.semana >= semanas / 2 ? ' a-esquerda' : ''}`}
+                style={{ ['--x' as string]: `${((foco.semana + 0.5) / semanas) * 100}%` }}>
+                <div className="barras-dica-conteudo troca" key={chaveDoDia(celula.data)}>
+                  <span className="dica-rotulo">
+                    {DIAS_DA_SEMANA[foco.dia]}, {celula.data.getDate()} {MESES_CURTOS[celula.data.getMonth()]}
+                    {foco.dia === 4 ? ' e fim de semana' : ''}
+                  </span>
+                  <span className="barras-dica-valor">
+                    {celula.quantas === 0 ? 'Nenhuma concluída'
+                      : `${celula.quantas} ${celula.quantas === 1 ? 'concluída' : 'concluídas'}`}
+                  </span>
+                  {celula.tarefas.length > 0 && (
+                    <ul className="dica-lista">
+                      {celula.tarefas.slice(0, 3).map((t, i) => (
+                        <li key={t.id} style={{ animationDelay: `${60 + i * 40}ms` }}>
+                          <span className="dica-lista-nome">{t.titulo}<em>{t.projetoNome}</em></span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {celula.tarefas.length > 3 && <p className="dica-rodape">e mais {celula.tarefas.length - 3}</p>}
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 

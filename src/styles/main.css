@@ -22589,64 +22589,6 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 .barras-mes-eixo { display: flex; gap: 12px; }
 .barras-mes-eixo span { flex: 1; text-align: center; font-size: 11px; color: var(--gray2); }
 
-/* A semana de quem abriu. */
-.painel-semana { gap: 6px; padding: 18px 16px; }
-.painel-semana .painel-cartao-topo { padding: 0 4px 6px; }
-.painel-semana .lista-anima { display: flex; flex-direction: column; min-height: 0; overflow: auto; scrollbar-width: none; }
-.semana-linha {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  height: 40px;
-  flex-shrink: 0;
-  padding: 0 6px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: none;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background var(--transition);
-}
-.semana-linha:hover { background: var(--gray4); }
-.semana-icone {
-  width: 10px;
-  height: 10px;
-  flex-shrink: 0;
-  border-radius: 3px;
-  background: var(--cor);
-}
-.semana-texto { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.semana-titulo {
-  font-size: 13px;
-  color: var(--texto-forte);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.semana-sub {
-  font-size: 11px;
-  color: var(--gray2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.semana-status {
-  flex-shrink: 0;
-  height: 20px;
-  padding: 0 7px;
-  display: inline-flex;
-  align-items: center;
-  border-radius: 5px;
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-  background: color-mix(in srgb, var(--cor) 22%, transparent);
-  color: color-mix(in srgb, var(--cor) 60%, var(--texto-forte));
-}
-
 /* A tabela dos projetos. */
 .painel-projetos {
   flex: 1;
@@ -22931,30 +22873,24 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 /* ── Linhas de lista e tabela em escada ────────────── */
 .backlog-grupo .lista-anima > .backlog-linha,
 .painel-principal .admin-table tbody tr,
-.painel-projetos-corpo > .projeto-linha,
-.painel-semana .lista-anima > .semana-linha {
+.painel-projetos-corpo > .projeto-linha {
   animation: linha-entra .38s var(--curva-anti) backwards;
 }
 .backlog-grupo .lista-anima > :nth-child(2),
 .painel-principal .admin-table tbody tr:nth-child(2),
-.painel-projetos-corpo > :nth-child(2),
-.painel-semana .lista-anima > :nth-child(2) { animation-delay: 40ms; }
+.painel-projetos-corpo > :nth-child(2) { animation-delay: 40ms; }
 .backlog-grupo .lista-anima > :nth-child(3),
 .painel-principal .admin-table tbody tr:nth-child(3),
-.painel-projetos-corpo > :nth-child(3),
-.painel-semana .lista-anima > :nth-child(3) { animation-delay: 80ms; }
+.painel-projetos-corpo > :nth-child(3) { animation-delay: 80ms; }
 .backlog-grupo .lista-anima > :nth-child(4),
 .painel-principal .admin-table tbody tr:nth-child(4),
-.painel-projetos-corpo > :nth-child(4),
-.painel-semana .lista-anima > :nth-child(4) { animation-delay: 120ms; }
+.painel-projetos-corpo > :nth-child(4) { animation-delay: 120ms; }
 .backlog-grupo .lista-anima > :nth-child(5),
 .painel-principal .admin-table tbody tr:nth-child(5),
-.painel-projetos-corpo > :nth-child(5),
-.painel-semana .lista-anima > :nth-child(5) { animation-delay: 160ms; }
+.painel-projetos-corpo > :nth-child(5) { animation-delay: 160ms; }
 .backlog-grupo .lista-anima > :nth-child(n+6),
 .painel-principal .admin-table tbody tr:nth-child(n+6),
-.painel-projetos-corpo > :nth-child(n+6),
-.painel-semana .lista-anima > :nth-child(n+6) { animation-delay: 200ms; }
+.painel-projetos-corpo > :nth-child(n+6) { animation-delay: 200ms; }
 @keyframes linha-entra {
   from { opacity: 0; transform: translateX(-8px); }
   to   { opacity: 1; transform: none; }
@@ -22995,7 +22931,6 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
   .backlog-grupo .lista-anima > .backlog-linha,
   .painel-principal .admin-table tbody tr,
   .painel-projetos-corpo > .projeto-linha,
-  .painel-semana .lista-anima > .semana-linha,
   .barras-mes-barra,
   .projeto-sigla,
   .app-menu .menu-grupo > .nav-leaf { animation: none; }
@@ -25180,5 +25115,100 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
 }
 @media (prefers-reduced-motion: reduce) {
   :is(.casca-janela, .admin-modal) .painel-kanban .kanban-column-header :is(.kanban-column-fixar, .tarefa-marcar-grupo) { transition: none; }
+}
+
+/* ══ Tarefas concluidas: o mapa de calor do painel ═════════════════════════
+   No lugar da "Minha semana": uma coluna por semana, uma linha por dia util,
+   e o tom do circulo diz quantas tarefas fecharam ali. O tom e o limao da
+   casa misturado ao vazio, em quatro degraus; no claro, o limao de tinta,
+   porque o cheio some sobre o branco. Os circulos entram coluna a coluna, e
+   o sob o ponteiro cresce e abre a dica, que desliza de um para o outro como
+   a das barras ao lado. */
+:root { --calor-cor: var(--yellow-tinta); --calor-vazio: var(--sup-selo); }
+:root[data-theme="dark"] { --calor-cor: var(--yellow); }
+.painel-calor { gap: 10px; }
+.calor-cabeca {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+.calor-total {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -.02em;
+  color: var(--texto-forte);
+  font-variant-numeric: tabular-nums;
+}
+.calor-legenda {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--gray2);
+}
+.calor-legenda .calor-celula { width: 10px; height: 10px; animation: none; }
+.calor-legenda .calor-celula:first-of-type { margin-left: 2px; }
+.calor-legenda .calor-celula:last-of-type { margin-right: 2px; }
+.calor-mapa {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.calor-grade {
+  display: grid;
+  grid-template-rows: repeat(5, auto);
+  gap: 5px;
+}
+.calor-celula {
+  display: block;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--calor-vazio);
+  transition: transform var(--transition-spring), box-shadow var(--transition);
+  animation: calor-entra .42s var(--curva-anti) backwards;
+  animation-delay: var(--atraso, 0ms);
+}
+.calor-celula[data-nivel="1"] { background: color-mix(in srgb, var(--calor-cor) 32%, var(--calor-vazio)); }
+.calor-celula[data-nivel="2"] { background: color-mix(in srgb, var(--calor-cor) 56%, var(--calor-vazio)); }
+.calor-celula[data-nivel="3"] { background: color-mix(in srgb, var(--calor-cor) 78%, var(--calor-vazio)); }
+.calor-celula[data-nivel="4"] { background: var(--calor-cor); }
+.calor-celula.futuro { opacity: .35; }
+.calor-grade .calor-celula.foco {
+  transform: scale(1.22);
+  box-shadow: 0 0 0 2px var(--sup-painel), 0 0 0 3.5px color-mix(in srgb, var(--calor-cor) 55%, transparent);
+}
+@keyframes calor-entra {
+  from { opacity: 0; transform: scale(.4); }
+  to   { opacity: 1; transform: none; }
+}
+.calor-meses { display: grid; gap: 5px; }
+.calor-meses span {
+  font-size: 11px;
+  color: var(--gray2);
+  white-space: nowrap;
+  overflow: visible;
+}
+.calor-dica {
+  position: absolute;
+  top: 42%;
+  left: var(--x);
+  width: 220px;
+  z-index: 3;
+  pointer-events: none;
+  /* Centrada na altura pelo `translate`, que a entrada (`dica-abre`) nao toca;
+     o lado vem do deslocamento: a direita do circulo, ou a esquerda dele. */
+  translate: 18px -50%;
+  transition: left var(--transition-spring), translate var(--transition-spring);
+  animation: dica-abre .24s var(--curva-anti) both;
+}
+.calor-dica.a-esquerda { translate: calc(-100% - 18px) -50%; }
+@media (prefers-reduced-motion: reduce) {
+  .calor-celula, .calor-dica { animation: none; transition: none; }
 }
 
