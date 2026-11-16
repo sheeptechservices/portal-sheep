@@ -94,7 +94,7 @@ export function marcaDoCliente(nome: string | null | undefined): Marca | undefin
 export function logoDoCliente(nome: string | null | undefined) {
   const m = marcaDoCliente(nome);
   return m && {
-    src: m.src, altura: m.altura, escurecer: m.fundoEscuro,
+    src: m.src, altura: m.altura, escurecer: m.fundoEscuro, detalhe: m.detalhe,
     cor: m.cor, corEscura: m.corEscura, proporcao: m.proporcao,
   };
 }

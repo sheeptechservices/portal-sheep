@@ -4523,7 +4523,7 @@ function LogoDaAba({ cliente, prioridade }: { cliente: string | null | undefined
     );
   }
   const nome = cliente ?? 'Cliente';
-  const altura = 15;
+  const altura = 16;
   if (marca.cor && marca.proporcao) {
     return (
       <span className="pl-aba-prio">
@@ -4542,6 +4542,7 @@ function LogoDaAba({ cliente, prioridade }: { cliente: string | null | undefined
     <span className="pl-aba-prio">
       <img className="pl-aba-logo" src={marca.src} alt={nome} title={nome}
         data-escurecer={marca.escurecer ? '' : undefined}
+        data-detalhe={marca.detalhe ? '' : undefined}
         style={{ height: altura }} />
     </span>
   );

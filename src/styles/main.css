@@ -24758,3 +24758,30 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
 /* O projeto no centro, como a tarefa: a mesma caixa, mais larga, porque a
    aba Tarefas dele mostra o quadro com as colunas. */
 .admin-modal.tarefa-central.projeto-central { width: min(1040px, 100%); }
+
+/* ══ Planning: lista de projetos sem numero e logos sobre o escuro ══════════
+   O numero na frente de cada projeto sai: a ordem ja se le de cima para baixo,
+   e reordenar continua sendo arrastar a linha inteira.
+   As logos deixam o selo branco. Sobre o vidro escuro elas viram silhueta
+   clara, no tom do texto, e acendem por inteiro no projeto aberto e sob o
+   ponteiro - todas no mesmo peso, sem uma chapa clara por linha. As de
+   desenho vazado por dentro (o texto da 300, os bichos da HOVEP) ficam nas
+   cores delas: a silhueta apagaria justamente o que as identifica. As
+   pintadas pela cor da marca (Orteconte, Chart) ja trazem o tom do escuro. */
+.pagina-projetos .pl-aba-num { display: none; }
+.pagina-projetos .pl-aba-logo {
+  max-width: 46px;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  filter: brightness(0) invert(1);
+  opacity: .72;
+  transition: opacity var(--transition);
+}
+.pagina-projetos .pl-aba-logo[data-detalhe] { filter: none; opacity: .9; }
+.pagina-projetos .pl-aba:hover .pl-aba-logo,
+.pagina-projetos .pl-aba.ativa .pl-aba-logo { opacity: 1; }
+/* A coluna das marcas tem largura fixa, com a marca centrada: com cada logo
+   na largura dela, os nomes dos projetos comecavam cada um num ponto. */
+.pagina-projetos .pl-aba-prio { width: 52px; justify-content: center; }
+.pagina-projetos .pl-aba-marca-sheep { width: 52px; max-width: 52px; }
