@@ -31,6 +31,8 @@ import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { useLarguraPainel } from '../lib/painelLateral';
 import { PuxadorDoPainel } from '../components/PuxadorDoPainel';
+import { BotaoTelaCheia } from '../components/BotaoTelaCheia';
+import { useTelaCheia } from '../lib/useTelaCheia';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import FilterDropdown from '../components/FilterDropdown';
 import { Abas } from '../components/Abas';
@@ -1259,6 +1261,8 @@ export function DetailPanel({
   // Quem está logado: usado para assinar o evento otimista antes de o servidor responder.
   const { usuario, pode } = useAuth();
   const painel = useLarguraPainel('oportunidade');
+  /** A tela cheia da ficha, lembrada neste navegador. */
+  const { cheia: telaCheia, alternar: alternarTelaCheia } = useTelaCheia('oportunidade');
   /** As pessoas da casa, para escolher quem esteve na reunião. */
   const pessoas = usePessoasDoPortal(token);
   /** A aba aberta. Mesma navegação do painel de projeto: a ficha da oportunidade de um
@@ -1830,9 +1834,12 @@ export function DetailPanel({
 
   return (
     <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`} {...fundo}>
-      <PuxadorDoPainel {...painel} />
-      <div className="admin-modal" onClick={e => e.stopPropagation()}
-        style={{ width: `min(${painel.largura}px, 96vw)` }}>
+      {/* Em tela cheia o puxador sai: não há largura para escolher, e a que
+          estava escolhida volta quando a tela cheia desliga. */}
+      {!telaCheia && <PuxadorDoPainel {...painel} />}
+      <div className={`admin-modal gaveta-redimensiona${telaCheia ? ' tela-cheia' : ''}${painel.arrastando ? ' arrastando' : ''}`}
+        onClick={e => e.stopPropagation()}
+        style={telaCheia ? undefined : { width: `min(${painel.largura}px, 96vw)` }}>
 
         {/* Header */}
         {/* `com-abas` só quando há abas: a linha que separa cabeçalho e corpo
@@ -1881,6 +1888,7 @@ export function DetailPanel({
                   </button>
                 </>
               )}
+              <BotaoTelaCheia cheia={telaCheia} onAlternar={alternarTelaCheia} classe="admin-toolbar-btn" />
               <button className="admin-modal-close" aria-label="Fechar" onClick={fechar}><IconX size={16} /></button>
             </div>
           </div>

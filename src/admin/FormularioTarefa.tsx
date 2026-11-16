@@ -20,6 +20,8 @@ import {
 import { SelectSistema } from '../components/SelectSistema';
 import { SeletorPessoas } from '../components/SeletorPessoas';
 import { DatePicker } from '../components/DatePicker';
+import { BotaoTelaCheia } from '../components/BotaoTelaCheia';
+import { useTelaCheia } from '../lib/useTelaCheia';
 import { markdownDaTarefa, passosEmOrdem, type ComentarioExport } from '../lib/exportarTarefas';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { ancorar } from '../lib/ancorar';
@@ -1050,6 +1052,9 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
     : [];
   const { toast } = useToast();
   const { saindo, fechar } = useSaidaSuave(onFechar);
+  // Tela cheia do diálogo central: para a descrição longa e a conversa
+  // respirarem. A escolha é da tarefa, separada da do projeto.
+  const { cheia: telaCheia, alternar: alternarTelaCheia } = useTelaCheia('tarefa');
   // Fechar clicando no fundo passa pela mesma porta do botão Fechar: era o
   // caminho que perdia o que estava na pausa da digitação.
   const fundo = useFecharNoFundo(() => fecharGravando());
@@ -1269,6 +1274,9 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
                   : copiadoMd ? <IconCheck size={15} /> : <IconClipboard size={15} />}
               </button>
             )}
+            {/* Só no diálogo do centro: a ficha embutida ao lado do quadro já
+                tem o tamanho que a coluna dela dá. */}
+            {!embutida && <BotaoTelaCheia cheia={telaCheia} onAlternar={alternarTelaCheia} />}
             <button type="button" className="admin-modal-close" aria-label="Fechar"
               onClick={fecharGravando}>
               <IconX size={16} />
@@ -1648,7 +1656,7 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
   return createPortal(
     <div className={`admin-modal-overlay tarefa-central-fundo${saindo ? ' saindo' : ''}`}
       style={{ zIndex: 10000 }} {...fundo}>
-      <div className="admin-modal painel-gaveta tarefa-central"
+      <div className={`admin-modal painel-gaveta tarefa-central${telaCheia ? ' tela-cheia' : ''}`}
         role="dialog" aria-modal="true"
         onClick={e => e.stopPropagation()}>
 
