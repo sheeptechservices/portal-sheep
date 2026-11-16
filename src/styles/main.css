@@ -25685,8 +25685,9 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   gap: 14px;
 }
 .chm-form-corpo .form-group { display: flex; flex-direction: column; gap: 6px; margin: 0; }
-.chm-form-dupla { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.chm-form-urgencia { max-width: 240px; }
+/* Quem pede, tipo e urgência numa linha: o nome leva um pouco mais, porque
+   é texto livre; os dois seletores dividem o resto por igual. */
+.chm-form-trio { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
 .chm-opcional {
   font-style: normal;
   font-weight: 500;
@@ -25705,7 +25706,7 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
 @media (max-width: 720px) {
   .chm-centro { padding: 18px 16px 36px; }
   .chm-numeros { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .chm-form-dupla { grid-template-columns: 1fr; }
+  .chm-form-trio { grid-template-columns: 1fr; }
   .chm-filtros { margin-left: 0; }
 }
 @media (prefers-reduced-motion: reduce) {

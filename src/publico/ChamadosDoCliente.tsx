@@ -1542,7 +1542,9 @@ function FormularioDoChamado({ rascunho, erro, nomes, onMudar, onFechar, onEnvia
           placeholder="Onde aconteceu, o que você esperava e o que aconteceu no lugar." />
       </div>
 
-      <div className="chm-form-dupla">
+      {/* Os três campos curtos dividem uma linha só: sozinha embaixo, a
+          urgência deixava um vão do tamanho de um campo ao lado dela. */}
+      <div className="chm-form-trio">
         <label className="form-group">
           <span className="form-label">Quem está pedindo</span>
           <CampoDeNome valor={r.solicitante} nomes={nomes}
@@ -1554,13 +1556,12 @@ function FormularioDoChamado({ rascunho, erro, nomes, onMudar, onFechar, onEnvia
           <span className="form-label">Tipo</span>
           <SeletorDeTipo valor={r.tipo} onMudar={tipo => mudar({ tipo })} />
         </div>
-      </div>
-
-      <div className="form-group chm-form-urgencia">
-        <span className="form-label">Urgência</span>
-        <SelectSistema valor={r.urgencia} onChange={v => mudar({ urgencia: v })}
-          opcoes={[...PRIORIDADES].sort((a, b) => posicaoDaPrioridade(a) - posicaoDaPrioridade(b))
-            .map(p => ({ valor: p as string, label: p, icone: ICONE_PRIORIDADE[p]({ size: 13 }) }))} />
+        <div className="form-group">
+          <span className="form-label">Urgência</span>
+          <SelectSistema valor={r.urgencia} onChange={v => mudar({ urgencia: v })}
+            opcoes={[...PRIORIDADES].sort((a, b) => posicaoDaPrioridade(a) - posicaoDaPrioridade(b))
+              .map(p => ({ valor: p as string, label: p, icone: ICONE_PRIORIDADE[p]({ size: 13 }) }))} />
+        </div>
       </div>
 
       <CampoDeLinks links={r.links} onMudar={links => mudar({ links })} onErro={setErroCampo} />
@@ -1666,7 +1667,12 @@ function FormularioDeAjuste({ chamado, rascunho, erro, nomes, onMudar, onFechar,
           ariaLabel="Descrição do chamado" />
       </div>
 
-      <div className="chm-form-dupla">
+      <div className="chm-form-trio">
+        <label className="form-group">
+          <span className="form-label">Quem está pedindo</span>
+          <CampoDeNome valor={r.solicitante} nomes={nomes}
+            onMudar={v => mudar({ solicitante: v })} onEscolher={n => mudar({ solicitante: n.nome })} />
+        </label>
         <div className="form-group">
           <span className="form-label">Tipo</span>
           <SeletorDeTipo valor={r.tipo} onMudar={tipo => mudar({ tipo })} />
@@ -1678,12 +1684,6 @@ function FormularioDeAjuste({ chamado, rascunho, erro, nomes, onMudar, onFechar,
               .map(p => ({ valor: p as string, label: p, icone: ICONE_PRIORIDADE[p]({ size: 13 }) }))} />
         </div>
       </div>
-
-      <label className="form-group">
-        <span className="form-label">Quem está pedindo</span>
-        <CampoDeNome valor={r.solicitante} nomes={nomes}
-          onMudar={v => mudar({ solicitante: v })} onEscolher={n => mudar({ solicitante: n.nome })} />
-      </label>
 
       {erro && <p className="pub-pedido-erro surge"><IconX size={11} /> {erro}</p>}
     </Janela>
