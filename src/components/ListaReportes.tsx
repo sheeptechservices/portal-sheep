@@ -163,10 +163,12 @@ export function ListaReportes({
    *  `sem` e o chamado que ninguem classificou ainda. Ele e uma escolha como as
    *  outras porque tambem e uma fila: e a dos que precisam de triagem. */
   const [filtroTipos, setFiltroTipos] = useState<string[]>([]);
-  /** Quais andamentos ficam a vista. Vazio quer dizer todos, como no tipo, e
-   *  é assim que a fila abre: um filtro que já nasce marcado parece escolha de
-   *  quem abriu, e esconde o que a pessoa não sabe que está escondido. */
-  const [filtroStatus, setFiltroStatus] = useState<string[]>([]);
+  /** Quais andamentos ficam a vista. A fila abre no que ainda pede trabalho
+   *  (Aberto e Em análise): os encerrados eram a maior parte da lista e
+   *  empurravam o que importa para baixo. O filtro aparece marcado no botão
+   *  de Status, então o que está escondido continua dito; vazio quer dizer
+   *  todos, como no tipo. */
+  const [filtroStatus, setFiltroStatus] = useState<string[]>(['aberto', 'em_analise']);
   /** O que se procura no conteudo do chamado: o relato e as notas dele. */
   const [busca, setBusca] = useState('');
   const [aberta, setAberta] = useState<number | null>(null);
