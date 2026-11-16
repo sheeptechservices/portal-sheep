@@ -7,7 +7,7 @@
 //  Sem logo cadastrada para o nome, não sai nada: quem usa já mostra o nome ao
 //  lado.
 //
-//  Serve à divisória da Planning e ao quadro de objetivos do cabeçalho.
+//  Serve à divisória da Planning.
 // ─────────────────────────────────────────────────────────────────────────────
 import { logoDoCliente } from '../lib/marcas';
 

@@ -1318,8 +1318,7 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
   // não reabrir o detalhe quando o usuário voltar à página pelo menu.
   /** A ficha que uma tela precisa abrir. `aba` e `reuniao` só existem no
    *  caminho do inbox: vincular uma reunião leva à ficha do projeto já na aba
-   *  certa, com ela aberta. `aba: 'planning'` leva à Planning, na folha do
-   *  projeto e na `semana` pedida. */
+   *  certa, com ela aberta. */
   // Os projetos em andamento para o menu. Carrega na entrada e de novo quando a
   // aba volta a ser olhada: um projeto criado ou encerrado por outra pessoa
   // aparece (ou sai) sem precisar recarregar a pagina.
@@ -1388,8 +1387,7 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
 
   const [openCard, setOpenCard] = useState<
     {
-      page: Page; id: string; nonce: number; aba?: 'reunioes' | 'planning'; reuniao?: number;
-      semana?: string;
+      page: Page; id: string; nonce: number; aba?: 'reunioes'; reuniao?: number;
     } | null
   >(null);
 

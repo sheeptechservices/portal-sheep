@@ -2,9 +2,9 @@
 //  O marco de status: a bolha na cor do status, com o desenho dele, que é ela
 //  mesma o seletor - clicar abre a lista, e o escolhido fica ali.
 //
-//  Nasceu na entrega (`MarcoEntrega`, na tela de Projetos) e saiu de lá quando
-//  os objetivos da semana ganharam status: é a mesma peça nos dois, com as
-//  etapas, as cores e os desenhos de cada um.
+//  Nasceu na entrega (`MarcoEntrega`, na tela de Projetos) e mora aqui para
+//  servir a qualquer lista que tenha status próprio, com as etapas, as cores e
+//  os desenhos dela.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
@@ -39,10 +39,10 @@ export function MarcoDeStatus({
   /**
    * A lista abriu ou fechou.
    *
-   * Serve a quem mora dentro de outra coisa que fecha por clique fora - o balão
-   * dos objetivos, por exemplo. A lista nasce num portal, no `body`, então o
-   * clique nela é "fora" para quem a abriga: sem este aviso, escolher um status
-   * fazia o balão inteiro sumir antes de a escolha chegar.
+   * Serve a quem mora dentro de outra coisa que fecha por clique fora - um
+   * balão, por exemplo. A lista nasce num portal, no `body`, então o clique
+   * nela é "fora" para quem a abriga: sem este aviso, escolher um status
+   * faria o balão inteiro sumir antes de a escolha chegar.
    */
   onAlternar?: (aberto: boolean) => void;
 }) {

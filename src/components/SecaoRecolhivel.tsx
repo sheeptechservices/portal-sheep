@@ -20,8 +20,8 @@ function recolhidaGuardada(chave: string): boolean {
   }
 }
 
-/** A escolha fica no navegador, por seção e não por projeto: quem recolheu os
- *  objetivos para olhar o quadro segue assim ao passar para o projeto seguinte. */
+/** A escolha fica no navegador, por seção e não por projeto: quem recolheu o
+ *  quadro para olhar as entregas segue assim ao passar para o projeto seguinte. */
 export function useSecaoRecolhivel(nome: string, ativo = true) {
   const chave = chaveDa(nome);
   const [recolhida, setRecolhida] = useState(() => recolhidaGuardada(chave));

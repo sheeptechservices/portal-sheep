@@ -17,7 +17,7 @@ import {
   IconRecolher,
   IconPrioridadeMedia, IconTrash,
   IconTriangulo, IconUser, IconVisaoLista, IconVisaoQuadro,
-  IconX, IconZip, IconRamificar
+  IconX, IconZip,
 } from '../components/icons';
 import { AcaoDaBarra, BarraDeSelecao, CaixaDeMarcar, CaixaDoGrupo } from '../components/BarraDeSelecao';
 import { semTextoNoShift, useSelecao } from '../lib/useSelecao';
@@ -26,17 +26,7 @@ import FiltroPeriodo, { dentroDoPeriodo } from '../components/FiltroPeriodo';
 import { PLANNING_FUNIL, PROJETO_GERAL } from '../lib/projetoGeral';
 import { logoDoCliente } from '../lib/marcas';
 import { LogoDoCliente } from '../components/LogoDoCliente';
-import { AlternarDesejavel, ChipDesejavel } from '../components/ChipDesejavel';
-import { AcaoDoObjetivo, ICONE_DA_ACAO } from '../components/AcaoDoObjetivo';
 import { MarcoDeStatus } from '../components/MarcoDeStatus';
-import { CaixaDaProva } from '../components/CaixaDaProva';
-import {
-  SemanaDaPlanningCtx, diaEMes, segundaDaData, sextaDaSemana, type ObjetivoLevado,
-} from '../lib/semanaDoObjetivo';
-import {
-  COR_OBJETIVO, ICONE_OBJETIVO, OPCOES_DO_OBJETIVO, marcasDoStatus, statusDoObjetivo,
-  type StatusDoObjetivo,
-} from '../lib/statusDoObjetivo';
 import { DESCRICAO_PAPEL, PAPEIS_EQUIPE, porNivelDeContato } from '../lib/papeisDeEquipe';
 import { equipeDePartida } from '../lib/equipeDePartida';
 import { SkeletonCards, SkeletonTabela } from '../components/Skeleton';
@@ -54,7 +44,7 @@ import { TextoRico } from '../components/TextoRico';
 import type { Transcricao } from '../components/BotaoTranscricao';
 import { Dialogo } from '../components/Dialogo';
 import {
-  exportar as exportarPacote, type ComentarioExport, type ObjetivoExport,
+  exportar as exportarPacote, type ComentarioExport,
   type Pacote as PacoteExport, type SubtarefaExport, passosEmOrdem,
 } from '../lib/exportarTarefas';
 import { dia as fmtData, diaCurto as fmtDataCurta, prazoEmComum, tamanho as fmtTamanho } from '../lib/datas';
@@ -491,10 +481,6 @@ const gestorDe = (p: Projeto) => p.equipe.find(m => m.papel === 'Gestor') ?? nul
 /** Fração de entregas concluídas. O servidor guarda o mesmo número em
  *  `progresso`; calcular aqui evita a tela mostrar valor velho entre a gravação
  *  de uma entrega e o recarregamento. */
-/** O teto de uma prova de objetivo, igual ao do anexo de comentário. O mesmo
- *  número está no servidor, que é quem recusa de verdade. */
-const LIMITE_DE_PROVA = 8 * 1024 * 1024;
-
 /** Conteúdo do arquivo em base64, sem o prefixo `data:`. Serve tanto ao anexo
  *  do projeto quanto à evidência de entrega. */
 function lerBase64(f: File): Promise<string> {
@@ -1631,9 +1617,8 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
   onExcluir: (t: Tarefa) => void;
   onMover: (t: Tarefa, status: string) => void;
   onFixarRecolhida?: (etapaId: number) => void;
-  /** Leva o combinado da semana e estas tarefas para um arquivo de markdown.
-   *  Ausente onde não há semana combinada - a ficha do projeto, por exemplo -,
-   *  e aí o botão não existe. */
+  /** Leva a ficha do projeto e estas tarefas para um arquivo de markdown. Só a
+   *  Planning passa: na ficha do projeto o botão não existe. */
   onExportar?: (tarefas: Tarefa[], etapas: string[]) => Promise<void> | void;
 }) {
   const todas = projeto.tarefas ?? [];
@@ -1725,8 +1710,8 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
 
       <CorpoRecolhivel ativo={recolhivel} aberta={secao.aberta}>
       {/* A barra existe com tarefa para filtrar, e tambem sem nenhuma quando ha
-          o que exportar: na semana que so tem objetivos combinados, o arquivo
-          continua fazendo sentido. */}
+          o que exportar: a ficha do projeto e as entregas vao no arquivo mesmo
+          sem tarefa escolhida. */}
       {(todas.length > 0 || !!onExportar) && (
         <div className="admin-toolbar painel-kanban-filtros">
           {todas.length > 0 && <>
@@ -1760,13 +1745,13 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
           <CampoBusca className="painel-kanban-busca" valor={busca} onMudar={setBusca}
             placeholder="Buscar por título, descritivo ou entrega" rotulo="Buscar tarefa" />
           </>}
-          {/* O combinado da semana e as tarefas num arquivo só, escrito para
-              uma IA ler: é o contexto inteiro do projeto, e colá-lo a mão de
-              card em card é o que esta tela existe para evitar. */}
+          {/* O projeto e as tarefas num arquivo só, escrito para uma IA ler:
+              é o contexto inteiro do projeto, e colá-lo a mão de card em card
+              é o que esta tela existe para evitar. */}
           {onExportar && (
             <button type="button"
               className={`admin-toolbar-btn${todas.length === 0 ? ' para-a-direita' : ''}`}
-              title="Exportar em markdown: o combinado da semana e as tarefas, para dar de contexto a uma IA"
+              title="Exportar em markdown: o projeto e as tarefas, para dar de contexto a uma IA"
               aria-label="Exportar em markdown"
               disabled={montando}
               onClick={() => setExportando(etapas.map(e => e.nome))}>
@@ -1782,7 +1767,7 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
         <Dialogo
           titulo="Exportar para markdown"
           descricao={<>
-            Sai o combinado da semana e as tarefas <b>que estão na tela</b> (os filtros e a
+            Sai a ficha do projeto e as tarefas <b>que estão na tela</b> (os filtros e a
             busca valem), nas etapas escolhidas. Cada tarefa vai inteira: descritivo,
             checklist e conversa.
           </>}
@@ -3008,8 +2993,8 @@ function SeletorLista({ valor, opcoes, icone: Icone, rotulo, onChange }: {
 }
 
 /** O marco à esquerda da entrega é o próprio seletor de status: clicar nele
- *  abre a lista, e o desenho escolhido fica ali. A peça é a `MarcoDeStatus`,
- *  a mesma dos objetivos da semana; aqui ficam as escolhas da entrega. */
+ *  abre a lista, e o desenho escolhido fica ali. A peça é a `MarcoDeStatus`;
+ *  aqui ficam as escolhas da entrega. */
 function MarcoEntrega({ status, onEscolher }: {
   status: string;
   onEscolher: (v: string) => void;
@@ -3275,10 +3260,6 @@ function SecaoEquipe({ titulo, pessoas, valor, somenteLeitura, onChange }: {
  *  da atividade recente e a janela do que está planejado. */
 const DIAS_DA_SEMANA = 7;
 
-/** Avisa a quem estiver ouvindo (o quadro de objetivos do cabeçalho) que a
- *  Planning acabou de gravar. */
-export const EVENTO_PLANNING_GRAVADA = 'planning:gravada';
-
 /** A segunda-feira da semana de uma data, ou a desta semana. A semana da casa
  *  começa na segunda, e é ela que o quadro mostra - não uma janela móvel de
  *  sete dias, que na quarta arrastaria metade da semana passada junto. */
@@ -3364,16 +3345,13 @@ function PessoaFoto({ nome, id, equipe, tamanho = 20 }: {
 /**
  * A folha de um projeto na Planning: o que a sala olha enquanto fala dele.
  *
- * A ordem é a da reunião, e não a do banco: primeiro a semana, que é o que se
- * monta ali na hora; depois o que ficou combinado; e por último o que está fora
- * do lugar, que é o assunto que sobra quando a semana já foi fechada.
+ * A ordem é a da reunião, e não a do banco: primeiro o quadro da semana, que é
+ * o que se monta ali na hora, e depois as entregas do projeto.
  */
-function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEditar,
+function FolhaDaPlanning({ projeto: p, semana, dias, pessoas,
   podeEditarTarefa, podeExcluirTarefa, etapas, etapaDeEntrada, etapaDeConclusao, onAbrir,
-  onAbrirTarefa, onSalvarTarefa, onExcluirTarefa, onMudarPlanning, onCriarTarefa, entregas,
-  provas, onExportar }: {
-  /** Como prender um print a um objetivo desta folha. */
-  provas?: ProvasDosObjetivos;
+  onAbrirTarefa, onSalvarTarefa, onExcluirTarefa, onCriarTarefa, entregas,
+  onExportar }: {
   projeto: Projeto;
   /** A seção de entregas do projeto, montada pela página, que é quem tem os
    *  gestos de gravar entrega, evidência e anexo. */
@@ -3382,10 +3360,7 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
   semana: Date;
   dias: string[];
   pessoas: Pessoa[];
-  planning: PlanningDaSemana;
-  /** Escrever o combinado é `projetos:editar`. */
-  podeEditar: boolean;
-  /** Puxar tarefa para a semana é `tarefas:editar`, que é outra. */
+  /** Puxar tarefa para a semana é `tarefas:editar`. */
   podeEditarTarefa: boolean;
   podeExcluirTarefa: boolean;
   etapas: EtapaTarefa[];
@@ -3395,11 +3370,8 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
   onAbrir: (p: Projeto) => void;
   onAbrirTarefa: (t: Tarefa, p: Projeto) => void;
   onSalvarTarefa: (t: Tarefa, mudancas: Record<string, unknown>) => void;
-  /** Só os objetivos: a prova entra por caminho próprio, e a folha não a
-   *  regrava a cada tecla. */
-  onMudarPlanning: (dados: { objetivos: ObjetivoDaSemana[] }) => void;
   onCriarTarefa: (status: string) => void;
-  /** Baixa o combinado da semana e as tarefas escolhidas em markdown. */
+  /** Baixa a ficha do projeto e as tarefas escolhidas em markdown. */
   onExportar?: (tarefas: Tarefa[], etapas: string[]) => Promise<void> | void;
 }) {
   const gestor = p.equipe.find(m => m.papel === 'Gestor');
@@ -3457,30 +3429,6 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
           </div>
         )}
       </header>
-
-      {/* Os objetivos vêm antes do quadro: a planning começa pelo que a semana
-          precisa entregar, e só então decide que tarefa entra em que dia. Com
-          o quadro na frente, a sala montava a semana antes de dizer para quê. */}
-      <section className="pl-secao pl-combinado">
-        {/* Sem recolher: os objetivos são o combinado da semana, e o bloco
-            fica sempre à vista. */}
-        <p className="pl-secao-titulo">
-          Objetivos da semana
-          {planning.objetivos.length > 0 && (
-            <span className="kanban-conta-bolha">
-              <span>{planning.objetivos.filter(o => o.feito).length}/{planning.objetivos.length}</span>
-            </span>
-          )}
-        </p>
-        <ObjetivosDaPlanning
-          projetoId={p.id}
-          valores={planning.objetivos}
-          somenteLeitura={!podeEditar}
-          pessoas={pessoas}
-          placeholder="O que precisa acontecer nesta semana"
-          provas={podeEditar ? provas : undefined}
-          onChange={v => onMudarPlanning({ objetivos: v })} />
-      </section>
 
       {/* O quadro do projeto, nas etapas do quadro de tarefas - o mesmo da ficha,
           com a mesma busca e os mesmos filtros. Eram as colunas dos cinco dias,
@@ -3583,28 +3531,17 @@ function contasDoFunil(funil: FunilDaPlanning, dias: string[]) {
 }
 
 /**
- * A folha do Funil na Planning: o combinado comercial da semana.
+ * A folha do Funil na Planning: a reunião comercial da semana.
  *
- * Os objetivos são os mesmos das folhas de projeto, gravados por semana. O
- * quadro é o do Funil, só para ler: as etapas abertas com todas as
+ * O quadro é o do Funil, só para ler: as etapas abertas com todas as
  * oportunidades, e as de ganho e perda só com o que chegou lá nesta semana.
  * Mexer num card é trabalho do Funil, e o clique leva até lá com ele aberto -
  * duas telas movendo o mesmo card seriam dois lugares para desencontrar.
  */
-function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
-  onMudarPlanning, onAbrirOportunidade, provas }: {
-  /** Como prender um print a um objetivo desta folha. */
-  provas?: ProvasDosObjetivos;
+function FolhaDoFunil({ semana, dias, funil, onAbrirOportunidade }: {
   semana: Date;
   dias: string[];
   funil: FunilDaPlanning;
-  planning: PlanningDaSemana;
-  /** Quem pode responder por um objetivo da semana do comercial. */
-  pessoas: Pessoa[];
-  podeEditar: boolean;
-  /** Só os objetivos: a prova entra por caminho próprio, e a folha não a
-   *  regrava a cada tecla. */
-  onMudarPlanning: (dados: { objetivos: ObjetivoDaSemana[] }) => void;
   onAbrirOportunidade?: (id: string) => void;
 }) {
   const contas = contasDoFunil(funil, dias);
@@ -3631,27 +3568,6 @@ function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
           <span className="pl-numero"><strong><ContaAnimada valor={contas.ganhas} /></strong><small>ganhas</small></span>
         </div>
       </header>
-
-      <section className="pl-secao pl-combinado">
-        {/* Sem recolher: os objetivos são o combinado da semana, e o bloco
-            fica sempre à vista. */}
-        <p className="pl-secao-titulo">
-          Objetivos da semana
-          {planning.objetivos.length > 0 && (
-            <span className="kanban-conta-bolha">
-              <span>{planning.objetivos.filter(o => o.feito).length}/{planning.objetivos.length}</span>
-            </span>
-          )}
-        </p>
-        <ObjetivosDaPlanning
-          projetoId={PLANNING_FUNIL}
-          valores={planning.objetivos}
-          somenteLeitura={!podeEditar}
-          pessoas={pessoas}
-          placeholder="O que o comercial precisa fazer andar nesta semana"
-          provas={podeEditar ? provas : undefined}
-          onChange={v => onMudarPlanning({ objetivos: v })} />
-      </section>
 
       <section className="pl-secao">
         <p className="pl-secao-titulo">
@@ -3733,490 +3649,6 @@ function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
         )}
         </CorpoRecolhivel>
       </section>
-    </div>
-  );
-}
-
-/** O objetivo e onde ele está na lista gravada. A tela desenha em árvore - a
- *  mãe e, logo abaixo, os filhos -, mas a lista de verdade é plana, e é pelo
- *  índice nela que o campo, o foco e a gravação se acham. */
-interface NoDoObjetivo { v: ObjetivoDaSemana; i: number; filha: boolean }
-
-/**
- * A lista em árvore: cada objetivo solto, na ordem gravada, e sob ele os que
- * nasceram dele, também na ordem gravada. Filho cuja mãe sumiu (ou é ela
- * mesma filha de alguém) é desenhado solto - é o que o servidor faz com ele na
- * próxima gravação.
- */
-function emArvore(valores: ObjetivoDaSemana[]): NoDoObjetivo[] {
-  const maes = new Set(valores.filter(v => !v.pai).map(v => v.id));
-  const eFilha = (v: ObjetivoDaSemana) => !!v.pai && v.pai !== v.id && maes.has(v.pai);
-  const nos: NoDoObjetivo[] = [];
-  valores.forEach((v, i) => {
-    if (eFilha(v)) return;
-    nos.push({ v, i, filha: false });
-    valores.forEach((f, k) => { if (eFilha(f) && f.pai === v.id) nos.push({ v: f, i: k, filha: true }); });
-  });
-  return nos;
-}
-
-/** A família de um objetivo solto: ele e os filhos, na ordem gravada. */
-const familiaDe = (valores: ObjetivoDaSemana[], id: string) =>
-  valores.filter(v => v.id === id || v.pai === id);
-
-/**
- * Os objetivos da semana, em checklist: uma linha por objetivo, Enter abre a
- * seguinte, a linha vazia sai sozinha ao perder o foco, e a caixinha marca o
- * que foi cumprido.
- *
- * É o mesmo gesto do checklist da tarefa, e não um campo de texto corrido: o
- * que se combina numa planning é uma lista de coisas, e a planning seguinte
- * abre esta semana para conferir o que andou - a marca é essa conferência.
- */
-function ObjetivosDaPlanning({ projetoId, valores, placeholder, somenteLeitura, pessoas, provas, onChange }: {
-  /** De que folha é a lista: é para lá que a troca de semana vai. */
-  projetoId: string;
-  valores: ObjetivoDaSemana[];
-  placeholder: string;
-  somenteLeitura: boolean;
-  /** Quem pode responder por um objetivo. Na folha do projeto é o time dele; na
-   *  do comercial, quem tem acesso ao painel. */
-  pessoas: Pessoa[];
-  /** Como prender um print à linha. Ausente em folha que não grava. */
-  provas?: ProvasDosObjetivos;
-  onChange: (v: ObjetivoDaSemana[]) => void;
-}) {
-  const campos = useRef<Array<HTMLInputElement | null>>([]);
-  /** A semana em foco: é dela a sexta com que todo objetivo nasce, e uma data
-   *  fora dela leva o objetivo embora. */
-  const semanaDaPlanning = useContext(SemanaDaPlanningCtx);
-  const sexta = semanaDaPlanning ? sextaDaSemana(semanaDaPlanning.segunda) : null;
-
-  /** A data nova da linha. Na mesma semana, é só a data; em outra, o objetivo
-   *  vai para aquela semana e sai desta - os filhos que ele tinha ficam, soltos. */
-  const mudarData = (i: number, data: string) => {
-    if (!data) return;
-    const v = valores[i];
-    if (!semanaDaPlanning || segundaDaData(data) === semanaDaPlanning.segunda) {
-      trocar(i, { prazo: data });
-      return;
-    }
-    const restante = valores
-      .filter((_, k) => k !== i)
-      .map(x => (x.pai === v.id ? { ...x, pai: null } : x));
-    semanaDaPlanning.mover(projetoId, { ...v, prazo: data, pai: null }, restante);
-  };
-  /** O seletor de arquivo, um só para a lista inteira: qual linha vai receber é
-   *  dito na hora de abrir. Um `input` por linha encheria a folha de campos
-   *  invisíveis. */
-  const escolher = useRef<HTMLInputElement | null>(null);
-  const linhaDoAnexo = useRef<string | null>(null);
-  const provasDe = (objetivoId: string) =>
-    (provas?.lista ?? []).filter(e => e.objetivo_id === objetivoId);
-  /** O objetivo que está sendo marcado como feito, enquanto a caixa da prova
-   *  está aberta. É a mesma caixa do balão de objetivos: marcar aqui e marcar
-   *  lá é o mesmo gesto, e pedir a prova num lugar só faria a Planning parecer
-   *  o caminho de quem não quer anexar nada. */
-  const [concluindo, setConcluindo] = useState<{ i: number; objetivo: ObjetivoDaSemana } | null>(null);
-  /** A linha que acabou de nascer, para o foco ir até ela depois da pintura. */
-  const nova = useRef<number | null>(null);
-  /** A linha levada pelo punho, e onde ela vai cair. */
-  const [arrastando, setArrastando] = useState<string | null>(null);
-  const [sobre, setSobre] = useState<{ id: string; pos: 'antes' | 'depois' } | null>(null);
-  /** Cada linha pelo id, e onde ela estava antes da troca de ordem: é o que
-   *  deixa a linha deslizar até o lugar novo em vez de saltar para ele. */
-  const porId = useRef(new Map<string, HTMLDivElement>());
-  const antes = useRef<Map<string, DOMRect> | null>(null);
-  const ordem = valores.map(v => v.id).join('|');
-
-  useEffect(() => {
-    if (nova.current === null) return;
-    campos.current[nova.current]?.focus();
-    nova.current = null;
-  });
-
-  useLayoutEffect(() => {
-    const velhas = antes.current;
-    antes.current = null;
-    if (!velhas || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    for (const [id, el] of porId.current) {
-      const de = velhas.get(id);
-      if (!de) continue;
-      const dy = de.top - el.getBoundingClientRect().top;
-      if (!dy) continue;
-      el.style.transition = 'none';
-      el.style.transform = `translateY(${dy}px)`;
-      void el.offsetHeight;
-      el.style.transition = 'transform var(--transition-spring)';
-      el.style.transform = '';
-      const limpar = () => { el.style.transition = ''; el.removeEventListener('transitionend', limpar); };
-      el.addEventListener('transitionend', limpar);
-    }
-  }, [ordem]);
-
-  const trocar = (i: number, mudanca: Partial<ObjetivoDaSemana>) =>
-    onChange(valores.map((v, k) => (k === i ? { ...v, ...mudanca } : v)));
-
-  /** Uma linha nova depois de outra. Depois de um filho, nasce um irmão (o
-   *  Enter de quem está listando ajustes continua listando ajustes); depois de
-   *  uma mãe, o novo solto entra depois da família inteira, para não cair no
-   *  meio dos filhos dela. */
-  const inserir = (depoisDe: number) => {
-    const base = valores[depoisDe];
-    if (base?.pai) { desdobrar(depoisDe); return; }
-    let ate = depoisDe;
-    if (base) valores.forEach((v, k) => { if (v.pai === base.id && k > ate) ate = k; });
-    const lista = [...valores];
-    lista.splice(ate + 1, 0, {
-      id: novoIdDeObjetivo(), texto: '', feito: false, prazo: sexta, responsaveis: [], pai: null,
-    });
-    nova.current = ate + 1;
-    onChange(lista);
-  };
-
-  /** Um objetivo que nasce de outro: o ajuste que a validação pediu. Entra
-   *  depois do último filho da mãe, com os responsáveis dela, e o foco vai
-   *  para ele. Desdobrar um filho cria um irmão: um nível só. */
-  const desdobrar = (de: number) => {
-    const origem = valores[de];
-    if (!origem) return;
-    const mae = origem.pai ? (valores.find(v => v.id === origem.pai) ?? origem) : origem;
-    let ate = valores.findIndex(v => v.id === mae.id);
-    valores.forEach((v, k) => { if (v.pai === mae.id && k > ate) ate = k; });
-    const lista = [...valores];
-    lista.splice(ate + 1, 0, {
-      id: novoIdDeObjetivo(), texto: '', feito: false, prazo: sexta,
-      responsaveis: [...mae.responsaveis], pai: mae.id,
-    });
-    nova.current = ate + 1;
-    onChange(lista);
-  };
-
-  /** O "+" do fim da lista: sempre um objetivo solto, no fim. Pelo `inserir`,
-   *  com um filho por último, ele viraria mais um desdobramento. */
-  const inserirNoFim = () => {
-    nova.current = valores.length;
-    onChange([...valores, {
-      id: novoIdDeObjetivo(), texto: '', feito: false, prazo: sexta, responsaveis: [], pai: null,
-    }]);
-  };
-
-  /** Apagar a mãe solta os filhos: eles continuam valendo, só deixam de
-   *  descer de alguém. */
-  const remover = (i: number) => {
-    const saindo = valores[i];
-    onChange(valores
-      .filter((_, k) => k !== i)
-      .map(v => (saindo && v.pai === saindo.id ? { ...v, pai: null } : v)));
-  };
-
-  /** Grava a ordem nova, guardando antes onde cada linha estava. */
-  const reordenar = (lista: ObjetivoDaSemana[]) => {
-    if (lista.map(v => v.id).join('|') === ordem) return;
-    antes.current = new Map([...porId.current].map(([id, el]) => [id, el.getBoundingClientRect()]));
-    onChange(lista);
-  };
-
-  /** Solta a linha levada. Um filho só troca de lugar entre os irmãos: ele é
-   *  desenhado sob a mãe, e soltá-lo em outra família não o mudaria de mãe.
-   *  Uma mãe leva a família junto, e cai antes ou depois da família de quem
-   *  estava embaixo dela. */
-  const soltar = (alvoId: string) => {
-    const origem = valores.find(v => v.id === arrastando);
-    const pos = sobre?.pos ?? 'antes';
-    setArrastando(null);
-    setSobre(null);
-    const alvo = valores.find(v => v.id === alvoId);
-    if (!origem || !alvo || origem.id === alvoId) return;
-    if (origem.pai) {
-      if (alvo.pai !== origem.pai) return;
-      const lista = valores.filter(v => v.id !== origem.id);
-      const para = lista.findIndex(v => v.id === alvoId);
-      lista.splice(pos === 'antes' ? para : para + 1, 0, origem);
-      reordenar(lista);
-      return;
-    }
-    const maeDoAlvo = alvo.pai ?? alvo.id;
-    if (maeDoAlvo === origem.id) return;
-    const bloco = familiaDe(valores, origem.id);
-    const resto = valores.filter(v => !bloco.includes(v));
-    const familiaAlvo = familiaDe(resto, maeDoAlvo);
-    const ancora = pos === 'antes' && !alvo.pai ? familiaAlvo[0] : familiaAlvo[familiaAlvo.length - 1];
-    const para = resto.indexOf(ancora) + (pos === 'antes' && !alvo.pai ? 0 : 1);
-    resto.splice(para, 0, ...bloco);
-    reordenar(resto);
-  };
-
-  /** Alt com a seta leva a linha junto: arrastar não pode ser o único jeito de
-   *  arrumar a ordem, e quem está escrevendo não quer largar o teclado. */
-  const moverPorTecla = (i: number, passo: number) => {
-    const atual = valores[i];
-    if (!atual) return;
-    // Filho troca com o irmão vizinho; mãe troca de lugar com a família
-    // vizinha, levando a dela junto.
-    if (atual.pai) {
-      const irmaos = valores.map((v, k) => ({ v, k })).filter(x => x.v.pai === atual.pai);
-      const aqui = irmaos.findIndex(x => x.k === i);
-      const outro = irmaos[aqui + passo];
-      if (!outro) return;
-      const lista = [...valores];
-      [lista[i], lista[outro.k]] = [lista[outro.k], lista[i]];
-      nova.current = outro.k;
-      reordenar(lista);
-      return;
-    }
-    const soltos = valores.filter(v => !v.pai);
-    const aqui = soltos.findIndex(v => v.id === atual.id);
-    const vizinho = soltos[aqui + passo];
-    if (!vizinho) return;
-    const bloco = familiaDe(valores, atual.id);
-    const resto = valores.filter(v => !bloco.includes(v));
-    const familiaVizinha = familiaDe(resto, vizinho.id);
-    const para = passo > 0
-      ? resto.indexOf(familiaVizinha[familiaVizinha.length - 1]) + 1
-      : resto.indexOf(familiaVizinha[0]);
-    resto.splice(para, 0, ...bloco);
-    nova.current = para;
-    reordenar(resto);
-  };
-
-  const arvore = emArvore(valores);
-
-  if (somenteLeitura) {
-    return valores.length === 0
-      ? <p className="nt-vazio">Nada combinado para esta semana.</p>
-      : (
-        <div className="pl-linhas">
-          {emArvore(valores).map(({ v, filha }) => (
-            <div key={v.id} className={`pl-linha${v.feito ? ' feito' : ''}${filha ? ' filha' : ''}`}>
-              <MarcoDeStatus somenteLeitura status={statusDoObjetivo(v)} opcoes={OPCOES_DO_OBJETIVO}
-                cores={COR_OBJETIVO} icones={ICONE_OBJETIVO} nome="Status do objetivo" />
-              <span className="pl-linha-texto">{v.texto}</span>
-              {v.desejavel && <ChipDesejavel />}
-              {v.prazo && <span className="pl-linha-prazo">{fmtDataCurta(v.prazo)}</span>}
-              {v.responsaveis.length > 0 && (
-                <span className="pl-linha-donos">
-                  {v.responsaveis.map(id => {
-                    const p = pessoas.find(x => x.id === id);
-                    return (
-                      <span key={id} title={p?.nome ?? 'Usuário removido'}>
-                        <Avatar nome={p?.nome ?? '?'} foto={p?.foto_url} size={18} />
-                      </span>
-                    );
-                  })}
-                </span>
-              )}
-              {provasDe(v.id).map(e => (
-                <button key={e.id} type="button" className="pl-linha-prova"
-                  title={`Abrir ${e.nome}`} onClick={() => provas?.abrir(e)}>
-                  <IconClip size={11} />
-                  <span>{e.nome}</span>
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-      );
-  }
-
-  return (
-    <div className={`pl-linhas${arrastando ? ' reordenando' : ''}`}>
-      {arvore.map(({ v, i, filha }) => {
-        const alvo = sobre?.id === v.id && arrastando !== v.id ? sobre.pos : null;
-        return (
-        <div
-          key={v.id}
-          ref={el => { if (el) porId.current.set(v.id, el); else porId.current.delete(v.id); }}
-          className={[
-            'pl-linha',
-            v.feito ? 'feito' : '',
-            filha ? 'filha' : '',
-            arrastando === v.id ? 'levada' : '',
-            alvo ? `cai-${alvo}` : '',
-          ].filter(Boolean).join(' ')}
-          onDragOver={e => {
-            if (!arrastando) return;
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-            const r = e.currentTarget.getBoundingClientRect();
-            const pos = e.clientY < r.top + r.height / 2 ? 'antes' : 'depois';
-            if (sobre?.id !== v.id || sobre.pos !== pos) setSobre({ id: v.id, pos });
-          }}
-          onDragLeave={e => {
-            if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-            setSobre(x => (x?.id === v.id ? null : x));
-          }}
-          onDrop={e => { e.preventDefault(); soltar(v.id); }}
-        >
-          {/* O punho, e não a linha inteira, é o que arrasta: a linha é um campo
-              de texto, e arrastar por ela brigaria com selecionar o que está
-              escrito. Ele mora na margem do painel, então aparecer no hover
-              não empurra a caixinha. */}
-          <span
-            className="pl-linha-punho"
-            draggable
-            aria-hidden="true"
-            title="Arraste para mudar a ordem"
-            onDragStart={e => {
-              e.dataTransfer.effectAllowed = 'move';
-              // Sem carga o Firefox nem começa o arraste.
-              e.dataTransfer.setData('text/plain', v.id);
-              const linha = e.currentTarget.parentElement!;
-              const r = linha.getBoundingClientRect();
-              e.dataTransfer.setDragImage(linha, e.clientX - r.left, e.clientY - r.top);
-              setArrastando(v.id);
-            }}
-            onDragEnd={() => { setArrastando(null); setSobre(null); }}
-          >
-            <IconArrastar size={13} />
-          </span>
-          {/* O status no marco das entregas: fazer, fazendo, feito. Linha
-              ainda em branco não tem o que marcar. */}
-          <MarcoDeStatus status={statusDoObjetivo(v)} opcoes={OPCOES_DO_OBJETIVO}
-            cores={COR_OBJETIVO} icones={ICONE_OBJETIVO} nome="Status do objetivo"
-            desabilitado={v.texto.trim() === ''}
-            onEscolher={s => {
-              const status = s as StatusDoObjetivo;
-              if (status === statusDoObjetivo(v)) return;
-              // Feito passa pela caixa, que aceita uma prova; fazer e fazendo
-              // mudam direto, e voltar de feito também - a prova anexada fica.
-              if (status === 'Feito' && provas) { setConcluindo({ i, objetivo: v }); return; }
-              trocar(i, marcasDoStatus(status));
-            }} />
-          <input
-            ref={el => { campos.current[i] = el; }}
-            className="pl-linha-campo"
-            value={v.texto}
-            placeholder={placeholder}
-            onChange={e => trocar(i, { texto: e.target.value })}
-            onKeyDown={e => {
-              if (e.key === 'Enter') { e.preventDefault(); inserir(i); }
-              if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-                e.preventDefault();
-                moverPorTecla(i, e.key === 'ArrowDown' ? 1 : -1);
-              }
-              // Backspace na linha vazia apaga a linha, como em toda lista:
-              // obrigar a ir até o X para desfazer uma linha em branco é pedir
-              // um gesto de mouse no meio de quem está digitando.
-              if (e.key === 'Backspace' && v.texto === '' && valores.length > 1) {
-                e.preventDefault();
-                nova.current = Math.max(0, i - 1);
-                remover(i);
-              }
-            }}
-            // Print recém-tirado entra por Ctrl+V, como no comentário da tarefa:
-            // a mão que acabou de recortar a tela não quer procurar o arquivo
-            // no explorador. Texto colado continua sendo texto - `arquivosColados`
-            // só devolve arquivo quando é só isso que veio.
-            onPaste={e => {
-              if (!provas || !v.texto.trim()) return;
-              const colados = arquivosColados(e.clipboardData);
-              if (colados.length === 0) return;
-              e.preventDefault();
-              provas.anexar(v.id, colados);
-            }}
-            // Linha em branco não vira item: sair dela é desistir de escrevê-la.
-            onBlur={() => { if (v.texto.trim() === '' && valores.length > 0) remover(i); }} />
-          {/* Para quando, e com quem. Só aparecem na linha que já tem frase:
-              numa linha em branco não há o que combinar ainda, e dois controles
-              ali dentro seriam ruído no meio da digitação. */}
-          {v.texto.trim() !== '' && (
-            <span className="pl-linha-combinado">
-              {/* Desejável: não obrigatório, mas de grande valor. Ligado é o
-                  chip âmbar, à vista; desligado é a estrela vazada, que só
-                  aparece com a linha em foco, como a data e as pessoas. */}
-              <span className={v.desejavel ? undefined : 'pl-linha-opcional'}>
-                <AlternarDesejavel ligado={!!v.desejavel} onChange={d => trocar(i, { desejavel: d })} />
-              </span>
-              <span className={v.prazo ? undefined : 'pl-linha-opcional'}>
-                <DatePicker chip allowPast required value={v.prazo ?? ''}
-                  titulo={v.prazo ? 'Data de entrega. Uma data de outra semana leva o objetivo para ela.' : 'Para quando é este objetivo'}
-                  onChange={d => mudarData(i, d)} />
-              </span>
-              <span className={v.responsaveis.length ? undefined : 'pl-linha-opcional'}>
-                <SeletorPessoas compacto pessoas={pessoas} valor={v.responsaveis}
-                  vazio="Quem responde por este objetivo"
-                  onChange={r => trocar(i, { responsaveis: r })} />
-              </span>
-              {/* A prova do que foi feito: o print, o arquivo. Opcional como o
-                  prazo e o responsável, e no mesmo lugar deles - é o que se põe
-                  na linha depois que ela acontece. */}
-              {provas && (
-                <span className={`pl-linha-provas${provasDe(v.id).length ? '' : ' pl-linha-opcional'}`}>
-                  {provasDe(v.id).map(e => (
-                    <span key={e.id} className="chip-com-x">
-                      <button type="button" className="pl-linha-prova"
-                        title={`Abrir ${e.nome}`} onClick={() => provas.abrir(e)}>
-                        <IconClip size={11} />
-                        <span>{e.nome}</span>
-                      </button>
-                      {/* O X dentro da pílula, como no chip de data, e só no
-                          hover: em repouso a linha mostra o que tem, e não os
-                          botões de desfazer. */}
-                      <button type="button" className="chip-x pl-linha-prova-tirar"
-                        aria-label={`Tirar ${e.nome}`} title="Tirar o anexo"
-                        onClick={() => provas.remover(e)}>
-                        <IconX size={11} />
-                      </button>
-                    </span>
-                  ))}
-                  <AcaoDoObjetivo rotulo="Anexar prova deste objetivo"
-                    title="Anexar um print ou arquivo como prova do que foi feito"
-                    onClick={() => { linhaDoAnexo.current = v.id; escolher.current?.click(); }}>
-                    <IconClip size={ICONE_DA_ACAO} />
-                  </AcaoDoObjetivo>
-                </span>
-              )}
-            </span>
-          )}
-          {/* O desdobramento: o objetivo que nasce deste - a validação que
-              pediu ajustes. Só na linha que já tem frase; num filho, cria um
-              irmão, porque a árvore tem um nível só. */}
-          {v.texto.trim() !== '' && (
-            <span className="pl-linha-opcional">
-              <AcaoDoObjetivo rotulo={`Desdobrar "${v.texto}"`}
-                title={filha ? 'Outro desdobramento do mesmo objetivo' : 'Desdobrar: criar um objetivo que nasce deste'}
-                onMouseDown={e => e.preventDefault()} onClick={() => desdobrar(i)}>
-                <IconRamificar size={ICONE_DA_ACAO} />
-              </AcaoDoObjetivo>
-            </span>
-          )}
-          <button type="button" className="checklist-tirar" aria-label="Remover esta linha"
-            title="Remover" onMouseDown={e => e.preventDefault()} onClick={() => remover(i)}>
-            <IconX size={11} />
-          </button>
-        </div>
-        );
-      })}
-      {/* O mesmo "+" discreto do checklist da tarefa: em repouso a lista termina
-          no ultimo item, e uma caixa com moldura pesava mais que os itens. */}
-      <button type="button" className="checklist-add" onClick={inserirNoFim}>
-        <IconPlus size={12} />
-        {valores.length ? 'Outro item' : 'Adicionar'}
-      </button>
-      {provas && (
-        <input ref={escolher} type="file" multiple hidden
-          onChange={e => {
-            const escolhidos = [...(e.target.files ?? [])];
-            const linha = linhaDoAnexo.current;
-            // O valor é zerado para escolher o MESMO arquivo de novo disparar
-            // outra vez: sem isto, anexar, tirar e reanexar não faz nada.
-            e.target.value = '';
-            linhaDoAnexo.current = null;
-            if (linha && escolhidos.length) provas.anexar(linha, escolhidos);
-          }} />
-      )}
-
-      {concluindo && (
-        <CaixaDaProva texto={concluindo.objetivo.texto}
-          onFechar={() => setConcluindo(null)}
-          onConfirmar={arquivos => {
-            const { i, objetivo } = concluindo;
-            setConcluindo(null);
-            trocar(i, marcasDoStatus('Feito'));
-            if (arquivos.length) provas?.anexar(objetivo.id, arquivos);
-          }} />
-      )}
     </div>
   );
 }
@@ -4542,11 +3974,9 @@ function LogoDaAba({ cliente, prioridade }: { cliente: string | null | undefined
   );
 }
 
-function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onReordenar }: {
+function AbasDeCaderno({ lista, ativo, podeReordenar, onEscolher, onReordenar }: {
   lista: Projeto[];
   ativo: string | null;
-  /** Quantos objetivos cada projeto tem combinados para a semana em foco. */
-  contagem: (p: Projeto) => number;
   /** Mudar a ordem é `projetos:editar`: quem só olha a reunião não a reorganiza. */
   podeReordenar: boolean;
   onEscolher: (id: string) => void;
@@ -4705,7 +4135,6 @@ function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onRe
           }} />
       )}
       {lista.map((p, i) => {
-        const quantas = contagem(p);
         const prioridade = p.prioridade ?? PRIORIDADE_PADRAO;
         const alvo = sobre?.id === p.id && arrastando !== p.id ? sobre.pos : null;
         const ehGeral = p.id === PROJETO_GERAL;
@@ -4800,14 +4229,6 @@ function AbasDeCaderno({ lista, ativo, contagem, podeReordenar, onEscolher, onRe
               <small>
                 {ehGeral ? 'Demandas da casa' : ehFunil ? 'Oportunidades comerciais' : p.cliente_nome ?? 'Sem cliente'}
               </small>
-            </span>
-            {/* Os objetivos combinados para a semana: é o que diz, sem entrar no
-                projeto, se ele já foi discutido ou se a sala ainda vai discuti-lo. */}
-            <span className={`pl-aba-conta${quantas === 0 ? ' vazia' : ''}`}
-              title={quantas === 0
-                ? 'Nenhum objetivo combinado para esta semana'
-                : `${quantas} objetivo(s) para esta semana`}>
-              {quantas}
             </span>
           </div>
         );
@@ -5025,102 +4446,28 @@ function SeletorDeSemana({ semana, onMudar }: {
   );
 }
 
-/** Um objetivo da semana, que a sala marca quando cumpre. O `id` só existe na
- *  tela: é a chave que deixa a linha ser levada para outra posição sem que o
- *  React a confunda com a vizinha. O servidor guarda a ordem da lista. */
-interface ObjetivoDaSemana {
-  id: string;
-  texto: string;
-  feito: boolean;
-  /** Em curso: o meio entre fazer e feito. Ver `statusDoObjetivo`. */
-  fazendo?: boolean;
-  /** Para quando o objetivo foi combinado. Nulo: a semana inteira. */
-  prazo: string | null;
-  /** Quem respondeu por ele na reunião. Vazio: é do time. */
-  responsaveis: string[];
-  /** O objetivo de que este nasceu: a validação que pediu os ajustes. Um nível
-   *  só - a mãe nunca tem mãe. */
-  pai?: string | null;
-  /** Não obrigatório, mas de grande valor se sair: o chip âmbar com a estrela. */
-  desejavel?: boolean;
-}
-
-/** O id de um objetivo é gravado junto dele, e é por ele que a prova se
- *  prende à linha. Por isso ele não pode ser um contador: dois objetivos
- *  criados em sessões diferentes cairiam no mesmo número, e a prova de um
- *  apareceria no outro. */
-const novoIdDeObjetivo = () =>
-  `o${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-
-/** Um id que já veio gravado, quando ele veio. Linha escrita antes desta coluna
- *  chega sem, e ganha um aqui - que fica na próxima gravação. */
-const idDoObjetivo = (v: unknown) => {
-  const s = String(v ?? '').trim();
-  return /^[A-Za-z0-9_-]{1,40}$/.test(s) ? s : novoIdDeObjetivo();
-};
-
-/** A prova de que um objetivo foi cumprido: o print, o arquivo. Opcional, e de
- *  quem quiser deixar claro o que foi feito - não é condição de nada. */
-interface EvidenciaDoObjetivo {
-  id: number;
-  objetivo_id: string;
-  nome: string;
-  tipo: string;
-  tamanho: number;
-}
-
-/** O que a linha do objetivo precisa para carregar prova, já preso ao projeto
- *  daquela folha. Ausente onde a folha é só leitura. */
-interface ProvasDosObjetivos {
-  /** Todas as do projeto, na semana em foco. */
-  lista: EvidenciaDoObjetivo[];
-  anexar: (objetivoId: string, arquivos: File[]) => void;
-  remover: (e: EvidenciaDoObjetivo) => void;
-  abrir: (e: EvidenciaDoObjetivo) => void;
-}
-
-/** O combinado de um projeto numa semana: os objetivos dela, e a prova do que
- *  foi cumprido. */
-interface PlanningDaSemana {
-  objetivos: ObjetivoDaSemana[];
-  evidencias: EvidenciaDoObjetivo[];
-}
-
-const PLANNING_VAZIA: PlanningDaSemana = { objetivos: [], evidencias: [] };
-
 /**
  * Aba Planning: a reunião de planejamento da semana, projeto por projeto.
  *
  * A tela é feita para ser percorrida em voz alta com o time: escolhe-se o
- * projeto na divisória lateral, os devs puxam do backlog o que entra em cada
- * dia, e o que a sala combina fica escrito ali mesmo - os objetivos da
- * semana, gravados por projeto e por semana, para a planning seguinte poder
- * abrir a anterior e conferir.
+ * projeto na divisória lateral, e os devs puxam do backlog o que entra na
+ * semana.
  *
  * Só projetos em andamento: planning é sobre o que está correndo, e uma lista
  * com os pausados obrigaria a escolher entre eles a cada segunda-feira.
  */
 function AbaPlanning({
-  projetos, pessoas, planning, semana, onMudarSemana, onSalvarPlanning, onReordenar, provasDe,
+  projetos, pessoas, semana, onReordenar,
   onExportar,
   onAbrir, onSalvarTarefa, onAbrirTarefa, onCriarTarefa, onExcluirTarefa,
   etapas, etapaDeEntrada, etapaDeConclusao, podeEditar, podeEditarTarefa, podeExcluirTarefa,
-  entregasDe, funil, secao, onVerProjeto, onAbrirOportunidade, foco, onFocoAtendido,
+  entregasDe, funil, secao, onAbrirOportunidade,
 }: {
-  /** O projeto a pôr na tela, pedido de fora da Planning. */
-  foco?: { id: string; nonce: number } | null;
-  /** O pedido foi atendido: quem o fez o apaga, para ele não voltar a valer
-   *  quando a Planning for montada de novo. */
-  onFocoAtendido?: () => void;
   /** Monta a seção de entregas de um projeto. */
   entregasDe: (p: Projeto) => React.ReactNode;
   projetos: Projeto[];
   pessoas: Pessoa[];
-  /** O combinado de todos os projetos na semana em foco, por id de projeto. */
-  planning: Record<string, PlanningDaSemana>;
   semana: Date;
-  onMudarSemana: (d: Date) => void;
-  onSalvarPlanning: (projetoId: string, dados: PlanningDaSemana) => void;
   /** A ordem nova das divisórias, com todos os ids. */
   onReordenar: (ids: string[]) => void;
   /** Cria uma tarefa no projeto, com prazo no dia ou sem prazo, e abre o painel. */
@@ -5133,23 +4480,19 @@ function AbaPlanning({
   etapas: EtapaTarefa[];
   etapaDeEntrada: string;
   etapaDeConclusao: string;
+  /** Arrumar as divisórias é `projetos:editar`. */
   podeEditar: boolean;
   podeEditarTarefa: boolean;
   podeExcluirTarefa: boolean;
   /** As oportunidades para a folha do Funil. Nulo para quem não vê o funil - e
    *  aí a aba não aparece. */
   funil: FunilDaPlanning | null;
-  /** Qual reunião está na tela: os projetos, com as divisórias; todos os
-   *  objetivos juntos, por cliente; ou o comercial, com a folha do funil. */
+  /** Qual reunião está na tela: os projetos, com as divisórias, ou o
+   *  comercial, com a folha do funil. */
   secao: SecaoDaPlanning;
-  /** Volta para a folha de um projeto a partir da visão de objetivos. */
-  onVerProjeto: (id: string) => void;
   /** Leva à tela do Funil com a oportunidade aberta. */
   onAbrirOportunidade?: (id: string) => void;
-  /** Como prender um print a um objetivo, projeto por projeto. Ausente para
-   *  quem não edita. */
-  provasDe?: (projetoId: string) => ProvasDosObjetivos;
-  /** Baixa a folha aberta em markdown: o combinado da semana e as tarefas das
+  /** Baixa a folha aberta em markdown: a ficha do projeto e as tarefas das
    *  etapas escolhidas, com tudo o que cada uma tem. */
   onExportar?: (projeto: Projeto, tarefas: Tarefa[], etapas: string[]) => Promise<void>;
 }) {
@@ -5165,12 +4508,8 @@ function AbaPlanning({
       return i < 0 ? PRIORIDADES.length : i;
     };
     const posicao = (p: Projeto) => (p.planning_ordem == null ? null : Number(p.planning_ordem));
-    // Em andamento, mais quem tem objetivo combinado nesta semana: a visão de
-    // todos os objetivos juntos saiu, e sem isto o combinado de um projeto
-    // pausado não teria divisória nenhuma onde ser lido.
     const ordenados = projetos
-      .filter(p => p.id !== PROJETO_GERAL
-        && (p.status === 'Em andamento' || (planning[p.id]?.objetivos ?? []).length > 0))
+      .filter(p => p.id !== PROJETO_GERAL && p.status === 'Em andamento')
       .sort((a, b) => {
         const pa = posicao(a);
         const pb = posicao(b);
@@ -5184,36 +4523,13 @@ function AbaPlanning({
     // ele é a outra reunião, a do comercial, com a folha dele.
     const geral = projetos.find(p => p.id === PROJETO_GERAL);
     return [...(geral ? [geral] : []), ...ordenados];
-  }, [projetos, planning]);
+  }, [projetos]);
 
   const [ativo, setAtivo] = useState<string | null>(null);
-  // O pedido de fora escolhe a divisória. Só vale quando o projeto está na
-  // lista; fora dela, a folha que abriria seria outra, e o clique enganaria.
-  //
-  // Uma vez por pedido. A lista se refaz a cada recarga - um objetivo gravado,
-  // uma tarefa movida -, e reaplicar o pedido a cada vez arrastava a tela de
-  // volta para o projeto do aviso, por cima da divisória que a pessoa tinha
-  // escolhido depois. A lista continua entre as dependências porque o pedido
-  // pode chegar antes dos projetos; o que impede a repetição é o nonce guardado.
-  const focoAtendido = useRef<number | null>(null);
-  useEffect(() => {
-    if (!foco || focoAtendido.current === foco.nonce) return;
-    if (!lista.some(p => p.id === foco.id)) return;
-    focoAtendido.current = foco.nonce;
-    setAtivo(foco.id);
-    onFocoAtendido?.();
-  }, [foco?.nonce, lista]);
   // O projeto escolhido, ou o primeiro da lista. Guardado por id e não por
   // posição: a lista se reordena quando alguém muda uma prioridade, e a folha
   // não pode trocar de projeto por causa disso.
   const atual = lista.find(p => p.id === ativo) ?? lista[0] ?? null;
-
-  /** O número na divisória: quantos objetivos aquele projeto tem combinados para
-   *  esta semana. Era a contagem de tarefas do quadro, que a folha já mostra
-   *  logo abaixo; o que a sala quer saber antes de entrar é se o projeto já tem
-   *  semana combinada, e é o objetivo que diz isso. */
-  const objetivosDaSemana = useCallback(
-    (p: Projeto) => (planning[p.id]?.objetivos ?? []).length, [planning]);
 
   // O comercial: a folha do funil sozinha, em largura inteira. Não há
   // divisória a escolher - é uma reunião só, sobre o funil inteiro.
@@ -5224,15 +4540,7 @@ function AbaPlanning({
           semana={semana}
           dias={dias}
           funil={funil}
-          planning={planning[PLANNING_FUNIL] ?? PLANNING_VAZIA}
-          pessoas={pessoas}
-          podeEditar={podeEditar}
-          onAbrirOportunidade={onAbrirOportunidade}
-          provas={provasDe?.(PLANNING_FUNIL)}
-          onMudarPlanning={dados => onSalvarPlanning(PLANNING_FUNIL, {
-            ...(planning[PLANNING_FUNIL] ?? PLANNING_VAZIA),
-            ...dados,
-          })} />
+          onAbrirOportunidade={onAbrirOportunidade} />
       </div>
     );
   }
@@ -5249,7 +4557,7 @@ function AbaPlanning({
   return (
     <>
       <div className="pl-pagina">
-        <AbasDeCaderno lista={lista} ativo={atual?.id ?? null} contagem={objetivosDaSemana}
+        <AbasDeCaderno lista={lista} ativo={atual?.id ?? null}
           podeReordenar={podeEditar} onEscolher={setAtivo}
           // Antes de mudar a ordem, a folha aberta fica presa pelo id. Sem
           // clique nenhum ela e "a primeira da lista", e arrastar outro projeto
@@ -5266,8 +4574,6 @@ function AbaPlanning({
               semana={semana}
               dias={dias}
               pessoas={pessoas}
-              planning={planning[atual.id] ?? PLANNING_VAZIA}
-              podeEditar={podeEditar}
               podeEditarTarefa={podeEditarTarefa}
               podeExcluirTarefa={podeExcluirTarefa}
               etapas={etapas}
@@ -5280,12 +4586,7 @@ function AbaPlanning({
               onCriarTarefa={status => onCriarTarefa(atual, status)}
               onExportar={onExportar && ((tarefas, etapasEscolhidas) =>
                 onExportar(atual, tarefas, etapasEscolhidas))}
-              entregas={atual.id === PROJETO_GERAL ? null : entregasDe(atual)}
-              provas={provasDe?.(atual.id)}
-              onMudarPlanning={dados => onSalvarPlanning(atual.id, {
-                ...(planning[atual.id] ?? PLANNING_VAZIA),
-                ...dados,
-              })} />
+              entregas={atual.id === PROJETO_GERAL ? null : entregasDe(atual)} />
           )}
         </div>
       </div>
@@ -6320,13 +5621,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
    *
    *  `aba` e `reuniao` vêm do inbox, quando ele acaba de atrelar uma reunião:
    *  a ficha abre na aba de Reuniões, com aquela aberta. */
-  abrir?: {
-    id: string; nonce: number; aba?: 'reunioes' | 'planning'; reuniao?: number;
-    /** Com `aba: 'planning'`: a segunda-feira da semana (AAAA-MM-DD) e se o
-     *  projeto tem divisória própria lá. Sem divisória, o objetivo aparece na
-     *  visão de todos os objetivos. */
-    semana?: string;
-  };
+  abrir?: { id: string; nonce: number; aba?: 'reunioes'; reuniao?: number };
   onAbriu?: () => void;
 }) {
   const { pode, usuario, onSessionExpired } = useAuth();
@@ -6335,7 +5630,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
   /**
    * As abas que esta pessoa alcança, pela matriz de permissões.
    *
-   * A Geral é a lista de projetos e a Planning é o combinado da semana: são
+   * A Geral é a lista de projetos e a Planning é a reunião da semana: são
    * duas áreas, e nem todo mundo cuida das duas. Quem não tem nenhuma das duas
    * marcas fica com a Geral - a página já se abriu para ela, e uma tela sem aba
    * nenhuma seria uma porta que leva a lugar nenhum.
@@ -6392,18 +5687,11 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     { fonte: 'anexo'; item: Arquivo }
     | { fonte: 'evidencia'; item: Evidencia }
     | { fonte: 'entrega_arquivo'; item: ArquivoDaEntrega }
-    | { fonte: 'objetivo'; item: EvidenciaDoObjetivo }
     | null
   >(null);
   /** A segunda-feira da semana em foco na Planning. Uma data, e não um texto:
    *  andar de semana é somar sete dias, e o texto sai dela. */
   const [semanaDaPlanning, setSemanaDaPlanning] = useState(() => segundaDaSemana());
-  /** O projeto que a Planning deve pôr na tela, pedido de fora (o alvo dos
-   *  objetivos). O `nonce` faz o mesmo pedido valer de novo. */
-  const [focoDaPlanning, setFocoDaPlanning] = useState<{ id: string; nonce: number } | null>(null);
-  /** O combinado de cada projeto na semana em foco, por id de projeto. */
-  const [planning, setPlanning] = useState<Record<string, PlanningDaSemana>>({});
-
   const [view, setView] = useState<'quadro' | 'lista'>('lista');
   // A fileira de filtros mora recolhida no cabecalho do painel.
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
@@ -6516,143 +5804,11 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     return () => { vivo = false; };
   }, [aba, api, veFunil]);
 
-  // O combinado da semana vem por ação própria, e só quando a Planning está à
-  // vista: é um pedido a mais, e quem abre Projetos na aba Geral não o usa.
-  // Trocar de semana recarrega, porque cada semana tem o seu.
-  const semanaIso = iso10(semanaDaPlanning);
-  // O quadro de objetivos do cabeçalho mexe num objetivo por fora da
-  // Planning. Com ela aberta, a semana é relida: sem isso a próxima gravação
-  // daqui, que regrava a lista inteira do projeto, desfaria o que mudou lá.
-  const [releituraDaPlanning, setReleituraDaPlanning] = useState(0);
-  useEffect(() => {
-    const mudou = () => setReleituraDaPlanning(n => n + 1);
-    window.addEventListener('objetivos:mudou', mudou);
-    return () => window.removeEventListener('objetivos:mudou', mudou);
-  }, []);
-  useEffect(() => {
-    if (aba !== 'planning') return;
-    let vivo = true;
-    void api(`?action=planning_semana&semana=${semanaIso}`).then(r => {
-      if (!vivo || !Array.isArray(r?.planning)) return;
-      const mapa: Record<string, PlanningDaSemana> = {};
-      for (const x of r.planning) {
-        mapa[String(x.projeto_id)] = {
-          evidencias: (Array.isArray(x.evidencias) ? x.evidencias : []).map((e: any) => ({
-            id: Number(e.id),
-            objetivo_id: String(e.objetivo_id ?? ''),
-            nome: String(e.nome ?? ''),
-            tipo: String(e.tipo ?? ''),
-            tamanho: Number(e.tamanho ?? 0),
-          })),
-          objetivos: Array.isArray(x.objetivos)
-            ? x.objetivos.map((o: any) => ({
-              id: idDoObjetivo(o?.id),
-              texto: String(o?.texto ?? ''),
-              feito: o?.feito === true,
-              fazendo: o?.feito !== true && o?.fazendo === true,
-              prazo: o?.prazo ? String(o.prazo) : null,
-              responsaveis: Array.isArray(o?.responsaveis) ? o.responsaveis.map(String) : [],
-              pai: o?.pai ? String(o.pai) : null,
-              desejavel: o?.desejavel === true,
-            }))
-            : [],
-        };
-      }
-      // O que ainda espera a pausa da digitação fica como está na tela: a
-      // leitura saiu antes de a gravação chegar, e apagaria a frase recém-escrita.
-      setPlanning(atual => {
-        const junto = { ...mapa };
-        for (const chave of gravando.current.keys()) {
-          const [id, semana] = chave.split('|');
-          if (semana === semanaIso && atual[id]) junto[id] = atual[id];
-        }
-        return junto;
-      });
-    });
-    return () => { vivo = false; };
-  }, [aba, api, semanaIso, releituraDaPlanning]);
-
-  /** Prende uma prova a um objetivo. A linha mostra o chip na hora, com id
-   *  provisório, e o id de verdade chega da gravação - recarregar a semana
-   *  inteira para ver aparecer o print que se acabou de colar seria esperar
-   *  duas vezes pela mesma coisa. */
-  const anexarProva = useCallback((projetoId: string, objetivoId: string, arquivos: File[]) => {
-    for (const arquivo of arquivos) {
-      if (arquivo.size > LIMITE_DE_PROVA) {
-        toast('error', 'Arquivo grande demais',
-          `"${arquivo.name}" passa de 8 MB. Mande um recorte ou um link.`);
-        continue;
-      }
-      const provisorio = -Date.now() - Math.floor(Math.random() * 1000);
-      const linha: EvidenciaDoObjetivo = {
-        id: provisorio, objetivo_id: objetivoId, nome: arquivo.name,
-        tipo: arquivo.type || 'application/octet-stream', tamanho: arquivo.size,
-      };
-      const pintar = (f: (lista: EvidenciaDoObjetivo[]) => EvidenciaDoObjetivo[]) =>
-        setPlanning(atual => ({
-          ...atual,
-          [projetoId]: {
-            ...(atual[projetoId] ?? PLANNING_VAZIA),
-            evidencias: f(atual[projetoId]?.evidencias ?? []),
-          },
-        }));
-      pintar(lista => [...lista, linha]);
-      void lerBase64(arquivo)
-        .then(base64 => api('', 'POST', {
-          action: 'add_planning_evidencia',
-          projeto_id: projetoId, semana: semanaIso, objetivo_id: objetivoId,
-          nome: arquivo.name, tipo: linha.tipo, tamanho: arquivo.size, base64,
-        }))
-        .then(r => {
-          if (!r?.id) throw new Error(String(r?.error ?? 'sem id'));
-          pintar(lista => lista.map(e => (e.id === provisorio ? { ...e, id: Number(r.id) } : e)));
-        })
-        .catch(() => {
-          pintar(lista => lista.filter(e => e.id !== provisorio));
-          toast('error', 'Não foi possível anexar', `"${arquivo.name}" não chegou ao servidor.`);
-        });
-    }
-  }, [api, semanaIso, toast]);
-
-  /** Tira a prova da linha. Some na hora e volta se o servidor recusar - por
-   *  isso a lista de antes vem de quem chamou, que é quem a tem à mão. */
-  const removerProva = useCallback((
-    projetoId: string, prova: EvidenciaDoObjetivo, antes: EvidenciaDoObjetivo[],
-  ) => {
-    setPlanning(atual => ({
-      ...atual,
-      [projetoId]: {
-        ...(atual[projetoId] ?? PLANNING_VAZIA),
-        evidencias: (atual[projetoId]?.evidencias ?? []).filter(e => e.id !== prova.id),
-      },
-    }));
-    void api('', 'POST', { action: 'excluir_planning_evidencia', id: prova.id })
-      .then(r => { if (r?.error) throw new Error(String(r.error)); })
-      .catch(() => {
-        setPlanning(atual => ({
-          ...atual,
-          [projetoId]: { ...(atual[projetoId] ?? PLANNING_VAZIA), evidencias: antes },
-        }));
-        toast('error', 'Não foi possível tirar o anexo', `"${prova.nome}" continua lá.`);
-      });
-  }, [api, toast]);
-
-  /** As provas daquele projeto, com o que fazer com elas. Preso ao projeto para
-   *  a lista de objetivos não precisar saber de que folha ela é. */
-  const provasDe = useCallback((projetoId: string): ProvasDosObjetivos => ({
-    lista: planning[projetoId]?.evidencias ?? [],
-    anexar: (objetivoId, arquivos) => anexarProva(projetoId, objetivoId, arquivos),
-    remover: prova => removerProva(projetoId, prova, planning[projetoId]?.evidencias ?? []),
-    abrir: prova => setPrevia({ fonte: 'objetivo', item: prova }),
-  }), [planning, anexarProva, removerProva]);
-
   /**
    * A folha da Planning num arquivo de markdown, para dar de contexto a uma IA.
    *
-   * Sai tudo o que a tela tem sobre o projeto: a ficha, o combinado da semana
-   * com cada objetivo inteiro (estado, prazo, quem responde, desdobramentos e
-   * as provas anexadas), as entregas e as tarefas escolhidas - cada uma com
-   * descritivo, checklist e conversa. É o que alguém teria de abrir card por
+   * Sai tudo o que a tela tem sobre o projeto: a ficha, as entregas e as
+   * tarefas escolhidas - cada uma com descritivo, checklist e conversa. É o que alguém teria de abrir card por
    * card e copiar à mão.
    *
    * O checklist e a conversa não estão no quadro: eles descem numa chamada só
@@ -6694,24 +5850,12 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
       return { comentarios, passos };
     })();
 
-    const combinado = planning[projeto.id] ?? PLANNING_VAZIA;
     const nomeDe = (id: string) => pessoas.find(x => x.id === id)?.nome ?? id;
-    const comoObjetivo = (o: ObjetivoDaSemana): ObjetivoExport => ({
-      texto: o.texto,
-      estado: statusDoObjetivo(o),
-      prazo: o.prazo,
-      responsaveis: (o.responsaveis ?? []).map(nomeDe),
-      desejavel: o.desejavel,
-      provas: combinado.evidencias.filter(e => e.objetivo_id === o.id).map(e => e.nome),
-      // Os desdobramentos descem sob a mãe, como na tela.
-      filhos: combinado.objetivos.filter(f => f.pai === o.id).map(comoObjetivo),
-    });
     const gestor = projeto.equipe.find(m => m.papel === 'Gestor');
     const entregas = projeto.entregas ?? [];
     const pacote: PacoteExport = {
       gerado_em: new Date(),
-      filtro: `Planning da semana de ${iso10(semanaDaPlanning)} a ${sextaDaSemana(iso10(semanaDaPlanning))}`
-        + ` · ${projeto.nome} · etapas: ${etapasEscolhidas.join(', ')}`,
+      filtro: `Planning · ${projeto.nome} · etapas: ${etapasEscolhidas.join(', ')}`,
       projetos: [{
         codigo: projeto.codigo ?? null,
         nome: projeto.nome,
@@ -6727,12 +5871,6 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
           titulo: e.titulo, status: e.status, prazo: e.prazo,
           marcador: e.marcador, submarcador: e.submarcador,
         })),
-        semana: {
-          de: iso10(semanaDaPlanning),
-          ate: sextaDaSemana(iso10(semanaDaPlanning)),
-          // Só as mães no primeiro nível: os desdobramentos já descem dentro delas.
-          objetivos: combinado.objetivos.filter(o => !o.pai).map(comoObjetivo),
-        },
         tarefas: tarefas.map(t => ({
           titulo: t.titulo,
           descricao: t.descricao ?? null,
@@ -6751,88 +5889,8 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
       }],
     };
     exportarPacote('md', pacote);
-    toast('success', 'Markdown baixado',
-      `${projeto.nome}: ${combinado.objetivos.length} objetivos e ${tarefas.length} tarefas.`);
-  }, [api, planning, pessoas, semanaDaPlanning, etapaDeConclusao, toast]);
-
-  /** Grava o combinado de um projeto. Pinta na hora e manda depois, juntando as
-   *  teclas: numa reunião se digita a frase inteira, e uma gravação por letra
-   *  seria uma ida ao servidor a cada tecla de quem está falando. */
-  const gravando = useRef(new Map<string, { timer: ReturnType<typeof setTimeout>; enviar: () => void }>());
-  const salvarPlanning = useCallback((projetoId: string, dados: PlanningDaSemana) => {
-    setPlanning(atual => ({ ...atual, [projetoId]: { ...atual[projetoId], ...dados } }));
-    const chave = `${projetoId}|${semanaIso}`;
-    const corpo = {
-      action: 'salvar_planning_semana',
-      projeto_id: projetoId,
-      semana: semanaIso,
-      objetivos: (dados.objetivos ?? []).map(o => ({
-        id: o.id, texto: o.texto, feito: o.feito, fazendo: !o.feito && o.fazendo === true,
-        prazo: o.prazo, responsaveis: o.responsaveis,
-        pai: o.pai ?? null,
-        desejavel: o.desejavel === true,
-      })),
-    };
-    const enviar = () => {
-      gravando.current.delete(chave);
-      // Queda de rede ou resposta que não é JSON rejeitam a promessa, e sem o
-      // `catch` a falha era muda: a frase ficava na tela e não chegava ao banco.
-      void api('', 'POST', corpo)
-        .then(r => {
-          if (r?.error) { toast('error', 'Não foi possível gravar os objetivos', r.error); return; }
-          // O quadro de objetivos do cabeçalho relê ao ouvir isto: fixado ao
-          // lado da Planning, ele risca o objetivo no instante em que se marca.
-          window.dispatchEvent(new Event(EVENTO_PLANNING_GRAVADA));
-        })
-        .catch(() => toast('error', 'Não foi possível gravar os objetivos',
-          'A conexão caiu antes de a gravação chegar. Escreva de novo quando voltar.'));
-    };
-    clearTimeout(gravando.current.get(chave)?.timer);
-    gravando.current.set(chave, { timer: setTimeout(enviar, 700), enviar });
-  }, [api, semanaIso, toast]);
-
-  /** Leva um objetivo para a semana da data nova dele. Some desta Planning na
-   *  hora e volta se o servidor recusar. A gravação pendente desta folha é
-   *  cancelada: ela ainda tinha o objetivo, e chegaria depois trazendo-o de
-   *  volta - a lista que fica vai com o pedido de mudança. */
-  const moverObjetivo = useCallback((projetoId: string, objetivo: ObjetivoLevado, restante: ObjetivoLevado[]) => {
-    const chave = `${projetoId}|${semanaIso}`;
-    clearTimeout(gravando.current.get(chave)?.timer);
-    gravando.current.delete(chave);
-    let antes: PlanningDaSemana | undefined;
-    setPlanning(atual => {
-      antes = atual[projetoId];
-      const folha = atual[projetoId] ?? PLANNING_VAZIA;
-      return {
-        ...atual,
-        [projetoId]: {
-          ...folha,
-          objetivos: restante as ObjetivoDaSemana[],
-          evidencias: folha.evidencias.filter(e => e.objetivo_id !== objetivo.id),
-        },
-      };
-    });
-    const serie = (o: ObjetivoLevado) => ({
-      id: o.id, texto: o.texto, feito: o.feito, fazendo: !o.feito && o.fazendo === true,
-      prazo: o.prazo, responsaveis: o.responsaveis, pai: o.pai ?? null, desejavel: o.desejavel === true,
-    });
-    void api('', 'POST', {
-      action: 'mover_objetivo_de_semana', projeto_id: projetoId, semana: semanaIso,
-      objetivo: serie(objetivo), objetivos: restante.filter(o => o.texto.trim()).map(serie),
-    })
-      .then(r => {
-        if (!r?.ok) throw new Error(String(r?.error ?? 'sem confirmação'));
-        toast('success', 'Objetivo levado de semana',
-          `"${objetivo.texto}" foi para a semana de ${diaEMes(String(r.semana))}.`);
-        window.dispatchEvent(new Event(EVENTO_PLANNING_GRAVADA));
-      })
-      .catch(e => {
-        setPlanning(atual => ({ ...atual, [projetoId]: antes ?? atual[projetoId] }));
-        toast('error', 'Não foi possível mudar a semana', e instanceof Error ? e.message : undefined);
-      });
-  }, [api, semanaIso, toast]);
-  const contextoDaSemana = useMemo(
-    () => ({ segunda: semanaIso, mover: moverObjetivo }), [semanaIso, moverObjetivo]);
+    toast('success', 'Markdown baixado', `${projeto.nome}: ${tarefas.length} tarefas.`);
+  }, [api, pessoas, etapaDeConclusao, toast]);
 
   /** Arruma a ordem das divisórias. Pinta na hora - a divisória já está no
    *  lugar novo quando o dedo sai do mouse - e desfaz se o servidor recusar. */
@@ -6847,13 +5905,6 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
       toast('error', 'Não foi possível mudar a ordem', r.error);
     });
   }, [api, projetos, toast]);
-
-  // A gravação pendente não pode morrer com a tela: quem troca de página logo
-  // depois de escrever perderia a última frase. Ao sair, o que estava esperando
-  // a pausa da digitação vai na hora, em vez de ser cancelado.
-  useEffect(() => () => {
-    for (const { timer, enviar } of [...gravando.current.values()]) { clearTimeout(timer); enviar(); }
-  }, []);
 
   // Abriu um projeto, chegam os resumos das reuniões dele - uma vez por
   // projeto, e não a cada recarregamento da listagem.
@@ -7268,22 +6319,6 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
   // abrir com o projeto dentro, em vez de abrir vazia e piscar depois.
   useEffect(() => {
     if (!abrir) return;
-    // Vindo do alvo dos objetivos: a Planning, e não a ficha. A semana e o
-    // projeto vão para ela; quem não tem divisória própria (demandas gerais,
-    // projeto parado) é achado na visão de todos os objetivos.
-    if (abrir.aba === 'planning') {
-      setAba('planning');
-      if (abrir.semana && /^\d{4}-\d{2}-\d{2}$/.test(abrir.semana)) {
-        const [a, m, d] = abrir.semana.split('-').map(Number);
-        setSemanaDaPlanning(new Date(a, m - 1, d));
-      }
-      // Sempre nas divisórias: a visão de todos os objetivos juntos saiu, e o
-      // objetivo se acha na folha do projeto dele.
-      mudarSecaoPlanning('projetos');
-      setFocoDaPlanning({ id: abrir.id, nonce: abrir.nonce });
-      onAbriu?.();
-      return;
-    }
     setAlvoDaBusca(abrir.id);
     setAberturaPedida(abrir.aba || abrir.reuniao ? { aba: abrir.aba, reuniao: abrir.reuniao } : null);
     // Vindo com reunião, a listagem que está na tela é de antes de ela existir:
@@ -7565,17 +6600,6 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
   async function baixarAnexoDaEntrega(a: ArquivoDaEntrega) {
     const r = await api(`?action=entrega_arquivo_base64&id=${a.id}`);
     if (!r?.base64) { toast('error', 'Não deu', 'O anexo não veio.'); return; }
-    const link = document.createElement('a');
-    link.href = `data:${r.tipo};base64,${r.base64}`;
-    link.download = r.nome;
-    link.click();
-  }
-
-  /** Baixa o que estiver naquele endereço. O de sempre - o servidor devolve
-   *  nome, tipo e conteúdo -, sem uma função por tabela. */
-  async function baixarArquivo(endereco: string) {
-    const r = await api(endereco);
-    if (!r?.base64) { toast('error', 'Não deu', 'O arquivo não veio.'); return; }
     const link = document.createElement('a');
     link.href = `data:${r.tipo};base64,${r.base64}`;
     link.download = r.nome;
@@ -8110,18 +7134,11 @@ carregando ? (
           </table>
         </div>
       ) : (
-        <SemanaDaPlanningCtx.Provider value={contextoDaSemana}>
         <AbaPlanning
-          foco={focoDaPlanning}
-          onFocoAtendido={() => setFocoDaPlanning(null)}
           projetos={projetos}
           pessoas={pessoas}
-          planning={planning}
           semana={semanaDaPlanning}
-          onMudarSemana={setSemanaDaPlanning}
-          onSalvarPlanning={salvarPlanning}
           onExportar={exportarPlanning}
-          provasDe={podeEditar ? provasDe : undefined}
           onReordenar={reordenarPlanning}
           onCriarTarefa={(p, status) => criarTarefaNoProjeto(p, null, status)}
           onSalvarTarefa={salvarTarefa}
@@ -8136,7 +7153,6 @@ carregando ? (
           onAbrir={p => setForm({ editando: p })}
           funil={veFunil ? funil : null}
           secao={veFunil || secaoPlanning !== 'comercial' ? secaoPlanning : 'projetos'}
-          onVerProjeto={() => mudarSecaoPlanning('projetos')}
           onAbrirOportunidade={onAbrirOportunidade}
           // A mesma seção da ficha, ligada aos mesmos gestos da página: o que
           // se faz numa entrega aqui é o que se faria abrindo o projeto.
@@ -8182,7 +7198,6 @@ carregando ? (
             />
           )}
         />
-        </SemanaDaPlanningCtx.Provider>
       )
   );
 
@@ -8434,16 +7449,12 @@ carregando ? (
             ? `?action=entrega_evidencia_base64&id=${previa.item.id}`
             : previa.fonte === 'entrega_arquivo'
               ? `?action=entrega_arquivo_base64&id=${previa.item.id}`
-              : previa.fonte === 'objetivo'
-                ? `?action=planning_evidencia_base64&id=${previa.item.id}`
-                : `?action=projeto_arquivo_base64&id=${previa.item.id}`)}
+              : `?action=projeto_arquivo_base64&id=${previa.item.id}`)}
           onBaixar={() => (previa.fonte === 'evidencia'
             ? void baixarEvidencia(previa.item)
             : previa.fonte === 'entrega_arquivo'
               ? void baixarAnexoDaEntrega(previa.item)
-              : previa.fonte === 'objetivo'
-                ? void baixarArquivo(`?action=planning_evidencia_base64&id=${previa.item.id}`)
-                : void baixarAnexo(previa.item))}
+              : void baixarAnexo(previa.item))}
           onFechar={() => setPrevia(null)}
         />
       )}

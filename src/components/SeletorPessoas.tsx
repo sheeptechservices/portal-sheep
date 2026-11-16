@@ -7,23 +7,17 @@
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Avatar, type Pessoa } from '../admin/FormularioTarefa';
-import { IconUser } from './icons';
-import { ICONE_DA_ACAO } from './AcaoDoObjetivo';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { ancorar } from '../lib/ancorar';
 
 /** Seleção múltipla de pessoas num campo só. Com a lista de usuários crescendo,
  *  espalhar um botão por pessoa na tela ocupava mais espaço a cada cadastro
  *  novo; aqui o campo tem altura fixa e a lista mora no dropdown. */
-export function SeletorPessoas({ pessoas, valor, onChange, vazio = 'Escolher pessoas', compacto }: {
+export function SeletorPessoas({ pessoas, valor, onChange, vazio = 'Escolher pessoas' }: {
   pessoas: Pessoa[];
   valor: string[];
   onChange: (v: string[]) => void;
   vazio?: string;
-  /** Dentro de uma linha de lista, onde o campo inteiro não cabe: o gatilho vira
-   *  um botão do tamanho das fotos, sem moldura de campo e sem a seta. A lista
-   *  que abre é a mesma. */
-  compacto?: boolean;
 }) {
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState('');
@@ -89,28 +83,6 @@ export function SeletorPessoas({ pessoas, valor, onChange, vazio = 'Escolher pes
     </div>,
 document.body,
   );
-
-  if (compacto) {
-    return (
-      <>
-        <button ref={triggerRef} type="button" onClick={abrir}
-          className={`acao-objetivo pessoas-compacto${aberto ? ' aberto' : ''}`}
-          aria-expanded={aberto}
-          title={escolhidas.length ? escolhidas.map(p => p.nome).join(', ') : vazio}
-          aria-label={escolhidas.length ? `${vazio}: ${escolhidas.map(p => p.nome).join(', ')}` : vazio}>
-          {escolhidas.length === 0 ? (
-            <IconUser size={ICONE_DA_ACAO} />
-          ) : (
-            escolhidas.slice(0, 3).map(p => (
-              <Avatar key={p.id} nome={p.nome} foto={p.foto_url} size={18} />
-            ))
-          )}
-          {escolhidas.length > 3 && <span className="pessoas-compacto-mais">+{escolhidas.length - 3}</span>}
-        </button>
-        {aberto && lista}
-      </>
-    );
-  }
 
   return (
     <>

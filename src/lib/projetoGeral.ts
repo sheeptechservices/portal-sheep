@@ -10,8 +10,7 @@ export const PROJETO_GERAL = 'geral';
 
 /**
  * O id da folha do Funil na Planning. Diferente da Geral, não é linha de
- * projeto: a folha só mostra as oportunidades comerciais, e o que ela grava é o
- * combinado da semana em `planning_semana`, que usa este id como chave. O
- * servidor guarda o mesmo valor em `api/_admin-handler.ts`.
+ * projeto: a folha só mostra as oportunidades comerciais, e o id só a separa
+ * das divisórias dos projetos.
  */
 export const PLANNING_FUNIL = 'funil';

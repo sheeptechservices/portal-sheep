@@ -304,14 +304,6 @@ export function IconBug({ size = 14 }: { size?: number }) {
 export function IconSparkles({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M11 3l1.7 4.4 4.4 1.7-4.4 1.7L11 15.2 9.3 10.8 4.9 9.1l4.4-1.7z" /><path d="M18 14.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" /></Ico>;
 }
-// Ramificação - o objetivo que nasceu de outro (os ajustes que a validação pediu).
-export function IconRamificar({ size = 14 }: { size?: number }) {
-  return <Ico size={size}><circle cx="6" cy="5.5" r="2.2" /><circle cx="6" cy="18.5" r="2.2" /><circle cx="18" cy="8.5" r="2.2" /><path d="M6 7.7v8.6" /><path d="M18 10.7c0 3.9-3.3 5.4-9.8 6.3" /></Ico>;
-}
-// Alfinete - fixa um quadro na tela, como os objetivos da semana no cabeçalho.
-export function IconAlfinete({ size = 14 }: { size?: number }) {
-  return <Ico size={size}><path d="M9 3.5h6l-1 5.5 3.5 3.5v1.5h-11V12.5L10 9z" /><path d="M12 14v6.5" /></Ico>;
-}
 // Cadeado - o que é só de uma pessoa, como o segredo pessoal do cofre.
 export function IconCadeado({ size = 14 }: { size?: number }) {
   return <Ico size={size}><rect x="4.5" y="10.5" width="15" height="10.5" rx="2.5" /><path d="M8 10.5V7.5a4 4 0 018 0v3" /><path d="M12 14.6v2.4" /></Ico>;
@@ -331,10 +323,6 @@ export function IconFactory({ size = 14 }: { size?: number }) {
 // Parecer gerado por IA.
 export function IconBot({ size = 14 }: { size?: number }) {
   return <Ico size={size}><rect x="3.5" y="8" width="17" height="12.5" rx="3" /><path d="M12 8V5" /><circle cx="12" cy="3.6" r="1.4" /><path d="M8.5 13.3h.01M15.5 13.3h.01" /><path d="M9.6 16.9h4.8" /><path d="M1.5 12.6v3.3M22.5 12.6v3.3" /></Ico>;
-}
-// Decisão do operador.
-export function IconTarget({ size = 14 }: { size?: number }) {
-  return <Ico size={size}><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><path d="M12 12h.01" /></Ico>;
 }
 // Imprimir / gerar PDF.
 export function IconPrinter({ size = 14 }: { size?: number }) {

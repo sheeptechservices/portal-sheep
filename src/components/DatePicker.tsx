@@ -1,7 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { IconCalendario } from './icons'
-import { ICONE_DA_ACAO } from './AcaoDoObjetivo'
 
 const MONTHS_PT = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -88,14 +86,6 @@ interface DatePickerProps {
   compact?: boolean    // non-floating label style, matches form-input
   allowPast?: boolean  // permite datas passadas (ex.: registrar data de execução já ocorrida)
   /**
-   * Dentro de uma linha de lista, onde o campo inteiro não cabe: o gatilho vira
-   * um chip do tamanho do texto - só o ícone enquanto não há data, a data
-   * escrita depois que ela existe. O calendário que abre é o mesmo.
-   */
-  chip?: boolean
-  /** O que o leitor de tela e a dica dizem, já que o chip não tem rótulo. */
-  titulo?: string
-  /**
    * Na barra de seleção: o gatilho vira um botão da barra, com o mesmo desenho
    * dos vizinhos, e o calendário abre para cima dele. Como a data das marcadas
    * pode não ser uma só, o botão de tirar a data aparece sempre, com o nome que
@@ -106,7 +96,7 @@ interface DatePickerProps {
 
 type DropPos = { top?: number; bottom?: number; left: number; width: number }
 
-export function DatePicker({ value, onChange, label, required, error, disabled, compact, allowPast, chip, titulo, acao }: DatePickerProps) {
+export function DatePicker({ value, onChange, label, required, error, disabled, compact, allowPast, acao }: DatePickerProps) {
   const now = new Date()
   const todayY = now.getFullYear()
   const todayM = now.getMonth()
@@ -385,39 +375,6 @@ export function DatePicker({ value, onChange, label, required, error, disabled, 
         </button>
         {dropdown}
       </>
-    )
-  }
-
-  if (chip) {
-    return (
-      // A moldura é a das ações do objetivo: vazia, o círculo com o
-      // calendário; com data, a pílula que cresce com o texto.
-      <span ref={triggerRef} className={`chip-com-x acao-objetivo-moldura${display ? '' : ' vazio'}`}
-        style={{ position: 'relative' }}>
-        <button
-          type="button"
-          className={`campo-data-chip${open ? ' aberto' : ''}${display ? ' com-data' : ''}`}
-          disabled={disabled}
-          aria-haspopup="dialog"
-          aria-expanded={open}
-          title={titulo ?? (display ? `Para ${display}` : 'Escolher a data')}
-          aria-label={titulo ?? (display ? `Data: ${display}` : 'Escolher a data')}
-          onClick={toggle}
-        >
-          <IconCalendario size={ICONE_DA_ACAO} />
-          {display && <span className="campo-data-chip-texto">{display}</span>}
-        </button>
-        {/* Dentro da moldura, e não solto ao lado dela: solto, ele encostava no
-            chip vizinho e a fileira virava uma sopa de símbolos. Continua sendo
-            irmão do gatilho, e não filho - um botão dentro do outro não é
-            marcação válida, e o clique de um viraria o do outro. */}
-        {/* Obrigatório não tem o X: a data se troca, mas não se tira. */}
-        {display && !disabled && !required && (
-          <button type="button" className="chip-x campo-data-chip-limpar" onClick={clear}
-            title="Tirar a data" aria-label="Tirar a data">×</button>
-        )}
-        {dropdown}
-      </span>
     )
   }
 
