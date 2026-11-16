@@ -751,7 +751,7 @@ async function ajustarChamado(req: VercelRequest, res: VercelResponse, db: Clien
   if (pedido.solicitante.length < 2) return res.status(400).json({ error: 'Diga quem está pedindo.' });
   if (!URGENCIAS.includes(pedido.urgencia)) return res.status(400).json({ error: 'Escolha a urgência.' });
   const autorNome = texto(corpo.autor, 80);
-  if (autorNome.length < 2) return res.status(400).json({ error: 'Diga quem está ajustando.' });
+  if (autorNome.length < 2) return res.status(400).json({ error: 'Diga quem está editando.' });
 
   // O chamado deste projeto, e a tarefa dele só se ainda for deste projeto.
   const achado = await db.execute({

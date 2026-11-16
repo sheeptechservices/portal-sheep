@@ -18,7 +18,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  IconAlert, IconArrowRight, IconChevronRight, IconDoc, IconEdit, IconExternal, IconImage, IconImagemSem, IconLink, IconPlus,
+  IconAlert, IconChevronRight, IconDoc, IconEdit, IconExternal, IconImage, IconImagemSem, IconLink, IconPlus,
   IconSpinner, IconTrash, IconUndo, IconUpload, IconX,
 } from '../components/icons';
 import { CampoBusca } from '../components/CampoBusca';
@@ -516,7 +516,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
         }),
       });
       const d = await resp.json().catch(() => null);
-      if (!resp.ok) throw new Error(d?.error ?? 'Não foi possível ajustar o chamado. Tente de novo.');
+      if (!resp.ok) throw new Error(d?.error ?? 'Não foi possível salvar a edição. Tente de novo.');
       setDados(atual => atual && {
         ...atual,
         chamados: atual.chamados.map(c => c.numero !== numero ? c : {
@@ -671,16 +671,11 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
                                   <IconUndo size={10} /> Reaberto{c.reaberturas.length > 1 ? ` ${c.reaberturas.length}x` : ''}
                                 </span>
                               )}
+                              {/* A linha mostra o chamado como ele vale agora,
+                                  com os ajustes já aplicados, e sem selo de
+                                  ajuste ou de resposta: a única marca é a de
+                                  Reaberto, antes do título. */}
                               <p className="reportes-texto" title={c.titulo}>{c.titulo}</p>
-                              {/* Depois do título, discreto: a linha já mostra
-                                  a versão corrigida, e o selo avisa que o
-                                  detalhe tem as correções. */}
-                              {c.ajustes.length > 0 && (
-                                <span className="chm-ajustado"
-                                  title={`Ajustado em ${instante(c.ajustes[c.ajustes.length - 1].em)}`}>
-                                  <IconEdit size={10} /> Ajustado
-                                </span>
-                              )}
                             </div>
                           </td>
                           <td><ChipDoTipo tipo={c.tipo} /></td>
@@ -723,28 +718,12 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
                             <div className={`revelar${abertaAqui ? ' aberto' : ''}`}>
                               <div>
                                 <div className="reportes-detalhe-corpo chm-detalhe">
-                                  {/* Com correções, o envio ganha nome: é a
-                                      versão de partida, e as mudanças vêm
-                                      embaixo dela. */}
-                                  {c.ajustes.length > 0 && <p className="chm-historico-titulo">Como foi enviado</p>}
-                                  <TextoRico texto={c.descricao} className="reportes-detalhe-texto" />
+                                  {/* A descrição oficial, já com os ajustes. O
+                                      caminho até ela fica no histórico, no fim. */}
+                                  <TextoRico texto={c.descricaoEmVigor} className="reportes-detalhe-texto" />
                                   <ListaDeLinks links={c.links} />
                                   <ChipsDeAnexos chamado={c} anexos={c.anexos.filter(a => !a.reabertura)}
                                     onVer={i => setVendo({ chamado: c, indice: i })} />
-                                  {/* As correções, logo abaixo do envio: cada
-                                      uma só com o que mudou nela. */}
-                                  {c.ajustes.length > 0 && (
-                                    <>
-                                      <p className="chm-historico-titulo">
-                                        {c.ajustes.length === 1 ? 'Ajuste' : `Ajustes (${c.ajustes.length})`}
-                                      </p>
-                                      <ol className="chm-historico">
-                                        {passosDosAjustes(c).map(({ ajuste, de }, i) => (
-                                          <PassoDoAjuste key={`${ajuste.seq ?? 'novo'}-${i}`} ajuste={ajuste} de={de} />
-                                        ))}
-                                      </ol>
-                                    </>
-                                  )}
                                   {/* As reaberturas, uma embaixo da outra: o que
                                       o cliente escreveu cada vez que pediu o
                                       chamado de volta. Só aparecem se houver. */}
@@ -753,7 +732,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
                                       <p className="chm-historico-titulo">
                                         {c.reaberturas.length === 1 ? 'Reabertura' : `Reaberturas (${c.reaberturas.length})`}
                                       </p>
-                                      <ol className="chm-historico">
+                                      <ol className="chm-reaberturas">
                                         {c.reaberturas.map((ev, i) => (
                                           <PassoDaReabertura key={`${ev.seq ?? 'nova'}-${i}`} ev={ev} chamado={c}
                                             onVer={j => setVendo({ chamado: c, indice: j })} />
@@ -761,6 +740,11 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
                                       </ol>
                                     </>
                                   )}
+                                  {/* O histórico dos ajustes, no fim e enxuto:
+                                      uma linha por ajuste, com quando, quem e o
+                                      que mudou. Os dados novos já estão na linha
+                                      e no texto acima; aqui fica só o caminho. */}
+                                  {c.ajustes.length > 0 && <HistoricoDeAjustes chamado={c} />}
                                   {encerrado && !c.reabrindo && (
                                     <div className="chm-detalhe-acoes surge">
                                       <span>Precisa de mais alguma coisa neste chamado?</span>
@@ -770,14 +754,14 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
                                       </button>
                                     </div>
                                   )}
-                                  {/* Aberto, o chamado ainda se corrige: o envio
-                                      fica como foi, e a correção vai junto. */}
+                                  {/* Aberto, o chamado ainda se edita. O botão
+                                      se explica sozinho, sem texto de convite
+                                      ao lado. */}
                                   {!encerrado && c.numero != null && !c.enviando && !c.ajustando && (
                                     <div className="chm-detalhe-acoes surge">
-                                      <span>Mandou algo errado ou faltou alguma informação?</span>
                                       <button type="button" className="reportes-acao"
                                         onClick={e => { e.stopPropagation(); abrirAjuste(c); }}>
-                                        <IconEdit size={12} /> Ajustar chamado
+                                        <IconEdit size={12} /> Editar
                                       </button>
                                     </div>
                                   )}
@@ -1159,50 +1143,54 @@ const NOME_DO_CAMPO: Record<CampoAjustavel, string> = {
   titulo: 'Título', descricao: 'Descrição', solicitante: 'Quem pede', urgencia: 'Urgência', tipo: 'Tipo',
 };
 
-/** Uma correção: quem corrigiu, quando, e só os campos que mudaram. Os curtos
- *  em "de → para" numa linha; a descrição nova inteira, porque a antiga está
- *  logo acima, no envio. */
-function PassoDoAjuste({ ajuste, de }: { ajuste: Ajuste; de: Versao }) {
-  // Os curtos primeiro, a descrição por último: no meio, o texto longo
-  // separaria as linhas de "de → para" umas das outras.
-  const campos = (['titulo', 'tipo', 'solicitante', 'urgencia', 'descricao'] as CampoAjustavel[])
-    .filter(k => ajuste.mudou[k] != null);
-  const enviando = ajuste.seq == null;
-  const comIcone = (k: CampoAjustavel, valor: string) => {
-    if (k === 'tipo') {
-      const t = ROTULO_DO_TIPO[valor];
-      return t ? <><span style={{ display: 'inline-flex', color: t.cor }}><t.Icone size={12} /></span>{t.label}</> : 'Sem tipo';
-    }
-    const Icone = k === 'urgencia' ? ICONE_PRIORIDADE[valor] : undefined;
-    return <>{Icone && <Icone size={12} />}{valor}</>;
+/** O histórico dos ajustes, enxuto: uma linha por ajuste - quando, quem, e o
+ *  que mudou. Nos campos curtos, de onde para onde; na descrição, só o aviso
+ *  de que mudou, porque a versão em vigor já está no alto do chamado. */
+function HistoricoDeAjustes({ chamado }: { chamado: ChamadoNaTela }) {
+  const valor = (k: CampoAjustavel, v: string) => {
+    if (k === 'tipo') return ROTULO_DO_TIPO[v]?.label ?? 'sem tipo';
+    return v;
   };
+  // O valor longo (um título comprido) encurta no texto, e não no CSS: o corte
+  // do CSS deixava a largura cheia depois das reticências, e o vão aparecia
+  // antes da vírgula. Por extenso, ele fica na dica da linha.
+  const curto = (v: string) => (v.length > 28 ? `${v.slice(0, 27).trimEnd()}…` : v);
   return (
-    <li className={`chm-passo chm-passo-ajuste${enviando ? ' enviando' : ''}`}>
-      <span className="chm-passo-ponto"><IconEdit size={9} /></span>
-      <p className="chm-passo-linha">
-        <strong>{ajuste.autor}</strong> ajustou o chamado
-        {enviando && <IconSpinner size={11} />}
-      </p>
-      <p className="chm-passo-quando">{instante(ajuste.em)}</p>
-      <dl className="chm-passo-corpo chm-ajuste">
-        {campos.map(k => (
-          <div key={k} className={`chm-ajuste-campo${k === 'descricao' ? ' longo' : ''}`}>
-            <dt>{NOME_DO_CAMPO[k]}</dt>
-            <dd>
-              {k === 'descricao' ? (
-                <TextoRico texto={ajuste.mudou.descricao!} className="reportes-detalhe-texto" />
-              ) : (
-                <>
-                  <span className="chm-ajuste-de">{comIcone(k, de[k])}</span>
-                  <span className="chm-ajuste-seta" aria-label="para"><IconArrowRight size={11} /></span>
-                  <span className="chm-ajuste-para">{comIcone(k, ajuste.mudou[k]!)}</span>
-                </>
-              )}
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </li>
+    <div className="chm-ajustes">
+      <p className="chm-historico-titulo">Histórico de edições</p>
+      <ul className="chm-ajustes-lista">
+        {passosDosAjustes(chamado).map(({ ajuste, de }, i) => {
+          const campos = (['titulo', 'tipo', 'solicitante', 'urgencia', 'descricao'] as CampoAjustavel[])
+            .filter(k => ajuste.mudou[k] != null);
+          // O ajuste inteiro por extenso, para a dica: a linha é uma só e os
+          // valores longos levam reticências, então o texto completo mora aqui.
+          const porExtenso = campos.map(k => (k === 'descricao'
+            ? 'descrição atualizada'
+            : `${NOME_DO_CAMPO[k].toLocaleLowerCase('pt-BR')} ${valor(k, de[k])} para ${valor(k, ajuste.mudou[k]!)}`)).join(', ');
+          return (
+            <li key={`${ajuste.seq ?? 'novo'}-${i}`} className={ajuste.seq == null ? 'enviando' : undefined}
+              title={`${instante(ajuste.em)} - ${ajuste.autor}: ${porExtenso}`}>
+              <span className="chm-ajustes-quando">{instante(ajuste.em)}</span>
+              <span className="chm-ajustes-quem">{ajuste.autor}</span>
+              <span className="chm-ajustes-oque">
+                {/* A vírgula vai colada no fim do campo anterior, e não solta
+                    entre os dois: solta, o espaço entre as peças da linha
+                    abria um vão antes dela. */}
+                {campos.map((k, j) => (
+                  <span key={k} className="chm-ajustes-campo">
+                    {k === 'descricao' ? 'descrição atualizada' : (
+                      <>{NOME_DO_CAMPO[k].toLocaleLowerCase('pt-BR')} <s>{curto(valor(k, de[k]))}</s> para <b>{curto(valor(k, ajuste.mudou[k]!))}</b></>
+                    )}
+                    {j < campos.length - 1 && ','}
+                  </span>
+                ))}
+                {ajuste.seq == null && <IconSpinner size={11} />}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
@@ -1213,15 +1201,23 @@ function PassoDaReabertura({ ev, chamado, onVer }: {
   const anexos = ev.seq == null
     ? chamado.anexos.filter(a => a.reabertura === -1)
     : chamado.anexos.filter(a => a.reabertura === ev.seq);
+  // No desenho do comentário da tarefa: o selo de quem falou, o cabeçalho com
+  // nome e hora, e o texto num cartão - recuado do resto do chamado, para a
+  // reabertura ler como uma conversa à parte, e não como parte do pedido.
   return (
-    <li className={`chm-passo chm-passo-reaberto${ev.seq == null ? ' enviando' : ''}`}>
-      <span className="chm-passo-ponto"><IconUndo size={9} /></span>
-      <p className="chm-passo-linha">
-        <strong>{ev.autor}</strong> reabriu o chamado
-        {ev.seq == null && <IconSpinner size={11} />}
-      </p>
-      <p className="chm-passo-quando">{instante(ev.em)}</p>
-      <div className="chm-passo-corpo">
+    <li className={`chm-reabertura${ev.seq == null ? ' enviando' : ''}`}>
+      <span className="chm-reabertura-selo" aria-hidden="true">
+        {/* A primeira letra do nome, e não o primeiro caractere: um nome que
+            começa com colchete ou número mostraria o símbolo no selo. */}
+        {ev.autor.match(/\p{L}/u)?.[0]?.toUpperCase() ?? <IconUndo size={11} />}
+      </span>
+      <div className="chm-reabertura-corpo">
+        <p className="chm-reabertura-cabeca">
+          <strong>{ev.autor}</strong>
+          <span className="chm-reabertura-marca"><IconUndo size={10} /> reabriu</span>
+          <time dateTime={ev.em}>{instante(ev.em)}</time>
+          {ev.seq == null && <IconSpinner size={11} />}
+        </p>
         <TextoRico texto={ev.texto} className="reportes-detalhe-texto" />
         <ListaDeLinks links={ev.links} />
         <ChipsDeAnexos chamado={chamado} anexos={anexos} onVer={onVer} />
@@ -1618,16 +1614,16 @@ function FormularioDeAjuste({ chamado, rascunho, erro, nomes, onMudar, onFechar,
     && r.solicitante.trim().length >= 2 && r.autor.trim().length >= 2;
 
   return (
-    <Janela rotulo={`AJUSTAR O CHAMADO #${chamado.numero}`} titulo={chamado.titulo}
-      sub="O que você mandou continua guardado. A correção aparece junto do chamado, e o time é avisado."
+    <Janela rotulo={`EDITAR O CHAMADO #${chamado.numero}`} titulo={chamado.titulo}
+      sub="O que você mandou continua guardado. A edição aparece no histórico do chamado, e o time é avisado."
       onFechar={onFechar}
       rodape={fechar => (
         <>
           <button type="button" className="delete-confirm-cancel" onClick={fechar}>Cancelar</button>
           <button type="button" className="btn btn-primary" disabled={!mudou || !valido}
-            title={!mudou ? 'Troque alguma informação para enviar o ajuste' : undefined}
+            title={!mudou ? 'Troque alguma informação para salvar a edição' : undefined}
             onClick={() => onEnviar(r)}>
-            <IconEdit size={14} /> Enviar ajuste
+            <IconEdit size={14} /> Salvar edição
           </button>
         </>
       )}>
@@ -1663,7 +1659,7 @@ function FormularioDeAjuste({ chamado, rascunho, erro, nomes, onMudar, onFechar,
             onMudar={v => mudar({ solicitante: v })} onEscolher={n => mudar({ solicitante: n.nome })} />
         </label>
         <label className="form-group">
-          <span className="form-label">Quem está ajustando</span>
+          <span className="form-label">Quem está editando</span>
           <CampoDeNome valor={r.autor} nomes={nomes}
             onMudar={v => mudar({ autor: v })} onEscolher={n => mudar({ autor: n.nome })} />
         </label>

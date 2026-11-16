@@ -25770,83 +25770,114 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   text-transform: uppercase;
   color: var(--gray2);
 }
-.chm-historico { margin: 0; padding: 0; list-style: none; }
-.chm-passo {
-  position: relative;
-  padding: 0 0 14px 22px;
-}
-/* O fio que liga um passo ao próximo. O último não tem para onde ir. */
-.chm-passo::before {
-  content: '';
-  position: absolute;
-  left: 5px;
-  top: 14px;
-  bottom: 0;
-  width: 1.5px;
-  background: var(--gray4);
-}
-.chm-passo:last-child { padding-bottom: 2px; }
-.chm-passo:last-child::before { display: none; }
-.chm-passo-ponto {
-  position: absolute;
-  left: 0;
-  top: 3px;
-  width: 12px;
-  height: 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: var(--gray2);
-  box-shadow: 0 0 0 3px var(--card-hover-bg);
-}
-.chm-passo-reaberto .chm-passo-ponto {
-  width: 16px;
-  height: 16px;
-  left: -2px;
-  top: 1px;
-  background: var(--yellow);
-  color: var(--on-yellow);
-}
-.chm-passo-linha {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin: 0;
-  font-size: 12.5px;
-  color: var(--gray);
-}
-.chm-passo-linha strong { color: var(--black); font-weight: 700; }
-.chm-passo-quando { margin: 2px 0 0; font-size: 11px; color: var(--gray2); }
-.chm-passo-corpo {
+/* As reaberturas, aninhadas: recuadas do resto do chamado e presas por um fio
+   âmbar (a cor do selo "Reaberto"), cada uma no cartão do comentário da
+   tarefa - o selo de quem falou, o cabeçalho com nome e hora, o texto
+   embaixo. Lê como uma conversa à parte, e não como continuação do pedido. */
+.chm-reaberturas {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 8px;
+  margin: 0 0 0 10px;
+  padding: 2px 0 2px 14px;
+  list-style: none;
+  border-left: 2px solid color-mix(in srgb, var(--amber) 35%, transparent);
+}
+.chm-reabertura {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   padding: 10px 12px;
+  border: 1px solid var(--cristal-borda, var(--gray3));
   border-radius: var(--radius-md);
-  background: var(--gray4);
+  background: var(--cristal, var(--white));
+  box-shadow: inset 0 1px 0 var(--cristal-luz, transparent), var(--cristal-sombra, none);
+  transition: border-color var(--transition);
 }
-.chm-passo-corpo .reportes-detalhe-texto { margin: 0; }
-.chm-passo-corpo .reportes-anexos { margin: 0; }
-.chm-passo-reaberto.enviando .chm-passo-corpo { opacity: .75; }
+.chm-reabertura:hover { border-color: var(--cristal-borda-forte, var(--gray2)); }
+.chm-reabertura.enviando { opacity: .75; }
+.chm-reabertura-selo {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--amber) 16%, transparent);
+  color: var(--amber);
+  font-size: 11.5px;
+  font-weight: 800;
+}
+.chm-reabertura-corpo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.chm-reabertura-cabeca {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--gray2);
+}
+.chm-reabertura-cabeca strong { font-size: 12.5px; font-weight: 700; color: var(--black); }
+.chm-reabertura-marca {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--amber);
+  font-weight: 700;
+}
+.chm-reabertura-cabeca time { font-variant-numeric: tabular-nums; }
+.chm-reabertura .reportes-detalhe-texto { margin: 0; }
+.chm-reabertura .reportes-anexos { margin: 0; }
 
-/* ── Ajustes do chamado ──────────────────────────────────────────────────────
-   A correção é um passo da mesma linha do tempo, num tom abaixo da reabertura:
-   o ponto é neutro, porque corrigir não muda o rumo do chamado. Dentro, uma
-   grade de rótulo e valor só com o que mudou - nada de repetir o que ficou
-   igual, que é o que deixaria o bloco poluído. */
-.chm-passo-ajuste .chm-passo-ponto {
-  width: 16px;
-  height: 16px;
-  left: -2px;
-  top: 1px;
-  background: var(--gray4);
-  color: var(--gray);
-  border: 1px solid var(--gray3);
+/* ── O histórico dos ajustes, no painel do cliente ─────────────────────────
+   No fim do chamado, enxuto: uma linha por ajuste, em letra pequena - quando,
+   quem e o que mudou. Os dados novos já estão na linha e no texto do alto;
+   isto é só o caminho até eles. */
+.chm-ajustes { display: flex; flex-direction: column; gap: 6px; }
+.chm-ajustes-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.chm-passo-ajuste.enviando .chm-passo-corpo { opacity: .75; }
+/* Uma linha por ajuste, sempre uma só: data, quem e o que mudou em colunas
+   fixas, alinhadas de um ajuste para o outro. O que não cabe leva reticências
+   - os valores longos (um título comprido) se encurtam primeiro -, e o ajuste
+   por extenso fica na dica da linha. */
+.chm-ajustes-lista li {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--gray);
+  white-space: nowrap;
+}
+.chm-ajustes-lista li.enviando { opacity: .7; }
+.chm-ajustes-quando { color: var(--gray2); font-variant-numeric: tabular-nums; }
+.chm-ajustes-quem { color: var(--black); font-weight: 700; }
+.chm-ajustes-oque {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chm-ajustes-campo { flex-shrink: 0; }
+.chm-ajustes-campo:last-child { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.chm-ajustes-oque s { color: var(--gray2); text-decoration-color: color-mix(in srgb, var(--gray2) 60%, transparent); }
+.chm-ajustes-oque b { color: var(--black); font-weight: 700; }
+
+/* ── Ajustes do chamado, na ficha da tarefa ─────────────────────────────────
+   Do lado do time, cada correção do cliente aparece com o detalhe: uma grade
+   de rótulo e valor só com o que mudou, em "de → para" - nada de repetir o
+   que ficou igual. (No painel do cliente o histórico é o enxuto, acima.) */
 .chm-ajuste { margin-bottom: 0; gap: 0; }
 .chm-ajuste-campo {
   display: grid;
@@ -25893,34 +25924,21 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   .chm-ajuste-campo { grid-template-columns: minmax(0, 1fr); gap: 4px; }
 }
 
-/* O selo da linha: discreto e neutro, depois do título. A linha já mostra a
-   versão corrigida; o selo só avisa que o detalhe tem as correções. */
-.chm-ajustado {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  padding: 2px 7px;
-  border-radius: var(--radius-pill);
-  background: var(--gray4);
-  color: var(--gray);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: .03em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-/* Os passos entram em escada quando o detalhe abre. */
-.revelar.aberto .chm-passo { animation: linha-entra .38s var(--curva-anti) backwards; }
-.revelar.aberto .chm-passo:nth-child(2) { animation-delay: 40ms; }
-.revelar.aberto .chm-passo:nth-child(3) { animation-delay: 80ms; }
-.revelar.aberto .chm-passo:nth-child(n+4) { animation-delay: 120ms; }
+/* As reaberturas entram em escada quando o detalhe abre. */
+.revelar.aberto .chm-reabertura { animation: linha-entra .38s var(--curva-anti) backwards; }
+.revelar.aberto .chm-reabertura:nth-child(2) { animation-delay: 40ms; }
+.revelar.aberto .chm-reabertura:nth-child(3) { animation-delay: 80ms; }
+.revelar.aberto .chm-reabertura:nth-child(n+4) { animation-delay: 120ms; }
 
+/* O convite e o botão andam juntos, o botão logo depois do texto. Espalhados
+   nas duas pontas, o botão ia parar na borda direita da tabela, que é larga e
+   rola de lado - e o texto ficava sozinho na tela, convidando para um botão
+   que ninguém via. */
 .chm-detalhe-acoes {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: flex-start;
+  gap: 12px;
   flex-wrap: wrap;
   margin-top: 4px;
   padding-top: 10px;
@@ -25938,7 +25956,7 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   white-space: nowrap;
 }
 @media (prefers-reduced-motion: reduce) {
-  .revelar.aberto .chm-passo { animation: none; }
+  .revelar.aberto .chm-reabertura { animation: none; }
 }
 
 /* A marca da Sheep no painel do cliente: a assinatura no alto da faixa, e o
