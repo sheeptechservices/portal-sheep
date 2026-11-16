@@ -24947,3 +24947,14 @@ input:is(.form-checkbox, .perm-check):disabled { opacity: .45; cursor: default; 
    juntos quando a pessoa usa o teclado com o mouse parado em cima da lista. */
 .ativ-mencoes button:hover { background: transparent; }
 .ativ-mencoes button.ativo { background: var(--gray4); color: var(--black); }
+
+/* A foto do perfil sem anel em volta. O fundo limao do avatar existe para as
+   iniciais; atras da foto ele aparecia na beira do circulo como uma borda. Com
+   foto, o fundo sai, e a imagem cresce um pouco dentro do circulo, cortando a
+   moldura que algumas fotos ja trazem na propria beira. */
+.perfil-avatar:has(img) { background: transparent; }
+.perfil-avatar img {
+  display: block;
+  border-radius: 50%;
+  transform: scale(1.1);
+}
