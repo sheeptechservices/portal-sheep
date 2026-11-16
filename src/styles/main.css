@@ -24736,3 +24736,21 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
   backdrop-filter: blur(10px) saturate(115%) !important;
   background: rgba(3, 5, 6, .42) !important;
 }
+
+/* O quadro de tarefas na Planning tem teto. Solto na folha, sem a altura da
+   gaveta para segurar, ele crescia ate caber a coluna mais cheia - 20 e
+   tantas tarefas faziam a folha rolar por telas. Agora o quadro para em
+   ~560px (ou 62% da janela, o que for menor) e quem rola e cada coluna, com o
+   cabecalho da etapa parado no alto, como na tela de Tarefas. Quadro com
+   poucas tarefas continua do tamanho delas. */
+.pl-secao-quadro .painel-kanban-alto {
+  max-height: min(560px, 62vh);
+  align-items: stretch;
+}
+.pl-secao-quadro .painel-kanban-alto .kanban-column {
+  max-height: min(560px, 62vh);
+}
+.pl-secao-quadro .painel-kanban-alto .kanban-column-body {
+  min-height: 0;
+  overflow-y: auto;
+}
