@@ -12,7 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useRef, useState } from 'react';
 import {
-  IconArrowRight, IconBalao, IconChamado, IconDoc, IconEdit, IconEnviar, IconExternal, IconImage, IconLink,
+  IconArrowRight, IconBalao, IconChamado, IconChevronRight, IconDoc, IconEdit, IconEnviar, IconExternal, IconImage, IconLink,
   IconSpinner, IconTrash, IconUndo,
 } from '../components/icons';
 import { CampoTexto } from '../components/CampoTexto';
@@ -91,6 +91,16 @@ function Links({ links }: { links: string[] }) {
   );
 }
 
+/** O começo da resposta numa linha, para a resposta recolhida: sem as marcas
+ *  de negrito, itálico, sublinhado e lista, e com as quebras viradas espaço. */
+function previaDoTexto(texto: string): string {
+  return texto
+    .replace(/\*\*|__|\*/g, '')
+    .replace(/^\s*-\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /**
  * A conversa com o cliente, dentro do bloco do chamado. O que se escreve aqui
  * aparece no painel de chamados dele, dentro do chamado - e é a única coisa
@@ -113,6 +123,14 @@ function RespostasAoCliente({ tarefaId, api, respostas, onMudar }: {
   const [escrevendo, setEscrevendo] = useState(false);
   const [texto, setTexto] = useState('');
   const [apagando, setApagando] = useState<Resposta | null>(null);
+  /** As respostas abertas. Nascem recolhidas - uma resposta longa ocupava a
+   *  ficha inteira -, e a que acabou de ser enviada já vem aberta. */
+  const [abertas, setAbertas] = useState<Set<number>>(() => new Set());
+  const alternar = (id: number) => setAbertas(a => {
+    const n = new Set(a);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
   const caixa = useRef<HTMLDivElement | null>(null);
   // O lado de dentro do `.revelar` fica montado; o foco vai quando ele abre.
   useEffect(() => {
@@ -127,6 +145,7 @@ function RespostasAoCliente({ tarefaId, api, respostas, onMudar }: {
     };
     const antes = respostas;
     onMudar([...antes, provisoria]);
+    setAbertas(a => new Set(a).add(provisoria.id));
     setTexto('');
     setEscrevendo(false);
     const r = await api('', 'POST', { action: 'responder_chamado_cliente', tarefa_id: tarefaId, texto: limpo })
@@ -139,6 +158,8 @@ function RespostasAoCliente({ tarefaId, api, respostas, onMudar }: {
       return;
     }
     onMudar([...antes, { ...provisoria, id: Number(r.id), criado_em: String(r.criado_em ?? provisoria.criado_em) }]);
+    // A aberta troca de chave junto com o id: a provisória vira a definitiva.
+    setAbertas(a => { const n = new Set(a); n.delete(provisoria.id); n.add(Number(r.id)); return n; });
   }
 
   async function apagar(alvo: Resposta) {
@@ -161,23 +182,44 @@ function RespostasAoCliente({ tarefaId, api, respostas, onMudar }: {
 
       {respostas.length > 0 && (
         <ol className="chamado-tarefa-reaberturas">
-          {respostas.map(r => (
-            <li key={r.id} className={`chamado-tarefa-reabertura resposta${r.id < 0 ? ' enviando' : ''}`}>
-              <p className="chamado-tarefa-reabertura-topo">
-                <strong>{r.autor}</strong>
-                <span>{instante(r.criado_em)}</span>
-                {r.id < 0 && <IconSpinner size={11} />}
-                {r.minha && r.id > 0 && (
-                  <button type="button" className="chamado-tarefa-resposta-apagar"
-                    title="Apagar esta resposta" aria-label="Apagar esta resposta"
-                    onClick={() => setApagando(r)}>
-                    <IconTrash size={12} />
+          {respostas.map(r => {
+            const aberta = abertas.has(r.id);
+            return (
+              <li key={r.id} className={`chamado-tarefa-reabertura resposta${r.id < 0 ? ' enviando' : ''}`}>
+                {/* A linha do alto abre e recolhe. A lixeira mora fora dela:
+                    botão dentro de botão não existe. */}
+                <div className="chamado-tarefa-resposta-topo">
+                  <button type="button" className="chamado-tarefa-resposta-alternar" aria-expanded={aberta}
+                    title={aberta ? 'Recolher a resposta' : 'Abrir a resposta'}
+                    onClick={() => alternar(r.id)}>
+                    <span className={`entrega-seta${aberta ? ' aberta' : ''}`}><IconChevronRight size={12} /></span>
+                    <strong>{r.autor}</strong>
+                    <span className="chamado-tarefa-resposta-quando">{instante(r.criado_em)}</span>
+                    {/* Recolhida, o começo do texto: dá para saber qual é
+                        sem abrir. Aberta, o texto inteiro mora embaixo. */}
+                    <span className={`chamado-tarefa-resposta-previa${aberta ? ' some' : ''}`} aria-hidden={aberta}>
+                      {previaDoTexto(r.texto)}
+                    </span>
+                    {r.id < 0 && <IconSpinner size={11} />}
                   </button>
-                )}
-              </p>
-              <TextoRico texto={r.texto} className="chamado-tarefa-texto" />
-            </li>
-          ))}
+                  {r.minha && r.id > 0 && (
+                    <button type="button" className="chamado-tarefa-resposta-apagar"
+                      title="Apagar esta resposta" aria-label="Apagar esta resposta"
+                      onClick={() => setApagando(r)}>
+                      <IconTrash size={12} />
+                    </button>
+                  )}
+                </div>
+                {/* O texto fica montado o tempo todo: é dele que a abertura
+                    tira a altura. */}
+                <div className={`revelar${aberta ? ' aberto' : ''}`}>
+                  <div>
+                    <TextoRico texto={r.texto} className="chamado-tarefa-texto chamado-tarefa-resposta-texto" />
+                  </div>
+                </div>
+              </li>
+            );
+          })}
         </ol>
       )}
 
