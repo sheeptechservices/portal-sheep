@@ -24825,3 +24825,34 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
 :is(.admin-modal, .modal-central, .delete-confirm-modal) :is(.delete-confirm-cancel, .secao-add):hover {
   background: var(--sup-cartao-hover);
 }
+
+/* ══ Rolagem leve dentro dos popups ═════════════════════════════════════════
+   A ficha tinha tres desfoques empilhados: o do fundo escuro, o do proprio
+   modal e o do cabecalho/rodape. Rolando o corpo, o navegador refazia os de
+   dentro a cada quadro, e a rolagem ficava agarrada.
+   - O fundo escuro ja borra a pagina; o modal por cima dele nao precisa
+     borrar de novo - o vidro dele ja enxerga a pagina borrada.
+   - Cabecalho e rodape nao desfocam. Na peca da casa (`.painel-gaveta`) eles
+     ficam parados e o conteudo nao passa por baixo: sao transparentes. Nas
+     gavetas antigas, em que o conteudo rola por baixo, ganham um fundo
+     quase opaco no lugar do desfoque.
+   - O corpo que rola vira camada propria, e rolar nao repinta o vidro. */
+.admin-modal-overlay > :is(.admin-modal, .modal-central, .delete-confirm-modal, .cofre-popup),
+.usuarios-modal-fundo > .usuarios-modal {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background: rgba(12, 13, 16, .74) !important;
+}
+:is(.admin-modal, .modal-central, .inbox-gaveta, .qs-panel, .tarefa-detalhe)
+  :is(.admin-modal-header, .admin-modal-footer, .painel-rodape, .inbox-topo, .qs-inputwrap) {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background: rgba(12, 13, 16, .9) !important;
+}
+.admin-modal.painel-gaveta :is(.admin-modal-header, .admin-modal-footer, .painel-rodape) {
+  background: transparent !important;
+}
+:is(.admin-modal, .modal-central) .admin-modal-body {
+  will-change: scroll-position;
+  overscroll-behavior: contain;
+}
