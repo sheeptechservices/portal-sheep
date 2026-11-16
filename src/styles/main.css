@@ -24228,11 +24228,14 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
    escrito em varios lugares (por tema, por tela, e inline no calendario), e o
    pedido e que nenhuma fuja do padrao.
    As paginas publicas de cliente (vitrine, portal do projeto) ficam de fora:
-   la a identidade e a do documento, nao a do sistema. */
+   la a identidade e a do documento, nao a do sistema.
+   Da dica rica, o vidro vai no cartao (`.dica-rica-corpo`), que e o que tem o
+   canto arredondado. A `.dica-rica` e so a moldura que posiciona: pintada,
+   ela aparecia quadrada por tras do cartao, com as pontas sobrando. */
 :root { --vidro-flutuante-filtro: blur(30px) saturate(160%); }
 :is(.admin-modal, .delete-confirm-modal, .modal-central, .usuarios-modal, .cofre-popup,
   .status-select-dropdown, .filter-dropdown-list, .status-color-picker-popover, .notif-dropdown,
-  .model-select-pop, .vinculo-lista, .pl-semana-lista, .inbox-gaveta, .qs-panel, .dica-rica,
+  .model-select-pop, .vinculo-lista, .pl-semana-lista, .inbox-gaveta, .qs-panel, .dica-rica-corpo,
   .tooltip-box, .datepicker-caixa, .tarefa-detalhe):not(.pub-seletor-lista) {
   background: var(--menu-flutuante) !important;
   -webkit-backdrop-filter: var(--vidro-flutuante-filtro) !important;
