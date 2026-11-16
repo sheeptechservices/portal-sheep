@@ -203,8 +203,20 @@ export function Inbox({ listar, marcarLido, limpar, vincularReuniao, onIr, noMen
   // botão vive, isso a encosta no canto direito, que é de onde ela sai.
   useEffect(() => {
     if (!aberto || !gatilho.current) return;
-    setPos((noMenu ? ancorarAoLado : ancorarCaixa)(gatilho.current, INBOX_LARGURA, INBOX_ALTURA));
-  }, [aberto]);
+    const el = gatilho.current;
+    const medir = () => setPos((noMenu ? ancorarAoLado : ancorarCaixa)(el, INBOX_LARGURA, INBOX_ALTURA));
+    medir();
+    if (!noMenu) return;
+    // No menu, a gaveta acompanha o gatilho. O menu recolhe para o trilho de
+    // ícones quando o ponteiro sai dele, e o item encolhe junto: sem isto a
+    // gaveta ficava parada onde o menu aberto terminava, solta no meio da
+    // tela. Medindo a cada mudança de tamanho do item, ela desliza com o
+    // menu e continua encostada nele, aberto ou recolhido.
+    const observador = new ResizeObserver(medir);
+    observador.observe(el);
+    window.addEventListener('resize', medir);
+    return () => { observador.disconnect(); window.removeEventListener('resize', medir); };
+  }, [aberto, noMenu]);
 
   const naoLidos = (itens ?? []).filter(i => !i.lido).length;
 
