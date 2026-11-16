@@ -24722,7 +24722,28 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
 
 /* O projeto no centro, como a tarefa: a mesma caixa, mais larga, porque a
    aba Tarefas dele mostra o quadro com as colunas. */
-.admin-modal.tarefa-central.projeto-central { width: min(1040px, 100%); }
+.admin-modal.tarefa-central.projeto-central {
+  width: min(1040px, 100%);
+  transition: width var(--transition-spring), height var(--transition-spring);
+}
+/* Em tela cheia a caixa vai até quase a borda: sobra a folga curta em volta,
+   para continuar se lendo como uma janela sobre a página, e não como uma
+   troca de tela. A largura e a altura crescem com a curva da casa, a partir
+   do centro, porque o fundo centraliza a caixa. */
+.admin-modal-overlay.tarefa-central-fundo:has(> .tela-cheia) { padding: 14px; }
+.admin-modal.tarefa-central.projeto-central.tela-cheia {
+  width: 100%;
+  height: calc(100vh - 28px);
+}
+/* No celular o projeto já ocupa a tela inteira, sem borda: a tela cheia não
+   devolve a folga que ele não tem. */
+@media (max-width: 768px) {
+  .admin-modal-overlay.tarefa-central-fundo:has(> .tela-cheia) { padding: 0; }
+  .admin-modal.tarefa-central.projeto-central.tela-cheia { height: 100dvh; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-modal.tarefa-central.projeto-central { transition: none; }
+}
 
 /* ══ Planning: lista de projetos sem numero e logos sobre o escuro ══════════
    O numero na frente de cada projeto sai: a ordem ja se le de cima para baixo,

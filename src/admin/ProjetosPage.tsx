@@ -11,7 +11,7 @@ import {
   IconChevronDown, IconChevronRight, IconChevronUp, IconChevronUpDown,
   IconChamado, IconDrive, IconEdit, IconEye, IconEyeOff, IconGitHub, IconGlobo, IconLink, IconMarcoAndamento,
   IconMarcoBloqueado, IconSpinner,
-  IconAgrupar, IconArrastar, IconCalendario, IconCheck, IconExternal, IconOrdenar, IconSearch,
+  IconAgrupar, IconArrastar, IconCalendario, IconCheck, IconExternal, IconOrdenar, IconSearch, IconTelaCheia,
   IconMarcoCancelado, IconMarcoConcluido, IconMarcoPlanejado, IconMarcoValidado,
   IconPlay, IconPlus, IconPrioridadeAlta, IconPrioridadeBaixa, IconPrioridadeMaxima,
   IconRecolher,
@@ -5297,6 +5297,9 @@ function AbaPlanning({
 
 // ── Formulário ───────────────────────────────────────────────────────────────
 
+/** A chave que lembra, neste navegador, se o projeto abre em tela cheia. */
+const CHAVE_TELA_CHEIA = 'sheep_projeto_tela_cheia';
+
 function FormularioProjeto({
   editando, base, pessoas, clientes, salvando, abertura, onFechar, onSalvar,
   onCriarTarefa, onAbrirTarefa, onExcluirTarefa, onMoverTarefa,
@@ -5448,6 +5451,16 @@ function FormularioProjeto({
   const [copiadoChamados, setCopiadoChamados] = useState(false);
   const linkChamados = tokenChamados ? `${window.location.origin}/chamados/${tokenChamados}` : null;
   const { saindo, fechar } = useSaidaSuave(() => onFechar(intactoRef.current));
+  // Tela cheia: a janela do projeto ocupa a tela toda, com uma folga curta
+  // nas bordas - é para o quadro da aba Tarefas caber com as colunas lado a
+  // lado. A escolha fica neste navegador: quem gosta dela abre sempre assim.
+  const [telaCheia, setTelaCheia] = useState(() => {
+    try { return localStorage.getItem(CHAVE_TELA_CHEIA) === '1'; } catch { return false; }
+  });
+  const alternarTelaCheia = () => setTelaCheia(c => {
+    try { localStorage.setItem(CHAVE_TELA_CHEIA, c ? '0' : '1'); } catch { /* sem armazenamento */ }
+    return !c;
+  });
   const fundo = useFecharNoFundo(fechar);
 
   /** Link que abre este projeto direto, para quem já tem acesso ao portal. É o
@@ -5635,7 +5648,7 @@ function FormularioProjeto({
   // da tarefa porque a aba Tarefas mostra o quadro do projeto.
   return createPortal(
     <div className={`admin-modal-overlay tarefa-central-fundo${saindo ? ' saindo' : ''}`} {...fundo}>
-      <div className="admin-modal painel-gaveta tarefa-central projeto-central"
+      <div className={`admin-modal painel-gaveta tarefa-central projeto-central${telaCheia ? ' tela-cheia' : ''}`}
         role="dialog" aria-modal="true"
         onClick={e => e.stopPropagation()}>
 
@@ -5812,6 +5825,14 @@ function FormularioProjeto({
                   </button>
                 </>
               )}
+              {/* Fica fora do `editando`: o projeto novo também abre largo. */}
+              <button type="button" className="secao-add" style={{ width: 30, height: 30 }}
+                title={telaCheia ? 'Voltar ao tamanho normal' : 'Abrir em tela cheia'}
+                aria-label={telaCheia ? 'Voltar ao tamanho normal' : 'Abrir em tela cheia'}
+                aria-pressed={telaCheia}
+                onClick={alternarTelaCheia}>
+                <IconTelaCheia size={15} cheia={telaCheia} />
+              </button>
               <button className="admin-modal-close" aria-label="Fechar" onClick={fecharGravando}><IconX size={16} /></button>
             </span>
           </div>

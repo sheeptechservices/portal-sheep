@@ -524,6 +524,13 @@ export function IconEstrela({ size = 14, preenchida }: { size?: number; preenchi
 export function IconProibido({ size = 14 }: { size?: number }) {
   return <Ico size={size}><circle cx="12" cy="12" r="8.6" /><path d="M6 6l12 12" /></Ico>;
 }
+// Tela cheia: os quatro cantos apontando para fora (ampliar) ou para dentro
+// (voltar ao tamanho normal). O mesmo par de cantos, só virado.
+export function IconTelaCheia({ size = 14, cheia }: { size?: number; cheia?: boolean }) {
+  return cheia
+    ? <Ico size={size}><path d="M9 4v3.5A1.5 1.5 0 017.5 9H4M15 4v3.5A1.5 1.5 0 0016.5 9H20M20 15h-3.5a1.5 1.5 0 00-1.5 1.5V20M4 15h3.5A1.5 1.5 0 019 16.5V20" /></Ico>
+    : <Ico size={size}><path d="M4 9V5.5A1.5 1.5 0 015.5 4H9M15 4h3.5A1.5 1.5 0 0120 5.5V9M20 15v3.5a1.5 1.5 0 01-1.5 1.5H15M9 20H5.5A1.5 1.5 0 014 18.5V15" /></Ico>;
+}
 // Coluna recolhida ou aberta: as setas apontam para dentro quando ela vai fechar.
 export function IconRecolher({ size = 14, aberta }: { size?: number; aberta?: boolean }) {
   return aberta
