@@ -1702,7 +1702,7 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
               subtotal, e dois desenhos para a mesma coisa na mesma tela se leem
               como duas coisas. Com filtro, ela diz quantas sobraram de quantas. */}
           <span className="kanban-conta-bolha">
-            {temFiltro ? `${tarefas.length}/${todas.length}` : todas.length}
+            <span>{temFiltro ? `${tarefas.length}/${todas.length}` : todas.length}</span>
           </span>
           </TituloRecolhivel>
         </p>
@@ -2346,7 +2346,7 @@ function SecaoEntregas({
             Entregas
             {total > 0 && (
               <span className="kanban-conta-bolha">
-                {busca.trim() ? `${visiveis.length}/${total}` : total}
+                <span>{busca.trim() ? `${visiveis.length}/${total}` : total}</span>
               </span>
             )}
             </TituloRecolhivel>
@@ -3462,7 +3462,7 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
           Objetivos da semana
           {planning.objetivos.length > 0 && (
             <span className="kanban-conta-bolha">
-              {planning.objetivos.filter(o => o.feito).length}/{planning.objetivos.length}
+              <span>{planning.objetivos.filter(o => o.feito).length}/{planning.objetivos.length}</span>
             </span>
           )}
         </p>
@@ -3633,7 +3633,7 @@ function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
           Objetivos da semana
           {planning.objetivos.length > 0 && (
             <span className="kanban-conta-bolha">
-              {planning.objetivos.filter(o => o.feito).length}/{planning.objetivos.length}
+              <span>{planning.objetivos.filter(o => o.feito).length}/{planning.objetivos.length}</span>
             </span>
           )}
         </p>

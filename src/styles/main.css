@@ -4526,12 +4526,14 @@ body.arrastando-painel {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 20px;
+  /* Com um algarismo so, um circulo: a largura minima e a altura. */
+  min-width: 18px;
   height: 18px;
-  padding: 0 6px;
+  padding: 0 5px;
   border-radius: var(--radius-pill);
   background: var(--gray4);
   font-size: 10.5px;
+  line-height: 1;
   font-weight: 700;
   color: var(--gray2);
   font-variant-numeric: tabular-nums;
@@ -25235,3 +25237,9 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
 }
 /* A que sobe no hover sai da fila: o recorte dela some junto. */
 .fileira-cara:hover { -webkit-mask: none; mask: none; }
+
+/* O numero no meio do balao. A caixa da linha e mais alta que o algarismo e
+   deixa espaco de acento em cima: centrada a caixa, o numero lia baixo. O
+   `text-box` corta a linha na altura do algarismo, e o centro passa a ser o
+   dele. */
+.kanban-conta-bolha > * { line-height: 1; text-box: trim-both cap alphabetic; }
