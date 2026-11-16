@@ -25270,8 +25270,13 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   background: radial-gradient(closest-side, var(--brilho-1), transparent);
   pointer-events: none;
 }
+/* A largura e a altura da tela, como a janela do portal de dentro: presa em
+   1200px e na altura do que tinha, a página sobrava em volta numa tela larga e
+   a tabela de quem tem muitos chamados ficava espremida no meio. */
 .chm-centro {
-  max-width: 1200px;
+  max-width: 1680px;
+  min-height: 100vh;
+  box-sizing: border-box;
   margin: 0 auto;
   padding: 32px 24px 48px;
   display: flex;
@@ -25332,12 +25337,20 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
 }
 .chm-numero-cartao:focus-visible { outline: none; border-color: var(--gray2); }
 
+/* A tabela fica com a altura que sobra: com poucos chamados o painel ainda
+   desce até o rodapé, e o aviso de vazio e o giro ficam no meio dele. */
 .chm-painel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   border-radius: var(--radius-lg);
   background: var(--sup-painel);
   border: 1px solid var(--sup-painel-borda);
   animation: faixa-entra .45s var(--curva-anti) 120ms backwards;
 }
+.chm-painel > .chm-tabela-caixa { flex: 1; display: flex; flex-direction: column; }
+.chm-tabela-caixa > .reportes-vazio,
+.chm-tabela-caixa > .dux-spinner-row { margin: auto; }
 .chm-barra {
   display: flex;
   align-items: center;
@@ -25732,6 +25745,8 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
 .chm-pagina:has(> .casca-ondas) .chm-centro {
   position: relative;
   isolation: isolate;
+  width: calc(100% - 56px);
+  min-height: calc(100vh - 56px);
   margin: 28px auto;
   padding: 24px;
   border-radius: 26px;
@@ -25749,7 +25764,7 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   pointer-events: none;
 }
 @media (max-width: 720px) {
-  .chm-pagina:has(> .casca-ondas) .chm-centro { margin: 0; border-radius: 0; border: none; padding: 18px 16px 36px; }
+  .chm-pagina:has(> .casca-ondas) .chm-centro { width: 100%; min-height: 100vh; margin: 0; border-radius: 0; border: none; padding: 18px 16px 36px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .chm-pagina:has(> .casca-ondas) .chm-centro { animation: none; }
