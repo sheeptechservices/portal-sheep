@@ -657,6 +657,30 @@ export function projetosDaTarefa(r: Record<string, any> | null | undefined): str
   return todos;
 }
 
+/**
+ * As entregas da tarefa, com a principal (`entrega_id`) na frente.
+ *
+ * A tarefa pode servir a mais de uma entrega, como pode servir a mais de um
+ * projeto: o trabalho que fecha um item de duas entregas conta no progresso
+ * das duas. `entrega_id` continua sendo a principal - a que aparece no card e
+ * a de quem lê um campo só (o MCP, o diário, a página do cliente antiga).
+ * Sem a coluna nova preenchida, a lista é a principal sozinha.
+ */
+export function entregasDaTarefa(r: Record<string, any> | null | undefined): number[] {
+  if (!r) return [];
+  const bruto = r.entregas;
+  const lista = Array.isArray(bruto)
+    ? bruto
+    : (() => {
+      try { const v = JSON.parse(String(bruto ?? 'null')); return Array.isArray(v) ? v : null; }
+      catch { return null; }
+    })();
+  const principal = Number(r.entrega_id);
+  const ids = (lista ?? []).map(Number).filter(n => Number.isFinite(n) && n > 0);
+  const temPrincipal = Number.isFinite(principal) && principal > 0;
+  return [...new Set([...(temPrincipal ? [principal] : []), ...ids])];
+}
+
 /** Quantos repositorios cabem num projeto.
  *
  *  Dois, e nao uma lista aberta: um projeto tem no maximo o de tras e o da
@@ -2276,6 +2300,10 @@ async function migrarSchema(db: Client) {
   // lista. É dele a entrega, a ordem no quadro e a contagem: entrega é marco de
   // um projeto só, e uma tarefa em duas listas precisa de um lugar de origem.
   try { await ddl(`ALTER TABLE projeto_tarefas ADD COLUMN projetos TEXT`); } catch {}
+  // As entregas da tarefa, quando ela serve a mais de uma. JSON, como
+  // `projetos`; `entrega_id` segue sendo a principal. Coluna nova e opcional:
+  // a versão anterior do portal simplesmente não a lê.
+  try { await ddl(`ALTER TABLE projeto_tarefas ADD COLUMN entregas TEXT`); } catch {}
   try {
     await db.execute(`UPDATE projeto_tarefas
                       SET projetos = '["' || projeto_id || '"]'
@@ -5020,7 +5048,7 @@ async function despacharAdminData(
           FROM entrega_arquivos ORDER BY criado_em
         `),
         db.execute(`
-          SELECT t.id, t.projeto_id, t.projetos, t.entrega_id, t.titulo, t.descricao, t.status,
+          SELECT t.id, t.projeto_id, t.projetos, t.entrega_id, t.entregas, t.titulo, t.descricao, t.status,
                  t.prioridade, t.complexidade,
                  t.responsavel_id, t.responsaveis, t.prazo, t.etiquetas, t.ordem, t.concluida_em,
                  t.criado_em,
@@ -5078,7 +5106,8 @@ async function despacharAdminData(
           .map(e => ({ id: e.usuario_id, nome: e.nome, email: e.email, foto_url: e.foto_url, papel: e.papel })),
         arquivos: arqs.rows.filter(a => a.projeto_id === p.id),
         entregas: entregas.rows.filter(x => x.projeto_id === p.id).map(x => {
-          const daEntrega = tarefas.rows.filter(t => t.entrega_id === x.id);
+          // A tarefa conta em cada entrega a que serve, e não só na principal.
+          const daEntrega = tarefas.rows.filter(t => entregasDaTarefa(t).includes(Number(x.id)));
           return {
             ...x,
             responsaveis: JSON.parse(String(x.responsaveis ?? '[]')) as string[],
@@ -5106,6 +5135,7 @@ async function despacharAdminData(
           // O banco guarda JSON; a tela quer a lista pronta, como nas entregas.
           responsaveis: donosDaTarefa(t),
           projetos: projetosDaTarefa(t),
+          entregas: entregasDaTarefa(t),
           // Só os números: o conteúdo da conversa desce quando o card abre.
           comentarios: nComentarios.get(Number(t.id)) ?? 0,
           anexos: nAnexos.get(Number(t.id)) ?? 0,
@@ -5259,8 +5289,14 @@ async function despacharAdminData(
       if (statusPedidos.length) dentro('t.status', statusPedidos);
       const prioridades = lista('prioridade');
       if (prioridades.length) dentro('t.prioridade', prioridades);
+      // Como o filtro por projeto: acha a tarefa que serve à entrega, seja ela
+      // a principal ou uma das outras.
       const entregas = lista('entrega').map(Number).filter(Number.isFinite).map(String);
-      if (entregas.length) dentro('t.entrega_id', entregas);
+      if (entregas.length) {
+        onde.push(`EXISTS (SELECT 1 FROM json_each(COALESCE(t.entregas, json_array(t.entrega_id))) je
+                           WHERE CAST(je.value AS TEXT) IN (${entregas.map(() => '?').join(',')}))`);
+        args.push(...entregas);
+      }
 
       // Responsável por id, por e-mail ou `eu`. E-mail vira id aqui, para o
       // filtro não depender de quem chama saber o id de ninguém.
@@ -5318,7 +5354,7 @@ async function despacharAdminData(
       const [linhas, contagem, pessoas] = await Promise.all([
         db.execute({
           sql: `SELECT t.id, t.projeto_id, t.projetos, p.nome AS projeto_nome,
-                       t.entrega_id, en.titulo AS entrega_titulo,
+                       t.entrega_id, t.entregas, en.titulo AS entrega_titulo,
                        t.titulo, substr(COALESCE(t.descricao, ''), 1, 300) AS descricao,
                        length(COALESCE(t.descricao, '')) AS descricao_tamanho,
                        t.status, t.prioridade, t.complexidade, t.responsaveis, t.prazo,
@@ -5352,6 +5388,7 @@ async function despacharAdminData(
         // Os projetos da tarefa, com o principal na frente. `projeto_nome`
         // continua sendo o do principal, para quem so le um.
         projetos: projetosDaTarefa(l).map(id => ({ id, nome: nomeDoProjeto.get(id) ?? null })),
+        entregas: entregasDaTarefa(l),
         responsaveis: donosDaTarefa(l).map(id => quem.get(id) ?? { id, nome: null, email: null }),
         etiquetas: (() => { try { return JSON.parse(String(l.etiquetas ?? '[]')); } catch { return []; } })(),
         descricao_cortada: Number(l.descricao_tamanho) > 300,
@@ -7221,7 +7258,7 @@ function faltaEmProjeto(p: any): string | null {
         : null;
       const linhaAntes = t.id
         ? (await db.execute({
-          sql: 'SELECT projeto_id, projetos, complexidade FROM projeto_tarefas WHERE id = ?',
+          sql: 'SELECT projeto_id, projetos, entrega_id, entregas, complexidade FROM projeto_tarefas WHERE id = ?',
           args: [t.id],
         })).rows[0]
         : null;
@@ -7235,6 +7272,38 @@ function faltaEmProjeto(p: any): string | null {
         }
       }
       const projetos = JSON.stringify([principal, ...outros]);
+
+      /**
+       * As entregas da tarefa, com a principal na frente.
+       *
+       * Como em `projetos`: o corpo pode mandar a lista (`entregas`) ou só a
+       * principal (`entrega_id`). Sem a lista, as outras que já estavam
+       * gravadas continuam - mover o card de etapa manda só a principal, e não
+       * pode desfazer o resto. Sem principal nenhuma, a tarefa fica solta.
+       *
+       * Cada entrega precisa ser de um dos projetos da tarefa: entrega de um
+       * projeto pendurada em tarefa de outro sujaria o progresso de um marco
+       * que não é dela. As que não passam caem em silêncio, como já caía a
+       * entrega antiga quando a tarefa mudava de projeto.
+       */
+      const principalPedida = Number(t.entrega_id) > 0 ? Number(t.entrega_id) : null;
+      const pedidas: number[] = Array.isArray(t.entregas)
+        ? (t.entregas as unknown[]).map(Number).filter(n => Number.isFinite(n) && n > 0)
+        : principalPedida == null
+          ? []
+          : entregasDaTarefa(linhaAntes).filter(id => id !== principalPedida);
+      const candidatas = [...new Set([...(principalPedida != null ? [principalPedida] : []), ...pedidas])];
+      const validas = candidatas.length
+        ? new Set((await db.execute({
+          sql: `SELECT id FROM projeto_entregas
+                WHERE id IN (${candidatas.map(() => '?').join(',')})
+                  AND projeto_id IN (${[principal, ...outros].map(() => '?').join(',')})`,
+          args: [...candidatas, principal, ...outros] as never[],
+        })).rows.map(r => Number(r.id)))
+        : new Set<number>();
+      const entregasDaGravacao = candidatas.filter(id => validas.has(id));
+      const entregaPrincipal = entregasDaGravacao[0] ?? null;
+      const entregasJson = entregasDaGravacao.length > 1 ? JSON.stringify(entregasDaGravacao) : null;
 
       /**
        * Quanto trabalho a tarefa dá.
@@ -7333,7 +7402,7 @@ function faltaEmProjeto(p: any): string | null {
       // A foto do que a gravação está pedindo, para o diário comparar.
       const depois = fotoDaTarefa({
         titulo, descricao: t.descricao, status: statusPedido, prioridade: t.prioridade ?? 'Média',
-        complexidade, responsaveis: donos, prazo: t.prazo, entrega_id: t.entrega_id, etiquetas,
+        complexidade, responsaveis: donos, prazo: t.prazo, entrega_id: entregaPrincipal, etiquetas,
       })!;
 
       // O que a tela precisa saber do que foi gravado: o id da nova e os campos
@@ -7367,17 +7436,8 @@ function faltaEmProjeto(p: any): string | null {
         // primeira recarga devolvia o card para a coluna de onde ele tinha
         // saído. Trocar de projeto é edição como qualquer outra, e grava aqui.
         const mudouDeProjeto = String(antes.rows[0].projeto_id) !== String(t.projeto_id);
-        // A entrega é do projeto de origem: numa mudança de projeto ela só
-        // sobrevive se pertencer ao destino. Tarefa apontando para entrega de
-        // outro projeto suja o progresso de uma entrega que não é dela.
-        let entregaId: unknown = t.entrega_id || null;
-        if (mudouDeProjeto && entregaId != null) {
-          const daCasa = await db.execute({
-            sql: 'SELECT 1 FROM projeto_entregas WHERE id = ? AND projeto_id = ?',
-            args: [entregaId as never, t.projeto_id],
-          });
-          if (!daCasa.rows[0]) entregaId = null;
-        }
+        // As entregas já vêm conferidas contra os projetos da tarefa (acima):
+        // numa mudança de projeto, só sobrevivem as que são de um deles.
         // No projeto novo ela entra no fim, como uma tarefa que acabasse de
         // chegar: a ordem antiga é de outra lista e colidiria com quem já está lá.
         const ordemNova = mudouDeProjeto
@@ -7389,11 +7449,11 @@ function faltaEmProjeto(p: any): string | null {
 
         await db.execute({
           sql: `UPDATE projeto_tarefas
-                SET projeto_id=?, projetos=?, entrega_id=?, titulo=?, descricao=?, status=?,
+                SET projeto_id=?, projetos=?, entrega_id=?, entregas=?, titulo=?, descricao=?, status=?,
                     prioridade=?, complexidade=?, responsavel_id=?, responsaveis=?, prazo=?,
                     etiquetas=?, concluida_em=?${mudouDeProjeto ? ', ordem=?' : ''}
                 WHERE id=?`,
-          args: [t.projeto_id, projetos, entregaId as never, titulo, t.descricao ?? null, statusPedido,
+          args: [t.projeto_id, projetos, entregaPrincipal, entregasJson, titulo, t.descricao ?? null, statusPedido,
             t.prioridade ?? 'Média', complexidade, donoPrincipal, responsaveis, t.prazo || null, etiquetas,
             carimbo as never, ...(mudouDeProjeto ? [ordemNova as never] : []), t.id],
         });
@@ -7409,11 +7469,11 @@ function faltaEmProjeto(p: any): string | null {
         const criadaEm = new Date().toISOString();
         const inserida = await db.execute({
           sql: `INSERT INTO projeto_tarefas
-                  (projeto_id, projetos, entrega_id, titulo, descricao, status, prioridade,
+                  (projeto_id, projetos, entrega_id, entregas, titulo, descricao, status, prioridade,
                    complexidade, responsavel_id, responsaveis, prazo, etiquetas, ordem, concluida_em,
                    criado_em, criado_por_id, criado_por_nome)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-          args: [t.projeto_id, projetos, t.entrega_id || null, titulo, t.descricao ?? null,
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          args: [t.projeto_id, projetos, entregaPrincipal, entregasJson, titulo, t.descricao ?? null,
             statusPedido, t.prioridade ?? 'Média', complexidade, donoPrincipal, responsaveis,
             t.prazo || null, etiquetas, Number(ordem.rows[0].proxima), concluida,
             criadaEm, autorId, autorNome],
@@ -8088,7 +8148,23 @@ function faltaEmProjeto(p: any): string | null {
       await db.execute({ sql: 'DELETE FROM entrega_arquivos WHERE entrega_id = ?', args: [body.id] });
       // A tarefa sobrevive à entrega, solta no projeto: apagá-la junto perderia
       // trabalho que existe, só porque o marco a que pendia foi reorganizado.
-      await db.execute({ sql: 'UPDATE projeto_tarefas SET entrega_id = NULL WHERE entrega_id = ?', args: [body.id] });
+      // Sai também da lista das tarefas que serviam a ela e a outras: a
+      // principal passa a ser a seguinte da lista, como no projeto.
+      const comEla = await db.execute({
+        sql: `SELECT id, entrega_id, entregas FROM projeto_tarefas
+              WHERE entrega_id = ? OR EXISTS (SELECT 1 FROM json_each(COALESCE(entregas, '[]')) je
+                                              WHERE je.value = ?)`,
+        args: [body.id, body.id],
+      });
+      if (comEla.rows.length) {
+        await db.batch(comEla.rows.map(r => {
+          const resto = entregasDaTarefa(r).filter(id => id !== Number(body.id));
+          return {
+            sql: 'UPDATE projeto_tarefas SET entrega_id = ?, entregas = ? WHERE id = ?',
+            args: [resto[0] ?? null, resto.length > 1 ? JSON.stringify(resto) : null, r.id] as never[],
+          };
+        }), 'write');
+      }
       await db.execute({ sql: 'DELETE FROM projeto_entregas WHERE id = ?', args: [body.id] });
       await recalcularProgresso(db, String(projetoId));
       return { status: 200, body: { ok: true } };

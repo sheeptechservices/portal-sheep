@@ -16,7 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { IconCheck } from './icons';
+import { IconCheck, IconPlus } from './icons';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { ancorar } from '../lib/ancorar';
 import { contemTermo } from '../lib/texto';
@@ -32,7 +32,11 @@ export interface ProjetoParaEscolher {
 /** A partir de quantos projetos a busca aparece. */
 const BUSCA_A_PARTIR_DE = 6;
 
-export function SeletorProjetos({ projetos, valor, onChange, vazio = 'Escolher projeto' }: {
+export function SeletorProjetos({ projetos, valor, onChange, vazio = 'Escolher projeto', textos, criar }: {
+  /** Os textos da lista, quando o que se escolhe não é projeto (as entregas). */
+  textos?: { buscar?: string; nada?: string; principal?: string };
+  /** Um item no pé da lista que cria o que falta, sem sair do formulário. */
+  criar?: { rotulo: string; onCriar: () => void };
   projetos: ProjetoParaEscolher[];
   /** Os escolhidos, na ordem: o primeiro é o principal. */
   valor: string[];
@@ -80,7 +84,7 @@ export function SeletorProjetos({ projetos, valor, onChange, vazio = 'Escolher p
               <span key={p.id}
                 className={`chip-projeto${i === 0 && escolhidos.length > 1 ? ' principal' : ''}`}
                 title={i === 0 && escolhidos.length > 1
-                  ? 'Projeto principal: é dele a entrega e a ordem no quadro'
+                  ? textos?.principal ?? 'Projeto principal: é dele a ordem no quadro'
                   : undefined}>
                 {p.nome}
               </span>
@@ -99,12 +103,12 @@ export function SeletorProjetos({ projetos, valor, onChange, vazio = 'Escolher p
           style={{ top: pos.top, left: pos.left, width: pos.width, zIndex: 10050 }}>
           {projetos.length > BUSCA_A_PARTIR_DE && (
             <input autoFocus className="form-input" value={busca}
-              onChange={e => setBusca(e.target.value)} placeholder="Buscar projeto"
+              onChange={e => setBusca(e.target.value)} placeholder={textos?.buscar ?? 'Buscar projeto'}
               style={{ height: 32, fontSize: 12.5, marginBottom: 4 }} />
           )}
           {filtrados.length === 0 ? (
             <p style={{ fontSize: 12, color: 'var(--gray2)', margin: 0, padding: '6px 8px' }}>
-              Nenhum projeto com esse nome.
+              {projetos.length === 0 && textos?.nada ? 'Nada para escolher ainda.' : textos?.nada ?? 'Nenhum projeto com esse nome.'}
             </p>
           ) : filtrados.map(p => {
             const ativo = valor.includes(p.id);
@@ -133,6 +137,14 @@ export function SeletorProjetos({ projetos, valor, onChange, vazio = 'Escolher p
               </div>
             );
           })}
+          {criar && (
+            <div className="status-select-option seletor-criar"
+              onClick={() => { setAberto(false); criar.onCriar(); }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--yellow-tinta)', fontWeight: 600 }}>
+                <IconPlus size={12} /> {criar.rotulo}
+              </span>
+            </div>
+          )}
         </div>,
         document.body,
       )}

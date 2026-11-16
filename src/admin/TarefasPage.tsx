@@ -37,6 +37,7 @@ import {
 // Só tipos: um valor vindo daqui fecharia um ciclo com ProjetosPage, que
 // importa o formulário de tarefa.
 import type { Projeto, Tarefa } from './ProjetosPage';
+import { entregasDa } from '../lib/entregasDaTarefa';
 import {
   COR_PRIORIDADE, ICONE_PRIORIDADE, PRIORIDADES, PRIORIDADE_PADRAO, porUrgencia,
 } from '../lib/prioridades';
@@ -45,7 +46,7 @@ import { COMPLEXIDADES, ICONE_COMPLEXIDADE } from '../lib/complexidades';
 // Gestão abre o mesmo modal, e duas cópias divergiriam no primeiro campo novo.
 import {
   Avatar, AvatarVazio, ChipEtiqueta, ConfirmarExclusao, ETAPAS_PADRAO, FormularioTarefa,
-  etiquetasParaOPapel, indexar, indexarEtiquetas, tarefaGravada, TITULO_PADRAO, type EtapaTarefa,
+  entregasDoRascunho, etiquetasParaOPapel, indexar, indexarEtiquetas, tarefaGravada, TITULO_PADRAO, type EtapaTarefa,
   type Etapario, type EtiquetaTarefa, type Etiquetario, type Pessoa, type Rascunho,
 } from './FormularioTarefa';
 import { DonosDaTarefa } from '../components/DonosDaTarefa';
@@ -302,6 +303,11 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
   const { toast } = useToast();
 
   const [projetos, setProjetos] = useState<Projeto[]>([]);
+  // O título de cada entrega, de todos os projetos: a tarefa que serve a dois
+  // projetos pode estar numa entrega de cada um, e o nome dela não mora no
+  // projeto principal.
+  const tituloDeEntrega = useMemo(() => new Map(
+    projetos.flatMap(p => (p.entregas ?? []).map(e => [e.id, e.titulo] as const))), [projetos]);
   const [etapas, setEtapas] = useState<EtapaTarefa[]>(ETAPAS_PADRAO);
   const [etiquetas, setEtiquetas] = useState<EtiquetaTarefa[]>([]);
   const [etiquetaPorPapel, setEtiquetaPorPapel] = useState(false);
@@ -517,7 +523,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
      *  do projeto X que estão na entrega 12", procura pelo nome dela. O título
      *  mora no projeto, e não na tarefa: a tarefa só carrega o id. */
     const entregaDe = (t: TarefaComProjeto) =>
-      t.entrega_id == null ? '' : (t.projeto.entregas?.find(e => e.id === t.entrega_id)?.titulo ?? '');
+      entregasDa(t).map(id => tituloDeEntrega.get(id) ?? '').join(' ');
     const lista = tarefas.filter(t =>
       (!soMinhas || (!!usuario && (t.responsaveis ?? []).includes(usuario.id))) &&
       // Filtrar por projeto acha a tarefa que apenas passa por ele, e não só a
@@ -529,7 +535,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
       (fResponsavel.length === 0 || nomesDosDonos(t, pessoas).some(n => fResponsavel.includes(n))) &&
       (fEtiqueta.length === 0 || t.etiquetas.some(e => fEtiqueta.includes(e))) &&
       (fComplexidade.length === 0 || fComplexidade.includes(t.complexidade ?? '')) &&
-      (fEntrega.length === 0 || fEntrega.includes(String(t.entrega_id))) &&
+      (fEntrega.length === 0 || entregasDa(t).some(id => fEntrega.includes(String(id)))) &&
       dentroDoPeriodo(t.prazo, fPrazo.de, fPrazo.ate) &&
       (!q || semAcento(t.titulo).includes(q) || semAcento(t.descricao ?? '').includes(q)
         || semAcento(entregaDe(t)).includes(q))
@@ -550,7 +556,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
       const va = de(a), vb = de(b);
       return va < vb ? -1 : va > vb ? 1 : porUrgencia(a, b) || a.id - b.id;
     });
-  }, [tarefas, fProjeto, fStatus, fResponsavel, fEtiqueta, fEntrega, fComplexidade, fPrazo, busca, ordem,
+  }, [tarefas, tituloDeEntrega, fProjeto, fStatus, fResponsavel, fEtiqueta, fEntrega, fComplexidade, fPrazo, busca, ordem,
     soMinhas, recentes, usuario]);
 
   const grupos = useMemo(
@@ -621,14 +627,14 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
       ],
       // A opção guarda o id e mostra o título: nomes se repetem entre projetos.
       entrega: [...new Map(tarefas
-        .filter(t => t.entrega_id != null)
-        .map(t => [String(t.entrega_id), t.projeto.entregas?.find(e => e.id === t.entrega_id)?.titulo ?? '']))
+        .flatMap(t => entregasDa(t))
+        .map(id => [String(id), tituloDeEntrega.get(id) ?? '']))
         .entries()]
         .filter(([, label]) => label)
         .sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'))
         .map(([value, label]) => ({ value, label })),
     };
-  }, [tarefas]);
+  }, [tarefas, tituloDeEntrega]);
 
   const contagemDeFiltros = fProjeto.length + fStatus.length + fResponsavel.length
     + fEtiqueta.length + fEntrega.length + fComplexidade.length + (fPrazo.de || fPrazo.ate ? 1 : 0);
@@ -660,6 +666,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
         prioridade: r.prioridade, complexidade: r.complexidade || null,
         prazo: r.prazo || null, etiquetas: r.etiquetas,
         entrega_id: r.entrega_id ? Number(r.entrega_id) : null,
+        entregas: entregasDoRascunho(r),
         responsaveis: r.responsaveis,
         responsavel_id: r.responsaveis[0] ?? null,
         responsavel_nome: dono?.nome ?? null,
@@ -1115,6 +1122,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
     // O campo "Também em" mostra os outros, sem o principal.
     projetos: (t.projetos ?? []).filter(id => id !== t.projeto_id),
     entrega_id: t.entrega_id ? String(t.entrega_id) : '',
+    entregas: entregasDa(t).slice(1).map(String),
     titulo: t.titulo, descricao: t.descricao ?? '', status: t.status,
     prioridade: t.prioridade ?? PRIORIDADE_PADRAO, complexidade: t.complexidade ?? '',
     responsaveis: t.responsaveis ?? [],

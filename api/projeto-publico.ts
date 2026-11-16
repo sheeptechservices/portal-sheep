@@ -30,6 +30,16 @@ import { citacaoEmail, fichaEmail, notaEmail, notifyEmail } from './_email.js';
 // e repetir a regra aqui abriria a chance de os dois divergirem.
 import { emailAdmin } from './_papeis.js';
 
+/** As entregas de uma tarefa: a principal (`entrega_id`) e as da lista
+ *  `entregas`, quando ela serve a mais de uma. Mesma regra do painel. */
+function entregasDaLinha(r: Record<string, unknown>): number[] {
+  let lista: unknown[] = [];
+  try { const v = JSON.parse(String(r.entregas ?? 'null')); if (Array.isArray(v)) lista = v; } catch { /* sem lista */ }
+  const principal = Number(r.entrega_id);
+  const ids = lista.map(Number).filter(n => Number.isFinite(n) && n > 0);
+  return [...new Set([...(principal > 0 ? [principal] : []), ...ids])];
+}
+
 // ── Limite de taxa ──────────────────────────────────────────────────────────
 //
 //  Na memória da instância, e não numa tabela como o limitador do login. São
@@ -385,9 +395,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // de dentro. Título de tarefa continua sendo conversa interna e não sai
       // daqui - nada disto chega ao navegador do cliente, só o resultado.
       db.execute({
-        sql: `SELECT entrega_id, status, etiquetas
-              FROM projeto_tarefas WHERE projeto_id = ? AND entrega_id IS NOT NULL`,
-        args: [p.id as string],
+        // A tarefa pode servir a mais de uma entrega, e a entrega deste
+        // projeto pode estar numa tarefa cujo projeto principal é outro: por
+        // isso a busca olha a lista de projetos e a de entregas.
+        sql: `SELECT entrega_id, entregas, status, etiquetas
+              FROM projeto_tarefas
+              WHERE (projeto_id = ? OR EXISTS (SELECT 1 FROM json_each(COALESCE(projetos, '[]')) jp
+                                              WHERE jp.value = ?))
+                AND (entrega_id IS NOT NULL OR entregas IS NOT NULL)`,
+        args: [p.id as string, p.id as string],
       }),
       // A prova do que foi entregue e do que foi validado. Sem o `base64`: a
       // lista descreve o arquivo, e o conteúdo só desce quando alguém abre a
@@ -433,7 +449,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // As etapas configuradas em Configurações > Etapas: quais concluem, quais
     // são desconsideradas e quais etiquetas travam.
     const etapas = await etapasDeTarefa(db);
-    const daEntrega = (id: number) => tarefas.rows.filter(t => Number(t.entrega_id) === id);
+    const daEntrega = (id: number) => tarefas.rows.filter(t => entregasDaLinha(t).includes(id));
 
     // Cinco segundos na borda, e nada de `stale-while-revalidate`.
     //

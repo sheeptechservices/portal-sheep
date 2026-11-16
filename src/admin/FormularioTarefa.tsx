@@ -179,6 +179,11 @@ function emOrdem(lista: Subtarefa[]): Subtarefa[] {
  *  então ela precisa de um enquanto ninguém digitou. */
 export const TITULO_PADRAO = 'Sem título';
 
+/** As entregas do rascunho, com a principal na frente, como números. */
+export function entregasDoRascunho(r: Pick<Rascunho, 'entrega_id' | 'entregas'>): number[] {
+  return [...new Set([r.entrega_id, ...(r.entregas ?? [])].filter(Boolean).map(Number))];
+}
+
 export interface Rascunho {
   id?: number;
   /** A lista montada antes de a tarefa existir. Depois de criada, cada item
@@ -189,10 +194,14 @@ export interface Rascunho {
    *  e não guarda nada aqui. */
   comentario_etiqueta?: string;
   projeto_id: string;
-  /** Os outros projetos a que a tarefa também pertence, sem o principal. A
-   *  entrega continua sendo a do principal: entrega é marco de um projeto só. */
+  /** Os outros projetos a que a tarefa também pertence, sem o principal. */
   projetos?: string[];
+  /** A entrega principal: a que aparece no card. */
   entrega_id: string;
+  /** As outras entregas a que a tarefa também serve, sem a principal. Cada uma
+   *  pode ser de qualquer um dos projetos da tarefa, e a tarefa conta no
+   *  progresso de todas. */
+  entregas?: string[];
   titulo: string;
   descricao: string;
   status: string;
@@ -227,6 +236,7 @@ export function tarefaGravada(
     // A lista que voltou vence: quem gravou sem mandá-la fica com a de antes.
     projetos: resposta.projetos ?? [r.projeto_id, ...(r.projetos ?? [])],
     entrega_id: r.entrega_id ? Number(r.entrega_id) : null,
+    entregas: entregasDoRascunho(r),
     titulo: r.titulo,
     descricao: r.descricao || null,
     status: resposta.status ?? r.status,
@@ -1025,14 +1035,17 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
       prazo: null, prioridade: null, responsaveis: [], links: [], ordem: Number(r.ordem ?? 0),
       evidencias: [], arquivos: [], tarefas_total: 0, tarefas_feitas: 0, progresso: 0,
     });
-    onMudar({ ...rascunhoVivo.current, entrega_id: String(r.id) });
+    const vivo = rascunhoVivo.current;
+    onMudar(vivo.entrega_id
+      ? { ...vivo, entregas: [...(vivo.entregas ?? []), String(r.id)] }
+      : { ...vivo, entrega_id: String(r.id) });
     return true;
   }
   /** As reuniões da entrega a que esta tarefa pertence. Tarefa solta não herda
    *  nada: não há entrega de onde. */
   const reunioesDaEntrega = rascunho.entrega_id
     ? (projeto?.reunioes ?? []).filter(r =>
-        (r.entregas ?? []).includes(Number(rascunho.entrega_id)))
+        (r.entregas ?? []).some(id => entregasDoRascunho(rascunho).includes(id)))
     : [];
   const { toast } = useToast();
   const { saindo, fechar } = useSaidaSuave(onFechar);
@@ -1351,31 +1364,52 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
                 }))}
                 valor={escolhidos}
                 vazio="Escolher projeto"
-                onChange={v => onMudar({
-                  ...rascunho,
-                  projeto_id: v[0] ?? '',
-                  projetos: v.slice(1),
-                  entrega_id: (v[0] ?? '') === rascunho.projeto_id ? rascunho.entrega_id : '',
-                })} />
+                onChange={v => {
+                  // Ficam as entregas dos projetos que continuam na tarefa: a
+                  // de um projeto que saiu sujaria o progresso dele.
+                  const permitidas = new Set(v.flatMap(id =>
+                    (projetos.find(p => p.id === id)?.entregas ?? []).map(e => String(e.id))));
+                  const ficam = [rascunho.entrega_id, ...(rascunho.entregas ?? [])]
+                    .filter(id => id && permitidas.has(id));
+                  onMudar({
+                    ...rascunho,
+                    projeto_id: v[0] ?? '',
+                    projetos: v.slice(1),
+                    entrega_id: ficam[0] ?? '',
+                    entregas: ficam.slice(1),
+                  });
+                }} />
             </div>
             <div className="form-group" style={{ minWidth: 0 }}>
-              <label className="form-label">Entrega</label>
-              <SelectSistema
-                valor={rascunho.entrega_id}
-                onChange={v => set('entrega_id', v)}
-                opcoes={[
-                  { valor: '', label: 'Sem entrega' },
-                  ...(projeto?.entregas ?? []).map(e => ({ valor: String(e.id), label: e.titulo })),
-                ]}
+              {/* Escolha múltipla, como a de projetos: a tarefa pode servir a
+                  mais de uma entrega, de qualquer um dos projetos dela, e conta
+                  no progresso de todas. A primeira escolhida é a principal - a
+                  que aparece no card. */}
+              <label className="form-label">
+                {entregasDoRascunho(rascunho).length > 1 ? 'Entregas' : 'Entrega'}
+              </label>
+              <SeletorProjetos
+                projetos={escolhidos.flatMap(id => {
+                  const dele = projetos.find(p => p.id === id);
+                  return (dele?.entregas ?? []).map(e => ({
+                    id: String(e.id), nome: e.titulo,
+                    // Com mais de um projeto, a linha de baixo diz de qual é.
+                    cliente: escolhidos.length > 1 ? dele?.nome ?? null : null,
+                  }));
+                })}
+                valor={entregasDoRascunho(rascunho).map(String)}
+                vazio="Sem entrega"
+                textos={{
+                  buscar: 'Buscar entrega',
+                  nada: 'Nenhuma entrega com esse nome.',
+                  principal: 'Entrega principal: é a que aparece no card',
+                }}
                 // A entrega que falta nasce daqui, sem sair da tarefa. A Geral não
                 // tem entrega: ela não é projeto.
                 criar={onEntregaCriada && api && projeto && projeto.id !== PROJETO_GERAL
-                  // `semNome` deixa criar com o campo em branco: a entrega nasce
-                  // como "Sem título" e se renomeia depois, em vez de o clique
-                  // não fazer nada.
-                  ? { rotulo: 'Criar entrega', semNome: true, onCriar: criarEntrega }
+                  ? { rotulo: 'Criar entrega', onCriar: () => void criarEntrega('') }
                   : undefined}
-              />
+                onChange={v => onMudar({ ...rascunho, entrega_id: v[0] ?? '', entregas: v.slice(1) })} />
             </div>
           </div>
           {/* Três campos desde que a etapa subiu para o cabeçalho, em fila que

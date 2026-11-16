@@ -90,7 +90,7 @@ import { Donut, type FatiaDonut } from '../components/Donut';
 // e uma cópia local divergiria dela no primeiro campo novo.
 import {
   AvatarVazio,
-  ChipEtiqueta, ConfirmarExclusao, FormularioTarefa, indexarEtiquetas, tarefaGravada, TITULO_PADRAO,
+  ChipEtiqueta, ConfirmarExclusao, entregasDoRascunho, FormularioTarefa, indexarEtiquetas, tarefaGravada, TITULO_PADRAO,
   type EtapaTarefa, type Etiquetario, type EtiquetaTarefa, type Rascunho as RascunhoTarefa,
 } from './FormularioTarefa';
 import { PreviaArquivo } from '../components/PreviaArquivo';
@@ -107,6 +107,7 @@ import {
 } from '../components/SecaoReunioes';
 import { ContaAnimada } from '../components/ContaAnimada';
 import { AbasPilula, FaixaDaPagina } from '../components/FaixaDaPagina';
+import { entregasDa } from '../lib/entregasDaTarefa';
 import { useSubpagina } from '../lib/subpagina';
 import { IconFiltros } from '../components/icons';
 import { useDicaRica } from '../components/DicaRica';
@@ -280,8 +281,12 @@ export interface Tarefa {
    *  mesma tarefa aparece na lista de cada um deles - é uma só, vista de dois
    *  lugares, e não uma cópia em cada. */
   projetos?: string[];
-  /** Nulo quando a tarefa não pende de nenhum marco. */
+  /** A entrega principal. Nulo quando a tarefa não pende de nenhum marco. */
   entrega_id: number | null;
+  /** Todas as entregas a que a tarefa serve, com a principal na frente. Ela
+   *  conta no progresso de cada uma. Ausente em tarefa antiga: aí é só a
+   *  principal (ver `entregasDa`). */
+  entregas?: number[];
   titulo: string;
   descricao: string | null;
   status: string;
@@ -1672,7 +1677,7 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
       .filter(o => o.label)
       .sort(porNome);
     const titulos = new Map((projeto.entregas ?? []).map(e => [e.id, e.titulo]));
-    const entregas = [...new Set(todas.map(t => t.entrega_id).filter((id): id is number => id != null))]
+    const entregas = [...new Set(todas.flatMap(t => entregasDa(t)))]
       .map(id => ({ value: String(id), label: titulos.get(id) ?? '' }))
       .filter(o => o.label)
       .sort(porNome);
@@ -1691,14 +1696,14 @@ function TarefasDoProjeto({ projeto, etapas, pessoas, podeEditar, onAbrir, onCri
     // Basta um dos donos casar: quem filtra por uma pessoa quer as tarefas
     // dela, inclusive as que ela divide com outra.
     (fResponsavel.length === 0 || (t.responsaveis ?? []).some(id => fResponsavel.includes(id))) &&
-    (fEntrega.length === 0 || fEntrega.includes(String(t.entrega_id))) &&
+    (fEntrega.length === 0 || entregasDa(t).some(id => fEntrega.includes(String(id)))) &&
     (fEtiqueta.length === 0 || (t.etiquetas ?? []).some(e => fEtiqueta.includes(e))) &&
     (fPrioridade.length === 0 || fPrioridade.includes(t.prioridade ?? PRIORIDADE_PADRAO)) &&
     dentroDoPeriodo(t.prazo, fPrazo.de, fPrazo.ate) &&
     // A busca alcança o título, o descritivo e o nome da entrega: é por esses
     // três que se procura uma tarefa em voz alta.
     (contemTermo(t.titulo, busca) || contemTermo(t.descricao, busca)
-      || contemTermo(t.entrega_id != null ? tituloDaEntrega.get(t.entrega_id) : null, busca))
+      || entregasDa(t).some(id => contemTermo(tituloDaEntrega.get(id), busca)))
   ), [todas, fResponsavel, fEntrega, fEtiqueta, fPrioridade, fPrazo, busca, tituloDaEntrega]);
 
   return (
@@ -2496,7 +2501,7 @@ function SecaoEntregas({
               onCancelar={() => setEditando(null)} />
           ) : (() => {
             const aberta = abertas.includes(e.id);
-            const daEntrega = tarefas.filter(x => x.entrega_id === e.id);
+            const daEntrega = tarefas.filter(x => entregasDa(x).includes(e.id));
             const feita = e.status === ENTREGA_VALIDADA;
             const cor = COR_ENTREGA[e.status] ?? 'var(--gray2)';
             return (
@@ -6081,7 +6086,7 @@ function FormularioProjeto({
       {entregaAberta && (() => {
         const Marca = ICONE_ENTREGA[entregaAberta.status] ?? IconMarcoPlanejado;
         const cor = COR_ENTREGA[entregaAberta.status] ?? 'var(--gray2)';
-        const daEntrega = (editando?.tarefas ?? []).filter(t => t.entrega_id === entregaAberta.id);
+        const daEntrega = (editando?.tarefas ?? []).filter(t => entregasDa(t).includes(entregaAberta.id));
         return (
           <EntregaModal
             entrega={entregaAberta}
@@ -6932,6 +6937,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     id: t.id, projeto_id: t.projeto_id,
     projetos: (t.projetos ?? []).filter(id => id !== t.projeto_id),
     entrega_id: t.entrega_id ? String(t.entrega_id) : '',
+    entregas: entregasDa(t).slice(1).map(String),
     titulo: t.titulo, descricao: t.descricao ?? '', status: t.status,
     prioridade: t.prioridade ?? PRIORIDADE_PADRAO, complexidade: t.complexidade ?? '',
     responsaveis: t.responsaveis ?? [],
@@ -6958,6 +6964,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
         titulo: r.titulo, descricao: r.descricao, status: r.status,
         prioridade: r.prioridade, prazo: r.prazo || null, etiquetas: r.etiquetas,
         entrega_id: r.entrega_id ? Number(r.entrega_id) : null,
+        entregas: entregasDoRascunho(r),
         responsaveis: r.responsaveis,
         responsavel_id: r.responsaveis[0] ?? null,
         responsavel_nome: dono?.nome ?? null,
