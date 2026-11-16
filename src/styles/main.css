@@ -24867,3 +24867,77 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent 100%);
   mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent 100%);
 }
+
+/* ══ Caixa de marcar: um desenho so, nitido no escuro ═══════════════════════
+   Eram tres desenhos (a caixa dos formularios, a dos filtros e a da matriz de
+   permissoes), e todos com a borda escura do tema sobre fundo escuro - a
+   caixa vazia quase sumia. Agora: vazia e um quadrado de borda clara sobre um
+   veu leve, que realca sob o ponteiro; marcada e cheia de limao com o check
+   escuro; parcial (a caixa "todas" de uma lista) e limao com um traco. O
+   `!important` e de proposito: cada tela tinha uma regra propria para a caixa,
+   e o pedido e que nenhuma fuja do padrao. */
+:root {
+  --caixa-borda: color-mix(in srgb, var(--gray) 46%, transparent);
+  --caixa-borda-forte: color-mix(in srgb, var(--gray) 78%, transparent);
+  --caixa-fundo: rgba(255, 255, 255, .045);
+}
+input:is(.form-checkbox, .perm-check) {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 1.5px solid var(--caixa-borda) !important;
+  border-radius: 5px;
+  background: var(--caixa-fundo) !important;
+  box-shadow: none !important;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), box-shadow var(--transition),
+    transform var(--transition-spring);
+}
+input:is(.form-checkbox, .perm-check):hover:not(:disabled) {
+  border-color: var(--caixa-borda-forte) !important;
+  background: rgba(255, 255, 255, .08) !important;
+}
+input:is(.form-checkbox, .perm-check):checked,
+input:is(.form-checkbox, .perm-check):indeterminate {
+  border-color: var(--yellow) !important;
+  background-color: var(--yellow) !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+}
+input:is(.form-checkbox, .perm-check):checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M2 6l3 3 5-5' stroke='%23111' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E") !important;
+}
+input:is(.form-checkbox, .perm-check):indeterminate {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath d='M3 6h6' stroke='%23111' stroke-width='2' stroke-linecap='round' fill='none'/%3E%3C/svg%3E") !important;
+}
+input:is(.form-checkbox, .perm-check):active:not(:disabled) { transform: scale(.9); }
+input:is(.form-checkbox, .perm-check):focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gray) 18%, transparent) !important;
+}
+input:is(.form-checkbox, .perm-check):disabled { opacity: .45; cursor: default; }
+
+/* A dos filtros e um desenho (span), e nao um input: o mesmo visual. */
+.filter-check {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--caixa-borda) !important;
+  border-radius: 5px;
+  background: var(--caixa-fundo) !important;
+  color: transparent;
+}
+.filter-dropdown-option:hover .filter-check:not(.checked) { border-color: var(--caixa-borda-forte) !important; }
+.filter-check.checked {
+  border-color: var(--yellow) !important;
+  background: var(--yellow) !important;
+  color: var(--on-yellow);
+}
+.filter-check.checked svg { width: 10px; height: 10px; }
+@media (prefers-reduced-motion: reduce) {
+  input:is(.form-checkbox, .perm-check) { transition: none; }
+}

@@ -392,8 +392,8 @@ function PendenciaSection({ pendencias, onToggle, onDelete, onUpdateCat, onAdd }
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
           {pendencias.map(p => (
             <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', border: '1px solid var(--gray3)', borderRadius: 10, background: p.resolvida ? 'var(--bg)' : 'var(--white)' }}>
-              <input type="checkbox" checked={!!p.resolvida} onChange={e => onToggle(p.id, e.target.checked)}
-                style={{ width: 16, height: 16, cursor: 'pointer', flexShrink: 0, accentColor: 'var(--green)' }} />
+              <input type="checkbox" className="form-checkbox" checked={!!p.resolvida}
+                onChange={e => onToggle(p.id, e.target.checked)} />
               <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 500, wordBreak: 'break-word',
                 textDecoration: p.resolvida ? 'line-through' : 'none', color: p.resolvida ? 'var(--gray2)' : 'var(--black)' }}>{p.descricao}</span>
               <PendCatSelect value={normPendCat(p.categoria)} onChange={c => onUpdateCat(p.id, c)} />
