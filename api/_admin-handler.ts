@@ -5565,6 +5565,82 @@ async function despacharAdminData(
       }
     }
 
+    // O chamado do cliente por trás de uma tarefa: quem pediu, a urgência que
+    // ele marcou e cada reabertura, com o que escreveu, os links e os anexos.
+    // É o que a ficha da tarefa mostra no bloco do chamado. Mesmo corte da
+    // conversa: membro fora da equipe não lê o chamado de uma tarefa que não
+    // enxerga.
+    if (action === 'chamado_da_tarefa') {
+      const id = Number(query.get('id'));
+      if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };
+      const barrado = await guardaDaEquipe(db, usuario, id, 'tarefa');
+      if (barrado) return barrado;
+      const ch = await db.execute({
+        sql: `SELECT id, numero, solicitante, email, urgencia, links, criado_em
+              FROM chamados_cliente WHERE tarefa_id = ? ORDER BY id DESC LIMIT 1`,
+        args: [id],
+      });
+      const c = ch.rows[0];
+      if (!c) return { status: 200, body: { chamado: null } };
+      const [eventos, anexos] = await Promise.all([
+        db.execute({
+          sql: `SELECT id, seq, autor, texto, links, criado_em FROM chamado_cliente_eventos
+                WHERE chamado_id = ? ORDER BY seq DESC`,
+          args: [c.id],
+        }),
+        db.execute({
+          sql: `SELECT id, evento_id, nome, tipo, tamanho FROM chamado_cliente_anexos
+                WHERE chamado_id = ? AND evento_id IS NOT NULL ORDER BY ordem`,
+          args: [c.id],
+        }),
+      ]);
+      const links = (v: unknown): string[] => {
+        try { const l = JSON.parse(String(v ?? '[]')); return Array.isArray(l) ? l.map(String) : []; } catch { return []; }
+      };
+      return {
+        status: 200,
+        body: {
+          chamado: {
+            numero: Number(c.numero),
+            solicitante: String(c.solicitante),
+            email: c.email != null ? String(c.email) : null,
+            urgencia: String(c.urgencia),
+            links: links(c.links),
+            criado_em: String(c.criado_em),
+            reaberturas: eventos.rows.map(e => ({
+              seq: Number(e.seq),
+              autor: String(e.autor),
+              texto: String(e.texto ?? ''),
+              links: links(e.links),
+              criado_em: String(e.criado_em),
+              anexos: anexos.rows.filter(a => Number(a.evento_id) === Number(e.id)).map(a => ({
+                id: Number(a.id), nome: String(a.nome), tipo: String(a.tipo), tamanho: Number(a.tamanho ?? 0),
+              })),
+            })),
+          },
+        },
+      };
+    }
+
+    // O conteúdo de um anexo do chamado, para a prévia na ficha da tarefa. Só
+    // desce o arquivo de um chamado ligado à tarefa pedida, e a tarefa passa
+    // pelo mesmo corte de equipe.
+    if (action === 'chamado_anexo_base64') {
+      const id = Number(query.get('id'));
+      const tarefa = Number(query.get('tarefa'));
+      if (!Number.isFinite(id) || !Number.isFinite(tarefa)) return { status: 400, body: { error: 'id inválido.' } };
+      const barrado = await guardaDaEquipe(db, usuario, tarefa, 'tarefa');
+      if (barrado) return barrado;
+      const r = await db.execute({
+        sql: `SELECT a.nome, a.tipo, a.base64 FROM chamado_cliente_anexos a
+              JOIN chamados_cliente ch ON ch.id = a.chamado_id
+              WHERE a.id = ? AND ch.tarefa_id = ?`,
+        args: [id, tarefa],
+      });
+      if (!r.rows[0]) return { status: 404, body: { error: 'Arquivo não encontrado.' } };
+      return { status: 200, body: { nome: String(r.rows[0].nome), tipo: String(r.rows[0].tipo), base64: String(r.rows[0].base64) } };
+    }
+
     if (action === 'tarefa_atividade') {
       const id = Number(query.get('id'));
       if (!Number.isFinite(id)) return { status: 400, body: { error: 'id inválido.' } };

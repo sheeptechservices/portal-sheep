@@ -25612,3 +25612,111 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   border-color: var(--sup-campo-borda);
   background: var(--campo-vidro);
 }
+
+/* ══ O chamado do cliente na ficha da tarefa ═══════════════════════════════
+   Acima da descrição, quando a tarefa veio do painel de chamados: quem pediu,
+   o contato, a urgência e os links, e embaixo cada reabertura numa chapa
+   própria, com o fio limão à esquerda - é o conteúdo novo que o cliente
+   mandou, e precisa ser achado de relance por quem pega a tarefa. */
+.chamado-tarefa {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--sup-campo-borda);
+  background: var(--campo-vidro);
+}
+.chamado-tarefa-topo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chamado-tarefa-selo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--texto-forte);
+}
+.chamado-tarefa-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--gray);
+}
+.chamado-tarefa-meta strong { color: var(--black); font-weight: 700; }
+.chamado-tarefa-meta a { color: var(--gray); text-decoration: none; border-bottom: 1px solid transparent; transition: color var(--transition), border-color var(--transition); }
+.chamado-tarefa-meta a:hover { color: var(--black); border-bottom-color: var(--gray2); }
+.chamado-tarefa-urgencia { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; color: var(--black); }
+.chamado-tarefa-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.chamado-tarefa-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 320px;
+  padding: 4px 10px;
+  border: 1px solid var(--gray4);
+  border-radius: var(--radius-pill);
+  background: var(--white);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--gray);
+  text-decoration: none;
+  transition: border-color var(--transition), color var(--transition);
+}
+.chamado-tarefa-links a span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chamado-tarefa-links a:hover { border-color: var(--gray2); color: var(--black); }
+.chamado-tarefa .reportes-anexos { margin: 0; }
+.chamado-tarefa-reaberturas {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.chamado-tarefa-reabertura {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-left: 2px solid var(--yellow);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: color-mix(in srgb, var(--yellow) 7%, transparent);
+  animation: linha-entra .38s var(--curva-anti) backwards;
+}
+.chamado-tarefa-reabertura:nth-child(2) { animation-delay: 40ms; }
+.chamado-tarefa-reabertura:nth-child(n+3) { animation-delay: 80ms; }
+.chamado-tarefa-reabertura-topo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0;
+  font-size: 12px;
+  color: var(--gray2);
+}
+.chamado-tarefa-reabertura-topo strong { color: var(--black); font-weight: 700; }
+.chamado-tarefa-reabertura-num {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--yellow-tinta);
+}
+.chamado-tarefa-texto { font-size: 13px; line-height: 1.55; color: var(--black); }
+@media (prefers-reduced-motion: reduce) {
+  .chamado-tarefa-reabertura { animation: none; }
+}

@@ -9,6 +9,7 @@
 //  telas importam este arquivo, e um valor vindo de lá fecharia o ciclo.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ChamadoDaTarefa } from './ChamadoDaTarefa';
 import { AtividadeDaTarefa } from './AtividadeDaTarefa';
 import { createPortal } from 'react-dom';
 import { iniciais, useToast } from './AdminApp';
@@ -1276,6 +1277,10 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
         </div>
 
         <div className="admin-modal-body">
+
+          {/* De onde a tarefa veio, quando veio de um chamado do cliente: quem
+              pediu e cada reabertura, acima do enunciado. */}
+          {rascunho.id != null && api && <ChamadoDaTarefa tarefaId={rascunho.id} api={api} />}
 
           <div className="form-group bloco-descricao">
             {embutida && <p className="detalhe-secao">Descrição</p>}

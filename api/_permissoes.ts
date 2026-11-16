@@ -313,6 +313,9 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   // permissão própria. Apagar entra em `comentar` porque o servidor limita a
   // quem escreveu, para todo papel.
   tarefa_atividade: 'tarefas:ver',
+  // O chamado do cliente por trás da tarefa, e os anexos dele: leitura de tarefa.
+  chamado_da_tarefa: 'tarefas:ver',
+  chamado_anexo_base64: 'tarefas:ver',
   tarefas_comentarios: 'tarefas:ver',
   tarefas_subtarefas: 'tarefas:ver',
   tarefa_comentario_anexo_base64: 'tarefas:ver',
