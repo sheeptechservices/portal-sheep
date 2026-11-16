@@ -2249,9 +2249,35 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
    das globais mas deliberadamente mais quentes (#FFB000 no lugar de --yellow,
    #17150F no lugar de --black, Plus Jakarta Sans no lugar de Manrope), então
    ficam declaradas aqui como tokens locais em vez de espalhadas em hex solto.
-   A tela é fixa no tema claro - o LoginScreen força data-theme=light enquanto
-   está montado -, por isso não há variante escura. */
+   A tela é fixa no tema claro, seja qual for o tema escolhido lá dentro, por
+   isso não há variante escura. O `data-theme` da página continua o de quem
+   usa (ele vem do navegador antes da primeira pintura, e trocá-lo aqui faria
+   o portal piscar na entrada); o que prende a tela no claro são os tokens da
+   casa redeclarados nela, logo abaixo. */
 .login-tela {
+  /* Os tokens do tema claro, com os valores do `:root`. Sem eles os campos de
+     e-mail e senha e o botão Entrar herdavam o tema escuro e saíam pretos no
+     meio da tela clara. Estes são os que o escuro troca; se o `:root` mudar
+     um deles, este bloco muda junto. */
+  color-scheme: light;
+  --bg:     #F8F8F6;
+  --white:  #FFFFFF;
+  --black:  #121316;
+  --gray:   #666666;
+  --gray2:  #AAAAAA;
+  --gray3:  #E3E4DE;
+  --gray4:  #F0F0EE;
+  --yd:     rgba(233, 252, 0, 0.30);
+  --yb:     rgba(190, 206, 0, 0.60);
+  --yellow-tinta: #636B00;
+  --spinner: #121316;
+  --link: #0B63CE;
+  --card-hover-bg: #FCFCFB;
+  --shadow-card: 0 2px 8px rgba(0,0,0,0.07);
+  --shadow-card-hover: 0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06);
+  --campo-vidro: rgba(255, 255, 255, .75);
+  --campo-vidro-hover: rgba(255, 255, 255, .95);
+
   --lg-fundo:      #FCFCFB;
   --lg-tinta:      #17150F;
   --lg-texto:      #8A8579;
