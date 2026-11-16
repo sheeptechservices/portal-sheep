@@ -35,6 +35,7 @@ import { contemTermo } from '../lib/texto';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { iniciarOndas } from '../lib/ondas';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
+import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 
 type Grupo = 'triagem' | 'andamento' | 'concluido' | 'cancelado';
 
@@ -90,9 +91,46 @@ const TIPOS_DE_ANEXO = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'a
 const MAX_ANEXOS = 5;
 /** A soma tem teto: o corpo da requisição na Vercel para em 4,5 MB. */
 const LIMITE_SOMA = 4 * 1024 * 1024;
-/** Quem pediu e o e-mail ficam lembrados neste navegador: quem abre um chamado
- *  costuma abrir outros, e redigitar o nome a cada vez é atrito à toa. */
-const CHAVE_QUEM = 'sheep_chamados_quem';
+/** Os nomes já usados ficam lembrados neste navegador, com o e-mail de cada um:
+ *  quem abre um chamado costuma abrir outros, e redigitar o nome a cada vez é
+ *  atrito à toa. A chave leva o token do painel, então cada projeto tem a sua
+ *  lista: um nome digitado no painel de um cliente nunca aparece no de outro,
+ *  mesmo que os dois sejam abertos no mesmo computador. */
+const chaveDosNomes = (token: string) => `sheep_chamados_nomes:${token}`;
+/** A chave de antes, uma só para todos os painéis: o nome digitado num projeto
+ *  vinha preenchido no de outro cliente. É apagada ao abrir qualquer painel, e
+ *  o que ela guardava não é aproveitado, porque não diz de qual projeto era. */
+const CHAVE_ANTIGA = 'sheep_chamados_quem';
+const MAX_NOMES = 12;
+
+interface NomeLembrado { nome: string; email: string }
+
+const chaveDoNome = (n: string) => n.trim().toLocaleLowerCase('pt-BR');
+
+function lerNomes(token: string): NomeLembrado[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(chaveDosNomes(token)) ?? '[]');
+    return (Array.isArray(v) ? v : [])
+      .filter((n: unknown): n is NomeLembrado => typeof (n as NomeLembrado)?.nome === 'string')
+      .map(n => ({ nome: n.nome.slice(0, 80), email: String(n.email ?? '').slice(0, 120) }))
+      .slice(0, MAX_NOMES);
+  } catch { return []; }
+}
+
+/** Põe o nome no topo da lista do projeto. O e-mail só é trocado quando vem
+ *  um: reabrir não pede e-mail, e não pode apagar o que já estava guardado. */
+function lembrarNome(token: string, nome: string, email?: string): NomeLembrado[] {
+  const limpo = nome.trim();
+  const antes = lerNomes(token);
+  if (limpo.length < 2) return antes;
+  const anterior = antes.find(n => chaveDoNome(n.nome) === chaveDoNome(limpo));
+  const lista = [
+    { nome: limpo, email: (email ?? anterior?.email ?? '').trim() },
+    ...antes.filter(n => n !== anterior),
+  ].slice(0, MAX_NOMES);
+  try { localStorage.setItem(chaveDosNomes(token), JSON.stringify(lista)); } catch { /* sem armazenamento */ }
+  return lista;
+}
 /** De quanto em quanto tempo a fila confere o status, com a aba à vista. */
 const ATUALIZAR_MS = 60_000;
 
@@ -112,18 +150,17 @@ interface RascunhoDeReabertura { texto: string; autor: string; links: string[]; 
 /** Até quantos links por envio. O servidor confere de novo. */
 const MAX_LINKS = 5;
 
-function lerQuem(): { solicitante: string; email: string } {
-  try {
-    const v = JSON.parse(localStorage.getItem(CHAVE_QUEM) ?? 'null');
-    return { solicitante: String(v?.solicitante ?? ''), email: String(v?.email ?? '') };
-  } catch { return { solicitante: '', email: '' }; }
-}
-
-const rascunhoVazio = (): Rascunho => ({
-  titulo: '', descricao: '', urgencia: 'Média', ...lerQuem(), links: [], anexos: [],
-});
-const reaberturaVazia = (): RascunhoDeReabertura => ({
-  texto: '', autor: lerQuem().solicitante, links: [], anexos: [],
+/** O formulário já nasce com o último nome usado neste projeto: na maioria das
+ *  vezes é a mesma pessoa, e a lista fica a um clique para quando não é. */
+const rascunhoVazio = (token: string): Rascunho => {
+  const ultimo = lerNomes(token)[0];
+  return {
+    titulo: '', descricao: '', urgencia: 'Média', solicitante: ultimo?.nome ?? '', email: ultimo?.email ?? '',
+    links: [], anexos: [],
+  };
+};
+const reaberturaVazia = (token: string): RascunhoDeReabertura => ({
+  texto: '', autor: lerNomes(token)[0]?.nome ?? '', links: [], anexos: [],
 });
 
 /** O endereço como se lê: o domínio e o começo do caminho. */
@@ -149,12 +186,18 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
   const [ordem, setOrdem] = useState<OrdemDaTabela<Coluna>>(ORDEM_PADRAO);
   const [vendo, setVendo] = useState<{ chamado: Chamado; indice: number } | null>(null);
   const [formAberto, setFormAberto] = useState(false);
-  const [rascunho, setRascunho] = useState<Rascunho>(rascunhoVazio);
+  const [rascunho, setRascunho] = useState<Rascunho>(() => rascunhoVazio(token));
   const [erroEnvio, setErroEnvio] = useState<string | null>(null);
   /** O chamado que está sendo reaberto, e o rascunho da reabertura. */
   const [reabrindo, setReabrindo] = useState<number | null>(null);
-  const [reabertura, setReabertura] = useState<RascunhoDeReabertura>(reaberturaVazia);
+  const [reabertura, setReabertura] = useState<RascunhoDeReabertura>(() => reaberturaVazia(token));
   const [erroReabertura, setErroReabertura] = useState<string | null>(null);
+  /** Os nomes que este navegador já usou neste painel. */
+  const [lembrados, setLembrados] = useState<NomeLembrado[]>(() => lerNomes(token));
+
+  useEffect(() => {
+    try { localStorage.removeItem(CHAVE_ANTIGA); } catch { /* sem armazenamento */ }
+  }, []);
 
   const carregar = useCallback(async () => {
     try {
@@ -254,12 +297,29 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
   const opcoesQuem = useMemo(() => [...new Set(chamados.map(c => c.solicitante))]
     .sort((a, b) => a.localeCompare(b, 'pt-BR')).map(n => ({ value: n, label: n })), [chamados]);
 
+  /** O que o campo de nome oferece: primeiro os nomes deste navegador, do mais
+   *  recente, com o e-mail de cada um; depois quem já pediu ou reabriu algum
+   *  chamado deste projeto, que o colega do lado também pode escolher. As duas
+   *  fontes são só deste projeto: a lista do navegador tem a chave pelo token,
+   *  e a do servidor sai dos chamados que o próprio token devolve. */
+  const sugestoesDeNome = useMemo(() => {
+    const porNome = new Map<string, NomeLembrado>();
+    for (const n of lembrados) porNome.set(chaveDoNome(n.nome), n);
+    const doProjeto = chamados.flatMap(c => [c.solicitante, ...c.reaberturas.map(r => r.autor)])
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    for (const nome of doProjeto) {
+      const k = chaveDoNome(nome);
+      if (k.length >= 2 && !porNome.has(k)) porNome.set(k, { nome: nome.trim(), email: '' });
+    }
+    return [...porNome.values()];
+  }, [lembrados, chamados]);
+
   // ── Abrir um chamado ───────────────────────────────────────────────────
   //  O formulário fecha no gesto e a linha nasce na fila com o que foi escrito.
   //  Recusado pelo servidor, a linha sai e o formulário volta com o rascunho e
   //  o motivo.
   async function enviar(r: Rascunho) {
-    try { localStorage.setItem(CHAVE_QUEM, JSON.stringify({ solicitante: r.solicitante, email: r.email })); } catch { /* sem armazenamento */ }
+    setLembrados(lembrarNome(token, r.solicitante, r.email));
     const entrada = dados?.etapas.find(e => e.grupo === 'triagem');
     const temporario = -Date.now();
     const linha: Chamado = {
@@ -270,7 +330,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
       reaberturas: [],
     };
     setDados(d => d && { ...d, chamados: [linha, ...d.chamados] });
-    setRascunho(rascunhoVazio());
+    setRascunho(rascunhoVazio(token));
     setErroEnvio(null);
     try {
       const resp = await fetch(base, {
@@ -306,10 +366,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
   //  e a reabertura entra no histórico na hora. Recusada, a linha volta ao que
   //  era e o formulário reabre com o rascunho e o motivo.
   async function reabrir(numero: number, r: RascunhoDeReabertura) {
-    try {
-      const quem = lerQuem();
-      localStorage.setItem(CHAVE_QUEM, JSON.stringify({ ...quem, solicitante: r.autor.trim() }));
-    } catch { /* sem armazenamento */ }
+    setLembrados(lembrarNome(token, r.autor));
     const antes = dados?.chamados.find(c => c.numero === numero);
     if (!antes) return;
     const entrada = dados?.etapas.find(e => e.grupo === 'triagem');
@@ -326,7 +383,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
         }],
       }),
     });
-    setReabertura(reaberturaVazia());
+    setReabertura(reaberturaVazia(token));
     setErroReabertura(null);
     try {
       const resp = await fetch(`${base}&acao=reabrir&chamado=${numero}`, {
@@ -583,7 +640,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
       </div>
 
       {formAberto && (
-        <FormularioDoChamado rascunho={rascunho} erro={erroEnvio}
+        <FormularioDoChamado rascunho={rascunho} erro={erroEnvio} nomes={sugestoesDeNome}
           onMudar={setRascunho}
           onFechar={() => setFormAberto(false)}
           onEnviar={r => { setFormAberto(false); void enviar(r); }} />
@@ -593,7 +650,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
         const alvo = chamados.find(c => c.numero === reabrindo);
         if (!alvo) return null;
         return (
-          <FormularioDeReabertura chamado={alvo} rascunho={reabertura} erro={erroReabertura}
+          <FormularioDeReabertura chamado={alvo} rascunho={reabertura} erro={erroReabertura} nomes={sugestoesDeNome}
             onMudar={setReabertura}
             onFechar={() => setReabrindo(null)}
             onEnviar={r => { setReabrindo(null); void reabrir(alvo.numero!, r); }} />
@@ -932,11 +989,97 @@ function CampoDeLinks({ links, onMudar, onErro }: {
   );
 }
 
+/** O campo de nome com os nomes já usados neste projeto numa lista embaixo.
+ *  Continua sendo texto livre: a lista só poupa a digitação de quem volta, e
+ *  quem é novo escreve o nome como sempre. Abre no clique (e o segundo clique
+ *  fecha), ao digitar e na seta para baixo; digitar filtra. Com o campo já
+ *  preenchido por um nome da lista, ela mostra todos, e não só aquele. */
+function CampoDeNome({ valor, nomes, onMudar, onEscolher }: {
+  valor: string;
+  nomes: NomeLembrado[];
+  onMudar: (v: string) => void;
+  onEscolher: (n: NomeLembrado) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [ativo, setAtivo] = useState(-1);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+  const campo = useRef<HTMLInputElement>(null);
+  const lista = useRef<HTMLDivElement>(null);
+  useDropdownDismiss(aberto, [campo, lista], () => setAberto(false));
+
+  const semAcento = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLocaleLowerCase('pt-BR').trim();
+  const q = semAcento(valor);
+  const exato = nomes.some(n => semAcento(n.nome) === q);
+  const opcoes = !q || exato ? nomes : nomes.filter(n => semAcento(n.nome).includes(q));
+  const visivel = aberto && opcoes.length > 0;
+
+  function abrir() {
+    const r = campo.current?.getBoundingClientRect();
+    if (r) setPos({ top: r.bottom + 6, left: r.left, width: r.width });
+    setAtivo(-1);
+    setAberto(true);
+  }
+  function escolher(n: NomeLembrado) {
+    onEscolher(n);
+    setAberto(false);
+  }
+
+  return (
+    <>
+      <input ref={campo} className="form-input" value={valor} maxLength={80} placeholder="Seu nome"
+        autoComplete="off" role="combobox" aria-autocomplete="list" aria-expanded={visivel}
+        onClick={() => (aberto ? setAberto(false) : abrir())}
+        onChange={e => { onMudar(e.target.value); if (!aberto) abrir(); else setAtivo(-1); }}
+        onKeyDown={e => {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (!aberto) { abrir(); return; }
+            setAtivo(i => Math.min(i + 1, opcoes.length - 1));
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setAtivo(i => Math.max(i - 1, 0));
+          } else if (e.key === 'Enter' && visivel && opcoes[ativo]) {
+            e.preventDefault();
+            escolher(opcoes[ativo]);
+          } else if (e.key === 'Escape' && aberto) {
+            // O primeiro Esc fecha só a lista: parado aqui, ele não chega à
+            // janela, que fecharia o formulário inteiro junto.
+            e.stopPropagation();
+            setAberto(false);
+          } else if (e.key === 'Tab') {
+            setAberto(false);
+          }
+        }} />
+      {visivel && createPortal(
+        <div ref={lista} className="status-select-dropdown" role="listbox" aria-label="Nomes já usados"
+          style={{ top: pos.top, left: pos.left, minWidth: pos.width, zIndex: 10050 }}>
+          {opcoes.map((n, i) => (
+            <div key={chaveDoNome(n.nome)} role="option" aria-selected={i === ativo}
+              className={`status-select-option${i === ativo ? ' active' : ''}`}
+              onMouseEnter={() => setAtivo(i)}
+              // O foco fica no campo: saindo dele, o clique chegaria a uma
+              // lista que já começou a fechar.
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => escolher(n)}>
+              <span style={{ minWidth: 0 }}>
+                {n.nome}
+                {n.email && <span className="select-opcao-descricao">{n.email}</span>}
+              </span>
+            </div>
+          ))}
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
 /** O formulário do chamado, no centro da tela. O rascunho mora em quem abre:
  *  fechar sem querer e reabrir devolve o que já estava escrito. */
-function FormularioDoChamado({ rascunho, erro, onMudar, onFechar, onEnviar }: {
+function FormularioDoChamado({ rascunho, erro, nomes, onMudar, onFechar, onEnviar }: {
   rascunho: Rascunho;
   erro: string | null;
+  nomes: NomeLembrado[];
   onMudar: (r: Rascunho) => void;
   onFechar: () => void;
   onEnviar: (r: Rascunho) => void;
@@ -974,8 +1117,12 @@ function FormularioDoChamado({ rascunho, erro, onMudar, onFechar, onEnviar }: {
       <div className="chm-form-dupla">
         <label className="form-group">
           <span className="form-label">Quem está pedindo</span>
-          <input className="form-input" value={r.solicitante} maxLength={80} placeholder="Seu nome"
-            onChange={e => mudar({ solicitante: e.target.value })} />
+          {/* Escolher um nome da lista traz o e-mail guardado junto com ele, e
+              apaga o que estava ali quando ele não tem um: trocar de pessoa e
+              manter o e-mail da anterior mandaria o retorno para a errada. */}
+          <CampoDeNome valor={r.solicitante} nomes={nomes}
+            onMudar={v => mudar({ solicitante: v })}
+            onEscolher={n => mudar({ solicitante: n.nome, email: n.email })} />
         </label>
         <label className="form-group">
           <span className="form-label">E-mail <em className="chm-opcional">(opcional, para retorno)</em></span>
@@ -1003,10 +1150,11 @@ function FormularioDoChamado({ rascunho, erro, onMudar, onFechar, onEnviar }: {
 
 /** Reabrir um chamado encerrado: por que ele precisa voltar, quem pede, e o
  *  que vem junto. Ele volta para a Triagem, e o time é avisado. */
-function FormularioDeReabertura({ chamado, rascunho, erro, onMudar, onFechar, onEnviar }: {
+function FormularioDeReabertura({ chamado, rascunho, erro, nomes, onMudar, onFechar, onEnviar }: {
   chamado: Chamado;
   rascunho: RascunhoDeReabertura;
   erro: string | null;
+  nomes: NomeLembrado[];
   onMudar: (r: RascunhoDeReabertura) => void;
   onFechar: () => void;
   onEnviar: (r: RascunhoDeReabertura) => void;
@@ -1036,8 +1184,8 @@ function FormularioDeReabertura({ chamado, rascunho, erro, onMudar, onFechar, on
       </div>
       <label className="form-group">
         <span className="form-label">Quem está reabrindo</span>
-        <input className="form-input" value={r.autor} maxLength={80} placeholder="Seu nome"
-          onChange={e => mudar({ autor: e.target.value })} />
+        <CampoDeNome valor={r.autor} nomes={nomes}
+          onMudar={v => mudar({ autor: v })} onEscolher={n => mudar({ autor: n.nome })} />
       </label>
       <CampoDeLinks links={r.links} onMudar={links => mudar({ links })} onErro={setErroCampo} />
       <CampoDeAnexos anexos={r.anexos} onMudar={anexos => mudar({ anexos })} onErro={setErroCampo} />
