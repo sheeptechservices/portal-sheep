@@ -13,7 +13,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  IconAlert, IconBug, IconCheck, IconChevronDown, IconChevronRight, IconChevronUp, IconChevronUpDown,
+  IconAlert, IconBug, IconCheck, IconChevronDown, IconChevronRight,
   IconDoc, IconEdit, IconImage, IconImagemSem, IconSparkles, IconSpinner, IconTrash, IconUndo, IconX,
 } from './icons';
 import { Dialogo } from './Dialogo';
@@ -22,6 +22,7 @@ import FilterDropdown from './FilterDropdown';
 import { SelectSistema } from './SelectSistema';
 import { Avatar } from '../admin/FormularioTarefa';
 import { CampoBusca } from './CampoBusca';
+import { ThOrdem } from './ThOrdem';
 import { contemTermo } from '../lib/texto';
 import { ICONE_PRIORIDADE, PRIORIDADES } from '../lib/prioridades';
 import { instante, tempoRelativo } from '../lib/datas';
@@ -961,31 +962,6 @@ export function ListaReportes({
 
 /** As colunas que se ordenam. Print fica de fora: anexo não tem ordem. */
 type ColunaOrdem = 'urgencia' | 'tipo' | 'relato' | 'status' | 'autor' | 'quando';
-
-/** O título de coluna que ordena, no mesmo desenho do cabeçalho da lista do
- *  Funil: a seta de três estados diz se a coluna manda e para que lado. */
-function ThOrdem({ col, ordem, onOrdenar, children }: {
-  col: ColunaOrdem;
-  ordem: { col: ColunaOrdem; dir: 'asc' | 'desc' } | null;
-  onOrdenar: (col: ColunaOrdem) => void;
-  children: React.ReactNode;
-}) {
-  const ativa = ordem?.col === col;
-  return (
-    <th className={`sortable-th${ativa ? ' sorted' : ''}`}
-      aria-sort={ativa ? (ordem!.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
-      tabIndex={0}
-      onClick={() => onOrdenar(col)}
-      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOrdenar(col); } }}>
-      {children}
-      <span className="sort-arrow" style={{ display: 'inline-flex', verticalAlign: 'middle' }}>
-        {ativa
-          ? (ordem!.dir === 'asc' ? <IconChevronUp size={12} /> : <IconChevronDown size={12} />)
-          : <IconChevronUpDown size={12} />}
-      </span>
-    </th>
-  );
-}
 
 /** O ponto de cor do status, na lista e no chip. */
 function PontoStatus({ cor }: { cor: string }) {
