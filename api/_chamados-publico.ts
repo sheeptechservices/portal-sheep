@@ -80,6 +80,9 @@ const URGENCIAS = ['Urgente', 'Alta', 'Média', 'Baixa'];
 //  A tabela nasce aqui e também no esquema do portal: o painel pode ser a
 //  primeira coisa a rodar depois de um deploy, e a ficha da tarefa lê a mesma
 //  tabela por dentro.
+//  Mora junto o tipo do chamado (bug ou melhoria), que entrou na mesma época:
+//  a coluna nova em `chamados_cliente` tem de existir antes do primeiro
+//  chamado gravado com ela, e o painel pode rodar antes do esquema do portal.
 export const DDL_AJUSTES_DO_CHAMADO = [
   `CREATE TABLE IF NOT EXISTS chamado_cliente_ajustes (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -89,21 +92,34 @@ export const DDL_AJUSTES_DO_CHAMADO = [
     descricao   TEXT,
     solicitante TEXT,
     urgencia    TEXT,
+    tipo        TEXT,
     autor       TEXT NOT NULL,
     criado_em   TEXT NOT NULL
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_chamado_cliente_ajustes ON chamado_cliente_ajustes (chamado_id, seq)`,
+  // Acréscimos de coluna: falham quando a coluna já existe, e isso é o normal.
+  `ALTER TABLE chamado_cliente_ajustes ADD COLUMN tipo TEXT`,
+  `ALTER TABLE chamados_cliente ADD COLUMN tipo TEXT`,
 ];
 let ajustesProntos: Promise<void> | null = null;
-/** Uma vez por instância: depois disso a tabela já existe. Falhou, tenta de
- *  novo na próxima chamada em vez de guardar o erro. */
+/** Uma vez por instância: depois disso as tabelas já estão no ponto. Cada
+ *  instrução vale sozinha - o acréscimo de coluna que já existe falha, e não
+ *  pode impedir o resto. Falhou a criação, tenta de novo na próxima chamada. */
 function garantirAjustes(db: Client): Promise<void> {
-  ajustesProntos ??= (async () => { for (const sql of DDL_AJUSTES_DO_CHAMADO) await db.execute(sql); })()
-    .catch(e => { ajustesProntos = null; throw e; });
+  ajustesProntos ??= (async () => {
+    for (const sql of DDL_AJUSTES_DO_CHAMADO) {
+      try { await db.execute(sql); } catch (e) { if (!/^ALTER/.test(sql)) throw e; }
+    }
+  })().catch(e => { ajustesProntos = null; throw e; });
   return ajustesProntos;
 }
-type CampoAjustavel = 'titulo' | 'descricao' | 'solicitante' | 'urgencia';
-const CAMPOS_AJUSTAVEIS: CampoAjustavel[] = ['titulo', 'descricao', 'solicitante', 'urgencia'];
+
+/** O que o chamado é: o mesmo par da fila de chamados de dentro. */
+const TIPOS = ['bug', 'melhoria'];
+const NOME_DO_TIPO: Record<string, string> = { bug: 'Bug', melhoria: 'Melhoria' };
+
+type CampoAjustavel = 'titulo' | 'descricao' | 'solicitante' | 'urgencia' | 'tipo';
+const CAMPOS_AJUSTAVEIS: CampoAjustavel[] = ['titulo', 'descricao', 'solicitante', 'urgencia', 'tipo'];
 
 /** Anexos: imagem ou PDF, até cinco por envio. O teto que vale de verdade é o
  *  do corpo da requisição na Vercel (4,5 MB), e por isso a soma tem teto. */
@@ -319,6 +335,11 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
   });
 
   try {
+    // As colunas e a tabela novas antes de qualquer leitura que as cite: o
+    // painel pode ser o primeiro a rodar depois de um deploy. Uma vez por
+    // instância, e uma falha aqui não derruba o painel - a leitura dos ajustes
+    // tem a própria rede.
+    await garantirAjustes(db).catch(() => {});
     const r = await db.execute({
       sql: `SELECT p.id, p.nome, c.nome AS cliente_nome
             FROM projetos p LEFT JOIN clientes c ON c.id = p.cliente_id
@@ -368,7 +389,8 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
     // pior.
     const lendoAjustes = garantirAjustes(db)
       .then(() => db.execute({
-        sql: `SELECT aj.chamado_id, aj.seq, aj.titulo, aj.descricao, aj.solicitante, aj.urgencia, aj.autor, aj.criado_em
+        sql: `SELECT aj.chamado_id, aj.seq, aj.titulo, aj.descricao, aj.solicitante, aj.urgencia, aj.tipo,
+                     aj.autor, aj.criado_em
               FROM chamado_cliente_ajustes aj
               JOIN chamados_cliente ch ON ch.id = aj.chamado_id
               WHERE ch.projeto_id = ? ORDER BY aj.chamado_id, aj.seq`,
@@ -380,7 +402,7 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
       db.execute({
         // Da tarefa, só a etapa e o prazo. Título, descrição e etiquetas dela
         // são do time.
-        sql: `SELECT ch.id, ch.numero, ch.titulo, ch.descricao, ch.solicitante, ch.urgencia,
+        sql: `SELECT ch.id, ch.numero, ch.titulo, ch.descricao, ch.solicitante, ch.urgencia, ch.tipo,
                      ch.links, ch.criado_em, t.status AS etapa, t.prazo
               FROM chamados_cliente ch
               LEFT JOIN projeto_tarefas t ON ${TAREFA_DO_PROJETO}
@@ -448,6 +470,8 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
           descricao: String(c.descricao),
           solicitante: String(c.solicitante),
           urgencia: String(c.urgencia),
+          // Nulo no chamado gravado antes de o tipo existir.
+          tipo: c.tipo != null && TIPOS.includes(String(c.tipo)) ? String(c.tipo) : null,
           links: linksDe(c.links),
           criado_em: String(c.criado_em),
           status,
@@ -463,7 +487,7 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
           // continuam os do envio original; a versão em vigor sai da soma.
           ajustes: ajustes.filter(a => Number(a.chamado_id) === id).map(a => {
             const mudou: Partial<Record<CampoAjustavel, string>> = {};
-            for (const k of CAMPOS_AJUSTAVEIS) if (a[k] != null) mudou[k] = String(a[k]);
+            for (const k of CAMPOS_AJUSTAVEIS) if (a[k] != null && a[k] !== '') mudou[k] = String(a[k]);
             return { seq: Number(a.seq), em: String(a.criado_em), autor: String(a.autor), mudou };
           }),
         };
@@ -486,6 +510,11 @@ async function abrirChamado(req: VercelRequest, res: VercelResponse, db: Client,
   if (descricao.length < 5) return res.status(400).json({ error: 'Descreva o que está acontecendo.' });
   const solicitante = texto(corpo.solicitante, 80);
   if (solicitante.length < 2) return res.status(400).json({ error: 'Diga quem está pedindo.' });
+  // O formulário obriga a escolher; aqui o vazio passa, porque uma aba aberta
+  // antes do tipo existir ainda manda o chamado sem ele.
+  const tipo = texto(corpo.tipo, 20);
+  if (tipo && !TIPOS.includes(tipo)) return res.status(400).json({ error: 'Escolha se é um bug ou uma melhoria.' });
+  // O e-mail saiu do formulário; continua aceito para a aba aberta antes disso.
   const email = texto(corpo.email, 120);
   if (email && !/^[^@\s]+@[^@\s.]+\.[^@\s]{2,}$/.test(email)) {
     return res.status(400).json({ error: 'Confira o e-mail.' });
@@ -506,13 +535,14 @@ async function abrirChamado(req: VercelRequest, res: VercelResponse, db: Client,
   // ao mesmo tempo não pegam o mesmo número.
   const chamado = await db.execute({
     sql: `INSERT INTO chamados_cliente (projeto_id, numero, titulo, descricao, solicitante, email,
-                                        urgencia, links, criado_em)
-          SELECT ?, COALESCE(MAX(numero), 0) + 1, ?, ?, ?, ?, ?, ?, ?
+                                        urgencia, tipo, links, criado_em)
+          SELECT ?, COALESCE(MAX(numero), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ?
           FROM chamados_cliente WHERE projeto_id = ?
           RETURNING id, numero`,
-    args: [projetoId, titulo, descricao, solicitante, email || null, urgencia,
+    args: [projetoId, titulo, descricao, solicitante, email || null, urgencia, tipo || null,
       JSON.stringify(links), agora, projetoId],
   });
+  const nomeDoTipo = tipo ? NOME_DO_TIPO[tipo] : null;
   const chamadoId = Number(chamado.rows[0]?.id ?? 0);
   const numeroNoProjeto = Number(chamado.rows[0]?.numero ?? 0);
 
@@ -522,7 +552,10 @@ async function abrirChamado(req: VercelRequest, res: VercelResponse, db: Client,
       projetoId, titulo, urgencia, autor, agora, ctx,
       // O número do chamado vai na tarefa: é por ele que o cliente pergunta.
       descricao: `${descricao}${linksEmTexto(links)}\n\n---\nChamado nº ${numeroNoProjeto} do painel, `
-        + `aberto por ${solicitante}${email ? ` (${email})` : ''}.`,
+        + `aberto por ${solicitante}${email ? ` (${email})` : ''}${nomeDoTipo ? `. Tipo: ${nomeDoTipo}` : ''}.`,
+      // O tipo vira etiqueta: é como o time separa, no quadro, o que quebrou
+      // do que falta.
+      etiquetas: ['Cliente', 'Chamado', ...(nomeDoTipo ? [nomeDoTipo] : [])],
     });
     await db.execute({ sql: 'UPDATE chamados_cliente SET tarefa_id = ? WHERE id = ?', args: [tarefaId, chamadoId] });
   } catch {
@@ -549,6 +582,7 @@ async function abrirChamado(req: VercelRequest, res: VercelResponse, db: Client,
     ficha: [
       ['Projeto', projetoNome],
       ['Quem pediu', email ? `${solicitante} (${email})` : solicitante],
+      ...(nomeDoTipo ? [['Tipo', nomeDoTipo] as [string, string]] : []),
       ['Urgência', urgencia],
       ['Chamado', `nº ${numeroNoProjeto} do painel`],
       ['Tarefa', `#${tarefaId} - ${titulo}`],
@@ -710,7 +744,11 @@ async function ajustarChamado(req: VercelRequest, res: VercelResponse, db: Clien
     descricao: texto(corpo.descricao, 6000),
     solicitante: texto(corpo.solicitante, 80),
     urgencia: texto(corpo.urgencia, 20),
+    tipo: texto(corpo.tipo, 20),
   };
+  if (pedido.tipo && !TIPOS.includes(pedido.tipo)) {
+    return res.status(400).json({ error: 'Escolha se é um bug ou uma melhoria.' });
+  }
   if (pedido.titulo.length < 3) return res.status(400).json({ error: 'Dê um título ao chamado.' });
   if (pedido.descricao.length < 5) return res.status(400).json({ error: 'Descreva o que está acontecendo.' });
   if (pedido.solicitante.length < 2) return res.status(400).json({ error: 'Diga quem está pedindo.' });
@@ -720,7 +758,8 @@ async function ajustarChamado(req: VercelRequest, res: VercelResponse, db: Clien
 
   // O chamado deste projeto, e a tarefa dele só se ainda for deste projeto.
   const achado = await db.execute({
-    sql: `SELECT ch.id, ch.titulo, ch.descricao, ch.solicitante, ch.urgencia, t.id AS tarefa_id, t.status AS etapa
+    sql: `SELECT ch.id, ch.titulo, ch.descricao, ch.solicitante, ch.urgencia, ch.tipo,
+                 t.id AS tarefa_id, t.status AS etapa
           FROM chamados_cliente ch
           LEFT JOIN projeto_tarefas t ON ${TAREFA_DO_PROJETO}
           WHERE ch.projeto_id = ? AND ch.numero = ?`,
@@ -740,21 +779,26 @@ async function ajustarChamado(req: VercelRequest, res: VercelResponse, db: Clien
   await garantirAjustes(db);
   const chamadoId = Number(ch.id);
   const anteriores = await db.execute({
-    sql: `SELECT titulo, descricao, solicitante, urgencia FROM chamado_cliente_ajustes
+    sql: `SELECT titulo, descricao, solicitante, urgencia, tipo FROM chamado_cliente_ajustes
           WHERE chamado_id = ? ORDER BY seq`,
     args: [chamadoId],
   });
   const vigente = {} as Record<CampoAjustavel, string>;
   for (const k of CAMPOS_AJUSTAVEIS) vigente[k] = String(ch[k] ?? '');
-  for (const a of anteriores.rows) for (const k of CAMPOS_AJUSTAVEIS) if (a[k] != null) vigente[k] = String(a[k]);
+  for (const a of anteriores.rows) {
+    for (const k of CAMPOS_AJUSTAVEIS) if (a[k] != null && a[k] !== '') vigente[k] = String(a[k]);
+  }
 
-  const mudou = CAMPOS_AJUSTAVEIS.filter(k => pedido[k] !== vigente[k]);
+  // Tipo em branco não é pedido de mudança: é o chamado antigo, gravado antes
+  // de o tipo existir, que segue sem um.
+  const mudou = CAMPOS_AJUSTAVEIS.filter(k => pedido[k] !== vigente[k] && !(k === 'tipo' && !pedido.tipo));
   if (mudou.length === 0) return res.status(400).json({ error: 'Nada mudou em relação ao que está no chamado.' });
 
   const agora = new Date().toISOString();
   const ajuste = await db.execute({
-    sql: `INSERT INTO chamado_cliente_ajustes (chamado_id, seq, titulo, descricao, solicitante, urgencia, autor, criado_em)
-          SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?, ?, ?
+    sql: `INSERT INTO chamado_cliente_ajustes (chamado_id, seq, titulo, descricao, solicitante, urgencia, tipo,
+                                             autor, criado_em)
+          SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?, ?, ?, ?
           FROM chamado_cliente_ajustes WHERE chamado_id = ?
           RETURNING seq`,
     args: [chamadoId,
@@ -766,10 +810,12 @@ async function ajustarChamado(req: VercelRequest, res: VercelResponse, db: Clien
   // O que mudou, em linhas curtas: de onde para onde nos campos curtos, e a
   // descrição nova inteira, porque a antiga já está na tarefa.
   const NOME: Record<CampoAjustavel, string> = {
-    titulo: 'Título', descricao: 'Descrição', solicitante: 'Quem pede', urgencia: 'Urgência',
+    titulo: 'Título', descricao: 'Descrição', solicitante: 'Quem pede', urgencia: 'Urgência', tipo: 'Tipo',
   };
+  // O tipo sai pelo nome (Bug, Melhoria), e não pelo valor guardado.
+  const legivel = (k: CampoAjustavel, v: string) => (k === 'tipo' ? (NOME_DO_TIPO[v] ?? 'sem tipo') : v);
   const linhas = mudou.filter(k => k !== 'descricao')
-    .map(k => `- **${NOME[k]}:** ${vigente[k]} → ${pedido[k]}`);
+    .map(k => `- **${NOME[k]}:** ${legivel(k, vigente[k])} → ${legivel(k, pedido[k])}`);
   const textoDaTarefa = `Chamado nº ${numero} ajustado pelo cliente (${autorNome}):`
     + (linhas.length ? `\n\n${linhas.join('\n')}` : '')
     + (mudou.includes('descricao') ? `\n\n**Descrição corrigida:**\n${pedido.descricao}` : '');

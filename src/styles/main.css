@@ -25388,7 +25388,7 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
 .chm-barra .campo-busca { flex: 1 1 240px; max-width: 420px; }
 .chm-filtros { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
 .chm-tabela-caixa { overflow-x: auto; padding: 0 16px 10px; }
-.chm-tabela { min-width: 880px; }
+.chm-tabela { min-width: 960px; }
 /* Fora do modal o cabeçalho não gruda: a página inteira é que rola. */
 .chm-tabela th { position: static; background: transparent; }
 .chm-numero {

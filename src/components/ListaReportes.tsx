@@ -13,8 +13,8 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  IconAlert, IconBug, IconCheck, IconChevronDown, IconChevronRight,
-  IconDoc, IconEdit, IconImage, IconImagemSem, IconSparkles, IconSpinner, IconTrash, IconUndo, IconX,
+  IconAlert, IconCheck, IconChevronDown, IconChevronRight,
+  IconDoc, IconEdit, IconImage, IconImagemSem, IconSpinner, IconTrash, IconUndo, IconX,
 } from './icons';
 import { Dialogo } from './Dialogo';
 import { PreviaArquivo } from './PreviaArquivo';
@@ -31,6 +31,7 @@ import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import { useToast } from '../lib/toast';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { ancorar } from '../lib/ancorar';
+import { ROTULO_DO_TIPO, TIPOS_DO_RELATO } from '../lib/tiposDoRelato';
 
 /**
  * Andamento do relato. Quatro estados e nada de "reaberto": se voltou, volta
@@ -56,20 +57,11 @@ const ROTULO_STATUS: Record<string, { label: string; cor: string }> =
  *  filtro de status. */
 const foraDaFila = (status?: string) => status === 'resolvido' || status === 'descartado';
 
-/**
- * O que o chamado e. Sao dois, e de proposito: a pergunta que a fila responde e
- * uma so - isto esta quebrado? -, e uma terceira gaveta viraria o deposito de
- * quem nao quis escolher.
- *
- * Vermelho para o defeito e verde para o pedido, porque e a mesma leitura de
- * toda a casa: vermelho e o que esta errado agora, verde e o que se ganha.
- */
-export const TIPOS_DO_RELATO = [
-  { valor: 'bug', label: 'Bug', cor: 'var(--red)', Icone: IconBug },
-  { valor: 'melhoria', label: 'Melhoria', cor: 'var(--green-light)', Icone: IconSparkles },
-];
-const ROTULO_TIPO: Record<string, { label: string; cor: string; Icone: (p: { size?: number }) => JSX.Element }> =
-  Object.fromEntries(TIPOS_DO_RELATO.map(t => [t.valor, t]));
+/** O que o chamado é - bug ou melhoria. A lista mora em `lib/tiposDoRelato`,
+ *  que o painel do cliente também lê; daqui ela segue exportada para quem já
+ *  a importava desta fila. */
+export { TIPOS_DO_RELATO };
+const ROTULO_TIPO = ROTULO_DO_TIPO;
 
 /** Uma nota do chamado: o recado que acompanhou uma mudanca de andamento. */
 export interface NotaDoRelato {

@@ -18,28 +18,36 @@ import { TextoRico } from '../components/TextoRico';
 import { PreviaArquivo } from '../components/PreviaArquivo';
 import { instante } from '../lib/datas';
 import { ICONE_PRIORIDADE } from '../lib/prioridades';
+import { ROTULO_DO_TIPO } from '../lib/tiposDoRelato';
 
 interface AnexoDoChamado { id: number; nome: string; tipo: string; tamanho: number }
 interface Reabertura {
   seq: number; autor: string; texto: string; links: string[]; criado_em: string; anexos: AnexoDoChamado[];
 }
-type CampoAjustavel = 'titulo' | 'descricao' | 'solicitante' | 'urgencia';
-const CAMPOS: CampoAjustavel[] = ['titulo', 'solicitante', 'urgencia', 'descricao'];
+type CampoAjustavel = 'titulo' | 'descricao' | 'solicitante' | 'urgencia' | 'tipo';
+const CAMPOS: CampoAjustavel[] = ['titulo', 'tipo', 'solicitante', 'urgencia', 'descricao'];
 const NOME_DO_CAMPO: Record<CampoAjustavel, string> = {
-  titulo: 'Título', descricao: 'Descrição', solicitante: 'Quem pede', urgencia: 'Urgência',
+  titulo: 'Título', descricao: 'Descrição', solicitante: 'Quem pede', urgencia: 'Urgência', tipo: 'Tipo',
 };
 /** Uma correção do cliente: nulo é o campo que ficou como estava. */
 interface Ajuste extends Record<CampoAjustavel, string | null> { seq: number; autor: string; criado_em: string }
 interface Chamado {
   numero: number; titulo: string; solicitante: string; email: string | null; urgencia: string;
+  /** 'bug' ou 'melhoria', o que o cliente marcou. Nulo no chamado antigo. */
+  tipo?: string | null;
   links: string[]; criado_em: string; reaberturas: Reabertura[]; ajustes?: Ajuste[];
 }
+
+/** O tipo pelo nome, e não pelo valor guardado. */
+const nomeDoTipo = (v: string) => ROTULO_DO_TIPO[v]?.label ?? 'Sem tipo';
 
 /** Cada correção com o que valia antes dela, para o "de → para". A descrição
  *  original não vem: a da tarefa já a traz, e a correção mostra a nova
  *  inteira. Sai da mais nova para a mais antiga, como as reaberturas. */
 function passosDosAjustes(c: Chamado) {
-  let v: Record<CampoAjustavel, string> = { titulo: c.titulo, descricao: '', solicitante: c.solicitante, urgencia: c.urgencia };
+  let v: Record<CampoAjustavel, string> = {
+    titulo: c.titulo, descricao: '', solicitante: c.solicitante, urgencia: c.urgencia, tipo: c.tipo ?? '',
+  };
   const passos = (c.ajustes ?? []).map(a => {
     const de = v;
     v = { ...v };
@@ -90,6 +98,7 @@ export function ChamadoDaTarefa({ tarefaId, api }: {
 
   if (!chamado) return null;
   const Urgencia = ICONE_PRIORIDADE[chamado.urgencia];
+  const Tipo = chamado.tipo ? ROTULO_DO_TIPO[chamado.tipo] : undefined;
   const carregar = async (a: AnexoDoChamado) => {
     const r = await api(`?action=chamado_anexo_base64&id=${a.id}&tarefa=${tarefaId}`);
     return r && !r.error ? { tipo: String(r.tipo), base64: String(r.base64) } : null;
@@ -110,6 +119,11 @@ export function ChamadoDaTarefa({ tarefaId, api }: {
         {chamado.email && <> (<a href={`mailto:${chamado.email}`}>{chamado.email}</a>)</>}
         {' | '}{instante(chamado.criado_em)}
         {' | '}<span className="chamado-tarefa-urgencia">{Urgencia && <Urgencia size={12} />} {chamado.urgencia}</span>
+        {Tipo && (
+          <>{' | '}<span className="chamado-tarefa-urgencia">
+            <span style={{ display: 'inline-flex', color: Tipo.cor }}><Tipo.Icone size={12} /></span> {Tipo.label}
+          </span></>
+        )}
       </p>
       <Links links={chamado.links} />
 
@@ -135,9 +149,9 @@ export function ChamadoDaTarefa({ tarefaId, api }: {
                         <TextoRico texto={a.descricao!} className="chamado-tarefa-texto" />
                       ) : (
                         <>
-                          <span className="chm-ajuste-de">{de[k]}</span>
+                          <span className="chm-ajuste-de">{k === 'tipo' ? nomeDoTipo(de[k]) : de[k]}</span>
                           <span className="chm-ajuste-seta" aria-label="para"><IconArrowRight size={11} /></span>
-                          <span className="chm-ajuste-para">{a[k]}</span>
+                          <span className="chm-ajuste-para">{k === 'tipo' ? nomeDoTipo(a[k]!) : a[k]}</span>
                         </>
                       )}
                     </dd>

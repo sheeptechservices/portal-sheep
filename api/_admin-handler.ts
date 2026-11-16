@@ -5582,7 +5582,7 @@ async function despacharAdminData(
       const barrado = await guardaDaEquipe(db, usuario, id, 'tarefa');
       if (barrado) return barrado;
       const ch = await db.execute({
-        sql: `SELECT id, numero, titulo, solicitante, email, urgencia, links, criado_em
+        sql: `SELECT id, numero, titulo, solicitante, email, urgencia, tipo, links, criado_em
               FROM chamados_cliente WHERE tarefa_id = ? ORDER BY id DESC LIMIT 1`,
         args: [id],
       });
@@ -5602,7 +5602,7 @@ async function despacharAdminData(
         // As correções do cliente, da mais antiga para a mais nova: a ficha
         // calcula o "de" de cada uma somando as anteriores ao original.
         db.execute({
-          sql: `SELECT seq, titulo, descricao, solicitante, urgencia, autor, criado_em
+          sql: `SELECT seq, titulo, descricao, solicitante, urgencia, tipo, autor, criado_em
                 FROM chamado_cliente_ajustes WHERE chamado_id = ? ORDER BY seq`,
           args: [c.id],
         }).catch(() => ({ rows: [] as Record<string, unknown>[] })),
@@ -5619,6 +5619,7 @@ async function despacharAdminData(
             solicitante: String(c.solicitante),
             email: c.email != null ? String(c.email) : null,
             urgencia: String(c.urgencia),
+            tipo: c.tipo != null ? String(c.tipo) : null,
             links: links(c.links),
             criado_em: String(c.criado_em),
             reaberturas: eventos.rows.map(e => ({
@@ -5639,6 +5640,7 @@ async function despacharAdminData(
               descricao: a.descricao != null ? String(a.descricao) : null,
               solicitante: a.solicitante != null ? String(a.solicitante) : null,
               urgencia: a.urgencia != null ? String(a.urgencia) : null,
+              tipo: a.tipo != null && a.tipo !== '' ? String(a.tipo) : null,
             })),
           },
         },

@@ -32,6 +32,7 @@ import { ThOrdem, type OrdemDaTabela } from '../components/ThOrdem';
 import { ICONE_PRIORIDADE, PRIORIDADES, posicaoDaPrioridade } from '../lib/prioridades';
 import { dia, instante, tempoRelativo, tamanho as fmtTamanho } from '../lib/datas';
 import { contemTermo } from '../lib/texto';
+import { DESCRICAO_DO_TIPO, ROTULO_DO_TIPO, TIPOS_DO_RELATO } from '../lib/tiposDoRelato';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { iniciarOndas } from '../lib/ondas';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
@@ -50,8 +51,8 @@ interface Anexo {
 interface Reabertura { em: string; seq: number | null; autor: string; texto: string; links: string[] }
 
 /** Os campos que o cliente pode corrigir depois de enviar. */
-type CampoAjustavel = 'titulo' | 'descricao' | 'solicitante' | 'urgencia';
-const CAMPOS_AJUSTAVEIS: CampoAjustavel[] = ['titulo', 'descricao', 'solicitante', 'urgencia'];
+type CampoAjustavel = 'titulo' | 'descricao' | 'solicitante' | 'urgencia' | 'tipo';
+const CAMPOS_AJUSTAVEIS: CampoAjustavel[] = ['titulo', 'descricao', 'solicitante', 'urgencia', 'tipo'];
 type Versao = Record<CampoAjustavel, string>;
 
 /** Uma correção do chamado, só com o que mudou nela. `seq` nulo é a que ainda
@@ -68,6 +69,8 @@ interface Chamado {
   descricao: string;
   solicitante: string;
   urgencia: string;
+  /** 'bug' ou 'melhoria'. Nulo no chamado gravado antes de o tipo existir. */
+  tipo: string | null;
   criado_em: string;
   status: string;
   /** A previsão de entrega: o prazo da tarefa do time, só o dia. Nula enquanto
@@ -89,22 +92,30 @@ interface Chamado {
   ajustando?: boolean;
 }
 
+/** O envio como foi feito. O tipo vazio é o do chamado antigo, sem um. */
+function versaoOriginal(c: Chamado): Versao {
+  return { titulo: c.titulo, descricao: c.descricao, solicitante: c.solicitante, urgencia: c.urgencia, tipo: c.tipo ?? '' };
+}
+
 /** A versão que vale agora: o envio original com as correções por cima, na
  *  ordem em que vieram. */
 function versaoEmVigor(c: Chamado): Versao {
-  const v: Versao = { titulo: c.titulo, descricao: c.descricao, solicitante: c.solicitante, urgencia: c.urgencia };
+  const v = versaoOriginal(c);
   for (const a of c.ajustes ?? []) for (const k of CAMPOS_AJUSTAVEIS) if (a.mudou[k] != null) v[k] = a.mudou[k]!;
   return v;
 }
 
-/** O chamado como a tabela mostra: título, quem pediu e urgência já na versão
- *  em vigor, que é o que filtra e ordena. A descrição fica a original, porque
- *  o detalhe a mostra como foi enviada e as correções embaixo dela. */
+/** O chamado como a tabela mostra: título, tipo, quem pediu e urgência já na
+ *  versão em vigor, que é o que filtra e ordena. A descrição fica a original,
+ *  porque o detalhe a mostra como foi enviada e as correções embaixo dela. */
 interface ChamadoNaTela extends Chamado { original: Versao; descricaoEmVigor: string }
 function naTela(c: Chamado): ChamadoNaTela {
-  const original: Versao = { titulo: c.titulo, descricao: c.descricao, solicitante: c.solicitante, urgencia: c.urgencia };
+  const original = versaoOriginal(c);
   const v = versaoEmVigor(c);
-  return { ...c, titulo: v.titulo, solicitante: v.solicitante, urgencia: v.urgencia, original, descricaoEmVigor: v.descricao };
+  return {
+    ...c, titulo: v.titulo, solicitante: v.solicitante, urgencia: v.urgencia, tipo: v.tipo || null,
+    original, descricaoEmVigor: v.descricao,
+  };
 }
 
 interface Dados {
@@ -117,7 +128,7 @@ interface Dados {
 type Recorte = 'abertos' | Grupo;
 
 /** As colunas que ordenam. */
-type Coluna = 'numero' | 'titulo' | 'urgencia' | 'anexos' | 'status' | 'previsao' | 'solicitante' | 'aberto';
+type Coluna = 'numero' | 'titulo' | 'tipo' | 'urgencia' | 'anexos' | 'status' | 'previsao' | 'solicitante' | 'aberto';
 /** A fila abre do mais novo para o mais velho: é a pergunta de quem volta ao
  *  painel - o que eu pedi por último e como ele está. */
 const ORDEM_PADRAO: OrdemDaTabela<Coluna> = { col: 'aberto', dir: 'desc' };
@@ -174,7 +185,8 @@ interface Rascunho {
   descricao: string;
   urgencia: string;
   solicitante: string;
-  email: string;
+  /** 'bug' ou 'melhoria'. Vazio até a pessoa escolher, e sem ele não se envia. */
+  tipo: string;
   links: string[];
   anexos: Anexo[];
 }
@@ -193,7 +205,7 @@ const MAX_LINKS = 5;
 const rascunhoVazio = (token: string): Rascunho => {
   const ultimo = lerNomes(token)[0];
   return {
-    titulo: '', descricao: '', urgencia: 'Média', solicitante: ultimo?.nome ?? '', email: ultimo?.email ?? '',
+    titulo: '', descricao: '', urgencia: 'Média', solicitante: ultimo?.nome ?? '', tipo: '',
     links: [], anexos: [],
   };
 };
@@ -305,6 +317,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
     const chave: Record<Coluna, (c: Chamado) => string | number> = {
       numero: c => c.numero ?? Number.MAX_SAFE_INTEGER,
       titulo: c => c.titulo.toLocaleLowerCase('pt-BR'),
+      tipo: c => ROTULO_DO_TIPO[c.tipo ?? '']?.label ?? '~',
       urgencia: c => posicaoDaPrioridade(c.urgencia),
       anexos: c => c.anexos.length,
       status: c => posEtapa(c.status),
@@ -365,12 +378,13 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
   //  Recusado pelo servidor, a linha sai e o formulário volta com o rascunho e
   //  o motivo.
   async function enviar(r: Rascunho) {
-    setLembrados(lembrarNome(token, r.solicitante, r.email));
+    setLembrados(lembrarNome(token, r.solicitante));
     const entrada = dados?.etapas.find(e => e.grupo === 'triagem');
     const temporario = -Date.now();
     const linha: Chamado = {
       id: temporario, numero: null, titulo: r.titulo.trim(), descricao: r.descricao.trim(),
-      solicitante: r.solicitante.trim(), urgencia: r.urgencia, criado_em: new Date().toISOString(),
+      solicitante: r.solicitante.trim(), urgencia: r.urgencia, tipo: r.tipo || null,
+      criado_em: new Date().toISOString(),
       status: entrada?.nome ?? 'Triagem', cor: entrada?.cor ?? '#8D939B', grupo: 'triagem',
       links: r.links, anexos: r.anexos, enviando: true,
       reaberturas: [],
@@ -385,7 +399,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           titulo: linha.titulo, descricao: linha.descricao, urgencia: linha.urgencia,
-          solicitante: linha.solicitante, email: r.email.trim(), links: r.links,
+          solicitante: linha.solicitante, tipo: r.tipo, links: r.links,
           anexos: r.anexos.map(a => ({ nome: a.nome, tipo: a.tipo, base64: a.base64 })),
         }),
       });
@@ -497,7 +511,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           titulo: r.titulo.trim(), descricao: r.descricao.trim(), solicitante: r.solicitante.trim(),
-          urgencia: r.urgencia, autor: r.autor.trim(),
+          urgencia: r.urgencia, tipo: r.tipo, autor: r.autor.trim(),
         }),
       });
       const d = await resp.json().catch(() => null);
@@ -611,6 +625,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
                   <tr>
                     <ThOrdem col="numero" ordem={ordem} onOrdenar={ordenarPor}>Nº</ThOrdem>
                     <ThOrdem col="titulo" ordem={ordem} onOrdenar={ordenarPor}>Chamado</ThOrdem>
+                    <ThOrdem col="tipo" ordem={ordem} onOrdenar={ordenarPor}>Tipo</ThOrdem>
                     <ThOrdem col="urgencia" ordem={ordem} onOrdenar={ordenarPor}>Urgência</ThOrdem>
                     <ThOrdem col="anexos" ordem={ordem} onOrdenar={ordenarPor}>Anexos</ThOrdem>
                     <ThOrdem col="status" ordem={ordem} onOrdenar={ordenarPor}>Status</ThOrdem>
@@ -665,6 +680,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
                               )}
                             </div>
                           </td>
+                          <td><ChipDoTipo tipo={c.tipo} /></td>
                           <td>
                             <span className="reportes-urgencia">{Icone && <Icone size={13} />} {c.urgencia}</span>
                           </td>
@@ -703,7 +719,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
                         {/* O detalhe nasce montado com a linha, e assim fica: é
                             dele que a abertura tira a altura de destino. */}
                         <tr className={`reportes-detalhe${encerrado ? ' resolvida' : ''}`}>
-                          <td colSpan={8}>
+                          <td colSpan={9}>
                             <div className={`revelar${abertaAqui ? ' aberto' : ''}`}>
                               <div>
                                 <div className="reportes-detalhe-corpo chm-detalhe">
@@ -960,6 +976,33 @@ function ChipsDeAnexos({ chamado, anexos, onVer }: {
   );
 }
 
+/** O seletor do tipo, o mesmo do cartão de reportar de dentro: Bug ou
+ *  Melhoria, cada um com a linha que ajuda a escolher e o ícone na cor dele. */
+function SeletorDeTipo({ valor, onMudar }: { valor: string; onMudar: (v: string) => void }) {
+  return (
+    <SelectSistema valor={valor} onChange={onMudar} placeholder="Escolher"
+      opcoes={TIPOS_DO_RELATO.map(t => ({
+        valor: t.valor,
+        label: t.label,
+        descricao: DESCRICAO_DO_TIPO[t.valor],
+        icone: <span style={{ display: 'inline-flex', color: t.cor }}><t.Icone size={14} /></span>,
+      }))} />
+  );
+}
+
+/** O tipo na linha: a pílula da fila de dentro, na cor do tipo. O chamado
+ *  antigo, sem tipo, mostra só um traço. */
+function ChipDoTipo({ tipo }: { tipo: string | null }) {
+  const t = tipo ? ROTULO_DO_TIPO[tipo] : undefined;
+  if (!t) return <span className="chm-previsao-vazia">-</span>;
+  return (
+    <span className="reportes-status" style={{ ['--cor' as string]: t.cor }}>
+      <t.Icone size={12} />
+      {t.label}
+    </span>
+  );
+}
+
 /** Cada correção com o que valia antes dela: o envio original somado às
  *  correções anteriores. É o "de" do "de → para". */
 function passosDosAjustes(c: ChamadoNaTela): { ajuste: Ajuste; de: Versao }[] {
@@ -973,7 +1016,7 @@ function passosDosAjustes(c: ChamadoNaTela): { ajuste: Ajuste; de: Versao }[] {
 }
 
 const NOME_DO_CAMPO: Record<CampoAjustavel, string> = {
-  titulo: 'Título', descricao: 'Descrição', solicitante: 'Quem pede', urgencia: 'Urgência',
+  titulo: 'Título', descricao: 'Descrição', solicitante: 'Quem pede', urgencia: 'Urgência', tipo: 'Tipo',
 };
 
 /** Uma correção: quem corrigiu, quando, e só os campos que mudaram. Os curtos
@@ -982,10 +1025,14 @@ const NOME_DO_CAMPO: Record<CampoAjustavel, string> = {
 function PassoDoAjuste({ ajuste, de }: { ajuste: Ajuste; de: Versao }) {
   // Os curtos primeiro, a descrição por último: no meio, o texto longo
   // separaria as linhas de "de → para" umas das outras.
-  const campos = (['titulo', 'solicitante', 'urgencia', 'descricao'] as CampoAjustavel[])
+  const campos = (['titulo', 'tipo', 'solicitante', 'urgencia', 'descricao'] as CampoAjustavel[])
     .filter(k => ajuste.mudou[k] != null);
   const enviando = ajuste.seq == null;
   const comIcone = (k: CampoAjustavel, valor: string) => {
+    if (k === 'tipo') {
+      const t = ROTULO_DO_TIPO[valor];
+      return t ? <><span style={{ display: 'inline-flex', color: t.cor }}><t.Icone size={12} /></span>{t.label}</> : 'Sem tipo';
+    }
     const Icone = k === 'urgencia' ? ICONE_PRIORIDADE[valor] : undefined;
     return <>{Icone && <Icone size={12} />}{valor}</>;
   };
@@ -1281,10 +1328,7 @@ function CampoDeNome({ valor, nomes, onMudar, onEscolher }: {
               // lista que já começou a fechar.
               onMouseDown={e => e.preventDefault()}
               onClick={() => escolher(n)}>
-              <span style={{ minWidth: 0 }}>
-                {n.nome}
-                {n.email && <span className="select-opcao-descricao">{n.email}</span>}
-              </span>
+              <span style={{ minWidth: 0 }}>{n.nome}</span>
             </div>
           ))}
         </div>,
@@ -1307,7 +1351,8 @@ function FormularioDoChamado({ rascunho, erro, nomes, onMudar, onFechar, onEnvia
   const [erroCampo, setErroCampo] = useState<string | null>(null);
   const r = rascunho;
   const mudar = (parte: Partial<Rascunho>) => onMudar({ ...r, ...parte });
-  const pronto = r.titulo.trim().length >= 3 && r.descricao.trim().length >= 5 && r.solicitante.trim().length >= 2;
+  const pronto = r.titulo.trim().length >= 3 && r.descricao.trim().length >= 5
+    && r.solicitante.trim().length >= 2 && !!r.tipo;
 
   return (
     <Janela rotulo="NOVO CHAMADO" titulo="" sub="Conte o que precisa. O time recebe na hora."
@@ -1337,18 +1382,15 @@ function FormularioDoChamado({ rascunho, erro, nomes, onMudar, onFechar, onEnvia
       <div className="chm-form-dupla">
         <label className="form-group">
           <span className="form-label">Quem está pedindo</span>
-          {/* Escolher um nome da lista traz o e-mail guardado junto com ele, e
-              apaga o que estava ali quando ele não tem um: trocar de pessoa e
-              manter o e-mail da anterior mandaria o retorno para a errada. */}
           <CampoDeNome valor={r.solicitante} nomes={nomes}
-            onMudar={v => mudar({ solicitante: v })}
-            onEscolher={n => mudar({ solicitante: n.nome, email: n.email })} />
+            onMudar={v => mudar({ solicitante: v })} onEscolher={n => mudar({ solicitante: n.nome })} />
         </label>
-        <label className="form-group">
-          <span className="form-label">E-mail <em className="chm-opcional">(opcional, para retorno)</em></span>
-          <input className="form-input" type="email" value={r.email} maxLength={120} placeholder="voce@empresa.com"
-            onChange={e => mudar({ email: e.target.value })} />
-        </label>
+        {/* O tipo no lugar do e-mail: é a pergunta que separa a fila do time
+            em duas leituras, o que quebrou e o que falta. */}
+        <div className="form-group">
+          <span className="form-label">Tipo</span>
+          <SeletorDeTipo valor={r.tipo} onMudar={tipo => mudar({ tipo })} />
+        </div>
       </div>
 
       <div className="form-group chm-form-urgencia">
@@ -1462,11 +1504,10 @@ function FormularioDeAjuste({ chamado, rascunho, erro, nomes, onMudar, onFechar,
       </div>
 
       <div className="chm-form-dupla">
-        <label className="form-group">
-          <span className="form-label">Quem está pedindo</span>
-          <CampoDeNome valor={r.solicitante} nomes={nomes}
-            onMudar={v => mudar({ solicitante: v })} onEscolher={n => mudar({ solicitante: n.nome })} />
-        </label>
+        <div className="form-group">
+          <span className="form-label">Tipo</span>
+          <SeletorDeTipo valor={r.tipo} onMudar={tipo => mudar({ tipo })} />
+        </div>
         <div className="form-group">
           <span className="form-label">Urgência</span>
           <SelectSistema valor={r.urgencia} onChange={v => mudar({ urgencia: v })}
@@ -1475,11 +1516,18 @@ function FormularioDeAjuste({ chamado, rascunho, erro, nomes, onMudar, onFechar,
         </div>
       </div>
 
-      <label className="form-group">
-        <span className="form-label">Quem está ajustando</span>
-        <CampoDeNome valor={r.autor} nomes={nomes}
-          onMudar={v => mudar({ autor: v })} onEscolher={n => mudar({ autor: n.nome })} />
-      </label>
+      <div className="chm-form-dupla">
+        <label className="form-group">
+          <span className="form-label">Quem está pedindo</span>
+          <CampoDeNome valor={r.solicitante} nomes={nomes}
+            onMudar={v => mudar({ solicitante: v })} onEscolher={n => mudar({ solicitante: n.nome })} />
+        </label>
+        <label className="form-group">
+          <span className="form-label">Quem está ajustando</span>
+          <CampoDeNome valor={r.autor} nomes={nomes}
+            onMudar={v => mudar({ autor: v })} onEscolher={n => mudar({ autor: n.nome })} />
+        </label>
+      </div>
 
       {erro && <p className="pub-pedido-erro surge"><IconX size={11} /> {erro}</p>}
     </Janela>

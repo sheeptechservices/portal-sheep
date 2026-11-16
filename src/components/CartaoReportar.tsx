@@ -23,6 +23,9 @@ import {
   IconUpload, IconX,
 } from './icons';
 import { ListaReportes, TIPOS_DO_RELATO, type ReporteNaLista } from './ListaReportes';
+// A régua do tipo, na mesma ideia da régua da urgência: sem ela, a escolha
+// vira gosto, e a mesma queixa chega classificada de um jeito por pessoa.
+import { DESCRICAO_DO_TIPO } from '../lib/tiposDoRelato';
 import { SelectSistema } from './SelectSistema';
 import { ICONE_PRIORIDADE, PRIORIDADES } from '../lib/prioridades';
 import { iniciarOndas } from '../lib/ondas';
@@ -105,12 +108,6 @@ const ESTILO_DO_GATILHO: CSSProperties = {
   color: 'var(--reportar-tinta)',
 };
 
-/** A régua do tipo, na mesma ideia da régua da urgência: sem ela, a escolha
- *  vira gosto, e a mesma queixa chega classificada de um jeito por pessoa. */
-const DESCRICAO_DO_TIPO: Record<string, string> = {
-  bug: 'Existe e parou de funcionar, ou funciona errado',
-  melhoria: 'Não existe ainda, ou existe e podia ser melhor',
-};
 
 export function CartaoReportar({
   pagina, enviar, listar, carregarPrint, mudarStatus, mudarTipo, editar, excluir,
