@@ -25467,9 +25467,10 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   color: var(--gray);
 }
 .chm-quem { white-space: nowrap; }
-/* A previsão de entrega: data em algarismos alinhados, e o "A definir" um tom
-   abaixo, para não competir com as datas de verdade. */
-.chm-previsao { white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* A previsão de entrega: a mesma letra do "Aberto em" e do solicitante ao
+   lado (os algarismos tabulares desenhavam a data mais larga que a vizinha),
+   e o "A definir" um tom abaixo, para não competir com as datas de verdade. */
+.chm-previsao { white-space: nowrap; }
 .chm-previsao-vazia { color: var(--gray2); font-size: 12px; }
 /* A linha que ainda vai para o servidor: já está na fila, um tom abaixo. */
 .chm-enviando > td { color: var(--gray2); }
