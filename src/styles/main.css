@@ -24909,9 +24909,16 @@ input:is(.form-checkbox, .perm-check) {
   transition: background var(--transition), border-color var(--transition), box-shadow var(--transition),
     transform var(--transition-spring);
 }
-input:is(.form-checkbox, .perm-check):hover:not(:disabled) {
+/* O hover da caixa vazia realça o fundo e a borda. Só da vazia: o `background`
+   abreviado zera também a cor e a imagem, e na caixa marcada ele apagava o
+   amarelo e o visto - passar o mouse num passo feito o fazia parecer
+   desmarcado. A marcada tem o hover dela logo abaixo, que só acende o tom. */
+input:is(.form-checkbox, .perm-check):hover:not(:disabled):not(:checked):not(:indeterminate) {
   border-color: var(--caixa-borda-forte) !important;
   background: var(--caixa-fundo-hover) !important;
+}
+input:is(.form-checkbox, .perm-check):is(:checked, :indeterminate):hover:not(:disabled) {
+  filter: brightness(1.08);
 }
 input:is(.form-checkbox, .perm-check):checked,
 input:is(.form-checkbox, .perm-check):indeterminate {
