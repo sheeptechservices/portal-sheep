@@ -12,6 +12,7 @@
 //  nada aqui dentro sabe se está falando de uma tarefa ou de uma oportunidade.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   IconAlert, IconChevronRight, IconClip, IconDownload, IconEdit, IconEye, IconJoinha, IconSpinner, IconTrash, IconX,
 } from './icons';
@@ -219,6 +220,9 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
    *  nascia atrás da borda dele. */
   const [busca, setBusca] = useState<{
     tipo: 'pessoa' | 'etapa'; termo: string; paraCima: boolean; altura: number;
+    /** Onde a lista nasce na tela: ela mora num portal no `body`, fixa, para
+     *  nenhum `overflow` de quem abriga a caixa a recortar. */
+    esquerda: number; largura: number; topo: number; base: number;
     /** Onde o `@` está: o pedaço de texto da caixa e a posição dentro dele. */
     no: Text; inicio: number;
   } | null>(null);
@@ -263,6 +267,10 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
       inicio: cursor - achado[2].length - 1,
       paraCima,
       altura: Math.max(120, Math.min(220, (paraCima ? acima : abaixo) - 8)),
+      esquerda: r?.left ?? 0,
+      largura: r?.width ?? 280,
+      topo: (r?.bottom ?? 0) + 4,
+      base: window.innerHeight - (r?.top ?? 0) + 4,
     });
   }
 
@@ -277,6 +285,18 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
   // A cada letra digitada a lista muda, e o destaque volta para o primeiro: o
   // item que estava destacado pode nem estar mais nela.
   useEffect(() => { setRealce(0); }, [busca?.termo, busca?.tipo]);
+  // A lista é fixa na tela: rolar o que está por baixo a descolaria do campo,
+  // e ela fecha. Rolar a própria lista não conta.
+  const aberta = !!busca;
+  useEffect(() => {
+    if (!aberta) return;
+    const aoRolar = (e: Event) => {
+      if (listaMencoes.current && e.target instanceof Node && listaMencoes.current.contains(e.target)) return;
+      setBusca(null);
+    };
+    window.addEventListener('scroll', aoRolar, true);
+    return () => window.removeEventListener('scroll', aoRolar, true);
+  }, [aberta]);
   // O destacado fica sempre à vista, mesmo quando a lista rola.
   useEffect(() => {
     listaMencoes.current?.querySelector('[data-realce="sim"]')?.scrollIntoView({ block: 'nearest' });
@@ -436,8 +456,12 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
           }}
         />
         {busca && (candidatos.length > 0 || candidatasEtapas.length > 0) && (
+          createPortal(
           <ul ref={listaMencoes} className={`ativ-mencoes${busca.paraCima ? ' para-cima' : ''}`}
-            style={{ maxHeight: busca.altura }} role="listbox">
+            style={{
+              maxHeight: busca.altura, left: busca.esquerda, width: busca.largura,
+              ...(busca.paraCima ? { bottom: busca.base } : { top: busca.topo }),
+            }} role="listbox">
             {candidatos.map((p, i) => (
               <li key={p.id} role="option" aria-selected={i === realce}>
                 <button type="button" tabIndex={-1}
@@ -464,7 +488,8 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
                 </button>
               </li>
             ))}
-          </ul>
+          </ul>,
+          document.body)
         )}
       </div>
 
