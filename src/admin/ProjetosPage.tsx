@@ -3407,7 +3407,6 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
 }) {
   const gestor = p.equipe.find(m => m.papel === 'Gestor');
   const ehGeral = p.id === PROJETO_GERAL;
-  const secaoObjetivos = useSecaoRecolhivel('planning-objetivos');
 
   return (
     <div className="pl-folha troca" key={`${p.id}|${iso10(semana)}`}>
@@ -3466,17 +3465,16 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
           precisa entregar, e só então decide que tarefa entra em que dia. Com
           o quadro na frente, a sala montava a semana antes de dizer para quê. */}
       <section className="pl-secao pl-combinado">
+        {/* Sem recolher: os objetivos são o combinado da semana, e o bloco
+            fica sempre à vista. */}
         <p className="pl-secao-titulo">
-          <TituloRecolhivel aberta={secaoObjetivos.aberta} onAlternar={secaoObjetivos.alternar}>
           Objetivos da semana
           {planning.objetivos.length > 0 && (
             <span className="kanban-conta-bolha">
               {planning.objetivos.filter(o => o.feito).length}/{planning.objetivos.length}
             </span>
           )}
-          </TituloRecolhivel>
         </p>
-        <CorpoRecolhivel aberta={secaoObjetivos.aberta}>
         <ObjetivosDaPlanning
           projetoId={p.id}
           valores={planning.objetivos}
@@ -3485,7 +3483,6 @@ function FolhaDaPlanning({ projeto: p, semana, dias, pessoas, planning, podeEdit
           placeholder="O que precisa acontecer nesta semana"
           provas={podeEditar ? provas : undefined}
           onChange={v => onMudarPlanning({ objetivos: v })} />
-        </CorpoRecolhivel>
       </section>
 
       {/* O quadro do projeto, nas etapas do quadro de tarefas - o mesmo da ficha,
@@ -3616,7 +3613,6 @@ function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
   const contas = contasDoFunil(funil, dias);
   const hoje = hojeIso();
   const etapas = [...funil.etapas].sort((a, b) => a.ordem - b.ordem);
-  const secaoObjetivos = useSecaoRecolhivel('planning-objetivos');
   const secaoFunil = useSecaoRecolhivel('planning-funil');
 
   return (
@@ -3640,17 +3636,16 @@ function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
       </header>
 
       <section className="pl-secao pl-combinado">
+        {/* Sem recolher: os objetivos são o combinado da semana, e o bloco
+            fica sempre à vista. */}
         <p className="pl-secao-titulo">
-          <TituloRecolhivel aberta={secaoObjetivos.aberta} onAlternar={secaoObjetivos.alternar}>
           Objetivos da semana
           {planning.objetivos.length > 0 && (
             <span className="kanban-conta-bolha">
               {planning.objetivos.filter(o => o.feito).length}/{planning.objetivos.length}
             </span>
           )}
-          </TituloRecolhivel>
         </p>
-        <CorpoRecolhivel aberta={secaoObjetivos.aberta}>
         <ObjetivosDaPlanning
           projetoId={PLANNING_FUNIL}
           valores={planning.objetivos}
@@ -3659,7 +3654,6 @@ function FolhaDoFunil({ semana, dias, funil, planning, pessoas, podeEditar,
           placeholder="O que o comercial precisa fazer andar nesta semana"
           provas={podeEditar ? provas : undefined}
           onChange={v => onMudarPlanning({ objetivos: v })} />
-        </CorpoRecolhivel>
       </section>
 
       <section className="pl-secao">
