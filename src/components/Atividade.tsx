@@ -224,6 +224,11 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
   } | null>(null);
   const campo = useRef<HTMLDivElement | null>(null);
   const arquivo = useRef<HTMLInputElement>(null);
+  /** O item destacado na lista de menções. As setas o movem, o Enter e o Tab
+   *  escolhem ele, e o ponteiro passando por cima também o move - mouse e
+   *  teclado mexem no mesmo destaque, sem dois "escolhidos" na tela. */
+  const [realce, setRealce] = useState(0);
+  const listaMencoes = useRef<HTMLUListElement>(null);
 
   /** Procura um `@` - ou um `#`, onde há etapas - em aberto imediatamente antes
    *  do cursor. Só vale se ele começar palavra: um e-mail digitado no meio da
@@ -267,6 +272,15 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
     ? pessoas.filter(p => contem(p.nome)).slice(0, 6) : [];
   const candidatasEtapas = busca?.tipo === 'etapa'
     ? (etapas ?? []).filter(x => contem(x.nome)).slice(0, 6) : [];
+  const totalNaLista = candidatos.length || candidatasEtapas.length;
+
+  // A cada letra digitada a lista muda, e o destaque volta para o primeiro: o
+  // item que estava destacado pode nem estar mais nela.
+  useEffect(() => { setRealce(0); }, [busca?.termo, busca?.tipo]);
+  // O destacado fica sempre à vista, mesmo quando a lista rola.
+  useEffect(() => {
+    listaMencoes.current?.querySelector('[data-realce="sim"]')?.scrollIntoView({ block: 'nearest' });
+  }, [realce]);
 
   /** Quem foi marcado nesta escrita: nome que foi para o texto -> id.
    *
@@ -375,13 +389,21 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
             : 'Escreva um comentário. Use @ para marcar alguém.'}
           onMudar={t => { setTexto(t); verMarcacao(); }}
           aoTeclar={e => {
-            const lista = busca && (candidatos.length > 0 || candidatasEtapas.length > 0);
+            const lista = busca && totalNaLista > 0;
             if (e.key === 'Escape' && busca) { e.preventDefault(); setBusca(null); return; }
-            // Com a lista de menções aberta, Enter e Tab escolhem a primeira.
+            // Com a lista de menções aberta, as setas andam pelo destaque (dando
+            // a volta nas pontas) e Enter ou Tab escolhem o destacado.
+            if (lista && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+              e.preventDefault();
+              const passo = e.key === 'ArrowDown' ? 1 : -1;
+              setRealce(i => (i + passo + totalNaLista) % totalNaLista);
+              return;
+            }
             if (lista && (e.key === 'Enter' || e.key === 'Tab')) {
               e.preventDefault();
-              if (candidatos[0]) marcar(candidatos[0]);
-              else marcarEtapa(candidatasEtapas[0]);
+              const i = Math.min(realce, totalNaLista - 1);
+              if (candidatos.length) marcar(candidatos[i]);
+              else marcarEtapa(candidatasEtapas[i]);
               return;
             }
             // Enter envia, Shift+Enter quebra linha: é o que a mão já espera de
@@ -414,19 +436,27 @@ function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo, onEnvi
           }}
         />
         {busca && (candidatos.length > 0 || candidatasEtapas.length > 0) && (
-          <ul className={`ativ-mencoes${busca.paraCima ? ' para-cima' : ''}`}
+          <ul ref={listaMencoes} className={`ativ-mencoes${busca.paraCima ? ' para-cima' : ''}`}
             style={{ maxHeight: busca.altura }} role="listbox">
-            {candidatos.map(p => (
-              <li key={p.id}>
-                <button type="button" onMouseDown={e => { e.preventDefault(); marcar(p); }}>
+            {candidatos.map((p, i) => (
+              <li key={p.id} role="option" aria-selected={i === realce}>
+                <button type="button" tabIndex={-1}
+                  className={i === realce ? 'ativo' : undefined}
+                  data-realce={i === realce ? 'sim' : undefined}
+                  onMouseEnter={() => setRealce(i)}
+                  onMouseDown={e => { e.preventDefault(); marcar(p); }}>
                   <Avatar nome={p.nome} foto={p.foto_url} size={20} />
                   <span>{p.nome}</span>
                 </button>
               </li>
             ))}
-            {candidatasEtapas.map(x => (
-              <li key={x.id}>
-                <button type="button" onMouseDown={e => { e.preventDefault(); marcarEtapa(x); }}>
+            {candidatasEtapas.map((x, i) => (
+              <li key={x.id} role="option" aria-selected={i === realce}>
+                <button type="button" tabIndex={-1}
+                  className={i === realce ? 'ativo' : undefined}
+                  data-realce={i === realce ? 'sim' : undefined}
+                  onMouseEnter={() => setRealce(i)}
+                  onMouseDown={e => { e.preventDefault(); marcarEtapa(x); }}>
                   {/* O mesmo ponto da pílula de etapa: a cor é o que identifica
                       a etapa em todo o funil. */}
                   <span className="ativ-mencao-ponto" style={{ background: x.cor }} aria-hidden="true" />
