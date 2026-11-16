@@ -1032,10 +1032,55 @@ function StatusComDica({ nome, cor, grupo }: { nome: string; cor: string; grupo:
 /** A chave que lembra, neste navegador, se a legenda ficou recolhida. */
 const CHAVE_LEGENDA = 'sheep_chamados_legenda';
 
-/** A legenda dos status, no alto do painel: as etapas na ordem em que o
- *  chamado anda, cada uma com o que quer dizer. Quem já conhece recolhe, e a
- *  escolha fica guardada neste navegador. */
-function LegendaDasEtapas({ etapas }: { etapas: { nome: string; cor: string; grupo: Grupo }[] }) {
+/** O resumo de cada etapa em duas ou três palavras, para a trilha da legenda.
+ *  A frase inteira fica na dica, para quem quiser ler. */
+const RESUMO_POR_NOME: Record<string, string> = {
+  triagem: 'Recebido, em análise',
+  backlog: 'Na fila do time',
+  fazer: 'Planejado',
+  'a fazer': 'Planejado',
+  fazendo: 'Em execução',
+  'em andamento': 'Em execução',
+  'em revisao': 'Em conferência',
+  concluida: 'Entregue',
+  concluido: 'Entregue',
+  cancelada: 'Não será feito',
+  cancelado: 'Não será feito',
+};
+const RESUMO_POR_GRUPO: Record<Grupo, string> = {
+  triagem: 'Em análise', andamento: 'Com o time', concluido: 'Entregue', cancelado: 'Encerrado',
+};
+
+type EtapaDoPainel = { nome: string; cor: string; grupo: Grupo };
+
+/** Um ponto da trilha: a bolinha na cor da etapa, o nome e o resumo. A frase
+ *  completa abre na dica, ao passar o mouse ou chegar pelo teclado. */
+function PassoDaLegenda({ etapa: e, fora }: { etapa: EtapaDoPainel; fora?: boolean }) {
+  const { gatilho, dica } = useDicaRica<HTMLLIElement>(() => (
+    <div className="chm-dica-etapa">
+      <span className="reportes-status" style={{ ['--cor' as string]: e.cor }}>
+        <span className="reportes-ponto" style={{ background: e.cor }} />
+        {e.nome}
+      </span>
+      <p>{significadoDaEtapa(e.nome, e.grupo)}</p>
+    </div>
+  ), { largura: 260 });
+  return (
+    <li className={`chm-trilha-passo${fora ? ' fora' : ''}`} style={{ ['--cor' as string]: e.cor }}
+      tabIndex={0} {...gatilho}>
+      <span className="chm-trilha-ponto" aria-hidden="true" />
+      <span className="chm-trilha-nome">{e.nome}</span>
+      <span className="chm-trilha-resumo">{RESUMO_POR_NOME[normalizar(e.nome)] ?? RESUMO_POR_GRUPO[e.grupo]}</span>
+      {dica}
+    </li>
+  );
+}
+
+/** A legenda dos status, no alto do painel: uma trilha com as etapas na ordem
+ *  em que o chamado anda, da chegada à entrega, e à parte o que sai do
+ *  caminho sem ser feito. Quem já conhece recolhe, e a escolha fica guardada
+ *  neste navegador. */
+function LegendaDasEtapas({ etapas }: { etapas: EtapaDoPainel[] }) {
   const [aberta, setAberta] = useState(() => {
     try { return localStorage.getItem(CHAVE_LEGENDA) !== 'recolhida'; } catch { return true; }
   });
@@ -1044,26 +1089,27 @@ function LegendaDasEtapas({ etapas }: { etapas: { nome: string; cor: string; gru
     return !a;
   });
   if (!etapas.length) return null;
+  const caminho = etapas.filter(e => e.grupo !== 'cancelado');
+  const fora = etapas.filter(e => e.grupo === 'cancelado');
   return (
     <section className="chm-legenda" aria-label="O que significa cada status">
       <button type="button" className="chm-legenda-topo" aria-expanded={aberta} onClick={alternar}>
         <span className={`entrega-seta${aberta ? ' aberta' : ''}`}><IconChevronRight size={12} /></span>
         <span className="chm-legenda-titulo">Como ler o status</span>
-        <span className="chm-legenda-sub">o caminho de um chamado, da chegada à entrega</span>
+        <span className="chm-legenda-sub">passe o mouse ou toque em uma etapa para ver o que ela quer dizer</span>
       </button>
       <div className={`revelar${aberta ? ' aberto' : ''}`}>
         <div>
-          <ol className="chm-legenda-etapas">
-            {etapas.map(e => (
-              <li key={e.nome} className="chm-legenda-etapa">
-                <span className="reportes-status" style={{ ['--cor' as string]: e.cor }}>
-                  <span className="reportes-ponto" style={{ background: e.cor }} />
-                  {e.nome}
-                </span>
-                <p>{significadoDaEtapa(e.nome, e.grupo)}</p>
-              </li>
-            ))}
-          </ol>
+          <div className="chm-trilha">
+            <ol className="chm-trilha-caminho" style={{ ['--passos' as string]: caminho.length }}>
+              {caminho.map(e => <PassoDaLegenda key={e.nome} etapa={e} />)}
+            </ol>
+            {fora.length > 0 && (
+              <ol className="chm-trilha-fora" aria-label="Fora do caminho">
+                {fora.map(e => <PassoDaLegenda key={e.nome} etapa={e} fora />)}
+              </ol>
+            )}
+          </div>
         </div>
       </div>
     </section>

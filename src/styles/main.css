@@ -25380,31 +25380,119 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   color: var(--black);
 }
 .chm-legenda-sub { font-size: 12px; color: var(--gray2); }
-.chm-legenda-etapas {
+/* A trilha: o caminho principal como pontos ligados por uma linha, cada um
+   com o nome e um resumo de duas ou três palavras; o que sai do caminho sem
+   ser feito fica à parte, depois de um fio, com o ponto vazado. A frase
+   inteira de cada etapa mora na dica, e não aqui - é o que deixa a legenda
+   leve. */
+.chm-trilha {
+  display: flex;
+  align-items: flex-start;
+  gap: 22px;
+  padding: 6px 18px 18px;
+}
+.chm-trilha-caminho,
+.chm-trilha-fora {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 6px 14px;
   margin: 0;
-  padding: 2px 16px 16px;
+  padding: 0;
   list-style: none;
 }
-.chm-legenda-etapa {
+.chm-trilha-caminho { flex: 1; grid-template-columns: repeat(var(--passos), minmax(0, 1fr)); }
+.chm-trilha-fora {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(110px, auto);
+  padding-left: 22px;
+  border-left: 1px dashed var(--gray3);
+}
+.chm-trilha-passo {
+  position: relative;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
+  align-items: center;
+  gap: 3px;
   min-width: 0;
-  padding: 8px 0 4px;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  text-align: center;
+  cursor: help;
+  outline: none;
 }
-.chm-legenda-etapa p { margin: 0; font-size: 12px; line-height: 1.45; color: var(--gray); }
-/* As etapas entram em escada quando a legenda abre. */
-.revelar.aberto .chm-legenda-etapa { animation: linha-entra .38s var(--curva-anti) backwards; }
-.revelar.aberto .chm-legenda-etapa:nth-child(2) { animation-delay: 30ms; }
-.revelar.aberto .chm-legenda-etapa:nth-child(3) { animation-delay: 60ms; }
-.revelar.aberto .chm-legenda-etapa:nth-child(4) { animation-delay: 90ms; }
-.revelar.aberto .chm-legenda-etapa:nth-child(n+5) { animation-delay: 120ms; }
+/* A linha que liga um ponto ao próximo, à altura do centro do ponto. O último
+   do caminho não tem para onde ir. */
+.chm-trilha-caminho .chm-trilha-passo:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: calc(50% + 10px);
+  right: calc(-50% + 10px);
+  height: 2px;
+  border-radius: 2px;
+  background: var(--gray3);
+}
+.chm-trilha-ponto {
+  width: 14px;
+  height: 14px;
+  margin-bottom: 5px;
+  border-radius: 50%;
+  background: var(--cor);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--cor) 18%, transparent);
+  transition: transform var(--transition-spring), box-shadow var(--transition-spring);
+}
+.chm-trilha-passo.fora .chm-trilha-ponto {
+  background: transparent;
+  border: 2px solid var(--cor);
+  box-shadow: none;
+}
+.chm-trilha-passo:hover .chm-trilha-ponto,
+.chm-trilha-passo:focus-visible .chm-trilha-ponto {
+  transform: scale(1.18);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--cor) 22%, transparent);
+}
+.chm-trilha-nome {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--black);
+}
+.chm-trilha-resumo { font-size: 11.5px; line-height: 1.35; color: var(--gray2); }
+/* Os pontos acendem em sequência quando a legenda abre, da chegada à entrega. */
+.revelar.aberto .chm-trilha-passo { animation: linha-entra .38s var(--curva-anti) backwards; }
+.revelar.aberto .chm-trilha-passo:nth-child(2) { animation-delay: 40ms; }
+.revelar.aberto .chm-trilha-passo:nth-child(3) { animation-delay: 80ms; }
+.revelar.aberto .chm-trilha-passo:nth-child(4) { animation-delay: 120ms; }
+.revelar.aberto .chm-trilha-passo:nth-child(5) { animation-delay: 160ms; }
+.revelar.aberto .chm-trilha-passo:nth-child(n+6) { animation-delay: 200ms; }
+/* Na tela estreita a trilha fica de pé: os pontos descem pela esquerda, a
+   linha corre na vertical, e nome e resumo seguem lado a lado do ponto. */
+@media (max-width: 720px) {
+  .chm-trilha { flex-direction: column; gap: 10px; }
+  .chm-trilha-caminho, .chm-trilha-fora { grid-template-columns: minmax(0, 1fr); grid-auto-flow: row; width: 100%; }
+  .chm-trilha-fora { padding: 10px 0 0; border-left: 0; border-top: 1px dashed var(--gray3); }
+  .chm-trilha-passo {
+    display: grid;
+    grid-template-columns: 14px auto minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    text-align: left;
+  }
+  .chm-trilha-ponto { margin: 0; }
+  .chm-trilha-caminho .chm-trilha-passo:not(:last-child)::after {
+    top: calc(50% + 10px);
+    bottom: calc(-50% + 10px);
+    left: 6px;
+    right: auto;
+    width: 2px;
+    height: auto;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .chm-legenda, .revelar.aberto .chm-legenda-etapa { animation: none; }
+  .chm-legenda, .revelar.aberto .chm-trilha-passo { animation: none; }
+  .chm-trilha-ponto { transition: none; }
 }
 
 /* O status da linha avisa que explica: o ponteiro de ajuda, e a dica com a
