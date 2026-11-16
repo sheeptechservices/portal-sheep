@@ -24856,3 +24856,14 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
   will-change: scroll-position;
   overscroll-behavior: contain;
 }
+/* O esmaecido do pe da coluna mora na coluna, e nao no corpo que rola.
+   Mascara no proprio elemento que rola impede o navegador de rolar a coluna
+   numa camada separada: cada quadro de rolagem repintava a coluna inteira -
+   no quadro de Tarefas, no Funil e no quadro da ficha de projeto. Na coluna,
+   o efeito e o mesmo e a rolagem fica com a GPU. */
+.kanban-column-body,
+.kanban-column-body.no-fim { -webkit-mask-image: none; mask-image: none; }
+.kanban-column:has(> .kanban-column-body:not(.no-fim)) {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent 100%);
+}
