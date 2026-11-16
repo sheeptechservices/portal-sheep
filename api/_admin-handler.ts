@@ -7524,10 +7524,14 @@ function faltaEmProjeto(p: any): string | null {
         : null;
       const linhaAntes = t.id
         ? (await db.execute({
-          sql: 'SELECT projeto_id, projetos, entrega_id, entregas, complexidade FROM projeto_tarefas WHERE id = ?',
+          sql: 'SELECT projeto_id, projetos, entrega_id, entregas, complexidade, descricao FROM projeto_tarefas WHERE id = ?',
           args: [t.id],
         })).rows[0]
         : null;
+      // Sem `descricao` no corpo, a gravada continua, como a complexidade logo
+      // abaixo. É o que deixa quem só troca a etapa (o diário, o MCP) gravar
+      // sem carregar o texto inteiro - antes, a ausência apagava a descrição.
+      if (t.id && linhaAntes && !('descricao' in t)) t.descricao = linhaAntes.descricao ?? null;
       const projetosAntes: string[] = projetosDaTarefa(linhaAntes);
       const principal = String(t.projeto_id);
       const outros = (projetosPedidos ?? projetosAntes).filter(p => p !== principal);
