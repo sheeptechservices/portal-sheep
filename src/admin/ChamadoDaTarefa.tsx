@@ -313,7 +313,6 @@ export function ChamadoDaTarefa({ tarefaId, api }: {
             <li key={`ajuste-${a.seq}`} className="chamado-tarefa-reabertura ajuste">
               <p className="chamado-tarefa-reabertura-topo">
                 <span className="chamado-tarefa-reabertura-num"><IconEdit size={10} /> Ajuste {a.seq}</span>
-                <strong>{a.autor}</strong>
                 <span>{instante(a.criado_em)}</span>
               </p>
               <dl className="chm-ajuste">

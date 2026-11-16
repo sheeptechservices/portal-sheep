@@ -58,7 +58,7 @@ type Versao = Record<CampoAjustavel, string>;
 
 /** Uma correção do chamado, só com o que mudou nela. `seq` nulo é a que ainda
  *  está indo para o servidor. */
-interface Ajuste { seq: number | null; em: string; autor: string; mudou: Partial<Versao> }
+interface Ajuste { seq: number | null; em: string; mudou: Partial<Versao> }
 
 interface Chamado {
   /** A chave da linha: o número no projeto, ou um provisório negativo enquanto
@@ -199,7 +199,9 @@ interface Rascunho {
 interface RascunhoDeReabertura { texto: string; autor: string; links: string[]; anexos: Anexo[] }
 
 /** A correção: a versão nova dos quatro campos, e quem está corrigindo. */
-interface RascunhoDeAjuste extends Versao { autor: string }
+/** A edição: a versão nova dos campos. Sem nome de quem editou: o painel
+ *  não guarda quem fez cada edição, só o que mudou. */
+type RascunhoDeAjuste = Versao;
 
 /** Até quantos links por envio. O servidor confere de novo. */
 const MAX_LINKS = 5;
@@ -487,13 +489,12 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
   //  era e o formulário reabre com o rascunho e o motivo.
   function abrirAjuste(c: ChamadoNaTela) {
     const v = versaoEmVigor(c);
-    setRascunhoDeAjuste({ ...v, autor: lerNomes(token)[0]?.nome ?? '' });
+    setRascunhoDeAjuste({ ...v });
     setErroAjuste(null);
     setAjustandoNumero(c.numero);
   }
 
   async function ajustar(numero: number, r: RascunhoDeAjuste) {
-    setLembrados(lembrarNome(token, r.autor));
     const antes = dados?.chamados.find(c => c.numero === numero);
     if (!antes) return;
     const vigente = versaoEmVigor(antes);
@@ -504,7 +505,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
       ...d,
       chamados: d.chamados.map(c => c.numero !== numero ? c : {
         ...c, ajustando: true,
-        ajustes: [...c.ajustes, { seq: null, em: new Date().toISOString(), autor: r.autor.trim(), mudou }],
+        ajustes: [...c.ajustes, { seq: null, em: new Date().toISOString(), mudou }],
       }),
     });
     setRascunhoDeAjuste(null);
@@ -515,7 +516,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           titulo: r.titulo.trim(), descricao: r.descricao.trim(), solicitante: r.solicitante.trim(),
-          urgencia: r.urgencia, tipo: r.tipo, autor: r.autor.trim(),
+          urgencia: r.urgencia, tipo: r.tipo,
         }),
       });
       const d = await resp.json().catch(() => null);
@@ -1167,8 +1168,8 @@ const NOME_DO_CAMPO: Record<CampoAjustavel, string> = {
   titulo: 'Título', descricao: 'Descrição', solicitante: 'Quem pede', urgencia: 'Urgência', tipo: 'Tipo',
 };
 
-/** O histórico dos ajustes, enxuto: uma linha por ajuste - quando, quem, e o
- *  que mudou. Nos campos curtos, de onde para onde; na descrição, só o aviso
+/** O histórico dos ajustes, enxuto: uma linha por ajuste - quando e o que
+ *  mudou, sem o nome de quem editou. Nos campos curtos, de onde para onde; na descrição, só o aviso
  *  de que mudou, porque a versão em vigor já está no alto do chamado. */
 function HistoricoDeAjustes({ chamado }: { chamado: ChamadoNaTela }) {
   const valor = (k: CampoAjustavel, v: string) => {
@@ -1193,9 +1194,8 @@ function HistoricoDeAjustes({ chamado }: { chamado: ChamadoNaTela }) {
             : `${NOME_DO_CAMPO[k].toLocaleLowerCase('pt-BR')} ${valor(k, de[k])} para ${valor(k, ajuste.mudou[k]!)}`)).join(', ');
           return (
             <li key={`${ajuste.seq ?? 'novo'}-${i}`} className={ajuste.seq == null ? 'enviando' : undefined}
-              title={`${instante(ajuste.em)} - ${ajuste.autor}: ${porExtenso}`}>
+              title={`${instante(ajuste.em)}: ${porExtenso}`}>
               <span className="chm-ajustes-quando">{instante(ajuste.em)}</span>
-              <span className="chm-ajustes-quem">{ajuste.autor}</span>
               <span className="chm-ajustes-oque">
                 {/* A vírgula vai colada no fim do campo anterior, e não solta
                     entre os dois: solta, o espaço entre as peças da linha
@@ -1635,7 +1635,7 @@ function FormularioDeAjuste({ chamado, rascunho, erro, nomes, onMudar, onFechar,
   const vigente = versaoEmVigor(chamado);
   const mudou = CAMPOS_AJUSTAVEIS.some(k => r[k].trim() !== vigente[k]);
   const valido = r.titulo.trim().length >= 3 && r.descricao.trim().length >= 5
-    && r.solicitante.trim().length >= 2 && r.autor.trim().length >= 2;
+    && r.solicitante.trim().length >= 2;
 
   return (
     <Janela rotulo={`EDITAR O CHAMADO #${chamado.numero}`} titulo={chamado.titulo}
@@ -1676,18 +1676,11 @@ function FormularioDeAjuste({ chamado, rascunho, erro, nomes, onMudar, onFechar,
         </div>
       </div>
 
-      <div className="chm-form-dupla">
-        <label className="form-group">
-          <span className="form-label">Quem está pedindo</span>
-          <CampoDeNome valor={r.solicitante} nomes={nomes}
-            onMudar={v => mudar({ solicitante: v })} onEscolher={n => mudar({ solicitante: n.nome })} />
-        </label>
-        <label className="form-group">
-          <span className="form-label">Quem está editando</span>
-          <CampoDeNome valor={r.autor} nomes={nomes}
-            onMudar={v => mudar({ autor: v })} onEscolher={n => mudar({ autor: n.nome })} />
-        </label>
-      </div>
+      <label className="form-group">
+        <span className="form-label">Quem está pedindo</span>
+        <CampoDeNome valor={r.solicitante} nomes={nomes}
+          onMudar={v => mudar({ solicitante: v })} onEscolher={n => mudar({ solicitante: n.nome })} />
+      </label>
 
       {erro && <p className="pub-pedido-erro surge"><IconX size={11} /> {erro}</p>}
     </Janela>

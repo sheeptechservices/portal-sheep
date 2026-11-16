@@ -25850,13 +25850,13 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   padding: 0;
   list-style: none;
 }
-/* Uma linha por ajuste, sempre uma só: data, quem e o que mudou em colunas
+/* Uma linha por ajuste, sempre uma só: a data e o que mudou em colunas
    fixas, alinhadas de um ajuste para o outro. O que não cabe leva reticências
    - os valores longos (um título comprido) se encurtam primeiro -, e o ajuste
    por extenso fica na dica da linha. */
 .chm-ajustes-lista li {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: baseline;
   gap: 12px;
   font-size: 12px;
@@ -25866,7 +25866,6 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
 }
 .chm-ajustes-lista li.enviando { opacity: .7; }
 .chm-ajustes-quando { color: var(--gray2); font-variant-numeric: tabular-nums; }
-.chm-ajustes-quem { color: var(--black); font-weight: 700; }
 .chm-ajustes-oque {
   display: flex;
   align-items: baseline;

@@ -508,7 +508,8 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
           ajustes: ajustes.filter(a => Number(a.chamado_id) === id).map(a => {
             const mudou: Partial<Record<CampoAjustavel, string>> = {};
             for (const k of CAMPOS_AJUSTAVEIS) if (a[k] != null && a[k] !== '') mudou[k] = String(a[k]);
-            return { seq: Number(a.seq), em: String(a.criado_em), autor: String(a.autor), mudou };
+            // Sem o nome de quem editou: o painel não guarda nem mostra.
+            return { seq: Number(a.seq), em: String(a.criado_em), mudou };
           }),
           // O que o time escreveu para o cliente, da mais antiga para a mais
           // nova. Só isto desce da conversa do time: o comentário interno da
@@ -780,8 +781,6 @@ async function ajustarChamado(req: VercelRequest, res: VercelResponse, db: Clien
   if (pedido.descricao.length < 5) return res.status(400).json({ error: 'Descreva o que está acontecendo.' });
   if (pedido.solicitante.length < 2) return res.status(400).json({ error: 'Diga quem está pedindo.' });
   if (!URGENCIAS.includes(pedido.urgencia)) return res.status(400).json({ error: 'Escolha a urgência.' });
-  const autorNome = texto(corpo.autor, 80);
-  if (autorNome.length < 2) return res.status(400).json({ error: 'Diga quem está editando.' });
 
   // O chamado deste projeto, e a tarefa dele só se ainda for deste projeto.
   const achado = await db.execute({
@@ -830,7 +829,7 @@ async function ajustarChamado(req: VercelRequest, res: VercelResponse, db: Clien
           RETURNING seq`,
     args: [chamadoId,
       ...CAMPOS_AJUSTAVEIS.map(k => (mudou.includes(k) ? pedido[k] : null)),
-      autorNome, agora, chamadoId],
+      '', agora, chamadoId],
   });
   const seq = Number(ajuste.rows[0]?.seq ?? 1);
 
@@ -843,7 +842,7 @@ async function ajustarChamado(req: VercelRequest, res: VercelResponse, db: Clien
   const legivel = (k: CampoAjustavel, v: string) => (k === 'tipo' ? (NOME_DO_TIPO[v] ?? 'sem tipo') : v);
   const linhas = mudou.filter(k => k !== 'descricao')
     .map(k => `- **${NOME[k]}:** ${legivel(k, vigente[k])} → ${legivel(k, pedido[k])}`);
-  const textoDaTarefa = `Chamado nº ${numero} ajustado pelo cliente (${autorNome}):`
+  const textoDaTarefa = `Chamado nº ${numero} editado pelo cliente:`
     + (linhas.length ? `\n\n${linhas.join('\n')}` : '')
     + (mudou.includes('descricao') ? `\n\n**Descrição corrigida:**\n${pedido.descricao}` : '');
 
@@ -852,16 +851,15 @@ async function ajustarChamado(req: VercelRequest, res: VercelResponse, db: Clien
     await db.execute({
       sql: `INSERT INTO tarefa_comentarios (tarefa_id, pai_id, usuario_id, usuario_nome, texto, criado_em)
             VALUES (?,?,?,?,?,?)`,
-      args: [tarefaId, null, null, `${autorNome} (cliente)`, textoDaTarefa, agora],
+      args: [tarefaId, null, null, 'Cliente', textoDaTarefa, agora],
     });
     const ctx = await contextoDaTriagem(db, projetoId);
     await avisarGestor(db, {
       ctx, projetoNome,
       assunto: `Chamado ajustado em ${projetoNome}: ${pedido.titulo}`,
-      previa: `Ajustado por ${autorNome}`,
+      previa: 'Editado pelo cliente',
       ficha: [
         ['Projeto', projetoNome],
-        ['Quem ajustou', autorNome],
         ['Chamado', `nº ${numero} do painel`],
         ['O que mudou', mudou.map(k => NOME[k]).join(', ')],
         ['Tarefa', `#${tarefaId}`],
