@@ -23,6 +23,7 @@ import {
 } from '../components/icons';
 import { CampoBusca } from '../components/CampoBusca';
 import FilterDropdown from '../components/FilterDropdown';
+import { AgruparPor } from '../components/AgruparPor';
 import { SelectSistema } from '../components/SelectSistema';
 import { CampoTexto } from '../components/CampoTexto';
 import { TextoRico } from '../components/TextoRico';
@@ -231,6 +232,24 @@ function rotuloDoLink(url: string): string {
   } catch { return url; }
 }
 
+/** Os critérios de agrupar a fila, na ordem em que aparecem na lista. */
+const AGRUPAMENTOS = [
+  { valor: 'status', label: 'Status' },
+  { valor: 'urgencia', label: 'Urgência' },
+  { valor: 'solicitante', label: 'Solicitante' },
+  { valor: 'tipo', label: 'Tipo' },
+] as const;
+type Agrupamento = typeof AGRUPAMENTOS[number]['valor'];
+
+/** O agrupamento escolhido fica lembrado neste navegador, por painel. */
+const chaveDoAgrupamento = (token: string) => `chm-agrupar:${token}`;
+function lerAgrupamento(token: string): Agrupamento | '' {
+  try {
+    const v = localStorage.getItem(chaveDoAgrupamento(token)) ?? '';
+    return AGRUPAMENTOS.some(a => a.valor === v) ? v as Agrupamento : '';
+  } catch { return ''; }
+}
+
 export default function ChamadosDoCliente({ token }: { token: string }) {
   const base = `/api/projeto-publico?modo=chamados&token=${encodeURIComponent(token)}`;
   const [dados, setDados] = useState<Dados | null>(null);
@@ -242,6 +261,13 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
   const [filtroQuem, setFiltroQuem] = useState<string[]>([]);
   const [aberta, setAberta] = useState<number | null>(null);
   const [ordem, setOrdem] = useState<OrdemDaTabela<Coluna>>(ORDEM_PADRAO);
+  const [agrupar, setAgrupar] = useState<Agrupamento | ''>(() => lerAgrupamento(token));
+  useEffect(() => {
+    try {
+      if (agrupar) localStorage.setItem(chaveDoAgrupamento(token), agrupar);
+      else localStorage.removeItem(chaveDoAgrupamento(token));
+    } catch { /* sem armazenamento: vale só nesta visita */ }
+  }, [agrupar, token]);
   const [vendo, setVendo] = useState<{ chamado: Chamado; indice: number } | null>(null);
   const [formAberto, setFormAberto] = useState(false);
   const [rascunho, setRascunho] = useState<Rascunho>(() => rascunhoVazio(token));
@@ -363,6 +389,49 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
       return comp * sinal || b.criado_em.localeCompare(a.criado_em);
     });
   }, [visiveis, ordem, dados?.etapas]);
+  /**
+   * A fila dividida pelo critério escolhido. Os grupos seguem a escala de cada
+   * um - as etapas na ordem do quadro, a urgência de Urgente a Baixa, o tipo
+   * na ordem da casa e quem pediu de A a Z -, e dentro de cada grupo vale a
+   * ordem do cabeçalho da tabela. Sem critério, um grupo só e sem cabeça.
+   */
+  const grupos = useMemo(() => {
+    if (!agrupar) return [{ chave: '', cabeca: null as ReactNode, itens: ordenados }];
+    const etapas = (dados?.etapas ?? []).map(e => e.nome);
+    const posicao = (lista: readonly string[], v: string) => { const i = lista.indexOf(v); return i < 0 ? lista.length : i; };
+    const tipos = TIPOS_DO_RELATO.map(t => t.valor);
+    const chaveDe = (c: ChamadoNaTela) => (
+      agrupar === 'status' ? c.status
+        : agrupar === 'urgencia' ? c.urgencia
+          : agrupar === 'tipo' ? (c.tipo ?? '')
+            : c.solicitante);
+    const porChave = new Map<string, ChamadoNaTela[]>();
+    for (const c of ordenados) {
+      const k = chaveDe(c);
+      porChave.set(k, [...(porChave.get(k) ?? []), c]);
+    }
+    const ordemDoGrupo = (k: string): number | string => (
+      agrupar === 'status' ? posicao(etapas, k)
+        : agrupar === 'urgencia' ? posicaoDaPrioridade(k)
+          : agrupar === 'tipo' ? posicao(tipos, k)
+            : k.toLocaleLowerCase('pt-BR'));
+    return [...porChave.entries()]
+      .sort(([a], [b]) => {
+        const oa = ordemDoGrupo(a), ob = ordemDoGrupo(b);
+        return typeof oa === 'number' && typeof ob === 'number'
+          ? oa - ob : String(oa).localeCompare(String(ob), 'pt-BR');
+      })
+      .map(([k, itens]) => {
+        const c = itens[0];
+        const Icone = ICONE_PRIORIDADE[k];
+        const cabeca: ReactNode = agrupar === 'status' ? <StatusComDica nome={c.status} cor={c.cor} grupo={c.grupo} />
+          : agrupar === 'urgencia' ? <span className="reportes-urgencia">{Icone && <Icone size={13} />} {k}</span>
+            : agrupar === 'tipo' ? (k ? <ChipDoTipo tipo={k} /> : <span className="chm-grupo-nome">Sem tipo</span>)
+              : <span className="chm-grupo-nome">{k}</span>;
+        return { chave: k || 'sem', cabeca, itens };
+      });
+  }, [agrupar, ordenados, dados?.etapas]);
+
   /** A mesma coluna inverte; outra começa pelo lado que se procura primeiro
    *  nela - o mais novo, o mais urgente, o de mais anexos, de A a Z. */
   const ordenarPor = (col: Coluna) => setOrdem(o => (o.col === col
@@ -635,6 +704,8 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
               <FilterDropdown label="Urgência" values={filtroUrgencia}
                 options={PRIORIDADES.map(p => ({ value: p, label: p }))} onChange={setFiltroUrgencia} />
               <FilterDropdown label="Solicitante" values={filtroQuem} options={opcoesQuem} onChange={setFiltroQuem} />
+              <span className="chm-barra-divisor" aria-hidden="true" />
+              <AgruparPor valor={agrupar} opcoes={AGRUPAMENTOS} onChange={setAgrupar} />
             </span>
           </div>
 
@@ -672,8 +743,22 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
                     atualização de fundo que só troca um status não reanima
                     nada. */}
                 <tbody className="lista-anima"
-                  key={`${ordem.col}-${ordem.dir}|${ordenados.filter(c => !c.enviando).map(c => c.id).join(',')}`}>
-                  {ordenados.map(c => {
+                  key={`${agrupar}|${ordem.col}-${ordem.dir}|${ordenados.filter(c => !c.enviando).map(c => c.id).join(',')}`}>
+                  {grupos.map(g => (
+                  <Fragment key={g.chave}>
+                  {/* A cabeça do grupo: o mesmo selo que a coluna mostra, e
+                      quantos chamados há nele. */}
+                  {g.cabeca && (
+                    <tr className="chm-grupo">
+                      <td colSpan={9}>
+                        <span className="chm-grupo-cabeca">
+                          {g.cabeca}
+                          <span className="chm-grupo-conta">{g.itens.length}</span>
+                        </span>
+                      </td>
+                    </tr>
+                  )}
+                  {g.itens.map(c => {
                     const Icone = ICONE_PRIORIDADE[c.urgencia];
                     const abertaAqui = aberta === c.id;
                     const encerrado = c.grupo === 'concluido' || c.grupo === 'cancelado';
@@ -827,6 +912,8 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
                       </Fragment>
                     );
                   })}
+                  </Fragment>
+                  ))}
                 </tbody>
               </table>
             )}

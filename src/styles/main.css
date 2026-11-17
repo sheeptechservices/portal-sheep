@@ -25866,7 +25866,37 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   border-bottom: 1px solid var(--sup-painel-borda);
 }
 .chm-barra .campo-busca { flex: 1 1 240px; max-width: 420px; }
-.chm-filtros { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.chm-filtros { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+/* Entre os filtros e o agrupar: os filtros recortam a fila, o agrupar so a
+   divide, e o traco diz que sao coisas diferentes. */
+.chm-barra-divisor { width: 1px; height: 20px; background: var(--gray3); }
+
+/* A cabeca de cada grupo da fila: o selo do grupo e a contagem, numa faixa
+   que nao se clica - quem abre e a linha do chamado. */
+.chm-tabela tr.chm-grupo > td {
+  padding: 16px 10px 8px;
+  border-bottom: 1px solid var(--gray3);
+  background: transparent;
+}
+.chm-tabela tbody tr.chm-grupo:first-child > td { padding-top: 10px; }
+.chm-grupo-cabeca { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; color: var(--black); }
+.chm-grupo-nome { font-weight: 700; color: var(--black); }
+.chm-grupo-conta {
+  min-width: 20px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--sup-etiqueta, var(--gray4));
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gray);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* O agrupar: a lista dos filtros, com escolha unica marcada a direita. */
+.agrupar-lista { min-width: 180px; }
+.agrupar-opcao { justify-content: space-between; }
+.agrupar-marca { display: inline-flex; color: var(--black); }
 .chm-tabela-caixa { overflow-x: auto; padding: 0 16px 10px; }
 .chm-tabela { min-width: 960px; }
 /* Fora do modal o cabeçalho não gruda: a página inteira é que rola. */
