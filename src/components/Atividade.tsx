@@ -325,6 +325,70 @@ export function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo,
    *  A conversão acontece no envio. */
   const marcados = useRef(partida.marcados);
 
+  /**
+   * Destaca o `@Nome Completo` que foi escrito à mão ou colado, e não
+   * escolhido na lista: o nome de alguém do sistema, inteiro, vira a mesma
+   * peça da escolha e entra nas marcações - é o que faz o recado colado do
+   * WhatsApp marcar quem ele cita.
+   *
+   * Só depois de o nome terminar (espaço, pontuação): com o cursor colado no
+   * fim dele, a pessoa ainda pode estar escrevendo um nome mais longo. Depois
+   * de uma colagem, ao sair do campo e ao publicar, `tudo` não espera - não
+   * há mais nada vindo. O texto não muda - a peça escreve o mesmo `@Nome` -,
+   * então a caixa não precisa ser avisada de nada.
+   */
+  const colando = useRef(false);
+  function realcarNomesEscritos(tudo = false) {
+    const raiz = campo.current;
+    if (!raiz) return;
+    const nomes = new Map<string, string>();
+    for (const p of pessoas) nomes.set(p.nome, p.id);
+    for (const [nome, id] of marcados.current) nomes.set(nome, id);
+    if (nomes.size === 0) return;
+    const escapar = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const lista = [...nomes.keys()].filter(Boolean).sort((a, b) => b.length - a.length).map(escapar);
+    const procura = new RegExp(`@(${lista.join('|')})(?=$|[^\\p{L}\\p{N}_])`, 'u');
+
+    const sel = window.getSelection();
+    const cursorNo = sel && sel.rangeCount ? sel.anchorNode : null;
+    const cursorEm = sel && sel.rangeCount ? sel.anchorOffset : -1;
+    let novoCursor: { no: Text; em: number } | null = null;
+
+    const andar = document.createTreeWalker(raiz, NodeFilter.SHOW_TEXT, {
+      acceptNode: n => ((n.parentElement?.closest('.ativ-marca')) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+    });
+    const textos: Text[] = [];
+    for (let n = andar.nextNode(); n; n = andar.nextNode()) textos.push(n as Text);
+
+    for (let no of textos) {
+      for (;;) {
+        const m = procura.exec(no.data);
+        if (!m) break;
+        const ini = m.index;
+        const fim = ini + m[0].length;
+        // O cursor no fim exato do nome: ainda pode vir mais nome.
+        if (!tudo && no === cursorNo && cursorEm === fim) break;
+        const depois = no.splitText(fim);
+        const meio = no.splitText(ini);
+        const peca = document.createElement('span');
+        peca.className = 'ativ-marca';
+        peca.contentEditable = 'false';
+        peca.textContent = `@${m[1]}`;
+        meio.replaceWith(peca);
+        marcados.current.set(m[1], nomes.get(m[1])!);
+        if (no === cursorNo && cursorEm > fim) novoCursor = { no: depois, em: cursorEm - fim };
+        no = depois;
+      }
+    }
+    if (novoCursor && sel) {
+      const faixa = document.createRange();
+      faixa.setStart(novoCursor.no, Math.min(novoCursor.em, novoCursor.no.length));
+      faixa.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(faixa);
+    }
+  }
+
   /** Devolve o texto com as marcações no formato de gravação. Os nomes mais
    *  longos primeiro: "Ana" não pode comer o "@Ana Paula" de alguém. */
   function comMarcacoes(t: string) {
@@ -402,6 +466,9 @@ export function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo,
     setEnviando(true);
     setErro(null);
     const removidos = (anexosExistentes ?? []).filter(a => !ficam.some(f => f.id === a.id)).map(a => a.id);
+    // O nome escrito por último, ainda sem destaque, entra nas marcações antes
+    // de o texto sair.
+    realcarNomesEscritos(true);
     const falha = await onEnviar(comMarcacoes(limpo), anexos, removidos);
     setEnviando(false);
     if (falha) { setErro(falha); return; }
@@ -427,7 +494,12 @@ export function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo,
           placeholder={placeholder ?? (etapas?.length
             ? 'Escreva um comentário. Use @ para marcar alguém e # para uma etapa.'
             : 'Escreva um comentário. Use @ para marcar alguém.')}
-          onMudar={t => { setTexto(t); verMarcacao(); }}
+          onMudar={t => {
+            setTexto(t);
+            realcarNomesEscritos(colando.current);
+            colando.current = false;
+            verMarcacao();
+          }}
           aoTeclar={e => {
             const lista = busca && totalNaLista > 0;
             if (e.key === 'Escape' && busca) { e.preventDefault(); setBusca(null); return; }
@@ -470,10 +542,11 @@ export function Escrever({ pessoas, etapas, autoFoco, rotuloEnvio, permiteAnexo,
               void enviar();
             }
           }}
-          onBlur={() => setTimeout(() => setBusca(null), 120)}
+          onBlur={() => { realcarNomesEscritos(true); setTimeout(() => setBusca(null), 120); }}
           // O print colado entra como anexo, igual ao que o clipe traria. Texto
           // colado segue sendo texto: o evento só é engolido quando veio arquivo.
           aoColar={e => {
+            colando.current = true;
             if (!permiteAnexo) return;
             const colados = arquivosColados(e.clipboardData);
             if (!colados.length) return;
