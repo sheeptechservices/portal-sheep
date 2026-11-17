@@ -41,8 +41,10 @@ Estilo do desenho: contorno geométrico, sério, linha única, sem preenchimento
 sem cor própria, sem gradiente, sem cantos vivos. O conjunto tem que parecer desenhado
 pela mesma mão.
 
-**Única exceção:** mensagens enviadas ao Slack (`api/slack*.ts`). Ali o emoji é
-convenção nativa da plataforma e continua permitido.
+**Únicas exceções:** mensagens enviadas ao Slack (`api/slack*.ts`) e ao WhatsApp
+(`api/_whatsapp-mensagens.ts`). Nas duas plataformas o emoji é convenção nativa
+e continua permitido - e só nesses arquivos: o texto com emoji mora neles, e
+quem envia só os chama.
 
 ## 2. Travessão longo: proibido
 
@@ -299,7 +301,7 @@ atrás se ele recusar. Ninguém espera a ida e a volta para ver o próprio gesto
 
 ## 5. Checklist antes de fechar uma alteração de UI
 
-1. Nenhum emoji novo fora de `api/slack*.ts`.
+1. Nenhum emoji novo fora de `api/slack*.ts` e `api/_whatsapp-mensagens.ts`.
 2. Nenhum travessão longo ou médio no diff.
 3. Ícones importados de `src/components/icons.tsx`, com `currentColor`.
 4. Cores, raios e sombras via token; nada de hex solto.

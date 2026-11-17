@@ -14,6 +14,7 @@ import {
   EVOLUTION_KEY, configEvolution, enviarTexto, estadoDaInstancia, gruposDaInstancia, normalizarDestino,
   normalizarUrl, perfilDaInstancia, qrDaInstancia, type ConfigEvolution,
 } from './_evolution.js';
+import { mensagemDeChamadoConcluido } from './_whatsapp-mensagens.js';
 import { validarChaveAws } from './_aws-precos.js';
 import { lerCurriculo } from './_leitura-curriculo.js';
 import { lerTituloDoArquivo } from './_proposta-fonte.js';
@@ -579,7 +580,7 @@ function fotoDaTarefa(r: Record<string, any> | null | undefined): FotoDaTarefa |
 async function avisarChamadoConcluido(db: Client, tarefaId: number): Promise<void> {
   try {
     const r = await db.execute({
-      sql: `SELECT c.numero, c.titulo, c.solicitante, c.criado_em, p.chamados_token, w.grupo_id
+      sql: `SELECT c.numero, c.titulo, c.tipo, c.solicitante, c.criado_em, p.chamados_token, w.grupo_id
             FROM chamados_cliente c
             JOIN projetos p ON p.id = c.projeto_id
             JOIN projeto_whatsapp w ON w.projeto_id = c.projeto_id
@@ -593,15 +594,13 @@ async function avisarChamadoConcluido(db: Client, tarefaId: number): Promise<voi
     if (!cfg) return;
     const dia = new Date(String(ch.criado_em)).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
     const painel = ch.chamados_token ? `${enderecoDoPortal()}/chamados/${String(ch.chamados_token)}` : null;
-    // Negrito do próprio WhatsApp no título da mensagem; sem emoji, como em
-    // todo texto da casa.
-    const texto = [
-      `*Chamado nº ${ch.numero} concluído*`,
-      '',
-      String(ch.titulo),
-      `Aberto por ${String(ch.solicitante)} em ${dia}.`,
-      ...(painel ? ['', `Acompanhe no painel: ${painel}`] : []),
-    ].join('\n');
+    // O texto mora em _whatsapp-mensagens, o único lugar com emoji fora do
+    // Slack: lá a convenção do WhatsApp vale, aqui não.
+    const texto = mensagemDeChamadoConcluido({
+      numero: Number(ch.numero), titulo: String(ch.titulo),
+      tipo: ch.tipo != null ? String(ch.tipo) : null,
+      solicitante: String(ch.solicitante), dia, painel,
+    });
     const envio = await enviarTexto(cfg, String(ch.grupo_id), texto);
     if (!envio.ok) console.error(`[whatsapp] aviso do chamado ${ch.numero} recusado:`, envio.erro);
   } catch (e) {
