@@ -39,6 +39,7 @@ import { iniciarOndas } from '../lib/ondas';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { useDicaRica } from '../components/DicaRica';
+import { prazoDoChamado } from '../../api/_dias-uteis';
 
 type Grupo = 'triagem' | 'andamento' | 'concluido' | 'cancelado';
 
@@ -485,6 +486,8 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
       links: r.links, anexos: r.anexos, enviando: true,
       reaberturas: [],
       ajustes: [],
+      // A previsão de partida, pela mesma conta do servidor: dois dias úteis.
+      previsao: prazoDoChamado(),
     };
     setDados(d => d && { ...d, chamados: [linha, ...d.chamados] });
     setRascunho(rascunhoVazio(token));
@@ -506,6 +509,7 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
         chamados: atual.chamados.map(c => c.id !== temporario ? c : {
           ...c, id: Number(d.numero), numero: Number(d.numero), criado_em: String(d.criado_em),
           status: String(d.status ?? c.status), enviando: false,
+          previsao: d.previsao !== undefined ? d.previsao : c.previsao,
           anexos: (d.anexos ?? []).map((a: Anexo) => ({ ...a })),
         }),
       });
@@ -534,6 +538,8 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
       chamados: d.chamados.map(c => c.numero !== numero ? c : {
         ...c,
         status: entrada?.nome ?? 'Triagem', cor: entrada?.cor ?? '#8D939B', grupo: 'triagem', reabrindo: true,
+        // Reaberto, o prazo recomeça do dia da reabertura, como no servidor.
+        previsao: prazoDoChamado(),
         anexos: [...c.anexos, ...r.anexos.map((a, i) => ({ ...a, ordem: proximaOrdem + i + 1, reabertura: -1 }))],
         reaberturas: [...c.reaberturas, {
           em: agora, seq: null, autor: r.autor.trim(), texto: r.texto.trim(), links: r.links,

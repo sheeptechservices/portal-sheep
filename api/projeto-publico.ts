@@ -33,6 +33,7 @@ import { emailAdmin } from './_papeis.js';
 // o projeto está no teto de funções do plano, e uma rota a mais travaria o
 // deploy. A lógica e as regras dele moram no módulo.
 import { atenderChamados } from './_chamados-publico.js';
+import { prazoDoChamado } from './_dias-uteis.js';
 
 /** As entregas de uma tarefa: a principal (`entrega_id`) e as da lista
  *  `entregas`, quando ela serve a mais de uma. Mesma regra do painel. */
@@ -290,7 +291,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // A mesma pessoa na lista: a tarefa aceita vários donos, e o pedido
           // do cliente nasce com o gestor do projeto.
           JSON.stringify(responsavel?.id != null ? [String(responsavel.id)] : []),
-          null,
+          // O mesmo prazo de partida do painel de chamados: dois dias úteis.
+          prazoDoChamado(agora),
           JSON.stringify(['Cliente', ROTULO_DO_TIPO[tipo] ?? tipo]),
           Number(posicao.rows[0]?.proxima ?? 0),
           null,

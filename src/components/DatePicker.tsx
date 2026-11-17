@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { ehFeriadoNacional } from '../../api/_dias-uteis'
 
 const MONTHS_PT = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -8,72 +9,11 @@ const MONTHS_PT = [
 
 const DAY_LABELS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
 
-// Meeus/Jones/Butcher algorithm
-function easterDate(year: number): Date {
-  const a = year % 19
-  const b = Math.floor(year / 100)
-  const c = year % 100
-  const d = Math.floor(b / 4)
-  const e = b % 4
-  const f = Math.floor((b + 8) / 25)
-  const g = Math.floor((b - f + 1) / 3)
-  const h = (19 * a + b - d - g + 15) % 30
-  const i = Math.floor(c / 4)
-  const k = c % 4
-  const l = (32 + 2 * e + 2 * i - h - k) % 7
-  const mm = Math.floor((a + 11 * h + 22 * l) / 451)
-  const month = Math.floor((h + l - 7 * mm + 114) / 31) - 1
-  const day = ((h + l - 7 * mm + 114) % 31) + 1
-  return new Date(year, month, day)
-}
-
-function shift(base: Date, days: number): Date {
-  const d = new Date(base)
-  d.setDate(d.getDate() + days)
-  return d
-}
-
-function toKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-function buildHolidays(year: number): Set<string> {
-  const s = new Set<string>()
-
-  // Feriados fixos nacionais
-  const fixed: [number, number][] = [
-    [1, 1],   // Confraternização Universal
-    [4, 21],  // Tiradentes
-    [5, 1],   // Dia do Trabalho
-    [9, 7],   // Independência do Brasil
-    [10, 12], // Nossa Senhora Aparecida
-    [11, 2],  // Finados
-    [11, 15], // Proclamação da República
-    [11, 20], // Consciência Negra
-    [12, 25], // Natal
-  ]
-  for (const [m, d] of fixed) {
-    s.add(`${year}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`)
-  }
-
-  // Feriados móveis (baseados na Páscoa)
-  const easter = easterDate(year)
-  s.add(toKey(shift(easter, -48))) // Segunda de Carnaval
-  s.add(toKey(shift(easter, -47))) // Terça de Carnaval
-  s.add(toKey(shift(easter, -2)))  // Sexta-feira Santa
-  s.add(toKey(easter))             // Páscoa
-  s.add(toKey(shift(easter, 60)))  // Corpus Christi
-
-  return s
-}
-
-const holidayCache = new Map<number, Set<string>>()
-
+// Os feriados nacionais vêm do mesmo módulo que dá o prazo dos chamados no
+// servidor: o "Feriado" que o calendário marca e o dia que o prazo pula são
+// sempre os mesmos.
 function checkHoliday(y: number, m: number, d: number): boolean {
-  if (!holidayCache.has(y)) holidayCache.set(y, buildHolidays(y))
-  return holidayCache.get(y)!.has(
-    `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-  )
+  return ehFeriadoNacional(`${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`)
 }
 
 interface DatePickerProps {

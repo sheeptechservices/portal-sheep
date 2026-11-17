@@ -37,6 +37,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient, type Client } from '@libsql/client';
 import { citacaoEmail, enderecoDoPortal, fichaEmail, notaEmail, botaoEmail, notifyEmail } from './_email.js';
 import { emailAdmin } from './_papeis.js';
+import { prazoDoChamado } from './_dias-uteis.js';
 
 // ── Limites ─────────────────────────────────────────────────────────────────
 //  Na memória da instância, como na página pública: o que se protege aqui é o
@@ -284,7 +285,8 @@ async function contextoDaTriagem(db: Client, projetoId: string) {
   };
 }
 
-/** A tarefa do time para um chamado: na Triagem, com o gestor, etiquetada. */
+/** A tarefa do time para um chamado: na Triagem, com o gestor, etiquetada, e
+ *  com o prazo de partida da casa - dois dias úteis depois do pedido. */
 async function criarTarefa(db: Client, dados: {
   projetoId: string; titulo: string; descricao: string; urgencia: string; autor: string; agora: string;
   ctx: Awaited<ReturnType<typeof contextoDaTriagem>>;
@@ -304,7 +306,10 @@ async function criarTarefa(db: Client, dados: {
       dados.urgencia,
       ctx.gestor?.id ?? null,
       JSON.stringify(ctx.gestor ? [ctx.gestor.id] : []),
-      null,
+      // O prazo de partida: dois dias úteis depois do dia do pedido, sem fim de
+      // semana nem feriado nacional. O cliente o vê como previsão, e o time
+      // muda na tarefa quando a triagem disser outra coisa.
+      prazoDoChamado(dados.agora),
       JSON.stringify(dados.etiquetas ?? ['Cliente', 'Chamado']),
       ctx.posicao,
       null, dados.agora, null, dados.autor,
@@ -640,10 +645,12 @@ async function abrirChamado(req: VercelRequest, res: VercelResponse, db: Client,
     citacao: `${descricao}${linksEmTexto(links)}`, anexos: arquivos.length, tarefaId,
   });
 
-  // Devolve só o que a tela não sabe: o número no projeto e o carimbo. Nenhum
-  // id interno - nem o da tarefa, que fica com o time.
+  // Devolve só o que a tela não sabe: o número no projeto, o carimbo e a
+  // previsão de partida. Nenhum id interno - nem o da tarefa, que fica com o
+  // time. Sem tarefa, não há prazo, e a previsão volta vazia.
   return res.status(201).json({
     ok: true, numero: numeroNoProjeto, criado_em: agora, status: ctx.etapa, anexos: anexosDoCliente,
+    previsao: tarefaId ? prazoDoChamado(agora) : null,
   });
 }
 
@@ -700,16 +707,17 @@ async function reabrirChamado(req: VercelRequest, res: VercelResponse, db: Clien
   if (tarefaId) {
     await db.batch([
       // A tarefa volta para a Triagem com a etiqueta "Reaberto": é o que diz,
-      // no card, que aquilo já foi entregue uma vez e voltou.
+      // no card, que aquilo já foi entregue uma vez e voltou. O prazo recomeça
+      // do dia da reabertura, como o de um chamado que acabou de chegar.
       {
-        sql: `UPDATE projeto_tarefas SET status = ?, concluida_em = NULL,
+        sql: `UPDATE projeto_tarefas SET status = ?, concluida_em = NULL, prazo = ?,
                      etiquetas = CASE
                        WHEN EXISTS (SELECT 1 FROM json_each(COALESCE(etiquetas, '[]')) WHERE value = 'Reaberto')
                          THEN etiquetas
                        ELSE json_insert(COALESCE(etiquetas, '[]'), '$[#]', 'Reaberto')
                      END
               WHERE id = ?`,
-        args: [ctx.etapa, tarefaId],
+        args: [ctx.etapa, prazoDoChamado(agora), tarefaId],
       },
       // O diário da tarefa conta a volta, como contaria se alguém de dentro a
       // tivesse movido: quem olha o histórico do card sabe de onde ela veio.
