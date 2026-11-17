@@ -126,6 +126,24 @@ export async function qrDaInstancia(cfg: ConfigEvolution)
   return { ok: true, qr, codigo, conectado: false };
 }
 
+/** Os grupos em que o número da instância está, para escolher onde avisar.
+ *  Sem os participantes: a lista é só para escolher, e eles pesam. */
+export async function gruposDaInstancia(cfg: ConfigEvolution)
+  : Promise<{ ok: true; grupos: { id: string; nome: string; membros: number | null }[] } | { ok: false; erro: string }> {
+  const r = await chamar(cfg, `/group/fetchAllGroups/${encodeURIComponent(cfg.instancia)}?getParticipants=false`);
+  if (!r.ok) return { ok: false, erro: r.erro };
+  const lista = Array.isArray(r.dados) ? r.dados : [];
+  const grupos = lista
+    .filter((g: any) => typeof g?.id === 'string' && g.id.endsWith('@g.us'))
+    .map((g: any) => ({
+      id: String(g.id),
+      nome: String(g.subject ?? g.name ?? g.id),
+      membros: typeof g.size === 'number' ? g.size : Array.isArray(g.participants) ? g.participants.length : null,
+    }))
+    .sort((a: { nome: string }, b: { nome: string }) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  return { ok: true, grupos };
+}
+
 /** O destino como a Evolution espera: número com DDI, ou o id do grupo. Um
  *  número brasileiro escrito com DDD e sem o 55 ganha o 55. */
 export function normalizarDestino(cru: string): string | null {

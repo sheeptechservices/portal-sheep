@@ -538,6 +538,11 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   enviar_email_teste: 'configuracoes:integracoes',
   emails_enviados: 'configuracoes:integracoes',
   remove_fireflies_key: 'configuracoes:integracoes',
+  // O grupo do WhatsApp de cada projeto: ver com o projeto, trocar com a
+  // edição dele. A lista de grupos só serve a quem troca.
+  projeto_whatsapp: 'projetos:ver',
+  evolution_grupos: 'projetos:editar',
+  salvar_projeto_whatsapp: 'projetos:editar',
   evolution_config: 'configuracoes:integracoes',
   evolution_estado: 'configuracoes:integracoes',
   save_evolution: 'configuracoes:integracoes',

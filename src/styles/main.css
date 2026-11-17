@@ -25171,6 +25171,10 @@ input:is(.form-checkbox, .perm-check):disabled { opacity: .45; cursor: default; 
 }
 .pagina-perfil .perfil-painel { min-height: 360px; }
 
+/* O grupo avisado, na ficha do projeto em leitura. */
+.aviso-whatsapp-leitura { margin: 0; font-size: 13px; color: var(--gray); }
+.aviso-whatsapp-leitura strong { color: var(--black); }
+
 /* ══ Tarefas fixadas no menu ═══════════════════════════════════════════════
    A secao abre e recolhe inteira (`.revelar`); cada linha e um item do menu,
    com o ponto da cor da etapa no lugar do icone e o x de desafixar que so

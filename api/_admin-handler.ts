@@ -11,8 +11,8 @@ import {
   AWS_PRECOS_KEY, getAwsPrecosCredential,
 } from './_credentials.js';
 import {
-  EVOLUTION_KEY, configEvolution, enviarTexto, estadoDaInstancia, normalizarDestino, normalizarUrl,
-  perfilDaInstancia, qrDaInstancia, type ConfigEvolution,
+  EVOLUTION_KEY, configEvolution, enviarTexto, estadoDaInstancia, gruposDaInstancia, normalizarDestino,
+  normalizarUrl, perfilDaInstancia, qrDaInstancia, type ConfigEvolution,
 } from './_evolution.js';
 import { validarChaveAws } from './_aws-precos.js';
 import { lerCurriculo } from './_leitura-curriculo.js';
@@ -567,6 +567,48 @@ function fotoDaTarefa(r: Record<string, any> | null | undefined): FotoDaTarefa |
  * que já deu certo por causa do registro dela seria pior - é a mesma regra da
  * auditoria geral.
  */
+/**
+ * Avisa o grupo do WhatsApp do projeto que um chamado do cliente foi
+ * concluído. Chamado pela gravação da tarefa no instante em que ela entra na
+ * etapa de conclusão - e de novo a cada vez, se o chamado for reaberto e
+ * concluído outra vez.
+ *
+ * Nada aqui derruba a gravação: sem Evolution, sem grupo no projeto ou com o
+ * envio recusado, a tarefa conclui do mesmo jeito, e a falha fica no log.
+ */
+async function avisarChamadoConcluido(db: Client, tarefaId: number): Promise<void> {
+  try {
+    const r = await db.execute({
+      sql: `SELECT c.numero, c.titulo, c.solicitante, c.criado_em, p.chamados_token, w.grupo_id
+            FROM chamados_cliente c
+            JOIN projetos p ON p.id = c.projeto_id
+            JOIN projeto_whatsapp w ON w.projeto_id = c.projeto_id
+            WHERE c.tarefa_id = ?
+            ORDER BY c.id DESC LIMIT 1`,
+      args: [tarefaId],
+    });
+    const ch = r.rows[0];
+    if (!ch) return;
+    const cfg = await configEvolution(db);
+    if (!cfg) return;
+    const dia = new Date(String(ch.criado_em)).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    const painel = ch.chamados_token ? `${enderecoDoPortal()}/chamados/${String(ch.chamados_token)}` : null;
+    // Negrito do próprio WhatsApp no título da mensagem; sem emoji, como em
+    // todo texto da casa.
+    const texto = [
+      `*Chamado nº ${ch.numero} concluído*`,
+      '',
+      String(ch.titulo),
+      `Aberto por ${String(ch.solicitante)} em ${dia}.`,
+      ...(painel ? ['', `Acompanhe no painel: ${painel}`] : []),
+    ].join('\n');
+    const envio = await enviarTexto(cfg, String(ch.grupo_id), texto);
+    if (!envio.ok) console.error(`[whatsapp] aviso do chamado ${ch.numero} recusado:`, envio.erro);
+  } catch (e) {
+    console.error('[whatsapp] aviso do chamado falhou:', (e as Error).message);
+  }
+}
+
 async function registrarEventosDaTarefa(
   db: Client,
   tarefaId: number | string,
@@ -1128,6 +1170,18 @@ async function migrarSchema(db: Client) {
   await ddl(`
     -- As tarefas que cada pessoa fixou para ter a mao, na secao Fixadas do
     -- menu lateral. De cada um: fixar nao muda nada para o resto da equipe.
+    -- O grupo do WhatsApp de cada projeto: quando um chamado do cliente
+    -- daquele projeto e concluido, o numero da casa avisa ali. Sem linha, o
+    -- projeto nao avisa ninguem.
+    CREATE TABLE IF NOT EXISTS projeto_whatsapp (
+      projeto_id    TEXT PRIMARY KEY,
+      grupo_id      TEXT NOT NULL,
+      grupo_nome    TEXT,
+      atualizado_em TEXT NOT NULL
+    )
+  `);
+
+  await ddl(`
     CREATE TABLE IF NOT EXISTS tarefas_fixadas (
       usuario_id TEXT NOT NULL,
       tarefa_id  INTEGER NOT NULL,
@@ -5833,6 +5887,34 @@ async function despacharAdminData(
       };
     }
 
+    // O grupo que o projeto avisa, e se a Evolution está ligada: sem ela a
+    // ficha só explica onde conectar.
+    if (action === 'projeto_whatsapp') {
+      const projetoId = String(query.get('projeto_id') ?? '');
+      { const barrado = await guardaDaEquipe(db, usuario, projetoId); if (barrado) return barrado; }
+      const [cfg, linha] = await Promise.all([
+        configEvolution(db),
+        db.execute({ sql: 'SELECT grupo_id, grupo_nome FROM projeto_whatsapp WHERE projeto_id = ?', args: [projetoId] }),
+      ]);
+      return {
+        status: 200,
+        body: {
+          evolution: !!cfg,
+          grupo_id: linha.rows[0]?.grupo_id ?? null,
+          grupo_nome: linha.rows[0]?.grupo_nome ?? null,
+        },
+      };
+    }
+
+    // Os grupos em que o número da casa está, para a ficha do projeto escolher.
+    if (action === 'evolution_grupos') {
+      const cfg = await configEvolution(db);
+      if (!cfg) return { status: 400, body: { error: 'Conecte a Evolution em Configurações > Integrações.' } };
+      const r = await gruposDaInstancia(cfg);
+      if (!r.ok) return { status: 400, body: { error: r.erro } };
+      return { status: 200, body: { grupos: r.grupos } };
+    }
+
     // Só o estado, para a tela acompanhar o pareamento pelo QR sem refazer a
     // consulta inteira a cada poucos segundos.
     if (action === 'evolution_estado') {
@@ -7660,9 +7742,13 @@ function faltaEmProjeto(p: any): string | null {
             carimbo as never, ...(mudouDeProjeto ? [ordemNova as never] : []), t.id],
         });
         gravada = { concluida_em: (carimbo as string | null) ?? null };
+        const jaFechada = etapas.conclusivas.has(String(antes.rows[0].status));
         await registrarEventosDaTarefa(db, t.id, autorId, autorNome,
           fotoDaTarefa(antes.rows[0]), depois,
-          { antes: etapas.conclusivas.has(String(antes.rows[0].status)), depois: fecha });
+          { antes: jaFechada, depois: fecha });
+        // Acabou de concluir: se a tarefa veio de um chamado do cliente, o
+        // grupo do projeto fica sabendo.
+        if (fecha && !jaFechada) await avisarChamadoConcluido(db, Number(t.id));
       } else {
         const ordem = await db.execute({
           sql: 'SELECT COALESCE(MAX(ordem), -1) + 1 AS proxima FROM projeto_tarefas WHERE projeto_id = ?',
@@ -11485,6 +11571,26 @@ function faltaEmProjeto(p: any): string | null {
           updated_at: new Date().toISOString(),
         },
       };
+    }
+
+    // O grupo do WhatsApp do projeto. Sem grupo, o projeto deixa de avisar.
+    if (action === 'salvar_projeto_whatsapp') {
+      const projetoId = String(body?.projeto_id ?? '');
+      if (!projetoId) return { status: 400, body: { error: 'Projeto ausente.' } };
+      { const barrado = await guardaDaEquipe(db, usuario, projetoId); if (barrado) return barrado; }
+      const grupoId = String(body?.grupo_id ?? '').trim();
+      if (!grupoId) {
+        await db.execute({ sql: 'DELETE FROM projeto_whatsapp WHERE projeto_id = ?', args: [projetoId] });
+        return { status: 200, body: { ok: true } };
+      }
+      if (!/@g\.us$/.test(grupoId)) return { status: 400, body: { error: 'Grupo inválido.' } };
+      await db.execute({
+        sql: `INSERT INTO projeto_whatsapp (projeto_id, grupo_id, grupo_nome, atualizado_em) VALUES (?, ?, ?, ?)
+              ON CONFLICT (projeto_id) DO UPDATE SET grupo_id = excluded.grupo_id,
+                grupo_nome = excluded.grupo_nome, atualizado_em = excluded.atualizado_em`,
+        args: [projetoId, grupoId, String(body?.grupo_nome ?? '').slice(0, 120) || null, new Date().toISOString()],
+      });
+      return { status: 200, body: { ok: true } };
     }
 
     // O QR para parear o número na instância, quando ela está desconectada.

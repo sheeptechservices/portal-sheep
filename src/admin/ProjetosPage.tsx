@@ -3689,6 +3689,106 @@ const ACESSO_EM_BRANCO = { rotulo: '', usuario: '', url: '', senha: '' };
  *     meio minuto - ou junto com a gaveta, o que vier primeiro.
  *  2. Nada disto aparece na página do cliente. É acesso da equipe.
  */
+/** Quem chama a API da casa: caminho, método e corpo. */
+type ApiDaPagina = (path: string, method?: string, body?: unknown) => Promise<any>;
+
+/** O grupo escolhido vale "nenhum" quando o projeto não avisa ninguém. */
+const SEM_GRUPO = 'nenhum';
+
+/**
+ * O grupo do WhatsApp do cliente: quando um chamado deste projeto é concluído,
+ * o número da casa avisa ali. A escolha grava sozinha, no gesto, e volta atrás
+ * se o servidor recusar. Sem a Evolution conectada, a seção só diz onde ligar.
+ */
+function SecaoAvisoWhatsapp({ projetoId, somenteLeitura, api }: {
+  projetoId: string;
+  somenteLeitura: boolean;
+  api: ApiDaPagina;
+}) {
+  const { toast } = useToast();
+  const [estado, setEstado] = useState<{ evolution: boolean; grupoId: string | null; grupoNome: string | null } | null>(null);
+  const [grupos, setGrupos] = useState<{ id: string; nome: string; membros: number | null }[] | null>(null);
+  const [erroGrupos, setErroGrupos] = useState<string | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    api(`?action=projeto_whatsapp&projeto_id=${encodeURIComponent(projetoId)}`).then(d => {
+      if (!vivo || !d || d.error) return;
+      setEstado({ evolution: !!d.evolution, grupoId: d.grupo_id ?? null, grupoNome: d.grupo_nome ?? null });
+      // A lista de grupos só vem para quem pode trocar: ela custa uma ida ao
+      // WhatsApp, e quem só lê não escolhe nada.
+      if (d.evolution && !somenteLeitura) {
+        api('?action=evolution_grupos').then(g => {
+          if (!vivo) return;
+          if (!g || g.error) { setErroGrupos(g?.error ?? 'A lista de grupos não veio.'); return; }
+          setGrupos(g.grupos ?? []);
+        }).catch(() => { if (vivo) setErroGrupos('A lista de grupos não veio.'); });
+      }
+    }).catch(() => {});
+    return () => { vivo = false; };
+  }, [projetoId, somenteLeitura, api]);
+
+  async function escolher(valor: string) {
+    if (!estado) return;
+    const antes = estado;
+    const grupo = grupos?.find(g => g.id === valor) ?? null;
+    setEstado({ ...estado, grupoId: grupo?.id ?? null, grupoNome: grupo?.nome ?? null });
+    const r = await api('', 'POST', {
+      action: 'salvar_projeto_whatsapp', projeto_id: projetoId,
+      grupo_id: grupo?.id ?? null, grupo_nome: grupo?.nome ?? null,
+    }).catch(() => null);
+    if (!r?.ok) {
+      setEstado(antes);
+      toast('error', 'O grupo não foi gravado', r?.error ?? 'O servidor não respondeu. Tente de novo.');
+    }
+  }
+
+  // O grupo gravado entra na lista mesmo que o número tenha saído dele: a
+  // escolha continua visível, e dá para trocar.
+  const opcoes = [
+    { valor: SEM_GRUPO, label: 'Não avisar' },
+    ...(grupos ?? []).map(g => ({ valor: g.id, label: g.nome, descricao: g.membros ? `${g.membros} participantes` : undefined })),
+    ...(estado?.grupoId && grupos && !grupos.some(g => g.id === estado.grupoId)
+      ? [{ valor: estado.grupoId, label: estado.grupoNome ?? 'Grupo gravado', descricao: 'O número da casa não está mais nele' }]
+      : []),
+  ];
+
+  return (
+    <section>
+      <p className="admin-section-title">Aviso no WhatsApp</p>
+      {!estado ? (
+        <div className="dux-spinner-row"><span className="dux-spinner sm" /></div>
+      ) : !estado.evolution ? (
+        <p className="form-hint troca">
+          Para avisar o grupo do cliente quando um chamado é concluído, conecte o WhatsApp da casa em
+          Configurações &gt; Integrações &gt; Evolution API.
+        </p>
+      ) : somenteLeitura ? (
+        <p className="aviso-whatsapp-leitura troca">
+          {estado.grupoNome ? <>Avisa o grupo <strong>{estado.grupoNome}</strong> quando um chamado é concluído.</>
+            : 'Este projeto não avisa nenhum grupo.'}
+        </p>
+      ) : (
+        <div className="form-group troca">
+          <label className="form-label">Grupo do cliente</label>
+          {grupos ? (
+            <SelectSistema valor={estado.grupoId ?? SEM_GRUPO} opcoes={opcoes}
+              onChange={v => void escolher(v === SEM_GRUPO ? '' : v)} />
+          ) : erroGrupos ? (
+            <p className="form-error">{erroGrupos}</p>
+          ) : (
+            <div className="dux-spinner-row"><span className="dux-spinner sm" /></div>
+          )}
+          <p className="form-hint">
+            Quando um chamado deste projeto é concluído, o número da casa avisa este grupo, com o
+            número, o título e o link do painel. O número precisa estar no grupo.
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function SecaoAcessos({ acessos, somenteLeitura, acoes }: {
   acessos: AcessoDoProjeto[];
   somenteLeitura: boolean;
@@ -4607,8 +4707,10 @@ function FormularioProjeto({
   onExcluirReuniao,
   onPublicar, onChamados, onSalvarEntrega, onExcluirEntrega, onSubirEvidencia, onBaixarEvidencia, onVerEvidencia,
   onAnexarNaEntrega, onRemoverAnexoDaEntrega, onVerAnexoDaEntrega, onBaixarAnexoDaEntrega,
-  acessos,
+  acessos, api,
 }: {
+  /** A API da página, para as seções que gravam sozinhas (o grupo do WhatsApp). */
+  api?: ApiDaPagina;
   editando: Projeto | null;
   /** Com que rascunho o painel abre enquanto o projeto ainda não voltou do
    *  servidor. É o mesmo objeto que foi gravado no clique. */
@@ -5276,6 +5378,12 @@ function FormularioProjeto({
           {editando && acessos && (
             <SecaoAcessos acessos={editando.acessos ?? []} somenteLeitura={somenteLeitura}
               acoes={acessos} />
+          )}
+
+          {/* O grupo do cliente no WhatsApp, avisado a cada chamado concluído.
+              Grava sozinho, como os acessos, e só com projeto gravado. */}
+          {editando && api && (
+            <SecaoAvisoWhatsapp projetoId={editando.id} somenteLeitura={somenteLeitura} api={api} />
           )}
 
           <fieldset className="painel-leitura campos-travaveis" disabled={somenteLeitura}>
@@ -7365,6 +7473,7 @@ carregando ? (
           // testa precisam dele. Quem não edita recebe a seção em leitura, sem
           // guardar, mexer nem remover - o servidor confere as duas coisas.
           acessos={form.editando ? acoesDeAcesso(form.editando.id) : undefined}
+          api={api}
           onSalvarEntrega={salvarEntrega}
           onExcluirEntrega={excluirEntrega}
           onSubirEvidencia={subirEvidencia}
