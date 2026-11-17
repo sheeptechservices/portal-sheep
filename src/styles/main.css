@@ -25059,7 +25059,10 @@ input:is(.form-checkbox, .perm-check):disabled { opacity: .45; cursor: default; 
 .ficha-nome { margin: 0; font-size: 17px; font-weight: 800; color: var(--black); }
 .ficha-sub { margin: 3px 0 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12.5px; color: var(--gray2); }
 .ficha-sub .perfil-chip { font-size: 10.5px; }
-.ficha-conteudo { display: flex; flex-direction: column; gap: 20px; }
+/* Entre os blocos, a linha e a folga sao as de toda secao do corpo do modal
+   (`.admin-modal-body section`): uma linha so, sem vao entre elas. */
+.ficha-conteudo { display: flex; flex-direction: column; gap: 0; }
+.ficha-situacao + .ficha-secao { margin-top: 4px; }
 .ficha-situacao {
   display: flex;
   align-items: center;
@@ -25072,7 +25075,6 @@ input:is(.form-checkbox, .perm-check):disabled { opacity: .45; cursor: default; 
   color: var(--gray);
 }
 .ficha-situacao-conta { font-weight: 700; color: var(--black); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.ficha-secao + .ficha-secao { padding-top: 18px; border-top: 1px solid var(--gray3); }
 .ficha-secao-titulo {
   margin: 0 0 10px;
   font-size: 10.5px;
