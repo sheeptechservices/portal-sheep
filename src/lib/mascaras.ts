@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  Máscaras de digitação: CPF, CNPJ, CEP, RG e dinheiro.
+//  Máscaras de digitação: CPF, CNPJ, CEP, RG, telefone, data e dinheiro.
 //
 //  Todas seguem a mesma regra - recebem o que está no campo, devolvem o que deve
 //  ficar nele. Nenhuma recusa tecla: quem está no meio de digitar vê o número
@@ -58,6 +58,25 @@ export function mascaraRg(v: string): string {
     partes.unshift(c.slice(Math.max(0, fim - 3), fim));
   }
   return partes.join('.');
+}
+
+/** (31) 98244-0323 no celular, (31) 3333-4444 no fixo: o hífen anda conforme
+ *  o número tem 10 ou 11 dígitos. */
+export function mascaraTelefone(v: string): string {
+  const d = digitos(v).slice(0, 11);
+  if (d.length <= 2) return d.length ? `(${d}` : '';
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
+
+/** 00/00/0000, para data escrita à mão (nascimento, que fica longe demais do
+ *  calendário para navegar mês a mês). */
+export function mascaraData(v: string): string {
+  const d = digitos(v).slice(0, 8);
+  if (d.length <= 2) return d;
+  if (d.length <= 4) return `${d.slice(0, 2)}/${d.slice(2)}`;
+  return `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}`;
 }
 
 /** Centavos do que foi digitado: "R$ 5.800,00" e "580000" chegam no mesmo lugar. */

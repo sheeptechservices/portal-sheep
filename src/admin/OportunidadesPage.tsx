@@ -28,6 +28,7 @@ import { CategoriaTag, ANEXO_CATEGORIAS, normalizaCategoria } from '../component
 import { PreviaArquivo } from '../components/PreviaArquivo';
 import { tipoDePlanilha } from '../lib/planilha';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
+import { ESTADOS_BR } from '../lib/cepApi';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { BotaoTelaCheia } from '../components/BotaoTelaCheia';
 import { useTelaCheia } from '../lib/useTelaCheia';
@@ -607,15 +608,6 @@ export const TIPO_PROJETO_DETALHE: Record<string, { descricao: string; icone: (p
   'Recorrente': { descricao: 'Cobra todo mês, sem data para acabar', icone: IconCiclo },
   'Escopo fechado': { descricao: 'Começo, meio e fim combinados', icone: IconBandeiraFinal },
 };
-
-/** As unidades da federação, na ordem em que se procura: pela sigla. Lista
- *  fechada porque estado é dado de agrupamento - "MG", "Minas" e "minas gerais"
- *  escritos à mão viram três praças diferentes no mesmo relatório. */
-export const ESTADOS_BR = [
-  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
-  'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE',
-  'TO',
-] as const;
 
 /** Em que mercado a empresa atua. Diferente do interesse, que é o que ela quer
  *  da gente: uma transportadora pode querer BI. */

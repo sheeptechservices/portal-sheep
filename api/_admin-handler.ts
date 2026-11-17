@@ -1108,6 +1108,19 @@ async function migrarSchema(db: Client) {
   // O MCP: a marca de quem pode usar e as tabelas do OAuth dele.
   await ensureMcpSchema(ddl);
 
+  await ddl(`
+    -- Os dados cadastrais de cada pessoa da casa, preenchidos por ela mesma no
+    -- Perfil: documentos, contato, endereco, a empresa (para quem e PJ), o PIX
+    -- e o contato de emergencia. Um JSON por pessoa, com as chaves conferidas
+    -- na gravacao: campo novo entra sem mexer na estrutura da tabela. So a
+    -- propria pessoa le e grava o seu.
+    CREATE TABLE IF NOT EXISTS usuarios_cadastro (
+      usuario_id    TEXT PRIMARY KEY,
+      dados         TEXT NOT NULL DEFAULT '{}',
+      atualizado_em TEXT NOT NULL
+    )
+  `);
+
 
   // ── Banco de talentos ───────────────────────────────────────────────────────
   // Quem trabalha na casa mora em `usuarios`; aqui ficam duas coisas que aquela
@@ -3752,6 +3765,65 @@ function comoObjeto(valor: unknown): Record<string, unknown> {
   }
 }
 
+/** Os campos do cadastro do Perfil e o teto de cada um. Documento, CEP e
+ *  telefone vao gravados so com os digitos; a tela formata na leitura. */
+const CAMPOS_DO_CADASTRO: Record<string, number> = {
+  nome_completo: 120, data_nascimento: 10, cpf: 11, rg: 20, nacionalidade: 40, estado_civil: 30,
+  celular: 13, email_pessoal: 120,
+  cep: 8, logradouro: 120, numero: 20, complemento: 60, bairro: 80, cidade: 80, uf: 2,
+  cnpj: 14, razao_social: 150,
+  pix_tipo: 10, pix_chave: 140,
+  emergencia_nome: 120, emergencia_parentesco: 40, emergencia_telefone: 13,
+};
+const SO_DIGITOS = new Set(['cpf', 'cnpj', 'cep', 'celular', 'emergencia_telefone']);
+const UFS_DO_BRASIL = new Set(['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
+  'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO']);
+
+/** O CPF com os dois digitos verificadores certos. */
+function cpfValido(cpf: string): boolean {
+  if (!/^\d{11}$/.test(cpf) || /^(\d)\1{10}$/.test(cpf)) return false;
+  const dv = (n: number) => {
+    let soma = 0;
+    for (let i = 0; i < n; i++) soma += Number(cpf[i]) * (n + 1 - i);
+    const r = (soma * 10) % 11;
+    return r === 10 ? 0 : r;
+  };
+  return dv(9) === Number(cpf[9]) && dv(10) === Number(cpf[10]);
+}
+
+/** Confere o cadastro que veio da tela: so as chaves conhecidas, cada uma no
+ *  formato e no tamanho dela. Vazio e valido - o cadastro se completa aos
+ *  poucos -, e campo vazio nem e gravado. */
+function conferirCadastro(cru: unknown): { dados: Record<string, string> } | { erro: string } {
+  if (!cru || typeof cru !== 'object') return { erro: 'Cadastro ausente.' };
+  const dados: Record<string, string> = {};
+  for (const [campo, teto] of Object.entries(CAMPOS_DO_CADASTRO)) {
+    let v = String((cru as Record<string, unknown>)[campo] ?? '').trim();
+    if (SO_DIGITOS.has(campo)) v = v.replace(/\D/g, '');
+    if (!v) continue;
+    if (v.length > teto) return { erro: `O campo ${campo.replace(/_/g, ' ')} passou do tamanho.` };
+    dados[campo] = v;
+  }
+  if (dados.cpf && !cpfValido(dados.cpf)) return { erro: 'O CPF não confere. Revise os números.' };
+  if (dados.cnpj && dados.cnpj.length !== 14) return { erro: 'O CNPJ precisa de 14 números.' };
+  if (dados.cep && dados.cep.length !== 8) return { erro: 'O CEP precisa de 8 números.' };
+  if (dados.uf && !UFS_DO_BRASIL.has(dados.uf.toUpperCase())) return { erro: 'Estado desconhecido.' };
+  if (dados.uf) dados.uf = dados.uf.toUpperCase();
+  if (dados.data_nascimento && !/^\d{4}-\d{2}-\d{2}$/.test(dados.data_nascimento)) {
+    return { erro: 'Data de nascimento inválida.' };
+  }
+  if (dados.email_pessoal && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dados.email_pessoal)) {
+    return { erro: 'O e-mail pessoal não parece um endereço válido.' };
+  }
+  for (const campo of ['celular', 'emergencia_telefone']) {
+    if (dados[campo] && dados[campo].length < 10) return { erro: 'O telefone precisa do DDD e do número.' };
+  }
+  if (dados.pix_tipo && !['cpf', 'cnpj', 'email', 'celular', 'aleatoria'].includes(dados.pix_tipo)) {
+    return { erro: 'Tipo de chave PIX desconhecido.' };
+  }
+  return { dados };
+}
+
 function alvoDaAcao(body: any, resposta: any): string | null {
   const alvo = body?.id ?? body?.oportunidade_id ?? body?.analise_id ??
                body?.status_id ?? body?.chave ??
@@ -4288,7 +4360,7 @@ async function despacharAdminData(
     if (action === 'perfil') {
       if (!usuario) return { status: 200, body: { usuario: null } };
       const conta = (sql: string) => db.execute({ sql, args: [usuario.id] });
-      const [linha, comentarios, eventos, oportunidades, pendencias, acoes, ultimas] = await Promise.all([
+      const [linha, comentarios, eventos, oportunidades, pendencias, acoes, ultimas, cadastro] = await Promise.all([
         conta('SELECT id, email, nome, foto_url, papel, criado_em, ultimo_acesso FROM usuarios WHERE id = ?'),
         conta("SELECT COUNT(*) c FROM oportunidade_eventos WHERE autor_id = ? AND tipo = 'comentario'"),
         conta('SELECT COUNT(*) c FROM oportunidade_eventos WHERE autor_id = ?'),
@@ -4298,8 +4370,12 @@ async function despacharAdminData(
         conta('SELECT COUNT(*) c FROM oportunidade_pendencias WHERE criado_por_id = ?'),
         conta('SELECT COUNT(*) c FROM auditoria WHERE usuario_id = ?'),
         conta('SELECT acao, alvo, criado_em FROM auditoria WHERE usuario_id = ? ORDER BY id DESC LIMIT 15'),
+        conta('SELECT dados, atualizado_em FROM usuarios_cadastro WHERE usuario_id = ?'),
       ]);
       const n = (r: { rows: any[] }) => Number(r.rows[0]?.c ?? 0);
+      const dadosCadastrais = (() => {
+        try { return JSON.parse(String(cadastro.rows[0]?.dados ?? '{}')); } catch { return {}; }
+      })();
       return {
         status: 200,
         body: {
@@ -4309,6 +4385,8 @@ async function despacharAdminData(
             pendencias: n(pendencias), acoes: n(acoes),
           },
           ultimas_acoes: ultimas.rows,
+          cadastro: dadosCadastrais,
+          cadastro_atualizado_em: cadastro.rows[0]?.atualizado_em ?? null,
         },
       };
     }
@@ -8612,6 +8690,21 @@ function faltaEmProjeto(p: any): string | null {
       { const barrado = await guardaDaEquipe(db, usuario, alvo.rows[0].projeto_id); if (barrado) return barrado; }
       await db.execute({ sql: 'DELETE FROM projeto_acessos WHERE id = ?', args: [body.id] });
       return { status: 200, body: { ok: true } };
+    }
+
+    // Os dados cadastrais de quem esta logado. Sempre os da sessao: id nenhum
+    // vem da tela, entao ninguem grava no cadastro de outra pessoa.
+    if (action === 'salvar_perfil_cadastro') {
+      if (!usuario) return { status: 403, body: { error: 'Entre com a sua conta para preencher o cadastro.' } };
+      const conferido = conferirCadastro(body?.dados);
+      if ('erro' in conferido) return { status: 400, body: { error: conferido.erro } };
+      const agora = new Date().toISOString();
+      await db.execute({
+        sql: `INSERT INTO usuarios_cadastro (usuario_id, dados, atualizado_em) VALUES (?, ?, ?)
+              ON CONFLICT (usuario_id) DO UPDATE SET dados = excluded.dados, atualizado_em = excluded.atualizado_em`,
+        args: [usuario.id, JSON.stringify(conferido.dados), agora],
+      });
+      return { status: 200, body: { ok: true, atualizado_em: agora, dados: conferido.dados } };
     }
 
     // Escrever e corrigir um recado do mural. Todo mundo escreve; corrigir e

@@ -48,3 +48,12 @@ export async function lookupCEP(cep: string): Promise<CEPData | null> {
 
   return null;
 }
+
+/** As unidades da federação, na ordem em que se procura: pela sigla. Lista
+ *  fechada porque estado é dado de agrupamento - "MG", "Minas" e "minas gerais"
+ *  escritos à mão viram três praças diferentes no mesmo relatório. */
+export const ESTADOS_BR = [
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
+  'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE',
+  'TO',
+] as const;

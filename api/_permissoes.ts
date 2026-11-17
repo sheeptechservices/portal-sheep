@@ -378,6 +378,8 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   // ── Sempre liberado ────────────────────────────────────────────────────────
   me: LIVRE,
   perfil: LIVRE,
+  // O proprio cadastro: a acao so grava o de quem esta logado.
+  salvar_perfil_cadastro: LIVRE,
   // Lista de nomes e fotos do time, que alimenta os seletores de pessoas. Não
   // expõe nada além do que já aparece na equipe de um projeto.
   usuarios_notificaveis: LIVRE,

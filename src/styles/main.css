@@ -25029,16 +25029,7 @@ input:is(.form-checkbox, .perm-check):disabled { opacity: .45; cursor: default; 
   text-transform: uppercase;
   color: var(--gray2);
 }
-.pagina-perfil .perfil-trilha { min-height: 360px; }
-.perfil-trilha-titulo {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--black);
-}
+.pagina-perfil .perfil-painel { min-height: 360px; }
 .pagina-perfil .perfil-trilha-corpo { padding: 4px 16px 16px; }
 .pagina-perfil .perfil-trilha-corpo .admin-table { width: 100%; }
 .pagina-perfil .perfil-trilha-corpo .admin-table thead th {
@@ -25050,12 +25041,121 @@ input:is(.form-checkbox, .perm-check):disabled { opacity: .45; cursor: default; 
 .perfil-trilha-vazia { margin: 16px 0; font-size: 13px; color: var(--gray2); }
 .pagina-perfil .perfil-trilha-corpo .perfil-nota { margin-top: 14px; }
 
+
+/* O canto do cabecalho: quanto do essencial ja esta no cadastro e os botoes
+   de gravar. Ficam no alto porque o canto de baixo e dos botoes flutuantes.
+   Na aba da trilha apagam, sem sair do lugar. */
+.perfil-ferramentas {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: opacity var(--transition-spring);
+}
+.perfil-ferramentas.oculto { opacity: 0; pointer-events: none; }
+.perfil-completo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 6px;
+  font-size: 12px;
+  color: var(--gray2);
+}
+.perfil-completo-rotulo { font-weight: 600; }
+.perfil-completo-barra {
+  width: 96px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--sup-etiqueta, var(--gray4));
+  overflow: hidden;
+}
+.perfil-completo-barra > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--yellow);
+  transition: width var(--transition-spring);
+}
+.perfil-completo.cheio .perfil-completo-barra > span { background: var(--green); }
+.perfil-completo-valor { min-width: 34px; font-weight: 700; color: var(--black); font-variant-numeric: tabular-nums; }
+
+/* O cadastro: o corpo rola entre o cabecalho e o rodape de gravar. */
+.perfil-cadastro { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.pagina-perfil .perfil-cadastro-corpo { padding: 16px 20px 20px; gap: 22px; }
+.pagina-perfil .perfil-cadastro-aviso { margin: 0; }
+
+.perfil-secao { display: flex; flex-direction: column; gap: 12px; }
+.perfil-secao + .perfil-secao { padding-top: 20px; border-top: 1px solid var(--sup-painel-borda); }
+.perfil-secao-cabeca { display: flex; align-items: center; gap: 10px; }
+.perfil-secao-icone {
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  background: var(--sup-etiqueta, var(--gray4));
+  color: var(--gray);
+}
+.perfil-secao-titulo { margin: 0; font-size: 13.5px; font-weight: 700; color: var(--black); }
+.perfil-secao-nota { margin: 1px 0 0; font-size: 12px; color: var(--gray2); }
+
+/* Grade de 12 colunas: cada campo diz quantas ocupa, e a linha fecha sem
+   buraco. Em painel estreito, os curtos dobram e depois tudo vira coluna. */
+.perfil-campos { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px 14px; }
+.perfil-campo { min-width: 0; }
+.perfil-campo.l3 { grid-column: span 3; }
+.perfil-campo.l4 { grid-column: span 4; }
+.perfil-campo.l5 { grid-column: span 5; }
+.perfil-campo.l6 { grid-column: span 6; }
+.perfil-campo.l7 { grid-column: span 7; }
+.perfil-campo.l8 { grid-column: span 8; }
+.perfil-campo.l12 { grid-column: span 12; }
+@media (max-width: 1280px) {
+  .perfil-campo.l3, .perfil-campo.l4, .perfil-campo.l5 { grid-column: span 6; }
+  .perfil-campo.l7, .perfil-campo.l8 { grid-column: span 12; }
+}
+@media (max-width: 640px) {
+  .perfil-campo { grid-column: span 12 !important; }
+}
+
+/* O giro dentro do campo de CEP e de CNPJ, enquanto a consulta anda. */
+.perfil-campo-com-giro { position: relative; display: block; }
+.perfil-campo-com-giro .form-input { padding-right: 36px; }
+.perfil-giro {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  display: inline-flex;
+  margin-top: -7px;
+  color: var(--gray2);
+  pointer-events: none;
+}
+.perfil-busca { display: inline-flex; align-items: center; gap: 5px; }
+.perfil-busca.ok { color: var(--green); }
+
+/* O aviso de privacidade e, ao lado, o estado da gravacao. */
+.perfil-cadastro-topo { display: flex; align-items: flex-start; gap: 16px; }
+.perfil-cadastro-topo .perfil-cadastro-aviso { flex: 1; min-width: 0; }
+.perfil-estado {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--gray2);
+  white-space: nowrap;
+}
+.perfil-estado.sujo { color: var(--black); font-weight: 600; }
+.perfil-estado-ponto { width: 7px; height: 7px; border-radius: 50%; background: var(--yellow); box-shadow: var(--shadow-yellow); }
+
 @media (max-width: 1000px) {
   .pagina-perfil .perfil-grade { grid-template-columns: 1fr; }
   .pagina-perfil .perfil-coluna { overflow: visible; }
 }
 @media (prefers-reduced-motion: reduce) {
   .pagina-perfil .perfil-coluna > * { animation: none; }
+  .perfil-ferramentas, .perfil-completo-barra > span { transition: none; }
 }
 
 /* ══ O modo claro de volta ═════════════════════════════════════════════════
