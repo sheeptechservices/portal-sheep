@@ -25216,7 +25216,16 @@ input:is(.form-checkbox, .perm-check):disabled { opacity: .45; cursor: default; 
   border-color: var(--yellow);
   color: var(--on-yellow);
 }
-.secao-add.tarefa-fixar.fixada:hover { box-shadow: var(--shadow-yellow); }
+/* No hover, o alfinete aceso continua aceso: o hover generico dos botoes do
+   modal (`.admin-modal .secao-add:hover`) trocava a cor do icone, que sumia no
+   fundo amarelo. O realce aqui e a sombra amarela, o da casa para destaque. */
+.secao-add.tarefa-fixar.fixada:hover:not(:disabled),
+.admin-modal .secao-add.tarefa-fixar.fixada:hover:not(:disabled) {
+  background: var(--yellow);
+  border-color: var(--yellow);
+  color: var(--on-yellow);
+  box-shadow: var(--shadow-yellow);
+}
 
 /* A linha da tabela de Usuarios abre a ficha cadastral: ganha o realce de
    item de lista no hover e no foco de teclado. */
