@@ -69,6 +69,25 @@ export function textoParaHtml(texto: string, marcados?: string[]): string {
   return blocos.join('');
 }
 
+/**
+ * O texto colado, nas marcas da casa. O que vem de fora - sobretudo do
+ * WhatsApp - escreve lista e formatação do jeito dele:
+ *
+ *  - linha que começa com `-`, `•`, `·`, `*` ou um traço vira item de lista
+ *    (`- `), que é a lista do campo;
+ *  - `*negrito*` do WhatsApp vira `**negrito**`, e `_itálico_` vira `*itálico*`.
+ *
+ * O resto passa como veio. Numeração (`1.`) fica como texto: o campo não tem
+ * lista numerada, e trocar por marcador perderia a ordem que alguém escreveu.
+ */
+export function colagemNasMarcas(texto: string): string {
+  return texto.replace(/\r\n?/g, '\n').split('\n').map(linha => linha
+    .replace(/^(\s*)[-\u2022\u00b7\u25aa\u25e6\u2023\u2013\u2014*](\s+)/, '$1- ')
+    .replace(/(^|[^*\w])\*([^*\n]+?)\*(?![*\w])/g, '$1**$2**')
+    .replace(/(^|[^_\w])_([^_\n]+?)_(?![_\w])/g, '$1*$2*'))
+    .join('\n');
+}
+
 /** O HTML do campo de volta em texto com marcas. Só as tags que este editor
  *  produz são reconhecidas; qualquer outra coisa colada vira o texto dela. */
 export function htmlParaTexto(raiz: HTMLElement): string {
@@ -366,14 +385,20 @@ export function EditorRico({
     }
   }
 
-  /** Cola sempre como texto: o que vem de outro lugar traz HTML inteiro junto,
-   *  e o campo guarda marcas, não estilos. */
+  /** Cola sempre o texto, e não o HTML de quem copiou: o que vem de outro
+   *  lugar traz estilos inteiros junto, e o campo guarda marcas. Lista e
+   *  formatação escritas no texto (`- item`, `*negrito*` do WhatsApp) entram
+   *  já desenhadas, pela mesma tradução que abre um texto gravado. */
   function aoColar(e: React.ClipboardEvent<HTMLDivElement>) {
     colagemDeFora?.(e);
     if (e.defaultPrevented) return;
     e.preventDefault();
-    const texto = e.clipboardData.getData('text/plain');
-    document.execCommand('insertText', false, texto);
+    const texto = colagemNasMarcas(e.clipboardData.getData('text/plain'));
+    const formatado = texto.split('\n').some(l => ITEM.test(l)) || /\*\*|__|\*[^*\n]+\*/.test(texto);
+    // `textoParaHtml` escapa tudo antes de montar: o que se colou nunca vira
+    // elemento além dos que o próprio campo produz.
+    if (formatado) document.execCommand('insertHTML', false, textoParaHtml(texto, marcados));
+    else document.execCommand('insertText', false, texto);
     avisar();
   }
 
