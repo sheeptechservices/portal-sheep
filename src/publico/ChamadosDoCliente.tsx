@@ -124,12 +124,14 @@ function naTela(c: Chamado): ChamadoNaTela {
 
 interface Dados {
   projeto: { nome: string; cliente: string | null };
-  etapas: { nome: string; cor: string; grupo: Grupo }[];
+  /** `fila`: etapa aberta em que o trabalho ainda não começou (Backlog, Fazer). */
+  etapas: { nome: string; cor: string; grupo: Grupo; fila?: boolean }[];
   chamados: Chamado[];
 }
 
-/** O recorte dos números do alto. "Abertos" junta triagem e andamento. */
-type Recorte = 'abertos' | Grupo;
+/** O recorte dos números do alto: o que ainda não começou (triagem e a fila
+ *  depois dela), o que está sendo feito e o que foi concluído. */
+type Recorte = 'nao_iniciado' | 'em_andamento' | 'concluido';
 
 /** As colunas que ordenam. */
 type Coluna = 'numero' | 'titulo' | 'tipo' | 'urgencia' | 'anexos' | 'status' | 'previsao' | 'solicitante' | 'aberto';
@@ -293,26 +295,38 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
   }, [dados?.projeto.nome]);
 
   const chamados = useMemo(() => (dados?.chamados ?? []).map(naTela), [dados?.chamados]);
+  /** Em que pé está o chamado, nos três números do alto. A triagem e a fila
+   *  depois dela (Backlog, Fazer) ainda não começaram; o resto do que está
+   *  aberto é trabalho em curso. */
+  const etapasNaFila = useMemo(
+    () => new Set((dados?.etapas ?? []).filter(e => e.fila).map(e => e.nome)), [dados?.etapas]);
+  const fase = useCallback((c: { grupo: Grupo; status: string }): Recorte | 'cancelado' => {
+    if (c.grupo === 'concluido') return 'concluido';
+    if (c.grupo === 'cancelado') return 'cancelado';
+    if (c.grupo === 'triagem' || etapasNaFila.has(c.status)) return 'nao_iniciado';
+    return 'em_andamento';
+  }, [etapasNaFila]);
   const contas = useMemo(() => {
-    const por = (g: Grupo) => chamados.filter(c => c.grupo === g).length;
+    const por = (f: Recorte | 'cancelado') => chamados.filter(c => fase(c) === f).length;
     return {
       total: chamados.length,
-      triagem: por('triagem'),
-      andamento: por('andamento'),
+      naoIniciado: por('nao_iniciado'),
+      emAndamento: por('em_andamento'),
       concluido: por('concluido'),
       cancelado: por('cancelado'),
     };
-  }, [chamados]);
+  }, [chamados, fase]);
+  /** A parte de cada número no total, em percentual inteiro. */
+  const parte = (n: number) => (contas.total ? Math.round((n / contas.total) * 100) : 0);
 
   const visiveis = useMemo(() => chamados.filter(c => {
-    if (recorte === 'abertos' && c.grupo !== 'triagem' && c.grupo !== 'andamento') return false;
-    if (recorte && recorte !== 'abertos' && c.grupo !== recorte) return false;
+    if (recorte && fase(c) !== recorte) return false;
     if (filtroStatus.length && !filtroStatus.includes(c.status)) return false;
     if (filtroUrgencia.length && !filtroUrgencia.includes(c.urgencia)) return false;
     if (filtroQuem.length && !filtroQuem.includes(c.solicitante)) return false;
     if (busca.trim() && !contemTermo(`${c.numero ?? ''} ${c.titulo} ${c.descricao} ${c.descricaoEmVigor} ${c.solicitante}`, busca)) return false;
     return true;
-  }), [chamados, recorte, filtroStatus, filtroUrgencia, filtroQuem, busca]);
+  }), [chamados, recorte, fase, filtroStatus, filtroUrgencia, filtroQuem, busca]);
 
   /** A fila na ordem escolhida no cabeçalho. Urgência e status seguem a escala
    *  da casa, e não o alfabeto: "Baixa" não vem antes de "Urgente", e a etapa
@@ -593,15 +607,20 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
         {/* Os números da fila. São também o filtro mais rápido: um clique
             recorta a tabela, outro desfaz. */}
         <div className="chm-numeros">
-          <Numero rotulo="Em aberto" valor={contas.triagem + contas.andamento}
-            detalhe={`de ${contas.total} ${contas.total === 1 ? 'chamado' : 'chamados'}`}
-            ativo={recorte === 'abertos'} onClick={() => setRecorte(r => r === 'abertos' ? null : 'abertos')} />
-          <Numero rotulo="Em triagem" valor={contas.triagem} detalhe="aguardando análise do time"
-            ativo={recorte === 'triagem'} onClick={() => setRecorte(r => r === 'triagem' ? null : 'triagem')} />
-          <Numero rotulo="Em andamento" valor={contas.andamento} detalhe="com o time trabalhando"
-            ativo={recorte === 'andamento'} onClick={() => setRecorte(r => r === 'andamento' ? null : 'andamento')} />
-          <Numero rotulo="Concluídos" valor={contas.concluido}
-            detalhe={contas.cancelado ? `e ${contas.cancelado} ${contas.cancelado === 1 ? 'encerrado' : 'encerrados'} sem execução` : 'resolvidos pelo time'}
+          {/* O total desfaz o recorte: é a fila inteira. */}
+          <Numero rotulo="Total de chamados" valor={contas.total} percentual={contas.total ? 100 : 0}
+            detalhe={contas.cancelado
+              ? `com ${contas.cancelado} ${contas.cancelado === 1 ? 'encerrado' : 'encerrados'} sem execução`
+              : 'abertos neste painel'}
+            ativo={false} onClick={() => setRecorte(null)} />
+          <Numero rotulo="Não iniciado" valor={contas.naoIniciado} percentual={parte(contas.naoIniciado)}
+            detalhe="na triagem ou na fila do time"
+            ativo={recorte === 'nao_iniciado'} onClick={() => setRecorte(r => r === 'nao_iniciado' ? null : 'nao_iniciado')} />
+          <Numero rotulo="Em andamento" valor={contas.emAndamento} percentual={parte(contas.emAndamento)}
+            detalhe="com o time trabalhando"
+            ativo={recorte === 'em_andamento'} onClick={() => setRecorte(r => r === 'em_andamento' ? null : 'em_andamento')} />
+          <Numero rotulo="Concluídos" valor={contas.concluido} percentual={parte(contas.concluido)}
+            detalhe="resolvidos pelo time"
             ativo={recorte === 'concluido'} onClick={() => setRecorte(r => r === 'concluido' ? null : 'concluido')} />
         </div>
 
@@ -942,8 +961,11 @@ function FundoDeOndas() {
 
 /** Um número do alto: rótulo, valor que conta ao aparecer, e a linha de apoio.
  *  É botão porque filtra; aceso, ele diz que o filtro está ligado. */
-function Numero({ rotulo, valor, detalhe, ativo, onClick }: {
-  rotulo: string; valor: number; detalhe: string; ativo: boolean; onClick: () => void;
+function Numero({ rotulo, valor, percentual, detalhe, ativo, onClick }: {
+  rotulo: string; valor: number;
+  /** A parte do total que este número representa, ao lado dele. */
+  percentual: number;
+  detalhe: string; ativo: boolean; onClick: () => void;
 }) {
   return (
     <button type="button" className={`painel-numero chm-numero-cartao${ativo ? ' ativo' : ''}`}
@@ -951,6 +973,7 @@ function Numero({ rotulo, valor, detalhe, ativo, onClick }: {
       <span className="painel-numero-rotulo">{rotulo}</span>
       <span className="painel-numero-linha">
         <span className="painel-numero-valor"><ContaAnimada valor={valor} /></span>
+        <span className="chm-numero-parte"><ContaAnimada valor={`${percentual}%`} /></span>
       </span>
       <span className="painel-numero-detalhe">{detalhe}</span>
     </button>

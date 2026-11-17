@@ -168,6 +168,22 @@ async function lerEtapas(db: Client): Promise<Etapa[]> {
   }));
 }
 
+/**
+ * A etapa em que o trabalho ainda não começou: a fila depois da triagem. É o
+ * que separa "não iniciado" de "em andamento" nos números do painel.
+ *
+ * A configuração das etapas não marca "ainda não começou", então vale a etapa
+ * que sai da conta antes da conclusão (o Backlog) e a que se chama fila pelo
+ * nome (Fazer, A fazer, Pendente). As demais abertas são trabalho em curso.
+ */
+const NOME_DE_FILA = /^(a\s+)?fazer$|^pendente|^backlog$|^to\s*do$/i;
+function naFila(etapa: Etapa, etapas: Etapa[]): boolean {
+  if (etapa.entrada || etapa.conclusao) return false;
+  const conclusao = etapas.find(e => e.conclusao);
+  if (etapa.fora && conclusao && etapa.ordem < conclusao.ordem) return true;
+  return NOME_DE_FILA.test(etapa.nome.trim());
+}
+
 function grupoDa(etapa: Etapa | undefined, etapas: Etapa[]): Grupo {
   if (!etapa) return 'andamento';
   if (etapa.entrada) return 'triagem';
@@ -461,7 +477,7 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
       // Todas as etapas ativas, na ordem do quadro: a legenda do painel mostra
       // o caminho inteiro, e não só onde os chamados estão hoje. Sai o nome, a
       // cor e o grupo - nada da configuração interna delas.
-      etapas: etapas.map(e => ({ nome: e.nome, cor: e.cor, grupo: grupoDa(e, etapas) })),
+      etapas: etapas.map(e => ({ nome: e.nome, cor: e.cor, grupo: grupoDa(e, etapas), fila: naFila(e, etapas) })),
       chamados: chamados.rows.map(c => {
         const id = Number(c.id);
         // Tarefa apagada ou levada para outro projeto: o chamado continua na

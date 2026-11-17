@@ -25571,6 +25571,17 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--yellow) 55%, transparent);
 }
 .chm-numero-cartao:focus-visible { outline: none; border-color: var(--gray2); }
+/* A parte do total, colada no numero: neutra, porque nao e boa nem ruim -
+   e so quanto aquele grupo pesa na fila. */
+.chm-numero-parte {
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--sup-etiqueta, var(--gray4));
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--gray);
+}
 
 /* A tabela fica com a altura que sobra: com poucos chamados o painel ainda
    desce até o rodapé, e o aviso de vazio e o giro ficam no meio dele. */
