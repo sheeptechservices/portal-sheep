@@ -495,7 +495,8 @@ export default function PerfilPage({ token }: { token: string }) {
     );
   }
 
-  // Sessão sem dono: entrou pela senha compartilhada, então não há perfil a mostrar.
+  // A leitura falhou: a rede caiu ou o servidor respondeu com erro. Toda sessão
+  // tem dono desde que a senha compartilhada saiu, então perfil vazio é só isto.
   if (!dados?.usuario) {
     return (
       <div className="admin-content-wrap pagina-cristal pagina-perfil">
@@ -503,11 +504,9 @@ export default function PerfilPage({ token }: { token: string }) {
         <div className="perfil-cartao perfil-vazio">
           <IconAlert size={18} />
           <div>
-            <p className="perfil-vazio-titulo">Esta sessão não tem dono</p>
+            <p className="perfil-vazio-titulo">Não deu para carregar o perfil</p>
             <p className="perfil-vazio-texto">
-              Você entrou pela senha de acesso compartilhada, que não identifica ninguém - o que for
-              feito por ela fica registrado como "Acesso compartilhado". Saia e entre com a sua conta
-              Google para ter perfil próprio e ver suas ações aqui.
+              O servidor não respondeu. Recarregue a página para tentar de novo.
             </p>
           </div>
         </div>

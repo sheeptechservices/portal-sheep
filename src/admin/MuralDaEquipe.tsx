@@ -88,8 +88,8 @@ export function MuralDaEquipe({ token, abrir, onAbriu }: {
   const { onSessionExpired, usuario } = useAuth();
   const { toast } = useToast();
   const eu = usuario?.id ?? null;
-  /** Todo mundo com conta escreve. A entrada pela senha do painel não tem
-   *  pessoa, e recado sem autor não teria quem pudesse mexer nele depois. */
+  /** Todo mundo escreve, mas só depois de a ação `me` dizer quem é: o recado
+   *  pintado na hora leva o id do autor, e antes disso ele ainda não chegou. */
   const podeEscrever = !!eu;
   const [aberto, setAberto] = useState(false);
   const [notas, setNotas] = useState<Nota[] | null>(null);

@@ -157,8 +157,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         texto,
         anexos,
         relatorio: r.body,
-        autorId: sessao.usuario?.id ?? null,
-        autorNome: sessao.usuario?.nome ?? null,
+        autorId: sessao.usuario.id,
+        autorNome: sessao.usuario.nome,
         refeitaDe: baseId || null,
       });
       mandar({ tipo: 'pronto', analise: { ...r.body, id } });

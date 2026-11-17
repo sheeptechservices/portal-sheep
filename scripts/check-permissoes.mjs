@@ -126,6 +126,10 @@ const SEM_PORTEIRO_PROPRIO = new Set([
   // por token: não há ação de negócio aqui, e quem recebe token é conferido pela
   // marca `mcp_habilitado`, e não pela matriz.
   'mcp-oauth.ts',
+  // Consulta de CNPJ. Exige sessão, e toda sessão tem dono; o que volta é
+  // cadastro público da Receita, então basta ser alguém da casa. O `exigir` que
+  // havia só valia para a sessão sem dono da senha compartilhada, que saiu.
+  'cnpj-lookup.ts',
 ]);
 const proprios = readdirSync(join(raiz, 'api'))
   .filter(f => f.endsWith('.ts') && !f.startsWith('_') && !SEM_PORTEIRO_PROPRIO.has(f));

@@ -54,7 +54,7 @@ import { ProvedorAtividades } from '../components/ProvedorAtividades';
 export { useToast } from '../lib/toast';
 
 // ── Auth context ──────────────────────────────────────────────────────────────
-/** Quem está logado. Nulo quando a sessão veio da senha compartilhada. */
+/** Quem está logado. Nulo só até a ação `me` responder: toda sessão tem dono. */
 export interface UsuarioSessao {
   id: string;
   email: string;
@@ -841,8 +841,10 @@ function Sidebar({
             : <span>{usuario ? iniciais(usuario.nome) : 'D'}</span>}
         </span>
         <span className="menu-usuario-texto">
-          <span className="menu-usuario-nome">{usuario ? usuario.nome : 'Acesso compartilhado'}</span>
-          <span className="menu-usuario-papel">{usuario ? rotuloPapel(usuario.papel) : 'Entrada por senha'}</span>
+          {/* Até o `me` responder não há nome a mostrar: o espaço fixo segura a
+              altura da linha, para o rodapé não pular quando ele chegar. */}
+          <span className="menu-usuario-nome">{usuario ? usuario.nome : ' '}</span>
+          <span className="menu-usuario-papel">{usuario ? rotuloPapel(usuario.papel) : ' '}</span>
         </span>
         </button>
         <BotaoDoTema />

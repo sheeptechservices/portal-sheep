@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@libsql/client';
 import { getAdminSession } from './_admin-handler.js';
-import { exigir } from './_permissoes.js';
 import { getQuery } from './_query.js';
 
 // Normaliza capital social (número ou "1.234,56" / "1234.56") para Number | null
@@ -106,13 +105,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // lá para qualificar um lead, no gerador para preencher a contratada sem
   // redigitar o cartão, no Perfil para a pessoa PJ preencher a própria empresa.
   // O que volta é cadastro público da Receita, e não dado interno da casa:
-  // basta ser alguém da casa, com conta própria. A sessão da senha
-  // compartilhada, que não identifica ninguém, continua precisando da
-  // permissão das telas que consultam.
-  if (!sessao.usuario) {
-    const recusa = await exigir(db, sessao.usuario, ['oportunidades:ver', 'gerador:ver']);
-    if (recusa) return res.status(recusa.status).json(recusa.body);
-  }
+  // basta ser alguém da casa, e a sessão válida acima já diz isso: toda sessão
+  // tem dono. Por isso não há `exigir` aqui (ver `scripts/check-permissoes.mjs`).
 
   const digits = String(getQuery(req).get('cnpj') ?? '').replace(/\D/g, '');
   if (digits.length !== 14) return res.status(400).json({ error: 'CNPJ inválido' });

@@ -118,9 +118,9 @@ const MODELOS_DE_CONTRATO = ['servicos', 'colaborador'];
  *
  * O `id` e a resposta quando existe; o e-mail cobre o relato gravado antes de o
  * id do autor existir - a mesma dupla que a consulta da fila ja usa para
- * decidir o que cada um enxerga. Sessao sem identidade, a da senha
- * compartilhada, nao e dona de nada: `null` nunca casa com `null`, e e por isso
- * que os dois lados sao conferidos antes de comparar.
+ * decidir o que cada um enxerga. Relato antigo pode ter um dos dois nulo, e
+ * `null` nunca casa com `null`: e por isso que os dois lados sao conferidos
+ * antes de comparar.
  */
 function ehDonoDoRelato(
   // `Record`, e nao um formato com os dois campos: o que chega aqui e uma
@@ -1125,9 +1125,9 @@ async function migrarSchema(db: Client) {
     try { await ddl(sql); } catch { /* já existe */ }
   }
 
-  // Dono da sessão. Fica nulo nas sessões abertas pela senha compartilhada, que
-  // segue existindo como plano B - nesse caso a autoria é a da casa, não a de
-  // uma pessoa (ver AUTOR_COMPARTILHADO).
+  // Dono da sessão. A coluna aceita nulo porque nasceu depois da tabela, e as
+  // sessões da senha compartilhada (removida em 28/08/2026) não tinham dono;
+  // `getAdminSession` recusa toda linha sem ele.
   try { await ddl(`ALTER TABLE admin_sessions ADD COLUMN usuario_id TEXT`); } catch {}
   // Última vez que a sessão foi usada. É o que faz a validade andar para frente
   // e o que responde quem está no painel agora - `expires_at` sozinho passou a
@@ -2843,9 +2843,9 @@ function comoAcaoInexistente(
 
 // ── Quem está no painel ──────────────────────────────────────────────────────
 //  A identidade vem do login com o Google (ver _google-auth.ts) e é gravada em
-//  `usuarios`. A senha compartilhada continua funcionando como plano B, e a
-//  sessão dela não tem dono: o que ela gravar fica carimbado como da casa, não
-//  de uma pessoa.
+//  `usuarios`. Toda sessão tem dono: a entrada pela senha compartilhada, a
+//  única que não tinha, saiu em 28/08/2026. Registros gravados antes disso
+//  seguem com o nome que ela carimbava ("Acesso compartilhado"), como texto.
 
 export interface UsuarioAdmin {
   id: string;
@@ -2856,17 +2856,9 @@ export interface UsuarioAdmin {
   papel: Papel;
 }
 
-/** Autoria das sessões abertas pela senha compartilhada. */
-export const AUTOR_COMPARTILHADO = 'Acesso compartilhado';
-
 export interface SessaoAdmin {
   token: string;
-  usuario: UsuarioAdmin | null;
-}
-
-/** Par [id, nome] para carimbar autoria. Sem usuário, o id fica nulo. */
-export function autoriaDe(usuario?: UsuarioAdmin | null): [string | null, string] {
-  return usuario ? [usuario.id, usuario.nome] : [null, AUTOR_COMPARTILHADO];
+  usuario: UsuarioAdmin;
 }
 
 /** Autoria das mudanças que vêm do portal público de aceite, onde quem age é o
@@ -3405,7 +3397,7 @@ async function segredoVisivel(db: Client, id: string, usuario?: UsuarioAdmin | n
 
 /** Uma linha no registro do cofre. Falhar aqui não derruba o gesto: o registro
  *  é apoio, e quem pediu a senha já passou pelo porteiro. */
-async function registrarNoCofre(db: Client, usuario: UsuarioAdmin | null | undefined, acao: string,
+async function registrarNoCofre(db: Client, usuario: UsuarioAdmin, acao: string,
   segredo?: { id: string; titulo: string; pessoal: boolean; donoId: string | null } | null, detalhe?: string) {
   try {
     await db.execute({
@@ -3416,7 +3408,7 @@ async function registrarNoCofre(db: Client, usuario: UsuarioAdmin | null | undef
       args: [
         acao, segredo?.id ?? null, segredo?.titulo ?? null, segredo?.pessoal ? 1 : 0,
         segredo?.donoId ?? null, detalhe ?? null,
-        usuario?.id ?? null, usuario?.nome ?? AUTOR_COMPARTILHADO, usuario?.email ?? null,
+        usuario.id, usuario.nome, usuario.email,
         new Date().toISOString(),
       ],
     });
@@ -3427,7 +3419,7 @@ async function registrarNoCofre(db: Client, usuario: UsuarioAdmin | null | undef
 
 export async function registrarAuditoria(
   db: Client,
-  usuario: UsuarioAdmin | null | undefined,
+  usuario: UsuarioAdmin,
   acao: string,
   alvo?: string | null
 ): Promise<void> {
@@ -3435,9 +3427,9 @@ export async function registrarAuditoria(
     await db.execute({
       sql: 'INSERT INTO auditoria (usuario_id, usuario_nome, usuario_email, acao, alvo, criado_em) VALUES (?, ?, ?, ?, ?, ?)',
       args: [
-        usuario?.id ?? null,
-        usuario?.nome ?? AUTOR_COMPARTILHADO,
-        usuario?.email ?? null,
+        usuario.id,
+        usuario.nome,
+        usuario.email,
         acao,
         alvo ?? null,
         new Date().toISOString(),
@@ -4022,7 +4014,7 @@ export async function handleAdminData(
   query: URLSearchParams,
   body: any,
   db: Client,
-  usuario?: UsuarioAdmin | null
+  usuario: UsuarioAdmin
 ): Promise<{ status: number; body: any }> {
   // O resumo dos avisos de etapa vai de carona: corre ao lado do despacho, e
   // não na frente dele, então quem pediu só espera se o envio demorar mais do
@@ -4046,11 +4038,12 @@ async function despacharAdminData(
   query: URLSearchParams,
   body: any,
   db: Client,
-  usuario?: UsuarioAdmin | null
+  usuario: UsuarioAdmin
 ): Promise<{ status: number; body: any }> {
   await ensureAdminSchema(db);
   // Autoria a carimbar nas gravações desta requisição.
-  const [autorId, autorNome] = autoriaDe(usuario);
+  const autorId = usuario.id;
+  const autorNome = usuario.nome;
 
   // ── Porteiro ──────────────────────────────────────────────────────────────
   // Uma checagem, antes de qualquer despacho: é aqui que a matriz de permissões
@@ -4088,7 +4081,7 @@ async function despacharAdminData(
       return {
         status: 200,
         body: {
-          usuario: usuario ? { ...usuario, ...(comMcp ? { mcp: true } : {}) } : null,
+          usuario: { ...usuario, ...(comMcp ? { mcp: true } : {}) },
           autor: autorNome,
           permissoes: permissoes === TUDO_PERM ? '*' : [...permissoes],
         },
@@ -4426,7 +4419,6 @@ async function despacharAdminData(
     }
 
     if (action === 'perfil') {
-      if (!usuario) return { status: 200, body: { usuario: null } };
       const conta = (sql: string) => db.execute({ sql, args: [usuario.id] });
       const [linha, comentarios, eventos, oportunidades, pendencias, acoes, ultimas, cadastro] = await Promise.all([
         conta('SELECT id, email, nome, foto_url, papel, criado_em, ultimo_acesso FROM usuarios WHERE id = ?'),
@@ -4483,11 +4475,8 @@ async function despacharAdminData(
     // O mural de quem pergunta, do recado mais novo para o mais antigo: os que
     // a pessoa escreveu e os que a marcam. O corte é aqui, e não na tela: o
     // recado de outros nunca chega ao navegador de quem não foi marcado nele.
-    // Sem conta (a entrada pela senha do painel), não há quem marcar - e o
-    // mural vem vazio.
     if (action === 'mural_notas') {
-      const eu = usuario?.id ?? '';
-      if (!eu) return { status: 200, body: { notas: [] } };
+      const eu = usuario.id;
       const [notas, marcas, vistos, reacoes] = await Promise.all([
         db.execute({
           sql: `SELECT n.id, n.texto, n.autor_id, n.autor_nome, n.criado_em, n.editado_em, n.editado_por_nome
@@ -4610,7 +4599,6 @@ async function despacharAdminData(
     // projeto que a pessoa deixou de alcancar fica de fora: a lista nunca
     // mostra o titulo de um card que nao abre.
     if (action === 'tarefas_fixadas') {
-      if (!usuario) return { status: 200, body: { tarefas: [] } };
       const r = await db.execute({
         sql: `SELECT t.id, t.titulo, t.status, t.concluida_em, p.nome AS projeto, c.cor
               FROM tarefas_fixadas f
@@ -6113,9 +6101,7 @@ async function despacharAdminData(
       // recorte é na consulta, e não na tela: esconder na tela deixaria a
       // resposta aberta a quem souber chamar a ação direto.
       //
-      // Sessão sem identidade - a da senha compartilhada - não tem o que
-      // reivindicar como seu, e recebe fila vazia. O `OR` do e-mail cobre o
-      // relato gravado antes de o id do autor existir.
+      // O `OR` do e-mail cobre o relato gravado antes de o id do autor existir.
       const filaInteira = podeGerenciarUsuarios(usuario);
       const meus = `WHERE (r.autor_id IS NOT NULL AND r.autor_id = ?)
                        OR (r.autor_email IS NOT NULL AND r.autor_email = ?)`;
@@ -8248,8 +8234,7 @@ function faltaEmProjeto(p: any): string | null {
       { const barrado = await guardaDaEquipe(db, usuario, linha.tarefa_id, 'tarefa'); if (barrado) return barrado; }
       // Comentário é fala de alguém: só o autor apaga a própria, e isso vale
       // para todo papel - admin e master também não apagam a fala de outro.
-      // Sessão sem identidade não é autora de nada, então não apaga.
-      const dono = !!usuario?.id && String(linha.usuario_id ?? '') === String(usuario.id);
+      const dono = String(linha.usuario_id ?? '') === usuario.id;
       if (!dono) {
         return { status: 403, body: { error: 'Só quem escreveu pode apagar este comentário.' } };
       }
@@ -8392,7 +8377,6 @@ function faltaEmProjeto(p: any): string | null {
     // nao "inverta": dois cliques rapidos mandariam dois "inverta" e o
     // resultado dependeria da ordem de chegada.
     if (action === 'joinha_tarefa_comentario') {
-      if (!usuario?.id) return { status: 400, body: { error: 'Sessão sem identidade não dá joinha.' } };
       const id = Number(body?.id);
       const alvo = await db.execute({
         sql: 'SELECT tarefa_id FROM tarefa_comentarios WHERE id = ?', args: [id],
@@ -8882,7 +8866,6 @@ function faltaEmProjeto(p: any): string | null {
     // que a pessoa alcanca se fixa; desafixar vale sempre, ate para a que ela
     // deixou de alcancar.
     if (action === 'fixar_tarefa') {
-      if (!usuario) return { status: 403, body: { error: 'Entre com a sua conta para fixar tarefas.' } };
       const tarefaId = Number(body?.id);
       if (!Number.isInteger(tarefaId) || tarefaId <= 0) return { status: 400, body: { error: 'Tarefa inválida.' } };
       if (body?.fixar === false) {
@@ -8906,7 +8889,6 @@ function faltaEmProjeto(p: any): string | null {
     // Os dados cadastrais de quem esta logado. Sempre os da sessao: id nenhum
     // vem da tela, entao ninguem grava no cadastro de outra pessoa.
     if (action === 'salvar_perfil_cadastro') {
-      if (!usuario) return { status: 403, body: { error: 'Entre com a sua conta para preencher o cadastro.' } };
       const conferido = conferirCadastro(body?.dados);
       if ('erro' in conferido) return { status: 400, body: { error: conferido.erro } };
       const agora = new Date().toISOString();
@@ -9140,8 +9122,7 @@ function faltaEmProjeto(p: any): string | null {
      * outro lado - reescrever, pedir outro, pedir outro.
      */
     if (action === 'cofre_abrir') {
-      const dono = usuario?.id;
-      if (!dono) return { status: 401, body: { error: 'Sessão sem dono.' } };
+      const dono = usuario.id;
       const codigo = String(body?.codigo ?? '').replace(/[^0-9]/g, '');
       if (!codigo) return { status: 400, body: { error: 'Digite o código que chegou por e-mail.' } };
 
@@ -9262,11 +9243,6 @@ function faltaEmProjeto(p: any): string | null {
           status: 200,
           body: { id, visibilidade: depois, atualizado_em: agora, atualizado_por_nome: autorNome },
         };
-      }
-      // Segredo pessoal precisa de dono. A sessão da senha compartilhada não é
-      // de ninguém, e um "só meu" sem dono não seria de ninguém também.
-      if (pedida === 'so_eu' && !usuario?.id) {
-        return { status: 400, body: { error: 'Esta sessão não tem dono: o segredo precisa ser de todos.' } };
       }
       const novo = randomUUID();
       const visibilidade = pedida ?? 'todos';
@@ -10158,9 +10134,6 @@ function faltaEmProjeto(p: any): string | null {
      * enquanto a gaveta estava aberta continua por ler, que e o certo.
      */
     if (action === 'marcar_inbox_lido') {
-      if (!usuario?.id) {
-        return { status: 400, body: { error: 'Sessão sem identidade não tem inbox.' } };
-      }
       const chaves = chavesDoInbox(body);
       if (!chaves.length) return { status: 400, body: { error: 'Nenhum aviso para marcar.' } };
       if (chaves.length > 200) return { status: 400, body: { error: 'Avisos demais de uma vez.' } };
@@ -10183,9 +10156,6 @@ function faltaEmProjeto(p: any): string | null {
      * pessoa mandou embora.
      */
     if (action === 'limpar_inbox') {
-      if (!usuario?.id) {
-        return { status: 400, body: { error: 'Sessão sem identidade não tem inbox.' } };
-      }
       const chaves = chavesDoInbox(body);
       if (!chaves.length) return { status: 400, body: { error: 'Nenhum aviso para limpar.' } };
       if (chaves.length > 200) return { status: 400, body: { error: 'Avisos demais de uma vez.' } };
@@ -10980,7 +10950,7 @@ function faltaEmProjeto(p: any): string | null {
         args: [body.id],
       });
       if (!alvo.rows[0]) return { status: 404, body: { error: 'Comentário não encontrado.' } };
-      if (!usuario?.id || String(alvo.rows[0].autor_id ?? '') !== String(usuario.id)) {
+      if (String(alvo.rows[0].autor_id ?? '') !== usuario.id) {
         return { status: 403, body: { error: 'Só quem escreveu pode apagar este comentário.' } };
       }
       // As respostas vão junto, e depois o comentário.
