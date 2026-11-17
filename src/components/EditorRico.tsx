@@ -21,7 +21,11 @@
 
 import { useEffect, useRef } from 'react';
 import type React from 'react';
-import { ITEM, LINK, enderecoDoLink, marcasEmHtml } from '../lib/marcacao';
+import { ITEM, LINK, enderecoDoLink, itemDeTarefa, marcasEmHtml } from '../lib/marcacao';
+
+/** O que se escreve no começo da linha para abrir uma caixa de marcar: `[]`,
+ *  `[ ]` ou `[x]`, seguido de espaço. */
+const ABRE_CAIXA = /^\[( |x|X)?\]$/;
 
 /** O nome de alguém marcado com `@`, como peça do campo: uma unidade só, que
  *  o cursor pula e o Backspace apaga inteira, no desenho da marcação lida. Na
@@ -58,6 +62,13 @@ export function textoParaHtml(texto: string, marcados?: string[]): string {
   };
 
   for (const linha of linhas) {
+    // Item de caixa: um `<li>` com `data-feito`, que a folha desenha com a
+    // caixa na frente. Mora na mesma `<ul>` dos outros itens.
+    const tarefa = itemDeTarefa(linha);
+    if (tarefa) {
+      lista.push(`<li data-feito="${tarefa.feito ? '1' : '0'}">${comAsMarcacoes(marcasEmHtml(tarefa.resto), marcados)}</li>`);
+      continue;
+    }
     if (ITEM.test(linha)) {
       lista.push(`<li>${comAsMarcacoes(marcasEmHtml(linha.replace(ITEM, '')), marcados)}</li>`);
       continue;
@@ -75,6 +86,8 @@ export function textoParaHtml(texto: string, marcados?: string[]): string {
  *
  *  - linha que começa com `-`, `•`, `·`, `*` ou um traço vira item de lista
  *    (`- `), que é a lista do campo;
+ *  - `[ ]`, `[x]` e as caixas desenhadas (do Notion, do Docs) viram item de
+ *    caixa (`- [ ] `, `- [x] `);
  *  - `*negrito*` do WhatsApp vira `**negrito**`, e `_itálico_` vira `*itálico*`.
  *
  * O resto passa como veio. Numeração (`1.`) fica como texto: o campo não tem
@@ -83,6 +96,9 @@ export function textoParaHtml(texto: string, marcados?: string[]): string {
 export function colagemNasMarcas(texto: string): string {
   return texto.replace(/\r\n?/g, '\n').split('\n').map(linha => linha
     .replace(/^(\s*)[-\u2022\u00b7\u25aa\u25e6\u2023\u2013\u2014*](\s+)/, '$1- ')
+    .replace(/^(\s*)(?:- )?[\u2610\u25a1]\s+/, '$1- [ ] ')
+    .replace(/^(\s*)(?:- )?[\u2611\u2612\u2705\u2714]\ufe0f?\s+/, '$1- [x] ')
+    .replace(/^(\s*)(?:- )?\[( |x|X)?\]\s+/, (_, recuo: string, x?: string) => `${recuo}- [${x && x !== ' ' ? 'x' : ' '}] `)
     .replace(/(^|[^*\w])\*([^*\n]+?)\*(?![*\w])/g, '$1**$2**')
     .replace(/(^|[^_\w])_([^_\n]+?)_(?![_\w])/g, '$1*$2*'))
     .join('\n');
@@ -95,6 +111,12 @@ export function htmlParaTexto(raiz: HTMLElement): string {
   let atual = '';
 
   const fecharLinha = () => { linhas.push(atual); atual = ''; };
+  /** O começo da linha de um item: com caixa, se ele tiver `data-feito`. */
+  const marcador = (li: HTMLElement) => {
+    const feito = li.getAttribute('data-feito');
+    if (feito === null) return '- ';
+    return feito === '1' ? '- [x] ' : '- [ ] ';
+  };
 
   const inline = (no: Node): string => {
     if (no.nodeType === Node.TEXT_NODE) return no.textContent ?? '';
@@ -124,10 +146,10 @@ export function htmlParaTexto(raiz: HTMLElement): string {
     }
     if (tag === 'ul' || tag === 'ol') {
       if (atual) fecharLinha();
-      for (const li of Array.from(el.children)) linhas.push(`- ${inline(li)}`);
+      for (const li of Array.from(el.children)) linhas.push(`${marcador(li as HTMLElement)}${inline(li)}`);
       return;
     }
-    if (tag === 'li') { linhas.push(`- ${inline(el)}`); return; }
+    if (tag === 'li') { linhas.push(`${marcador(el)}${inline(el)}`); return; }
     if (tag === 'div' || tag === 'p') {
       if (atual) fecharLinha();
       const antes = linhas.length;
@@ -340,6 +362,18 @@ export function EditorRico({
         avisar();
         return;
       }
+      // Enter num item de caixa abre outro item de caixa, e desmarcado: o
+      // navegador ou copia a marca do item de cima, ou não leva caixa nenhuma.
+      if (item && caixa.current?.contains(item) && item.hasAttribute('data-feito')) {
+        requestAnimationFrame(() => {
+          const agora = window.getSelection()?.anchorNode ?? null;
+          const alvo = (agora?.nodeType === Node.ELEMENT_NODE ? agora as Element : agora?.parentElement)?.closest('li');
+          if (alvo && alvo !== item && caixa.current?.contains(alvo)) {
+            alvo.setAttribute('data-feito', '0');
+            avisar();
+          }
+        });
+      }
     }
 
     // Endereço terminado vira link. No Enter é só marcar; o espaço é escrito
@@ -357,12 +391,33 @@ export function EditorRico({
     if (e.key === ' ') {
       embrulharSoltos();
       const antes = antesDoCursor();
-      if (!antes || antes.texto !== '-') return;
+      if (!antes) return;
+      // `[]`, `[ ]` ou `[x]` no começo da linha abrem uma caixa de marcar - a
+      // mesma lista, com a caixa na frente do item.
+      const abreCaixa = ABRE_CAIXA.exec(antes.texto);
+      if (!abreCaixa && antes.texto !== '-') return;
       e.preventDefault();
       const no = antes.faixa.startContainer;
       const corte = antes.faixa.startOffset;
       const conteudo = no.textContent ?? '';
-      no.textContent = conteudo.slice(0, corte - 1) + conteudo.slice(corte);
+      const tirar = antes.texto.length;
+      const feito = (abreCaixa?.[1] ?? '').toLowerCase() === 'x' ? '1' : '0';
+      // Já dentro de um item: a caixa entra nele, sem abrir outra lista.
+      const jaItem = (no.parentElement as HTMLElement | null)?.closest('li');
+      if (abreCaixa && jaItem && caixa.current?.contains(jaItem)) {
+        no.textContent = conteudo.slice(0, corte - tirar) + conteudo.slice(corte);
+        if (!(jaItem.textContent ?? '') && !jaItem.querySelector('br')) jaItem.appendChild(document.createElement('br'));
+        jaItem.setAttribute('data-feito', feito);
+        const sel = window.getSelection();
+        const nova = document.createRange();
+        if (no.textContent) nova.setStart(no, Math.max(0, corte - tirar)); else nova.setStart(jaItem, 0);
+        nova.collapse(true);
+        sel?.removeAllRanges();
+        sel?.addRange(nova);
+        avisar();
+        return;
+      }
+      no.textContent = conteudo.slice(0, corte - tirar) + conteudo.slice(corte);
       const sel = window.getSelection();
       const nova = document.createRange();
       // A linha que era só o hífen fica vazia, e linha vazia sem `<br>` não tem
@@ -375,12 +430,17 @@ export function EditorRico({
         if (!bloco.querySelector('br')) bloco.appendChild(document.createElement('br'));
         nova.setStart(bloco, 0);
       } else {
-        nova.setStart(no, corte - 1);
+        nova.setStart(no, corte - tirar);
       }
       nova.collapse(true);
       sel?.removeAllRanges();
       sel?.addRange(nova);
       document.execCommand('insertUnorderedList');
+      if (abreCaixa) {
+        const ancora = window.getSelection()?.anchorNode ?? null;
+        const li = (ancora?.nodeType === Node.ELEMENT_NODE ? ancora as Element : ancora?.parentElement)?.closest('li');
+        if (li && caixa.current?.contains(li)) li.setAttribute('data-feito', feito);
+      }
       avisar();
     }
   }
@@ -405,6 +465,15 @@ export function EditorRico({
   /** Clicar num link dentro do campo põe o cursor ali, como em qualquer texto.
    *  Com Ctrl (ou Cmd) abre o endereço - e é o que a dica do link avisa. */
   function aoClicar(e: React.MouseEvent<HTMLDivElement>) {
+    // A caixa de um item é desenhada antes do texto, no recuo do `<li>`: o
+    // clique ali marca e desmarca, e o cursor fica onde estava.
+    const item = (e.target as HTMLElement).closest('li[data-feito]');
+    if (item && caixa.current?.contains(item) && e.clientX < item.getBoundingClientRect().left + 22) {
+      e.preventDefault();
+      item.setAttribute('data-feito', item.getAttribute('data-feito') === '1' ? '0' : '1');
+      avisar();
+      return;
+    }
     const a = (e.target as HTMLElement).closest('a');
     if (!a) return;
     if (!(e.ctrlKey || e.metaKey)) return;
@@ -422,7 +491,7 @@ export function EditorRico({
       aria-multiline="true"
       aria-label={ariaLabel}
       data-vazio={placeholder}
-      title="Ctrl+B negrito · Ctrl+I itálico · Ctrl+U sublinhado · Ctrl+clique abre o link"
+      title="Ctrl+B negrito · Ctrl+I itálico · Ctrl+U sublinhado · [ ] e espaço abre caixa de marcar · Ctrl+clique abre o link"
       onInput={avisar}
       onKeyDown={aoTeclar}
       onPaste={aoColar}

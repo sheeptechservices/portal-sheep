@@ -109,7 +109,8 @@ para ser lido depois usa `src/components/CampoTexto.tsx`, e não `<textarea>`: �
 mesmo campo da descrição da tarefa, com Enter quebrando a linha, Ctrl+B, Ctrl+I e
 Ctrl+U formatando, "- " abrindo lista, e a altura acompanhando o texto entre um
 piso (`linhas`) e um teto (`alturaMaxima`). O texto sai guardado com as marcas
-leves (`**negrito**`, `*itálico*`, `__sublinhado__`, `- item`), e quem o mostra
+leves (`**negrito**`, `*itálico*`, `__sublinhado__`, `- item`,
+`- [ ] caixa de marcar`, `- [x] marcada`), e quem o mostra
 traduz pela regra única de `src/lib/marcacao.ts` - `TextoRico` na tela,
 `textoEmHtml` em documento. Mostrar esse texto com `{texto}` cru, ou escapado
 num bloco só, joga fora as quebras e deixa os `**` à vista.

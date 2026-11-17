@@ -8,6 +8,7 @@
 //  escrita:
 //
 //    **negrito**      __sublinhado__      *itálico*      - item de lista
+//    - [ ] item com caixa de marcar        - [x] item marcado
 //
 //  Ninguém precisa digitar isso: quem escreve usa Ctrl+B, Ctrl+I, Ctrl+U e o
 //  hífen, e vê o texto já formatado - o editor em `EditorRico` cuida disso e
@@ -16,7 +17,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type React from 'react';
-import { INLINE, ITEM, LINK, enderecoDoLink } from '../lib/marcacao';
+import { INLINE, ITEM, LINK, enderecoDoLink, itemDeTarefa } from '../lib/marcacao';
+import { IconCheck } from './icons';
 
 // A regra das marcas mora em `lib/marcacao`, junto da tradução para HTML que o
 // editor e os slides da proposta usam. Continua saindo daqui também, para quem
@@ -71,11 +73,14 @@ function comLinks(trecho: string, chave: string): React.ReactNode[] {
 
 /** O texto desenhado. Nada de HTML vindo do banco: cada pedaço vira elemento
  *  aqui, então o que estiver escrito na descrição é sempre texto. */
-export function TextoRico({ texto, className, trecho }: {
+export function TextoRico({ texto, className, trecho, onMarcar }: {
   texto: string;
   className?: string;
   /** Quem desenha o trecho sem marca, no lugar do que só liga endereços. */
   trecho?: Trecho;
+  /** Marcar e desmarcar a caixa de um item, pelo índice da linha no texto.
+   *  Sem ele, a caixa só mostra: quem lê não muda o texto de outra pessoa. */
+  onMarcar?: (linha: number) => void;
 }) {
   const linhas = texto.split('\n');
   const blocos: React.ReactNode[] = [];
@@ -88,6 +93,27 @@ export function TextoRico({ texto, className, trecho }: {
   };
 
   linhas.forEach((linha, i) => {
+    const tarefa = itemDeTarefa(linha);
+    if (tarefa) {
+      const caixa = <span className="texto-rico-caixa-marca" aria-hidden="true"><IconCheck size={11} /></span>;
+      lista.push(
+        <li key={`li-${i}`} className={`texto-rico-tarefa${tarefa.feito ? ' feito' : ''}`}>
+          {onMarcar ? (
+            <button type="button" className="texto-rico-marcar" role="checkbox" aria-checked={tarefa.feito}
+              aria-label={tarefa.feito ? 'Desmarcar o item' : 'Marcar o item'}
+              onClick={e => { e.stopPropagation(); onMarcar(i); }}>
+              {caixa}
+            </button>
+          ) : (
+            <span className="texto-rico-marcar" role="checkbox" aria-checked={tarefa.feito} aria-disabled="true">
+              {caixa}
+            </span>
+          )}
+          <span className="texto-rico-tarefa-texto">{pedacos(tarefa.resto, `l${i}`, trecho)}</span>
+        </li>,
+      );
+      return;
+    }
     if (ITEM.test(linha)) {
       lista.push(<li key={`li-${i}`}>{pedacos(linha.replace(ITEM, ''), `l${i}`, trecho)}</li>);
       return;

@@ -5930,6 +5930,51 @@ body.arrastando-painel {
   list-style: disc;
 }
 .texto-rico-lista li { margin: 1px 0; }
+/* Item com caixa de marcar: a caixa no lugar do marcador, alinhada com a
+   primeira linha do texto. Marcado, a caixa enche de amarelo e o texto apaga
+   e risca - feito, mas ainda legivel. */
+.texto-rico-lista li.texto-rico-tarefa {
+  list-style: none;
+  margin-left: -18px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.texto-rico-marcar {
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  margin-top: .2em;
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: 4px;
+}
+button.texto-rico-marcar { cursor: pointer; }
+.texto-rico-caixa-marca {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--gray2);
+  border-radius: 4px;
+  color: transparent;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+button.texto-rico-marcar:hover .texto-rico-caixa-marca { border-color: var(--black); }
+button.texto-rico-marcar:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--gray4); }
+.texto-rico-tarefa.feito .texto-rico-caixa-marca {
+  background: var(--yellow);
+  border-color: var(--yellow);
+  color: var(--on-yellow);
+}
+.texto-rico-tarefa-texto { min-width: 0; }
+.texto-rico-tarefa.feito .texto-rico-tarefa-texto {
+  color: var(--gray2);
+  text-decoration: line-through;
+  text-decoration-color: var(--gray2);
+}
 /* Linha em branco e respiro entre blocos, e nao um paragrafo vazio. */
 .texto-rico-vao { display: block; height: 7px; }
 
@@ -5984,6 +6029,42 @@ body.arrastando-painel {
   list-style: disc;
 }
 .editor-rico li { margin: 1px 0; }
+/* O item de caixa no campo: a mesma caixa da leitura, desenhada no recuo do
+   item. O clique ali marca (ver `aoClicar` no EditorRico). */
+.editor-rico li[data-feito] {
+  list-style: none;
+  position: relative;
+  margin-left: -18px;
+  padding-left: 23px;
+}
+.editor-rico li[data-feito]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: calc(.75em - 7.5px);
+  width: 15px;
+  height: 15px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--gray2);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+.editor-rico li[data-feito]:hover::before { border-color: var(--black); }
+.editor-rico li[data-feito="1"]::before { background: var(--yellow); border-color: var(--yellow); }
+.editor-rico li[data-feito="1"]::after {
+  content: '';
+  position: absolute;
+  left: 5.5px;
+  top: calc(.75em - 5px);
+  width: 4px;
+  height: 7px;
+  border: solid var(--on-yellow);
+  border-width: 0 1.8px 1.8px 0;
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+.editor-rico li[data-feito="1"] { color: var(--gray2); text-decoration: line-through; }
 
 /* A caixa que veste o texto com a mesma moldura do campo, para a troca entre
    ler e escrever nao mexer no desenho da coluna. */

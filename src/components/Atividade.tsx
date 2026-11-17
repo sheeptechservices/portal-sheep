@@ -161,11 +161,13 @@ function pedacosSoltos(texto: string, etapas?: EtapaMarcavel[], chave = ''): Rea
  *  link -, pela mesma regra da descrição da tarefa, e as menções e etapas como
  *  chips dentro de cada trecho. `eu` acende a marcação de quem está lendo: é o
  *  que faz a pessoa achar o próprio nome numa anotação longa. */
-export function TextoDoComentario({ texto, etapas, eu }: {
+export function TextoDoComentario({ texto, etapas, eu, onMarcar }: {
   texto: string; etapas?: EtapaMarcavel[]; eu?: string | null;
+  /** Marca e desmarca as caixas do texto; sem ele elas só mostram. */
+  onMarcar?: (linha: number) => void;
 }) {
   return (
-    <TextoRico texto={texto} className="ativ-texto"
+    <TextoRico texto={texto} className="ativ-texto" onMarcar={onMarcar}
       trecho={(t, chave) => pedacos(t).flatMap((p, i): React.ReactNode[] => (
         p.tipo === 'marca'
           ? [<span key={`${chave}m${i}`} className={`ativ-marca${eu && p.id === eu ? ' ativ-marca-eu' : ''}`}>@{p.valor}</span>]

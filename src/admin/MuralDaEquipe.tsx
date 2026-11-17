@@ -20,6 +20,7 @@ import { useToast } from '../lib/toast';
 import { Escrever, TextoDoComentario, idsMarcados } from '../components/Atividade';
 import { Avatar, type Pessoa } from './FormularioTarefa';
 import { instante, tempoRelativo } from '../lib/datas';
+import { alternarTarefa } from '../lib/marcacao';
 import { DicaTopo, useDicaRica } from '../components/DicaRica';
 import {
   IconCheckCircle, IconChevronRight, IconEdit, IconEstrela, IconEye, IconHelp, IconJoinha, IconMural, IconPlus,
@@ -452,7 +453,11 @@ export function MuralDaEquipe({ token, abrir, onAbriu }: {
                       </div>
                     ) : (
                       <div className="mural-nota-texto troca">
-                        <TextoDoComentario texto={n.texto} eu={eu} />
+                        {/* Quem escreveu marca as caixas no próprio recado; os
+                            outros veem como está. */}
+                        <TextoDoComentario texto={n.texto} eu={eu}
+                          onMarcar={n.autor_id === eu && n.id > 0
+                            ? linha => void salvarEdicao(n, alternarTarefa(n.texto, linha)) : undefined} />
                       </div>
                     )}
 
