@@ -220,7 +220,7 @@ const nomeArquivo = (pacote: Pacote, ext: string) => {
   return `${base.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_')}_Tarefas_${data}.${ext}`;
 };
 
-function baixar(conteudo: BlobPart, nome: string, tipo: string) {
+export function baixar(conteudo: BlobPart, nome: string, tipo: string) {
   const url = URL.createObjectURL(new Blob([conteudo], { type: tipo }));
   const a = document.createElement('a');
   a.href = url;
@@ -234,7 +234,7 @@ function baixar(conteudo: BlobPart, nome: string, tipo: string) {
 
 /** Aspas dobradas e campo entre aspas sempre que houver separador, aspa ou
  *  quebra de linha - é o que o RFC 4180 pede e o que o Excel entende. */
-const celulaCsv = (v: string) =>
+export const celulaCsv = (v: string) =>
   /[";\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 
 function exportarCsv(pacote: Pacote) {
@@ -267,7 +267,15 @@ const coluna = (i: number) => {
  *  texto em `inlineStr` para dispensar a tabela de strings compartilhadas -
  *  ela economiza espaço numa planilha grande e custa um arquivo a mais aqui. */
 function exportarXlsx(pacote: Pacote) {
-  const dados = [COLUNAS as unknown as string[], ...linhas(pacote)];
+  // Larguras pensadas para a leitura, não para o conteúdo: título e descrição
+  // largos, datas estreitas.
+  baixarXlsx([COLUNAS as unknown as string[], ...linhas(pacote)],
+    [26, 12, 18, 24, 40, 52, 15, 12, 20, 12, 24, 14, 44, 13, 60], 'Tarefas', nomeArquivo(pacote, 'xlsx'));
+}
+
+/** Uma planilha de uma aba só, com a primeira linha em negrito como
+ *  cabeçalho. `larguras` em caracteres, uma por coluna. */
+export function baixarXlsx(dados: string[][], larguras: number[], aba: string, nome: string) {
   const linhasXml = dados.map((linha, y) => {
     const celulas = linha.map((v, x) =>
       `<c r="${coluna(x)}${y + 1}" t="inlineStr"${y === 0 ? ' s="1"' : ''}><is><t xml:space="preserve">${escXml(v)}</t></is></c>`,
@@ -275,9 +283,6 @@ function exportarXlsx(pacote: Pacote) {
     return `<row r="${y + 1}">${celulas}</row>`;
   }).join('');
 
-  // Larguras pensadas para a leitura, não para o conteúdo: título e descrição
-  // largos, datas estreitas.
-  const larguras = [26, 12, 18, 24, 40, 52, 15, 12, 20, 12, 24, 14, 44, 13, 60];
   const cols = larguras.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('');
 
   const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -288,7 +293,7 @@ function exportarXlsx(pacote: Pacote) {
 
   const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-<sheets><sheet name="Tarefas" sheetId="1" r:id="rId1"/></sheets>
+<sheets><sheet name="${escXml(aba.slice(0, 31))}" sheetId="1" r:id="rId1"/></sheets>
 </workbook>`;
 
   // Dois estilos: o padrão e o do cabeçalho, em negrito sobre cinza.
@@ -324,7 +329,7 @@ function exportarXlsx(pacote: Pacote) {
     'xl/worksheets/sheet1.xml': strToU8(sheet),
   };
 
-  baixar(zipSync(arquivos, { level: 6 }), nomeArquivo(pacote, 'xlsx'),
+  baixar(zipSync(arquivos, { level: 6 }), nome,
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 }
 
@@ -516,7 +521,7 @@ function exportarMd(pacote: Pacote) {
 
 // ── PDF ─────────────────────────────────────────────────────────────────────
 
-const escHtml = (v: string) => v
+export const escHtml = (v: string) => v
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** Pela impressão do navegador, como o Gerador de Documentos já faz: sem
@@ -583,13 +588,7 @@ function exportarPdf(pacote: Pacote) {
     partes.push('</tbody></table></section>');
   }
 
-  const quadro = document.createElement('iframe');
-  quadro.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0';
-  document.body.appendChild(quadro);
-  const doc = quadro.contentDocument!;
-  doc.open();
-  doc.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
-<title>${escHtml(nomeArquivo(pacote, 'pdf').replace(/\.pdf$/, ''))}</title><style>
+  imprimirHtml(nomeArquivo(pacote, 'pdf').replace(/\.pdf$/, ''), `
 @page { size: A4; margin: 16mm 14mm; }
 * { box-sizing: border-box; }
 body { margin:0; font-family: Calibri, 'Segoe UI', system-ui, sans-serif; color:#000; font-size:10.5pt; }
@@ -620,7 +619,19 @@ td { padding:1.5mm 2mm; border-bottom:1px solid #C8C8C8; vertical-align:top; }
 /* Linha não parte no meio da quebra de página. */
 tr, section > h2 { break-inside:avoid; page-break-inside:avoid; }
 thead { display:table-header-group; }
-</style></head><body>${partes.join('')}</body></html>`);
+`, partes.join(''));
+}
+
+/** Imprime um documento HTML num quadro invisível: a caixa de impressão do
+ *  navegador é quem salva o PDF. `titulo` vira o nome sugerido do arquivo. */
+export function imprimirHtml(titulo: string, estilo: string, corpo: string) {
+  const quadro = document.createElement('iframe');
+  quadro.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0';
+  document.body.appendChild(quadro);
+  const doc = quadro.contentDocument!;
+  doc.open();
+  doc.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<title>${escHtml(titulo)}</title><style>${estilo}</style></head><body>${corpo}</body></html>`);
   doc.close();
   quadro.contentWindow?.focus();
   // Um respiro para o layout assentar antes de a caixa de impressão medir.
