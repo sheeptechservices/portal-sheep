@@ -1788,6 +1788,16 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
       window.history.replaceState({}, '', window.location.pathname + window.location.hash);
       return;
     }
+    // `?usuario=<id>` abre a ficha cadastral da pessoa na tela de Usuários.
+    // Quem não alcança a tela cai no aviso de acesso, e o servidor recusa a
+    // ficha do mesmo jeito.
+    const uid = params.get('usuario');
+    if (uid) {
+      setPage('usuarios');
+      setOpenCard({ page: 'usuarios', id: uid, nonce: 1 });
+      window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+      return;
+    }
     // `?projeto=` só troca de página: quem abre o card é a própria tela de
     // Projetos, que precisa da lista carregada para achar o projeto.
     if (params.get('projeto')) setPage('projetos');
@@ -2046,7 +2056,9 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
             {paginaNaTela === 'talentos'      && <TalentosPage      token={token}
               abrir={openCard?.page === 'talentos' ? openCard : undefined} />}
             {paginaNaTela === 'perfil'        && <PerfilPage token={token} />}
-            {paginaNaTela === 'usuarios'      && <UsuariosPage   token={token} />}
+            {paginaNaTela === 'usuarios'      && <UsuariosPage   token={token}
+              abrir={openCard?.page === 'usuarios' ? openCard : undefined}
+              onAberto={() => setOpenCard(null)} />}
           </Suspense>
           )}
           </div>

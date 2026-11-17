@@ -616,8 +616,9 @@ export default function PerfilPage({ token }: { token: string }) {
               <div className="painel-principal-corpo perfil-cadastro-corpo">
                 <div className="perfil-cadastro-topo">
                   <p className="perfil-nota perfil-cadastro-aviso">
-                    Só você vê e edita estes dados aqui no portal. Eles servem para contrato, pagamento e
-                    para a equipe saber quem avisar numa emergência.
+                    Só você edita estes dados. Além de você, só a administração do portal os vê, na
+                    ficha cadastral. Eles servem para contrato, pagamento e para saber quem avisar
+                    numa emergência.
                   </p>
                   {/* O estado da gravação troca de cara, em opacidade. */}
                   <span key={sujo ? 'sujo' : 'limpo'} className={`perfil-estado troca${sujo ? ' sujo' : ''}`}>

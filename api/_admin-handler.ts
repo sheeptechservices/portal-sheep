@@ -4537,6 +4537,25 @@ async function despacharAdminData(
 
     // Gestão de usuários: a lista inteira, com papel, acesso e sessões abertas.
     // Só o dono do painel enxerga - ver `podeGerenciarUsuarios`.
+    // A ficha cadastral de uma pessoa, aberta pela tela de Usuarios: os dados
+    // que ela preencheu no Perfil. So quem le a tela de Usuarios (o dono do
+    // painel e o master) alcanca, e a trava e a do mapa de permissoes.
+    if (action === 'usuario_cadastro') {
+      if (!podeVerUsuarios(usuario)) return NEGADO_USUARIOS;
+      const id = String(query.get('id') ?? '');
+      const [pessoa, cad] = await Promise.all([
+        db.execute({ sql: 'SELECT id, email, nome, foto_url, papel FROM usuarios WHERE id = ?', args: [id] }),
+        db.execute({ sql: 'SELECT dados, atualizado_em FROM usuarios_cadastro WHERE usuario_id = ?', args: [id] }),
+      ]);
+      if (!pessoa.rows[0]) return { status: 404, body: { error: 'Pessoa não encontrada.' } };
+      let dados: Record<string, string> = {};
+      try { dados = JSON.parse(String(cad.rows[0]?.dados ?? '{}')); } catch { dados = {}; }
+      return {
+        status: 200,
+        body: { usuario: pessoa.rows[0], cadastro: dados, atualizado_em: cad.rows[0]?.atualizado_em ?? null },
+      };
+    }
+
     if (action === 'usuarios') {
       if (!podeVerUsuarios(usuario)) return NEGADO_USUARIOS;
       const agora = new Date().toISOString();

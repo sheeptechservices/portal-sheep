@@ -18,6 +18,7 @@ import {
 } from './papeis';
 import MatrizPermissoes from './MatrizPermissoes';
 import { ContaAnimada } from '../components/ContaAnimada';
+import { FichaCadastral } from './FichaCadastral';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Usuários. Duas coisas, na ordem em que se usam:
@@ -340,7 +341,17 @@ function ConvidarPessoa({ aberto, onConvidar, onFechar, enviando }: {
   );
 }
 
-export default function UsuariosPage({ token }: { token: string }) {
+/** Clique que mira um controle da linha (papel, enviar senha, remover) é dele,
+ *  e não abre a ficha. */
+const ALVO_DE_CONTROLE = 'button, a, input, [role="listbox"], [role="option"]';
+
+export default function UsuariosPage({ token, abrir, onAberto }: {
+  token: string;
+  /** Link direto `?usuario=<id>`: abre a ficha dessa pessoa quando a lista chega. */
+  abrir?: { id: string; nonce: number };
+  /** Avisa que o pedido foi atendido, para ele não reabrir a ficha na volta à tela. */
+  onAberto?: () => void;
+}) {
   const { onSessionExpired, usuario: eu } = useAuth();
   const { toast } = useToast();
   const [usuarios, setUsuarios] = useState<UsuarioLinha[] | null>(null);
@@ -352,6 +363,8 @@ export default function UsuariosPage({ token }: { token: string }) {
   /** Id da linha com uma gravação em voo - trava só aquela linha. */
   const [salvando, setSalvando] = useState<string | null>(null);
   const [aDesativar, setADesativar] = useState<UsuarioLinha | null>(null);
+  /** De quem é a ficha cadastral aberta agora. */
+  const [fichaDe, setFichaDe] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -369,6 +382,14 @@ export default function UsuariosPage({ token }: { token: string }) {
   }, [token, onSessionExpired, toast]);
 
   useEffect(() => { void carregar(); }, [carregar]);
+
+  // O link direto vale uma vez por pedido: o `nonce` muda a cada clique no link.
+  useEffect(() => {
+    if (!abrir?.id) return;
+    setFichaDe(abrir.id);
+    onAberto?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abrir?.id, abrir?.nonce]);
 
   const chamar = useCallback(async (corpo: Record<string, unknown>): Promise<Resposta | null> => {
     const r = await fetch('/api/admin-data', {
@@ -566,7 +587,16 @@ export default function UsuariosPage({ token }: { token: string }) {
                 const dono = u.papel === 'admin';
                 const travada = dono || salvando === u.id;
                 return (
-                  <tr key={u.id} className={u.ativo ? undefined : 'usuarios-linha-inativa'}>
+                  <tr key={u.id} tabIndex={0}
+                    className={`usuarios-linha-ficha${u.ativo ? '' : ' usuarios-linha-inativa'}`}
+                    title="Abrir a ficha cadastral"
+                    onClick={e => {
+                      if ((e.target as HTMLElement).closest(ALVO_DE_CONTROLE)) return;
+                      setFichaDe(u.id);
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && e.target === e.currentTarget) setFichaDe(u.id);
+                    }}>
                     <td>
                       <span className="usuarios-pessoa">
                         <Avatar nome={u.nome} foto={u.foto_url} />
@@ -688,6 +718,13 @@ export default function UsuariosPage({ token }: { token: string }) {
         </p>
         <MatrizPermissoes token={token} somenteLeitura={!podeMexer} />
       </div>
+
+      {(() => {
+        const pessoa = fichaDe ? lista.find(x => x.id === fichaDe) : undefined;
+        return pessoa && (
+          <FichaCadastral key={pessoa.id} token={token} pessoa={pessoa} onFechar={() => setFichaDe(null)} />
+        );
+      })()}
 
       {aDesativar && (
         <ConfirmarDesativar

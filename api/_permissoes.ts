@@ -395,6 +395,8 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
 
   // ── Gestão de usuários e acessos ──────────────────────────────────────────
   usuarios: SO_ADMIN_LEITURA,
+  // A ficha cadastral de uma pessoa, na mesma tela e com a mesma trava.
+  usuario_cadastro: SO_ADMIN_LEITURA,
   convidar_usuario: SO_ADMIN,
   definir_senha_usuario: SO_ADMIN,
   enviar_link_senha: SO_ADMIN,

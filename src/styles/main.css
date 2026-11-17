@@ -25030,6 +25030,69 @@ input:is(.form-checkbox, .perm-check):disabled { opacity: .45; cursor: default; 
   color: var(--gray2);
 }
 .pagina-perfil .perfil-painel { min-height: 360px; }
+
+/* A linha da tabela de Usuarios abre a ficha cadastral: ganha o realce de
+   item de lista no hover e no foco de teclado. */
+.usuarios-linha-ficha { cursor: pointer; transition: background var(--transition); }
+.usuarios-linha-ficha:hover,
+.usuarios-linha-ficha:focus-visible { background: var(--card-hover-bg, var(--gray4)); outline: none; }
+
+/* ══ Ficha cadastral ═══════════════════════════════════════════════════════
+   O dialogo central da casa, so de leitura: cabecalho com a pessoa, os blocos
+   do cadastro em duas colunas e, no rodape, o link e a exportacao. */
+.admin-modal.tarefa-central.ficha-central { width: min(760px, 100%); }
+.ficha-cabeca { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; }
+.ficha-avatar {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--yellow);
+  color: var(--on-yellow);
+  font-size: 15px;
+  font-weight: 800;
+}
+.ficha-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.ficha-nome { margin: 0; font-size: 17px; font-weight: 800; color: var(--black); }
+.ficha-sub { margin: 3px 0 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12.5px; color: var(--gray2); }
+.ficha-sub .perfil-chip { font-size: 10.5px; }
+.ficha-conteudo { display: flex; flex-direction: column; gap: 20px; }
+.ficha-situacao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: var(--sup-etiqueta, var(--gray4));
+  font-size: 12.5px;
+  color: var(--gray);
+}
+.ficha-situacao-conta { font-weight: 700; color: var(--black); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ficha-secao + .ficha-secao { padding-top: 18px; border-top: 1px solid var(--gray3); }
+.ficha-secao-titulo {
+  margin: 0 0 10px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gray2);
+}
+.ficha-campos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; margin: 0; }
+.ficha-campo dt { font-size: 11.5px; font-weight: 600; color: var(--gray2); }
+.ficha-campo dd { margin: 2px 0 0; font-size: 13.5px; font-weight: 500; color: var(--black); overflow-wrap: anywhere; }
+.ficha-campo dd.vazio { color: var(--gray2); font-weight: 400; }
+.ficha-aviso { margin: 0; font-size: 13px; color: var(--gray2); }
+.admin-modal.ficha-central .ficha-rodape { justify-content: flex-start; align-items: center; }
+.ficha-rodape-rotulo { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--gray2); }
+.btn.ficha-copiado { color: var(--green); border-color: var(--green); }
+@media (max-width: 640px) {
+  .ficha-campos { grid-template-columns: 1fr; }
+  .ficha-rodape-rotulo { display: none; }
+}
 .pagina-perfil .perfil-trilha-corpo { padding: 4px 16px 16px; }
 .pagina-perfil .perfil-trilha-corpo .admin-table { width: 100%; }
 .pagina-perfil .perfil-trilha-corpo .admin-table thead th {
