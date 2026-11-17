@@ -29,8 +29,6 @@ import { PreviaArquivo } from '../components/PreviaArquivo';
 import { tipoDePlanilha } from '../lib/planilha';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
-import { useLarguraPainel } from '../lib/painelLateral';
-import { PuxadorDoPainel } from '../components/PuxadorDoPainel';
 import { BotaoTelaCheia } from '../components/BotaoTelaCheia';
 import { useTelaCheia } from '../lib/useTelaCheia';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
@@ -1066,8 +1064,6 @@ export function CreateModal({ statuses, etapaInicial, token, inicial, onClose, o
   const [saving, setSaving] = useState(false);
   const { saindo, fechar } = useSaidaSuave(onClose);
   const fundo = useFecharNoFundo(fechar);
-  // Cadastro e edição dividem a mesma memória de largura: é a mesma ficha.
-  const painel = useLarguraPainel('oportunidade-form');
   /** A etapa escolhida é a de venda realizada? É ela que pede a data do
    *  fechamento já no cadastro. */
   const ehConversao = (id: number | '') =>
@@ -1095,11 +1091,12 @@ export function CreateModal({ statuses, etapaInicial, token, inicial, onClose, o
     }
   }
 
+  // No centro da tela, como a tarefa e o projeto novos: o diálogo da casa, na
+  // altura do formulário.
   return createPortal(
-    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`} style={{ zIndex: 1050 }} {...fundo}>
-      <PuxadorDoPainel {...painel} />
-      <div className="admin-modal" onClick={e => e.stopPropagation()}
-        style={{ width: `min(${painel.largura}px, 96vw)` }}>
+    <div className={`admin-modal-overlay tarefa-central-fundo${saindo ? ' saindo' : ''}`} style={{ zIndex: 1050 }} {...fundo}>
+      <div className="admin-modal painel-gaveta tarefa-central oportunidade-form-central"
+        role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
         <div className="admin-modal-header">
           <h3 className="admin-modal-title">Nova oportunidade</h3>
           <button className="admin-modal-close" aria-label="Fechar" onClick={fechar}><IconX size={16} /></button>
@@ -1140,7 +1137,7 @@ export function CreateModal({ statuses, etapaInicial, token, inicial, onClose, o
           <button type="button" className="modal-acao" onClick={fechar}>Cancelar</button>
           <button type="button" className="modal-acao-primaria" disabled={saving || !r.empresa.trim()}
             onClick={() => void criar()}>
-            {saving ? 'Cadastrando…' : 'Cadastrar oportunidade'}
+            {saving ? <><IconSpinner size={13} /> Cadastrando</> : 'Cadastrar oportunidade'}
           </button>
         </div>
       </div>
@@ -1198,7 +1195,6 @@ function EditModal({ detail, token, onClose, onSaved }: {
   const [saving, setSaving] = useState(false);
   const { saindo, fechar } = useSaidaSuave(onClose);
   const fundo = useFecharNoFundo(fechar);
-  const painel = useLarguraPainel('oportunidade-form');
 
   async function salvar() {
     if (!r.empresa.trim()) { toast('error', 'Falta a empresa', 'Uma oportunidade é uma empresa com quem se fala.'); return; }
@@ -1222,10 +1218,9 @@ function EditModal({ detail, token, onClose, onSaved }: {
   }
 
   return createPortal(
-    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`} style={{ zIndex: 1050 }} {...fundo}>
-      <PuxadorDoPainel {...painel} />
-      <div className="admin-modal" onClick={e => e.stopPropagation()}
-        style={{ width: `min(${painel.largura}px, 96vw)` }}>
+    <div className={`admin-modal-overlay tarefa-central-fundo${saindo ? ' saindo' : ''}`} style={{ zIndex: 1050 }} {...fundo}>
+      <div className="admin-modal painel-gaveta tarefa-central oportunidade-form-central"
+        role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
         <div className="admin-modal-header">
           <h3 className="admin-modal-title">Editar oportunidade</h3>
           <button className="admin-modal-close" aria-label="Fechar" onClick={fechar}><IconX size={16} /></button>
@@ -1237,7 +1232,7 @@ function EditModal({ detail, token, onClose, onSaved }: {
           <button type="button" className="modal-acao" onClick={fechar}>Cancelar</button>
           <button type="button" className="modal-acao-primaria" disabled={saving || !r.empresa.trim()}
             onClick={() => void salvar()}>
-            {saving ? 'Salvando…' : 'Salvar'}
+            {saving ? <><IconSpinner size={13} /> Salvando</> : 'Salvar'}
           </button>
         </div>
       </div>
@@ -1260,7 +1255,6 @@ export function DetailPanel({
   const { toast } = useToast();
   // Quem está logado: usado para assinar o evento otimista antes de o servidor responder.
   const { usuario, pode } = useAuth();
-  const painel = useLarguraPainel('oportunidade');
   /** A tela cheia da ficha, lembrada neste navegador. */
   const { cheia: telaCheia, alternar: alternarTelaCheia } = useTelaCheia('oportunidade');
   /** As pessoas da casa, para escolher quem esteve na reunião. */
@@ -1272,8 +1266,8 @@ export function DetailPanel({
    *  hora, e o `detail` só é relido quando alguma outra coisa muda. */
   const [reunioes, setReunioes] = useState<Reuniao[]>([]);
   const [salvandoReuniao, setSalvandoReuniao] = useState(false);
-  // A saída animada é o que permite arrastar o puxador: sem o gancho do fundo,
-  // soltar o arrasto sobre o overlay contava como clique fora e fechava tudo.
+  // A saída animada, e o fundo que só fecha no clique que começou e terminou
+  // nele: arrastar a seleção de um texto para fora não fecha a ficha.
   const { saindo, fechar } = useSaidaSuave(onClose);
   const fundo = useFecharNoFundo(fechar);
   const [detail, setDetail] = useState<SubmissionDetail | null>(null);
@@ -1832,14 +1826,14 @@ export function DetailPanel({
   const currentStatusId = _scEvts[_scEvts.length - 1]?.status_id;
 
 
-  return (
-    <div className={`admin-modal-overlay${saindo ? ' saindo' : ''}`} {...fundo}>
-      {/* Em tela cheia o puxador sai: não há largura para escolher, e a que
-          estava escolhida volta quando a tela cheia desliga. */}
-      {!telaCheia && <PuxadorDoPainel {...painel} />}
-      <div className={`admin-modal gaveta-redimensiona${telaCheia ? ' tela-cheia' : ''}${painel.arrastando ? ' arrastando' : ''}`}
-        onClick={e => e.stopPropagation()}
-        style={telaCheia ? undefined : { width: `min(${painel.largura}px, 96vw)` }}>
+  // A oportunidade abre num diálogo no centro da tela, como a tarefa e o
+  // projeto, e não mais numa gaveta de lado. Por dentro é a peça da casa
+  // (`.painel-gaveta`: cabeçalho parado, corpo rolando).
+  return createPortal(
+    <div className={`admin-modal-overlay tarefa-central-fundo${saindo ? ' saindo' : ''}`} {...fundo}>
+      <div className={`admin-modal painel-gaveta tarefa-central${telaCheia ? ' tela-cheia' : ''}`}
+        role="dialog" aria-modal="true"
+        onClick={e => e.stopPropagation()}>
 
         {/* Header */}
         {/* `com-abas` só quando há abas: a linha que separa cabeçalho e corpo
@@ -2515,7 +2509,8 @@ export function DetailPanel({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

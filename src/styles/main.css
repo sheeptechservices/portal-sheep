@@ -24643,6 +24643,13 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
 /* O projeto no centro, como a tarefa: a mesma caixa, mais larga, porque a
    aba Tarefas dele mostra o quadro com as colunas. */
 .admin-modal.tarefa-central.projeto-central { width: min(1040px, 100%); }
+/* Cadastrar e editar oportunidade: o mesmo dialogo central, mais estreito e na
+   altura do formulario - a altura fixa da ficha deixaria um vao embaixo. */
+.admin-modal.tarefa-central.oportunidade-form-central {
+  width: min(620px, 100%);
+  height: auto;
+  max-height: min(880px, calc(100vh - 48px));
+}
 
 /* ══ Tela cheia dos modais principais ══════════════════════════════════════
    Tarefa, projeto e oportunidade têm um botão que os leva até quase a borda
@@ -24650,7 +24657,7 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
    para continuar se lendo como uma janela sobre a página, e não como uma
    troca de tela; o tamanho muda com a curva da casa, nunca de estalo. */
 
-/* O diálogo do centro (tarefa, projeto): cresce a partir do meio, porque o
+/* O diálogo do centro (tarefa, projeto, oportunidade): cresce a partir do meio, porque o
    fundo centraliza a caixa. */
 .admin-modal.tarefa-central { transition: width var(--transition-spring), height var(--transition-spring); }
 .admin-modal-overlay.tarefa-central-fundo:has(> .tela-cheia) { padding: 14px; }
@@ -24659,26 +24666,14 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
   height: calc(100vh - 28px);
 }
 
-/* A gaveta de lado (oportunidade): cresce para a esquerda, presa à borda
-   direita de onde veio. Enquanto o puxador arrasta, a largura segue o
-   ponteiro sem transição - com ela, o arrasto ficaria atrasado. */
-.admin-modal.gaveta-redimensiona { transition: width var(--transition-spring); }
-.admin-modal.gaveta-redimensiona.arrastando { transition: none; }
-.admin-modal.gaveta-redimensiona.tela-cheia {
-  width: calc(100vw - 28px);
-  max-width: none;
-}
-
 /* No celular os modais já ocupam a tela inteira, sem borda: a tela cheia não
    devolve a folga que eles não têm. */
 @media (max-width: 768px) {
   .admin-modal-overlay.tarefa-central-fundo:has(> .tela-cheia) { padding: 0; }
   .admin-modal.tarefa-central.tela-cheia { height: 100dvh; }
-  .admin-modal.gaveta-redimensiona.tela-cheia { width: 100vw; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .admin-modal.tarefa-central,
-  .admin-modal.gaveta-redimensiona { transition: none; }
+  .admin-modal.tarefa-central { transition: none; }
 }
 
 /* ══ Planning: lista de projetos sem numero e logos sobre o escuro ══════════
