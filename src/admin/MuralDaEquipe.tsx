@@ -148,6 +148,8 @@ export function MuralDaEquipe({ token, abrir, onAbriu }: {
   const naoVisto = useCallback((n: Nota) => !!eu && n.id > 0 && n.autor_id !== eu
     && n.mencoes.includes(eu) && leitura(n, eu).estado !== 'viu', [eu]);
   const naoVistas = useMemo(() => (notas ?? []).filter(naoVisto).length, [notas, naoVisto]);
+  /** Todos os recados do seu mural: os que marcam você e os que você escreveu. */
+  const total = useMemo(() => (notas ?? []).filter(n => n.id > 0).length, [notas]);
 
   // O selo de novo é o retrato da abertura: o que não tinha sido visto quando
   // o cartão abriu, e não o que continua sem ver.
@@ -339,14 +341,18 @@ export function MuralDaEquipe({ token, abrir, onAbriu }: {
     <>
       <button type="button" ref={botao} className={`diario-fab mural-fab${aberto ? ' aberto' : ''}`}
         aria-expanded={aberto} aria-label={aberto ? 'Fechar o mural' : 'Abrir o mural da equipe'}
-        title={aberto ? undefined : 'Mural da equipe: os recados para você'}
+        title={aberto ? undefined : total === 0 ? 'Mural da equipe: nenhum recado'
+          : `Mural da equipe: ${total} ${total === 1 ? 'recado' : 'recados'}${naoVistas ? `, ${naoVistas} sem ver` : ''}`}
         onClick={() => setAberto(a => !a)}>
         <span className="diario-fab-giro" key={aberto ? 'x' : 'mural'}>
           {aberto ? <IconX size={18} /> : <IconMural size={19} />}
         </span>
-        {/* Quantos recados marcaram você desde a última vez que abriu. */}
-        <span className={`diario-fab-selo${naoVistas > 0 && !aberto ? ' visivel' : ''}`} aria-hidden="true">
-          {naoVistas > 99 ? '99+' : naoVistas}
+        {/* Quantos recados há no seu mural, sempre à vista, como as tarefas do
+            diário: é o lembrete de que tem recado lá dentro. Vermelho quando
+            algum que marca você ainda não foi visto na versão que está lá. */}
+        <span className={`diario-fab-selo${total > 0 && !aberto ? ' visivel' : ''}${naoVistas > 0 ? ' ruim' : ''}`}
+          aria-hidden="true">
+          {total > 99 ? '99+' : total}
         </span>
       </button>
 
