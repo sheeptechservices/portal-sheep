@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { ContaAnimada } from '../components/ContaAnimada';
 import { corDoProjeto } from '../components/DicaDoProjeto';
 import { IconAcessos, IconAlert, IconArrowRight, IconBalao, IconCheck, IconChevronRight, IconX, IconDashboard, IconExternal, IconGoogle, IconLua, IconSair, IconSearch, IconSol, IconSpinner } from '../components/icons';
+import { lojaFixadas, useTarefasFixadas } from '../lib/tarefasFixadas';
 import { lojaTema, comRevelacao } from '../lib/tema';
 import { lojaSubpagina, useSubpaginaAtual } from '../lib/subpagina';
 import {
@@ -40,7 +41,7 @@ import { Inbox, type DestinoDaReuniao, type ItemDoInbox } from '../components/In
 import type { Pessoa } from './FormularioTarefa';
 import type { ReporteNaLista } from '../components/ListaReportes';
 import { iniciarOndas } from '../lib/ondas';
-import { ToastContext, type ToastItem } from '../lib/toast';
+import { ToastContext, useToast, type ToastItem } from '../lib/toast';
 import { TrilhaContext, type DegrauTrilha } from '../lib/trilha';
 import { useTrocaDeNivel } from '../lib/useTrocaDeNivel';
 import { useLuzDoPonteiro } from '../lib/useLuzDoPonteiro';
@@ -509,7 +510,12 @@ function NavInferior({ page, setPage, onMais }: {
 function Sidebar({
   page, setPage, open, pinned, onClose, onLogout, onAlternarFixo,
   projetosDoMenu, onAbrirProjeto, contagens, portas, onAbrirPerfil, onQuickSearch,
+  onAbrirTarefa, apiDoMenu,
 }: {
+  /** Abre a ficha de uma tarefa fixada, pelo caminho da busca rápida. */
+  onAbrirTarefa: (id: number) => void;
+  /** Para desafixar dali mesmo, sem abrir a ficha. */
+  apiDoMenu: (path: string, method?: string, body?: unknown) => Promise<any>;
   /** A busca rapida mora no alto do menu: o topo da pagina fica livre. */
   onQuickSearch: () => void;
   /** As notificacoes: a porta que morava no topo. */
@@ -596,6 +602,15 @@ function Sidebar({
   /** O projeto do menu com os caminhos abertos (Geral, Chamados). Um por vez:
    *  abrir outro recolhe o anterior. */
   const [projetoAberto, setProjetoAberto] = useState<string | null>(null);
+  /** As tarefas fixadas por quem está olhando. A seção só existe com alguma. */
+  const fixadas = useTarefasFixadas();
+  const veFixadas = pode('tarefas:ver') && fixadas.length > 0;
+  // A última lista com alguma tarefa: ao desafixar a derradeira, a seção
+  // recolhe mostrando o que tinha, em vez de encolher já vazia.
+  const ultimasFixadas = useRef(fixadas);
+  if (fixadas.length) ultimasFixadas.current = fixadas;
+  const fixadasNaTela = fixadas.length ? fixadas : ultimasFixadas.current;
+  const { toast } = useToast();
   const esperaAbrir = useRef<ReturnType<typeof setTimeout> | null>(null);
   const esperaFechar = useRef<ReturnType<typeof setTimeout> | null>(null);
   const limparEsperas = () => {
@@ -724,6 +739,41 @@ function Sidebar({
           {i === 0 && portas}
         </div>
       ))}
+      {/* As tarefas fixadas, à mão: a seção nasce com a primeira e some com a
+          última, abrindo e recolhendo pelo `.revelar` - ela empurra os
+          projetos de baixo. Fica montada o tempo todo, para a abertura ter de
+          onde tirar a altura. Clicar abre a ficha; o x desafixa ali mesmo. */}
+      <div className={`revelar menu-fixadas-revelar${veFixadas ? ' aberto' : ''}`} aria-hidden={!veFixadas}>
+        <div>
+          <div className="menu-grupo menu-fixadas">
+            <p className="app-menu-secao">FIXADAS</p>
+            <div className="lista-anima" key={fixadasNaTela.map(t => t.id).join(',')}>
+              {fixadasNaTela.map(t => (
+                <div key={t.id} className="menu-fixada-linha">
+                  <button type="button" className={`nav-leaf menu-fixada${t.concluida ? ' concluida' : ''}`}
+                    tabIndex={veFixadas ? 0 : -1}
+                    title={t.projeto ? `${t.titulo} | ${t.projeto} | ${t.status}` : `${t.titulo} | ${t.status}`}
+                    onClick={() => { onAbrirTarefa(t.id); if (!pinned) onClose(); }}>
+                    <span className="nav-leaf-ico menu-fixada-ico">
+                      <span className="menu-fixada-ponto" style={{ background: t.cor ?? 'var(--gray2)' }} />
+                    </span>
+                    <span className="nav-leaf-texto">{t.titulo}</span>
+                  </button>
+                  <button type="button" className="menu-fixada-tirar" tabIndex={veFixadas ? 0 : -1}
+                    title="Desafixar" aria-label={`Desafixar ${t.titulo}`}
+                    onClick={() => {
+                      void lojaFixadas.alternar(apiDoMenu, t, false).then(erro => {
+                        if (erro) toast('error', 'A tarefa não foi desafixada', erro);
+                      });
+                    }}>
+                    <IconX size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
       {/* Os projetos em andamento, cada um com a inicial num selo da cor dele:
           o atalho para a ficha, sem passar pela lista. So para quem abre a tela
           de Projetos. */}
@@ -1851,6 +1901,25 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
     }
   }
 
+  /** O `api` das tarefas fixadas: o menu lê e desafixa por ele. */
+  const apiDoMenu = useCallback(async (path: string, method = 'GET', body?: unknown) => {
+    const res = await fetch(`/api/admin-data${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'x-admin-session': token },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (res.status === 401) { onLogout(); return null; }
+    return res.json().catch(() => null);
+  }, [token, onLogout]);
+  // As fixadas chegam com a sessão e se refazem ao voltar para a aba: o que foi
+  // fixado noutro computador aparece aqui sem recarregar.
+  useEffect(() => {
+    void lojaFixadas.carregar(apiDoMenu);
+    const aoVoltar = () => { if (!document.hidden) void lojaFixadas.carregar(apiDoMenu); };
+    document.addEventListener('visibilitychange', aoVoltar);
+    return () => document.removeEventListener('visibilitychange', aoVoltar);
+  }, [apiDoMenu]);
+
   const toast = useCallback((type: ToastItem['type'], title: string, message?: string) => {
     const id = Math.random().toString(36).slice(2);
     setToasts(prev => [...prev, { id, type, title, message }]);
@@ -1937,6 +2006,11 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
             setPage('projetos');
             setOpenCard({ page: 'projetos', id, nonce: Date.now() });
           }}
+          onAbrirTarefa={id => {
+            setPage('tarefas');
+            setOpenCard(prev => ({ page: 'tarefas', id: String(id), nonce: (prev?.nonce ?? 0) + 1 }));
+          }}
+          apiDoMenu={apiDoMenu}
           onLogout={onLogout}
         />
 

@@ -340,6 +340,10 @@ export function IconMoney({ size = 14 }: { size?: number }) {
 export function IconNote({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M19 13.2V19a2 2 0 01-2 2H6a2 2 0 01-2-2V8a2 2 0 012-2h5.6" /><path d="M16.4 3.6a2.1 2.1 0 013 3l-8.7 8.7-3.9 1 1-3.9z" /></Ico>;
 }
+// Fixar: o alfinete de quadro de avisos, para prender uma tarefa no menu.
+export function IconAlfinete({ size = 14 }: { size?: number }) {
+  return <Ico size={size}><path d="M9 3.5h6l-1 6 3.2 3.2v1.8H6.8v-1.8L10 9.5z" /><path d="M12 14.5v6" /></Ico>;
+}
 // Endereço: o pino do mapa, na seção de endereço do cadastro.
 export function IconPino({ size = 14 }: { size?: number }) {
   return <Ico size={size}><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0113 0c0 5.4-6.5 11-6.5 11z" /><circle cx="12" cy="10" r="2.4" /></Ico>;

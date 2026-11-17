@@ -1121,6 +1121,17 @@ async function migrarSchema(db: Client) {
     )
   `);
 
+  await ddl(`
+    -- As tarefas que cada pessoa fixou para ter a mao, na secao Fixadas do
+    -- menu lateral. De cada um: fixar nao muda nada para o resto da equipe.
+    CREATE TABLE IF NOT EXISTS tarefas_fixadas (
+      usuario_id TEXT NOT NULL,
+      tarefa_id  INTEGER NOT NULL,
+      criado_em  TEXT NOT NULL,
+      PRIMARY KEY (usuario_id, tarefa_id)
+    )
+  `);
+
 
   // ── Banco de talentos ───────────────────────────────────────────────────────
   // Quem trabalha na casa mora em `usuarios`; aqui ficam duas coisas que aquela
@@ -4537,6 +4548,36 @@ async function despacharAdminData(
 
     // Gestão de usuários: a lista inteira, com papel, acesso e sessões abertas.
     // Só o dono do painel enxerga - ver `podeGerenciarUsuarios`.
+    // As tarefas que quem esta logado fixou, da mais recente para a mais
+    // antiga. Tarefa apagada some sozinha (o JOIN nao a acha), e a de um
+    // projeto que a pessoa deixou de alcancar fica de fora: a lista nunca
+    // mostra o titulo de um card que nao abre.
+    if (action === 'tarefas_fixadas') {
+      if (!usuario) return { status: 200, body: { tarefas: [] } };
+      const r = await db.execute({
+        sql: `SELECT t.id, t.titulo, t.status, t.concluida_em, p.nome AS projeto, c.cor
+              FROM tarefas_fixadas f
+              JOIN projeto_tarefas t ON t.id = f.tarefa_id
+              LEFT JOIN projetos p ON p.id = t.projeto_id
+              LEFT JOIN tarefa_status_configs c ON c.nome = t.status AND c.ativo = 1
+              WHERE f.usuario_id = ?
+              ORDER BY f.criado_em DESC`,
+        args: [usuario.id],
+      });
+      const vistas = await Promise.all(r.rows.map(async l =>
+        (await guardaDaEquipe(db, usuario, l.id, 'tarefa')) ? null : l));
+      return {
+        status: 200,
+        body: {
+          tarefas: vistas.filter(Boolean).map(l => ({
+            id: Number(l!.id), titulo: String(l!.titulo ?? ''), status: String(l!.status ?? ''),
+            cor: l!.cor != null ? String(l!.cor) : null, projeto: l!.projeto != null ? String(l!.projeto) : null,
+            concluida: l!.concluida_em != null,
+          })),
+        },
+      };
+    }
+
     // A ficha cadastral de uma pessoa, aberta pela tela de Usuarios: os dados
     // que ela preencheu no Perfil. So quem le a tela de Usuarios (o dono do
     // painel e o master) alcanca, e a trava e a do mapa de permissoes.
@@ -8708,6 +8749,31 @@ function faltaEmProjeto(p: any): string | null {
       if (!alvo.rows[0]) return { status: 404, body: { error: 'Acesso não encontrado.' } };
       { const barrado = await guardaDaEquipe(db, usuario, alvo.rows[0].projeto_id); if (barrado) return barrado; }
       await db.execute({ sql: 'DELETE FROM projeto_acessos WHERE id = ?', args: [body.id] });
+      return { status: 200, body: { ok: true } };
+    }
+
+    // Fixar e desafixar uma tarefa no menu de quem esta logado. So a tarefa
+    // que a pessoa alcanca se fixa; desafixar vale sempre, ate para a que ela
+    // deixou de alcancar.
+    if (action === 'fixar_tarefa') {
+      if (!usuario) return { status: 403, body: { error: 'Entre com a sua conta para fixar tarefas.' } };
+      const tarefaId = Number(body?.id);
+      if (!Number.isInteger(tarefaId) || tarefaId <= 0) return { status: 400, body: { error: 'Tarefa inválida.' } };
+      if (body?.fixar === false) {
+        await db.execute({
+          sql: 'DELETE FROM tarefas_fixadas WHERE usuario_id = ? AND tarefa_id = ?',
+          args: [usuario.id, tarefaId],
+        });
+        return { status: 200, body: { ok: true } };
+      }
+      const existe = await db.execute({ sql: 'SELECT 1 FROM projeto_tarefas WHERE id = ?', args: [tarefaId] });
+      if (!existe.rows[0]) return { status: 404, body: { error: 'Tarefa não encontrada.' } };
+      { const barrado = await guardaDaEquipe(db, usuario, tarefaId, 'tarefa'); if (barrado) return barrado; }
+      await db.execute({
+        sql: `INSERT INTO tarefas_fixadas (usuario_id, tarefa_id, criado_em) VALUES (?, ?, ?)
+              ON CONFLICT (usuario_id, tarefa_id) DO NOTHING`,
+        args: [usuario.id, tarefaId, new Date().toISOString()],
+      });
       return { status: 200, body: { ok: true } };
     }
 

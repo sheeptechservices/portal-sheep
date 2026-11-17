@@ -25124,6 +25124,49 @@ input:is(.form-checkbox, .perm-check):disabled { opacity: .45; cursor: default; 
 }
 .pagina-perfil .perfil-painel { min-height: 360px; }
 
+/* ══ Tarefas fixadas no menu ═══════════════════════════════════════════════
+   A secao abre e recolhe inteira (`.revelar`); cada linha e um item do menu,
+   com o ponto da cor da etapa no lugar do icone e o x de desafixar que so
+   aparece no hover, como a acao de uma linha. */
+.menu-fixada-linha { position: relative; }
+.menu-fixada { padding-right: 30px; }
+.menu-fixada .nav-leaf-texto { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-fixada-ico { display: inline-grid; place-items: center; }
+.menu-fixada-ponto { width: 8px; height: 8px; border-radius: 50%; }
+.menu-fixada.concluida .nav-leaf-texto { color: var(--gray2); text-decoration: line-through; }
+.menu-fixada-tirar {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-top: -11px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--gray2);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition), background var(--transition), color var(--transition);
+}
+.menu-fixada-linha:hover .menu-fixada-tirar,
+.menu-fixada-tirar:focus-visible { opacity: 1; }
+.menu-fixada-tirar:hover,
+.menu-fixada-tirar:focus-visible { outline: none; background: var(--gray4); color: var(--black); }
+/* No trilho de icones so o ponto cabe: o x sai, e o titulo vem no `title`. */
+.menu-trilho .menu-fixada-tirar { display: none; }
+
+/* O alfinete aceso na ficha: a tarefa esta fixada no menu. */
+.secao-add.tarefa-fixar.fixada {
+  background: var(--yellow);
+  border-color: var(--yellow);
+  color: var(--on-yellow);
+}
+.secao-add.tarefa-fixar.fixada:hover { box-shadow: var(--shadow-yellow); }
+
 /* A linha da tabela de Usuarios abre a ficha cadastral: ganha o realce de
    item de lista no hover e no foco de teclado. */
 .usuarios-linha-ficha { cursor: pointer; transition: background var(--transition); }

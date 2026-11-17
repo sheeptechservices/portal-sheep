@@ -14,7 +14,7 @@ import { AtividadeDaTarefa } from './AtividadeDaTarefa';
 import { createPortal } from 'react-dom';
 import { iniciais, useToast } from './AdminApp';
 import {
-  IconAlert, IconArrastar, IconCheck, IconChevronDown, IconClipboard, IconDuplicar, IconLink,
+  IconAlert, IconAlfinete, IconArrastar, IconCheck, IconChevronDown, IconClipboard, IconDuplicar, IconLink,
   IconPlus, IconSpinner, IconTrash, IconUser, IconX,
 } from '../components/icons';
 import { SelectSistema } from '../components/SelectSistema';
@@ -22,6 +22,7 @@ import { SeletorPessoas } from '../components/SeletorPessoas';
 import { DatePicker } from '../components/DatePicker';
 import { BotaoTelaCheia } from '../components/BotaoTelaCheia';
 import { useTelaCheia } from '../lib/useTelaCheia';
+import { lojaFixadas, useTarefasFixadas } from '../lib/tarefasFixadas';
 import { markdownDaTarefa, passosEmOrdem, type ComentarioExport } from '../lib/exportarTarefas';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { ancorar } from '../lib/ancorar';
@@ -935,6 +936,8 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
   /** Feedback do botão de copiar o link: o ícone vira um certo por dois
    *  segundos, que é como a ficha do projeto responde ao mesmo gesto. */
   const [copiado, setCopiado] = useState(false);
+  const fixadas = useTarefasFixadas();
+  const fixada = !!rascunho.id && fixadas.some(f => f.id === rascunho.id);
 
   /** Link que abre esta tarefa direto, para quem já tem acesso ao portal. É o
    *  mesmo formato do `?projeto=` da tela de Projetos, e o `prompt` é o plano
@@ -1051,6 +1054,27 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
         (r.entregas ?? []).some(id => entregasDoRascunho(rascunho).includes(id)))
     : [];
   const { toast } = useToast();
+
+  /** Fixa ou desafixa no gesto; recusado, o alfinete volta e o toast explica. */
+  async function alternarFixada() {
+    if (!rascunho.id || !api) return;
+    const etapa = etapas.find(e => e.nome === rascunho.status);
+    const erro = await lojaFixadas.alternar(api, {
+      id: rascunho.id, titulo: rascunho.titulo || TITULO_PADRAO, status: rascunho.status,
+      cor: etapa?.cor ?? null, projeto: projeto?.nome ?? null, concluida: false,
+    }, !fixada);
+    if (erro) toast('error', fixada ? 'A tarefa não foi desafixada' : 'A tarefa não foi fixada', erro);
+  }
+
+  // A tarefa fixada acompanha a ficha no menu: título e etapa novos aparecem
+  // lá sem esperar a próxima leitura.
+  useEffect(() => {
+    if (!rascunho.id) return;
+    const etapa = etapas.find(e => e.nome === rascunho.status);
+    lojaFixadas.atualizar(rascunho.id, {
+      titulo: rascunho.titulo || TITULO_PADRAO, status: rascunho.status, cor: etapa?.cor ?? null,
+    });
+  }, [rascunho.id, rascunho.titulo, rascunho.status, etapas]);
   const { saindo, fechar } = useSaidaSuave(onFechar);
   // Tela cheia do diálogo central: para a descrição longa e a conversa
   // respirarem. A escolha é da tarefa, separada da do projeto.
@@ -1255,6 +1279,17 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
                 aria-label="Copiar link para compartilhar a tarefa"
                 onClick={() => void copiarLink()}>
                 {copiado ? <IconCheck size={15} /> : <IconLink size={15} />}
+              </button>
+            )}
+            {/* Fixar prende a tarefa na seção Fixadas do menu, só para quem
+                fixou. Também só depois de existir: sem id não há o que prender. */}
+            {!!rascunho.id && !!api && (
+              <button type="button" className={`secao-add tarefa-fixar${fixada ? ' fixada' : ''}`}
+                style={{ width: 30, height: 30 }} aria-pressed={fixada}
+                title={fixada ? 'Desafixar do menu' : 'Fixar no menu, para ter a tarefa à mão'}
+                aria-label={fixada ? 'Desafixar a tarefa do menu' : 'Fixar a tarefa no menu'}
+                onClick={() => void alternarFixada()}>
+                <IconAlfinete size={15} />
               </button>
             )}
             {/* Ao lado do link, e pelo mesmo motivo: os dois tiram a tarefa

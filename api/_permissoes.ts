@@ -380,6 +380,10 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   perfil: LIVRE,
   // O proprio cadastro: a acao so grava o de quem esta logado.
   salvar_perfil_cadastro: LIVRE,
+  // As fixadas de quem esta logado: cada acao so le e grava as da sessao, e
+  // fixar confere se a tarefa e de um projeto que a pessoa alcanca.
+  tarefas_fixadas: LIVRE,
+  fixar_tarefa: LIVRE,
   // Lista de nomes e fotos do time, que alimenta os seletores de pessoas. Não
   // expõe nada além do que já aparece na equipe de um projeto.
   usuarios_notificaveis: LIVRE,
