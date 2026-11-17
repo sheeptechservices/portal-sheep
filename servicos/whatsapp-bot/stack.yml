@@ -1,0 +1,37 @@
+# Stack do bot no Docker Swarm da VPS, ao lado da Evolution.
+#
+# Os segredos (token da assinatura, token do portal, chave da Evolution e o
+# segredo do webhook) ficam em /opt/sheep-bot/segredos.env, legível só pelo
+# root, e nunca neste arquivo. A rede é a mesma da Evolution: o bot fala com ela
+# por dentro, e ela avisa o bot por dentro, sem porta aberta para fora.
+version: "3.7"
+
+services:
+  bot:
+    image: sheep-bot:1
+    env_file:
+      - /opt/sheep-bot/segredos.env
+    environment:
+      - EVOLUTION_URL=http://evolution_evolution:8080
+      - EVOLUTION_INSTANCIA=sheep-portal
+      - NUMERO_AUTORIZADO=5531995526168
+      - PORTAL_MCP_URL=https://portal.sheeptechnology.com.br/api/mcp
+    volumes:
+      - sheep_bot_dados:/dados
+    networks:
+      - rede_da_evolution
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+      resources:
+        limits:
+          memory: 1024M
+
+volumes:
+  sheep_bot_dados:
+
+networks:
+  rede_da_evolution:
+    external: true
+    name: REDE_DA_EVOLUTION
