@@ -12093,6 +12093,53 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 .aws-salvar:hover:not(:disabled) { opacity: .86; }
 .aws-erro { color: var(--red); font-weight: 600; }
 
+/* ── Evolution API ─────────────────────────────────── */
+.evo-salvar { display: inline-flex; align-items: center; gap: 6px; transition: opacity var(--transition); }
+.evo-salvar:hover:not(:disabled) { opacity: .86; }
+.evo-situacao {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--black);
+}
+.evo-situacao.desligado { font-weight: 400; font-size: 12.5px; color: var(--gray); line-height: 1.5; }
+.evo-perfil {
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--gray4);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray);
+}
+.evo-teste { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.evo-teste .integration-input-wrap { flex: 1; min-width: 0; }
+.evo-teste .btn, .evo-conectar { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.evo-conectar { align-self: flex-start; margin-top: 6px; }
+.evo-qr {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 8px;
+  padding: 14px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-md);
+  background: var(--white);
+}
+/* O QR sempre em fundo branco: lido pela camera, ele precisa do contraste do
+   original nos dois temas. */
+.evo-qr img { width: 184px; height: 184px; flex-shrink: 0; border-radius: var(--radius-sm); background: #fff; padding: 6px; }
+.evo-qr-texto { display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; color: var(--gray); line-height: 1.5; }
+.evo-qr-texto p { margin: 0; }
+.evo-codigo { font-variant-numeric: tabular-nums; letter-spacing: .12em; color: var(--black); }
+.evo-qr-espera { display: inline-flex; align-items: center; gap: 6px; color: var(--gray2); font-size: 12px; }
+@media (max-width: 640px) {
+  .evo-qr { flex-direction: column; align-items: flex-start; }
+}
+
 .integracao-conta,
 .integracao-quando {
   font-size: 12px;

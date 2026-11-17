@@ -10,6 +10,10 @@ import {
   obterGravacaoFireflies,
   AWS_PRECOS_KEY, getAwsPrecosCredential,
 } from './_credentials.js';
+import {
+  EVOLUTION_KEY, configEvolution, enviarTexto, estadoDaInstancia, normalizarDestino, normalizarUrl,
+  perfilDaInstancia, qrDaInstancia, type ConfigEvolution,
+} from './_evolution.js';
 import { validarChaveAws } from './_aws-precos.js';
 import { lerCurriculo } from './_leitura-curriculo.js';
 import { lerTituloDoArquivo } from './_proposta-fonte.js';
@@ -5803,6 +5807,43 @@ async function despacharAdminData(
       };
     }
 
+    // ── Evolution API: o WhatsApp da casa ────────────────────────────────────
+    // A situação ao vivo: se endereço, chave e instância conferem, e se o
+    // número está pareado (estado "open"). A chave nunca volta para a tela.
+    if (action === 'evolution_config') {
+      const cfg = await configEvolution(db);
+      const salva = await getIntegrationCredential(db, EVOLUTION_KEY).catch(() => null);
+      if (!cfg) {
+        return { status: 200, body: { has_key: false, connected: false, estado: null, updated_at: null,
+          url: salva?.meta?.url ?? null, instancia: salva?.meta?.instancia ?? null } };
+      }
+      const [estado, perfil] = await Promise.all([estadoDaInstancia(cfg), perfilDaInstancia(cfg)]);
+      return {
+        status: 200,
+        body: {
+          has_key: true,
+          valida: estado.ok,
+          connected: estado.ok && estado.estado === 'open',
+          estado: estado.ok ? estado.estado : null,
+          error: estado.ok ? null : estado.erro,
+          numero: perfil.numero, perfil: perfil.nome,
+          url: cfg.url, instancia: cfg.instancia,
+          updated_at: salva?.updatedAt ?? null,
+        },
+      };
+    }
+
+    // Só o estado, para a tela acompanhar o pareamento pelo QR sem refazer a
+    // consulta inteira a cada poucos segundos.
+    if (action === 'evolution_estado') {
+      const cfg = await configEvolution(db);
+      if (!cfg) return { status: 200, body: { estado: null } };
+      const estado = await estadoDaInstancia(cfg);
+      if (!estado.ok) return { status: 200, body: { estado: null, error: estado.erro } };
+      const perfil = estado.estado === 'open' ? await perfilDaInstancia(cfg) : { numero: null, nome: null };
+      return { status: 200, body: { estado: estado.estado, numero: perfil.numero, perfil: perfil.nome } };
+    }
+
     if (action === 'fireflies_config') {
       const cred = await getIntegrationCredential(db, FIREFLIES_KEY);
       if (!cred?.value) {
@@ -11415,6 +11456,62 @@ function faltaEmProjeto(p: any): string | null {
         status: 200,
         body: { ok: true, connected: true, access_key_id: `${accessKeyId.slice(0, 4)}...${accessKeyId.slice(-4)}` },
       };
+    }
+
+    // Grava a Evolution só se ela responder: endereço, instância e chave são
+    // conferidos contra o servidor antes. Sem chave nova, vale a que já está
+    // no cofre - dá para trocar o endereço ou a instância sem colar de novo.
+    if (action === 'save_evolution') {
+      const url = normalizarUrl(String(body?.url ?? ''));
+      const instancia = String(body?.instancia ?? '').trim();
+      const chaveNova = String(body?.apikey ?? '').trim();
+      if (!url) return { status: 400, body: { error: 'Informe o endereço do servidor, com http:// ou https://.' } };
+      if (!instancia) return { status: 400, body: { error: 'Informe o nome da instância.' } };
+      const atual = chaveNova ? null : await getIntegrationCredential(db, EVOLUTION_KEY).catch(() => null);
+      const apikey = chaveNova || atual?.value || '';
+      if (!apikey) return { status: 400, body: { error: 'Informe a chave da API.' } };
+      const cfg: ConfigEvolution = { url, instancia, apikey };
+      const estado = await estadoDaInstancia(cfg);
+      if (!estado.ok) return { status: 400, body: { error: estado.erro } };
+      await saveIntegrationCredential(db, EVOLUTION_KEY, apikey, {
+        url, instancia, validated_at: new Date().toISOString(),
+      });
+      const perfil = estado.estado === 'open' ? await perfilDaInstancia(cfg) : { numero: null, nome: null };
+      return {
+        status: 200,
+        body: {
+          ok: true, has_key: true, valida: true, connected: estado.estado === 'open', estado: estado.estado,
+          numero: perfil.numero, perfil: perfil.nome, url, instancia,
+          updated_at: new Date().toISOString(),
+        },
+      };
+    }
+
+    // O QR para parear o número na instância, quando ela está desconectada.
+    if (action === 'evolution_conectar') {
+      const cfg = await configEvolution(db);
+      if (!cfg) return { status: 400, body: { error: 'Salve a integração antes de conectar o número.' } };
+      const r = await qrDaInstancia(cfg);
+      if (!r.ok) return { status: 400, body: { error: r.erro } };
+      return { status: 200, body: { ok: true, qr: r.qr, codigo: r.codigo, conectado: r.conectado } };
+    }
+
+    // Uma mensagem de teste para um número ou grupo: é a prova de que o envio
+    // funciona de ponta a ponta.
+    if (action === 'evolution_teste') {
+      const cfg = await configEvolution(db);
+      if (!cfg) return { status: 400, body: { error: 'Salve a integração antes de testar.' } };
+      const destino = normalizarDestino(String(body?.destino ?? ''));
+      if (!destino) return { status: 400, body: { error: 'Informe um número com DDD, ou o id de um grupo.' } };
+      const r = await enviarTexto(cfg, destino,
+        'Mensagem de teste do Portal Sheep. Se ela chegou, a integração com o WhatsApp está funcionando.');
+      if (!r.ok) return { status: 400, body: { error: r.erro } };
+      return { status: 200, body: { ok: true, destino } };
+    }
+
+    if (action === 'remove_evolution') {
+      await removeIntegrationCredential(db, EVOLUTION_KEY);
+      return { status: 200, body: { ok: true } };
     }
 
     if (action === 'remove_aws_key') {

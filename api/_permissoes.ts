@@ -538,6 +538,12 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   enviar_email_teste: 'configuracoes:integracoes',
   emails_enviados: 'configuracoes:integracoes',
   remove_fireflies_key: 'configuracoes:integracoes',
+  evolution_config: 'configuracoes:integracoes',
+  evolution_estado: 'configuracoes:integracoes',
+  save_evolution: 'configuracoes:integracoes',
+  evolution_conectar: 'configuracoes:integracoes',
+  evolution_teste: 'configuracoes:integracoes',
+  remove_evolution: 'configuracoes:integracoes',
   save_anthropic_key: 'configuracoes:integracoes',
   remove_anthropic_key: 'configuracoes:integracoes',
 };

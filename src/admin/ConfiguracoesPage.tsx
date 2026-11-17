@@ -7,12 +7,13 @@ import { useToast, useAuth } from './AdminApp';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { ancorarCaixa } from '../lib/ancorar';
 import {
-  IconAlert, IconAlertOctagon, IconArrastar, IconCheck, IconChevronDown, IconChevronRight, IconFluxo,
+  IconAlert, IconAlertOctagon, IconArrastar, IconBalao, IconCheck, IconChevronDown, IconChevronRight, IconEnviar, IconFluxo,
   IconClipboard, IconEntrada, IconEstrela, IconEye, IconEyeOff, IconNuvem, IconPlus, IconProibido,
   IconSpinner, IconTrash, IconUser, IconX,
 } from '../components/icons';
 import { Chave } from '../components/Chave';
 import { Dialogo } from '../components/Dialogo';
+import { mascaraTelefone } from '../lib/mascaras';
 import { AbaPainel } from '../components/Abas';
 import { AbasPilula, FaixaDaPagina } from '../components/FaixaDaPagina';
 import EstiloPage from './EstiloPage';
@@ -1508,6 +1509,9 @@ interface EstadoIntegracao {
   /** Quando a credencial foi salva ou revalidada. */
   em: string | null;
   carregando: boolean;
+  /** O que dizer quando ela está salva e não conectada por outro motivo que
+   *  não a chave: o número da Evolution desconectado, por exemplo. */
+  aviso?: string | null;
 }
 
 const ESTADO_INICIAL: EstadoIntegracao = {
@@ -1532,6 +1536,7 @@ function PilulaIntegracao({ estado }: { estado: EstadoIntegracao }) {
       </span>
     );
   }
+  if (estado.temChave && estado.aviso) return <span className="integration-badge disconnected">{estado.aviso}</span>;
   if (estado.temChave) return <span className="integration-badge disconnected">Chave inválida</span>;
   return <span className="integration-badge disconnected">Não conectada</span>;
 }
@@ -1872,12 +1877,312 @@ function ResendIntegrationCard({ api, inicial, onEstado }: {
   );
 }
 
+// ── Evolution API: o WhatsApp da casa ─────────────────
+// O número separado da casa, ligado por uma instância da Evolution. São três
+// dados - o endereço do servidor, a instância e a chave -, conferidos contra a
+// Evolution antes de gravar. Com eles salvos, o cartão mostra se o número está
+// pareado; se não estiver, gera o QR para parear dali mesmo, e acompanha até a
+// conexão abrir. O envio de teste é a prova de que a mensagem sai de verdade.
+
+/** O verde da marca da Evolution, tirado do logotipo oficial. */
+const EVOLUTION_COR = '#13AE72';
+
+/** A marca oficial, como as do Fireflies e do Claude: arquivo em
+ *  `public/marcas`, e não desenho de traço - aqui ela identifica um terceiro. */
+function EvolutionLogo({ size = 18 }: { size?: number }) {
+  return <img src="/marcas/evolution.webp" alt="" width={size} height={size}
+    style={{ display: 'block', objectFit: 'contain', flexShrink: 0 }} />;
+}
+
+/** O que a leitura da Evolution devolve: a tabela guarda, o cartão usa. */
+interface DadosEvolution {
+  has_key: boolean;
+  valida?: boolean;
+  connected: boolean;
+  estado: string | null;
+  error?: string | null;
+  numero?: string | null;
+  perfil?: string | null;
+  url: string | null;
+  instancia: string | null;
+  updated_at: string | null;
+}
+
+/** +55 (31) 98244-0323 a partir de 5531982440323. */
+function numeroLegivel(n: string | null | undefined): string | null {
+  if (!n) return null;
+  return n.length > 11 ? `+${n.slice(0, n.length - 11)} ${mascaraTelefone(n.slice(-11))}` : mascaraTelefone(n);
+}
+
+/** A linha da tabela a partir da leitura: conectada só com o número pareado. */
+function estadoDaEvolution(d: DadosEvolution | null): EstadoIntegracao {
+  if (!d) return { ...ESTADO_INICIAL, carregando: false };
+  return {
+    temChave: d.has_key,
+    conectada: d.connected,
+    detalhe: d.has_key ? (numeroLegivel(d.numero) ?? d.instancia ?? null) : null,
+    em: d.updated_at,
+    carregando: false,
+    aviso: !d.has_key ? null
+      : d.valida === false ? 'Não responde'
+        : !d.connected ? 'Número desconectado' : null,
+  };
+}
+
+/** De quanto em quanto tempo a tela pergunta se o QR já foi lido, e quando o QR
+ *  é trocado por um novo - o do WhatsApp vence em menos de um minuto. */
+const ESPIAR_PAREAMENTO_MS = 3000;
+const RENOVAR_QR_MS = 40_000;
+
+function EvolutionIntegrationCard({ api, dados, onDados }: {
+  api: ReturnType<typeof useApi>;
+  dados: DadosEvolution | null;
+  onDados: (d: DadosEvolution) => void;
+}) {
+  const { toast } = useToast();
+  const [url, setUrl] = useState(dados?.url ?? '');
+  const [instancia, setInstancia] = useState(dados?.instancia ?? '');
+  const [chave, setChave] = useState('');
+  const [verChave, setVerChave] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [confirmandoRemocao, setConfirmandoRemocao] = useState(false);
+  const [qr, setQr] = useState<{ imagem: string | null; codigo: string | null } | null>(null);
+  const [pedindoQr, setPedindoQr] = useState(false);
+  const [destino, setDestino] = useState('');
+  const [testando, setTestando] = useState(false);
+
+  // A leitura da tabela pode chegar depois de a linha abrir.
+  useEffect(() => {
+    if (dados?.url && !url) setUrl(dados.url);
+    if (dados?.instancia && !instancia) setInstancia(dados.instancia);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dados?.url, dados?.instancia]);
+
+  const temChave = !!dados?.has_key;
+  const conectado = !!dados?.connected;
+  const pronto = !!url.trim() && !!instancia.trim() && (temChave || !!chave.trim());
+
+  async function salvar() {
+    if (!pronto || salvando) return;
+    setSalvando(true);
+    const r = await api('', 'POST', {
+      action: 'save_evolution', url: url.trim(), instancia: instancia.trim(), apikey: chave.trim() || undefined,
+    }).catch(() => null);
+    setSalvando(false);
+    if (!r || r.error) {
+      const motivo = r?.error ?? 'A conexão caiu. Tente de novo.';
+      setErro(motivo);
+      toast('error', 'Não foi possível conectar', motivo);
+      return;
+    }
+    setErro(null);
+    setChave('');
+    onDados(r as DadosEvolution);
+    toast('success', 'Evolution conectada',
+      r.connected ? 'O número está pareado e pronto para enviar.' : 'Agora conecte o número pelo QR.');
+  }
+
+  // Tirar a integração muda a tela na hora e volta atrás se o servidor recusar.
+  async function remover() {
+    const antes = dados;
+    setQr(null);
+    onDados({ has_key: false, connected: false, estado: null, url: null, instancia: null, updated_at: null });
+    const r = await api('', 'POST', { action: 'remove_evolution' }).catch(() => null);
+    if (!r?.ok) {
+      if (antes) onDados(antes);
+      toast('error', 'Não foi possível remover', r?.error ?? 'A conexão caiu. Tente de novo.');
+    }
+  }
+
+  async function pedirQr() {
+    setPedindoQr(true);
+    const r = await api('', 'POST', { action: 'evolution_conectar' }).catch(() => null);
+    setPedindoQr(false);
+    if (!r || r.error) {
+      toast('error', 'Não foi possível gerar o QR', r?.error ?? 'A conexão caiu. Tente de novo.');
+      return;
+    }
+    if (r.conectado) {
+      setQr(null);
+      const d = await api('?action=evolution_config').catch(() => null);
+      if (d) onDados(d);
+      return;
+    }
+    setQr({ imagem: r.qr ?? null, codigo: r.codigo ?? null });
+  }
+
+  // Com o QR na tela, a cada poucos segundos a tela pergunta se ele já foi
+  // lido, e troca o QR antes de ele vencer. Pareou: o QR sai e a linha acende.
+  useEffect(() => {
+    if (!qr) return;
+    let vivo = true;
+    const espiar = window.setInterval(async () => {
+      const r = await api('?action=evolution_estado').catch(() => null);
+      if (!vivo || r?.estado !== 'open') return;
+      // Primeiro a leitura nova, e só depois o QR sai: tirar o QR encerra esta
+      // espera, e a resposta que chegasse depois seria jogada fora.
+      window.clearInterval(espiar);
+      const d = await api('?action=evolution_config').catch(() => null);
+      if (!vivo) return;
+      if (d) onDados(d);
+      setQr(null);
+      toast('success', 'Número conectado', 'O WhatsApp da casa está pronto para enviar.');
+    }, ESPIAR_PAREAMENTO_MS);
+    const renovar = window.setTimeout(() => { if (vivo) void pedirQr(); }, RENOVAR_QR_MS);
+    return () => { vivo = false; window.clearInterval(espiar); window.clearTimeout(renovar); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qr]);
+
+  async function testar() {
+    if (!destino.trim() || testando) return;
+    setTestando(true);
+    const r = await api('', 'POST', { action: 'evolution_teste', destino: destino.trim() }).catch(() => null);
+    setTestando(false);
+    if (!r || r.error) {
+      toast('error', 'A mensagem não saiu', r?.error ?? 'A conexão caiu. Tente de novo.');
+      return;
+    }
+    toast('success', 'Mensagem enviada', `Confira no WhatsApp de ${numeroLegivel(r.destino) ?? r.destino}.`);
+  }
+
+  return (
+    <div className="integration-card expanded">
+      <div className="integration-form">
+        <div className="integration-form-group">
+          <label className="integration-label" htmlFor="evo-url">Endereço do servidor</label>
+          <div className="integration-input-wrap">
+            <input id="evo-url" className="integration-input" autoComplete="off" spellCheck={false}
+              placeholder="https://evolution.seudominio.com.br"
+              value={url} onChange={e => setUrl(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && salvar()} />
+          </div>
+        </div>
+        <div className="integration-form-group">
+          <label className="integration-label" htmlFor="evo-instancia">Instância</label>
+          <div className="integration-input-wrap">
+            <input id="evo-instancia" className="integration-input" autoComplete="off" spellCheck={false}
+              placeholder="O nome da instância do número, como está na Evolution"
+              value={instancia} onChange={e => setInstancia(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && salvar()} />
+          </div>
+        </div>
+        <div className="integration-form-group">
+          <label className="integration-label" htmlFor="evo-chave">Chave da API</label>
+          <div className="integration-input-wrap">
+            <input id="evo-chave" className="integration-input" autoComplete="off" spellCheck={false}
+              type={verChave ? 'text' : 'password'}
+              placeholder={temChave ? '•••••••••••••••• (chave salva)' : 'A apikey global ou a da instância'}
+              value={chave} onChange={e => setChave(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && salvar()} />
+            <button className="integration-eye" type="button" onClick={() => setVerChave(v => !v)}
+              aria-label={verChave ? 'Ocultar a chave' : 'Mostrar a chave'}>
+              {verChave ? <IconEyeOff size={14} /> : <IconEye size={14} />}
+            </button>
+          </div>
+          <p className="integration-hint">
+            A chave fica criptografada no banco, como as demais; o endereço e a instância, ao lado dela.
+            Tudo é conferido contra a Evolution antes de gravar.
+          </p>
+          {erro && (
+            <p className="integration-hint aws-erro surge">
+              <IconAlert size={12} /> {erro}
+            </p>
+          )}
+          {!erro && temChave && dados?.valida === false && dados.error && (
+            <p className="integration-hint aws-erro surge">
+              <IconAlert size={12} /> {dados.error}
+            </p>
+          )}
+        </div>
+
+        {/* O número: pareado, com o envio de teste; ou desconectado, com o QR. */}
+        {temChave && dados?.valida !== false && (
+          <div key={conectado ? 'conectado' : 'desconectado'} className="integration-form-group evo-numero troca">
+            <label className="integration-label">Número</label>
+            {conectado ? (
+              <>
+                <p className="evo-situacao">
+                  <span className="live-dot" />
+                  Conectado{numeroLegivel(dados?.numero) ? ` em ${numeroLegivel(dados?.numero)}` : ''}
+                  {dados?.perfil && <span className="evo-perfil">{dados.perfil}</span>}
+                </p>
+                <div className="evo-teste">
+                  <div className="integration-input-wrap">
+                    <input className="integration-input" autoComplete="off" inputMode="tel"
+                      placeholder="Número com DDD para receber um teste"
+                      value={destino} onChange={e => setDestino(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && testar()} />
+                  </div>
+                  <button type="button" className="btn btn-secondary btn-sm" disabled={!destino.trim() || testando}
+                    onClick={() => void testar()}>
+                    {testando ? <IconSpinner size={13} /> : <IconEnviar size={13} />} Enviar teste
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="evo-situacao desligado">
+                  O número desta instância não está pareado. Gere o QR e leia no WhatsApp do número da casa,
+                  em Aparelhos conectados.
+                </p>
+                {qr ? (
+                  <div className="evo-qr surge">
+                    {qr.imagem
+                      ? <img src={qr.imagem} alt="QR para conectar o WhatsApp" />
+                      : <div className="dux-spinner-row"><span className="dux-spinner sm" /></div>}
+                    <div className="evo-qr-texto">
+                      <p>Abra o WhatsApp no celular do número da casa, toque em <strong>Aparelhos
+                        conectados</strong> e em <strong>Conectar um aparelho</strong>, e aponte para o QR.</p>
+                      {qr.codigo && <p>Ou use o código <strong className="evo-codigo">{qr.codigo}</strong>.</p>}
+                      <p className="evo-qr-espera"><IconSpinner size={12} /> Esperando a leitura</p>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" className="btn btn-secondary btn-sm evo-conectar" disabled={pedindoQr}
+                    onClick={() => void pedirQr()}>
+                    {pedindoQr ? <IconSpinner size={13} /> : <IconBalao size={13} />} Conectar número
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        <div className="integration-form-actions">
+          <button className="integration-save-btn evo-salvar" style={{ background: EVOLUTION_COR }}
+            onClick={salvar} disabled={salvando || !pronto}>
+            {salvando && <IconSpinner size={13} />}
+            {salvando ? 'Conferindo' : temChave ? 'Salvar alterações' : 'Conectar'}
+          </button>
+          {temChave && (
+            <button className="integration-remove-btn" onClick={() => setConfirmandoRemocao(true)}>
+              Remover integração
+            </button>
+          )}
+        </div>
+      </div>
+
+      {confirmandoRemocao && (
+        <Dialogo
+          titulo="Remover a integração com a Evolution?"
+          descricao="A chave sai do cofre e o portal deixa de enviar mensagens pelo WhatsApp. O número continua pareado na Evolution."
+          rotuloOk="Remover"
+          onFechar={() => setConfirmandoRemocao(false)}
+          onConfirmar={() => { setConfirmandoRemocao(false); void remover(); }} />
+      )}
+    </div>
+  );
+}
+
 function IntegracoesTab({ token: sessionToken }: { token: string }) {
   const api = useApi(sessionToken);
   /** Uma aberta por vez: são formulários de credencial, e duas abertas ao mesmo
    *  tempo só empurram a de baixo para fora da tela. */
   const [aberta, setAberta] = useState<string | null>(null);
   const [estados, setEstados] = useState<Record<string, EstadoIntegracao>>({});
+  /** A leitura inteira da Evolution: a linha usa o resumo, o cartão o resto. */
+  const [evolution, setEvolution] = useState<DadosEvolution | null>(null);
 
   /** A situação de cada linha é buscada aqui, e não dentro do cartão: o cartão
    *  só existe enquanto a linha está aberta, então quem entrasse na tela veria
@@ -1915,6 +2220,11 @@ function IntegracoesTab({ token: sessionToken }: { token: string }) {
         em: d.updated_at ?? null,
         carregando: false,
       } }));
+    }).catch(() => {});
+    api('?action=evolution_config').then(d => {
+      if (!vivo || !d) return;
+      setEvolution(d);
+      setEstados(m => ({ ...m, evolution: estadoDaEvolution(d) }));
     }).catch(() => {});
     api('?action=fireflies_config').then(d => {
       if (!vivo || !d) return;
@@ -1988,6 +2298,18 @@ function IntegracoesTab({ token: sessionToken }: { token: string }) {
             onAlternar={() => alternar('aws')}>
             <AwsIntegrationCard api={api} inicial={estadoDe('aws')}
               onEstado={e => anotar('aws', e)} />
+          </LinhaIntegracao>
+
+          <LinhaIntegracao
+            nome="Evolution API"
+            categoria="WhatsApp"
+            descricao="O número da casa no WhatsApp, para os avisos nos grupos dos clientes."
+            logo={<span className="integracao-logo" style={{ background: `${EVOLUTION_COR}14`, border: `1px solid ${EVOLUTION_COR}30` }}><EvolutionLogo size={18} /></span>}
+            estado={estadoDe('evolution')}
+            aberta={aberta === 'evolution'}
+            onAlternar={() => alternar('evolution')}>
+            <EvolutionIntegrationCard api={api} dados={evolution}
+              onDados={d => { setEvolution(d); anotar('evolution', estadoDaEvolution(d)); }} />
           </LinhaIntegracao>
 
           <LinhaIntegracao
