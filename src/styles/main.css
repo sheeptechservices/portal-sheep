@@ -25282,7 +25282,9 @@ input:is(.form-checkbox, .perm-check):disabled { opacity: .45; cursor: default; 
 
 /* O aviso de privacidade e, ao lado, o estado da gravacao. */
 .perfil-cadastro-topo { display: flex; align-items: flex-start; gap: 16px; }
-.perfil-cadastro-topo .perfil-cadastro-aviso { flex: 1; min-width: 0; }
+/* O aviso ocupa a linha inteira, ate o estado da gravacao: o teto de 78ch das
+   outras notas do Perfil o deixava espremido a esquerda, com um vao no meio. */
+.perfil-cadastro-topo .perfil-cadastro-aviso { flex: 1; min-width: 0; max-width: none; }
 .perfil-estado {
   flex-shrink: 0;
   display: inline-flex;
