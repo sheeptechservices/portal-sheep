@@ -4222,21 +4222,33 @@ body.arrastando-painel {
   font-weight: 600;
 }
 
-.filter-dropdown-clear {
-  padding: 6px 10px;
+/* Marcar todos e limpar a selecao, lado a lado no alto da lista. Texto, e nao
+   botao com moldura: sao atalhos da lista, e nao a acao da tela. */
+.filter-dropdown-acoes {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 2px 4px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--gray3);
+}
+.filter-dropdown-acao {
+  padding: 4px 8px;
+  border: 0;
+  background: none;
+  font: inherit;
   font-size: 11px;
   font-weight: 700;
   color: var(--gray2);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  border-bottom: 1px solid var(--gray3);
-  margin-bottom: 4px;
-  transition: color var(--transition);
+  white-space: nowrap;
+  transition: color var(--transition), background var(--transition), opacity var(--transition);
 }
-
-.filter-dropdown-clear:hover {
-  color: var(--black);
-}
+.filter-dropdown-acao:hover:not(:disabled) { color: var(--black); background: var(--gray4); }
+.filter-dropdown-acao:focus-visible { outline: none; color: var(--black); background: var(--gray4); }
+.filter-dropdown-acao:disabled { opacity: .45; cursor: default; }
 
 /* ── Filtro de período: a lista dos filtros com um calendário dentro ──────── */
 /* A mesma moldura e a mesma entrada da lista de opções; so a altura sai do

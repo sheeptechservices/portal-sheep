@@ -100,11 +100,22 @@ export default function FilterDropdown({
       </button>
       {open && createPortal(
         <div ref={dropRef} className="filter-dropdown-list" style={{ top: pos.top, left: pos.left }}>
-          {hasSelection && (
-            <div className="filter-dropdown-clear" onClick={() => onChange([])}>
+          {/* Marcar todos e limpar, sempre no alto: marcar tudo e ir tirando o
+              que não interessa é o caminho curto quando sobra pouca coisa de
+              fora. Com a busca digitada, marcar vale só para o que aparece. A
+              linha fica sempre ali, e o que não tem o que fazer só apaga - o
+              "Limpar" que nascia e sumia empurrava a lista a cada clique. */}
+          <div className="filter-dropdown-acoes">
+            <button type="button" className="filter-dropdown-acao"
+              disabled={visiveis.length === 0 || visiveis.every(o => values.includes(o.value))}
+              onClick={() => onChange([...new Set([...values, ...visiveis.map(o => o.value)])])}>
+              {q ? 'Marcar estes' : 'Marcar todos'}
+            </button>
+            <button type="button" className="filter-dropdown-acao" disabled={!hasSelection}
+              onClick={() => onChange([])}>
               Limpar seleção
-            </div>
-          )}
+            </button>
+          </div>
           {/* A busca some junto com a lista curta: campo em cima de cinco
               linhas é mais peça para ler do que atalho. */}
           {buscando && (
