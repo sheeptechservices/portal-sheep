@@ -2000,6 +2000,9 @@ function EvolutionIntegrationCard({ api, dados, onDados }: {
     const r = await api('', 'POST', { action: 'evolution_conectar' }).catch(() => null);
     setPedindoQr(false);
     if (!r || r.error) {
+      // Recusado, o QR antigo sai da tela: a espera não pode girar sem fim
+      // atrás de um QR que não vem.
+      setQr(null);
       toast('error', 'Não foi possível gerar o QR', r?.error ?? 'A conexão caiu. Tente de novo.');
       return;
     }

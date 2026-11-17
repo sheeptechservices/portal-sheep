@@ -110,6 +110,19 @@ export async function qrDaInstancia(cfg: ConfigEvolution)
   const base64 = typeof d.base64 === 'string' ? d.base64 : typeof d.qrcode?.base64 === 'string' ? d.qrcode.base64 : null;
   const qr = base64 ? (base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`) : null;
   const codigo = typeof d.pairingCode === 'string' ? d.pairingCode : null;
+  // Sem QR e sem código a tela não tem o que mostrar. Na Evolution 2.2.x isso
+  // costuma vir como `{"count":0}`: a versão do WhatsApp Web que ela embute
+  // ficou velha, e o WhatsApp não entrega mais o QR. O motivo vai para a tela,
+  // com o que a Evolution respondeu, em vez de uma espera sem fim.
+  if (!qr && !codigo) {
+    const resposta = JSON.stringify(d).slice(0, 160);
+    return {
+      ok: false,
+      erro: d?.count === 0
+        ? `A Evolution não gerou o QR (respondeu ${resposta}). Isso acontece quando a versão dela está desatualizada: atualize a Evolution no servidor.`
+        : `A Evolution não gerou o QR. Ela respondeu: ${resposta}`,
+    };
+  }
   return { ok: true, qr, codigo, conectado: false };
 }
 
