@@ -327,9 +327,10 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
       urgencia: c => posicaoDaPrioridade(c.urgencia),
       anexos: c => c.anexos.length,
       status: c => posEtapa(c.status),
-      // Sem previsão vai para o fim na ordem crescente, que é a que se usa:
-      // o que entrega primeiro em cima, o que ainda não tem data embaixo.
-      previsao: c => c.previsao ?? '9999-12-31',
+      // A data como número, para comparar data com data e não texto com texto.
+      // Sem previsão fica de fora da conta: vai para o fim nos dois sentidos
+      // (ver o `sort` abaixo), e não para o topo quando a ordem é decrescente.
+      previsao: c => (c.previsao ? Date.parse(`${c.previsao.slice(0, 10)}T12:00:00`) : Number.NaN),
       solicitante: c => c.solicitante.toLocaleLowerCase('pt-BR'),
       aberto: c => c.criado_em,
     };
@@ -337,6 +338,12 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
     const sinal = ordem.dir === 'asc' ? 1 : -1;
     return [...visiveis].sort((a, b) => {
       const va = de(a), vb = de(b);
+      // Valor que não existe (a previsão ainda a definir) fica sempre embaixo,
+      // seja a ordem crescente ou decrescente.
+      const semA = typeof va === 'number' && Number.isNaN(va);
+      const semB = typeof vb === 'number' && Number.isNaN(vb);
+      if (semA !== semB) return semA ? 1 : -1;
+      if (semA && semB) return b.criado_em.localeCompare(a.criado_em);
       const comp = typeof va === 'number' && typeof vb === 'number'
         ? va - vb : String(va).localeCompare(String(vb), 'pt-BR');
       return comp * sinal || b.criado_em.localeCompare(a.criado_em);
