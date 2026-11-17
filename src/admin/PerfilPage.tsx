@@ -530,7 +530,7 @@ export default function PerfilPage({ token }: { token: string }) {
     ? <span className="perfil-busca"><IconSpinner size={11} /> Consultando a Receita</span>
     : buscaCnpj === 'achou' ? <span className="perfil-busca ok"><IconCheckCircle size={11} /> {situacaoCnpj ? `Situação ${situacaoCnpj.toLowerCase()}` : 'Razão social preenchida'}</span>
     : buscaCnpj === 'nao_achou' ? 'Não achamos este CNPJ. Escreva a razão social à mão.'
-    : 'Para quem presta serviço como PJ.';
+    : 'A razão social se completa sozinha.';
 
   return (
     <div className="admin-content-wrap pagina-cristal pagina-perfil">
