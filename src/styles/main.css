@@ -24066,6 +24066,100 @@ a.nav-sub-item { text-decoration: none; gap: 6px; }
 
 .mural-vazio-ico { color: var(--gray2); }
 .mural-vazio-dica { max-width: 300px; font-size: 12px; color: var(--gray2); }
+/* O pe do recado: as reacoes a esquerda, quem viu a direita. */
+.mural-rodape {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.mural-reacoes { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.mural-reacao,
+.mural-reagir,
+.mural-vistos {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--janela-borda);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--gray);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.mural-reacao:hover,
+.mural-reagir:hover,
+.mural-vistos:hover { background: var(--gray4); border-color: var(--gray3); color: var(--black); }
+.mural-reacao:focus-visible,
+.mural-reagir:focus-visible,
+.mural-vistos:focus-visible { outline: none; border-color: var(--gray2); }
+/* A reacao que e sua: acesa no limao, como a marcacao com o seu nome. */
+.mural-reacao.minha { background: color-mix(in srgb, var(--yellow) 22%, transparent); border-color: var(--yellow); color: var(--black); }
+.mural-reagir { padding: 0 7px; gap: 1px; color: var(--gray2); }
+.mural-reagir-opcoes {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--janela-borda);
+  border-radius: var(--radius-pill);
+  background: var(--sup-cartao, var(--white));
+  box-shadow: var(--shadow-card);
+}
+.mural-reagir-opcao {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--gray);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition), transform var(--transition-spring);
+}
+.mural-reagir-opcao:hover,
+.mural-reagir-opcao:focus-visible { outline: none; background: var(--gray4); color: var(--black); transform: translateY(-2px); }
+.mural-reagir-opcao.minha { background: var(--yellow); color: var(--on-yellow); }
+
+.mural-vistos { margin-left: auto; font-weight: 500; }
+.mural-vistos .entrega-seta { display: inline-flex; color: var(--gray2); }
+.mural-vistos.aberto { background: var(--gray4); color: var(--black); }
+.mural-so-voce { margin-left: auto; font-size: 11px; color: var(--gray2); }
+
+/* Quem foi marcado, um por linha: o nome e o que leu. */
+.mural-quem-viu {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-radius: var(--radius-sm);
+  background: var(--sup-etiqueta, var(--gray4));
+}
+.mural-quem-viu li { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.mural-quem-viu-nome { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--black); }
+.mural-quem-viu-estado { flex-shrink: 0; font-size: 11px; color: var(--gray2); }
+.mural-quem-viu-reacoes { flex-shrink: 0; display: inline-flex; gap: 3px; color: var(--gray); }
+.mural-quem-viu-reacoes > span { display: inline-flex; }
+/* Na dica de quem reagiu, a foto ao lado do nome. */
+.mural-dica-quem li { display: flex; align-items: center; gap: 8px; }
+.mural-quem-viu li.viu .mural-quem-viu-estado { color: var(--sit-prazo, var(--green)); }
+.mural-quem-viu li.anterior .mural-quem-viu-estado { color: var(--sit-atencao, var(--amber)); }
+.mural-quem-viu li.nao .mural-quem-viu-estado { color: var(--sit-atrasado, var(--red)); }
+@media (prefers-reduced-motion: reduce) {
+  .mural-reacao, .mural-reagir, .mural-vistos, .mural-reagir-opcao { transition: none; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .mural-nota.destaque { animation: none; }

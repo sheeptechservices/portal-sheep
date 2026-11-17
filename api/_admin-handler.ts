@@ -1952,6 +1952,29 @@ async function migrarSchema(db: Client) {
       PRIMARY KEY (nota_id, usuario_id)
     )
   `);
+  await ddl(`
+    -- Quem viu cada recado, e quando viu pela ultima vez. Conta quando o
+    -- recado aparece na tela de quem foi marcado, com o mural aberto. Uma
+    -- linha por pessoa, regravada a cada vez: e o \`visto_em\` comparado com a
+    -- ultima edicao que diz se a pessoa leu a versao que esta la.
+    CREATE TABLE IF NOT EXISTS mural_vistos (
+      nota_id    INTEGER NOT NULL,
+      usuario_id TEXT NOT NULL,
+      visto_em   TEXT NOT NULL,
+      PRIMARY KEY (nota_id, usuario_id)
+    )
+  `);
+  await ddl(`
+    -- As reacoes a um recado: concordo, feito, duvida, otimo. Cada pessoa da
+    -- cada uma uma vez, e o mesmo gesto a tira.
+    CREATE TABLE IF NOT EXISTS mural_reacoes (
+      nota_id    INTEGER NOT NULL,
+      usuario_id TEXT NOT NULL,
+      tipo       TEXT NOT NULL,
+      criado_em  TEXT NOT NULL,
+      PRIMARY KEY (nota_id, usuario_id, tipo)
+    )
+  `);
 
   await ddl(`
     -- Etapas do quadro de tarefas. Mesma estrutura das etapas do funil
@@ -4319,7 +4342,7 @@ async function despacharAdminData(
     if (action === 'mural_notas') {
       const eu = usuario?.id ?? '';
       if (!eu) return { status: 200, body: { notas: [] } };
-      const [notas, marcas] = await Promise.all([
+      const [notas, marcas, vistos, reacoes] = await Promise.all([
         db.execute({
           sql: `SELECT n.id, n.texto, n.autor_id, n.autor_nome, n.criado_em, n.editado_em, n.editado_por_nome
                 FROM mural_notas n
@@ -4329,18 +4352,44 @@ async function despacharAdminData(
           args: [eu, eu],
         }),
         db.execute({
-          sql: `SELECT m.nota_id, m.usuario_id FROM mural_mencoes m
+          sql: `SELECT m.nota_id, m.usuario_id, u.nome, u.foto_url FROM mural_mencoes m
                 JOIN mural_notas n ON n.id = m.nota_id
-                WHERE n.autor_id = ?
-                   OR EXISTS (SELECT 1 FROM mural_mencoes x WHERE x.nota_id = n.id AND x.usuario_id = ?)`,
+                LEFT JOIN usuarios u ON u.id = m.usuario_id
+                WHERE (n.autor_id = ? OR EXISTS (SELECT 1 FROM mural_mencoes x WHERE x.nota_id = n.id AND x.usuario_id = ?))`,
+          args: [eu, eu],
+        }),
+        db.execute({
+          sql: `SELECT v.nota_id, v.usuario_id, v.visto_em FROM mural_vistos v
+                JOIN mural_notas n ON n.id = v.nota_id
+                WHERE (n.autor_id = ? OR EXISTS (SELECT 1 FROM mural_mencoes x WHERE x.nota_id = n.id AND x.usuario_id = ?))`,
+          args: [eu, eu],
+        }),
+        db.execute({
+          sql: `SELECT r.nota_id, r.usuario_id, r.tipo, u.nome FROM mural_reacoes r
+                JOIN mural_notas n ON n.id = r.nota_id
+                LEFT JOIN usuarios u ON u.id = r.usuario_id
+                WHERE (n.autor_id = ? OR EXISTS (SELECT 1 FROM mural_mencoes x WHERE x.nota_id = n.id AND x.usuario_id = ?))
+                ORDER BY r.criado_em`,
           args: [eu, eu],
         }),
       ]);
-      const marcadosEm = new Map<number, string[]>();
-      for (const m of marcas.rows) {
-        const id = Number(m.nota_id);
-        marcadosEm.set(id, [...(marcadosEm.get(id) ?? []), String(m.usuario_id)]);
-      }
+      const juntar = <T>(linhas: Record<string, unknown>[], peca: (l: Record<string, unknown>) => T) => {
+        const mapa = new Map<number, T[]>();
+        for (const l of linhas) {
+          const id = Number(l.nota_id);
+          mapa.set(id, [...(mapa.get(id) ?? []), peca(l)]);
+        }
+        return mapa;
+      };
+      const marcadosEm = juntar(marcas.rows, l => ({
+        id: String(l.usuario_id),
+        nome: String(l.nome ?? 'Alguém'),
+        foto: l.foto_url == null ? null : String(l.foto_url),
+      }));
+      const vistosEm = juntar(vistos.rows, l => ({ usuario_id: String(l.usuario_id), em: String(l.visto_em) }));
+      const reacoesEm = juntar(reacoes.rows, l => ({
+        usuario_id: String(l.usuario_id), tipo: String(l.tipo), nome: String(l.nome ?? 'Alguém'),
+      }));
       return {
         status: 200,
         body: {
@@ -4352,7 +4401,10 @@ async function despacharAdminData(
             criado_em: String(n.criado_em),
             editado_em: n.editado_em == null ? null : String(n.editado_em),
             editado_por_nome: n.editado_por_nome == null ? null : String(n.editado_por_nome),
-            mencoes: marcadosEm.get(Number(n.id)) ?? [],
+            mencoes: (marcadosEm.get(Number(n.id)) ?? []).map(m => m.id),
+            marcados: marcadosEm.get(Number(n.id)) ?? [],
+            vistos: vistosEm.get(Number(n.id)) ?? [],
+            reacoes: reacoesEm.get(Number(n.id)) ?? [],
           })),
         },
       };
@@ -8609,6 +8661,59 @@ function faltaEmProjeto(p: any): string | null {
       return { status: 200, body: { ok: true, id, quando: agora, mencoes: marcados } };
     }
 
+    // Quem foi marcado viu estes recados agora. Só vale para quem foi marcado,
+    // e nunca para o autor - quem escreveu não "vê" o próprio recado. A linha
+    // é regravada com a hora nova: é ela que diz se a última edição foi lida.
+    if (action === 'ver_mural_notas') {
+      if (!autorId) return { status: 200, body: { ok: true } };
+      const ids = [...new Set((Array.isArray(body?.ids) ? body.ids : [])
+        .map((x: unknown) => Number(x)).filter((x: number) => Number.isInteger(x) && x > 0))].slice(0, 200) as number[];
+      if (!ids.length) return { status: 200, body: { ok: true } };
+      const agora = new Date().toISOString();
+      await db.execute({
+        sql: `INSERT INTO mural_vistos (nota_id, usuario_id, visto_em)
+              SELECT m.nota_id, ?, ? FROM mural_mencoes m
+              JOIN mural_notas n ON n.id = m.nota_id
+              WHERE m.usuario_id = ? AND (n.autor_id IS NULL OR n.autor_id <> ?)
+                AND m.nota_id IN (${ids.map(() => '?').join(',')})
+              ON CONFLICT (nota_id, usuario_id) DO UPDATE SET visto_em = excluded.visto_em`,
+        args: [autorId, agora, autorId, autorId, ...ids],
+      });
+      return { status: 200, body: { ok: true, em: agora } };
+    }
+
+    // Reagir a um recado: quem o lê - o autor e quem foi marcado - dá ou tira
+    // uma das quatro reações. O mesmo gesto liga e desliga.
+    if (action === 'reagir_mural_nota') {
+      if (!autorId) return { status: 403, body: { error: 'Entre com a sua conta para reagir.' } };
+      const id = Number(body?.id ?? 0);
+      const tipo = String(body?.tipo ?? '');
+      if (!id || !['concordo', 'feito', 'duvida', 'otimo'].includes(tipo)) {
+        return { status: 400, body: { error: 'Reação desconhecida.' } };
+      }
+      const alcance = await db.execute({
+        sql: `SELECT 1 FROM mural_notas n WHERE n.id = ? AND (n.autor_id = ? OR EXISTS (SELECT 1 FROM mural_mencoes x WHERE x.nota_id = n.id AND x.usuario_id = ?))`,
+        args: [id, autorId, autorId],
+      });
+      if (!alcance.rows[0]) return { status: 404, body: { error: 'Esse recado não está no seu mural.' } };
+      const ja = await db.execute({
+        sql: 'SELECT 1 FROM mural_reacoes WHERE nota_id = ? AND usuario_id = ? AND tipo = ?',
+        args: [id, autorId, tipo],
+      });
+      if (ja.rows[0]) {
+        await db.execute({
+          sql: 'DELETE FROM mural_reacoes WHERE nota_id = ? AND usuario_id = ? AND tipo = ?',
+          args: [id, autorId, tipo],
+        });
+        return { status: 200, body: { ok: true, ativa: false } };
+      }
+      await db.execute({
+        sql: 'INSERT INTO mural_reacoes (nota_id, usuario_id, tipo, criado_em) VALUES (?,?,?,?)',
+        args: [id, autorId, tipo, new Date().toISOString()],
+      });
+      return { status: 200, body: { ok: true, ativa: true } };
+    }
+
     if (action === 'excluir_mural_nota') {
       const id = Number(body?.id ?? 0);
       if (!id) return { status: 400, body: { error: 'Recado ausente.' } };
@@ -8617,8 +8722,12 @@ function faltaEmProjeto(p: any): string | null {
       if (!autorId || String(dono.autor_id ?? '') !== autorId) {
         return { status: 403, body: { error: 'Só quem escreveu o recado pode excluí-lo.' } };
       }
-      await db.execute({ sql: 'DELETE FROM mural_mencoes WHERE nota_id = ?', args: [id] });
-      await db.execute({ sql: 'DELETE FROM mural_notas WHERE id = ?', args: [id] });
+      await db.batch([
+        { sql: 'DELETE FROM mural_mencoes WHERE nota_id = ?', args: [id] },
+        { sql: 'DELETE FROM mural_vistos WHERE nota_id = ?', args: [id] },
+        { sql: 'DELETE FROM mural_reacoes WHERE nota_id = ?', args: [id] },
+        { sql: 'DELETE FROM mural_notas WHERE id = ?', args: [id] },
+      ], 'write');
       return { status: 200, body: { ok: true } };
     }
 

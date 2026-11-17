@@ -387,6 +387,8 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   mural_notas: LIVRE,
   salvar_mural_nota: LIVRE,
   excluir_mural_nota: LIVRE,
+  ver_mural_notas: LIVRE,
+  reagir_mural_nota: LIVRE,
   quick_search: LIVRE, // o resultado é filtrado por permissão dentro do handler
 
   // ── Gestão de usuários e acessos ──────────────────────────────────────────
