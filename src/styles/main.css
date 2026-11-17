@@ -25171,6 +25171,12 @@ input:is(.form-checkbox, .perm-check):disabled { opacity: .45; cursor: default; 
 }
 .pagina-perfil .perfil-painel { min-height: 360px; }
 
+/* O token fixo de automacao, no Conectar IA: o valor quebra em qualquer
+   ponto, porque e uma sequencia sem espacos. */
+.mcp-token-fixo .usuarios-btn-acesso { display: inline-flex; align-items: center; gap: 6px; }
+.mcp-token-fixo code { overflow-wrap: anywhere; }
+.mcp-token-aviso { margin-top: 0; }
+
 /* O grupo avisado, na ficha do projeto em leitura. */
 .aviso-whatsapp-leitura { margin: 0; font-size: 13px; color: var(--gray); }
 .aviso-whatsapp-leitura strong { color: var(--black); }

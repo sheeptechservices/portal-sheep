@@ -368,6 +368,39 @@ export async function conexoesDoUsuario(db: Client, usuarioId: string) {
   }));
 }
 
+/** Validade do token fixo de automação. */
+const TOKEN_FIXO_MS = 365 * 24 * 60 * 60 * 1000;
+
+/**
+ * Um token fixo para automação: o que roda num servidor, sem navegador para o
+ * consentimento do OAuth (o bot do WhatsApp, por exemplo). Vale um ano, age
+ * com as permissões de quem o gerou e entra na lista de conexões do Perfil,
+ * de onde "desconectar" o revoga na hora. O valor sai daqui uma vez só: no
+ * banco fica apenas o hash, como os demais.
+ */
+export async function emitirTokenFixo(db: Client, usuarioId: string, nome: string): Promise<string> {
+  if (!(await usuarioComMcp(db, usuarioId))) throw new ErroOAuth('access_denied', 'Acesso não liberado.', 403);
+  const clienteId = `fixo-${randomBytes(12).toString('hex')}`;
+  const access = aleatorio();
+  const agora = new Date();
+  const expira = new Date(agora.getTime() + TOKEN_FIXO_MS).toISOString();
+  await db.batch([
+    {
+      sql: 'INSERT INTO mcp_clientes (id, nome, redirect_uris, criado_em) VALUES (?,?,?,?)',
+      args: [clienteId, nome.trim().slice(0, 80) || 'Automação', '[]', agora.toISOString()],
+    },
+    {
+      // O refresh existe só para a linha caber na tabela: ninguém o recebe, e
+      // a validade dele é a mesma do access, que é o que a lista de conexões lê.
+      sql: `INSERT INTO mcp_tokens
+              (cliente_id, usuario_id, access_hash, access_expira, refresh_hash, refresh_expira, criado_em, visto_em)
+            VALUES (?,?,?,?,?,?,?,?)`,
+      args: [clienteId, usuarioId, hash(access), expira, hash(aleatorio()), expira, agora.toISOString(), null],
+    },
+  ], 'write');
+  return access;
+}
+
 /** Apaga uma conexão, e só se for de quem pede. */
 export async function desconectar(db: Client, usuarioId: string, conexaoId: number): Promise<boolean> {
   const r = await db.execute({

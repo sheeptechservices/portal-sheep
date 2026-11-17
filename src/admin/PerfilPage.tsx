@@ -108,6 +108,33 @@ function ConectarIa({ token }: { token: string }) {
   const { toast } = useToast();
   const [dados, setDados] = useState<{ endereco: string; conexoes: ConexaoMcp[] } | null>(null);
   const [saindo, setSaindo] = useState<Set<number>>(new Set());
+  /** O token fixo recém-gerado: aparece uma vez só, até a tela sair. */
+  const [tokenFixo, setTokenFixo] = useState<string | null>(null);
+  const [gerando, setGerando] = useState(false);
+
+  /** Gera o token fixo para automação (o bot do WhatsApp). Ele volta uma vez
+   *  só, e a conexão nova entra na lista para poder ser revogada. */
+  async function gerarTokenFixo() {
+    setGerando(true);
+    try {
+      const r = await fetch('/api/admin-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-session': token },
+        body: JSON.stringify({ action: 'mcp_token_fixo', nome: 'Bot do WhatsApp (token fixo)' }),
+      });
+      if (r.status === 401) { onSessionExpired(); return; }
+      const d = await r.json().catch(() => null);
+      if (!r.ok || !d?.token) throw new Error(d?.error ?? 'O servidor não gerou o token.');
+      setTokenFixo(d.token);
+      const lista = await fetch('/api/admin-data?action=mcp_conexoes', { headers: { 'x-admin-session': token } })
+        .then(x => (x.ok ? x.json() : null)).catch(() => null);
+      if (lista) setDados(lista);
+    } catch (e) {
+      toast('error', 'O token não foi gerado', e instanceof Error ? e.message : 'Tente de novo.');
+    } finally {
+      setGerando(false);
+    }
+  }
 
   useEffect(() => {
     let vivo = true;
@@ -218,6 +245,31 @@ function ConectarIa({ token }: { token: string }) {
               </ul>
             )}
           </div>
+          {/* O token fixo, para o que roda num servidor sem navegador para o
+              consentimento - o bot do WhatsApp. Aparece uma vez só. */}
+          <div className="perfil-linha mcp-token-fixo">
+            <span className="perfil-linha-rotulo">Token fixo</span>
+            {tokenFixo ? (
+              <span className="perfil-linha-valor mcp-valor surge">
+                <code>{tokenFixo}</code>
+                <button type="button" className="rodape-icone" aria-label="Copiar o token" title="Copiar"
+                  onClick={() => void copiar(tokenFixo, 'Token')}>
+                  <IconClipboard size={13} />
+                </button>
+              </span>
+            ) : (
+              <button type="button" className="usuarios-btn-acesso" disabled={gerando}
+                onClick={() => void gerarTokenFixo()}>
+                {gerando && <IconSpinner size={12} />} Gerar token para automação
+              </button>
+            )}
+          </div>
+          {tokenFixo && (
+            <p className="perfil-nota mcp-token-aviso surge">
+              Copie agora: ele não aparece de novo. Vale um ano, age com as suas permissões e pode ser
+              revogado em Conectados, como qualquer aplicativo.
+            </p>
+          )}
         </div>
       )}
       <p className="perfil-nota">

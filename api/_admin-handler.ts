@@ -41,7 +41,7 @@ import {
 } from './_permissoes.js';
 import {
   ensureMcpSchema, conferirPedido, emitirCodigo, mcpHabilitado, conexoesDoUsuario, desconectar,
-  ErroOAuth,
+  emitirTokenFixo, ErroOAuth,
 } from './_mcp/oauth.js';
 
 // Migração de schema: guardada pela promessa, não por um booleano.
@@ -9514,6 +9514,15 @@ function faltaEmProjeto(p: any): string | null {
     // Papel e acesso de outra pessoa. Só o dono do painel, e nunca sobre a
     // própria conta dele: rebaixar ou desligar o administrador deixaria o
     // sistema sem ninguém capaz de devolver acesso a alguém.
+    // Token fixo para automação (o bot do WhatsApp): só quem tem o MCP gera, e
+    // o valor volta uma vez só, nesta resposta.
+    if (action === 'mcp_token_fixo') {
+      if (!(await mcpHabilitado(db, usuario.id))) return comoAcaoInexistente(permissoes, method);
+      const nome = String(body?.nome ?? '').trim() || 'Automação';
+      const token = await emitirTokenFixo(db, usuario.id, nome);
+      return { status: 200, body: { ok: true, token, nome } };
+    }
+
     // O "sim" da tela de conectar: emite o código e devolve para onde voltar.
     if (action === 'mcp_autorizar' || action === 'mcp_desconectar') {
       if (!(await mcpHabilitado(db, usuario?.id))) return comoAcaoInexistente(permissoes, method);

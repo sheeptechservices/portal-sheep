@@ -413,6 +413,8 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   mcp_autorizar: LIVRE,
   mcp_conexoes: LIVRE,
   mcp_desconectar: LIVRE,
+  // O token fixo de automação: a ação confere se a pessoa tem o MCP ligado.
+  mcp_token_fixo: LIVRE,
   permissoes: SO_ADMIN_LEITURA,
   set_permissoes_papel: SO_ADMIN,
 
