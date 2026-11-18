@@ -24,7 +24,7 @@ import {
 } from './_email.js';
 import { obterDdl } from './_schema.js';
 import { DDL_FILA_DE_EMAILS, enfileirarAvisos, enviarResumosVencidos } from './_resumo-email.js';
-import { DDL_AJUSTES_DO_CHAMADO } from './_chamados-publico.js';
+import { DDL_AJUSTES_DO_CHAMADO, lerChamado, registrarChamado } from './_chamados-publico.js';
 import {
   ETAPAS_TAREFA_PADRAO, ETIQUETAS_TAREFA_PADRAO, etapasDeTarefa, progressoDaEntrega,
   statusDeduzido, type EtapasDeTarefa,
@@ -7878,6 +7878,47 @@ function faltaEmProjeto(p: any): string | null {
           // antes: é o servidor que diz em quais projetos a tarefa ficou.
           projetos: JSON.parse(projetos) as string[],
           ...gravada,
+        },
+      };
+    }
+
+    // ── Chamado aberto por dentro, em nome do cliente ───────────────────────
+    // Para o MCP e o bot do WhatsApp. Passa pela mesma rotina do painel do
+    // cliente - a cópia que ele acompanha, a tarefa na Triagem com o gestor, as
+    // etiquetas, o prazo de partida e o aviso -, só que assinado por quem
+    // registrou. Todo projeto tem o painel; o que ainda não tiver o endereço
+    // ganha aqui, como em `garantirPaineisDeChamados`.
+    if (action === 'abrir_chamado_cliente') {
+      if (!usuario) return { status: 403, body: { error: 'Chamado por dentro precisa de uma pessoa na sessão.' } };
+      const projetoId = String(body?.projeto_id ?? '').trim();
+      if (!projetoId) return { status: 400, body: { error: 'Falta dizer o projeto do chamado.' } };
+      { const barrado = await guardaDaEquipe(db, usuario, projetoId); if (barrado) return barrado; }
+      const p = await db.execute({
+        sql: 'SELECT nome, chamados_token FROM projetos WHERE id = ? AND ativo = 1', args: [projetoId],
+      });
+      const projeto = p.rows[0];
+      if (!projeto) return { status: 404, body: { error: 'Projeto não encontrado.' } };
+      const dados = lerChamado((body ?? {}) as Record<string, unknown>);
+      if (typeof dados === 'string') return { status: 400, body: { error: dados } };
+      let painel = projeto.chamados_token != null ? String(projeto.chamados_token) : '';
+      if (!painel) {
+        painel = randomUUID().replace(/-/g, '');
+        await db.execute({
+          sql: `UPDATE projetos SET chamados_token = ?, chamados_ativado_em = ?, chamados_ativado_por = ?
+                WHERE id = ? AND chamados_token IS NULL`,
+          args: [painel, new Date().toISOString(), usuario.nome, projetoId],
+        });
+        const gravado = await db.execute({ sql: 'SELECT chamados_token FROM projetos WHERE id = ?', args: [projetoId] });
+        painel = String(gravado.rows[0]?.chamados_token ?? painel);
+      }
+      const r = await registrarChamado(db, projetoId, String(projeto.nome), dados, { id: usuario.id, nome: usuario.nome });
+      await registrarAuditoria(db, usuario, 'abrir_chamado_cliente', `${String(projeto.nome)} - chamado ${r.numero}`);
+      return {
+        status: 200,
+        body: {
+          ok: true, numero: r.numero, tarefa_id: r.tarefaId, status: r.status, previsao: r.previsao,
+          responsavel: r.responsavel, anexos: r.anexos.length,
+          painel: `${enderecoDoPortal()}/chamados/${painel}`,
         },
       };
     }

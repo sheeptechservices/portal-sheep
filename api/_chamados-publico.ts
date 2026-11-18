@@ -291,6 +291,8 @@ async function criarTarefa(db: Client, dados: {
   projetoId: string; titulo: string; descricao: string; urgencia: string; autor: string; agora: string;
   ctx: Awaited<ReturnType<typeof contextoDaTriagem>>;
   etiquetas?: string[];
+  /** Quem registrou, quando o chamado nasce por dentro e não pelo painel. */
+  autorId?: string | null;
 }): Promise<number> {
   const { ctx } = dados;
   const r = await db.execute({
@@ -312,7 +314,7 @@ async function criarTarefa(db: Client, dados: {
       prazoDoChamado(dados.agora),
       JSON.stringify(dados.etiquetas ?? ['Cliente', 'Chamado']),
       ctx.posicao,
-      null, dados.agora, null, dados.autor,
+      null, dados.agora, dados.autorId ?? null, dados.autor,
     ],
   });
   return Number(r.lastInsertRowid ?? 0);
@@ -552,37 +554,78 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
   }
 }
 
-/** Grava o chamado: a cópia do cliente, a tarefa do time na Triagem, os anexos
- *  nos dois lados, e o aviso ao gestor. */
-async function abrirChamado(req: VercelRequest, res: VercelResponse, db: Client, projetoId: string,
-  projetoNome: string) {
-  const corpo = (req.body ?? {}) as Record<string, unknown>;
+/** O que um chamado leva, já conferido. */
+export interface DadosDoChamado {
+  titulo: string; descricao: string; solicitante: string; email: string;
+  tipo: string; urgencia: string; arquivos: Arquivo[]; links: string[];
+}
 
+/**
+ * Confere o corpo de um chamado e devolve os dados limpos, ou o motivo da
+ * recusa. A mesma régua vale para o painel do cliente e para o chamado que o
+ * time registra por dentro (o MCP, o bot do WhatsApp): o chamado é um só,
+ * venha de onde vier.
+ */
+export function lerChamado(corpo: Record<string, unknown>): DadosDoChamado | string {
   const titulo = texto(corpo.titulo, 140);
-  if (titulo.length < 3) return res.status(400).json({ error: 'Dê um título ao chamado.' });
+  if (titulo.length < 3) return 'Dê um título ao chamado.';
   const descricao = texto(corpo.descricao, 6000);
-  if (descricao.length < 5) return res.status(400).json({ error: 'Descreva o que está acontecendo.' });
+  if (descricao.length < 5) return 'Descreva o que está acontecendo.';
   const solicitante = texto(corpo.solicitante, 80);
-  if (solicitante.length < 2) return res.status(400).json({ error: 'Diga quem está pedindo.' });
+  if (solicitante.length < 2) return 'Diga quem está pedindo.';
   // O formulário obriga a escolher; aqui o vazio passa, porque uma aba aberta
   // antes do tipo existir ainda manda o chamado sem ele.
   const tipo = texto(corpo.tipo, 20);
-  if (tipo && !TIPOS.includes(tipo)) return res.status(400).json({ error: 'Escolha se é um bug ou uma melhoria.' });
+  if (tipo && !TIPOS.includes(tipo)) return 'Escolha se é um bug ou uma melhoria.';
   // O e-mail saiu do formulário; continua aceito para a aba aberta antes disso.
   const email = texto(corpo.email, 120);
-  if (email && !/^[^@\s]+@[^@\s.]+\.[^@\s]{2,}$/.test(email)) {
-    return res.status(400).json({ error: 'Confira o e-mail.' });
-  }
+  if (email && !/^[^@\s]+@[^@\s.]+\.[^@\s]{2,}$/.test(email)) return 'Confira o e-mail.';
   const urgencia = texto(corpo.urgencia, 20);
-  if (!URGENCIAS.includes(urgencia)) return res.status(400).json({ error: 'Escolha a urgência.' });
+  if (!URGENCIAS.includes(urgencia)) return 'Escolha a urgência.';
   const arquivos = lerAnexos(corpo);
-  if (typeof arquivos === 'string') return res.status(400).json({ error: arquivos });
+  if (typeof arquivos === 'string') return arquivos;
   const links = lerLinks(corpo);
-  if (typeof links === 'string') return res.status(400).json({ error: links });
+  if (typeof links === 'string') return links;
+  return { titulo, descricao, solicitante, email, tipo, urgencia, arquivos, links };
+}
 
+/** O painel de chamados recebendo um chamado do cliente. */
+async function abrirChamado(req: VercelRequest, res: VercelResponse, db: Client, projetoId: string,
+  projetoNome: string) {
+  const dados = lerChamado((req.body ?? {}) as Record<string, unknown>);
+  if (typeof dados === 'string') return res.status(400).json({ error: dados });
+  try {
+    const r = await registrarChamado(db, projetoId, projetoNome, dados);
+    // Devolve só o que a tela não sabe: o número no projeto, o carimbo e a
+    // previsão de partida. Nenhum id interno - nem o da tarefa, que fica com
+    // o time.
+    return res.status(201).json({
+      ok: true, numero: r.numero, criado_em: r.criado_em, status: r.status, anexos: r.anexos, previsao: r.previsao,
+    });
+  } catch {
+    return res.status(500).json({ error: 'Não foi possível abrir o chamado. Tente de novo.' });
+  }
+}
+
+/**
+ * Grava o chamado: a cópia do cliente, a tarefa do time na Triagem, os anexos
+ * nos dois lados, e o aviso ao gestor.
+ *
+ * `registradoPor` é quem do time abriu o chamado em nome do cliente; sem ele,
+ * foi o próprio cliente, pelo painel. O cliente vê o chamado igual nos dois
+ * casos, e o que muda é a assinatura do lado de dentro.
+ *
+ * Sem a tarefa o chamado não chegaria a ninguém: falhou a tarefa, o chamado é
+ * desfeito e o erro sobe.
+ */
+export async function registrarChamado(
+  db: Client, projetoId: string, projetoNome: string, dados: DadosDoChamado,
+  registradoPor?: { id: string; nome: string } | null,
+) {
+  const { titulo, descricao, solicitante, email, tipo, urgencia, arquivos, links } = dados;
   const agora = new Date().toISOString();
   const ctx = await contextoDaTriagem(db, projetoId);
-  const autor = `${solicitante} (cliente)`;
+  const autor = registradoPor ? registradoPor.nome : `${solicitante} (cliente)`;
 
   // O chamado nasce primeiro, com o número dele no projeto calculado na mesma
   // instrução que grava: o SQLite escreve uma de cada vez, então dois chamados
@@ -603,20 +646,21 @@ async function abrirChamado(req: VercelRequest, res: VercelResponse, db: Client,
   let tarefaId = 0;
   try {
     tarefaId = await criarTarefa(db, {
-      projetoId, titulo, urgencia, autor, agora, ctx,
+      projetoId, titulo, urgencia, autor, agora, ctx, autorId: registradoPor?.id ?? null,
       // O número do chamado vai na tarefa: é por ele que o cliente pergunta.
       descricao: `${descricao}${linksEmTexto(links)}\n\n---\nChamado nº ${numeroNoProjeto} do painel, `
-        + `aberto por ${solicitante}${email ? ` (${email})` : ''}${nomeDoTipo ? `. Tipo: ${nomeDoTipo}` : ''}.`,
+        + `aberto por ${solicitante}${email ? ` (${email})` : ''}${nomeDoTipo ? `. Tipo: ${nomeDoTipo}` : ''}`
+        + `${registradoPor ? `. Registrado por ${registradoPor.nome}, em nome do cliente` : ''}.`,
       // O tipo vira etiqueta: é como o time separa, no quadro, o que quebrou
       // do que falta.
       etiquetas: ['Cliente', 'Chamado', ...(nomeDoTipo ? [nomeDoTipo] : [])],
     });
     await db.execute({ sql: 'UPDATE chamados_cliente SET tarefa_id = ? WHERE id = ?', args: [tarefaId, chamadoId] });
-  } catch {
+  } catch (e) {
     // Sem a tarefa o chamado não chegaria a ninguém: desfaz e recusa, em vez
     // de deixar na lista do cliente um pedido que o time nunca vai ver.
     await db.execute({ sql: 'DELETE FROM chamados_cliente WHERE id = ?', args: [chamadoId] }).catch(() => {});
-    return res.status(500).json({ error: 'Não foi possível abrir o chamado. Tente de novo.' });
+    throw e;
   }
 
   let comentarioId: number | null = null;
@@ -624,7 +668,7 @@ async function abrirChamado(req: VercelRequest, res: VercelResponse, db: Client,
     const comentario = await db.execute({
       sql: `INSERT INTO tarefa_comentarios (tarefa_id, pai_id, usuario_id, usuario_nome, texto, criado_em)
             VALUES (?,?,?,?,?,?)`,
-      args: [tarefaId, null, null, autor,
+      args: [tarefaId, null, registradoPor?.id ?? null, autor,
         arquivos.length === 1 ? 'Anexo enviado junto do chamado.' : 'Anexos enviados junto do chamado.', agora],
     });
     comentarioId = Number(comentario.lastInsertRowid ?? 0);
@@ -636,6 +680,7 @@ async function abrirChamado(req: VercelRequest, res: VercelResponse, db: Client,
     ficha: [
       ['Projeto', projetoNome],
       ['Quem pediu', email ? `${solicitante} (${email})` : solicitante],
+      ...(registradoPor ? [['Registrado por', registradoPor.nome] as [string, string]] : []),
       ...(nomeDoTipo ? [['Tipo', nomeDoTipo] as [string, string]] : []),
       ['Urgência', urgencia],
       ['Chamado', `nº ${numeroNoProjeto} do painel`],
@@ -645,13 +690,11 @@ async function abrirChamado(req: VercelRequest, res: VercelResponse, db: Client,
     citacao: `${descricao}${linksEmTexto(links)}`, anexos: arquivos.length, tarefaId,
   });
 
-  // Devolve só o que a tela não sabe: o número no projeto, o carimbo e a
-  // previsão de partida. Nenhum id interno - nem o da tarefa, que fica com o
-  // time. Sem tarefa, não há prazo, e a previsão volta vazia.
-  return res.status(201).json({
-    ok: true, numero: numeroNoProjeto, criado_em: agora, status: ctx.etapa, anexos: anexosDoCliente,
-    previsao: tarefaId ? prazoDoChamado(agora) : null,
-  });
+  return {
+    numero: numeroNoProjeto, criado_em: agora, status: ctx.etapa, anexos: anexosDoCliente,
+    previsao: tarefaId ? prazoDoChamado(agora) : null, tarefaId,
+    responsavel: ctx.gestor ? { id: ctx.gestor.id, nome: ctx.gestor.nome } : null,
+  };
 }
 
 /**

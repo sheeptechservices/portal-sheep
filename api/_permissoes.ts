@@ -307,6 +307,8 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   add_tarefa_comentario: 'tarefas:comentar',
   // Responder ao cliente pelo chamado da tarefa é comentar, só que para fora;
   // apagar a resposta segue a mesma porta (o servidor limita a quem escreveu).
+  // Abrir chamado por dentro cria a tarefa do chamado: é criar tarefa.
+  abrir_chamado_cliente: 'tarefas:editar',
   responder_chamado_cliente: 'tarefas:comentar',
   editar_resposta_chamado_cliente: 'tarefas:comentar',
   apagar_resposta_chamado_cliente: 'tarefas:comentar',

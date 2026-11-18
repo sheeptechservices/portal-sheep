@@ -400,6 +400,61 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
     },
   },
   {
+    name: 'abrir_chamado',
+    title: 'Abrir chamado do cliente',
+    description: 'Abre um chamado no painel de chamados do cliente, em nome dele, como se ele tivesse '
+      + 'aberto pelo painel: o cliente acompanha por lá, e a tarefa do time nasce sozinha na etapa de '
+      + 'entrada, com o gestor do projeto, as etiquetas Cliente e Chamado (mais Bug ou Melhoria) e o '
+      + 'prazo de dois dias úteis. Não crie a tarefa à parte. Use só quando pedirem um chamado; para '
+      + 'trabalho interno, criar_tarefa.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projeto_id: { type: 'string', description: 'Id do projeto do cliente (de listar_projetos).' },
+        titulo: { type: 'string', description: 'De 3 a 140 caracteres.' },
+        descricao: { type: 'string', description: 'O que está acontecendo ou o que se pede. Pelo menos 5 caracteres.' },
+        solicitante: { type: 'string', description: 'Quem do cliente está pedindo (nome).' },
+        tipo: { type: 'string', enum: ['bug', 'melhoria'], description: 'bug: algo quebrou; melhoria: algo novo ou diferente.' },
+        urgencia: { type: 'string', description: 'Urgente, Alta, Média ou Baixa.' },
+        links: { type: 'array', items: { type: 'string' }, description: 'Até 5 endereços http ou https.' },
+        anexos: {
+          type: 'array',
+          description: 'Imagem ou PDF, até 5 e 4 MB somados, em base64.',
+          items: {
+            type: 'object',
+            properties: {
+              nome: { type: 'string' },
+              tipo: { type: 'string', description: 'image/png, image/jpeg, image/gif, image/webp ou application/pdf.' },
+              base64: { type: 'string', description: 'Conteúdo em base64, sem o prefixo data:.' },
+            },
+            required: ['nome', 'tipo', 'base64'],
+          },
+        },
+      },
+      required: ['projeto_id', 'titulo', 'descricao', 'solicitante', 'tipo', 'urgencia'],
+    },
+    annotations: ESCRITA,
+    acoes: ['abrir_chamado_cliente'],
+    async executar(a, ctx) {
+      const tipo = semAcento(String(a.tipo ?? ''));
+      if (tipo !== 'bug' && tipo !== 'melhoria') throw new ErroFerramenta('tipo precisa ser bug ou melhoria.');
+      const r = await chamar(ctx, 'POST', 'abrir_chamado_cliente', {
+        projeto_id: String(a.projeto_id),
+        titulo: String(a.titulo ?? ''),
+        descricao: String(a.descricao ?? ''),
+        solicitante: String(a.solicitante ?? ''),
+        tipo,
+        urgencia: nomeDaPrioridade(String(a.urgencia ?? '')),
+        links: listaDe(a.links),
+        anexos: Array.isArray(a.anexos) ? a.anexos : [],
+      });
+      return {
+        chamado: r.numero, tarefa_id: r.tarefa_id, etapa: r.status, previsao: r.previsao,
+        responsavel: r.responsavel, anexos: r.anexos, painel: r.painel,
+      };
+    },
+  },
+  {
     name: 'excluir_tarefa',
     title: 'Excluir tarefa',
     description: 'Apaga a tarefa de vez, com subtarefas, conversa, anexos e histórico. Não há como desfazer.',
@@ -637,6 +692,9 @@ const INSTRUCOES = [
     + 'e linhas começando com "- " para lista. Menção é @[Nome](id).',
   'Escreva em português. Nunca use travessão longo nem travessão médio: para aposto ou pausa use hífen '
     + 'cercado de espaços ( - ), e para intervalo escreva "de 10 a 20".',
+  'Chamado e tarefa: chamado é o pedido do cliente, que ele acompanha no painel de chamados do '
+    + 'projeto; abrir_chamado o registra em nome dele e a tarefa do time nasce sozinha. Use só quando '
+    + 'pedirem um chamado. Trabalho interno é criar_tarefa.',
   'Excluir tarefa não tem volta: confirme com a pessoa antes.',
 ].join('\n\n');
 
