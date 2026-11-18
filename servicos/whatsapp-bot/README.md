@@ -61,6 +61,22 @@ passa a voz do WhatsApp (OGG/Opus) para WAV antes. Tudo isso fica em
 - Uma transcrição por vez, até 5 minutos de áudio; acima disso, um aviso. O
   áudio de passagem é apagado no fim.
 
+## Resposta em áudio
+
+Só quando a pessoa pede ("responde em áudio", "me manda um áudio"). O modelo
+abre a resposta com a linha `[[audio]]` e escreve o texto para ser ouvido:
+frases curtas, sem lista, sem negrito, sem link. O bot tira as marcas que
+sobrarem, gera a fala com o Kokoro (`falar.py`, licença Apache 2.0) na própria
+VPS, na voz do Alex (`pm_alex`), passa para OGG/Opus com o ffmpeg e manda como
+mensagem de voz. Sem internet, sem chave e sem custo.
+
+- A fala leva mais que o próprio áudio para sair: uns 15 segundos para 12 de
+  fala, em dois processadores. Enquanto isso aparece "gravando áudio...".
+- Até uns 1200 caracteres (pouco mais de um minuto de fala). Acima disso, ou
+  se a fala falhar, a resposta vai por escrito, com um aviso.
+- Proposta que pede confirmação vai sempre por escrito.
+- A voz se troca pela variável `KOKORO_VOZ` (`pf_dora`, `pm_alex`, `pm_santa`).
+
 ## Grupos dos clientes
 
 No privado, o bot enxerga os grupos em que o número da casa está: dá para
@@ -110,10 +126,11 @@ confirmado, sem IA no meio e sem gastar a assinatura, e avisa no privado.
 | `documentos.mjs` | Word e Excel em texto, abrindo o zip com o próprio Node. |
 | `anexos-mcp.mjs` | Servidor MCP do bot: anexa a um comentário do portal um arquivo recebido. |
 | `whatsapp-mcp.mjs` | Servidor MCP do bot: lista os grupos, lê as mensagens, baixa arquivos, diz quem está no grupo e manda mensagem com menção (depois da confirmação). |
+| `voz.mjs` e `falar.py` | Texto em mensagem de voz, com o Kokoro e o ffmpeg, na própria máquina. |
 | `transcricao.mjs` | Áudio em texto, com o ffmpeg e o whisper.cpp, na própria máquina. |
 | `mensagem-grupo.mjs` | Monta a mensagem do grupo com as menções, igual no envio na hora e no agendado. |
 | `agenda-mcp.mjs` | Servidor MCP do bot: agenda, lista e cancela ações no portal e mensagens nos grupos para um horário. |
-| `Dockerfile` | Node 22 com o Claude Code, o ffmpeg e o whisper.cpp (compilado numa etapa à parte), rodando como usuário comum. |
+| `Dockerfile` | Node 22 com o Claude Code, o ffmpeg, o whisper.cpp (compilado numa etapa à parte) e o Kokoro (num ambiente Python próprio), rodando como usuário comum. |
 | `stack.yml` | A stack do Docker Swarm, na mesma rede da Evolution. |
 
 ## Segredos
