@@ -30,3 +30,28 @@ export function montarMensagem({ grupo, texto, mencionar }) {
   if (faltando.length) corpo = `${corpo} ${faltando.map(n => `@${n}`).join(' ')}`;
   return { number: jid, text: corpo, ...(numeros.length ? { mentioned: numeros } : {}) };
 }
+
+/** Quem está no grupo, com o nome com que cada um aparece nas mensagens
+ *  guardadas (o mais recente). Quem nunca escreveu vem sem nome. Os grupos
+ *  novos endereçam por código interno (@lid), então o nome é procurado pelo
+ *  número e pelo código. */
+export function pessoasDoGrupo(participantes, registros) {
+  const nomes = new Map();
+  const ordem = (registros ?? []).slice().sort((x, y) => Number(x.messageTimestamp) - Number(y.messageTimestamp));
+  for (const reg of ordem) {
+    const k = reg.key ?? {};
+    if (k.fromMe || !reg.pushName) continue;
+    for (const chave of [k.participant, k.participantAlt, k.participantPn]) if (chave) nomes.set(digitos(chave), reg.pushName);
+  }
+  return (participantes ?? []).map(p => {
+    const numero = digitos(p.phoneNumber ?? (String(p.id).endsWith('@s.whatsapp.net') ? p.id : ''));
+    return { nome: nomes.get(numero) ?? nomes.get(digitos(p.id)) ?? null, numero: numero || null, admin: p.admin ?? null };
+  });
+}
+
+/** Os números marcados num texto ("@5531999990000") que são de gente do grupo:
+ *  só esses entram na lista de mencionados. */
+export function mencoesNoTexto(texto, pessoas) {
+  const doGrupo = new Set((pessoas ?? []).map(p => p.numero).filter(Boolean));
+  return [...new Set([...String(texto ?? '').matchAll(/@(\d{10,15})\b/g)].map(m => m[1]))].filter(n => doGrupo.has(n));
+}

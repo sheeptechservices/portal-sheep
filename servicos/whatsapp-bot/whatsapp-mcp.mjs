@@ -21,7 +21,7 @@ import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import { docxParaTexto, xlsxParaTexto } from './documentos.mjs';
-import { digitos, montarMensagem } from './mensagem-grupo.mjs';
+import { digitos, montarMensagem, pessoasDoGrupo } from './mensagem-grupo.mjs';
 
 const EVOLUTION_URL = (process.env.EVOLUTION_URL ?? '').replace(/\/+$/, '');
 const INSTANCIA = encodeURIComponent(process.env.EVOLUTION_INSTANCIA ?? '');
@@ -276,23 +276,7 @@ async function participantes(a) {
     evolution('GET', `/group/participants/${INSTANCIA}?groupJid=${encodeURIComponent(g.id)}`),
     evolution('POST', `/chat/findMessages/${INSTANCIA}`, { where: { key: { remoteJid: g.id } }, page: 1, offset: 500 }).catch(() => null),
   ]);
-  // O nome vem das mensagens: o mais recente com que a pessoa apareceu, pelo
-  // número ou pelo id do grupo (os grupos novos endereçam por @lid).
-  const nomes = new Map();
-  const registros = (hist?.messages?.records ?? []).slice().sort((x, y) => Number(x.messageTimestamp) - Number(y.messageTimestamp));
-  for (const reg of registros) {
-    const k = reg.key ?? {};
-    if (k.fromMe || !reg.pushName) continue;
-    for (const chave of [k.participant, k.participantAlt, k.participantPn]) if (chave) nomes.set(digitos(chave), reg.pushName);
-  }
-  const lista = (r?.participants ?? (Array.isArray(r) ? r : [])).map(p => {
-    const numero = digitos(p.phoneNumber ?? (String(p.id).endsWith('@s.whatsapp.net') ? p.id : ''));
-    return {
-      nome: nomes.get(numero) ?? nomes.get(digitos(p.id)) ?? null,
-      numero: numero || null,
-      admin: p.admin ?? null,
-    };
-  });
+  const lista = pessoasDoGrupo(r?.participants ?? (Array.isArray(r) ? r : []), hist?.messages?.records ?? []);
   return { grupo: { id: g.id, nome: g.nome }, participantes: lista };
 }
 

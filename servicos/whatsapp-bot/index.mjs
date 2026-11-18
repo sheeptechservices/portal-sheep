@@ -29,7 +29,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { docxParaTexto, xlsxParaTexto, ErroDocumento } from './documentos.mjs';
 import { AGENDAVEIS, REPETICOES } from './agenda-mcp.mjs';
-import { montarMensagem } from './mensagem-grupo.mjs';
+import { montarMensagem, pessoasDoGrupo, mencoesNoTexto } from './mensagem-grupo.mjs';
 
 const cfg = {
   porta: Number(process.env.PORT ?? 3000),
@@ -184,6 +184,43 @@ async function descobrirLidDoBot(grupo) {
     log('[grupo] falhou ao buscar participantes', e?.message ?? e);
   }
   return null;
+}
+
+/** O retrato de um grupo para responder nele: o nome e quem está lá (nome e
+ *  número), sem o próprio bot. Guardado por 10 minutos, porque é consultado a
+ *  cada mensagem no grupo. Falhar não impede a resposta: só fica sem marcar. */
+const retratos = new Map();
+async function retratoDoGrupo(grupo) {
+  const guardado = retratos.get(grupo);
+  if (guardado && Date.now() - guardado.em < 10 * 60_000) return guardado;
+  const inst = encodeURIComponent(cfg.instancia);
+  const pedir = async (caminho, corpo) => {
+    const r = await fetch(`${cfg.evolutionUrl}${caminho}`, {
+      method: corpo ? 'POST' : 'GET',
+      headers: { apikey: cfg.evolutionChave, ...(corpo ? { 'Content-Type': 'application/json' } : {}) },
+      ...(corpo ? { body: JSON.stringify(corpo) } : {}),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!r.ok) throw new Error(`a Evolution recusou (${r.status})`);
+    return r.json();
+  };
+  try {
+    const g = encodeURIComponent(grupo);
+    const [info, part, hist] = await Promise.all([
+      pedir(`/group/findGroupInfos/${inst}?groupJid=${g}`).catch(() => null),
+      pedir(`/group/participants/${inst}?groupJid=${g}`),
+      pedir(`/chat/findMessages/${inst}`, { where: { key: { remoteJid: grupo } }, page: 1, offset: 300 }).catch(() => null),
+    ]);
+    const doBot = formasDe(digitos(jidDoBot));
+    const participantes = (part?.participants ?? (Array.isArray(part) ? part : []))
+      .filter(p => !doBot.has(digitos(p.phoneNumber ?? '')) && !(lidDoBot && p.id === lidDoBot));
+    const retrato = { em: Date.now(), nome: info?.subject ?? null, pessoas: pessoasDoGrupo(participantes, hist?.messages?.records ?? []) };
+    retratos.set(grupo, retrato);
+    return retrato;
+  } catch (e) {
+    log('[grupo] não deu para ver quem está no grupo', e?.message ?? e);
+    return guardado ?? null;
+  }
 }
 
 /** A Evolution às vezes avisa a mesma mensagem duas vezes, com décimos de
@@ -593,8 +630,9 @@ async function evolution(caminho, corpo) {
   return r.ok;
 }
 
-const responder = (chat, texto) =>
-  evolution(`/message/sendText/${encodeURIComponent(cfg.instancia)}`, { number: chat, text: texto });
+const responder = (chat, texto, mencionados = []) =>
+  evolution(`/message/sendText/${encodeURIComponent(cfg.instancia)}`,
+    { number: chat, text: texto, ...(mencionados.length ? { mentioned: mencionados } : {}) });
 
 /** "Digitando..." enquanto o Claude pensa. Enfeite: falhar não importa. */
 const digitando = (chat) =>
@@ -810,6 +848,13 @@ async function atender({ chat, grupo, texto, midia, origem }) {
 
   void digitando(chat);
   const prep = await prepararMidia({ midia, origem, texto });
+  // No grupo, o modelo sabe onde está e quem pode marcar na resposta.
+  const retrato = grupo ? await retratoDoGrupo(chat) : null;
+  const notaGrupo = !grupo ? ''
+    : `[Você está respondendo dentro do grupo${retrato?.nome ? ` "${retrato.nome}"` : ''} do WhatsApp, e não no privado: a resposta sai no próprio grupo.${
+      retrato?.pessoas.length
+        ? ` Quem está no grupo: ${retrato.pessoas.slice(0, 80).map(p => `${p.nome ?? 'sem nome'} (${p.numero ?? 'sem número'})`).join(', ')}. Para marcar alguém na resposta, quando pedirem, escreva @ seguido do número da pessoa, como @5531999990000: o WhatsApp troca pelo nome. Se o nome pedido bater com mais de uma pessoa, ou com nenhuma, pergunte.`
+        : ''}]`;
   if ('parar' in prep) {
     if (prep.parar) await responder(chat, prep.parar);
     return;
@@ -817,6 +862,7 @@ async function atender({ chat, grupo, texto, midia, origem }) {
 
   const pergunta = [
     confirmou ? '[Nota do sistema: a pessoa confirmou a ação que você propôs na mensagem anterior. Execute exatamente essa ação agora, nada além.]' : '',
+    notaGrupo,
     prep.nota,
     texto || (midia
       ? '(A pessoa mandou só o arquivo, sem texto: diga em poucas linhas o que ele traz e pergunte o que fazer.)'
@@ -846,8 +892,10 @@ async function atender({ chat, grupo, texto, midia, origem }) {
     atualizado: agora,
   };
   gravarEstado();
-  await responder(chat, resposta);
-  log('[respondido]', chat, confirmou ? '(com ação liberada)' : '');
+  // No grupo, cada @número de participante na resposta vira menção de verdade.
+  const mencionados = retrato ? mencoesNoTexto(resposta, retrato.pessoas) : [];
+  await responder(chat, resposta, mencionados);
+  log('[respondido]', chat, confirmou ? '(com ação liberada)' : '', mencionados.length ? `(marcando ${mencionados.length})` : '');
 }
 
 // ── Servidor ────────────────────────────────────────────────────────────────
