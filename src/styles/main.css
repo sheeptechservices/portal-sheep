@@ -26885,3 +26885,158 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   .lista-folha, body.com-lista-folha::after { animation: none; }
 }
 
+/* ── Folha que sobe de baixo (FolhaCelular) ────────────────────────────────
+   O cartão das escolhas de uma tela no celular, como na referência do app de
+   mapeamento: puxador, título centralizado com o fechar, corpo que rola e pé
+   parado com as ações. Fica acima da barra de baixo e dos botões flutuantes,
+   e abaixo das listas que abrem de dentro dela (véu 10040, lista 10050). */
+.folha-fundo {
+  position: fixed;
+  inset: 0;
+  z-index: 10030;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(0, 0, 0, .45);
+  animation: veu-entra .2s ease;
+}
+.folha-fundo.saindo { animation: veu-sai .22s ease forwards; }
+.folha-celular {
+  --folha-de: 0px;
+  width: 100%;
+  max-height: 92dvh;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--white);
+  border-top: 1px solid var(--gray3);
+  box-shadow: 0 -18px 48px rgba(0, 0, 0, .28);
+  transition: transform var(--transition-spring);
+  animation: folha-entra .3s var(--curva-anti);
+  -webkit-tap-highlight-color: transparent;
+}
+.folha-fundo.saindo .folha-celular { animation: folha-desce .22s var(--curva-anti) forwards; }
+@keyframes folha-entra { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes folha-desce { from { transform: translateY(var(--folha-de)); } to { transform: translateY(100%); } }
+@keyframes veu-sai { from { opacity: 1; } to { opacity: 0; } }
+.folha-puxador {
+  flex-shrink: 0;
+  width: 40px;
+  height: 4px;
+  margin: 8px auto 0;
+  border-radius: var(--radius-pill);
+  background: var(--gray3);
+}
+.folha-cabeca {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  padding: 6px 10px;
+}
+.folha-titulo {
+  margin: 0;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--black);
+}
+.folha-fechar {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--gray);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.folha-fechar:hover { background: var(--gray4); color: var(--black); }
+.folha-corpo {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 16px 12px;
+}
+.folha-rodape {
+  flex-shrink: 0;
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--gray3);
+}
+.folha-botao-secundario {
+  flex: 1;
+  min-height: 48px;
+  border: 1px solid var(--gray3);
+  border-radius: var(--radius-pill);
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--black);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), opacity var(--transition);
+}
+.folha-botao-secundario:hover:not(:disabled) { background: var(--gray4); border-color: var(--gray2); }
+.folha-botao-secundario:disabled { opacity: .4; cursor: default; }
+.folha-rodape .folha-botao-primario {
+  flex: 1.4;
+  min-height: 48px;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  font-size: 14px;
+}
+
+/* Os filtros dentro da folha: cada um vira uma linha inteira, com o nome à
+   esquerda, o que está marcado à direita e a seta apontando para o lado (a
+   escolha abre por cima, como uma sub-tela). Fora da folha, a forma de linha
+   fica escondida e o botão segue sendo a pílula de sempre. */
+.filtro-linha-rotulo, .filtro-linha-valor { display: none; }
+.folha-filtros { display: flex; flex-direction: column; }
+.folha-filtros .filter-dropdown-btn {
+  width: 100%;
+  min-height: 54px;
+  height: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 4px;
+  border: none;
+  border-bottom: 1px solid var(--gray3);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  font-size: 15px;
+  text-align: left;
+  color: var(--black);
+}
+.folha-filtros .filter-dropdown-btn:last-child { border-bottom: none; }
+.folha-filtros .filter-dropdown-btn:hover { background: none; }
+.folha-filtros .filter-dropdown-btn > .filter-dropdown-btn-texto { display: none; }
+.folha-filtros .filtro-linha-rotulo { display: block; font-weight: 500; }
+.folha-filtros .filtro-linha-valor {
+  display: block;
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--gray2);
+}
+.folha-filtros .filter-dropdown-btn.active .filtro-linha-valor { color: var(--yellow-tinta); font-weight: 600; }
+.folha-filtros .filter-dropdown-btn > svg {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--gray2);
+  transform: rotate(-90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .folha-fundo, .folha-fundo.saindo,
+  .folha-celular, .folha-fundo.saindo .folha-celular { animation: none; transition: none; }
+}

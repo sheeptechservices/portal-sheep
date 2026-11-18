@@ -22,6 +22,7 @@ import {
 import { AcaoDaBarra, BarraDeSelecao, CaixaDeMarcar, CaixaDoGrupo } from '../components/BarraDeSelecao';
 import { semTextoNoShift, useSelecao } from '../lib/useSelecao';
 import FilterDropdown from '../components/FilterDropdown';
+import { FiltrosDoPainel } from '../components/FiltrosDoPainel';
 import FiltroPeriodo, { dentroDoPeriodo } from '../components/FiltroPeriodo';
 import { PLANNING_FUNIL, PROJETO_GERAL } from '../lib/projetoGeral';
 import { logoDoCliente } from '../lib/marcas';
@@ -7408,22 +7409,16 @@ carregando ? (
               </button>
             </div>
           </div>
-          {/* Os filtros finos nascem sob o cabecalho e empurram a lista. */}
-          <div className={`revelar${filtrosAbertos ? ' aberto' : ''}`}>
-            <div>
-              <div className="painel-filtros">
-                <FilterDropdown label="Status" values={fStatus} options={opcoes.status} onChange={setFStatus} />
-                <FilterDropdown label="Cliente" values={fCliente} options={opcoes.cliente} onChange={setFCliente} />
-                <FilterDropdown label="Gestor" values={fGestor} options={opcoes.gestor} onChange={setFGestor} />
-                <FilterDropdown label="Tipo" values={fTipo} options={opcoes.tipo} onChange={setFTipo} />
-                {temFiltro && (
-                  <button type="button" className="painel-filtros-limpar surge" onClick={limparFiltros}>
-                    Limpar filtros
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
+          {/* Os filtros finos nascem sob o cabecalho e empurram a lista (no
+              celular, sobem numa folha). */}
+          <FiltrosDoPainel aberto={filtrosAbertos} onFechar={() => setFiltrosAbertos(false)}
+            temFiltro={temFiltro} onLimpar={limparFiltros}
+            total={filtrados.length} singular="projeto" plural="projetos">
+            <FilterDropdown label="Status" values={fStatus} options={opcoes.status} onChange={setFStatus} />
+            <FilterDropdown label="Cliente" values={fCliente} options={opcoes.cliente} onChange={setFCliente} />
+            <FilterDropdown label="Gestor" values={fGestor} options={opcoes.gestor} onChange={setFGestor} />
+            <FilterDropdown label="Tipo" values={fTipo} options={opcoes.tipo} onChange={setFTipo} />
+          </FiltrosDoPainel>
           <div className={`painel-principal-corpo visao-projetos-${view} troca`} key={view}>
             {conteudoDaAba}
           </div>

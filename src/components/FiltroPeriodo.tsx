@@ -159,13 +159,19 @@ export default function FiltroPeriodo({ label, de, ate, onChange }: {
         className={`filter-dropdown-btn${ativo ? ' active' : ''}`}
         aria-haspopup="dialog" aria-expanded={aberto}
         onClick={alternar}>
-        <span>{rotulo}</span>
+        <span className="filter-dropdown-btn-texto">{rotulo}</span>
+        {/* A forma de linha da folha de filtros do celular (ver FilterDropdown). */}
+        <span className="filtro-linha-rotulo">{label}</span>
+        <span className="filtro-linha-valor">
+          {!ativo ? 'Qualquer data'
+            : de === ate ? curta(de) : `${de ? curta(de) : '...'} a ${ate ? curta(ate) : '...'}`}
+        </span>
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
       {aberto && createPortal(
-        <div ref={lista} className="filter-dropdown-list filtro-periodo" role="dialog"
+        <div ref={lista} className="filter-dropdown-list filtro-periodo" role="dialog" data-titulo={label}
           aria-label={`${label}: escolher o período`}
           style={{ top: pos.top, left: pos.left }}
           onMouseLeave={() => setSob(null)}>

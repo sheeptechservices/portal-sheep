@@ -93,13 +93,21 @@ export default function FilterDropdown({
         onClick={openDropdown}
         type="button"
       >
-        <span>{btnLabel}</span>
+        <span className="filter-dropdown-btn-texto">{btnLabel}</span>
+        {/* A forma de linha, usada na folha de filtros do celular: o nome do
+            filtro de um lado e o que está marcado do outro. Escondida no resto. */}
+        <span className="filtro-linha-rotulo">{label}</span>
+        <span className="filtro-linha-valor">
+          {!hasSelection ? 'Todos'
+            : values.length === 1 ? (options.find(o => o.value === values[0])?.label ?? '1 marcado')
+              : `${values.length} marcados`}
+        </span>
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
           <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </button>
       {open && createPortal(
-        <div ref={dropRef} className="filter-dropdown-list" style={{ top: pos.top, left: pos.left }}>
+        <div ref={dropRef} className="filter-dropdown-list" data-titulo={label} style={{ top: pos.top, left: pos.left }}>
           {/* Marcar todos e limpar, sempre no alto: marcar tudo e ir tirando o
               que não interessa é o caminho curto quando sobra pouca coisa de
               fora. Com a busca digitada, marcar vale só para o que aparece. A

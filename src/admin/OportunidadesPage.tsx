@@ -34,6 +34,7 @@ import { BotaoTelaCheia } from '../components/BotaoTelaCheia';
 import { useTelaCheia } from '../lib/useTelaCheia';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import FilterDropdown from '../components/FilterDropdown';
+import { FiltrosDoPainel } from '../components/FiltrosDoPainel';
 import { Abas } from '../components/Abas';
 import { Dialogo } from '../components/Dialogo';
 import { dia as fmtDataBR, diaCurto as fmtDataCurta } from '../lib/datas';
@@ -3854,23 +3855,16 @@ export default function OportunidadesPage({ token, openCard, onCardOpened }: {
           </div>
         </div>
 
-        {/* Os filtros finos nascem embaixo do cabecalho, empurrando o quadro:
-            ficam montados desde a entrada para a abertura ter de onde sair. */}
-        <div className={`revelar${filtrosAbertos ? ' aberto' : ''}`}>
-          <div>
-            <div className="painel-filtros">
-              <FilterDropdown label="Etapa" values={filterStatus} options={statusOptions} onChange={setFilterStatus} />
-              <FilterDropdown label="Responsável" values={filterResponsavel} options={responsavelOptions} onChange={setFilterResponsavel} />
-              <FilterDropdown label="Origem" values={filterOrigem} options={origemOptions} onChange={setFilterOrigem} />
-              <FilterDropdown label="Interesse" values={filterInteresse} options={interesseOptions} onChange={setFilterInteresse} />
-              {hasFilter && (
-                <button type="button" className="painel-filtros-limpar surge" onClick={clearFilters}>
-                  Limpar filtros
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+        {/* Os filtros finos nascem embaixo do cabecalho, empurrando o quadro
+            (no celular, sobem numa folha). */}
+        <FiltrosDoPainel aberto={filtrosAbertos} onFechar={() => setFiltrosAbertos(false)}
+          temFiltro={hasFilter} onLimpar={clearFilters}
+          total={filtered.length} singular="oportunidade" plural="oportunidades">
+          <FilterDropdown label="Etapa" values={filterStatus} options={statusOptions} onChange={setFilterStatus} />
+          <FilterDropdown label="Responsável" values={filterResponsavel} options={responsavelOptions} onChange={setFilterResponsavel} />
+          <FilterDropdown label="Origem" values={filterOrigem} options={origemOptions} onChange={setFilterOrigem} />
+          <FilterDropdown label="Interesse" values={filterInteresse} options={interesseOptions} onChange={setFilterInteresse} />
+        </FiltrosDoPainel>
 
         <div className="painel-principal-corpo troca" key={aba}>
       {loading ? (

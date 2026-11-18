@@ -25,6 +25,7 @@ import { SelectSistema } from '../components/SelectSistema';
 import { DatePicker } from '../components/DatePicker';
 import { dia, prazoEmComum } from '../lib/datas';
 import FilterDropdown from '../components/FilterDropdown';
+import { FiltrosDoPainel } from '../components/FiltrosDoPainel';
 import FiltroPeriodo, { dentroDoPeriodo } from '../components/FiltroPeriodo';
 import { SkeletonCards, SkeletonTabela } from '../components/Skeleton';
 import { AbasPilula, FaixaDaPagina } from '../components/FaixaDaPagina';
@@ -1275,28 +1276,21 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
           </div>
         </div>
 
-        {/* Os filtros finos nascem sob a barra e empurram o conteudo; ficam
-            montados desde a entrada para a abertura ter de onde sair. */}
-        <div className={`revelar${filtrosAbertos ? ' aberto' : ''}`}>
-          <div>
-            <div className="painel-filtros">
-              <FilterDropdown label="Projeto" values={fProjeto} options={opcoes.projeto} onChange={setFProjeto} />
-              <FilterDropdown label="Status" values={fStatus} options={opcoes.status} onChange={setFStatus} />
-              <FilterDropdown label="Responsável" values={fResponsavel} options={opcoes.responsavel} onChange={setFResponsavel} />
-              <FilterDropdown label="Entrega" values={fEntrega} options={opcoes.entrega} onChange={setFEntrega} />
-              <FilterDropdown label="Etiqueta" values={fEtiqueta} options={opcoes.etiqueta} onChange={setFEtiqueta} />
-              <FilterDropdown label="Complexidade" values={fComplexidade} options={opcoes.complexidade}
-                onChange={setFComplexidade} />
-              <FiltroPeriodo label="Prazo" de={fPrazo.de} ate={fPrazo.ate}
-                onChange={(de, ate) => setFPrazo({ de, ate })} />
-              {temFiltro && (
-                <button type="button" className="painel-filtros-limpar surge" onClick={limparFiltros}>
-                  Limpar filtros
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+        {/* Os filtros finos nascem sob a barra e empurram o conteudo (no
+            celular, sobem numa folha). */}
+        <FiltrosDoPainel aberto={filtrosAbertos} onFechar={() => setFiltrosAbertos(false)}
+          temFiltro={temFiltro} onLimpar={limparFiltros}
+          total={filtradas.length} singular="tarefa" plural="tarefas">
+          <FilterDropdown label="Projeto" values={fProjeto} options={opcoes.projeto} onChange={setFProjeto} />
+          <FilterDropdown label="Status" values={fStatus} options={opcoes.status} onChange={setFStatus} />
+          <FilterDropdown label="Responsável" values={fResponsavel} options={opcoes.responsavel} onChange={setFResponsavel} />
+          <FilterDropdown label="Entrega" values={fEntrega} options={opcoes.entrega} onChange={setFEntrega} />
+          <FilterDropdown label="Etiqueta" values={fEtiqueta} options={opcoes.etiqueta} onChange={setFEtiqueta} />
+          <FilterDropdown label="Complexidade" values={fComplexidade} options={opcoes.complexidade}
+            onChange={setFComplexidade} />
+          <FiltroPeriodo label="Prazo" de={fPrazo.de} ate={fPrazo.ate}
+            onChange={(de, ate) => setFPrazo({ de, ate })} />
+        </FiltrosDoPainel>
 
         <div className={`painel-principal-corpo visao-${view} troca`} key={view}>
       {carregando ? (
