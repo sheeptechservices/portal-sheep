@@ -22,6 +22,7 @@ import { randomBytes } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import { docxParaTexto, xlsxParaTexto } from './documentos.mjs';
 import { digitos, montarMensagem, pessoasDoGrupo } from './mensagem-grupo.mjs';
+import { transcrever, AUDIO_MAX_SEGUNDOS } from './transcricao.mjs';
 
 const EVOLUTION_URL = (process.env.EVOLUTION_URL ?? '').replace(/\/+$/, '');
 const INSTANCIA = encodeURIComponent(process.env.EVOLUTION_INSTANCIA ?? '');
@@ -60,9 +61,10 @@ const FERRAMENTAS = [
   },
   {
     name: 'baixar_midia_do_grupo',
-    title: 'Baixar arquivo de um grupo',
+    title: 'Baixar arquivo ou ouvir áudio de um grupo',
     description: 'Baixa a imagem, o PDF, o Word ou o Excel de uma mensagem do grupo (id de ler_grupo) para a '
-      + 'pasta de mídias. Devolve o caminho para ler com Read e o do original, para anexar com comentar_com_anexo.',
+      + 'pasta de mídias, e devolve o caminho para ler com Read e o do original, para anexar com comentar_com_anexo. '
+      + 'Num áudio, devolve a transcrição automática em transcricao (pode ter palavra trocada).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -248,6 +250,16 @@ async function baixarMidia(a) {
   if (!reg) throw new Error('não achei essa mensagem nesse grupo');
   const m = miolo(reg.message);
   const doc = m.documentMessage;
+  // Áudio não vira arquivo para ler: vira texto, aqui mesmo.
+  const audio = m.audioMessage ?? (String(doc?.mimetype ?? '').startsWith('audio/') ? doc : null);
+  if (audio) {
+    const segundos = Number(audio.seconds) || null;
+    if (segundos && segundos > AUDIO_MAX_SEGUNDOS) throw new Error(`o áudio tem ${Math.round(segundos / 60)} min, e eu transcrevo até ${Math.round(AUDIO_MAX_SEGUNDOS / 60)} min`);
+    const b = await evolution('POST', `/chat/getBase64FromMediaMessage/${INSTANCIA}`, { message: reg, convertToMp4: false });
+    const som = Buffer.from(String(b?.base64 ?? ''), 'base64');
+    if (!som.length || som.length > MIDIA_MAX) throw new Error('o áudio veio vazio ou grande demais');
+    return { transcricao: await transcrever(som, MIDIA_DIR), segundos, de: reg.pushName ?? null, quando: quandoBrasilia(reg.messageTimestamp) };
+  }
   const mime = String((m.imageMessage ?? doc)?.mimetype ?? '').split(';')[0];
   const nomeOriginal = String(doc?.fileName ?? '').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').replace(/^\.+/, '').slice(-100);
   const ext = TIPOS[mime] ?? nomeOriginal.toLowerCase().match(/\.(docx|xlsx|pdf|png|jpe?g|webp|gif)$/)?.[1];

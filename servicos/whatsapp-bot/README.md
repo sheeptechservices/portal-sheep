@@ -22,6 +22,7 @@ mensagem respondida ("cria um card disso" em resposta a um print):
 | Word (.docx) | convertido em texto: parágrafos, títulos, listas e tabelas |
 | Excel (.xlsx) | convertido em texto: cada aba, linha a linha, com datas e números legíveis |
 | CSV e TXT | do jeito que chegou |
+| Áudio (voz do WhatsApp, .mp3, .m4a, .ogg) | transcrito na própria VPS, até 5 minutos |
 
 O arquivo é baixado da Evolution para `/app/trabalho/midia`, onde fica dois
 dias. Word e Excel passam antes por `documentos.mjs`, que abre o zip com o
@@ -30,8 +31,8 @@ de leitura, a única própria dele que fica ligada, e presa a essa pasta: a
 configuração com o token do portal, os segredos do ambiente e o código ficam
 fora do alcance dela.
 
-Áudio, vídeo, PowerPoint e os formatos antigos do Office (.doc, .xls) recebem
-um aviso curto, sem chamar a IA. Arquivo protegido por senha também. Texto
+Vídeo, PowerPoint e os formatos antigos do Office (.doc, .xls) recebem um
+aviso curto, sem chamar a IA. Arquivo protegido por senha também. Texto
 dentro de arquivo é tratado como conteúdo, nunca como ordem: ação no portal
 tirada de um arquivo continua pedindo confirmação.
 
@@ -42,6 +43,23 @@ recebe o card, o texto e o caminho do arquivo original, lê, converte e chama o
 `comentar` do portal. Só lê dentro da pasta de mídias, vai até 3 MB por arquivo
 (o limite do corpo de uma função da Vercel) e, como escreve no portal, só roda
 depois da confirmação.
+
+## Áudio
+
+O Claude não ouve, então a voz chega nele já como texto. Quem transcreve é o
+whisper.cpp, na própria VPS, com o modelo "small" comprimido: sem internet,
+sem chave de API e sem custo, só o processador que a VPS já tem. O ffmpeg
+passa a voz do WhatsApp (OGG/Opus) para WAV antes. Tudo isso fica em
+`transcricao.mjs`.
+
+- A mensagem de voz vira o texto da mensagem, com uma nota avisando o modelo
+  de que é transcrição e pode ter palavra trocada. Um "sim" falado confirma
+  como um escrito, e a resposta abre com _Ouvi: "..."_, para conferir.
+- Responder a um áudio com um pedido ("cria um card disso") leva a
+  transcrição como assunto.
+- Nos grupos, `baixar_midia_do_grupo` devolve a transcrição do áudio de alguém.
+- Uma transcrição por vez, até 5 minutos de áudio; acima disso, um aviso. O
+  áudio de passagem é apagado no fim.
 
 ## Grupos dos clientes
 
@@ -92,9 +110,10 @@ confirmado, sem IA no meio e sem gastar a assinatura, e avisa no privado.
 | `documentos.mjs` | Word e Excel em texto, abrindo o zip com o próprio Node. |
 | `anexos-mcp.mjs` | Servidor MCP do bot: anexa a um comentário do portal um arquivo recebido. |
 | `whatsapp-mcp.mjs` | Servidor MCP do bot: lista os grupos, lê as mensagens, baixa arquivos, diz quem está no grupo e manda mensagem com menção (depois da confirmação). |
+| `transcricao.mjs` | Áudio em texto, com o ffmpeg e o whisper.cpp, na própria máquina. |
 | `mensagem-grupo.mjs` | Monta a mensagem do grupo com as menções, igual no envio na hora e no agendado. |
 | `agenda-mcp.mjs` | Servidor MCP do bot: agenda, lista e cancela ações no portal e mensagens nos grupos para um horário. |
-| `Dockerfile` | Node 22 com o Claude Code, rodando como usuário comum. |
+| `Dockerfile` | Node 22 com o Claude Code, o ffmpeg e o whisper.cpp (compilado numa etapa à parte), rodando como usuário comum. |
 | `stack.yml` | A stack do Docker Swarm, na mesma rede da Evolution. |
 
 ## Segredos
