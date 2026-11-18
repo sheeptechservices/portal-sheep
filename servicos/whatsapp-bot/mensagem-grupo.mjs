@@ -10,6 +10,8 @@
 //  cru. Aqui os dois andam juntos: número pedido que não está no texto entra
 //  no fim.
 // ─────────────────────────────────────────────────────────────────────────────
+import { existsSync, statSync } from 'node:fs';
+import { basename, resolve, sep } from 'node:path';
 
 /** Os dígitos de um número ou de um jid ("5531999990000@s.whatsapp.net"). */
 export const digitos = (v) => String(v ?? '').split('@')[0].split(':')[0].replace(/\D/g, '');
@@ -69,13 +71,52 @@ export function montarPrivada({ numero, texto }) {
 /** O áudio mais longo que se manda: o mesmo teto da resposta em áudio. */
 const AUDIO_MAX_CARACTERES = 1200;
 
-/** Valida um envio para fora e diz o que mandar: texto (o corpo do sendText)
- *  ou áudio (o destino e o texto a falar). Serve ao envio na hora
+/** O que se manda como anexo: imagem vai como foto; o resto, como documento. */
+const TIPOS_DE_ANEXO = {
+  png: ['image', 'image/png'], jpg: ['image', 'image/jpeg'], jpeg: ['image', 'image/jpeg'], webp: ['image', 'image/webp'],
+  pdf: ['document', 'application/pdf'],
+  docx: ['document', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+  xlsx: ['document', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+  pptx: ['document', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'],
+  csv: ['document', 'text/csv'], txt: ['document', 'text/plain'], zip: ['document', 'application/zip'],
+  mp3: ['document', 'audio/mpeg'], ogg: ['document', 'audio/ogg'], m4a: ['document', 'audio/mp4'], mp4: ['document', 'video/mp4'],
+};
+const ANEXO_MAX = 16 * 1024 * 1024;
+
+/** O anexo de um envio: só da pasta de mídias (o que o bot gerou ou recebeu),
+ *  e ainda lá (a pasta guarda dois dias). */
+function anexoDe(caminho, midiaDir) {
+  const certo = resolve(String(caminho ?? ''));
+  if (!midiaDir || !certo.startsWith(resolve(midiaDir) + sep)) throw new Error('só mando arquivo da pasta de mídias: um gráfico, relatório ou arquivo recebido');
+  if (!existsSync(certo)) throw new Error('esse arquivo não está mais na pasta (ela guarda dois dias)');
+  if (statSync(certo).size > ANEXO_MAX) throw new Error('o arquivo passa de 16 MB');
+  const ext = certo.toLowerCase().split('.').pop();
+  const tipo = TIPOS_DE_ANEXO[ext];
+  if (!tipo) throw new Error(`não mando arquivo .${ext}`);
+  // O nome que aparece no WhatsApp, sem o prefixo de data que a pasta usa.
+  return { caminho: certo, mediatype: tipo[0], mimetype: tipo[1], fileName: basename(certo).replace(/^\d+-[0-9a-f]{8}-/, '') };
+}
+
+/** Valida um envio para fora e diz o que mandar: texto (o corpo do sendText),
+ *  áudio (o destino e o texto a falar) ou anexo (o arquivo, com o texto como
+ *  legenda). Serve ao envio na hora
  *  (`whatsapp-mcp.mjs`) e ao agendado (`index.mjs`), que assim recusam as
  *  mesmas coisas: um grupo ou número torto aparece já na confirmação, e não
  *  horas depois. */
-export function planoDeEnvio(ferramenta, a = {}) {
+export function planoDeEnvio(ferramenta, a = {}, { midiaDir } = {}) {
   const emAudio = a.em_audio === true;
+  if (a.arquivo) {
+    if (emAudio) throw new Error('ou manda o arquivo ou o áudio: os dois juntos não');
+    if (Array.isArray(a.mencionar) && a.mencionar.length) throw new Error('anexo não marca ninguém: mande o arquivo e marque num texto à parte');
+    // O destino é conferido como no texto; o texto, aqui, é a legenda e pode faltar.
+    const destino = ferramenta === 'enviar_no_grupo' ? montarMensagem({ ...a, texto: a.texto || '-' }).number
+      : ferramenta === 'enviar_para_pessoa' ? montarPrivada({ ...a, texto: a.texto || '-' }).number
+        : null;
+    if (!destino) throw new Error(`envio desconhecido: ${ferramenta}`);
+    const legenda = String(a.texto ?? '').trim();
+    if (legenda.length > 1000) throw new Error('a legenda passa de 1000 caracteres');
+    return { tipo: 'arquivo', numero: destino, legenda, ...anexoDe(a.arquivo, midiaDir) };
+  }
   let corpo;
   if (ferramenta === 'enviar_no_grupo') corpo = montarMensagem(a);
   else if (ferramenta === 'enviar_para_pessoa') corpo = montarPrivada(a);

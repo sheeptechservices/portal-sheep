@@ -144,6 +144,13 @@ participantes de um grupo. Nos dois casos dá para pedir em áudio ("manda um
 áudio no grupo dizendo..."): a fala é gerada pelo Kokoro, como a resposta em
 áudio, e vai como mensagem de voz. Áudio não marca ninguém.
 
+E com arquivo: um gráfico ou relatório que o bot gerou, ou um arquivo que você
+mandou para ele, vai para o grupo ou para o privado de alguém, com o texto de
+legenda (imagem como foto, o resto como documento). Só sai arquivo da pasta de
+mídias, que guarda dois dias: por isso anexo só se agenda para até dois dias e
+sem repetição. A busca de contato olha os contatos salvos e as conversas
+recentes do número da casa.
+
 A validação é uma só (`planoDeEnvio`, em `mensagem-grupo.mjs`), para o envio na
 hora e o agendado recusarem as mesmas coisas. Fora esses envios, nada é escrito
 no WhatsApp: nada é marcado como lido nem reagido.

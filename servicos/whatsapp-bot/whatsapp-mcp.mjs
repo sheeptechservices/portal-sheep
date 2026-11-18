@@ -17,7 +17,7 @@
 //
 //  Fala MCP pela entrada e saída padrão: uma mensagem JSON-RPC por linha.
 // ─────────────────────────────────────────────────────────────────────────────
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createInterface } from 'node:readline';
@@ -91,7 +91,7 @@ const FERRAMENTAS = [
     name: 'enviar_no_grupo',
     title: 'Enviar mensagem num grupo',
     description: 'Manda uma mensagem num grupo, com o número da casa: texto, marcando quem estiver em mencionar, '
-      + 'ou áudio (em_audio), na voz do bot. Para marcar, ponha no texto @ seguido do número da pessoa (o mesmo de '
+      + 'áudio (em_audio), na voz do bot, ou um arquivo (arquivo), com o texto de legenda. Para marcar, ponha no texto @ seguido do número da pessoa (o mesmo de '
       + 'mencionar); número que faltar no texto entra no fim. Áudio não marca ninguém. Escreve para fora e não se '
       + 'desfaz: só rode depois da confirmação.',
     inputSchema: {
@@ -101,8 +101,9 @@ const FERRAMENTAS = [
         texto: { type: 'string', description: 'O texto exato, como vai aparecer no grupo; no áudio, o que vai ser falado.' },
         mencionar: { type: 'array', items: { type: 'string' }, description: 'Os números de quem marcar, com DDI e DDD (de participantes_do_grupo). Só no texto.' },
         em_audio: { type: 'boolean', description: 'Manda como mensagem de voz em vez de texto.' },
+        arquivo: { type: 'string', description: 'Um arquivo para mandar junto (imagem, PDF, Word...): o caminho que gerar_grafico ou gerar_relatorio devolveu, ou o original de um arquivo recebido. O texto vira a legenda.' },
       },
-      required: ['grupo', 'texto'],
+      required: ['grupo'],
     },
   },
   {
@@ -119,8 +120,8 @@ const FERRAMENTAS = [
   {
     name: 'enviar_para_pessoa',
     title: 'Enviar mensagem no privado de alguém',
-    description: 'Manda uma mensagem no privado de uma pessoa, com o número da casa: texto, ou áudio (em_audio) na '
-      + 'voz do bot. O número vem de procurar_contato ou de participantes_do_grupo. Escreve para fora e não se '
+    description: 'Manda uma mensagem no privado de uma pessoa, com o número da casa: texto, áudio (em_audio) na '
+      + 'voz do bot, ou um arquivo (arquivo), com o texto de legenda. O número vem de procurar_contato ou de participantes_do_grupo. Escreve para fora e não se '
       + 'desfaz: só rode depois da confirmação.',
     inputSchema: {
       type: 'object',
@@ -128,8 +129,9 @@ const FERRAMENTAS = [
         numero: { type: 'string', description: 'O número com DDI e DDD, como 5531999990000.' },
         texto: { type: 'string', description: 'O texto exato da mensagem; no áudio, o que vai ser falado.' },
         em_audio: { type: 'boolean', description: 'Manda como mensagem de voz em vez de texto.' },
+        arquivo: { type: 'string', description: 'Um arquivo para mandar junto (imagem, PDF, Word...): o caminho que gerar_grafico ou gerar_relatorio devolveu, ou o original de um arquivo recebido. O texto vira a legenda.' },
       },
-      required: ['numero', 'texto'],
+      required: ['numero'],
     },
   },
 ];
@@ -327,6 +329,12 @@ async function participantes(a) {
  *  (voz.mjs) pelo sendWhatsAppAudio, como mensagem de voz. */
 async function executarPlano(plano) {
   if (plano.tipo === 'texto') return evolution('POST', `/message/sendText/${INSTANCIA}`, plano.corpo);
+  if (plano.tipo === 'arquivo') {
+    return evolution('POST', `/message/sendMedia/${INSTANCIA}`, {
+      number: plano.numero, mediatype: plano.mediatype, mimetype: plano.mimetype, fileName: plano.fileName,
+      ...(plano.legenda ? { caption: plano.legenda } : {}), media: readFileSync(plano.caminho).toString('base64'),
+    });
+  }
   const ogg = await falar(paraFala(plano.falado), MIDIA_DIR);
   return evolution('POST', `/message/sendWhatsAppAudio/${INSTANCIA}`, { number: plano.numero, audio: ogg.toString('base64'), encoding: false });
 }
@@ -336,13 +344,13 @@ async function enviarNoGrupo(a) {
   // Pelo id que o modelo resolveu: parte do nome serve para achar, mas o envio
   // vai para o grupo exato que foi mostrado na confirmação.
   if (g.id !== String(a.grupo ?? '').trim()) throw new Error(`use o id do grupo (${g.id}), não o nome`);
-  const plano = planoDeEnvio('enviar_no_grupo', { ...a, grupo: g.id });
+  const plano = planoDeEnvio('enviar_no_grupo', { ...a, grupo: g.id }, { midiaDir: MIDIA_DIR });
   const r = await executarPlano(plano);
   return { ok: true, grupo: g.nome, como: plano.tipo, id: r?.key?.id ?? null, marcados: plano.corpo?.mentioned ?? [] };
 }
 
 async function enviarParaPessoa(a) {
-  const plano = planoDeEnvio('enviar_para_pessoa', a);
+  const plano = planoDeEnvio('enviar_para_pessoa', a, { midiaDir: MIDIA_DIR });
   const r = await executarPlano(plano);
   return { ok: true, numero: plano.numero ?? plano.corpo.number, como: plano.tipo, id: r?.key?.id ?? null };
 }
@@ -351,8 +359,13 @@ async function enviarParaPessoa(a) {
 async function procurarContato(a) {
   const alvo = semAcento(a.nome);
   if (!alvo) throw new Error('faltou o nome');
-  const r = await evolution('POST', `/chat/findContacts/${INSTANCIA}`, { where: {} });
-  const lista = Array.isArray(r) ? r : r?.contacts ?? [];
+  // Os contatos salvos e as conversas recentes: quem só conversou com o número
+  // da casa pode não estar entre os contatos.
+  const [r, conversas] = await Promise.all([
+    evolution('POST', `/chat/findContacts/${INSTANCIA}`, { where: {} }).catch(() => []),
+    evolution('POST', `/chat/findChats/${INSTANCIA}`, {}).catch(() => []),
+  ]);
+  const lista = [...(Array.isArray(r) ? r : r?.contacts ?? []), ...(Array.isArray(conversas) ? conversas : [])];
   const vistos = new Set();
   const achados = [];
   for (const c of lista) {
