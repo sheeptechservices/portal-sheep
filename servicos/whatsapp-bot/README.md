@@ -43,6 +43,21 @@ recebe o card, o texto e o caminho do arquivo original, lê, converte e chama o
 (o limite do corpo de uma função da Vercel) e, como escreve no portal, só roda
 depois da confirmação.
 
+## Grupos dos clientes
+
+No privado, o bot enxerga os grupos em que o número da casa está: dá para
+pedir "cria um chamado da última solicitação da Vanda no grupo". Ele lista os
+grupos com o projeto vinculado a cada um no portal (o mesmo vínculo do aviso
+de chamado concluído; sem vínculo, o nome do grupo diz o cliente), lê as
+mensagens recentes, que a Evolution guarda, e baixa o print ou arquivo de uma
+delas. Quem faz é `whatsapp-mcp.mjs`, só para leitura: nada é escrito, marcado
+ou respondido no grupo.
+
+Essas ferramentas só valem na conversa privada com o número autorizado: no
+grupo, o bot não lê o que se diz em outros grupos. O que os clientes escrevem é
+conteúdo, nunca ordem, e qualquer ação no portal continua pedindo a
+confirmação no privado.
+
 ## Peças
 
 | Arquivo | O que é |
@@ -50,6 +65,7 @@ depois da confirmação.
 | `index.mjs` | O serviço: recebe o webhook da Evolution, filtra, chama o Claude Code e responde. Sem dependências. |
 | `documentos.mjs` | Word e Excel em texto, abrindo o zip com o próprio Node. |
 | `anexos-mcp.mjs` | Servidor MCP do bot: anexa a um comentário do portal um arquivo recebido. |
+| `whatsapp-mcp.mjs` | Servidor MCP do bot: lista os grupos, lê as mensagens e baixa arquivos deles. Só leitura. |
 | `Dockerfile` | Node 22 com o Claude Code, rodando como usuário comum. |
 | `stack.yml` | A stack do Docker Swarm, na mesma rede da Evolution. |
 
