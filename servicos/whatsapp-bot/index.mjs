@@ -97,18 +97,55 @@ function gravarEstado() {
 
 const digitos = (jid) => String(jid ?? '').split('@')[0].split(':')[0].replace(/\D/g, '');
 
-/** O número autorizado, nas duas grafias que o WhatsApp usa para celular
- *  brasileiro: com e sem o nono dígito depois do DDD. */
-const formasAutorizadas = (() => {
-  const n = cfg.autorizado;
+/** Um número de celular brasileiro nas duas grafias que o WhatsApp usa: com e
+ *  sem o nono dígito depois do DDD. */
+function formasDe(n) {
   const formas = new Set([n]);
   if (/^55\d{2}9\d{8}$/.test(n)) formas.add(n.slice(0, 4) + n.slice(5));
   if (/^55\d{10}$/.test(n)) formas.add(`${n.slice(0, 4)}9${n.slice(4)}`);
   return formas;
-})();
+}
+const formasAutorizadas = formasDe(cfg.autorizado);
 
 /** O próprio número do bot, aprendido do campo `sender` que a Evolution manda. */
 let jidDoBot = null;
+/** O código interno do bot (`...@lid`). Nos grupos novos o WhatsApp identifica
+ *  as pessoas por ele, e não pelo telefone: a menção ao bot chega com esse
+ *  código. Descoberto na primeira menção que precisar dele, e guardado. */
+let lidDoBot = null;
+
+/** Pergunta à Evolution quem é quem no grupo e acha o bot pelo telefone. */
+async function descobrirLidDoBot(grupo) {
+  const formas = formasDe(digitos(jidDoBot));
+  try {
+    const r = await fetch(
+      `${cfg.evolutionUrl}/group/participants/${encodeURIComponent(cfg.instancia)}?groupJid=${encodeURIComponent(grupo)}`,
+      { headers: { apikey: cfg.evolutionChave }, signal: AbortSignal.timeout(15_000) },
+    );
+    if (!r.ok) { log('[grupo] participantes não vieram', r.status); return null; }
+    const d = await r.json();
+    const lista = Array.isArray(d) ? d : d?.participants ?? [];
+    const eu = lista.find(p => formas.has(digitos(p.phoneNumber ?? p.jid ?? '')));
+    if (eu?.id && String(eu.id).endsWith('@lid')) {
+      log('[grupo] código interno do bot descoberto');
+      return String(eu.id);
+    }
+  } catch (e) {
+    log('[grupo] falhou ao buscar participantes', e?.message ?? e);
+  }
+  return null;
+}
+
+/** A Evolution às vezes avisa a mesma mensagem duas vezes, com décimos de
+ *  segundo entre uma e outra: sem isto, o bot responderia em dobro. */
+const jaVistas = new Set();
+function primeiraVez(id) {
+  if (!id) return true;
+  if (jaVistas.has(id)) return false;
+  jaVistas.add(id);
+  if (jaVistas.size > 1000) jaVistas.delete(jaVistas.values().next().value);
+  return true;
+}
 
 /** O miolo da mensagem, sem os envelopes que o WhatsApp põe em volta:
  *  mensagem temporária, visualização única, documento com legenda. */
@@ -154,13 +191,14 @@ function midiaDa(m) {
 
 /** Decide se a mensagem é com o bot. Devolve o que é preciso para responder,
  *  ou nulo para ignorar - e o motivo vai para o log, para depuração. */
-function filtrar(corpo) {
+async function filtrar(corpo) {
   const evento = String(corpo?.event ?? '').toLowerCase().replace(/_/g, '.');
   if (evento !== 'messages.upsert') return null;
   const d = corpo.data ?? {};
   const k = d.key ?? {};
   if (corpo.sender) jidDoBot = String(corpo.sender);
   if (k.fromMe) return null;
+  if (!primeiraVez(k.id)) return null;
   const chat = String(k.remoteJid ?? '');
   const grupo = chat.endsWith('@g.us');
   const m = miolo(d.message);
@@ -187,24 +225,37 @@ function filtrar(corpo) {
     : [k.remoteJid, k.remoteJidAlt, k.senderPn];
   const autorizado = candidatos.some(j => j && formasAutorizadas.has(digitos(j)));
   if (!autorizado) {
-    log('[ignorado] remetente não autorizado', grupo ? 'em grupo' : 'no privado', candidatos.filter(Boolean).join(' | '));
+    const quem = candidatos.filter(Boolean).join(' | ') || `sem remetente (campos: ${Object.keys(k).join(',')})`;
+    log('[ignorado] remetente não autorizado', grupo ? 'em grupo' : 'no privado', quem);
     return null;
   }
 
   if (grupo) {
     const mencoes = (ctx.mentionedJid ?? []).map(String);
-    const doBot = digitos(jidDoBot);
-    const mencionou = mencoes.some(j => digitos(j) === doBot)
-      || (doBot && texto.includes(`@${doBot}`))
+    const doBot = formasDe(digitos(jidDoBot));
+    const ehBot = (j) => {
+      const n = digitos(j);
+      return !!n && (doBot.has(n) || (!!lidDoBot && n === digitos(lidDoBot)));
+    };
+    const falouComBot = () => mencoes.some(ehBot)
+      || [...doBot, ...(lidDoBot ? [digitos(lidDoBot)] : [])].some(n => n && texto.includes(`@${n}`))
       // Responder a uma mensagem do bot também é falar com ele.
-      || (ctx.participant && digitos(ctx.participant) === doBot);
+      || (!!ctx.participant && ehBot(ctx.participant));
+    let mencionou = falouComBot();
+    // A menção veio com código interno e o bot ainda não sabe o dele.
+    const temCodigo = mencoes.some(j => j.endsWith('@lid')) || String(ctx.participant ?? '').endsWith('@lid');
+    if (!mencionou && !lidDoBot && temCodigo) {
+      lidDoBot = await descobrirLidDoBot(chat);
+      mencionou = falouComBot();
+    }
     if (!mencionou) {
       log('[ignorado] grupo sem menção ao bot', chat);
       return null;
     }
   }
-  // A menção sai do texto: "@5531... qual o status" vira "qual o status".
-  const limpo = texto.replace(/@\d{8,15}/g, '').trim();
+  // A menção sai do texto: "@5531... qual o status" vira "qual o status". O
+  // código interno é mais longo que um telefone, daí o teto de 20.
+  const limpo = texto.replace(/@\d{8,20}/g, '').trim();
   return { chat, grupo, texto: limpo, nome: d.pushName ?? null, midia, origem };
 }
 
@@ -551,9 +602,10 @@ http.createServer((req, res) => {
     res.end();
     let corpo = null;
     try { corpo = JSON.parse(cru); } catch { return; }
-    const m = filtrar(corpo);
-    if (!m) return;
-    log('[recebido]', m.grupo ? 'grupo' : 'privado', m.chat);
-    enfileirar(m.chat, () => atender(m).catch(e => log('[erro]', e?.message ?? e)));
+    filtrar(corpo).then((m) => {
+      if (!m) return;
+      log('[recebido]', m.grupo ? 'grupo' : 'privado', m.chat);
+      enfileirar(m.chat, () => atender(m).catch(e => log('[erro]', e?.message ?? e)));
+    }).catch(e => log('[erro] no filtro', e?.message ?? e));
   });
 }).listen(cfg.porta, () => log(`[bot] ouvindo na porta ${cfg.porta}`));
