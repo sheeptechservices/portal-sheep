@@ -225,6 +225,20 @@ Nenhum deles vai para o repositório.
 6. Apontar o webhook da instância para o bot (evento `MESSAGES_UPSERT`):
    `http://sheepbot_bot:3000/webhook/<WEBHOOK_SEGREDO>`.
 
+## Convidados
+
+Outros números da equipe podem conversar com o bot num teste, no privado e nos
+grupos, pela variável `NUMEROS_CONVIDADOS` (`5544991448215:Raul`, separados por
+vírgula). O bot sabe com quem fala. Com o convidado ele só consulta: responde
+sobre o portal, lê arquivos, gera gráficos e relatórios, pesquisa na internet e
+fala em áudio. Não grava nada no portal, não lê os grupos dos clientes, não
+manda nada em nome da casa e não agenda: essas ferramentas nem chegam ao modelo
+quando é o convidado quem fala. E o "sim" dele, num grupo, não dispara a
+proposta que o bot fez ao dono: a confirmação fica presa a quem pediu.
+
+A assinatura do Claude é de uso pessoal: para liberar para a equipe de vez, o
+certo é passar o bot para a API.
+
 ## Uso
 
 - Mande mensagem para o número da casa, do número autorizado.
