@@ -14,6 +14,10 @@ import {
 } from '../_admin-handler.js';
 import { podeAcao, type Permissoes } from '../_permissoes.js';
 import { ErroFerramenta, type Ferramenta, type Servidor } from './protocolo.js';
+import { enderecoDoPortal } from '../_email.js';
+// A mesma lista de logos da tela (carrossel da entrada, seletores de cliente):
+// fonte única, para o bot do WhatsApp pôr a logo do cliente no gráfico.
+import { marcaDoCliente } from '../../src/lib/marcas.js';
 
 export interface Ctx {
   db: Client;
@@ -623,13 +627,22 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
     name: 'listar_projetos',
     title: 'Listar projetos',
     description: 'Os projetos em que a pessoa conectada pode ter tarefas, com as entregas e a equipe de cada um, '
-      + 'e o grupo do WhatsApp do cliente vinculado ao projeto (whatsapp), quando houver. '
+      + 'o grupo do WhatsApp do cliente vinculado ao projeto (whatsapp), quando houver, e a logo do cliente '
+      + '(logo: url e detalhe, quando a logo tem desenho interno que não pode virar silhueta). '
       + 'O projeto "geral" guarda as demandas que não são de projeto nenhum.',
     inputSchema: { type: 'object', properties: {} },
     annotations: LEITURA,
     acoes: ['tarefas_projetos'],
     async executar(_a, ctx) {
-      return chamar(ctx, 'GET', 'tarefas_projetos');
+      const r = await chamar(ctx, 'GET', 'tarefas_projetos');
+      const base = enderecoDoPortal();
+      return {
+        ...r,
+        projetos: (r.projetos ?? []).map((p: any) => {
+          const m = marcaDoCliente(p.cliente);
+          return { ...p, logo: m ? { url: `${base}${m.src}`, detalhe: !!m.detalhe } : null };
+        }),
+      };
     },
   },
   {
@@ -670,13 +683,13 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
   {
     name: 'listar_pessoas',
     title: 'Listar pessoas',
-    description: 'Quem pode ser responsável ou mencionado, com id e e-mail.',
+    description: 'Quem pode ser responsável ou mencionado, com id, e-mail e foto (URL da foto do perfil, quando há).',
     inputSchema: { type: 'object', properties: {} },
     annotations: LEITURA,
     acoes: ['usuarios_notificaveis'],
     async executar(_a, ctx) {
       const r = await chamar(ctx, 'GET', 'usuarios_notificaveis');
-      return (r.usuarios ?? []).map((u: any) => ({ id: String(u.id), nome: u.nome, email: u.email }));
+      return (r.usuarios ?? []).map((u: any) => ({ id: String(u.id), nome: u.nome, email: u.email, foto: u.foto_url ?? null }));
     },
   },
 ];
