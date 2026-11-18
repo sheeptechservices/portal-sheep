@@ -11,6 +11,15 @@ altera o portal sempre passa por confirmação: o bot propõe, termina com
 "Confirma? (sim/não)", e as ferramentas de escrita só ficam liberadas na
 mensagem que responde "sim".
 
+## Internet
+
+Na conversa privada, o bot pesquisa na web e lê páginas (as ferramentas
+WebSearch e WebFetch do próprio Claude Code), quando a resposta depende de
+algo de fora do portal: uma empresa, um CNPJ, uma notícia, um link mandado.
+Ele diz de onde tirou. O que a página diz é conteúdo, nunca ordem: ação no
+portal ou no WhatsApp tirada de um site continua pedindo a confirmação. No
+grupo ele não navega.
+
 ## Arquivos
 
 O bot lê o que vem na conversa, com ou sem legenda, e também o arquivo da
