@@ -622,7 +622,8 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
   {
     name: 'listar_projetos',
     title: 'Listar projetos',
-    description: 'Os projetos em que a pessoa conectada pode ter tarefas, com as entregas e a equipe de cada um. '
+    description: 'Os projetos em que a pessoa conectada pode ter tarefas, com as entregas e a equipe de cada um, '
+      + 'e o grupo do WhatsApp do cliente vinculado ao projeto (whatsapp), quando houver. '
       + 'O projeto "geral" guarda as demandas que não são de projeto nenhum.',
     inputSchema: { type: 'object', properties: {} },
     annotations: LEITURA,

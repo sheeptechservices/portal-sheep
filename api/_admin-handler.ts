@@ -5450,8 +5450,12 @@ async function despacharAdminData(
     if (action === 'tarefas_projetos') {
       const soDaEquipe = papelEfetivo(usuario?.email, usuario?.papel) === 'membro';
       const projs = await db.execute({
-        sql: `SELECT p.id, p.codigo, p.nome, p.status, c.nome AS cliente
+        // O grupo do WhatsApp vinculado ao projeto (o do aviso de chamado
+        // concluído): é por ele que o bot sabe de que cliente é cada grupo.
+        sql: `SELECT p.id, p.codigo, p.nome, p.status, c.nome AS cliente,
+                     w.grupo_id AS whatsapp_grupo_id, w.grupo_nome AS whatsapp_grupo_nome
               FROM projetos p LEFT JOIN clientes c ON c.id = p.cliente_id
+              LEFT JOIN projeto_whatsapp w ON w.projeto_id = p.id
               WHERE (p.ativo = 1 OR p.id = ?)
                 AND (? = 0 OR p.id = ? OR EXISTS (
                   SELECT 1 FROM projeto_equipe e WHERE e.projeto_id = p.id AND e.usuario_id = ?))
@@ -5477,8 +5481,11 @@ async function despacharAdminData(
       return {
         status: 200,
         body: {
-          projetos: projs.rows.map(p => ({
+          projetos: projs.rows.map(({ whatsapp_grupo_id, whatsapp_grupo_nome, ...p }) => ({
             ...p,
+            whatsapp: whatsapp_grupo_id != null
+              ? { grupo_id: String(whatsapp_grupo_id), grupo_nome: whatsapp_grupo_nome != null ? String(whatsapp_grupo_nome) : null }
+              : null,
             entregas: entregas.rows.filter(e => e.projeto_id === p.id)
               .map(e => ({ id: Number(e.id), titulo: e.titulo, status: e.status })),
             equipe: equipe.rows.filter(e => e.projeto_id === p.id)
