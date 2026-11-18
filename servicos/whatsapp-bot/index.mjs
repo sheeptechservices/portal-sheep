@@ -9,7 +9,9 @@
 //
 //  Ação que altera o portal nunca roda direto: as ferramentas de escrita só
 //  ficam liberadas na mensagem que confirma uma proposta do próprio bot. Fora
-//  dela o Claude Code recusa a chamada, por mais que o modelo tente.
+//  dela o Claude Code recusa a chamada, por mais que o modelo tente. Elas
+//  continuam à vista do modelo o tempo todo: escondidas, ele concluía que não
+//  sabia editar e nem chegava a propor.
 //
 //  Imagens, PDFs, Word, Excel, CSV e TXT que chegam com a mensagem (ou na
 //  mensagem respondida) são baixados da Evolution para uma pasta própria -
@@ -332,6 +334,7 @@ function instrucoes() {
     'Você opera o Portal Sheep pelas ferramentas do servidor MCP "portal": consulta projetos, cards (tarefas), pessoas, etapas e etiquetas, e pode criar, mover (trocar a etapa), editar, comentar e excluir.',
     '',
     'Regra de ouro, sem exceção: nunca altere nada no portal sem confirmação.',
+    'Você sabe e pode criar, editar, mover, excluir e comentar cards: as ferramentas de escrita do portal (criar_tarefa, editar_tarefa, excluir_tarefa, comentar, excluir_comentario, adicionar_subtarefa, editar_subtarefa, excluir_subtarefa, joinha_comentario) existem e funcionam. O sistema só deixa elas rodarem na mensagem que traz a confirmação da pessoa; antes disso a chamada é recusada por permissão. Nunca diga que não consegue fazer essas ações nem que elas estão indisponíveis: proponha e peça a confirmação. Se uma chamada de escrita for recusada, é só porque a confirmação ainda não veio.',
     'Para qualquer criação, edição, mudança de etapa, comentário ou exclusão: primeiro use as ferramentas de leitura para achar exatamente o card e os dados certos; depois descreva em poucas linhas o que vai fazer (qual card, de onde para onde, quais campos) e termine a mensagem com a linha exata "Confirma? (sim/não)". Não execute nessa mensagem.',
     'Só execute quando a mensagem seguinte começar com a nota do sistema dizendo que a pessoa confirmou. Execute exatamente o que foi proposto, nada além, e diga em uma linha o que foi feito.',
     'Se a pessoa disser não ou mudar de ideia, não execute e pergunte o que ela quer.',
@@ -348,7 +351,16 @@ function instrucoes() {
   ].join('\n');
 }
 
-const CONFIRMACAO = /^\s*(sim|s|ss|confirmo|confirma|confirmado|pode|pode fazer|pode ir|manda|manda ver|ok|okay|beleza|isso|faz|faca|faça|vai|bora|positivo)\b[\s.!]*$/i;
+/** "sim", "sim, pode gravar", "pode excluir": começa concordando, é curta e
+ *  não traz ressalva. "sim, mas muda o título" não é confirmação, é pedido
+ *  novo: o modelo refaz a proposta. */
+// Só palavra de concordância abre: verbo de ação ("cria outro card") é pedido
+// novo, e não pode disparar a proposta que estava esperando.
+const CONCORDA = /^\s*(sim|s|ss|confirmo|confirma|confirmado|pode|manda|ok|okay|beleza|isso|faz|faca|faça|vai|bora|positivo)\b/i;
+const RESSALVA = /\b(n[aã]o|nao|mas|por[eé]m|cancela|espera|pera|antes|muda|troca|altera|corrige|errad|tamb[eé]m|al[eé]m|outr[oa])/i;
+const ehConfirmacao = (t) => t.length <= 80 && CONCORDA.test(t) && !RESSALVA.test(t);
+/** A proposta que espera o "sim": a linha pedida nas instruções, com folga. */
+const PEDE_CONFIRMACAO = /Confirma\?|\(sim\s*\/\s*n[aã]o\)/i;
 
 /** Roda o Claude Code uma vez. Devolve o texto da resposta e a sessão. */
 function perguntar({ texto, sessao, liberarEscrita }) {
@@ -359,8 +371,11 @@ function perguntar({ texto, sessao, liberarEscrita }) {
     ...[...LEITURA, ...(liberarEscrita ? ESCRITA : [])].map(doPortal),
     `Read(${absoluto(midiaDir)}/**)`,
   ];
+  // A escrita fora da confirmação fica de fora de `permitidas`, e não dentro de
+  // `proibidas`: proibida, ela some da lista que o modelo enxerga; só não
+  // permitida, ela aparece e a chamada é recusada (no modo -p, o que não está
+  // liberado não roda).
   const proibidas = [
-    ...(liberarEscrita ? [] : ESCRITA.map(doPortal)),
     // Defesa em dobro: fora da pasta de trabalho a leitura já pede permissão,
     // que no modo -p é recusa. Estes são os lugares onde moram os segredos.
     `Read(${absoluto(cfg.dados)}/**)`, 'Read(//proc/**)', 'Read(//home/**)', 'Read(//etc/**)', 'Read(//app/*.mjs)',
@@ -471,7 +486,7 @@ async function atender({ chat, texto, midia, origem }) {
   const expirou = !atual.atualizado || agora - atual.atualizado > cfg.sessaoMs;
   const sessao = expirou ? null : atual.sessao ?? null;
   // Arquivo junto com o "sim" não é confirmação: é assunto novo.
-  const confirmou = !expirou && !!atual.pendente && !midia && CONFIRMACAO.test(texto);
+  const confirmou = !expirou && !!atual.pendente && !midia && ehConfirmacao(texto);
 
   void digitando(chat);
   const prep = await prepararMidia({ midia, origem, texto });
@@ -488,7 +503,14 @@ async function atender({ chat, texto, midia, origem }) {
       : '(A pessoa só chamou você, sem texto: pergunte em que pode ajudar.)'),
   ].filter(Boolean).join('\n\n');
 
-  const r = await perguntar({ texto: pergunta, sessao, liberarEscrita: confirmou });
+  let r = await perguntar({ texto: pergunta, sessao, liberarEscrita: confirmou });
+  // A sessão pode ter sumido (memória apagada, versão nova do bot): recomeça
+  // a conversa em vez de responder com erro. Confirmação não sobrevive a isso,
+  // porque a proposta estava na sessão perdida.
+  if (!r.ok && sessao) {
+    log('[claude] a sessão não respondeu, recomeçando a conversa', r.motivo.slice(0, 120));
+    r = await perguntar({ texto, sessao: null, liberarEscrita: false });
+  }
   if (!r.ok) {
     estado[chat] = { ...atual, sessao: r.sessao ?? sessao, pendente: false, atualizado: agora };
     gravarEstado();
@@ -500,7 +522,7 @@ async function atender({ chat, texto, midia, origem }) {
     sessao: r.sessao,
     // A proposta fica esperando o "sim" só se o bot terminou pedindo
     // confirmação; qualquer outra resposta desarma.
-    pendente: /Confirma\?\s*\(sim\/n[aã]o\)/i.test(resposta),
+    pendente: PEDE_CONFIRMACAO.test(resposta),
     atualizado: agora,
   };
   gravarEstado();
