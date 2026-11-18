@@ -26814,7 +26814,55 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
      tarefa em duas palavras e reticências. */
   .painel-gaveta > .admin-modal-header { flex-wrap: wrap; justify-content: flex-end; row-gap: 4px; }
   .painel-gaveta > .admin-modal-header > div:first-child { flex: 1 1 100% !important; order: 2; }
+
+  /* Lista que abre do gatilho: no celular vira folha presa embaixo da tela.
+     Ancorada no gatilho ela caía para fora da tela e fechava a cada rolagem
+     ou a cada vez que a barra do navegador se mexia. A classe vem do
+     `useDropdownDismiss`, que também deixa de fechar por rolagem nela. */
+  .lista-folha {
+    position: fixed !important;
+    top: auto !important;
+    left: 8px !important;
+    right: 8px !important;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    max-height: min(72dvh, 560px) !important;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: var(--radius-lg) !important;
+    transform-origin: bottom center;
+    animation: folha-sobe .22s var(--curva-anti);
+  }
+  /* A lista diz de que filtro ela é (no gatilho em linha o nome some de
+     vista atrás dela) e as opções crescem para o tamanho do dedo. */
+  .lista-folha[data-titulo]::before {
+    content: attr(data-titulo);
+    display: block;
+    padding: 14px 16px 8px;
+    text-align: center;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--black);
+  }
+  .lista-folha .filter-dropdown-option { min-height: 44px; font-size: 15px; }
+
+  /* O véu atrás da folha: tocar nele é tocar fora, e a folha fecha. */
+  body.com-lista-folha::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 10040;
+    background: rgba(0, 0, 0, .38);
+    animation: veu-entra .18s ease;
+  }
 }
+@keyframes folha-sobe {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes veu-entra { from { opacity: 0; } to { opacity: 1; } }
 
 /* Tela de toque: o que só aparece com o ponteiro em cima (botões da coluna,
    ações da linha) fica à vista, porque no dedo não existe "passar por cima".
@@ -26832,3 +26880,8 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   textarea,
   [contenteditable="true"] { font-size: 16px; }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .lista-folha, body.com-lista-folha::after { animation: none; }
+}
+
