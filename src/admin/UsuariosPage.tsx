@@ -19,6 +19,7 @@ import {
 import MatrizPermissoes from './MatrizPermissoes';
 import { ContaAnimada } from '../components/ContaAnimada';
 import { FichaCadastral } from './FichaCadastral';
+import { Chave } from '../components/Chave';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Usuários. Duas coisas, na ordem em que se usam:
@@ -51,6 +52,8 @@ interface UsuarioLinha {
   convidado: boolean;
   /** Tem senha definida: entra também pela porta de e-mail e senha. */
   tem_senha: boolean;
+  /** Acesso à IA (o MCP do portal) ligado para esta pessoa. */
+  ia: boolean;
   criado_em: string;
   ultimo_acesso: string | null;
   sessoes_abertas: number;
@@ -447,6 +450,22 @@ export default function UsuariosPage({ token, abrir, onAberto }: {
     toast('success', 'Papel atualizado', `${u.nome} agora é ${PAPEL_LABEL[papel]}.`);
   }
 
+  /** Liga ou desliga a IA da pessoa. Pinta na hora e volta atrás se o servidor
+   *  recusar: a chave não fica esperando a ida e a volta. */
+  async function trocarIa(u: UsuarioLinha, ia: boolean) {
+    const marcar = (valor: boolean) =>
+      setUsuarios(lista => (lista ?? []).map(x => (x.id === u.id ? { ...x, ia: valor } : x)));
+    marcar(ia);
+    const ok = await chamar({ action: 'set_usuario_ia', usuario_id: u.id, ia });
+    if (!ok) { marcar(!ia); return; }
+    const souEu = u.id === eu?.id;
+    toast('success', ia ? 'IA ligada' : 'IA desligada', ia
+      ? (souEu
+        ? 'Recarregue a página para ver o Conectar IA no seu Perfil.'
+        : `${u.nome} já pode conectar a IA pelo Perfil.`)
+      : `As conexões de IA de ${souEu ? 'você' : u.nome} param de funcionar agora.`);
+  }
+
   async function trocarAtivo(u: UsuarioLinha, ativo: boolean) {
     setSalvando(u.id);
     const ok = await chamar({ action: 'set_usuario_ativo', usuario_id: u.id, ativo });
@@ -576,6 +595,7 @@ export default function UsuariosPage({ token, abrir, onAberto }: {
                 <th>Pessoa</th>
                 <th>E-mail</th>
                 <th>Papel</th>
+                <th title="Acesso à IA pelo MCP do portal">IA</th>
                 <th style={{ whiteSpace: 'nowrap' }}>Último acesso</th>
                 <th style={{ whiteSpace: 'nowrap' }}>Primeiro acesso</th>
                 <th>Acesso</th>
@@ -641,6 +661,17 @@ export default function UsuariosPage({ token, abrir, onAberto }: {
                           rotulo={`Papel de ${u.nome}`}
                           onEscolher={p => void trocarPapel(u, p)}
                         />
+                      )}
+                    </td>
+                    <td>
+                      {/* Vale também para a linha do admin: ligar a IA em si
+                          mesmo não tranca ninguém fora, diferente do papel. */}
+                      {podeMexer ? (
+                        <Chave ligada={u.ia} onChange={v => void trocarIa(u, v)}
+                          nome={`Acesso à IA de ${u.nome}`}
+                          dica={u.ia ? 'IA ligada: conecta pelo Perfil > Conectar IA' : 'Ligar o acesso à IA (MCP do portal)'} />
+                      ) : (
+                        <span className="usuarios-papel-fixo">{u.ia ? 'Ligada' : 'Desligada'}</span>
                       )}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>

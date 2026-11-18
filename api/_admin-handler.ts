@@ -4650,7 +4650,7 @@ async function despacharAdminData(
         // Aqui fica só o critério de desempate, que o banco resolve de graça.
         db.execute(`
           SELECT id, email, nome, foto_url, papel, ativo, convidado, criado_em, ultimo_acesso,
-                 senha_hash IS NOT NULL AS tem_senha
+                 senha_hash IS NOT NULL AS tem_senha, mcp_habilitado
           FROM usuarios
           ORDER BY ativo DESC, ultimo_acesso DESC, nome
         `),
@@ -4680,6 +4680,8 @@ async function despacharAdminData(
           convidado: Number(r.convidado) === 1,
           // Tem senha definida: pode entrar sem Google, pela porta alternativa.
           tem_senha: Number(r.tem_senha) === 1,
+          // Acesso à IA (o MCP do portal): ligado pessoa a pessoa, por um admin.
+          ia: Number(r.mcp_habilitado) === 1,
           criado_em: String(r.criado_em ?? ''),
           ultimo_acesso: r.ultimo_acesso != null ? String(r.ultimo_acesso) : null,
           sessoes_abertas: abertas.get(String(r.id)) ?? 0,
@@ -9410,6 +9412,8 @@ function faltaEmProjeto(p: any): string | null {
             ativo: Number(u.ativo) === 1,
             convidado: Number(u.convidado) === 1,
             tem_senha: Number(u.tem_senha) === 1,
+            // Convite novo nunca nasce com a IA ligada.
+            ia: false,
             criado_em: String(u.criado_em ?? ''),
             ultimo_acesso: u.ultimo_acesso != null ? String(u.ultimo_acesso) : null,
             sessoes_abertas: 0,
@@ -9511,9 +9515,24 @@ function faltaEmProjeto(p: any): string | null {
       return { status: 200, body: { ok: true, destino: String(alvo.email) } };
     }
 
-    // Papel e acesso de outra pessoa. Só o dono do painel, e nunca sobre a
-    // própria conta dele: rebaixar ou desligar o administrador deixaria o
-    // sistema sem ninguém capaz de devolver acesso a alguém.
+    // Acesso à IA (o MCP do portal) de uma pessoa. Só admin, e vale também
+    // para a própria conta: diferente do papel, ligar a IA em si mesmo não
+    // tranca ninguém fora. Desligar não apaga as conexões, mas elas param na
+    // hora: todo token é conferido contra esta marca a cada uso.
+    if (action === 'set_usuario_ia') {
+      if (!podeGerenciarUsuarios(usuario)) return NEGADO_USUARIOS;
+      const alvoId = String(body?.usuario_id ?? '');
+      if (!alvoId) return { status: 400, body: { error: 'usuario_id ausente.' } };
+      const ia = body?.ia === true || body?.ia === 1 ? 1 : 0;
+      const res = await db.execute({
+        sql: 'UPDATE usuarios SET mcp_habilitado = ? WHERE id = ? RETURNING email', args: [ia, alvoId],
+      });
+      const email = res.rows[0]?.email;
+      if (email == null) return { status: 404, body: { error: 'Usuário não encontrado.' } };
+      await registrarAuditoria(db, usuario, ia ? 'ligar_ia_usuario' : 'desligar_ia_usuario', String(email));
+      return { status: 200, body: { ok: true, usuario_id: alvoId, ia: ia === 1 } };
+    }
+
     // Token fixo para automação (o bot do WhatsApp): só quem tem o MCP gera, e
     // o valor volta uma vez só, nesta resposta.
     if (action === 'mcp_token_fixo') {
