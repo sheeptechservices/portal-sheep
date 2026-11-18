@@ -7,10 +7,11 @@
 //  cada um), lê as mensagens recentes do grupo e baixa um print ou arquivo que
 //  alguém mandou lá.
 //
-//  Quase tudo aqui é leitura: listar, ler, baixar e ver quem está no grupo. A
-//  única escrita é enviar_no_grupo, que manda uma mensagem (com menções) num
-//  grupo: o bot só a libera na conversa privada com o número autorizado e na
-//  mensagem que confirma a proposta, com o grupo, o texto e as menções à vista.
+//  Quase tudo aqui é leitura: listar, ler, baixar, ver quem está no grupo e
+//  procurar um contato. As escritas são enviar_no_grupo e enviar_para_pessoa,
+//  que mandam texto ou áudio (na voz do bot) num grupo ou no privado de alguém:
+//  o bot só as libera na conversa privada com o número autorizado e na
+//  mensagem que confirma a proposta, com o destino e o texto à vista.
 //  Nada mais é escrito: não reage, não marca como lido. O histórico vem da
 //  própria Evolution, que guarda as mensagens que o número recebe.
 //
@@ -21,7 +22,8 @@ import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import { docxParaTexto, xlsxParaTexto } from './documentos.mjs';
-import { digitos, montarMensagem, pessoasDoGrupo } from './mensagem-grupo.mjs';
+import { digitos, pessoasDoGrupo, planoDeEnvio } from './mensagem-grupo.mjs';
+import { falar, paraFala } from './voz.mjs';
 import { transcrever, AUDIO_MAX_SEGUNDOS } from './transcricao.mjs';
 
 const EVOLUTION_URL = (process.env.EVOLUTION_URL ?? '').replace(/\/+$/, '');
@@ -88,17 +90,46 @@ const FERRAMENTAS = [
   {
     name: 'enviar_no_grupo',
     title: 'Enviar mensagem num grupo',
-    description: 'Manda uma mensagem de texto num grupo, com o número da casa, marcando quem estiver em '
-      + 'mencionar. Para marcar, ponha no texto @ seguido do número da pessoa (o mesmo de mencionar); número '
-      + 'que faltar no texto entra no fim. Escreve para fora e não se desfaz: só rode depois da confirmação.',
+    description: 'Manda uma mensagem num grupo, com o número da casa: texto, marcando quem estiver em mencionar, '
+      + 'ou áudio (em_audio), na voz do bot. Para marcar, ponha no texto @ seguido do número da pessoa (o mesmo de '
+      + 'mencionar); número que faltar no texto entra no fim. Áudio não marca ninguém. Escreve para fora e não se '
+      + 'desfaz: só rode depois da confirmação.',
     inputSchema: {
       type: 'object',
       properties: {
         grupo: { type: 'string', description: 'O id do grupo (termina em @g.us), de listar_grupos.' },
-        texto: { type: 'string', description: 'O texto exato, como vai aparecer no grupo.' },
-        mencionar: { type: 'array', items: { type: 'string' }, description: 'Os números de quem marcar, com DDI e DDD (de participantes_do_grupo).' },
+        texto: { type: 'string', description: 'O texto exato, como vai aparecer no grupo; no áudio, o que vai ser falado.' },
+        mencionar: { type: 'array', items: { type: 'string' }, description: 'Os números de quem marcar, com DDI e DDD (de participantes_do_grupo). Só no texto.' },
+        em_audio: { type: 'boolean', description: 'Manda como mensagem de voz em vez de texto.' },
       },
       required: ['grupo', 'texto'],
+    },
+  },
+  {
+    name: 'procurar_contato',
+    title: 'Procurar contato',
+    description: 'Procura pelo nome, entre os contatos do número da casa, o número de WhatsApp de uma pessoa, '
+      + 'para mandar no privado dela com enviar_para_pessoa.',
+    inputSchema: {
+      type: 'object',
+      properties: { nome: { type: 'string', description: 'O nome, ou parte dele.' } },
+      required: ['nome'],
+    },
+  },
+  {
+    name: 'enviar_para_pessoa',
+    title: 'Enviar mensagem no privado de alguém',
+    description: 'Manda uma mensagem no privado de uma pessoa, com o número da casa: texto, ou áudio (em_audio) na '
+      + 'voz do bot. O número vem de procurar_contato ou de participantes_do_grupo. Escreve para fora e não se '
+      + 'desfaz: só rode depois da confirmação.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        numero: { type: 'string', description: 'O número com DDI e DDD, como 5531999990000.' },
+        texto: { type: 'string', description: 'O texto exato da mensagem; no áudio, o que vai ser falado.' },
+        em_audio: { type: 'boolean', description: 'Manda como mensagem de voz em vez de texto.' },
+      },
+      required: ['numero', 'texto'],
     },
   },
 ];
@@ -292,14 +323,48 @@ async function participantes(a) {
   return { grupo: { id: g.id, nome: g.nome }, participantes: lista };
 }
 
+/** Manda o que o plano diz: o texto pelo sendText, ou a fala gerada aqui
+ *  (voz.mjs) pelo sendWhatsAppAudio, como mensagem de voz. */
+async function executarPlano(plano) {
+  if (plano.tipo === 'texto') return evolution('POST', `/message/sendText/${INSTANCIA}`, plano.corpo);
+  const ogg = await falar(paraFala(plano.falado), MIDIA_DIR);
+  return evolution('POST', `/message/sendWhatsAppAudio/${INSTANCIA}`, { number: plano.numero, audio: ogg.toString('base64'), encoding: false });
+}
+
 async function enviarNoGrupo(a) {
   const g = await acharGrupo(a.grupo);
   // Pelo id que o modelo resolveu: parte do nome serve para achar, mas o envio
   // vai para o grupo exato que foi mostrado na confirmação.
   if (g.id !== String(a.grupo ?? '').trim()) throw new Error(`use o id do grupo (${g.id}), não o nome`);
-  const corpo = montarMensagem({ grupo: g.id, texto: a.texto, mencionar: a.mencionar });
-  const r = await evolution('POST', `/message/sendText/${INSTANCIA}`, corpo);
-  return { ok: true, grupo: g.nome, id: r?.key?.id ?? null, marcados: corpo.mentioned ?? [] };
+  const plano = planoDeEnvio('enviar_no_grupo', { ...a, grupo: g.id });
+  const r = await executarPlano(plano);
+  return { ok: true, grupo: g.nome, como: plano.tipo, id: r?.key?.id ?? null, marcados: plano.corpo?.mentioned ?? [] };
+}
+
+async function enviarParaPessoa(a) {
+  const plano = planoDeEnvio('enviar_para_pessoa', a);
+  const r = await executarPlano(plano);
+  return { ok: true, numero: plano.numero ?? plano.corpo.number, como: plano.tipo, id: r?.key?.id ?? null };
+}
+
+/** Os contatos do número da casa que têm o nome procurado, com o telefone. */
+async function procurarContato(a) {
+  const alvo = semAcento(a.nome);
+  if (!alvo) throw new Error('faltou o nome');
+  const r = await evolution('POST', `/chat/findContacts/${INSTANCIA}`, { where: {} });
+  const lista = Array.isArray(r) ? r : r?.contacts ?? [];
+  const vistos = new Set();
+  const achados = [];
+  for (const c of lista) {
+    const nome = c.pushName ?? c.name ?? c.verifiedName ?? '';
+    if (!semAcento(nome).includes(alvo)) continue;
+    const jid = [c.remoteJid, c.remoteJidAlt, c.id].find(j => String(j ?? '').endsWith('@s.whatsapp.net'));
+    const numero = digitos(jid ?? '');
+    if (!numero || vistos.has(numero)) continue;
+    vistos.add(numero);
+    achados.push({ nome, numero });
+  }
+  return { contatos: achados.slice(0, 15), aviso: achados.length > 1 ? 'mais de um contato com esse nome: confirme qual com a pessoa' : null };
 }
 
 // ── O protocolo ─────────────────────────────────────────────────────────────
@@ -308,6 +373,7 @@ const enviar = (msg) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0',
 const EXECUTAR = {
   listar_grupos: () => grupos(), ler_grupo: lerGrupo, baixar_midia_do_grupo: baixarMidia,
   participantes_do_grupo: participantes, enviar_no_grupo: enviarNoGrupo,
+  procurar_contato: procurarContato, enviar_para_pessoa: enviarParaPessoa,
 };
 
 async function tratar({ id, method, params }) {

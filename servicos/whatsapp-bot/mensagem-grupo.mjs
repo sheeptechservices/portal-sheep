@@ -55,3 +55,35 @@ export function mencoesNoTexto(texto, pessoas) {
   const doGrupo = new Set((pessoas ?? []).map(p => p.numero).filter(Boolean));
   return [...new Set([...String(texto ?? '').matchAll(/@(\d{10,15})\b/g)].map(m => m[1]))].filter(n => doGrupo.has(n));
 }
+
+/** A mensagem no privado de alguém: o número com DDI e DDD, e o texto. */
+export function montarPrivada({ numero, texto }) {
+  const n = digitos(numero);
+  if (n.length < 10 || n.length > 15) throw new Error('o número precisa vir com DDI e DDD, como 5531999990000');
+  const corpo = String(texto ?? '').trim();
+  if (!corpo) throw new Error('faltou o texto da mensagem');
+  if (corpo.length > 4000) throw new Error('a mensagem passou de 4000 caracteres');
+  return { number: n, text: corpo };
+}
+
+/** O áudio mais longo que se manda: o mesmo teto da resposta em áudio. */
+const AUDIO_MAX_CARACTERES = 1200;
+
+/** Valida um envio para fora e diz o que mandar: texto (o corpo do sendText)
+ *  ou áudio (o destino e o texto a falar). Serve ao envio na hora
+ *  (`whatsapp-mcp.mjs`) e ao agendado (`index.mjs`), que assim recusam as
+ *  mesmas coisas: um grupo ou número torto aparece já na confirmação, e não
+ *  horas depois. */
+export function planoDeEnvio(ferramenta, a = {}) {
+  const emAudio = a.em_audio === true;
+  let corpo;
+  if (ferramenta === 'enviar_no_grupo') corpo = montarMensagem(a);
+  else if (ferramenta === 'enviar_para_pessoa') corpo = montarPrivada(a);
+  else throw new Error(`envio desconhecido: ${ferramenta}`);
+  if (!emAudio) return { tipo: 'texto', corpo };
+  // Mensagem de voz não marca ninguém: menção é coisa de texto.
+  if (corpo.mentioned?.length) throw new Error('áudio não marca ninguém: mande sem mencionar, ou em texto');
+  const falado = String(a.texto ?? '').trim();
+  if (falado.length > AUDIO_MAX_CARACTERES) throw new Error(`texto longo demais para áudio (até ${AUDIO_MAX_CARACTERES} caracteres)`);
+  return { tipo: 'audio', numero: corpo.number, falado };
+}

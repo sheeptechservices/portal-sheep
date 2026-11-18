@@ -21,9 +21,10 @@ const AGENDA_TOKEN = process.env.AGENDA_TOKEN ?? '';
 
 /** O que pode ser agendado. Exclusão fica de fora de propósito: apagar no
  *  escuro, horas depois da conversa, é o tipo de coisa que não se desfaz.
- *  `enviar_no_grupo` não é do portal: é a mensagem num grupo do WhatsApp, que
- *  o próprio bot manda pela Evolution no horário. */
-export const AGENDAVEIS = ['criar_tarefa', 'editar_tarefa', 'comentar', 'adicionar_subtarefa', 'editar_subtarefa', 'enviar_no_grupo'];
+ *  `enviar_no_grupo` e `enviar_para_pessoa` não são do portal: são a mensagem
+ *  (texto ou áudio) num grupo ou no privado de alguém, que o próprio bot manda
+ *  pela Evolution no horário. */
+export const AGENDAVEIS = ['criar_tarefa', 'editar_tarefa', 'comentar', 'adicionar_subtarefa', 'editar_subtarefa', 'enviar_no_grupo', 'enviar_para_pessoa'];
 export const REPETICOES = ['diario', 'dias_uteis', 'semanal', 'mensal'];
 
 const FERRAMENTAS = [
@@ -39,7 +40,7 @@ const FERRAMENTAS = [
       properties: {
         quando: { type: 'string', description: 'Data e hora da (primeira) execução, ISO 8601 com o fuso de Brasília, como 2026-11-18T09:00:00-03:00.' },
         repetir: { type: 'string', enum: REPETICOES, description: 'Sem ele, roda uma vez. dias_uteis pula sábado e domingo; semanal repete no mesmo dia da semana; mensal, no mesmo dia do mês.' },
-        ferramenta: { type: 'string', enum: AGENDAVEIS, description: 'A ferramenta do portal (mover de etapa é editar_tarefa com status) ou enviar_no_grupo.' },
+        ferramenta: { type: 'string', enum: AGENDAVEIS, description: 'A ferramenta do portal (mover de etapa é editar_tarefa com status), enviar_no_grupo ou enviar_para_pessoa.' },
         argumentos: { type: 'object', description: 'Os argumentos da ferramenta, exatamente como ela pede.' },
         resumo: { type: 'string', description: 'Uma linha dizendo o que acontece, para a lista e para o aviso. Ex.: "Mover o #977 para Fazendo", "Mensagem no grupo Tech Squad marcando o Raul".' },
       },

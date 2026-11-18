@@ -128,7 +128,16 @@ que a reunião é às 15h, marcando o Raul". O bot acha o Raul entre os
 participantes, pelo nome com que ele aparece nas mensagens (dois Raul, ou
 nenhum, e ele pergunta), e propõe mostrando o grupo, o texto exato e quem vai
 ser marcado. Só envia depois do "sim", com o número da casa e sem assinatura.
-É a única escrita no WhatsApp: nada é marcado como lido nem reagido.
+
+E no privado de alguém: "manda pro Raul que a reunião mudou". O número sai de
+`procurar_contato`, que procura o nome nos contatos do número da casa, ou dos
+participantes de um grupo. Nos dois casos dá para pedir em áudio ("manda um
+áudio no grupo dizendo..."): a fala é gerada pelo Kokoro, como a resposta em
+áudio, e vai como mensagem de voz. Áudio não marca ninguém.
+
+A validação é uma só (`planoDeEnvio`, em `mensagem-grupo.mjs`), para o envio na
+hora e o agendado recusarem as mesmas coisas. Fora esses envios, nada é escrito
+no WhatsApp: nada é marcado como lido nem reagido.
 
 Essas ferramentas só valem na conversa privada com o número autorizado: no
 grupo, o bot não lê o que se diz em outros grupos nem escreve em outro. O que
@@ -144,9 +153,11 @@ processo do bot chama a ferramenta do portal com exatamente o que foi
 confirmado, sem IA no meio e sem gastar a assinatura, e avisa no privado.
 
 - Agenda criar, editar ou mover tarefa, comentar, mexer em subtarefa e mandar
-  mensagem num grupo ("às 11h30 manda teste no grupo da Tech Squad marcando o
-  Raul"). Exclusão não se agenda. A mensagem do grupo é conferida ao agendar
-  (id do grupo, números) e, no horário, sai pela Evolution.
+  mensagem, em texto ou áudio, num grupo ou no privado de alguém ("às 11h30
+  manda teste no grupo da Tech Squad marcando o Raul", "amanhã às 9h manda um
+  áudio pro Raul lembrando da reunião"). Exclusão não se agenda. A mensagem é
+  conferida ao agendar (grupo, número, áudio com menção) e, no horário, sai
+  pela Evolution.
 - Repete todo dia, em dias úteis (pula fim de semana, não feriado), toda semana
   ou todo mês (o dia 31 cai no último dia dos meses mais curtos).
 - Fica em `/dados/agenda.json`. Com o bot fora do ar, o que venceu roda quando
@@ -167,7 +178,7 @@ confirmado, sem IA no meio e sem gastar a assinatura, e avisa no privado.
 | `graficos.mjs` e `marca/` | O desenho dos gráficos e dos relatórios, com a logo da Sheep. |
 | `voz.mjs` e `falar.py` | Texto em mensagem de voz, com o Kokoro e o ffmpeg, na própria máquina. |
 | `transcricao.mjs` | Áudio em texto, com o ffmpeg e o whisper.cpp, na própria máquina. |
-| `mensagem-grupo.mjs` | Monta a mensagem do grupo com as menções, igual no envio na hora e no agendado. |
+| `mensagem-grupo.mjs` | Monta e confere o envio (grupo ou privado, texto com menções ou áudio), igual na hora e no agendado. |
 | `agenda-mcp.mjs` | Servidor MCP do bot: agenda, lista e cancela ações no portal e mensagens nos grupos para um horário. |
 | `Dockerfile` | Node 22 com o Claude Code, o ffmpeg, o whisper.cpp (compilado numa etapa à parte), o Kokoro (num ambiente Python próprio) e o Chromium com a fonte Inter, rodando como usuário comum. |
 | `package.json` | As duas dependências dos gráficos e relatórios: `puppeteer-core` e `docx`. O resto do bot não usa pacote nenhum. |
