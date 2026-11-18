@@ -1,0 +1,10 @@
+{
+  "name": "sheep-whatsapp-bot",
+  "private": true,
+  "type": "module",
+  "description": "O bot do WhatsApp da Sheep. As dependências servem só aos gráficos e relatórios (relatorios-mcp.mjs).",
+  "dependencies": {
+    "docx": "9.15.1",
+    "puppeteer-core": "25.11.0"
+  }
+}

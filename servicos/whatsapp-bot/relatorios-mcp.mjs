@@ -1,0 +1,338 @@
+// ─────────────────────────────────────────────────────────────────────────────
+//  Servidor MCP do próprio bot: números, gráficos e relatórios das tarefas.
+//
+//  "Gráfico da tendência de tarefas do mês", "rank de quem mais concluiu, com
+//  foto", "relatório completo em PDF". Três ferramentas:
+//
+//  - dados_de_tarefas: busca as tarefas no portal e faz as contas aqui, no
+//    código (por dia, semana, pessoa, projeto, etapa ou prioridade). Contar
+//    centenas de tarefas "de cabeça" é onde o modelo erra; aqui não erra.
+//  - gerar_grafico: a imagem com a identidade da Sheep (graficos.mjs).
+//  - gerar_relatorio: o relatório em PDF ou Word, com seções, tabelas e
+//    gráficos.
+//
+//  Os arquivos vão para a pasta de mídias, e o modelo põe na resposta a linha
+//  [[arquivo:caminho]]: quem manda no WhatsApp é o bot (index.mjs). Nada aqui
+//  escreve no portal.
+//
+//  Fala MCP pela entrada e saída padrão: uma mensagem JSON-RPC por linha.
+// ─────────────────────────────────────────────────────────────────────────────
+import { writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import { createInterface } from 'node:readline';
+
+const PORTAL_MCP_URL = process.env.PORTAL_MCP_URL ?? '';
+const PORTAL_MCP_TOKEN = process.env.PORTAL_MCP_TOKEN ?? '';
+const MIDIA_DIR = resolve(process.env.MIDIA_DIR ?? '/app/trabalho/midia');
+/** Teto de tarefas lidas numa conta: 25 páginas de 200. */
+const TAREFAS_MAX = 5000;
+
+export const AGRUPAMENTOS = ['dia', 'semana', 'responsavel', 'projeto', 'status', 'prioridade'];
+
+const FERRAMENTAS = [
+  {
+    name: 'dados_de_tarefas',
+    title: 'Números das tarefas',
+    description: 'Conta as tarefas do portal num período, agrupadas por dia, semana, responsável, projeto, etapa ou '
+      + 'prioridade. Traz criadas e concluídas no período, abertas e atrasadas agora, e as pessoas com a foto. As '
+      + 'contas são exatas: use estes números nos gráficos e relatórios, em vez de contar com listar_tarefas.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        de: { type: 'string', description: 'Começo do período (AAAA-MM-DD), no horário de Brasília.' },
+        ate: { type: 'string', description: 'Fim do período (AAAA-MM-DD), incluído. Padrão: hoje.' },
+        agrupar: { type: 'string', enum: AGRUPAMENTOS, description: 'Como agrupar. Padrão: dia.' },
+        projeto: { type: 'string', description: 'Só deste projeto (id de listar_projetos).' },
+        responsavel: { type: 'string', description: 'Só deste responsável (id ou e-mail).' },
+      },
+      required: ['de'],
+    },
+  },
+  {
+    name: 'gerar_grafico',
+    title: 'Gerar gráfico',
+    description: 'Gera a imagem de um gráfico com a identidade da Sheep (logo, limão e preto). Tipos: linha '
+      + '(tendência no tempo), barras (comparar categorias), ranking (pessoas ou itens em ordem, com foto) e rosca '
+      + '(partes de um todo). Devolve o caminho do PNG: para mandar, ponha na resposta a linha [[arquivo:caminho]].',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tipo: { type: 'string', enum: ['linha', 'barras', 'ranking', 'rosca'] },
+        projeto: { type: 'string', description: 'Quando o material é de um cliente: o id do projeto (de listar_projetos). A logo do cliente entra ao lado da Sheep.' },
+        titulo: { type: 'string', description: 'O título grande, curto.' },
+        subtitulo: { type: 'string', description: 'Uma linha explicando o recorte (período, filtro).' },
+        rotulo: { type: 'string', description: 'A palavrinha em limão acima do título. Padrão: Portal Sheep.' },
+        rotulos: { type: 'array', items: { type: 'string' }, description: 'linha e barras: os rótulos do eixo X (dias, projetos).' },
+        series: {
+          type: 'array',
+          description: 'linha e barras: cada série com nome e um valor por rótulo.',
+          items: { type: 'object', properties: { nome: { type: 'string' }, valores: { type: 'array', items: { type: 'number' } } }, required: ['nome', 'valores'] },
+        },
+        itens: {
+          type: 'array',
+          description: 'ranking e rosca: nome, valor; no ranking também detalhe (linha menor) e foto (URL de dados_de_tarefas).',
+          items: { type: 'object', properties: { nome: { type: 'string' }, valor: { type: 'number' }, detalhe: { type: 'string' }, foto: { type: 'string' } }, required: ['nome', 'valor'] },
+        },
+        destaques: {
+          type: 'array',
+          description: 'Até 4 números em destaque acima do gráfico, como "150 / criadas no mês".',
+          items: { type: 'object', properties: { valor: { type: 'string' }, rotulo: { type: 'string' } }, required: ['valor', 'rotulo'] },
+        },
+      },
+      required: ['tipo', 'titulo'],
+    },
+  },
+  {
+    name: 'gerar_relatorio',
+    title: 'Gerar relatório',
+    description: 'Gera um relatório completo em PDF ou Word (.docx) com a identidade da Sheep: capa, números em '
+      + 'destaque e seções com texto, tabela e gráfico. Devolve o caminho: para mandar, ponha na resposta a linha '
+      + '[[arquivo:caminho]].',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        formato: { type: 'string', enum: ['pdf', 'docx'] },
+        projeto: { type: 'string', description: 'Quando o material é de um cliente: o id do projeto (de listar_projetos). A logo do cliente entra ao lado da Sheep.' },
+        titulo: { type: 'string' },
+        subtitulo: { type: 'string', description: 'O recorte: período, projeto, pessoa.' },
+        rotulo: { type: 'string', description: 'A palavrinha acima do título. Padrão: Relatório.' },
+        destaques: {
+          type: 'array',
+          items: { type: 'object', properties: { valor: { type: 'string' }, rotulo: { type: 'string' } }, required: ['valor', 'rotulo'] },
+        },
+        secoes: {
+          type: 'array',
+          description: 'As seções, em ordem. texto aceita **negrito**, *itálico* e linhas "- " para lista; tabela tem '
+            + 'colunas e linhas (listas de textos); grafico tem o mesmo formato de gerar_grafico.',
+          items: {
+            type: 'object',
+            properties: {
+              titulo: { type: 'string' },
+              texto: { type: 'string' },
+              tabela: { type: 'object', properties: { colunas: { type: 'array', items: { type: 'string' } }, linhas: { type: 'array', items: { type: 'array', items: { type: 'string' } } } } },
+              grafico: { type: 'object' },
+            },
+            required: ['titulo'],
+          },
+        },
+      },
+      required: ['formato', 'titulo', 'secoes'],
+    },
+  },
+];
+
+// ── Os números ──────────────────────────────────────────────────────────────
+
+/** Brasília não tem horário de verão: o dia local é o instante menos 3 horas. */
+const diaLocal = (iso) => (iso ? new Date(Date.parse(iso) - 3 * 3600_000).toISOString().slice(0, 10) : null);
+const hojeLocal = () => diaLocal(new Date().toISOString());
+const dataValida = (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d ?? '')) && !Number.isNaN(Date.parse(d));
+const ddmm = (d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+
+function diasEntre(de, ate) {
+  const dias = [];
+  for (let t = Date.parse(`${de}T00:00:00Z`); t <= Date.parse(`${ate}T00:00:00Z`); t += 86400_000) dias.push(new Date(t).toISOString().slice(0, 10));
+  return dias;
+}
+
+/** A segunda-feira da semana do dia. */
+function segundaDe(d) {
+  const t = new Date(`${d}T00:00:00Z`);
+  t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7));
+  return t.toISOString().slice(0, 10);
+}
+
+/** As contas, sobre a lista de tarefas como o portal devolve. Exportada para
+ *  os testes. `pessoas` traz a foto de cada um. */
+export function agregar(tarefas, { de, ate, agrupar = 'dia', pessoas = [], hoje = hojeLocal() }) {
+  const noPeriodo = (d) => !!d && d >= de && d <= ate;
+  const fechada = (t) => !!t.concluida_em;
+  const atrasada = (t) => !fechada(t) && !!t.prazo && String(t.prazo).slice(0, 10) < hoje;
+  const totais = {
+    criadas_no_periodo: tarefas.filter(t => noPeriodo(diaLocal(t.criado_em))).length,
+    concluidas_no_periodo: tarefas.filter(t => noPeriodo(diaLocal(t.concluida_em))).length,
+    abertas_agora: tarefas.filter(t => !fechada(t)).length,
+    atrasadas_agora: tarefas.filter(atrasada).length,
+  };
+  const base = { periodo: { de, ate, de_br: ddmm(de), ate_br: ddmm(ate) }, agrupado_por: agrupar, totais, tarefas_lidas: tarefas.length };
+
+  if (agrupar === 'dia' || agrupar === 'semana') {
+    const chave = agrupar === 'dia' ? (d) => d : segundaDe;
+    const ordem = [...new Set(diasEntre(de, ate).map(chave))];
+    const conta = (campo) => {
+      const m = new Map(ordem.map(k => [k, 0]));
+      for (const t of tarefas) {
+        const d = diaLocal(t[campo]);
+        if (noPeriodo(d)) m.set(chave(d), (m.get(chave(d)) ?? 0) + 1);
+      }
+      return ordem.map(k => m.get(k));
+    };
+    return {
+      ...base,
+      rotulos: ordem.map(k => (agrupar === 'dia' ? ddmm(k) : `sem. ${ddmm(k)}`)),
+      series: [{ nome: 'Criadas', valores: conta('criado_em') }, { nome: 'Concluídas', valores: conta('concluida_em') }],
+    };
+  }
+
+  // Por pessoa, projeto, etapa ou prioridade: uma linha por grupo, com as
+  // quatro contas, da que mais concluiu para a que menos.
+  const fotoDe = new Map(pessoas.map(p => [String(p.id), p.foto ?? null]));
+  const grupos = new Map();
+  const somar = (id, nome, t, extra = {}) => {
+    const g = grupos.get(id) ?? { id, nome, concluidas_no_periodo: 0, criadas_no_periodo: 0, abertas_agora: 0, atrasadas_agora: 0, ...extra };
+    if (noPeriodo(diaLocal(t.concluida_em))) g.concluidas_no_periodo += 1;
+    if (noPeriodo(diaLocal(t.criado_em))) g.criadas_no_periodo += 1;
+    if (!fechada(t)) g.abertas_agora += 1;
+    if (atrasada(t)) g.atrasadas_agora += 1;
+    grupos.set(id, g);
+  };
+  for (const t of tarefas) {
+    if (agrupar === 'responsavel') {
+      const donos = Array.isArray(t.responsaveis) && t.responsaveis.length ? t.responsaveis : [{ id: '', nome: 'Sem responsável' }];
+      for (const p of donos) somar(String(p.id ?? ''), p.nome ?? 'Sem nome', t, { email: p.email ?? null, foto: fotoDe.get(String(p.id)) ?? null });
+    } else if (agrupar === 'projeto') {
+      somar(String(t.projeto_id ?? ''), t.projeto_nome ?? 'Sem projeto', t);
+    } else {
+      const v = String(t[agrupar] ?? '') || 'Sem valor';
+      somar(v, v, t);
+    }
+  }
+  const linhas = [...grupos.values()].sort((a, b) => b.concluidas_no_periodo - a.concluidas_no_periodo || b.abertas_agora - a.abertas_agora);
+  return { ...base, grupos: linhas };
+}
+
+/** Uma chamada ao MCP do portal, que responde em JSON ou em SSE. */
+async function portal(nome, argumentos) {
+  const r = await fetch(PORTAL_MCP_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${PORTAL_MCP_TOKEN}`, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: nome, arguments: argumentos } }),
+    signal: AbortSignal.timeout(90_000),
+  });
+  const cru = await r.text();
+  if (!r.ok) throw new Error(`o portal recusou (${r.status})`);
+  const json = r.headers.get('content-type')?.includes('text/event-stream')
+    ? cru.split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trim()).filter(Boolean).pop()
+    : cru;
+  const resp = JSON.parse(json ?? '{}');
+  if (resp.error) throw new Error(resp.error.message ?? 'erro no portal');
+  const texto = (resp.result?.content ?? []).map(c => c.text).filter(Boolean).join('\n');
+  if (resp.result?.isError) throw new Error(texto || 'o portal não aceitou');
+  return JSON.parse(texto || 'null');
+}
+
+async function dadosDeTarefas(a) {
+  if (!dataValida(a.de)) throw new Error('de precisa ser uma data AAAA-MM-DD');
+  const ate = a.ate ?? hojeLocal();
+  if (!dataValida(ate)) throw new Error('ate precisa ser uma data AAAA-MM-DD');
+  if (ate < a.de) throw new Error('o fim do período vem antes do começo');
+  const agrupar = a.agrupar ?? 'dia';
+  if (!AGRUPAMENTOS.includes(agrupar)) throw new Error(`agrupar precisa ser ${AGRUPAMENTOS.join(', ')}`);
+  if ((agrupar === 'dia' && diasEntre(a.de, ate).length > 370)) throw new Error('período longo demais para agrupar por dia: use semana');
+  const tarefas = [];
+  let cursor;
+  do {
+    const pagina = await portal('listar_tarefas', {
+      incluir_concluidas: true, limite: 200, ...(cursor ? { cursor } : {}),
+      ...(a.projeto ? { projeto: a.projeto } : {}), ...(a.responsavel ? { responsavel: a.responsavel } : {}),
+    });
+    tarefas.push(...(pagina?.tarefas ?? []));
+    cursor = pagina?.proximo ?? null;
+  } while (cursor && tarefas.length < TAREFAS_MAX);
+  const pessoas = agrupar === 'responsavel' ? await portal('listar_pessoas', {}).catch(() => []) : [];
+  return { ...agregar(tarefas, { de: a.de, ate, agrupar, pessoas }), ...(cursor ? { aviso: `li só as ${tarefas.length} tarefas mais recentes` } : {}) };
+}
+
+// ── A logo do cliente ───────────────────────────────────────────────────────
+
+const TIPOS_DE_LOGO = { svg: 'image/svg+xml', webp: 'image/webp', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg' };
+
+/** O cliente do projeto, com a logo já embutida (data URI), para a peça não
+ *  buscar nada fora na hora de desenhar. Sem projeto, ou projeto sem logo, a
+ *  peça sai só com a da Sheep. */
+async function clienteDoProjeto(projetoId) {
+  if (!projetoId) return null;
+  const r = await portal('listar_projetos', {}).catch(() => null);
+  const proj = (r?.projetos ?? []).find(x => String(x.id) === String(projetoId));
+  if (!proj) throw new Error(`não achei o projeto ${projetoId} em listar_projetos`);
+  if (!proj.logo?.url) return { nome: proj.cliente ?? proj.nome, logo: null };
+  try {
+    const resp = await fetch(proj.logo.url, { signal: AbortSignal.timeout(10_000) });
+    const ext = String(proj.logo.url).toLowerCase().split('?')[0].split('.').pop();
+    const tipo = (resp.headers.get('content-type') ?? '').split(';')[0] || TIPOS_DE_LOGO[ext];
+    if (!resp.ok || !String(tipo).startsWith('image/')) return { nome: proj.cliente ?? proj.nome, logo: null };
+    const b = Buffer.from(await resp.arrayBuffer());
+    return { nome: proj.cliente ?? proj.nome, detalhe: !!proj.logo.detalhe, logo: `data:${tipo};base64,${b.toString('base64')}` };
+  } catch {
+    return { nome: proj.cliente ?? proj.nome, logo: null };
+  }
+}
+
+// ── Os arquivos ─────────────────────────────────────────────────────────────
+
+/** Nome de arquivo legível a partir do título. */
+const nomeDoArquivo = (titulo) => String(titulo ?? 'arquivo').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'arquivo';
+
+function gravar(conteudo, titulo, ext) {
+  const caminho = join(MIDIA_DIR, `${Date.now()}-${randomBytes(4).toString('hex')}-${nomeDoArquivo(titulo)}.${ext}`);
+  writeFileSync(caminho, conteudo, { mode: 0o600 });
+  return caminho;
+}
+
+async function gerarGrafico(a) {
+  const { graficoEmPng } = await import('./graficos.mjs');
+  const cliente = await clienteDoProjeto(a.projeto);
+  const caminho = gravar(await graficoEmPng({ ...a, cliente }), a.titulo, 'png');
+  return { caminho, para_mandar: `[[arquivo:${caminho}]]` };
+}
+
+async function gerarRelatorio(a) {
+  if (!['pdf', 'docx'].includes(a.formato)) throw new Error('formato precisa ser pdf ou docx');
+  if (!Array.isArray(a.secoes) || !a.secoes.length) throw new Error('o relatório precisa de ao menos uma seção');
+  const g = await import('./graficos.mjs');
+  const rel = { ...a, cliente: await clienteDoProjeto(a.projeto) };
+  const conteudo = a.formato === 'pdf' ? await g.relatorioEmPdf(rel) : await g.relatorioEmDocx(rel);
+  const caminho = gravar(conteudo, a.titulo, a.formato);
+  return { caminho, para_mandar: `[[arquivo:${caminho}]]` };
+}
+
+// ── O protocolo ─────────────────────────────────────────────────────────────
+
+const EXECUTAR = { dados_de_tarefas: dadosDeTarefas, gerar_grafico: gerarGrafico, gerar_relatorio: gerarRelatorio };
+const enviar = (msg) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...msg })}\n`);
+
+async function tratar({ id, method, params }) {
+  if (method === 'initialize') {
+    return enviar({ id, result: {
+      protocolVersion: params?.protocolVersion ?? '2025-06-18',
+      capabilities: { tools: {} },
+      serverInfo: { name: 'relatorios', version: '1.0.0' },
+    } });
+  }
+  if (id === undefined) return;
+  if (method === 'ping') return enviar({ id, result: {} });
+  if (method === 'tools/list') return enviar({ id, result: { tools: FERRAMENTAS } });
+  if (method === 'tools/call') {
+    const executar = EXECUTAR[params?.name];
+    if (!executar) return enviar({ id, error: { code: -32602, message: `ferramenta desconhecida: ${params?.name}` } });
+    try {
+      const r = await executar(params.arguments ?? {});
+      return enviar({ id, result: { content: [{ type: 'text', text: JSON.stringify(r) }] } });
+    } catch (e) {
+      return enviar({ id, result: { content: [{ type: 'text', text: `Não deu: ${e?.message ?? e}` }], isError: true } });
+    }
+  }
+  return enviar({ id, error: { code: -32601, message: `método não suportado: ${method}` } });
+}
+
+// Importado pelos testes só pela função de contas; servidor de verdade só
+// quando rodado direto.
+if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) {
+  createInterface({ input: process.stdin }).on('line', (l) => {
+    if (!l.trim()) return;
+    let pedido;
+    try { pedido = JSON.parse(l); } catch { return; }
+    void tratar(pedido);
+  });
+}

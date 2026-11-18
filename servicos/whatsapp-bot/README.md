@@ -77,6 +77,43 @@ mensagem de voz. Sem internet, sem chave e sem custo.
 - Proposta que pede confirmação vai sempre por escrito.
 - A voz se troca pela variável `KOKORO_VOZ` (`pf_dora`, `pm_alex`, `pm_santa`).
 
+## Gráficos e relatórios
+
+"Gráfico da tendência de tarefas do mês", "rank de quem mais concluiu, com
+foto", "relatório completo em PDF" (ou em Word). Quem faz é
+`relatorios-mcp.mjs`, com três ferramentas:
+
+| Ferramenta | O que faz |
+|---|---|
+| `dados_de_tarefas` | Busca as tarefas no portal (todas as páginas) e faz as contas no código: por dia, semana, responsável, projeto, etapa ou prioridade, com criadas e concluídas no período, abertas e atrasadas agora, e a foto de cada pessoa. O modelo não conta tarefa de cabeça. |
+| `gerar_grafico` | A imagem com a identidade da Sheep: linha (tendência), barras, ranking (com foto, ou as iniciais) e rosca. |
+| `gerar_relatorio` | O relatório em PDF ou Word, com capa, números em destaque, seções com texto, tabela e gráfico. |
+
+O desenho fica em `graficos.mjs`: o gráfico é SVG feito ali mesmo, a partir
+dos números, e vira PNG num Chromium sem tela, que também imprime o PDF; o
+Word sai pelo pacote `docx`. A fonte é a Inter. O navegador não busca nada
+fora: as logos e as fotos entram na página já embutidas.
+
+A imagem do WhatsApp e a capa do PDF seguem as peças da marca: o fundo é a
+própria arte da Sheep sem as logos (`marca/fundo-luzes-largo.jpg`, e a
+quadrada para peça mais alta que larga), com os feixes de luz limão, e as
+logos vão em branco. O conteúdo
+fica em cartões de vidro escuro, como os do portal, para a luz ficar atrás e
+não atrapalhar a leitura. O resto do relatório é claro, para imprimir.
+
+Quando o material é de um cliente, o modelo passa o projeto e a logo do
+cliente entra ao lado da da Sheep, com um traço fino entre as duas. A logo vem
+do `listar_projetos` do portal (a mesma lista de `src/lib/marcas.ts` que a tela
+usa) e é posta em branco: silhueta, quando é uma logo simples, ou branca
+vazada, quando tem desenho interno ou fundo chapado (o que tem cor vira branco
+e o claro vira vão, como na versão branca da LPA). No Word, que é claro, ela
+entra com as cores dela.
+
+O arquivo vai para a pasta de mídias, e o modelo põe na resposta a linha
+`[[arquivo:caminho]]`. O bot tira a linha do texto e manda o arquivo antes
+dele: imagem como foto, PDF e Word como documento. Só sai arquivo de dentro
+da pasta de mídias.
+
 ## Grupos dos clientes
 
 No privado, o bot enxerga os grupos em que o número da casa está: dá para
@@ -122,15 +159,18 @@ confirmado, sem IA no meio e sem gastar a assinatura, e avisa no privado.
 
 | Arquivo | O que é |
 |---|---|
-| `index.mjs` | O serviço: recebe o webhook da Evolution, filtra, chama o Claude Code e responde. Sem dependências. |
+| `index.mjs` | O serviço: recebe o webhook da Evolution, filtra, chama o Claude Code e responde. |
 | `documentos.mjs` | Word e Excel em texto, abrindo o zip com o próprio Node. |
 | `anexos-mcp.mjs` | Servidor MCP do bot: anexa a um comentário do portal um arquivo recebido. |
 | `whatsapp-mcp.mjs` | Servidor MCP do bot: lista os grupos, lê as mensagens, baixa arquivos, diz quem está no grupo e manda mensagem com menção (depois da confirmação). |
+| `relatorios-mcp.mjs` | Servidor MCP do bot: números das tarefas, gráficos e relatórios. |
+| `graficos.mjs` e `marca/` | O desenho dos gráficos e dos relatórios, com a logo da Sheep. |
 | `voz.mjs` e `falar.py` | Texto em mensagem de voz, com o Kokoro e o ffmpeg, na própria máquina. |
 | `transcricao.mjs` | Áudio em texto, com o ffmpeg e o whisper.cpp, na própria máquina. |
 | `mensagem-grupo.mjs` | Monta a mensagem do grupo com as menções, igual no envio na hora e no agendado. |
 | `agenda-mcp.mjs` | Servidor MCP do bot: agenda, lista e cancela ações no portal e mensagens nos grupos para um horário. |
-| `Dockerfile` | Node 22 com o Claude Code, o ffmpeg, o whisper.cpp (compilado numa etapa à parte) e o Kokoro (num ambiente Python próprio), rodando como usuário comum. |
+| `Dockerfile` | Node 22 com o Claude Code, o ffmpeg, o whisper.cpp (compilado numa etapa à parte), o Kokoro (num ambiente Python próprio) e o Chromium com a fonte Inter, rodando como usuário comum. |
+| `package.json` | As duas dependências dos gráficos e relatórios: `puppeteer-core` e `docx`. O resto do bot não usa pacote nenhum. |
 | `stack.yml` | A stack do Docker Swarm, na mesma rede da Evolution. |
 
 ## Segredos
