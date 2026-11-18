@@ -5,7 +5,7 @@ RUN npm install -g @anthropic-ai/claude-code \
   && npm cache clean --force
 
 WORKDIR /app
-COPY index.mjs ./
+COPY index.mjs documentos.mjs ./
 RUN mkdir -p /app/trabalho /dados && chown -R node:node /app /dados
 
 USER node
