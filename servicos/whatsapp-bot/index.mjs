@@ -524,9 +524,6 @@ async function ouvirAudio(chat, midia, origem) {
   }
 }
 
-/** A transcrição em uma linha, para a pessoa ver o que o bot entendeu. */
-const trecho = (t, max = 180) => (t.length > max ? `${t.slice(0, max).trimEnd()}...` : t);
-
 // ── O Claude Code ───────────────────────────────────────────────────────────
 
 const hoje = () => new Intl.DateTimeFormat('pt-BR', {
@@ -881,7 +878,6 @@ async function atender({ chat, grupo, texto: escrito, midia: anexo, origem: deOn
   // Áudio vira texto antes de tudo, inclusive da confirmação: um "sim" falado
   // confirma como um "sim" escrito.
   let notaAudio = '';
-  let ouvi = '';
   if (midia?.tipo === 'audio') {
     void digitando(chat);
     const a = await ouvirAudio(chat, midia, origem);
@@ -893,7 +889,6 @@ async function atender({ chat, grupo, texto: escrito, midia: anexo, origem: deOn
       notaAudio = `[A mensagem respondida é um áudio${duracao}. Transcrição automática, que pode ter palavra trocada: "${a.texto}"]`;
     } else {
       texto = a.texto;
-      ouvi = a.texto;
       notaAudio = `[Esta mensagem chegou como áudio${duracao} e foi transcrita automaticamente: pode ter palavra trocada. Se um nome, número ou card soar estranho, confirme com a pessoa antes de agir.]`;
     }
     midia = null;
@@ -953,9 +948,7 @@ async function atender({ chat, grupo, texto: escrito, midia: anexo, origem: deOn
     await responder(chat, `Não consegui responder agora: ${r.motivo}.`);
     return;
   }
-  // Mensagem de voz: a resposta abre com o que o bot entendeu, para a pessoa
-  // conferir (principalmente quando o áudio era a confirmação).
-  const resposta = (ouvi ? `_Ouvi: "${trecho(ouvi)}"_\n\n` : '') + paraWhatsapp(r.texto || 'Feito.');
+  const resposta = paraWhatsapp(r.texto || 'Feito.');
   estado[chat] = {
     sessao: r.sessao,
     // A proposta fica esperando o "sim" só se o bot terminou pedindo
