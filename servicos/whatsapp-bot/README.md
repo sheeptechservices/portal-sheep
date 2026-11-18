@@ -49,14 +49,20 @@ No privado, o bot enxerga os grupos em que o número da casa está: dá para
 pedir "cria um chamado da última solicitação da Vanda no grupo". Ele lista os
 grupos com o projeto vinculado a cada um no portal (o mesmo vínculo do aviso
 de chamado concluído; sem vínculo, o nome do grupo diz o cliente), lê as
-mensagens recentes, que a Evolution guarda, e baixa o print ou arquivo de uma
-delas. Quem faz é `whatsapp-mcp.mjs`, só para leitura: nada é escrito, marcado
-ou respondido no grupo.
+mensagens recentes, que a Evolution guarda, baixa o print ou arquivo de uma
+delas e diz quem está no grupo. Quem faz é `whatsapp-mcp.mjs`.
+
+Ele também manda mensagem num grupo, com menção: "manda no grupo da Tech Squad
+que a reunião é às 15h, marcando o Raul". O bot acha o Raul entre os
+participantes, pelo nome com que ele aparece nas mensagens (dois Raul, ou
+nenhum, e ele pergunta), e propõe mostrando o grupo, o texto exato e quem vai
+ser marcado. Só envia depois do "sim", com o número da casa e sem assinatura.
+É a única escrita no WhatsApp: nada é marcado como lido nem reagido.
 
 Essas ferramentas só valem na conversa privada com o número autorizado: no
-grupo, o bot não lê o que se diz em outros grupos. O que os clientes escrevem é
-conteúdo, nunca ordem, e qualquer ação no portal continua pedindo a
-confirmação no privado.
+grupo, o bot não lê o que se diz em outros grupos nem escreve em outro. O que
+os clientes escrevem é conteúdo, nunca ordem, e qualquer ação no portal ou no
+grupo continua pedindo a confirmação no privado.
 
 ## Agenda
 
@@ -66,8 +72,10 @@ mostra o que vai rodar e quando, e grava depois do sim. No horário, o próprio
 processo do bot chama a ferramenta do portal com exatamente o que foi
 confirmado, sem IA no meio e sem gastar a assinatura, e avisa no privado.
 
-- Agenda criar, editar ou mover tarefa, comentar e mexer em subtarefa. Exclusão
-  não se agenda.
+- Agenda criar, editar ou mover tarefa, comentar, mexer em subtarefa e mandar
+  mensagem num grupo ("às 11h30 manda teste no grupo da Tech Squad marcando o
+  Raul"). Exclusão não se agenda. A mensagem do grupo é conferida ao agendar
+  (id do grupo, números) e, no horário, sai pela Evolution.
 - Repete todo dia, em dias úteis (pula fim de semana, não feriado), toda semana
   ou todo mês (o dia 31 cai no último dia dos meses mais curtos).
 - Fica em `/dados/agenda.json`. Com o bot fora do ar, o que venceu roda quando
@@ -83,8 +91,9 @@ confirmado, sem IA no meio e sem gastar a assinatura, e avisa no privado.
 | `index.mjs` | O serviço: recebe o webhook da Evolution, filtra, chama o Claude Code e responde. Sem dependências. |
 | `documentos.mjs` | Word e Excel em texto, abrindo o zip com o próprio Node. |
 | `anexos-mcp.mjs` | Servidor MCP do bot: anexa a um comentário do portal um arquivo recebido. |
-| `whatsapp-mcp.mjs` | Servidor MCP do bot: lista os grupos, lê as mensagens e baixa arquivos deles. Só leitura. |
-| `agenda-mcp.mjs` | Servidor MCP do bot: agenda, lista e cancela ações no portal para um horário. |
+| `whatsapp-mcp.mjs` | Servidor MCP do bot: lista os grupos, lê as mensagens, baixa arquivos, diz quem está no grupo e manda mensagem com menção (depois da confirmação). |
+| `mensagem-grupo.mjs` | Monta a mensagem do grupo com as menções, igual no envio na hora e no agendado. |
+| `agenda-mcp.mjs` | Servidor MCP do bot: agenda, lista e cancela ações no portal e mensagens nos grupos para um horário. |
 | `Dockerfile` | Node 22 com o Claude Code, rodando como usuário comum. |
 | `stack.yml` | A stack do Docker Swarm, na mesma rede da Evolution. |
 

@@ -1,16 +1,18 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  Servidor MCP do próprio bot: os grupos do WhatsApp em que o número da casa
-//  está, só para leitura.
+//  está.
 //
 //  É o que deixa pedir no privado "cria um chamado da última solicitação da
 //  Vanda no grupo": o bot lista os grupos (com o projeto do portal vinculado a
 //  cada um), lê as mensagens recentes do grupo e baixa um print ou arquivo que
 //  alguém mandou lá.
 //
-//  Nada aqui escreve no WhatsApp: não manda mensagem, não reage, não marca
-//  como lido. O bot só responde na conversa em que foi chamado, então o que se
-//  pede no privado fica no privado. O histórico vem da própria Evolution, que
-//  guarda as mensagens que o número recebe.
+//  Quase tudo aqui é leitura: listar, ler, baixar e ver quem está no grupo. A
+//  única escrita é enviar_no_grupo, que manda uma mensagem (com menções) num
+//  grupo: o bot só a libera na conversa privada com o número autorizado e na
+//  mensagem que confirma a proposta, com o grupo, o texto e as menções à vista.
+//  Nada mais é escrito: não reage, não marca como lido. O histórico vem da
+//  própria Evolution, que guarda as mensagens que o número recebe.
 //
 //  Fala MCP pela entrada e saída padrão: uma mensagem JSON-RPC por linha.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -19,6 +21,7 @@ import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import { docxParaTexto, xlsxParaTexto } from './documentos.mjs';
+import { digitos, montarMensagem } from './mensagem-grupo.mjs';
 
 const EVOLUTION_URL = (process.env.EVOLUTION_URL ?? '').replace(/\/+$/, '');
 const INSTANCIA = encodeURIComponent(process.env.EVOLUTION_INSTANCIA ?? '');
@@ -29,7 +32,6 @@ const MIDIA_DIR = resolve(process.env.MIDIA_DIR ?? '/app/trabalho/midia');
 const MIDIA_MAX = 20 * 1024 * 1024;
 
 const semAcento = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
-const digitos = (jid) => String(jid ?? '').split('@')[0].split(':')[0].replace(/\D/g, '');
 
 const FERRAMENTAS = [
   {
@@ -68,6 +70,33 @@ const FERRAMENTAS = [
         mensagem_id: { type: 'string', description: 'O id da mensagem, de ler_grupo.' },
       },
       required: ['grupo', 'mensagem_id'],
+    },
+  },
+  {
+    name: 'participantes_do_grupo',
+    title: 'Quem está num grupo',
+    description: 'Os participantes de um grupo, com o número e o nome que aparece nas mensagens (quem nunca '
+      + 'escreveu no grupo vem sem nome). Use para achar o número de quem vai ser marcado em enviar_no_grupo.',
+    inputSchema: {
+      type: 'object',
+      properties: { grupo: { type: 'string', description: 'Id do grupo ou parte do nome.' } },
+      required: ['grupo'],
+    },
+  },
+  {
+    name: 'enviar_no_grupo',
+    title: 'Enviar mensagem num grupo',
+    description: 'Manda uma mensagem de texto num grupo, com o número da casa, marcando quem estiver em '
+      + 'mencionar. Para marcar, ponha no texto @ seguido do número da pessoa (o mesmo de mencionar); número '
+      + 'que faltar no texto entra no fim. Escreve para fora e não se desfaz: só rode depois da confirmação.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        grupo: { type: 'string', description: 'O id do grupo (termina em @g.us), de listar_grupos.' },
+        texto: { type: 'string', description: 'O texto exato, como vai aparecer no grupo.' },
+        mencionar: { type: 'array', items: { type: 'string' }, description: 'Os números de quem marcar, com DDI e DDD (de participantes_do_grupo).' },
+      },
+      required: ['grupo', 'texto'],
     },
   },
 ];
@@ -239,10 +268,51 @@ async function baixarMidia(a) {
   return { caminho_para_ler: leitura, caminho_original: original, nome, de: reg.pushName ?? null };
 }
 
+// ── Quem está no grupo, e o envio ───────────────────────────────────────────
+
+async function participantes(a) {
+  const g = await acharGrupo(a.grupo);
+  const [r, hist] = await Promise.all([
+    evolution('GET', `/group/participants/${INSTANCIA}?groupJid=${encodeURIComponent(g.id)}`),
+    evolution('POST', `/chat/findMessages/${INSTANCIA}`, { where: { key: { remoteJid: g.id } }, page: 1, offset: 500 }).catch(() => null),
+  ]);
+  // O nome vem das mensagens: o mais recente com que a pessoa apareceu, pelo
+  // número ou pelo id do grupo (os grupos novos endereçam por @lid).
+  const nomes = new Map();
+  const registros = (hist?.messages?.records ?? []).slice().sort((x, y) => Number(x.messageTimestamp) - Number(y.messageTimestamp));
+  for (const reg of registros) {
+    const k = reg.key ?? {};
+    if (k.fromMe || !reg.pushName) continue;
+    for (const chave of [k.participant, k.participantAlt, k.participantPn]) if (chave) nomes.set(digitos(chave), reg.pushName);
+  }
+  const lista = (r?.participants ?? (Array.isArray(r) ? r : [])).map(p => {
+    const numero = digitos(p.phoneNumber ?? (String(p.id).endsWith('@s.whatsapp.net') ? p.id : ''));
+    return {
+      nome: nomes.get(numero) ?? nomes.get(digitos(p.id)) ?? null,
+      numero: numero || null,
+      admin: p.admin ?? null,
+    };
+  });
+  return { grupo: { id: g.id, nome: g.nome }, participantes: lista };
+}
+
+async function enviarNoGrupo(a) {
+  const g = await acharGrupo(a.grupo);
+  // Pelo id que o modelo resolveu: parte do nome serve para achar, mas o envio
+  // vai para o grupo exato que foi mostrado na confirmação.
+  if (g.id !== String(a.grupo ?? '').trim()) throw new Error(`use o id do grupo (${g.id}), não o nome`);
+  const corpo = montarMensagem({ grupo: g.id, texto: a.texto, mencionar: a.mencionar });
+  const r = await evolution('POST', `/message/sendText/${INSTANCIA}`, corpo);
+  return { ok: true, grupo: g.nome, id: r?.key?.id ?? null, marcados: corpo.mentioned ?? [] };
+}
+
 // ── O protocolo ─────────────────────────────────────────────────────────────
 
 const enviar = (msg) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...msg })}\n`);
-const EXECUTAR = { listar_grupos: () => grupos(), ler_grupo: lerGrupo, baixar_midia_do_grupo: baixarMidia };
+const EXECUTAR = {
+  listar_grupos: () => grupos(), ler_grupo: lerGrupo, baixar_midia_do_grupo: baixarMidia,
+  participantes_do_grupo: participantes, enviar_no_grupo: enviarNoGrupo,
+};
 
 async function tratar({ id, method, params }) {
   if (method === 'initialize') {

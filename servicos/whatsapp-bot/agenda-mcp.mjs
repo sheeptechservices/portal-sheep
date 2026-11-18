@@ -1,5 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  Servidor MCP do próprio bot: agenda ações no portal para um horário.
+//  Servidor MCP do próprio bot: agenda ações no portal, e mensagens nos grupos
+//  do WhatsApp, para um horário.
 //
 //  "Amanhã às 9h move o 977 para Fazendo", "toda segunda às 8h cria a tarefa
 //  Relatório semanal". O modelo resolve tudo na hora do pedido - o card, a
@@ -19,25 +20,28 @@ const AGENDA_URL = process.env.AGENDA_URL ?? '';
 const AGENDA_TOKEN = process.env.AGENDA_TOKEN ?? '';
 
 /** O que pode ser agendado. Exclusão fica de fora de propósito: apagar no
- *  escuro, horas depois da conversa, é o tipo de coisa que não se desfaz. */
-export const AGENDAVEIS = ['criar_tarefa', 'editar_tarefa', 'comentar', 'adicionar_subtarefa', 'editar_subtarefa'];
+ *  escuro, horas depois da conversa, é o tipo de coisa que não se desfaz.
+ *  `enviar_no_grupo` não é do portal: é a mensagem num grupo do WhatsApp, que
+ *  o próprio bot manda pela Evolution no horário. */
+export const AGENDAVEIS = ['criar_tarefa', 'editar_tarefa', 'comentar', 'adicionar_subtarefa', 'editar_subtarefa', 'enviar_no_grupo'];
 export const REPETICOES = ['diario', 'dias_uteis', 'semanal', 'mensal'];
 
 const FERRAMENTAS = [
   {
     name: 'agendar',
-    title: 'Agendar ação no portal',
-    description: 'Grava uma ação do portal para rodar num horário, uma vez ou repetindo. No horário o bot executa '
-      + 'exatamente a chamada gravada, sem perguntar de novo, e avisa no privado. Resolva antes os ids e nomes '
-      + 'exatos com as ferramentas de leitura. Altera o portal mais tarde: só rode depois da confirmação.',
+    title: 'Agendar ação no portal ou mensagem num grupo',
+    description: 'Grava uma ação do portal, ou uma mensagem num grupo do WhatsApp (enviar_no_grupo), para rodar '
+      + 'num horário, uma vez ou repetindo. No horário o bot executa exatamente a chamada gravada, sem perguntar '
+      + 'de novo, e avisa no privado. Resolva antes os ids, nomes e números exatos com as ferramentas de leitura. '
+      + 'Age mais tarde sem ninguém olhar: só rode depois da confirmação.',
     inputSchema: {
       type: 'object',
       properties: {
         quando: { type: 'string', description: 'Data e hora da (primeira) execução, ISO 8601 com o fuso de Brasília, como 2026-11-18T09:00:00-03:00.' },
         repetir: { type: 'string', enum: REPETICOES, description: 'Sem ele, roda uma vez. dias_uteis pula sábado e domingo; semanal repete no mesmo dia da semana; mensal, no mesmo dia do mês.' },
-        ferramenta: { type: 'string', enum: AGENDAVEIS, description: 'A ferramenta do portal (mover de etapa é editar_tarefa com status).' },
+        ferramenta: { type: 'string', enum: AGENDAVEIS, description: 'A ferramenta do portal (mover de etapa é editar_tarefa com status) ou enviar_no_grupo.' },
         argumentos: { type: 'object', description: 'Os argumentos da ferramenta, exatamente como ela pede.' },
-        resumo: { type: 'string', description: 'Uma linha dizendo o que acontece, para a lista e para o aviso. Ex.: "Mover o #977 para Fazendo".' },
+        resumo: { type: 'string', description: 'Uma linha dizendo o que acontece, para a lista e para o aviso. Ex.: "Mover o #977 para Fazendo", "Mensagem no grupo Tech Squad marcando o Raul".' },
       },
       required: ['quando', 'ferramenta', 'argumentos', 'resumo'],
     },

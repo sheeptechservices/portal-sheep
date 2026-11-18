@@ -11,7 +11,7 @@ RUN npm install -g @anthropic-ai/claude-code \
   && npm cache clean --force
 
 WORKDIR /app
-COPY index.mjs documentos.mjs anexos-mcp.mjs whatsapp-mcp.mjs agenda-mcp.mjs ./
+COPY index.mjs documentos.mjs mensagem-grupo.mjs anexos-mcp.mjs whatsapp-mcp.mjs agenda-mcp.mjs ./
 RUN mkdir -p /app/trabalho /dados && chown -R node:node /app /dados
 
 USER node
