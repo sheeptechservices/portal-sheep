@@ -81,7 +81,8 @@ async function falarAgora(texto, pasta) {
  *  marcador de lista e sem link, que lido em voz alta vira ruído. */
 export function paraFala(texto) {
   return String(texto ?? '')
-    .replace(/https?:\/\/\S+/g, 'o link')
+    // A pontuação logo depois do link fica: ela é da frase, não do endereço.
+    .replace(/https?:\/\/\S+?(?=[.,;:!?)\]]*(?:\s|$))/g, 'o link')
     .replace(/^\s*[-•]\s+/gm, '')
     .replace(/[*_~`#]/g, '')
     .replace(/[ \t]+/g, ' ')
