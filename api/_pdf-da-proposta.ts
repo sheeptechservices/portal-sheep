@@ -8,7 +8,11 @@
 //  um slide por página, em 1280x720, sem os controles de navegação. O texto
 //  sai selecionável e os links, clicáveis.
 //
-//  Na Vercel o Chrome é o `@sparticuz/chromium`, feito para função serverless.
+//  Na Vercel o Chrome é o `@sparticuz/chromium-min`, feito para função
+//  serverless. O "min" não traz o navegador dentro do pacote: ele é baixado na
+//  primeira geração de cada instância e fica em /tmp para as seguintes. Com o
+//  navegador embutido, cada deploy guardava 77 MB só nesta função, e a soma dos
+//  deploys estourou o armazenamento de funções do plano.
 //  Em desenvolvimento, que roda no Windows, é o Chrome (ou o Edge) da máquina:
 //  o binário do pacote é de Linux.
 //
@@ -44,14 +48,19 @@ function chromeLocal(): string | null {
   return candidatos.find(c => !!c && existsSync(c)) ?? null;
 }
 
+/** O navegador do servidor, na mesma versão do pacote. `CHROMIUM_PACK_URL`
+ *  troca a origem, se um dia ele passar a morar em outro lugar. */
+const PACOTE_DO_CHROMIUM = process.env.CHROMIUM_PACK_URL
+  || 'https://github.com/Sparticuz/chromium/releases/download/v153.0.0/chromium-v153.0.0-pack.x64.tar';
+
 async function abrirNavegador(): Promise<Browser> {
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
-    const chromium = (await import('@sparticuz/chromium')).default;
+    const chromium = (await import('@sparticuz/chromium-min')).default;
     // Sem WebGL: slide não usa, e desligar poupa a extração da parte gráfica.
     chromium.setGraphicsMode = false;
     return puppeteer.launch({
       args: await puppeteer.defaultArgs({ args: chromium.args, headless: 'shell' }),
-      executablePath: await chromium.executablePath(),
+      executablePath: await chromium.executablePath(PACOTE_DO_CHROMIUM),
       headless: 'shell',
     });
   }

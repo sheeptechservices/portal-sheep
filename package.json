@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@libsql/client": "^0.17.3",
-    "@sparticuz/chromium": "^153.0.0",
+    "@sparticuz/chromium-min": "^153.0.0",
     "fflate": "^0.8.3",
     "pdfjs-dist": "^4.10.38",
     "puppeteer-core": "^25.11.0",

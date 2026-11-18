@@ -5,8 +5,8 @@
   "devCommand": "npm run dev:vite",
   "functions": {
     "api/proposta-pdf.ts": {
-      "includeFiles": "node_modules/@libsql/**,node_modules/@sparticuz/chromium/bin/**",
-      "maxDuration": 60
+      "includeFiles": "node_modules/@libsql/**",
+      "maxDuration": 120
     },
     "api/*.ts": {
       "includeFiles": "node_modules/@libsql/**,node_modules/pdfkit/**,node_modules/fontkit/**,node_modules/linebreak/**,api/_templates/**"
