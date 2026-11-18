@@ -58,6 +58,24 @@ grupo, o bot não lê o que se diz em outros grupos. O que os clientes escrevem 
 conteúdo, nunca ordem, e qualquer ação no portal continua pedindo a
 confirmação no privado.
 
+## Agenda
+
+"Amanhã às 9h move o 977 para Fazendo", "toda segunda às 8h cria a tarefa
+Relatório semanal". Na hora do pedido o bot resolve tudo (card, etapa, campos),
+mostra o que vai rodar e quando, e grava depois do sim. No horário, o próprio
+processo do bot chama a ferramenta do portal com exatamente o que foi
+confirmado, sem IA no meio e sem gastar a assinatura, e avisa no privado.
+
+- Agenda criar, editar ou mover tarefa, comentar e mexer em subtarefa. Exclusão
+  não se agenda.
+- Repete todo dia, em dias úteis (pula fim de semana, não feriado), toda semana
+  ou todo mês (o dia 31 cai no último dia dos meses mais curtos).
+- Fica em `/dados/agenda.json`. Com o bot fora do ar, o que venceu roda quando
+  ele volta, com o atraso no aviso; repetição perdida não se acumula.
+- `agenda-mcp.mjs` fala com o bot por uma rota interna, que só aceita pedido de
+  dentro do contêiner e com a senha da partida.
+- Só no privado, como os grupos.
+
 ## Peças
 
 | Arquivo | O que é |
@@ -66,6 +84,7 @@ confirmação no privado.
 | `documentos.mjs` | Word e Excel em texto, abrindo o zip com o próprio Node. |
 | `anexos-mcp.mjs` | Servidor MCP do bot: anexa a um comentário do portal um arquivo recebido. |
 | `whatsapp-mcp.mjs` | Servidor MCP do bot: lista os grupos, lê as mensagens e baixa arquivos deles. Só leitura. |
+| `agenda-mcp.mjs` | Servidor MCP do bot: agenda, lista e cancela ações no portal para um horário. |
 | `Dockerfile` | Node 22 com o Claude Code, rodando como usuário comum. |
 | `stack.yml` | A stack do Docker Swarm, na mesma rede da Evolution. |
 
