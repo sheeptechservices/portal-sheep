@@ -26691,3 +26691,144 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   /* A mesma regra trocava a borda de baixo por outra cor. */
   border-bottom: 1px solid var(--sup-campo-borda);
 }
+
+/* ══ Celular ═══════════════════════════════════════════════════════════════
+   O desenho do computador mora no painel de altura fixa: a página não rola,
+   quem rola é o corpo do painel. No celular isso deixava a lista numa janela
+   de dois dedos de altura embaixo da faixa da página. Aqui, abaixo de 768px,
+   a página inteira volta a rolar: a faixa sai de cena subindo e a lista ganha
+   a tela. O bloco fica no fim do arquivo de propósito, para vencer as regras
+   do painel, que são mais novas que as do celular lá de cima. */
+@media (max-width: 768px) {
+  /* A página rola inteira; o painel cresce com o conteúdo. Vale para
+     qualquer filho direto do conteúdo (aba-painel, tarefas-area...), que no
+     computador divide a altura da tela e aqui só ocupa a que precisa. */
+  .casca-janela .admin-content-wrap > *,
+  .casca-janela .admin-content-wrap .aba-painel,
+  .casca-janela .admin-content-wrap .painel-principal,
+  .casca-janela .admin-content-wrap .painel-principal-corpo {
+    /* Com força: as abas (`Abas.tsx`) recebem o flex da página por estilo
+       em linha, que venceria a regra. */
+    flex: none !important;
+    min-height: auto !important;
+    /* `flex: none` também vale para a largura quando o pai é uma linha (a
+       área de tarefas é): sem o teto, o painel crescia até a largura do
+       quadro inteiro e saía da tela. */
+    min-width: 0;
+    max-width: 100%;
+  }
+  .casca-janela .admin-content-wrap .painel-principal-corpo { overflow: visible; }
+  .casca-janela .admin-content-wrap .painel-principal .admin-table-wrap { overflow-x: auto; }
+
+  /* Respiro no fim: a barra de baixo e os botões flutuantes acima dela. Sem
+     ele o último item da lista fica para sempre embaixo deles. */
+  .casca-janela .admin-content-wrap { padding-bottom: calc(160px + env(safe-area-inset-bottom, 0px)); }
+
+  /* A faixa da página vira só o título: os números dela (hoje, equipe, em
+     aberto) são contexto do computador e no celular empurravam a lista para
+     baixo da dobra. Ficam o título, as abas da página (Geral, Planning) e a
+     ação principal, que vai para o lado do título em vez de ocupar uma
+     linha inteira. */
+  .faixa-pagina {
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 12px;
+    min-height: 0;
+    padding: 2px 2px 0;
+    background: none;
+    border: none;
+  }
+  .faixa-pagina > .faixa-item:not(.faixa-titulo) { display: none; }
+  .faixa-pagina > .faixa-titulo { flex: 1 1 0; min-width: 0; }
+  .faixa-pagina > .faixa-titulo > .faixa-rotulo { display: none; }
+  .faixa-pagina > .faixa-titulo > .faixa-valor {
+    font-size: 22px;
+    white-space: normal;
+  }
+  /* A ação sobe para o lado do título e as abas da página descem para a
+     linha de baixo (no código elas vêm antes da ação). */
+  .faixa-pagina > .faixa-acoes { flex: 0 0 auto; margin-left: auto; order: 1; }
+  .faixa-pagina > .faixa-acoes .btn { flex: none; height: 40px; }
+  .faixa-pagina > .faixa-apos { flex: 1 1 100%; order: 2; }
+
+  /* Cabeçalho do painel: as abas e o botão de criar dividem a mesma linha
+     (antes o botão ficava sozinho numa linha só dele). As ferramentas vêm
+     embaixo, crescendo para ocupar a largura: "Minhas tarefas" e "Recentes"
+     numa linha, "Todos os filtros" com os ícones na outra. */
+  .painel-principal-cabeca > .abas-pilula { flex: 0 1 auto; min-width: 0; }
+  .painel-principal-cabeca > .abas-pilula + :is(button, .btn) { margin-left: auto; }
+  .painel-principal-ferramentas { gap: 6px; }
+  .painel-principal-ferramentas > .botao-fantasma {
+    flex: 1 1 auto;
+    justify-content: center;
+    height: 40px;
+  }
+  /* Esticados, sem moldura eles liam como texto solto: ganham a mesma chapa
+     do campo de busca logo acima. O ligado continua com o realce dele. */
+  .painel-principal-ferramentas > .botao-fantasma:not(.ativo),
+  .painel-principal-ferramentas > .admin-toolbar-btn {
+    background: var(--sup-campo);
+    box-shadow: inset 0 0 0 1px var(--sup-campo-borda);
+  }
+  .painel-principal-ferramentas > .admin-toolbar-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-campo);
+  }
+
+  /* O quadro: uma coluna quase da largura da tela, com encaixe ao passar o
+     dedo, e cada coluna tão alta quanto os cards dela (quem rola é a página). */
+  .painel-principal .kanban-board {
+    padding: 10px;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 10px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .painel-principal .kanban-column:not(.kanban-column-collapsible),
+  .painel-principal .kanban-column.kanban-column-collapsible.is-open {
+    flex: 0 0 min(84vw, 340px);
+    min-width: 0;
+    scroll-snap-align: start;
+  }
+  .painel-principal .kanban-column { max-height: none; }
+  .painel-principal .kanban-column-body { overflow: visible; max-height: none; }
+
+  .painel-filtros { padding: 10px 12px; }
+
+  /* Menu solto do celular: ele nasce logo abaixo do topo, que já mostra a
+     logo. A marca dentro dele repetia a mesma logo dois dedos abaixo; sai, e
+     o menu começa direto pela busca. */
+  .app-menu.solto .menu-marca { display: none; }
+  .app-menu.solto > div { padding-top: 16px; }
+
+  /* Menu aberto: os botões flutuantes saem da frente. Eles moram acima do
+     menu (450 contra 300) e cobriam os últimos itens da lista dele. */
+  body:has(.app-menu.aberto) .reportar-flutuante {
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity var(--transition), visibility var(--transition);
+  }
+
+  /* Gaveta: os botões do cabeçalho sobem para uma linha própria e o título
+     ganha a largura inteira. Lado a lado, cinco botões deixavam o nome da
+     tarefa em duas palavras e reticências. */
+  .painel-gaveta > .admin-modal-header { flex-wrap: wrap; justify-content: flex-end; row-gap: 4px; }
+  .painel-gaveta > .admin-modal-header > div:first-child { flex: 1 1 100% !important; order: 2; }
+}
+
+/* Tela de toque: o que só aparece com o ponteiro em cima (botões da coluna,
+   ações da linha) fica à vista, porque no dedo não existe "passar por cima".
+   E o atalho de teclado da busca some: no celular não há Ctrl K. */
+@media (hover: none) {
+  .menu-busca-atalho, .qs-trigger-kbd { display: none; }
+  .painel-principal .kanban-column-linha .kanban-column-fixar,
+  .painel-principal .kanban-column-linha > .tarefa-marcar-grupo { opacity: 1; display: inline-flex; }
+}
+
+/* Campo com letra menor que 16px faz o iPhone dar zoom ao focar, e a tela
+   fica torta até a pessoa desfazer na pinça. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  [contenteditable="true"] { font-size: 16px; }
+}
