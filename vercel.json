@@ -3,6 +3,7 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "devCommand": "npm run dev:vite",
+  "ignoreCommand": "git diff --quiet ${VERCEL_GIT_PREVIOUS_SHA:-HEAD^} HEAD -- . ':(exclude)servicos/' ':(exclude)*.md'",
   "functions": {
     "api/proposta-pdf.ts": {
       "includeFiles": "node_modules/@libsql/**",
