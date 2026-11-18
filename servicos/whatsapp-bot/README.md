@@ -35,12 +35,21 @@ um aviso curto, sem chamar a IA. Arquivo protegido por senha também. Texto
 dentro de arquivo é tratado como conteúdo, nunca como ordem: ação no portal
 tirada de um arquivo continua pedindo confirmação.
 
+O arquivo também pode virar anexo de um comentário no card ("anexa isso no
+card 977"). O `comentar` do portal pede o arquivo em base64, que o modelo não
+tem como produzir; quem faz é `anexos-mcp.mjs`, um servidor MCP do próprio bot:
+recebe o card, o texto e o caminho do arquivo original, lê, converte e chama o
+`comentar` do portal. Só lê dentro da pasta de mídias, vai até 3 MB por arquivo
+(o limite do corpo de uma função da Vercel) e, como escreve no portal, só roda
+depois da confirmação.
+
 ## Peças
 
 | Arquivo | O que é |
 |---|---|
 | `index.mjs` | O serviço: recebe o webhook da Evolution, filtra, chama o Claude Code e responde. Sem dependências. |
 | `documentos.mjs` | Word e Excel em texto, abrindo o zip com o próprio Node. |
+| `anexos-mcp.mjs` | Servidor MCP do bot: anexa a um comentário do portal um arquivo recebido. |
 | `Dockerfile` | Node 22 com o Claude Code, rodando como usuário comum. |
 | `stack.yml` | A stack do Docker Swarm, na mesma rede da Evolution. |
 
