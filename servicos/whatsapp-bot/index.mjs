@@ -82,7 +82,7 @@ const log = (...a) => console.log(new Date().toISOString(), ...a);
 
 /** Só leitura: sempre liberadas. */
 const LEITURA = ['listar_projetos', 'listar_tarefas', 'ver_tarefa', 'listar_pessoas',
-  'listar_status', 'listar_etiquetas', 'baixar_anexo'];
+  'listar_status', 'listar_etiquetas', 'baixar_anexo', 'listar_reunioes', 'transcricao_da_reuniao'];
 /** Alteram o portal: só na mensagem que confirma uma proposta. */
 const ESCRITA = ['criar_tarefa', 'editar_tarefa', 'excluir_tarefa', 'comentar', 'excluir_comentario',
   'adicionar_subtarefa', 'editar_subtarefa', 'excluir_subtarefa', 'joinha_comentario', 'abrir_chamado'];
@@ -102,7 +102,7 @@ const GRUPOS_NO_PRIVADO = ['listar_grupos', 'ler_grupo', 'baixar_midia_do_grupo'
 const ENVIO_NO_GRUPO = ['mcp__whatsapp__enviar_no_grupo', 'mcp__whatsapp__enviar_para_pessoa'];
 /** Números, gráficos e relatórios (`relatorios-mcp.mjs`): leem o portal e
  *  gravam arquivo na pasta de mídias, sem escrever nada. Liberados sempre. */
-const RELATORIOS = ['dados_de_tarefas', 'gerar_grafico', 'gerar_relatorio'].map(n => `mcp__relatorios__${n}`);
+const RELATORIOS = ['dados_de_tarefas', 'gerar_grafico', 'gerar_relatorio', 'gerar_transcricao'].map(n => `mcp__relatorios__${n}`);
 /** A agenda (`agenda-mcp.mjs`), só no privado: listar é leitura; agendar e
  *  cancelar mudam o que vai acontecer no portal, e vão com a escrita. */
 const AGENDA_LEITURA = ['mcp__agenda__listar_agendamentos'];
@@ -673,6 +673,7 @@ function instrucoes(quem) {
     'Para criar card a partir de um print ou documento, proponha título e descrição tirados do conteúdo, e peça confirmação.',
     'Anexar arquivo recebido num card: você consegue, com a ferramenta comentar_com_anexo (servidor MCP "anexos"). Ela recebe a tarefa, o texto do comentário e o caminho do arquivo original indicado na mensagem, e cuida da conversão sozinha: nunca diga que não consegue converter para base64, e não use o comentar do portal para anexos. Vale para arquivos de até 3 MB, guardados por dois dias. Também é ação de escrita: proponha e peça confirmação. Dá para criar o card e, depois da mesma confirmação, comentar com o anexo nele.',
     '',
+    'Reuniões: listar_reunioes traz as reuniões dos projetos e das oportunidades, com o resumo de cada uma (as notas), quem participou e se há transcrição do Fireflies; transcricao_da_reuniao traz a conversa inteira, fala por fala, numerada. Para perguntas sobre o que foi dito ou decidido, comece pelo resumo e vá à transcrição quando precisar do detalhe. Transcrição em arquivo: gerar_transcricao faz o PDF ou o Word com a identidade da Sheep e já busca o texto sozinho; você não copia a transcrição. Para ajustar antes de mandar, leia as falas e use remover (os números n), trocar (nomes ou trechos), titulo e resumo; para cada ajuste pedido depois, gere de novo com tudo o que já foi combinado. Transcrição tem tudo o que se falou: antes de mandar para um grupo ou para o privado de alguém, mande primeiro o arquivo aqui no privado do dono, para ele conferir, e só depois proponha o envio com Confirma? (sim/não). Reunião sem transcrição (que não veio do Fireflies) só tem o resumo: diga isso.',
     'Links das tarefas: cada tarefa do portal vem com o link dela (campo link em listar_tarefas, ver_tarefa e criar_tarefa). Mande o link quando pedirem, quando uma preferência pedir, ou quando acabou de criar a tarefa a pedido de alguém. Numa lista, o link vai na linha de cada tarefa, como texto puro, sem asterisco nem parênteses em volta, para o WhatsApp torná-lo clicável. Sem pedido nem preferência, não encha a resposta de links. Quem já abriu uma tarefa no portal vem em ver_tarefa (vistos: quem, quantas vezes, a primeira e a última).',
     'Escreva para WhatsApp: respostas curtas e diretas, em português do Brasil.',
     'Formatação do WhatsApp: *negrito* com um asterisco, _itálico_, listas com "- ". Não use títulos com #, tabelas nem blocos de código.',

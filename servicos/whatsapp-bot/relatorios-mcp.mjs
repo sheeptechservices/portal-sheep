@@ -120,6 +120,31 @@ const FERRAMENTAS = [
       required: ['formato', 'titulo', 'secoes'],
     },
   },
+  {
+    name: 'gerar_transcricao',
+    title: 'Gerar transcrição',
+    description: 'Gera a transcrição de uma reunião em PDF ou Word (.docx), com a identidade da Sheep, buscando o texto '
+      + 'no portal. Dá para ajustar sem reescrever: remover (os números n das falas, de transcricao_da_reuniao), '
+      + 'trocar (textos ou nomes, de e para), titulo, resumo no topo e a minutagem. Devolve o caminho: para '
+      + 'mandar, ponha na resposta a linha [[arquivo:caminho]].',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        reuniao: { type: 'integer', description: 'Id da reunião (de listar_reunioes).' },
+        formato: { type: 'string', enum: ['pdf', 'docx'] },
+        titulo: { type: 'string', description: 'Padrão: o assunto da reunião.' },
+        resumo: { type: 'string', description: 'Texto que entra antes da transcrição, numa seção Resumo. Aceita **negrito** e linhas "- ".' },
+        remover: { type: 'array', items: { type: 'integer' }, description: 'Os números (n) das falas que saem do documento.' },
+        trocar: {
+          type: 'array',
+          description: 'Trocas de texto em todas as falas e nos nomes de quem falou, na ordem dada.',
+          items: { type: 'object', properties: { de: { type: 'string' }, para: { type: 'string' } }, required: ['de', 'para'] },
+        },
+        minutagem: { type: 'boolean', description: 'O minuto antes de cada fala. Padrão: sim.' },
+      },
+      required: ['reuniao', 'formato'],
+    },
+  },
 ];
 
 // ── Os números ──────────────────────────────────────────────────────────────
@@ -297,9 +322,67 @@ async function gerarRelatorio(a) {
   return { caminho, para_mandar: `[[arquivo:${caminho}]]` };
 }
 
+/** "18/11/2026 às 14:30", no relógio de Brasília, de uma data que pode vir
+ *  com hora ou só com o dia. */
+function quandoFoi(v) {
+  if (!v) return null;
+  const so = /^\d{4}-\d{2}-\d{2}$/.test(String(v));
+  const d = new Date(so ? `${v}T12:00:00-03:00` : v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  const f = (o) => new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', ...o }).format(d);
+  return so ? f({ day: '2-digit', month: '2-digit', year: 'numeric' })
+    : `${f({ day: '2-digit', month: '2-digit', year: 'numeric' })} às ${f({ hour: '2-digit', minute: '2-digit' })}`;
+}
+
+/** A transcrição, com o que foi pedido na conversa: sem as falas removidas,
+ *  com as trocas feitas e as falas seguidas da mesma pessoa juntas num bloco. */
+export function montarTranscricao(falas, { remover = [], trocar = [], minutagem = true } = {}) {
+  const fora = new Set(remover.map(Number));
+  const troca = (s) => trocar.reduce((t, x) => (x?.de ? t.split(String(x.de)).join(String(x.para ?? '')) : t), String(s ?? ''));
+  const blocosDeFala = [];
+  for (const f of falas) {
+    if (fora.has(Number(f.n))) continue;
+    // Asterisco solto viraria negrito no documento: some do que foi dito.
+    const texto = troca(f.texto).replace(/\*/g, '').trim();
+    if (!texto) continue;
+    const quem = troca(f.quem).replace(/\*/g, '').trim() || 'Alguém';
+    const ultimo = blocosDeFala[blocosDeFala.length - 1];
+    if (ultimo && ultimo.quem === quem) ultimo.textos.push(texto);
+    else blocosDeFala.push({ quem, inicio: f.inicio, textos: [texto] });
+  }
+  const paragrafos = blocosDeFala.map(b => `**${minutagem && b.inicio ? `[${b.inicio}] ` : ''}${b.quem}:** ${b.textos.join(' ')}`);
+  return { texto: paragrafos.join('\n\n'), blocos: blocosDeFala.length, falas: blocosDeFala.reduce((n, b) => n + b.textos.length, 0) };
+}
+
+async function gerarTranscricao(a) {
+  if (!['pdf', 'docx'].includes(a.formato)) throw new Error('formato precisa ser pdf ou docx');
+  if (!Number.isInteger(Number(a.reuniao))) throw new Error('reuniao precisa ser o id da reunião, de listar_reunioes');
+  const t = await portal('transcricao_da_reuniao', { reuniao: Number(a.reuniao), limite: 5000 });
+  const montada = montarTranscricao(t?.falas ?? [], {
+    remover: Array.isArray(a.remover) ? a.remover : [], trocar: Array.isArray(a.trocar) ? a.trocar : [], minutagem: a.minutagem !== false,
+  });
+  if (!montada.falas) throw new Error('não sobrou fala nenhuma depois dos cortes');
+  const trocaNoTitulo = (s) => (Array.isArray(a.trocar) ? a.trocar : []).reduce((x, y) => (y?.de ? x.split(String(y.de)).join(String(y.para ?? '')) : x), String(s ?? ''));
+  const titulo = a.titulo || t?.reuniao?.assunto || t?.titulo || 'Reunião';
+  const participantes = (Array.isArray(t?.participantes) ? t.participantes : []).map(trocaNoTitulo).filter(Boolean);
+  const subtitulo = [quandoFoi(t?.data ?? t?.reuniao?.data), t?.duracao_minutos ? `${Math.round(t.duracao_minutos)} min` : null,
+    participantes.length ? `Participantes: ${participantes.join(', ')}` : null].filter(Boolean).join(' | ');
+  const secoes = [];
+  if (a.resumo) secoes.push({ titulo: 'Resumo', texto: String(a.resumo) });
+  secoes.push({ titulo: 'Transcrição', texto: montada.texto });
+  const g = await import('./graficos.mjs');
+  const rel = { rotulo: 'Transcrição', titulo, subtitulo, secoes, cliente: await clienteDoProjeto(t?.reuniao?.projeto?.id).catch(() => null) };
+  const conteudo = a.formato === 'pdf' ? await g.relatorioEmPdf(rel) : await g.relatorioEmDocx(rel);
+  const caminho = gravar(conteudo, `Transcrição - ${titulo}`, a.formato);
+  return {
+    caminho, para_mandar: `[[arquivo:${caminho}]]`,
+    falas_no_documento: montada.falas, falas_removidas: (t?.falas ?? []).length - montada.falas, total_de_falas: t?.total_de_falas ?? null,
+  };
+}
+
 // ── O protocolo ─────────────────────────────────────────────────────────────
 
-const EXECUTAR = { dados_de_tarefas: dadosDeTarefas, gerar_grafico: gerarGrafico, gerar_relatorio: gerarRelatorio };
+const EXECUTAR = { dados_de_tarefas: dadosDeTarefas, gerar_grafico: gerarGrafico, gerar_relatorio: gerarRelatorio, gerar_transcricao: gerarTranscricao };
 const enviar = (msg) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...msg })}\n`);
 
 async function tratar({ id, method, params }) {

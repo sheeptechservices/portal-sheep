@@ -186,6 +186,18 @@ confirmado, sem IA no meio e sem gastar a assinatura, e avisa no privado.
   contados, e toda mensagem leva o relógio do momento em que chegou. Antes, em
   UTC, perto da meia-noite "amanhã" virava depois de amanhã.
 
+## Reuniões e transcrições
+
+O MCP do portal lista as reuniões dos projetos e das oportunidades
+(`listar_reunioes`, com o resumo) e traz a transcrição inteira do Fireflies
+(`transcricao_da_reuniao`, fala por fala, numerada), cortando pelo que a
+pessoa conectada vê. `gerar_transcricao` (servidor de relatórios) faz o PDF ou
+o Word com a identidade da Sheep, buscando o texto sozinho: o modelo não
+reescreve a transcrição, só diz o que muda (falas a remover, trocas de nome ou
+de trecho, título, resumo no topo, minutagem). Antes de mandar para um grupo ou
+para alguém, o bot manda o arquivo no privado do dono para conferir, e o envio
+pede a confirmação de sempre.
+
 ## Links das tarefas
 
 O MCP do portal devolve o link de cada tarefa (`/tarefas/<id>`) em
