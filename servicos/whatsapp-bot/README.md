@@ -186,6 +186,14 @@ confirmado, sem IA no meio e sem gastar a assinatura, e avisa no privado.
   contados, e toda mensagem leva o relógio do momento em que chegou. Antes, em
   UTC, perto da meia-noite "amanhã" virava depois de amanhã.
 
+## Links das tarefas
+
+O MCP do portal devolve o link de cada tarefa (`/tarefas/<id>`) em
+`listar_tarefas`, `ver_tarefa` e `criar_tarefa`. O bot manda o link quando
+pedem, quando uma preferência pede ("sempre manda o link junto da lista") ou
+quando acabou de criar a tarefa, como texto puro para o WhatsApp torná-lo
+clicável. `ver_tarefa` também diz quem já abriu a tarefa no portal.
+
 ## Preferências de estilo
 
 O dono ensina o jeito de o bot escrever pelo próprio WhatsApp: "a partir de

@@ -673,6 +673,7 @@ function instrucoes(quem) {
     'Para criar card a partir de um print ou documento, proponha título e descrição tirados do conteúdo, e peça confirmação.',
     'Anexar arquivo recebido num card: você consegue, com a ferramenta comentar_com_anexo (servidor MCP "anexos"). Ela recebe a tarefa, o texto do comentário e o caminho do arquivo original indicado na mensagem, e cuida da conversão sozinha: nunca diga que não consegue converter para base64, e não use o comentar do portal para anexos. Vale para arquivos de até 3 MB, guardados por dois dias. Também é ação de escrita: proponha e peça confirmação. Dá para criar o card e, depois da mesma confirmação, comentar com o anexo nele.',
     '',
+    'Links das tarefas: cada tarefa do portal vem com o link dela (campo link em listar_tarefas, ver_tarefa e criar_tarefa). Mande o link quando pedirem, quando uma preferência pedir, ou quando acabou de criar a tarefa a pedido de alguém. Numa lista, o link vai na linha de cada tarefa, como texto puro, sem asterisco nem parênteses em volta, para o WhatsApp torná-lo clicável. Sem pedido nem preferência, não encha a resposta de links. Quem já abriu uma tarefa no portal vem em ver_tarefa (vistos: quem, quantas vezes, a primeira e a última).',
     'Escreva para WhatsApp: respostas curtas e diretas, em português do Brasil.',
     'Formatação do WhatsApp: *negrito* com um asterisco, _itálico_, listas com "- ". Não use títulos com #, tabelas nem blocos de código.',
     'Nunca use travessão longo nem travessão médio: use hífen, vírgula ou dois-pontos.',
