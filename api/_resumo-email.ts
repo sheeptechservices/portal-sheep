@@ -183,7 +183,7 @@ async function enviarResumoDe(db: Client, destino: string, agora: number, presa:
 function linkDoCartao(a: AvisoDeEtapa): string {
   const portal = enderecoDoPortal();
   const id = encodeURIComponent(a.alvo);
-  return a.tipo === 'etapa_tarefa' ? `${portal}/?tarefa=${id}` : `${portal}/?oportunidade=${id}`;
+  return a.tipo === 'etapa_tarefa' ? `${portal}/tarefas/${id}` : `${portal}/oportunidades/${id}`;
 }
 
 function botaoDoCartao(a: AvisoDeEtapa): string {

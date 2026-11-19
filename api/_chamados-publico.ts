@@ -960,7 +960,7 @@ async function avisarGestor(db: Client, d: {
     + (d.anexos ? notaEmail(d.anexos === 1
       ? 'Um anexo veio junto, e está nos comentários da tarefa.'
       : `${d.anexos} anexos vieram juntos, e estão nos comentários da tarefa.`) : '')
-    + botaoEmail('Abrir a tarefa', `${enderecoDoPortal()}/?tarefa=${d.tarefaId}`),
+    + botaoEmail('Abrir a tarefa', `${enderecoDoPortal()}/tarefas/${d.tarefaId}`),
     'chamado-cliente',
     {
       previa: d.previa,

@@ -3684,7 +3684,7 @@ async function avisarMencionados(
     // O texto do comentário guarda a marcação como `@[Nome](id)`. No e-mail ela
     // vira só o nome, que é o que quem escreveu leu na tela.
     const lido = comentarioLido(dados.texto);
-    const link = `${enderecoDoPortal()}/?tarefa=${dados.tarefaId}`;
+    const link = `${enderecoDoPortal()}/tarefas/${dados.tarefaId}`;
     const corpo = fichaEmail([
       ['Tarefa', titulo],
       ['Projeto', projeto],
