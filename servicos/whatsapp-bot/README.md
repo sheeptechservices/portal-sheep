@@ -245,6 +245,10 @@ tipo, status, prioridade, datas, links, repositórios do GitHub, pastas do
 Drive, acessos da equipe (rótulo, usuário e endereço, nunca a senha), equipe,
 entregas, arquivos, reuniões e as tarefas abertas com link. Aceita id, código,
 nome do projeto ou do cliente; cliente com vários projetos devolve a lista.
+O padrão é o resumo, com as listas curtas e um teto de tamanho (o Claude Code
+corta resposta de ferramenta grande demais, e o corte levaria junto o resto);
+o detalhe de entregas, tarefas, reuniões e arquivos vem por `secao`, em
+páginas. `listar_projetos` tem o mesmo teto e aceita `busca`.
 Os acessos não vão para grupo.
 
 ## De que cliente é cada grupo

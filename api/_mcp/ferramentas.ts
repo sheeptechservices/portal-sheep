@@ -765,53 +765,81 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
   {
     name: 'listar_projetos',
     title: 'Listar projetos',
-    description: 'Os projetos em que a pessoa conectada pode ter tarefas, com as entregas e a equipe de cada um, '
+    description: 'Os projetos em que a pessoa conectada pode ter tarefas, com os links, a equipe e as entregas de cada um, '
       + 'o grupo do WhatsApp do cliente vinculado ao projeto (whatsapp), quando houver, e a logo do cliente '
       + '(logo: url e detalhe, quando a logo tem desenho interno que não pode virar silhueta) '
       + 'e os links do projeto (links): portal, a ficha do projeto, para o time; chamados, o painel '
       + 'em que o cliente abre e acompanha os chamados, sem login; acompanhamento, a página de '
       + 'andamento do cliente, só quando publicada; sistema, o endereço do que foi entregue, quando há. '
       + 'O projeto "geral" guarda as demandas que não são de projeto nenhum.',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        busca: { type: 'string', description: 'Só os projetos cujo nome, cliente ou código contém este texto.' },
+      },
+    },
     annotations: LEITURA,
     acoes: ['tarefas_projetos'],
-    async executar(_a, ctx) {
+    async executar(a, ctx) {
       const r = await chamar(ctx, 'GET', 'tarefas_projetos');
       const base = enderecoDoPortal();
-      return {
-        ...r,
-        projetos: (r.projetos ?? []).map(({ chamados_token, publico_token, link_portal, ...p }: any) => {
+      const busca = semAcento(String(a.busca ?? ''));
+      const projetos = (r.projetos ?? [])
+        .filter((p: any) => !busca || [p.nome, p.cliente, p.codigo, p.id].some(x => x != null && semAcento(String(x)).includes(busca)))
+        .map(({ chamados_token, publico_token, link_portal, entregas, equipe, ...p }: any) => {
           const m = marcaDoCliente(p.cliente);
           // O projeto geral não é de cliente: não tem painel nem página para mandar.
           const deCliente = String(p.id) !== 'geral';
+          // Os links logo depois do nome: se a resposta vier cortada, o que
+          // mais se pede não é o que fica de fora.
           return {
             ...p,
-            logo: m ? { url: `${base}${m.src}`, detalhe: !!m.detalhe } : null,
             links: {
               portal: deCliente ? `${base}/projetos/${encodeURIComponent(String(p.id))}` : null,
               chamados: deCliente && chamados_token ? `${base}/chamados/${String(chamados_token)}` : null,
               acompanhamento: deCliente && publico_token ? `${base}/p/${String(publico_token)}` : null,
               sistema: String(link_portal ?? '').trim() || null,
             },
+            logo: m ? { url: `${base}${m.src}`, detalhe: !!m.detalhe } : null,
+            equipe: equipe ?? [],
+            entregas: entregas ?? [],
           };
-        }),
+        });
+      // Teto da resposta: o cliente do MCP corta o que passa. Com muitos
+      // projetos e entregas, as entregas viram contagem (o detalhe está em
+      // ver_projeto) e a equipe perde o e-mail, nessa ordem.
+      const caber = (lista: any[]) => JSON.stringify(lista).length <= 24_000;
+      if (caber(projetos)) return { ...r, projetos };
+      const semEntregas = projetos.map((p: any) => ({ ...p, entregas: undefined, entregas_total: p.entregas.length }));
+      const aviso = 'Lista grande: as entregas vieram só como contagem. Use ver_projeto com secao entregas para a lista.';
+      if (caber(semEntregas)) return { ...r, projetos: semEntregas, aviso };
+      return {
+        ...r, aviso,
+        projetos: semEntregas.map((p: any) => ({ ...p, equipe: p.equipe.map((m: any) => ({ id: m.id, nome: m.nome, papel: m.papel })) })),
       };
     },
   },
   {
     name: 'ver_projeto',
     title: 'Ver projeto',
-    description: 'A ficha inteira de um projeto, como a tela mostra: descrição, cliente, tipo, status, '
-      + 'prioridade, datas, progresso, observações, links (ficha, painel de chamados, acompanhamento, '
-      + 'sistema entregue), repositórios do GitHub, pastas do Drive, acessos da equipe (rótulo, usuário e '
-      + 'endereço; a senha não vem, fica no portal), equipe com papel, entregas com status e progresso, '
-      + 'arquivos, reuniões e as tarefas (contagem por etapa e as abertas, com link). Use para qualquer '
-      + 'pergunta sobre um projeto ("qual o repositório do backend da 3SA", "quem está no projeto da '
-      + 'Click", "qual o link do sistema da Orteconte").',
+    description: 'A ficha de um projeto, como a tela mostra. O resumo (padrão) traz descrição, cliente, tipo, '
+      + 'status, prioridade, datas, progresso, observações, links (ficha, painel de chamados, '
+      + 'acompanhamento, sistema entregue), repositórios do GitHub, pastas do Drive, acessos da equipe '
+      + '(rótulo, usuário e endereço; a senha não vem, fica no portal), equipe com papel, a lista curta das '
+      + 'entregas, a contagem das tarefas por etapa com as próximas abertas, as últimas reuniões e os '
+      + 'arquivos. O detalhe de uma parte vem com secao (entregas, tarefas, reunioes ou arquivos), em '
+      + 'páginas. Use para qualquer pergunta sobre um projeto ("qual o repositório do backend da 3SA", '
+      + '"quem está no projeto da Click", "qual o link do sistema da Orteconte").',
     inputSchema: {
       type: 'object',
       properties: {
         projeto: { type: 'string', description: 'Id, código (PRJ-26-011), nome do projeto ou nome do cliente.' },
+        secao: {
+          type: 'string', enum: ['resumo', 'entregas', 'tarefas', 'reunioes', 'arquivos'],
+          description: 'resumo (padrão): a ficha com as listas curtas. As outras: o detalhe daquela parte, '
+            + 'em páginas (entregas com descrição e responsáveis; tarefas abertas; reuniões com as notas).',
+        },
+        pagina: { type: 'integer', minimum: 1, description: 'A página do detalhe, a partir de 1.' },
       },
       required: ['projeto'],
     },
@@ -820,17 +848,21 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
     async executar(a, ctx) {
       const pedido = String(a.projeto ?? '').trim();
       if (!pedido) throw new ErroFerramenta('Diga qual projeto: id, código, nome ou cliente.');
+      const secao = String(a.secao ?? 'resumo');
+      if (!['resumo', 'entregas', 'tarefas', 'reunioes', 'arquivos'].includes(secao)) {
+        throw new ErroFerramenta('secao precisa ser resumo, entregas, tarefas, reunioes ou arquivos.');
+      }
       const r = await chamar(ctx, 'GET', 'projetos');
       const todos: any[] = (r.projetos ?? []).filter((p: any) => String(p.id) !== 'geral' || semAcento(pedido) === 'geral');
       const alvo = semAcento(pedido);
       const exatos = todos.filter(p => [p.id, p.codigo, p.nome].some(x => x != null && semAcento(String(x)) === alvo));
       const parciais = exatos.length ? exatos : todos.filter(p =>
         [p.id, p.codigo, p.nome, p.cliente_nome].some(x => x != null && semAcento(String(x)).includes(alvo)));
-      // Cliente com mais de um projeto: devolve a lista para escolher, em vez
-      // de adivinhar qual deles a pessoa quis dizer.
       if (parciais.length === 0) {
         throw new ErroFerramenta(`Nenhum projeto bate com "${pedido}". Veja os nomes e códigos em listar_projetos.`);
       }
+      // Cliente com mais de um projeto: devolve a lista para escolher, em vez
+      // de adivinhar qual deles a pessoa quis dizer.
       if (parciais.length > 1) {
         return {
           varios: true,
@@ -844,20 +876,59 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
       const [lista, todasPessoas] = await Promise.all([etapas(ctx), pessoas(ctx)]);
       const fechadas = new Set(lista.filter(e => Number(e.is_conclusao) === 1 || Number(e.is_excluded) === 1).map(e => String(e.nome)));
       const nomeDe = (id: unknown) => todasPessoas.find(u => u.id === String(id))?.nome ?? String(id);
-      const tarefas: any[] = p.tarefas ?? [];
-      const porEtapa: Record<string, number> = {};
-      for (const t of tarefas) porEtapa[String(t.status)] = (porEtapa[String(t.status)] ?? 0) + 1;
-      const abertas = tarefas.filter(t => !fechadas.has(String(t.status)));
       const curto = (s: unknown, n: number) => {
         const t = String(s ?? '').trim();
         return !t ? null : t.length > n ? `${t.slice(0, n)}...` : t;
       };
-      return {
+      const tarefas: any[] = p.tarefas ?? [];
+      const abertas = tarefas.filter(t => !fechadas.has(String(t.status)));
+      const entregas: any[] = p.entregas ?? [];
+      const reunioes: any[] = p.reunioes ?? [];
+      const arquivos: any[] = p.arquivos ?? [];
+      const tarefaCurta = (t: any) => ({
+        id: Number(t.id), titulo: t.titulo, etapa: t.status, prazo: t.prazo ?? null, link: linkDaTarefa(t.id),
+      });
+
+      // O detalhe de uma parte, em páginas: projeto com dezenas de entregas
+      // não cabe numa resposta só, e o que passa do limite chega cortado.
+      if (secao !== 'resumo') {
+        const porPagina = secao === 'reunioes' ? 10 : secao === 'arquivos' ? 100 : 25;
+        const itens: any[] = secao === 'entregas'
+          ? entregas.map(e => ({
+            id: Number(e.id), titulo: e.titulo, status: e.status, prazo: e.prazo ?? null,
+            prioridade: e.prioridade ?? null, descricao: curto(e.descricao, 600),
+            responsaveis: (e.responsaveis ?? []).map(nomeDe), progresso: e.progresso ?? null,
+            tarefas_feitas: e.tarefas_feitas ?? 0, tarefas_total: e.tarefas_total ?? 0,
+            links: e.links ?? [], arquivos: (e.arquivos ?? []).map((f: any) => f.nome),
+          }))
+          : secao === 'tarefas'
+            ? abertas.map(t => ({ ...tarefaCurta(t), prioridade: t.prioridade ?? null, responsaveis: (t.responsaveis ?? []).map(nomeDe) }))
+            : secao === 'reunioes'
+              ? reunioes.map(m => ({
+                id: Number(m.id), data: m.data, assunto: m.assunto, participantes: m.participantes ?? [],
+                notas: curto(m.notas, 800), fireflies_id: m.fireflies_id ?? null,
+              }))
+              : arquivos.map(f => ({ nome: f.nome, etiqueta: f.etiqueta ?? null, tipo: f.tipo ?? null }));
+        const paginas = Math.max(1, Math.ceil(itens.length / porPagina));
+        const pagina = Math.min(Math.max(1, Number(a.pagina ?? 1) || 1), paginas);
+        return {
+          projeto: { id: String(p.id), codigo: p.codigo ?? null, nome: p.nome, cliente: p.cliente_nome ?? null },
+          secao, pagina, paginas, total: itens.length,
+          itens: itens.slice((pagina - 1) * porPagina, pagina * porPagina),
+          ...(pagina < paginas ? { proxima: pagina + 1 } : {}),
+        };
+      }
+
+      const porEtapa: Record<string, number> = {};
+      for (const t of tarefas) porEtapa[String(t.status)] = (porEtapa[String(t.status)] ?? 0) + 1;
+      const porStatus: Record<string, number> = {};
+      for (const e of entregas) porStatus[String(e.status)] = (porStatus[String(e.status)] ?? 0) + 1;
+      const montar = (teto: { texto: number; entregas: number; tarefas: number }) => ({
         id: String(p.id), codigo: p.codigo ?? null, nome: p.nome, cliente: p.cliente_nome ?? null,
-        descricao: p.descricao ?? null, objetivo: p.objetivo ?? null, tipo: p.tipo ?? null,
-        status: p.status, prioridade: p.prioridade, data_inicio: p.data_inicio ?? null,
-        previsao_entrega: p.previsao_entrega ?? null, progresso: Number(p.progresso ?? 0),
-        observacoes: p.observacoes ?? null, criado_em: p.criado_em ?? null,
+        tipo: p.tipo ?? null, status: p.status, prioridade: p.prioridade,
+        data_inicio: p.data_inicio ?? null, previsao_entrega: p.previsao_entrega ?? null,
+        progresso: Number(p.progresso ?? 0), criado_em: p.criado_em ?? null,
+        // Os links primeiro: são o que mais se pede, e o que nunca pode faltar.
         links: {
           portal: deCliente ? `${base}/projetos/${encodeURIComponent(String(p.id))}` : null,
           chamados: deCliente && p.chamados_token ? `${base}/chamados/${String(p.chamados_token)}` : null,
@@ -870,28 +941,33 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
           rotulo: x.rotulo, usuario: x.usuario ?? null, url: x.url ?? null, tem_senha: !!x.tem_senha,
         })),
         equipe: (p.equipe ?? []).map((m: any) => ({ nome: m.nome, email: m.email, papel: m.papel ?? null })),
-        entregas: (p.entregas ?? []).map((e: any) => ({
-          id: Number(e.id), titulo: e.titulo, descricao: curto(e.descricao, 500), status: e.status,
-          prazo: e.prazo ?? null, prioridade: e.prioridade ?? null,
-          responsaveis: (e.responsaveis ?? []).map(nomeDe), progresso: e.progresso ?? null,
-          tarefas_feitas: e.tarefas_feitas ?? 0, tarefas_total: e.tarefas_total ?? 0,
-          links: e.links ?? [], arquivos: (e.arquivos ?? []).map((f: any) => f.nome),
-        })),
-        arquivos: (p.arquivos ?? []).map((f: any) => ({ nome: f.nome, etiqueta: f.etiqueta ?? null, tipo: f.tipo ?? null })),
-        reunioes: (p.reunioes ?? []).slice(0, 20).map((m: any) => ({
-          id: Number(m.id), data: m.data, assunto: m.assunto, participantes: m.participantes ?? [],
-          notas: curto(m.notas, 600), fireflies_id: m.fireflies_id ?? null,
-        })),
-        tarefas: {
-          total: tarefas.length,
-          por_etapa: porEtapa,
-          abertas: abertas.slice(0, 80).map(t => ({
-            id: Number(t.id), titulo: t.titulo, etapa: t.status, prioridade: t.prioridade ?? null,
-            prazo: t.prazo ?? null, responsaveis: (t.responsaveis ?? []).map(nomeDe), link: linkDaTarefa(t.id),
-          })),
-          abertas_omitidas: Math.max(0, abertas.length - 80),
+        descricao: curto(p.descricao, teto.texto), objetivo: curto(p.objetivo, teto.texto),
+        observacoes: curto(p.observacoes, teto.texto),
+        entregas: {
+          total: entregas.length, por_status: porStatus,
+          lista: entregas.slice(0, teto.entregas).map(e => ({ id: Number(e.id), titulo: e.titulo, status: e.status, prazo: e.prazo ?? null })),
+          omitidas: Math.max(0, entregas.length - teto.entregas),
         },
-      };
+        tarefas: {
+          total: tarefas.length, abertas: abertas.length, por_etapa: porEtapa,
+          proximas: [...abertas].sort((x, y) => String(x.prazo || '9999').localeCompare(String(y.prazo || '9999')))
+            .slice(0, teto.tarefas).map(tarefaCurta),
+        },
+        reunioes: {
+          total: reunioes.length,
+          ultimas: reunioes.slice(0, 5).map(m => ({ id: Number(m.id), data: m.data, assunto: m.assunto })),
+        },
+        arquivos: { total: arquivos.length, nomes: arquivos.slice(0, 20).map(f => f.nome) },
+        detalhe: 'Para o detalhe, chame de novo com secao: entregas, tarefas, reunioes ou arquivos.',
+      });
+      // A resposta tem teto: o cliente do MCP corta o que passa, e o corte
+      // levaria junto o que vem depois. Projeto grande encolhe as listas e os
+      // textos até caber, e avisa que encolheu.
+      for (const teto of [{ texto: 3000, entregas: 80, tarefas: 10 }, { texto: 1500, entregas: 40, tarefas: 5 }, { texto: 600, entregas: 15, tarefas: 3 }]) {
+        const ficha = montar(teto);
+        if (JSON.stringify(ficha).length <= 24_000) return ficha;
+      }
+      return { ...montar({ texto: 300, entregas: 0, tarefas: 0 }), aviso: 'Ficha grande: listas e textos encurtados. Use secao para o detalhe.' };
     },
   },
   {
