@@ -181,6 +181,10 @@ confirmado, sem IA no meio e sem gastar a assinatura, e avisa no privado.
 - `agenda-mcp.mjs` fala com o bot por uma rota interna, que só aceita pedido de
   dentro do contêiner e com a senha da partida.
 - Só no privado, como os grupos.
+- Tudo em horário de Brasília. O contêiner roda com `TZ=America/Sao_Paulo`, as
+  instruções trazem a hora de agora com "amanhã" e "depois de amanhã" já
+  contados, e toda mensagem leva o relógio do momento em que chegou. Antes, em
+  UTC, perto da meia-noite "amanhã" virava depois de amanhã.
 
 ## Preferências de estilo
 

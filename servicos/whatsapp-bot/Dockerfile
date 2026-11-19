@@ -50,6 +50,13 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends chromium fonts-inter \
   && rm -rf /var/lib/apt/lists/*
 
+# tzdata e TZ: o contêiner vive no relógio de Brasília. Em UTC, perto da
+# meia-noite o Claude Code já via o dia seguinte, e "amanhã" virava depois de
+# amanhã.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends tzdata \
+  && rm -rf /var/lib/apt/lists/*
+
 COPY --from=whisper /whisper-cli /usr/local/bin/whisper-cli
 COPY --from=whisper /modelo.bin /opt/whisper/modelo.bin
 COPY --from=whisper /kokoro /opt/kokoro/modelos
@@ -72,7 +79,8 @@ ENV HOME=/home/node \
     TRABALHO_DIR=/app/trabalho \
     PORT=3000 \
     WHISPER_MODELO=/opt/whisper/modelo.bin \
-    CHROMIUM_BIN=/usr/bin/chromium
+    CHROMIUM_BIN=/usr/bin/chromium \
+    TZ=America/Sao_Paulo
 
 EXPOSE 3000
 CMD ["node", "index.mjs"]

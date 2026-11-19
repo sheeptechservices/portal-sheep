@@ -621,6 +621,16 @@ async function ouvirAudio(chat, midia, origem) {
 const hoje = () => new Intl.DateTimeFormat('pt-BR', {
   timeZone: 'America/Sao_Paulo', weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric',
 }).format(new Date());
+/** O relógio de Brasília, com "amanhã" e "depois de amanhã" já resolvidos: o
+ *  modelo não faz conta de data, só lê. Perto da meia-noite o UTC já virou o
+ *  dia, e era daí que "amanhã" saía como depois de amanhã. */
+function relogio() {
+  const dia = (ms) => new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo', weekday: 'long', day: '2-digit', month: '2-digit',
+  }).format(new Date(Date.now() + ms));
+  const hora = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }).format(new Date());
+  return { agora: `${hoje()}, ${hora}`, amanha: dia(86400_000), depois: dia(2 * 86400_000) };
+}
 
 /** O que o convidado não faz pelo bot, no teste. As ferramentas disso nem
  *  chegam ao modelo quando é ele quem fala (ver `perguntar`). */
@@ -632,7 +642,7 @@ function instrucoes(quem) {
     dono
       ? `Você é o assistente da Sheep Technology no WhatsApp, falando com o ${cfg.nomeDoDono}, dono da conta.`
       : `Você é o assistente da Sheep Technology no WhatsApp. ${CONVIDADO(quem.nome)}`,
-    `Hoje é ${hoje()}, horário de Brasília.`,
+    (({ agora, amanha, depois }) => `Relógio: agora é ${agora}, no horário de Brasília (-03:00). Amanhã é ${amanha}; depois de amanhã, ${depois}. Todo dia e horário que a pessoa diz ("hoje", "amanhã", "à noite", "às 9h", "daqui a duas horas", "segunda") é em Brasília e se conta a partir deste relógio. Se outra parte do sistema mostrar outra data, ela está em outro fuso: ignore e use esta. Cada mensagem traz o relógio do momento em que chegou; vale sempre o da mensagem mais recente. Ao propor algo com data, mostre o dia da semana e a data (ex.: "quarta, 19/11 às 09:00"), para a pessoa conferir.`)(relogio()),
     'Você opera o Portal Sheep pelas ferramentas do servidor MCP "portal": consulta projetos, cards (tarefas), pessoas, etapas e etiquetas, e pode criar, mover (trocar a etapa), editar, comentar e excluir.',
     '',
     'Regra de ouro, sem exceção: nunca altere nada no portal sem confirmação.',
@@ -1158,6 +1168,9 @@ async function atender({ chat, grupo, texto: escrito, midia: anexo, origem: deOn
   const pergunta = [
     confirmou ? '[Nota do sistema: a pessoa confirmou a ação que você propôs na mensagem anterior. Execute exatamente essa ação agora, nada além.]' : '',
     notaGrupo,
+    // O relógio vai em toda mensagem: numa conversa retomada horas depois, o
+    // que vale é a hora de agora, e não a do começo da conversa.
+    (({ agora, amanha }) => `[Relógio: agora é ${agora}, horário de Brasília. Amanhã é ${amanha}.]`)(relogio()),
     notaAudio,
     prep.nota,
     texto || (midia
