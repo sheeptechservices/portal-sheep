@@ -6356,6 +6356,64 @@ async function despacharAdminData(
       };
     }
 
+    // As reuniões, para o MCP: id, de quem é, quando, assunto, o resumo e se há
+    // transcrição. A transcrição em si vem por `fireflies_transcricao`, só
+    // quando pedida. Quem é membro só vê as reuniões dos projetos da equipe
+    // dele; as do funil, só quem vê o funil.
+    if (action === 'reunioes_lista') {
+      const id = Number(query.get('id') ?? 0);
+      const projetoId = String(query.get('projeto_id') ?? '').trim();
+      const oportunidadeId = String(query.get('oportunidade_id') ?? '').trim();
+      const de = String(query.get('de') ?? '').trim();
+      const ate = String(query.get('ate') ?? '').trim();
+      const texto = String(query.get('texto') ?? '').trim().toLowerCase();
+      const limite = Math.min(Math.max(Number(query.get('limite')) || 20, 1), 50);
+      const onde: string[] = [];
+      const args: (string | number)[] = [];
+      if (Number.isInteger(id) && id > 0) { onde.push('r.id = ?'); args.push(id); }
+      if (projetoId) { onde.push('r.projeto_id = ? AND r.oportunidade_id IS NULL'); args.push(projetoId); }
+      if (oportunidadeId) { onde.push('r.oportunidade_id = ?'); args.push(oportunidadeId); }
+      if (/^\d{4}-\d{2}-\d{2}$/.test(de)) { onde.push('substr(r.data, 1, 10) >= ?'); args.push(de); }
+      if (/^\d{4}-\d{2}-\d{2}$/.test(ate)) { onde.push('substr(r.data, 1, 10) <= ?'); args.push(ate); }
+      if (texto) { onde.push('(LOWER(r.assunto) LIKE ? OR LOWER(r.notas) LIKE ?)'); args.push(`%${texto}%`, `%${texto}%`); }
+      if (!pode(permissoes, 'projetos:ver')) onde.push('r.oportunidade_id IS NOT NULL');
+      if (!pode(permissoes, 'oportunidades:ver')) onde.push('r.oportunidade_id IS NULL');
+      const r = await db.execute({
+        sql: `SELECT r.id, r.projeto_id, p.nome AS projeto_nome, r.oportunidade_id, o.empresa AS oportunidade_nome,
+                     r.data, r.assunto, r.notas, r.participantes, r.fireflies_id, r.link
+              FROM projeto_reunioes r
+              LEFT JOIN projetos p ON p.id = r.projeto_id
+              LEFT JOIN oportunidades o ON o.id = r.oportunidade_id
+              ${onde.length ? `WHERE ${onde.join(' AND ')}` : ''}
+              ORDER BY r.data DESC, r.id DESC
+              LIMIT ?`,
+        args: [...args, limite * 3],
+      });
+      const vistas: typeof r.rows = [];
+      for (const l of r.rows) {
+        if (vistas.length >= limite) break;
+        if (!l.oportunidade_id && await guardaDaEquipe(db, usuario, l.projeto_id)) continue;
+        vistas.push(l);
+      }
+      return {
+        status: 200,
+        body: {
+          reunioes: vistas.map(l => ({
+            id: Number(l.id),
+            projeto: l.oportunidade_id ? null : { id: String(l.projeto_id), nome: l.projeto_nome != null ? String(l.projeto_nome) : null },
+            oportunidade: l.oportunidade_id ? { id: String(l.oportunidade_id), nome: l.oportunidade_nome != null ? String(l.oportunidade_nome) : null } : null,
+            data: String(l.data),
+            assunto: String(l.assunto ?? ''),
+            resumo: String(l.notas ?? ''),
+            participantes: (() => { try { return JSON.parse(String(l.participantes ?? '[]')); } catch { return []; } })(),
+            tem_transcricao: !!l.fireflies_id,
+            fireflies_id: l.fireflies_id != null ? String(l.fireflies_id) : null,
+            link: l.link != null ? String(l.link) : null,
+          })),
+        },
+      };
+    }
+
     // A transcrição inteira, na hora de baixar. Como a gravação, ela não fica
     // guardada: o que o portal mostra da reunião já está no `dados`, e o texto
     // todo se lê uma vez e se quer em arquivo.

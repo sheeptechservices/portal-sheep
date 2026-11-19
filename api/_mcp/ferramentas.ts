@@ -637,6 +637,71 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
     },
   },
   {
+    name: 'listar_reunioes',
+    title: 'Listar reuniões',
+    description: 'As reuniões registradas nos projetos e nas oportunidades, da mais recente para a mais antiga: '
+      + 'de quem é, quando, assunto, o resumo (as notas), quem participou e se há transcrição do Fireflies '
+      + '(tem_transcricao). A transcrição inteira vem por transcricao_da_reuniao.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projeto: { type: 'string', description: 'Id do projeto (de listar_projetos).' },
+        oportunidade: { type: 'string', description: 'Id da oportunidade.' },
+        de: { type: 'string', description: 'A partir de (AAAA-MM-DD).' },
+        ate: { type: 'string', description: 'Até (AAAA-MM-DD).' },
+        texto: { type: 'string', description: 'Busca no assunto e no resumo.' },
+        limite: { type: 'integer', minimum: 1, maximum: 50, description: 'Padrão 20.' },
+      },
+    },
+    annotations: LEITURA,
+    acoes: ['reunioes_lista'],
+    async executar(a, ctx) {
+      return chamar(ctx, 'GET', 'reunioes_lista', {
+        projeto_id: a.projeto, oportunidade_id: a.oportunidade,
+        de: a.de ? data(a.de, 'de') : undefined, ate: a.ate ? data(a.ate, 'ate') : undefined,
+        texto: a.texto, limite: a.limite,
+      });
+    },
+  },
+  {
+    name: 'transcricao_da_reuniao',
+    title: 'Transcrição da reunião',
+    description: 'A transcrição inteira de uma reunião que veio do Fireflies, fala por fala, numerada (n), com o '
+      + 'minuto em que começou (inicio) e quem falou. Use a_partir e limite para ler aos pedaços uma reunião longa.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        reuniao: idNumero('Id da reunião (de listar_reunioes).'),
+        a_partir: { type: 'integer', minimum: 1, description: 'Primeira fala a trazer (n). Padrão 1.' },
+        limite: { type: 'integer', minimum: 1, maximum: 5000, description: 'Quantas falas. Padrão 400.' },
+      },
+      required: ['reuniao'],
+    },
+    annotations: LEITURA,
+    acoes: ['reunioes_lista', 'fireflies_transcricao'],
+    async executar(a, ctx) {
+      const lista = await chamar(ctx, 'GET', 'reunioes_lista', { id: a.reuniao, limite: 1 });
+      const r = lista?.reunioes?.[0];
+      if (!r) throw new Error(`Reunião ${a.reuniao} não encontrada, ou fora do que esta pessoa vê.`);
+      if (!r.fireflies_id) throw new Error('Esta reunião não veio do Fireflies e não tem transcrição; o resumo dela está em listar_reunioes.');
+      const t = await chamar(ctx, 'GET', 'fireflies_transcricao', { id: r.fireflies_id });
+      const minuto = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+      const falas = (t?.frases ?? []).map((f: any, i: number) => ({ n: i + 1, inicio: minuto(Number(f.inicio) || 0), quem: f.quem, texto: f.texto }));
+      const desde = Math.max(1, Number(a.a_partir) || 1);
+      const quantas = Math.min(Math.max(Number(a.limite) || 400, 1), 5000);
+      const trecho = falas.slice(desde - 1, desde - 1 + quantas);
+      const ultima = desde - 1 + trecho.length;
+      return {
+        reuniao: { id: r.id, assunto: r.assunto, data: r.data, projeto: r.projeto, oportunidade: r.oportunidade },
+        titulo: t?.titulo ?? r.assunto, data: t?.data ?? r.data, duracao_minutos: t?.duracao ?? null,
+        participantes: t?.participantes ?? r.participantes,
+        total_de_falas: falas.length,
+        falas: trecho,
+        proxima: ultima < falas.length ? ultima + 1 : null,
+      };
+    },
+  },
+  {
     name: 'listar_projetos',
     title: 'Listar projetos',
     description: 'Os projetos em que a pessoa conectada pode ter tarefas, com as entregas e a equipe de cada um, '

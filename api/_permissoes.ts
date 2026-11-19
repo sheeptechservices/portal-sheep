@@ -335,6 +335,9 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   fireflies_gravacao: ['projetos:ver', 'oportunidades:ver'],
   fireflies_transcricao: ['projetos:ver', 'oportunidades:ver'],
   reunioes_dados: ['projetos:ver', 'oportunidades:ver'],
+  // A lista das reuniões para o MCP: a própria ação corta pelo que a pessoa vê
+  // (a equipe do projeto, o funil).
+  reunioes_lista: ['projetos:ver', 'oportunidades:ver'],
   anexar_reuniao_fireflies: 'projetos:editar',
   vincular_reuniao: 'projetos:editar',
   registrar_reuniao_projeto: 'projetos:editar',
