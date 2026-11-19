@@ -350,10 +350,19 @@ function combinaComBusca(m: ReuniaoFireflies, q: string): boolean {
  * isso, a reuniao mais velha que as 50 ultimas nunca aparecia.
  */
 export async function listarReunioesFireflies(
-  apiKey: string, busca: string, limite = 50,
+  apiKey: string, busca: string, limite = 50, periodo: { de?: string; ate?: string } = {},
 ): Promise<{ ok: true; reunioes: ReuniaoFireflies[] } | { ok: false; error: string }> {
   const q = busca.trim().toLocaleLowerCase('pt-BR');
-  if (!q) return paginaDeReunioes(apiKey, limite, 0);
+  // O período é o dia de Brasília (AAAA-MM-DD), dos dois lados inclusive.
+  const de = /^\d{4}-\d{2}-\d{2}$/.test(periodo.de ?? '') ? periodo.de! : null;
+  const ate = /^\d{4}-\d{2}-\d{2}$/.test(periodo.ate ?? '') ? periodo.ate! : null;
+  if (!q && !de && !ate) return paginaDeReunioes(apiKey, limite, 0);
+  const diaDe = (m: ReuniaoFireflies) => (m.data ? new Date(Date.parse(m.data) - 3 * 3600_000).toISOString().slice(0, 10) : null);
+  const noPeriodo = (m: ReuniaoFireflies) => {
+    const d = diaDe(m);
+    if (!d) return !de && !ate;
+    return (!de || d >= de) && (!ate || d <= ate);
+  };
 
   const achadas: ReuniaoFireflies[] = [];
   // Quatro paginas por vez: uma atras da outra, descer 600 reunioes levava uns
@@ -363,17 +372,22 @@ export async function listarReunioesFireflies(
     const paginas = await Promise.all(
       Array.from({ length: PAGINAS_POR_VEZ }, (_, i) =>
         paginaDeReunioes(apiKey, PAGINA_FIREFLIES, (primeira + i) * PAGINA_FIREFLIES)));
+    let passouDoInicio = false;
     for (const r of paginas) {
       // Erro na primeira ida e erro da busca; depois dela, o que ja foi achado
       // vale mais que a mensagem - a lista sai menor, e nao vazia.
       if (!r.ok) return achadas.length ? { ok: true, reunioes: achadas } : r;
       for (const m of r.reunioes) {
-        if (combinaComBusca(m, q)) achadas.push(m);
+        if ((!q || combinaComBusca(m, q)) && noPeriodo(m)) achadas.push(m);
+        // O historico vem da mais nova para a mais velha: a primeira reuniao de
+        // antes do comeco do periodo diz que o resto tambem e de antes.
+        const d = diaDe(m);
+        if (de && d && d < de) passouDoInicio = true;
       }
     }
     // A pagina incompleta e o fim do historico: nao ha mais o que descer.
     const acabou = paginas.some(r => r.ok && r.reunioes.length < PAGINA_FIREFLIES);
-    if (acabou || achadas.length >= limite) break;
+    if (acabou || passouDoInicio || achadas.length >= limite) break;
   }
   return { ok: true, reunioes: achadas.slice(0, limite) };
 }

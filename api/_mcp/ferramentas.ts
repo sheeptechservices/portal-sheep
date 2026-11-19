@@ -664,26 +664,87 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
     },
   },
   {
-    name: 'transcricao_da_reuniao',
-    title: 'Transcrição da reunião',
-    description: 'A transcrição inteira de uma reunião que veio do Fireflies, fala por fala, numerada (n), com o '
-      + 'minuto em que começou (inicio) e quem falou. Use a_partir e limite para ler aos pedaços uma reunião longa.',
+    name: 'buscar_no_fireflies',
+    title: 'Buscar no Fireflies',
+    description: 'As reuniões da conta do Fireflies, anexadas a um projeto do portal ou não, da mais recente para a mais '
+      + 'antiga: id do Fireflies (fireflies_id), título, data, duração, participantes e link. Busca no título e nos '
+      + 'participantes (texto) e filtra pelo dia (de, ate). Sem filtro, as mais recentes. O resumo vem por '
+      + 'resumo_do_fireflies e a conversa por transcricao_da_reuniao, com o fireflies_id.',
     inputSchema: {
       type: 'object',
       properties: {
-        reuniao: idNumero('Id da reunião (de listar_reunioes).'),
+        texto: { type: 'string', description: 'Parte do título ou nome/e-mail de quem participou. Uma palavra acha mais que uma frase.' },
+        de: { type: 'string', description: 'A partir do dia (AAAA-MM-DD).' },
+        ate: { type: 'string', description: 'Até o dia (AAAA-MM-DD).' },
+        limite: { type: 'integer', minimum: 1, maximum: 100, description: 'Padrão 30.' },
+      },
+    },
+    annotations: LEITURA,
+    acoes: ['fireflies_reunioes'],
+    async executar(a, ctx) {
+      const r = await chamar(ctx, 'GET', 'fireflies_reunioes', {
+        busca: a.texto, de: a.de ? data(a.de, 'de') : undefined, ate: a.ate ? data(a.ate, 'ate') : undefined,
+        limite: a.limite ?? 30,
+      });
+      return {
+        reunioes: (r?.reunioes ?? []).map((m: any) => ({
+          fireflies_id: m.id, titulo: m.titulo, data: m.data, duracao_minutos: m.duracao, participantes: m.participantes, link: m.url,
+        })),
+      };
+    },
+  },
+  {
+    name: 'resumo_do_fireflies',
+    title: 'Resumo do Fireflies',
+    description: 'O resumo que o Fireflies fez de uma reunião: visão geral, tópicos, palavras-chave e itens de ação, '
+      + 'pelo fireflies_id (de buscar_no_fireflies ou de listar_reunioes).',
+    inputSchema: {
+      type: 'object',
+      properties: { fireflies_id: { type: 'string', description: 'O id da reunião no Fireflies.' } },
+      required: ['fireflies_id'],
+    },
+    annotations: LEITURA,
+    acoes: ['fireflies_reuniao'],
+    async executar(a, ctx) {
+      const r = await chamar(ctx, 'GET', 'fireflies_reuniao', { id: String(a.fireflies_id) });
+      const m = r?.reuniao ?? {};
+      return {
+        fireflies_id: m.id, titulo: m.titulo, data: m.data, duracao_minutos: m.duracao, participantes: m.participantes, link: m.url,
+        resumo: m.resumo ?? null, topicos: m.detalhe?.topicos ?? null, itens_de_acao: m.detalhe?.acoes ?? null,
+        palavras_chave: m.detalhe?.palavras ?? [],
+      };
+    },
+  },
+  {
+    name: 'transcricao_da_reuniao',
+    title: 'Transcrição da reunião',
+    description: 'A transcrição inteira de uma reunião do Fireflies, fala por fala, numerada (n), com o minuto em que '
+      + 'começou (inicio) e quem falou: pelo id da reunião no portal (reuniao) ou direto pelo id do Fireflies '
+      + '(fireflies_id), para a que não foi anexada a projeto nenhum. Use a_partir e limite para ler aos pedaços.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        reuniao: { type: 'integer', description: 'Id da reunião no portal (de listar_reunioes).' },
+        fireflies_id: { type: 'string', description: 'Id da reunião no Fireflies (de buscar_no_fireflies), no lugar de reuniao.' },
         a_partir: { type: 'integer', minimum: 1, description: 'Primeira fala a trazer (n). Padrão 1.' },
         limite: { type: 'integer', minimum: 1, maximum: 5000, description: 'Quantas falas. Padrão 400.' },
       },
-      required: ['reuniao'],
     },
     annotations: LEITURA,
     acoes: ['reunioes_lista', 'fireflies_transcricao'],
     async executar(a, ctx) {
-      const lista = await chamar(ctx, 'GET', 'reunioes_lista', { id: a.reuniao, limite: 1 });
-      const r = lista?.reunioes?.[0];
-      if (!r) throw new Error(`Reunião ${a.reuniao} não encontrada, ou fora do que esta pessoa vê.`);
-      if (!r.fireflies_id) throw new Error('Esta reunião não veio do Fireflies e não tem transcrição; o resumo dela está em listar_reunioes.');
+      let r: any;
+      if (a.reuniao != null && a.reuniao !== '') {
+        const lista = await chamar(ctx, 'GET', 'reunioes_lista', { id: a.reuniao, limite: 1 });
+        r = lista?.reunioes?.[0];
+        if (!r) throw new Error(`Reunião ${a.reuniao} não encontrada, ou fora do que esta pessoa vê.`);
+        if (!r.fireflies_id) throw new Error('Esta reunião não veio do Fireflies e não tem transcrição; o resumo dela está em listar_reunioes.');
+      } else if (a.fireflies_id) {
+        // Direto do Fireflies: a reunião pode não estar em projeto nenhum.
+        r = { id: null, fireflies_id: String(a.fireflies_id), assunto: null, data: null, projeto: null, oportunidade: null, participantes: [] };
+      } else {
+        throw new Error('Diga a reunião: reuniao (id no portal) ou fireflies_id.');
+      }
       const t = await chamar(ctx, 'GET', 'fireflies_transcricao', { id: r.fireflies_id });
       const minuto = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
       const falas = (t?.frases ?? []).map((f: any, i: number) => ({ n: i + 1, inicio: minuto(Number(f.inicio) || 0), quem: f.quem, texto: f.texto }));
@@ -692,7 +753,7 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
       const trecho = falas.slice(desde - 1, desde - 1 + quantas);
       const ultima = desde - 1 + trecho.length;
       return {
-        reuniao: { id: r.id, assunto: r.assunto, data: r.data, projeto: r.projeto, oportunidade: r.oportunidade },
+        reuniao: { id: r.id, fireflies_id: r.fireflies_id, assunto: r.assunto ?? t?.titulo ?? null, data: r.data ?? t?.data ?? null, projeto: r.projeto, oportunidade: r.oportunidade },
         titulo: t?.titulo ?? r.assunto, data: t?.data ?? r.data, duracao_minutos: t?.duracao ?? null,
         participantes: t?.participantes ?? r.participantes,
         total_de_falas: falas.length,

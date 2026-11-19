@@ -6457,9 +6457,26 @@ async function despacharAdminData(
       if (!cred?.value) {
         return { status: 400, body: { error: 'Fireflies não conectado. Configure em Configurações › Integrações.' } };
       }
-      const r = await listarReunioesFireflies(cred.value, String(query.get('busca') ?? ''));
+      const limite = Math.min(Math.max(Number(query.get('limite')) || 50, 1), 100);
+      const r = await listarReunioesFireflies(cred.value, String(query.get('busca') ?? ''), limite, {
+        de: String(query.get('de') ?? ''), ate: String(query.get('ate') ?? ''),
+      });
       if (!r.ok) return { status: 400, body: { error: r.error } };
       return { status: 200, body: { reunioes: r.reunioes } };
+    }
+
+    // Uma reunião da conta do Fireflies, com o resumo e os combinados, esteja
+    // ela anexada a um projeto ou não. Não grava nada.
+    if (action === 'fireflies_reuniao') {
+      const id = String(query.get('id') ?? '').trim();
+      if (!id) return { status: 400, body: { error: 'id ausente.' } };
+      const cred = await getIntegrationCredential(db, FIREFLIES_KEY);
+      if (!cred?.value) {
+        return { status: 400, body: { error: 'Fireflies não conectado. Configure em Configurações › Integrações.' } };
+      }
+      const r = await obterReuniaoFireflies(cred.value, id);
+      if (!r.ok) return { status: 400, body: { error: r.error } };
+      return { status: 200, body: { reuniao: r.reuniao } };
     }
 
     if (action === 'get_oportunidade_files') {
