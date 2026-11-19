@@ -182,6 +182,24 @@ confirmado, sem IA no meio e sem gastar a assinatura, e avisa no privado.
   dentro do contêiner e com a senha da partida.
 - Só no privado, como os grupos.
 
+## Preferências de estilo
+
+O dono ensina o jeito de o bot escrever pelo próprio WhatsApp: "a partir de
+agora, resumos em tópicos, no máximo cinco", "para de usar negrito". O bot
+grava a preferência numa frase e diz o que gravou; "quais preferências você
+tem?" mostra a lista, e "esquece a dos tópicos" apaga.
+
+- Só o dono, e só no privado dele. No grupo e para o convidado, as ferramentas
+  nem chegam ao modelo.
+- A preferência vale em toda conversa: no privado, nos grupos e com o
+  convidado. A que fala do dono em pessoa (como chamá-lo) vale só com ele.
+- Ajusta o estilo, nunca a regra: confirmação, permissões, discrição, quem pode
+  o quê e a proibição do travessão ficam no código, acima das preferências. O
+  travessão que vier numa preferência vira hífen já ao gravar.
+- Até 30 preferências de até 300 caracteres, em `/dados/preferencias.json`.
+  `preferencias-mcp.mjs` fala com o bot pela mesma rota interna protegida da
+  agenda.
+
 ## Peças
 
 | Arquivo | O que é |
@@ -196,6 +214,7 @@ confirmado, sem IA no meio e sem gastar a assinatura, e avisa no privado.
 | `transcricao.mjs` | Áudio em texto, com o ffmpeg e o whisper.cpp, na própria máquina. |
 | `mensagem-grupo.mjs` | Monta e confere o envio (grupo ou privado, texto com menções ou áudio), igual na hora e no agendado. |
 | `agenda-mcp.mjs` | Servidor MCP do bot: agenda, lista e cancela ações no portal e mensagens nos grupos para um horário. |
+| `preferencias-mcp.mjs` | Servidor MCP do bot: grava, lista e apaga as preferências de estilo do dono. |
 | `Dockerfile` | Node 22 com o Claude Code, o ffmpeg, o whisper.cpp (compilado numa etapa à parte), o Kokoro (num ambiente Python próprio) e o Chromium com a fonte Inter, rodando como usuário comum. |
 | `package.json` | As duas dependências dos gráficos e relatórios: `puppeteer-core` e `docx`. O resto do bot não usa pacote nenhum. |
 | `stack.yml` | A stack do Docker Swarm, na mesma rede da Evolution. |

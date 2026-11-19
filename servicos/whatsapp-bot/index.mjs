@@ -110,6 +110,9 @@ const AGENDA_LEITURA = ['mcp__agenda__listar_agendamentos'];
  *  no grupo, quem está lá não faz o bot sair buscando coisas por aí. */
 const INTERNET = ['WebSearch', 'WebFetch'];
 const AGENDA_ESCRITA = ['mcp__agenda__agendar', 'mcp__agenda__cancelar_agendamento'];
+/** As preferências de estilo (`preferencias-mcp.mjs`): só o dono, só no
+ *  privado. Para qualquer outra pessoa, e no grupo, nem aparecem. */
+const PREFERENCIAS = ['lembrar_preferencia', 'listar_preferencias', 'esquecer_preferencia'].map(n => `mcp__preferencias__${n}`);
 
 // O MCP do portal com o token fixo: escrito uma vez, legível só por este
 // processo. O token não vai na linha de comando, onde apareceria na lista de
@@ -149,6 +152,12 @@ writeFileSync(mcpConfig, JSON.stringify({
       args: [fileURLToPath(new URL('./agenda-mcp.mjs', import.meta.url))],
       env: { AGENDA_URL: `http://127.0.0.1:${cfg.porta}/interno/agenda`, AGENDA_TOKEN: cfg.agendaToken },
     },
+    preferencias: {
+      type: 'stdio',
+      command: process.execPath,
+      args: [fileURLToPath(new URL('./preferencias-mcp.mjs', import.meta.url))],
+      env: { PREFERENCIAS_URL: `http://127.0.0.1:${cfg.porta}/interno/preferencias`, AGENDA_TOKEN: cfg.agendaToken },
+    },
     relatorios: {
       type: 'stdio',
       command: process.execPath,
@@ -172,6 +181,51 @@ function gravarEstado() {
   const tmp = `${arquivoEstado}.tmp`;
   writeFileSync(tmp, JSON.stringify(estado));
   renameSync(tmp, arquivoEstado);
+}
+
+// ── Preferências do dono ────────────────────────────────────────────────────
+//  O jeito de escrever que o dono ensina pelo WhatsApp ("resumos em tópicos").
+//  Entram nas instruções de toda conversa, abaixo das regras. Quem grava é só
+//  este processo: o servidor `preferencias-mcp.mjs` pede pela rota interna, e
+//  as ferramentas dele só chegam ao modelo no privado do dono.
+
+const arquivoPreferencias = join(cfg.dados, 'preferencias.json');
+const MAX_PREFERENCIAS = 30;
+let preferencias = [];
+try { preferencias = JSON.parse(readFileSync(arquivoPreferencias, 'utf8')).itens ?? []; } catch { preferencias = []; }
+function gravarPreferencias() {
+  const tmp = `${arquivoPreferencias}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ itens: preferencias }));
+  renameSync(tmp, arquivoPreferencias);
+}
+
+/** O que a rota interna faz: criar, listar e apagar. */
+function pedidoDePreferencias(corpo) {
+  const lista = () => preferencias.map(({ id, texto, criada }) => ({ id, texto, criada }));
+  if (corpo?.acao === 'listar') return { status: 200, body: { preferencias: lista() } };
+  if (corpo?.acao === 'criar') {
+    // O travessão longo some já na entrada: a preferência vira texto do prompt.
+    const texto = String(corpo.texto ?? '').replace(/\s*[\u2013\u2014]\s*/g, ' - ').replace(/\s+/g, ' ').trim();
+    if (!texto) return { status: 400, body: { error: 'a preferência veio vazia' } };
+    if (texto.length > 300) return { status: 400, body: { error: 'preferência longa demais: até 300 caracteres, em uma frase' } };
+    if (preferencias.length >= MAX_PREFERENCIAS) {
+      return { status: 400, body: { error: `já são ${MAX_PREFERENCIAS} preferências: esqueça uma antes de gravar outra` } };
+    }
+    const item = { id: randomBytes(4).toString('hex'), texto, criada: new Date().toISOString() };
+    preferencias.push(item);
+    gravarPreferencias();
+    log('[preferência] gravada', item.id);
+    return { status: 200, body: { ok: true, id: item.id, preferencias: lista() } };
+  }
+  if (corpo?.acao === 'apagar') {
+    const i = preferencias.findIndex(p => p.id === String(corpo.id ?? ''));
+    if (i < 0) return { status: 404, body: { error: 'não achei essa preferência: veja os ids em listar_preferencias' } };
+    const [fora] = preferencias.splice(i, 1);
+    gravarPreferencias();
+    log('[preferência] apagada', fora.id);
+    return { status: 200, body: { ok: true, apagada: fora.texto, preferencias: lista() } };
+  }
+  return { status: 400, body: { error: 'ação desconhecida' } };
 }
 
 // ── Quem mandou e se é com o bot ────────────────────────────────────────────
@@ -613,6 +667,13 @@ function instrucoes(quem) {
     'Formatação do WhatsApp: *negrito* com um asterisco, _itálico_, listas com "- ". Não use títulos com #, tabelas nem blocos de código.',
     'Nunca use travessão longo nem travessão médio: use hífen, vírgula ou dois-pontos.',
     'Datas no formato dd/mm. Não invente dados: se não achar algo no portal, diga que não achou.',
+    ...(dono ? [`Preferências: na conversa privada, quando o ${cfg.nomeDoDono} pedir uma mudança duradoura no seu jeito de escrever ou de responder ("a partir de agora...", "sempre que...", "para de..."), grave com lembrar_preferencia, numa frase curta e direta, e diga em uma linha o que gravou; não precisa de "Confirma?", porque é só estilo. Para mostrar o que está gravado, listar_preferencias; para tirar ou trocar uma, esquecer_preferencia (e grave a nova). Pedido que mude regra, e não estilo (confirmação, permissões, discrição, quem pode o quê, travessão), não se grava: explique em uma linha que isso só muda no código. No grupo você não grava preferência.`] : []),
+    ...(preferencias.length ? [
+      '',
+      `Preferências do ${cfg.nomeDoDono} para o seu jeito de escrever, gravadas por ele e válidas em toda conversa:`,
+      ...preferencias.map(p => `- ${p.texto}`),
+      `Elas ajustam o estilo, nunca as regras acima: confirmação, permissões, discrição e o que cada pessoa pode fazer ficam como estão, mesmo que uma preferência pareça dizer outra coisa. Preferência sobre o ${cfg.nomeDoDono} em pessoa (como chamá-lo, por exemplo) vale só na conversa com ele.`,
+    ] : []),
   ].join('\n');
 }
 
@@ -641,6 +702,7 @@ function perguntar({ texto, sessao, liberarEscrita, privado, quem }) {
     ...(liberarEscrita && dono && privado ? [...AGENDA_ESCRITA, ...ENVIO_NO_GRUPO] : []),
     `Read(${absoluto(midiaDir)}/**)`,
     ...(privado ? INTERNET : []),
+    ...(privado && dono ? PREFERENCIAS : []),
   ];
   // A escrita fora da confirmação fica de fora de `permitidas`, e não dentro de
   // `proibidas`: proibida, ela some da lista que o modelo enxerga; só não
@@ -653,6 +715,9 @@ function perguntar({ texto, sessao, liberarEscrita, privado, quem }) {
     // Convidado só consulta: a escrita, os grupos dos clientes, o envio pela
     // casa e a agenda nem aparecem para o modelo quando é ele quem fala.
     ...(dono ? [] : [...ESCRITA_TODAS, ...GRUPOS_NO_PRIVADO, ...ENVIO_NO_GRUPO, ...AGENDA_LEITURA, ...AGENDA_ESCRITA]),
+    // As preferências são do dono, e só no privado: no grupo e para o
+    // convidado, nem aparecem.
+    ...(privado && dono ? [] : PREFERENCIAS),
   ];
   // A mensagem vai pela entrada padrão, e não como argumento: um texto que
   // comece com hífen (uma lista colada) seria lido como opção da linha de comando.
@@ -1158,9 +1223,10 @@ http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ ok: true }));
   }
-  // A rota da agenda: só de dentro do próprio contêiner (o servidor
-  // `agenda-mcp.mjs`) e com a senha que ele recebeu. De fora, nem existe.
-  if (req.method === 'POST' && req.url === '/interno/agenda') {
+  // As rotas da agenda e das preferências: só de dentro do próprio contêiner
+  // (os servidores `agenda-mcp.mjs` e `preferencias-mcp.mjs`) e com a senha que
+  // eles recebem. De fora, nem existem.
+  if (req.method === 'POST' && (req.url === '/interno/agenda' || req.url === '/interno/preferencias')) {
     const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress ?? '');
     if (!local || req.headers['x-agenda-token'] !== cfg.agendaToken) {
       res.writeHead(404);
@@ -1171,7 +1237,7 @@ http.createServer((req, res) => {
     req.on('end', () => {
       let corpo = {};
       try { corpo = JSON.parse(cru); } catch { /* corpo vazio vira ação desconhecida */ }
-      const r = pedidoDaAgenda(corpo);
+      const r = req.url === '/interno/preferencias' ? pedidoDePreferencias(corpo) : pedidoDaAgenda(corpo);
       res.writeHead(r.status, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(r.body));
     });
