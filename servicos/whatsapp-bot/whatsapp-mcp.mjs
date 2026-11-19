@@ -101,7 +101,7 @@ const FERRAMENTAS = [
         texto: { type: 'string', description: 'O texto exato, como vai aparecer no grupo; no áudio, o que vai ser falado.' },
         mencionar: { type: 'array', items: { type: 'string' }, description: 'Os números de quem marcar, com DDI e DDD (de participantes_do_grupo). Só no texto.' },
         em_audio: { type: 'boolean', description: 'Manda como mensagem de voz em vez de texto.' },
-        arquivo: { type: 'string', description: 'Um arquivo para mandar junto (imagem, PDF, Word...): o caminho que gerar_grafico ou gerar_relatorio devolveu, ou o original de um arquivo recebido. O texto vira a legenda.' },
+        arquivo: { type: 'string', description: 'Um arquivo para mandar junto (imagem, PDF, Word...): o caminho que gerar_grafico ou gerar_relatorio devolveu, ou o original de um arquivo recebido. O texto vira a legenda, e a legenda pode marcar (mencionar).' },
       },
       required: ['grupo'],
     },
@@ -129,7 +129,7 @@ const FERRAMENTAS = [
         numero: { type: 'string', description: 'O número com DDI e DDD, como 5531999990000.' },
         texto: { type: 'string', description: 'O texto exato da mensagem; no áudio, o que vai ser falado.' },
         em_audio: { type: 'boolean', description: 'Manda como mensagem de voz em vez de texto.' },
-        arquivo: { type: 'string', description: 'Um arquivo para mandar junto (imagem, PDF, Word...): o caminho que gerar_grafico ou gerar_relatorio devolveu, ou o original de um arquivo recebido. O texto vira a legenda.' },
+        arquivo: { type: 'string', description: 'Um arquivo para mandar junto (imagem, PDF, Word...): o caminho que gerar_grafico ou gerar_relatorio devolveu, ou o original de um arquivo recebido. O texto vira a legenda, e a legenda pode marcar (mencionar).' },
       },
       required: ['numero'],
     },
@@ -332,7 +332,8 @@ async function executarPlano(plano) {
   if (plano.tipo === 'arquivo') {
     return evolution('POST', `/message/sendMedia/${INSTANCIA}`, {
       number: plano.numero, mediatype: plano.mediatype, mimetype: plano.mimetype, fileName: plano.fileName,
-      ...(plano.legenda ? { caption: plano.legenda } : {}), media: readFileSync(plano.caminho).toString('base64'),
+      ...(plano.legenda ? { caption: plano.legenda } : {}), ...(plano.mencionados?.length ? { mentioned: plano.mencionados } : {}),
+      media: readFileSync(plano.caminho).toString('base64'),
     });
   }
   const ogg = await falar(paraFala(plano.falado), MIDIA_DIR);
@@ -346,7 +347,7 @@ async function enviarNoGrupo(a) {
   if (g.id !== String(a.grupo ?? '').trim()) throw new Error(`use o id do grupo (${g.id}), não o nome`);
   const plano = planoDeEnvio('enviar_no_grupo', { ...a, grupo: g.id }, { midiaDir: MIDIA_DIR });
   const r = await executarPlano(plano);
-  return { ok: true, grupo: g.nome, como: plano.tipo, id: r?.key?.id ?? null, marcados: plano.corpo?.mentioned ?? [] };
+  return { ok: true, grupo: g.nome, como: plano.tipo, id: r?.key?.id ?? null, marcados: plano.corpo?.mentioned ?? plano.mencionados ?? [] };
 }
 
 async function enviarParaPessoa(a) {

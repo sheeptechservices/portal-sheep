@@ -22,14 +22,15 @@ export function montarMensagem({ grupo, texto, mencionar }) {
   const jid = String(grupo ?? '').trim();
   if (!jid.endsWith('@g.us')) throw new Error('o grupo precisa ser o id dele (termina em @g.us), de listar_grupos');
   let corpo = String(texto ?? '').trim();
-  if (!corpo) throw new Error('faltou o texto da mensagem');
-  if (corpo.length > 4000) throw new Error('a mensagem passou de 4000 caracteres');
   const numeros = [...new Set((Array.isArray(mencionar) ? mencionar : []).map(digitos))];
+  // Só com menção a mensagem pode vir sem texto: os @ viram o texto.
+  if (!corpo && !numeros.length) throw new Error('faltou o texto da mensagem');
+  if (corpo.length > 4000) throw new Error('a mensagem passou de 4000 caracteres');
   for (const n of numeros) {
     if (n.length < 10 || n.length > 15) throw new Error(`"${n}" não parece um número de WhatsApp com DDI e DDD`);
   }
   const faltando = numeros.filter(n => !corpo.includes(`@${n}`));
-  if (faltando.length) corpo = `${corpo} ${faltando.map(n => `@${n}`).join(' ')}`;
+  if (faltando.length) corpo = `${corpo} ${faltando.map(n => `@${n}`).join(' ')}`.trim();
   return { number: jid, text: corpo, ...(numeros.length ? { mentioned: numeros } : {}) };
 }
 
@@ -107,15 +108,25 @@ export function planoDeEnvio(ferramenta, a = {}, { midiaDir } = {}) {
   const emAudio = a.em_audio === true;
   if (a.arquivo) {
     if (emAudio) throw new Error('ou manda o arquivo ou o áudio: os dois juntos não');
-    if (Array.isArray(a.mencionar) && a.mencionar.length) throw new Error('anexo não marca ninguém: mande o arquivo e marque num texto à parte');
-    // O destino é conferido como no texto; o texto, aqui, é a legenda e pode faltar.
-    const destino = ferramenta === 'enviar_no_grupo' ? montarMensagem({ ...a, texto: a.texto || '-' }).number
-      : ferramenta === 'enviar_para_pessoa' ? montarPrivada({ ...a, texto: a.texto || '-' }).number
-        : null;
+    const marcar = Array.isArray(a.mencionar) && a.mencionar.length > 0;
+    // Marcar é coisa de grupo; no privado de alguém não há quem marcar.
+    if (marcar && ferramenta !== 'enviar_no_grupo') throw new Error('só se marca alguém em grupo');
+    // O destino é conferido como no texto; o texto, aqui, é a legenda e pode
+    // faltar. Com menção, a legenda leva o @ de cada um (montarMensagem o põe
+    // no fim quando o texto não traz), e a lista vai junto, como no texto.
+    let destino = null;
+    let legenda = String(a.texto ?? '').trim();
+    let mencionados = [];
+    if (ferramenta === 'enviar_no_grupo') {
+      const m = montarMensagem({ ...a, texto: legenda || (marcar ? ' ' : '-') });
+      destino = m.number;
+      if (marcar) { legenda = m.text.trim(); mencionados = m.mentioned ?? []; }
+    } else if (ferramenta === 'enviar_para_pessoa') {
+      destino = montarPrivada({ ...a, texto: legenda || '-' }).number;
+    }
     if (!destino) throw new Error(`envio desconhecido: ${ferramenta}`);
-    const legenda = String(a.texto ?? '').trim();
     if (legenda.length > 1000) throw new Error('a legenda passa de 1000 caracteres');
-    return { tipo: 'arquivo', numero: destino, legenda, ...anexoDe(a.arquivo, midiaDir) };
+    return { tipo: 'arquivo', numero: destino, legenda, mencionados, ...anexoDe(a.arquivo, midiaDir) };
   }
   let corpo;
   if (ferramenta === 'enviar_no_grupo') corpo = montarMensagem(a);
