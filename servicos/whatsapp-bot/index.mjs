@@ -835,7 +835,9 @@ const MARCA_AUDIO = /^\s*\[\[\s*[aá]udio\s*\]\]\s*/i;
 //  mídias: um caminho fora dela, escrito por engano ou tirado de algum texto,
 //  não manda nada.
 
-const MARCA_ARQUIVO = /\[\[\s*arquivo\s*:\s*([^\]\n]+?)\s*\]\]/gi;
+// O caminho pode ter ] no meio (o título de uma reunião como "[Sheep <> 3SA]"
+// já virou nome de arquivo assim): a linha só termina no ]] que fecha.
+const MARCA_ARQUIVO = /\[\[\s*arquivo\s*:\s*([^\n]+?)\s*\]\](?!\])/gi;
 const TIPOS_DE_ARQUIVO = {
   png: { mediatype: 'image', mimetype: 'image/png' },
   pdf: { mediatype: 'document', mimetype: 'application/pdf' },

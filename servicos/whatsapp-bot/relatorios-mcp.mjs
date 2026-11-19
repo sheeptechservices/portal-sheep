@@ -326,7 +326,9 @@ async function clienteDoProjeto(projetoId) {
 // ── Os arquivos ─────────────────────────────────────────────────────────────
 
 /** Nome de arquivo legível a partir do título. */
-const nomeDoArquivo = (titulo) => String(titulo ?? 'arquivo').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'arquivo';
+// Sem colchete e chave: o nome vai dentro da linha [[arquivo:...]], e um ] no
+// meio dele já quebrou essa linha.
+const nomeDoArquivo = (titulo) => String(titulo ?? 'arquivo').replace(/[\\/:*?"<>|\[\]{}\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'arquivo';
 
 function gravar(conteudo, titulo, ext) {
   const caminho = join(MIDIA_DIR, `${Date.now()}-${randomBytes(4).toString('hex')}-${nomeDoArquivo(titulo)}.${ext}`);
