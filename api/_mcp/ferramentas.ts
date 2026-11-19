@@ -1017,6 +1017,84 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
       return (r.usuarios ?? []).map((u: any) => ({ id: String(u.id), nome: u.nome, email: u.email, foto: u.foto_url ?? null }));
     },
   },
+  {
+    name: 'ler_mural',
+    title: 'Ler o mural',
+    description: 'Os recados do mural da equipe que a pessoa conectada enxerga: os que ela escreveu e os que a '
+      + 'marcam, do mais novo para o mais antigo. Cada um com o texto, o autor, quando foi escrito ou editado, '
+      + 'quem foi marcado, quem já viu a versão atual e quem ainda não, e as reações. Só leitura: ler aqui não '
+      + 'marca o recado como visto (visto é quem abriu no portal).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        filtro: {
+          type: 'string', enum: ['todos', 'para_mim', 'meus', 'nao_vistos'],
+          description: 'todos (padrão); para_mim: os que me marcam; meus: os que escrevi; nao_vistos: os que me '
+            + 'marcam e eu ainda não vi na versão atual.',
+        },
+        autor: { type: 'string', description: 'Só os recados de quem tem este nome ou e-mail (parte basta).' },
+        busca: { type: 'string', description: 'Só os recados com este texto.' },
+        desde: { type: 'string', description: 'Só os escritos a partir desta data, AAAA-MM-DD.' },
+        limite: { type: 'integer', minimum: 1, maximum: 100, description: 'Quantos trazer. Padrão 30.' },
+      },
+    },
+    annotations: LEITURA,
+    acoes: ['mural_notas'],
+    async executar(a, ctx) {
+      const r = await chamar(ctx, 'GET', 'mural_notas');
+      const eu = ctx.usuario.id;
+      const todas = await pessoas(ctx);
+      const nomeDe = (id: string) => todas.find(u => u.id === id)?.nome ?? 'Alguém';
+      const filtro = String(a.filtro ?? 'todos');
+      const autor = semAcento(String(a.autor ?? ''));
+      const busca = semAcento(String(a.busca ?? ''));
+      const desde = a.desde ? data(a.desde, 'desde') : null;
+      const limite = Math.min(100, Math.max(1, Number(a.limite ?? 30) || 30));
+      // Visto vale para a versão que está lá: quem viu antes da última edição
+      // ainda não leu o texto de agora.
+      const viuAtual = (n: any, usuarioId: string) => {
+        const corte = String(n.editado_em ?? n.criado_em);
+        return (n.vistos ?? []).some((v: any) => v.usuario_id === usuarioId && String(v.em) >= corte);
+      };
+      const notas = (r.notas ?? []).filter((n: any) => {
+        const meMarca = (n.mencoes ?? []).includes(eu);
+        if (filtro === 'meus' && n.autor_id !== eu) return false;
+        if (filtro === 'para_mim' && !meMarca) return false;
+        if (filtro === 'nao_vistos' && (!meMarca || viuAtual(n, eu))) return false;
+        if (autor) {
+          const email = todas.find(u => u.id === n.autor_id)?.email ?? '';
+          if (!semAcento(String(n.autor_nome ?? '')).includes(autor) && !email.includes(autor)) return false;
+        }
+        if (busca && !semAcento(String(n.texto ?? '')).includes(busca)) return false;
+        if (desde && String(n.criado_em).slice(0, 10) < desde) return false;
+        return true;
+      });
+      const itens = notas.slice(0, limite).map((n: any) => {
+        const marcados = (n.marcados ?? []) as { id: string; nome: string }[];
+        return {
+          id: n.id,
+          // A marca de menção gravada no texto vira só o nome.
+          texto: String(n.texto ?? '').replace(MARCA, '@$1').slice(0, 1500),
+          autor: n.autor_nome || (n.autor_id ? nomeDe(n.autor_id) : null),
+          escrito_por_mim: n.autor_id === eu,
+          me_marca: (n.mencoes ?? []).includes(eu),
+          criado_em: n.criado_em,
+          editado_em: n.editado_em ?? null,
+          marcados: marcados.map(m => m.nome),
+          ja_viram: marcados.filter(m => viuAtual(n, m.id)).map(m => m.nome),
+          ainda_nao_viram: marcados.filter(m => !viuAtual(n, m.id)).map(m => m.nome),
+          reacoes: (n.reacoes ?? []).map((x: any) => ({ quem: x.nome, tipo: x.tipo })),
+        };
+      });
+      // Teto da resposta, como em ver_projeto: o cliente do MCP corta o que
+      // passa, e o corte levaria junto os recados do fim.
+      while (itens.length > 1 && JSON.stringify(itens).length > 24_000) itens.pop();
+      return {
+        total: notas.length, mostrados: itens.length, recados: itens,
+        ...(itens.length < Math.min(limite, notas.length) ? { aviso: 'Recados demais para uma resposta: use desde, autor ou busca.' } : {}),
+      };
+    },
+  },
 ];
 
 const INSTRUCOES = [

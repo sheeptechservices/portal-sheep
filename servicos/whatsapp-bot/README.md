@@ -266,6 +266,13 @@ o detalhe de entregas, tarefas, reuniões e arquivos vem por `secao`, em
 páginas. `listar_projetos` tem o mesmo teto e aceita `busca`.
 Os acessos não vão para grupo.
 
+## Mural da equipe
+
+`ler_mural` (MCP do portal) lê os recados do mural que a pessoa enxerga, os que
+ela escreveu e os que a marcam, com marcados, quem já viu a versão atual, quem
+ainda não e as reações. Só leitura: o bot não escreve recado, e ler pelo bot
+não marca como visto. No grupo, o mural não aparece na resposta.
+
 ## De que cliente é cada grupo
 
 `vinculos.mjs` liga grupo, cliente, projeto e links pelos cadastros do portal:
