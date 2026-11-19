@@ -5466,7 +5466,11 @@ async function despacharAdminData(
       const projs = await db.execute({
         // O grupo do WhatsApp vinculado ao projeto (o do aviso de chamado
         // concluído): é por ele que o bot sabe de que cliente é cada grupo.
+        // Os tokens dos links do cliente (painel de chamados e acompanhamento)
+        // vão junto: quem lê esta lista já os recebe na ação `projetos`, com o
+        // mesmo corte por equipe, e é daqui que o MCP monta os links.
         sql: `SELECT p.id, p.codigo, p.nome, p.status, c.nome AS cliente,
+                     p.chamados_token, p.publico_token, p.link_portal,
                      w.grupo_id AS whatsapp_grupo_id, w.grupo_nome AS whatsapp_grupo_nome
               FROM projetos p LEFT JOIN clientes c ON c.id = p.cliente_id
               LEFT JOIN projeto_whatsapp w ON w.projeto_id = p.id

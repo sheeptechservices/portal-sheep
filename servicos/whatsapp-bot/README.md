@@ -234,6 +234,12 @@ pedem, quando uma preferência pede ("sempre manda o link junto da lista") ou
 quando acabou de criar a tarefa, como texto puro para o WhatsApp torná-lo
 clicável. `ver_tarefa` também diz quem já abriu a tarefa no portal.
 
+`listar_projetos` traz os links de cada projeto em `links`: `portal` (a ficha
+do projeto, para o time), `chamados` (o painel do cliente, `/chamados/<token>`),
+`acompanhamento` (a página `/p/<token>`, só quando publicada) e `sistema` (o
+endereço do que foi entregue). Os dois do cliente abrem sem senha, então o bot
+só os manda no grupo do próprio cliente ou no privado de quem pediu.
+
 ## Preferências de estilo
 
 O dono ensina o jeito de o bot escrever pelo próprio WhatsApp: "a partir de

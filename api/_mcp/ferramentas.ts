@@ -767,7 +767,10 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
     title: 'Listar projetos',
     description: 'Os projetos em que a pessoa conectada pode ter tarefas, com as entregas e a equipe de cada um, '
       + 'o grupo do WhatsApp do cliente vinculado ao projeto (whatsapp), quando houver, e a logo do cliente '
-      + '(logo: url e detalhe, quando a logo tem desenho interno que não pode virar silhueta). '
+      + '(logo: url e detalhe, quando a logo tem desenho interno que não pode virar silhueta) '
+      + 'e os links do projeto (links): portal, a ficha do projeto, para o time; chamados, o painel '
+      + 'em que o cliente abre e acompanha os chamados, sem login; acompanhamento, a página de '
+      + 'andamento do cliente, só quando publicada; sistema, o endereço do que foi entregue, quando há. '
       + 'O projeto "geral" guarda as demandas que não são de projeto nenhum.',
     inputSchema: { type: 'object', properties: {} },
     annotations: LEITURA,
@@ -777,9 +780,20 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
       const base = enderecoDoPortal();
       return {
         ...r,
-        projetos: (r.projetos ?? []).map((p: any) => {
+        projetos: (r.projetos ?? []).map(({ chamados_token, publico_token, link_portal, ...p }: any) => {
           const m = marcaDoCliente(p.cliente);
-          return { ...p, logo: m ? { url: `${base}${m.src}`, detalhe: !!m.detalhe } : null };
+          // O projeto geral não é de cliente: não tem painel nem página para mandar.
+          const deCliente = String(p.id) !== 'geral';
+          return {
+            ...p,
+            logo: m ? { url: `${base}${m.src}`, detalhe: !!m.detalhe } : null,
+            links: {
+              portal: deCliente ? `${base}/projetos/${encodeURIComponent(String(p.id))}` : null,
+              chamados: deCliente && chamados_token ? `${base}/chamados/${String(chamados_token)}` : null,
+              acompanhamento: deCliente && publico_token ? `${base}/p/${String(publico_token)}` : null,
+              sistema: String(link_portal ?? '').trim() || null,
+            },
+          };
         }),
       };
     },
