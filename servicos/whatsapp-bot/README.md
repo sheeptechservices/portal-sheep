@@ -240,6 +240,17 @@ do projeto, para o time), `chamados` (o painel do cliente, `/chamados/<token>`),
 endereço do que foi entregue). Os dois do cliente abrem sem senha, então o bot
 só os manda no grupo do próprio cliente ou no privado de quem pediu.
 
+## De que cliente é cada grupo
+
+`vinculos.mjs` liga grupo, cliente, projeto e links pelos cadastros do portal:
+primeiro o grupo vinculado no projeto; sem vínculo, o nome do grupo, casando o
+nome do cliente, do projeto ou o código como palavra inteira (o nome da casa e
+palavras de grupo, como "suporte" e "squad", não contam). Achado o cliente, vêm
+todos os projetos dele com os links. Ao responder num grupo, o bot recebe isso
+na nota do sistema (com os projetos guardados por 5 minutos); no privado,
+`listar_grupos` traz o mesmo em `cliente`. Dois clientes no nome ficam marcados
+como ambíguos, e aí o bot pergunta.
+
 ## Preferências de estilo
 
 O dono ensina o jeito de o bot escrever pelo próprio WhatsApp: "a partir de

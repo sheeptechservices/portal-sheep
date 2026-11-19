@@ -25,6 +25,7 @@ import { docxParaTexto, xlsxParaTexto } from './documentos.mjs';
 import { digitos, pessoasDoGrupo, planoDeEnvio } from './mensagem-grupo.mjs';
 import { falar, paraFala } from './voz.mjs';
 import { transcrever, AUDIO_MAX_SEGUNDOS } from './transcricao.mjs';
+import { projetosDoPortal, clienteDoGrupo } from './vinculos.mjs';
 
 const EVOLUTION_URL = (process.env.EVOLUTION_URL ?? '').replace(/\/+$/, '');
 const INSTANCIA = encodeURIComponent(process.env.EVOLUTION_INSTANCIA ?? '');
@@ -41,8 +42,9 @@ const FERRAMENTAS = [
     name: 'listar_grupos',
     title: 'Listar grupos do WhatsApp',
     description: 'Os grupos do WhatsApp em que o número da casa está, do mais recente para o mais antigo, '
-      + 'com o projeto do portal vinculado a cada um (quando houver vínculo). Sem vínculo, o nome do grupo '
-      + 'costuma dizer o cliente.',
+      + 'com o cliente de cada um e os projetos dele, com os links (painel de chamados, acompanhamento, ficha, '
+      + 'sistema). cliente.como diz de onde veio: vinculo (cadastrado no projeto do portal) ou nome (deduzido do '
+      + 'nome do grupo). projeto é o principal.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -149,37 +151,11 @@ async function evolution(metodo, caminho, corpo) {
   return r.json();
 }
 
-/** Os projetos do portal com o grupo vinculado. Falhar aqui não impede de
- *  listar os grupos: só fica sem o vínculo. */
-async function vinculos() {
-  try {
-    const r = await fetch(PORTAL_MCP_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${PORTAL_MCP_TOKEN}`, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'listar_projetos', arguments: {} } }),
-      signal: AbortSignal.timeout(30_000),
-    });
-    const cru = await r.text();
-    const json = r.headers.get('content-type')?.includes('text/event-stream')
-      ? cru.split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trim()).filter(Boolean).pop()
-      : cru;
-    const texto = JSON.parse(json ?? '{}').result?.content?.find(c => c.type === 'text')?.text ?? '{}';
-    const projetos = JSON.parse(texto).projetos ?? [];
-    const mapa = new Map();
-    for (const p of projetos) {
-      if (p.whatsapp?.grupo_id) mapa.set(p.whatsapp.grupo_id, { id: String(p.id), nome: p.nome, cliente: p.cliente ?? null });
-    }
-    return mapa;
-  } catch {
-    return new Map();
-  }
-}
-
 async function grupos() {
-  const [conversas, todos, mapa] = await Promise.all([
+  const [conversas, todos, projetos] = await Promise.all([
     evolution('POST', `/chat/findChats/${INSTANCIA}`, {}).catch(() => []),
     evolution('GET', `/group/fetchAllGroups/${INSTANCIA}?getParticipants=false`).catch(() => []),
-    vinculos(),
+    projetosDoPortal(PORTAL_MCP_URL, PORTAL_MCP_TOKEN),
   ]);
   const porId = new Map();
   for (const c of Array.isArray(conversas) ? conversas : []) {
@@ -192,7 +168,17 @@ async function grupos() {
     porId.set(g.id, { ...atual, nome: g.subject ?? atual.nome, membros: g.size ?? atual.membros });
   }
   return [...porId.values()]
-    .map(g => ({ ...g, projeto: mapa.get(g.id) ?? null }))
+    .map(g => {
+      // O cliente do grupo, pelo vínculo do portal ou pelo nome: com ele vêm
+      // os projetos e os links. `projeto` fica como atalho para o principal.
+      const c = clienteDoGrupo(g, projetos);
+      const principal = c?.projetos.find(p => p.vinculado) ?? c?.projetos[0] ?? null;
+      return {
+        ...g,
+        projeto: principal ? { id: principal.id, nome: principal.nome, cliente: principal.cliente } : null,
+        cliente: c ? { nomes: c.clientes, como: c.como, ambiguo: c.ambiguo, projetos: c.projetos } : null,
+      };
+    })
     .sort((a, b) => String(b.atualizado ?? '').localeCompare(String(a.atualizado ?? '')));
 }
 
