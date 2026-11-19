@@ -799,6 +799,102 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
     },
   },
   {
+    name: 'ver_projeto',
+    title: 'Ver projeto',
+    description: 'A ficha inteira de um projeto, como a tela mostra: descrição, cliente, tipo, status, '
+      + 'prioridade, datas, progresso, observações, links (ficha, painel de chamados, acompanhamento, '
+      + 'sistema entregue), repositórios do GitHub, pastas do Drive, acessos da equipe (rótulo, usuário e '
+      + 'endereço; a senha não vem, fica no portal), equipe com papel, entregas com status e progresso, '
+      + 'arquivos, reuniões e as tarefas (contagem por etapa e as abertas, com link). Use para qualquer '
+      + 'pergunta sobre um projeto ("qual o repositório do backend da 3SA", "quem está no projeto da '
+      + 'Click", "qual o link do sistema da Orteconte").',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projeto: { type: 'string', description: 'Id, código (PRJ-26-011), nome do projeto ou nome do cliente.' },
+      },
+      required: ['projeto'],
+    },
+    annotations: LEITURA,
+    acoes: ['projetos'],
+    async executar(a, ctx) {
+      const pedido = String(a.projeto ?? '').trim();
+      if (!pedido) throw new ErroFerramenta('Diga qual projeto: id, código, nome ou cliente.');
+      const r = await chamar(ctx, 'GET', 'projetos');
+      const todos: any[] = (r.projetos ?? []).filter((p: any) => String(p.id) !== 'geral' || semAcento(pedido) === 'geral');
+      const alvo = semAcento(pedido);
+      const exatos = todos.filter(p => [p.id, p.codigo, p.nome].some(x => x != null && semAcento(String(x)) === alvo));
+      const parciais = exatos.length ? exatos : todos.filter(p =>
+        [p.id, p.codigo, p.nome, p.cliente_nome].some(x => x != null && semAcento(String(x)).includes(alvo)));
+      // Cliente com mais de um projeto: devolve a lista para escolher, em vez
+      // de adivinhar qual deles a pessoa quis dizer.
+      if (parciais.length === 0) {
+        throw new ErroFerramenta(`Nenhum projeto bate com "${pedido}". Veja os nomes e códigos em listar_projetos.`);
+      }
+      if (parciais.length > 1) {
+        return {
+          varios: true,
+          aviso: `Mais de um projeto bate com "${pedido}": chame de novo com o id ou o código.`,
+          projetos: parciais.map(p => ({ id: String(p.id), codigo: p.codigo ?? null, nome: p.nome, cliente: p.cliente_nome ?? null, status: p.status })),
+        };
+      }
+      const p = parciais[0];
+      const base = enderecoDoPortal();
+      const deCliente = String(p.id) !== 'geral';
+      const [lista, todasPessoas] = await Promise.all([etapas(ctx), pessoas(ctx)]);
+      const fechadas = new Set(lista.filter(e => Number(e.is_conclusao) === 1 || Number(e.is_excluded) === 1).map(e => String(e.nome)));
+      const nomeDe = (id: unknown) => todasPessoas.find(u => u.id === String(id))?.nome ?? String(id);
+      const tarefas: any[] = p.tarefas ?? [];
+      const porEtapa: Record<string, number> = {};
+      for (const t of tarefas) porEtapa[String(t.status)] = (porEtapa[String(t.status)] ?? 0) + 1;
+      const abertas = tarefas.filter(t => !fechadas.has(String(t.status)));
+      const curto = (s: unknown, n: number) => {
+        const t = String(s ?? '').trim();
+        return !t ? null : t.length > n ? `${t.slice(0, n)}...` : t;
+      };
+      return {
+        id: String(p.id), codigo: p.codigo ?? null, nome: p.nome, cliente: p.cliente_nome ?? null,
+        descricao: p.descricao ?? null, objetivo: p.objetivo ?? null, tipo: p.tipo ?? null,
+        status: p.status, prioridade: p.prioridade, data_inicio: p.data_inicio ?? null,
+        previsao_entrega: p.previsao_entrega ?? null, progresso: Number(p.progresso ?? 0),
+        observacoes: p.observacoes ?? null, criado_em: p.criado_em ?? null,
+        links: {
+          portal: deCliente ? `${base}/projetos/${encodeURIComponent(String(p.id))}` : null,
+          chamados: deCliente && p.chamados_token ? `${base}/chamados/${String(p.chamados_token)}` : null,
+          acompanhamento: deCliente && p.publico_token ? `${base}/p/${String(p.publico_token)}` : null,
+          sistema: String(p.link_portal ?? '').trim() || null,
+        },
+        repositorios: p.repositorios ?? [],
+        drives: p.drives ?? [],
+        acessos: (p.acessos ?? []).map((x: any) => ({
+          rotulo: x.rotulo, usuario: x.usuario ?? null, url: x.url ?? null, tem_senha: !!x.tem_senha,
+        })),
+        equipe: (p.equipe ?? []).map((m: any) => ({ nome: m.nome, email: m.email, papel: m.papel ?? null })),
+        entregas: (p.entregas ?? []).map((e: any) => ({
+          id: Number(e.id), titulo: e.titulo, descricao: curto(e.descricao, 500), status: e.status,
+          prazo: e.prazo ?? null, prioridade: e.prioridade ?? null,
+          responsaveis: (e.responsaveis ?? []).map(nomeDe), progresso: e.progresso ?? null,
+          tarefas_feitas: e.tarefas_feitas ?? 0, tarefas_total: e.tarefas_total ?? 0,
+          links: e.links ?? [], arquivos: (e.arquivos ?? []).map((f: any) => f.nome),
+        })),
+        arquivos: (p.arquivos ?? []).map((f: any) => ({ nome: f.nome, etiqueta: f.etiqueta ?? null, tipo: f.tipo ?? null })),
+        reunioes: (p.reunioes ?? []).slice(0, 20).map((m: any) => ({
+          id: Number(m.id), data: m.data, assunto: m.assunto, participantes: m.participantes ?? [],
+          notas: curto(m.notas, 600), fireflies_id: m.fireflies_id ?? null,
+        })),
+        tarefas: {
+          total: tarefas.length,
+          por_etapa: porEtapa,
+          abertas: abertas.slice(0, 80).map(t => ({
+            id: Number(t.id), titulo: t.titulo, etapa: t.status, prioridade: t.prioridade ?? null,
+            prazo: t.prazo ?? null, responsaveis: (t.responsaveis ?? []).map(nomeDe), link: linkDaTarefa(t.id),
+          })),
+          abertas_omitidas: Math.max(0, abertas.length - 80),
+        },
+      };
+    },
+  },
+  {
     name: 'listar_status',
     title: 'Listar etapas',
     description: 'As etapas do quadro de tarefas, na ordem. entrada: onde a tarefa nova nasce; '
@@ -862,6 +958,8 @@ const INSTRUCOES = [
   'Chamado e tarefa: chamado é o pedido do cliente, que ele acompanha no painel de chamados do '
     + 'projeto; abrir_chamado o registra em nome dele e a tarefa do time nasce sozinha. Use só quando '
     + 'pedirem um chamado. Trabalho interno é criar_tarefa.',
+  'Projeto: listar_projetos para achar o id e os links; ver_projeto para a ficha inteira (descrição, '
+    + 'repositórios, Drive, acessos sem senha, equipe, entregas, reuniões e tarefas).',
   'Excluir tarefa não tem volta: confirme com a pessoa antes.',
 ].join('\n\n');
 

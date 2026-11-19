@@ -108,5 +108,5 @@ export function notaDoCliente(c) {
     return `"${p.nome}"${p.codigo ? ` (código ${p.codigo})` : ''}, id ${p.id}${p.status ? `, ${p.status}` : ''}${links ? `. Links: ${links}` : ''}`;
   }).join(' | ');
   const quem = c.ambiguo ? `de um destes clientes: ${c.clientes.join(', ')}` : `do cliente ${c.clientes[0] ?? c.projetos[0]?.nome}`;
-  return ` Este grupo é ${quem}, ${origem}. Projetos: ${projetos}. Pedidos daqui (tarefas, chamados, entregas, reuniões, links) são deste cliente: use estes projetos sem perguntar qual é${c.ambiguo ? ', a menos que a conversa não deixe claro entre os clientes acima' : ''}. Os links de chamados e de acompanhamento são do próprio cliente e podem ir neste grupo.`;
+  return ` Este grupo é ${quem}, ${origem}. Projetos: ${projetos}. Pedidos daqui (tarefas, chamados, entregas, reuniões, links) são deste cliente: use estes projetos sem perguntar qual é${c.ambiguo ? ', a menos que a conversa não deixe claro entre os clientes acima' : ''}. Para o resto da ficha (descrição, repositórios, Drive, acessos, entregas, reuniões), use ver_projeto com o id. Os links de chamados e de acompanhamento são do próprio cliente e podem ir neste grupo; os acessos da equipe (logins) não.`;
 }

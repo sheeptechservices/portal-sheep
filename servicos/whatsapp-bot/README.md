@@ -240,6 +240,13 @@ do projeto, para o time), `chamados` (o painel do cliente, `/chamados/<token>`),
 endereço do que foi entregue). Os dois do cliente abrem sem senha, então o bot
 só os manda no grupo do próprio cliente ou no privado de quem pediu.
 
+`ver_projeto` traz a ficha inteira, como a tela mostra: descrição, cliente,
+tipo, status, prioridade, datas, links, repositórios do GitHub, pastas do
+Drive, acessos da equipe (rótulo, usuário e endereço, nunca a senha), equipe,
+entregas, arquivos, reuniões e as tarefas abertas com link. Aceita id, código,
+nome do projeto ou do cliente; cliente com vários projetos devolve a lista.
+Os acessos não vão para grupo.
+
 ## De que cliente é cada grupo
 
 `vinculos.mjs` liga grupo, cliente, projeto e links pelos cadastros do portal:
