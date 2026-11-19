@@ -892,6 +892,21 @@ function Comentario({ c, respostas, pessoas, etapas, usuarioId, podeComentar, pe
  *  mostra a conversa que estava e se atualiza por baixo, em vez de piscar um
  *  vazio enquanto a leitura vai e volta. */
 const lidas = new Map<string, { eventos: EventoAtividade[]; comentarios: ComentarioAtividade[] }>();
+/** As visitas já lidas, por dono, pelo mesmo motivo da conversa. */
+const vistosLidos = new Map<string, VistoAtividade[]>();
+
+/** Quem abriu o card: uma linha por pessoa, com a primeira e a última vez. */
+export interface VistoAtividade {
+  usuario_id: string;
+  nome: string;
+  foto_url: string | null;
+  primeira_em: string;
+  ultima_em: string;
+  vezes: number;
+}
+
+/** "18/11", no relógio de quem está olhando. */
+const diaDoMes = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 
 /** O que o dono precisa saber fazer. Quatro funções, e nenhuma delas conta ao
  *  componente de que coisa se trata. */
@@ -913,6 +928,9 @@ export interface DonoDaAtividade {
   /** Dá (`ligar`) ou tira o joinha de quem está vendo. Ausente onde a conversa
    *  não tem joinha - e aí o botão não aparece. */
   joinha?: (id: number, ligar: boolean) => Promise<{ error?: string } | null>;
+  /** Registra a visita de quem está olhando e devolve quem já abriu o card.
+   *  Ausente onde não se guarda quem viu - e aí a aba Visualizações não existe. */
+  vistos?: () => Promise<VistoAtividade[] | null>;
 }
 
 export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
@@ -924,7 +942,8 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
   podeComentar: boolean;
 }) {
   const { chave } = dono;
-  const [aba, setAba] = useState<'conversa' | 'diario'>('conversa');
+  const [aba, setAba] = useState<'conversa' | 'diario' | 'vistos'>('conversa');
+  const [visitas, setVisitas] = useState<VistoAtividade[]>(vistosLidos.get(chave) ?? []);
   // Já lida antes: abre com o que estava e se atualiza por baixo.
   const guardada = lidas.get(chave);
   const [eventos, setEventos] = useState<EventoAtividade[]>(guardada?.eventos ?? []);
@@ -954,6 +973,22 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
     setCarregando(!lidas.has(chave));
     void carregar();
   }, [carregar, chave]);
+
+  // A visita conta uma vez por abertura do card, ao lado da leitura e sem
+  // esperar por ela; reler depois de um comentário não é visita nova.
+  const lerVistos = useRef(dono.vistos);
+  lerVistos.current = dono.vistos;
+  useEffect(() => {
+    setVisitas(vistosLidos.get(chave) ?? []);
+    if (!lerVistos.current) return;
+    let vivo = true;
+    void lerVistos.current().then(v => {
+      if (!vivo || !v) return;
+      vistosLidos.set(chave, v);
+      setVisitas(v);
+    }).catch(() => {});
+    return () => { vivo = false; };
+  }, [chave]);
 
   // O que a tela mostra é o que fica guardado: reabrir a tarefa não pode
   // mostrar a conversa de antes do último comentário.
@@ -1122,6 +1157,14 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
           Atividade
           {eventos.length > 0 && <span className="ativ-conta">{eventos.length}</span>}
         </button>
+        {dono.vistos && (
+          <button type="button" role="tab" aria-selected={aba === 'vistos'}
+            className={aba === 'vistos' ? 'ativa' : undefined}
+            onClick={() => setAba('vistos')}>
+            Visualizações
+            {visitas.length > 0 && <span className="ativ-conta">{visitas.length}</span>}
+          </button>
+        )}
       </div>
 
       {/* A chave é a aba, e também a espera: trocá-la remonta o conteúdo, e é a
@@ -1177,6 +1220,27 @@ export function Atividade({ dono, pessoas, etapas, usuarioId, podeComentar }: {
             </div>
           )}
         </>
+      ) : aba === 'vistos' ? (
+        visitas.length === 0 ? (
+          <p className="ativ-vazio">Ninguém abriu ainda.</p>
+        ) : (
+          // Quem abriu por último vem primeiro. As visitas seguidas, a menos de
+          // dez minutos uma da outra, contam como uma só.
+          <ul className="ativ-diario ativ-vistos">
+            {visitas.map(v => (
+              <li key={v.usuario_id}>
+                <Avatar nome={v.nome} foto={v.foto_url} size={20} />
+                <span className="ativ-diario-texto">
+                  <strong>{v.nome}</strong>
+                  {v.vezes === 1 ? ' abriu uma vez' : <> abriu {v.vezes} vezes, a primeira em <em>{diaDoMes(v.primeira_em)}</em></>}
+                </span>
+                <span className="ativ-diario-quando" title={`Última vez: ${fmtDataHora(v.ultima_em)}`}>
+                  {quando(v.ultima_em)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )
       ) : eventos.length === 0 ? (
         <p className="ativ-vazio">Nada registrado ainda.</p>
       ) : (

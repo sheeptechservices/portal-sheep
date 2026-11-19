@@ -1189,6 +1189,20 @@ async function migrarSchema(db: Client) {
     )
   `);
 
+  // Quem abriu cada tarefa: uma linha por pessoa, com a primeira e a última
+  // vez e quantas vezes. Reabrir em seguida não conta de novo (ver
+  // `registrar_visualizacao_tarefa`), para o número dizer visitas, e não cliques.
+  await ddl(`
+    CREATE TABLE IF NOT EXISTS tarefa_visualizacoes (
+      tarefa_id   INTEGER NOT NULL,
+      usuario_id  TEXT NOT NULL,
+      primeira_em TEXT NOT NULL,
+      ultima_em   TEXT NOT NULL,
+      vezes       INTEGER NOT NULL DEFAULT 1,
+      PRIMARY KEY (tarefa_id, usuario_id)
+    )
+  `);
+
 
   // ── Banco de talentos ───────────────────────────────────────────────────────
   // Quem trabalha na casa mora em `usuarios`; aqui ficam duas coisas que aquela
@@ -5643,7 +5657,7 @@ async function despacharAdminData(
       const barrado = await guardaDaEquipe(db, usuario, id, 'tarefa');
       if (barrado) return barrado;
 
-      const [eventos, comentarios, mencoes, anexos, joinhas] = await Promise.all([
+      const [eventos, comentarios, mencoes, anexos, joinhas, vistos] = await Promise.all([
         db.execute({
           sql: `SELECT id, usuario_id, usuario_nome, acao, campo, de, para, criado_em
                 FROM tarefa_eventos WHERE tarefa_id = ? ORDER BY id DESC`,
@@ -5683,6 +5697,14 @@ async function despacharAdminData(
                 WHERE c.tarefa_id = ? ORDER BY j.criado_em`,
           args: [id],
         }),
+        // Quem já abriu a tarefa, só lendo: quem registra a visita é a gaveta.
+        db.execute({
+          sql: `SELECT v.usuario_id, u.nome, v.primeira_em, v.ultima_em, v.vezes
+                FROM tarefa_visualizacoes v
+                LEFT JOIN usuarios u ON u.id = v.usuario_id
+                WHERE v.tarefa_id = ? ORDER BY v.ultima_em DESC`,
+          args: [id],
+        }),
       ]);
 
       const porComentario = <T,>(linhas: T[], chave: (l: T) => number) => {
@@ -5701,6 +5723,10 @@ async function despacharAdminData(
       return {
         status: 200,
         body: {
+          vistos: vistos.rows.map(l => ({
+            usuario_id: String(l.usuario_id), nome: l.nome != null ? String(l.nome) : null,
+            primeira_em: String(l.primeira_em), ultima_em: String(l.ultima_em), vezes: Number(l.vezes) || 1,
+          })),
           eventos: eventos.rows,
           comentarios: comentarios.rows.map(c => ({
             ...c,
@@ -8910,6 +8936,43 @@ function faltaEmProjeto(p: any): string | null {
       { const barrado = await guardaDaEquipe(db, usuario, alvo.rows[0].projeto_id); if (barrado) return barrado; }
       await db.execute({ sql: 'DELETE FROM projeto_acessos WHERE id = ?', args: [body.id] });
       return { status: 200, body: { ok: true } };
+    }
+
+    // Quem abriu a tarefa. A gaveta chama ao abrir: registra quem está logado
+    // e devolve a lista inteira, já com esta visita, para a aba Visualizações.
+    // Uma nova visita só conta depois de 10 minutos da anterior; antes disso só
+    // a hora da última vez anda.
+    if (action === 'registrar_visualizacao_tarefa') {
+      const tarefaId = Number(body?.id);
+      if (!Number.isInteger(tarefaId) || tarefaId <= 0) return { status: 400, body: { error: 'Tarefa inválida.' } };
+      { const barrado = await guardaDaEquipe(db, usuario, tarefaId, 'tarefa'); if (barrado) return barrado; }
+      await db.execute({
+        sql: `INSERT INTO tarefa_visualizacoes (tarefa_id, usuario_id, primeira_em, ultima_em, vezes)
+              VALUES (?, ?, ?, ?, 1)
+              ON CONFLICT (tarefa_id, usuario_id) DO UPDATE SET
+                vezes = vezes + CASE WHEN julianday(excluded.ultima_em) - julianday(ultima_em) > 10.0 / 1440 THEN 1 ELSE 0 END,
+                ultima_em = excluded.ultima_em`,
+        args: [tarefaId, usuario.id, new Date().toISOString(), new Date().toISOString()],
+      });
+      const r = await db.execute({
+        sql: `SELECT v.usuario_id, u.nome, u.foto_url, v.primeira_em, v.ultima_em, v.vezes
+              FROM tarefa_visualizacoes v
+              LEFT JOIN usuarios u ON u.id = v.usuario_id
+              WHERE v.tarefa_id = ?
+              ORDER BY v.ultima_em DESC`,
+        args: [tarefaId],
+      });
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          vistos: r.rows.map(l => ({
+            usuario_id: String(l.usuario_id), nome: l.nome != null ? String(l.nome) : 'Alguém que saiu do portal',
+            foto_url: l.foto_url != null ? String(l.foto_url) : null,
+            primeira_em: String(l.primeira_em), ultima_em: String(l.ultima_em), vezes: Number(l.vezes) || 1,
+          })),
+        },
+      };
     }
 
     // Fixar e desafixar uma tarefa no menu de quem esta logado. So a tarefa

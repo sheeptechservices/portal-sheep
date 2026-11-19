@@ -8725,6 +8725,8 @@ button.kanban-card.pl-funil-card:focus-visible { outline: none; border-color: va
   font-size: 11px;
   color: var(--gray2);
 }
+/* Visualizações: a foto no lugar do ponto, centrada na linha. */
+.ativ-vistos li { align-items: center; }
 
 /* ── Quadro da semana ─────────────────────────────────
    Uma coluna por dia, com as tarefas concluídas naquele dia. Rola de lado em

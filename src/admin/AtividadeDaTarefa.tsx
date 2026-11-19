@@ -124,6 +124,12 @@ export function AtividadeDaTarefa({ tarefaId, pessoas, usuarioId, podeComentar, 
     },
     anexo: (id: number) => api(`?action=tarefa_comentario_anexo_base64&id=${id}`),
     joinha: (id: number, ligar: boolean) => api('', 'POST', { action: 'joinha_tarefa_comentario', id, ligar }),
+    // Abrir a tarefa é a visita: o servidor registra quem está olhando e
+    // devolve a lista, já com esta vez.
+    vistos: async () => {
+      const r = await api('', 'POST', { action: 'registrar_visualizacao_tarefa', id: tarefaId });
+      return Array.isArray(r?.vistos) ? r.vistos : null;
+    },
   }), [api, tarefaId, onConversaMudou]);
 
   return (

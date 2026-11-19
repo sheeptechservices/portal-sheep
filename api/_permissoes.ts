@@ -294,6 +294,9 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   // permissão própria. Apagar entra em `comentar` porque o servidor limita a
   // quem escreveu, para todo papel.
   tarefa_atividade: 'tarefas:ver',
+  // Quem abriu a tarefa: registra a visita de quem está logado e lê a lista.
+  // Quem vê a tarefa vê quem a viu, como vê a conversa dela.
+  registrar_visualizacao_tarefa: 'tarefas:ver',
   // O chamado do cliente por trás da tarefa, e os anexos dele: leitura de tarefa.
   chamado_da_tarefa: 'tarefas:ver',
   chamado_anexo_base64: 'tarefas:ver',
