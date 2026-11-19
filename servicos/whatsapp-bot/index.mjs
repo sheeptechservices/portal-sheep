@@ -59,6 +59,9 @@ const cfg = {
   /** A senha da rota interna da agenda, que só o servidor `agenda-mcp.mjs`
    *  usa. Nasce a cada partida do bot; os testes fixam a deles. */
   agendaToken: process.env.AGENDA_TOKEN || randomBytes(24).toString('hex'),
+  /** Quanto silêncio esperar antes de responder: quem manda uma mensagem e
+   *  logo outra para completar recebe uma resposta só, para as duas. */
+  esperaMs: Number(process.env.ESPERA_MENSAGENS_MS ?? 3000),
   /** De quanto em quanto tempo a agenda confere o que venceu. */
   agendaIntervaloMs: Number(process.env.AGENDA_INTERVALO_MS ?? 30_000),
   /** O mínimo entre agendar e a execução: horário já passado ou em cima da
@@ -705,7 +708,7 @@ const ehConfirmacao = (t) => t.length <= 80 && CONCORDA.test(t) && !RESSALVA.tes
 const PEDE_CONFIRMACAO = /Confirma\?|\(sim\s*\/\s*n[aã]o\)/i;
 
 /** Roda o Claude Code uma vez. Devolve o texto da resposta e a sessão. */
-function perguntar({ texto, sessao, liberarEscrita, privado, quem }) {
+function perguntar({ texto, sessao, liberarEscrita, privado, quem, controle }) {
   const dono = !quem || quem.dono;
   // A leitura de arquivo só alcança a pasta das mídias. `//` abre um caminho
   // absoluto na regra de permissão do Claude Code.
@@ -760,6 +763,10 @@ function perguntar({ texto, sessao, liberarEscrita, privado, quem }) {
     const [exe, prefixo] = cfg.claude.endsWith('.mjs') ? [process.execPath, [cfg.claude]] : [cfg.claude, []];
     const filho = spawn(exe, [...prefixo, ...args], { cwd: cfg.trabalho, env: process.env });
     filho.stdin.end(texto);
+    // Chegou mensagem nova enquanto ele pensava: quem chamou pode parar o
+    // Claude Code, e a resposta pela metade não sai.
+    let interrompido = false;
+    if (controle) controle.abortar = () => { interrompido = true; filho.kill('SIGKILL'); };
     let saida = '';
     let erro = '';
     const relogio = setTimeout(() => { filho.kill('SIGKILL'); }, cfg.tempoMaxMs);
@@ -771,6 +778,8 @@ function perguntar({ texto, sessao, liberarEscrita, privado, quem }) {
     });
     filho.on('close', (codigo, sinal) => {
       clearTimeout(relogio);
+      if (controle) controle.abortar = null;
+      if (interrompido) return resolver({ ok: false, interrompido: true, motivo: 'interrompido por mensagem nova' });
       if (sinal === 'SIGKILL') return resolver({ ok: false, motivo: 'a resposta demorou demais' });
       let r = null;
       try { r = JSON.parse(saida.trim().split('\n').filter(Boolean).pop() ?? ''); } catch { r = null; }
@@ -1103,10 +1112,18 @@ async function rodarAgenda() {
 }
 setInterval(() => { void rodarAgenda(); }, cfg.agendaIntervaloMs).unref();
 
-// ── Uma mensagem, do começo ao fim ──────────────────────────────────────────
+// ── As mensagens, do começo ao fim ────────────────────────────────────────
+//  Quem escreve em partes ("preciso de um relatório" e logo "do mês passado,
+//  em PDF") recebe uma resposta só. Cada mensagem é preparada assim que chega
+//  (o áudio transcrito, o arquivo baixado e lido) e entra no lote da conversa;
+//  o lote só vai ao Claude Code depois de um instante de silêncio. Se chegar
+//  mais enquanto ele pensa, a resposta pela metade é descartada e o lote
+//  recomeça com tudo junto. A única exceção é a ação já confirmada: ela não é
+//  interrompida no meio (gravaria pela metade, ou duas vezes), e o que chegar
+//  vai para a resposta seguinte.
 
-/** Uma fila por conversa: duas mensagens seguidas não rodam o Claude Code em
- *  paralelo na mesma sessão. */
+/** Uma fila por conversa: duas respostas na mesma conversa não rodam o Claude
+ *  Code em paralelo na mesma sessão. */
 const filas = new Map();
 function enfileirar(chat, tarefa) {
   const anterior = filas.get(chat) ?? Promise.resolve();
@@ -1116,10 +1133,10 @@ function enfileirar(chat, tarefa) {
   filas.set(chat, proxima);
 }
 
-async function atender({ chat, grupo, texto: escrito, midia: anexo, origem: deOnde, quem: remetente }) {
-  const quem = remetente ?? { numero: cfg.autorizado, nome: cfg.nomeDoDono, dono: true };
-  const privado = !grupo;
-  const agora = Date.now();
+/** Uma mensagem pronta para entrar na pergunta: o áudio já virou texto e o
+ *  arquivo já foi baixado e lido. Erro vira um aviso para a pessoa, e a
+ *  mensagem sai do lote. */
+async function prepararPedaco({ chat, texto: escrito, midia: anexo, origem: deOnde }) {
   let texto = escrito;
   let midia = anexo;
   let origem = deOnde;
@@ -1129,7 +1146,7 @@ async function atender({ chat, grupo, texto: escrito, midia: anexo, origem: deOn
   if (midia?.tipo === 'audio') {
     void digitando(chat);
     const a = await ouvirAudio(chat, midia, origem);
-    if (a.erro) { await responder(chat, a.erro); return; }
+    if (a.erro) return { erro: a.erro };
     const duracao = a.segundos ? ` de ${a.segundos}s` : '';
     if (texto) {
       // Respondeu a um áudio com um pedido ("cria um card disso"): o áudio é o
@@ -1142,24 +1159,98 @@ async function atender({ chat, grupo, texto: escrito, midia: anexo, origem: deOn
     midia = null;
     origem = null;
   }
+  if (midia) void digitando(chat);
+  const prep = await prepararMidia({ midia, origem, texto });
+  if ('parar' in prep) return { erro: prep.parar || null };
+  return { texto: texto ?? '', notaAudio, nota: prep.nota ?? '', comArquivo: !!midia };
+}
+
+/** Os lotes abertos, por conversa e por quem fala: num grupo, o que o dono e
+ *  um convidado mandam ao mesmo tempo não se mistura. */
+const lotes = new Map();
+
+/** Uma mensagem chegou: prepara já, entra no lote e, se o bot está pensando
+ *  numa resposta que pode parar, para. */
+function receber(m) {
+  const chave = `${m.chat}|${m.quem?.numero ?? ''}`;
+  let lote = lotes.get(chave);
+  if (!lote) {
+    lote = { chave, chat: m.chat, grupo: m.grupo, quem: m.quem, pedacos: [], relogio: null, rodando: null };
+    lotes.set(chave, lote);
+  }
+  lote.pedacos.push(prepararPedaco(m).catch(e => ({ erro: `Não consegui ler essa mensagem: ${e?.message ?? e}` })));
+  if (lote.rodando) {
+    if (lote.rodando.interrompivel && lote.rodando.abortar) {
+      log('[lote] mensagem nova no meio da resposta: recomeçando com tudo junto', m.chat);
+      lote.rodando.abortar();
+    }
+    return;
+  }
+  armar(lote);
+}
+
+/** Espera o silêncio e põe o lote na fila da conversa. */
+function armar(lote) {
+  clearTimeout(lote.relogio);
+  lote.relogio = setTimeout(() => {
+    lote.relogio = null;
+    enfileirar(lote.chat, () => rodarLote(lote));
+  }, cfg.esperaMs);
+}
+
+async function rodarLote(lote) {
+  if (!lote.pedacos.length) return;
+  const promessas = lote.pedacos.splice(0);
+  lote.rodando = { interrompivel: true, abortar: null };
+  let fim = 'ok';
+  try {
+    fim = await responderLote(lote, await Promise.all(promessas), lote.rodando);
+  } catch (e) {
+    log('[erro]', e?.message ?? e);
+  } finally {
+    lote.rodando = null;
+  }
+  // Interrompido: o que já estava volta para a frente, e espera de novo o
+  // silêncio, agora com a mensagem nova junto.
+  if (fim === 'interrompido') lote.pedacos.unshift(...promessas);
+  if (lote.pedacos.length) armar(lote);
+  else if (!lote.relogio && lotes.get(lote.chave) === lote) lotes.delete(lote.chave);
+}
+
+/** Responde a um lote de mensagens de uma vez. Devolve 'interrompido' quando
+ *  chegou mais coisa antes de a resposta sair. */
+async function responderLote(lote, pedacos, controle) {
+  const { chat, grupo } = lote;
+  const quem = lote.quem ?? { numero: cfg.autorizado, nome: cfg.nomeDoDono, dono: true };
+  const privado = !grupo;
+  const agora = Date.now();
+  // O aviso de erro sai uma vez só, mesmo que o lote recomece.
+  for (const p of pedacos) {
+    if (p.erro && !p.avisado) { p.avisado = true; await responder(chat, p.erro); }
+  }
+  const validos = pedacos.filter(p => !p.erro && !p.avisado);
+  if (!validos.length) return 'ok';
+  const textoJunto = validos.map(p => p.texto).filter(Boolean).join('\n');
   const atual = estado[chat] ?? {};
   // "nova conversa" zera a memória, como abrir um chat novo.
-  if (/^\s*(\/novo|nova conversa|zerar|reiniciar)\s*$/i.test(texto)) {
+  if (validos.length === 1 && /^\s*(\/novo|nova conversa|zerar|reiniciar)\s*$/i.test(textoJunto)) {
     estado[chat] = { atualizado: agora };
     gravarEstado();
     await responder(chat, 'Pronto, comecei uma conversa nova.');
-    return;
+    return 'ok';
   }
   const expirou = !atual.atualizado || agora - atual.atualizado > cfg.sessaoMs;
   const sessao = expirou ? null : atual.sessao ?? null;
   // Arquivo junto com o "sim" não é confirmação: é assunto novo.
   // Só confirma quem pode gravar, e a proposta feita a ele: num grupo, o
   // "sim" de outra pessoa não dispara o que o bot propôs ao dono.
-  const confirmou = quem.dono && !expirou && !!atual.pendente && !midia && ehConfirmacao(texto)
+  const comArquivo = validos.some(p => p.comArquivo);
+  const confirmou = quem.dono && !expirou && !!atual.pendente && !comArquivo && ehConfirmacao(textoJunto)
     && (atual.pendentePor ?? cfg.autorizado) === quem.numero;
+  // A ação confirmada não para no meio.
+  controle.interrompivel = !confirmou;
 
   void digitando(chat);
-  const prep = await prepararMidia({ midia, origem, texto });
   // Toda mensagem diz ao modelo onde ele está e com quem fala: no privado, só
   // essa pessoa lê (e, se é o dono, valem grupos e agenda); no grupo, todos
   // leem, ele sabe quem pode marcar e o que é do privado fica de fora.
@@ -1172,37 +1263,40 @@ async function atender({ chat, grupo, texto: escrito, midia: anexo, origem: deOn
       retrato?.pessoas.length
         ? ` Quem está no grupo: ${retrato.pessoas.slice(0, 80).map(p => `${p.nome ?? 'sem nome'} (${p.numero ?? 'sem número'})`).join(', ')}. Para marcar alguém na resposta, quando pedirem, escreva @ seguido do número da pessoa, como @5531999990000: o WhatsApp troca pelo nome. Se o nome pedido bater com mais de uma pessoa, ou com nenhuma, pergunte.`
         : ''}]`;
-  if ('parar' in prep) {
-    if (prep.parar) await responder(chat, prep.parar);
-    return;
-  }
 
+  const conteudo = (p) => [p.notaAudio, p.nota, p.texto || (p.comArquivo
+    ? '(A pessoa mandou só o arquivo, sem texto: diga em poucas linhas o que ele traz e pergunte o que fazer.)'
+    : '(A pessoa só chamou você, sem texto: pergunte em que pode ajudar.)')];
+  const corpo = validos.length === 1 ? conteudo(validos[0]) : [
+    `[Nota do sistema: a pessoa mandou ${validos.length} mensagens seguidas, uma completando a outra, na ordem abaixo. Leia todas e responda uma vez só, considerando tudo junto: não responda cada uma em separado.]`,
+    ...validos.flatMap((p, i) => [`[Mensagem ${i + 1} de ${validos.length}]`, ...conteudo(p)]),
+  ];
   const pergunta = [
     confirmou ? '[Nota do sistema: a pessoa confirmou a ação que você propôs na mensagem anterior. Execute exatamente essa ação agora, nada além.]' : '',
     notaGrupo,
     // O relógio vai em toda mensagem: numa conversa retomada horas depois, o
     // que vale é a hora de agora, e não a do começo da conversa.
-    (({ agora, amanha }) => `[Relógio: agora é ${agora}, horário de Brasília. Amanhã é ${amanha}.]`)(relogio()),
-    notaAudio,
-    prep.nota,
-    texto || (midia
-      ? '(A pessoa mandou só o arquivo, sem texto: diga em poucas linhas o que ele traz e pergunte o que fazer.)'
-      : '(A pessoa só chamou você, sem texto: pergunte em que pode ajudar.)'),
+    (({ agora: hora, amanha }) => `[Relógio: agora é ${hora}, horário de Brasília. Amanhã é ${amanha}.]`)(relogio()),
+    ...corpo,
   ].filter(Boolean).join('\n\n');
 
-  let r = await perguntar({ texto: pergunta, sessao, liberarEscrita: confirmou, privado, quem });
+  // Chegou mais coisa enquanto o lote se preparava: junta antes de perguntar.
+  if (!confirmou && lote.pedacos.length) return 'interrompido';
+  let r = await perguntar({ texto: pergunta, sessao, liberarEscrita: confirmou, privado, quem, controle });
+  if (r.interrompido) return 'interrompido';
   // A sessão pode ter sumido (memória apagada, versão nova do bot): recomeça
   // a conversa em vez de responder com erro. Confirmação não sobrevive a isso,
   // porque a proposta estava na sessão perdida.
   if (!r.ok && sessao) {
     log('[claude] a sessão não respondeu, recomeçando a conversa', r.motivo.slice(0, 120));
-    r = await perguntar({ texto, sessao: null, liberarEscrita: false, privado, quem });
+    r = await perguntar({ texto: textoJunto, sessao: null, liberarEscrita: false, privado, quem, controle });
+    if (r.interrompido) return 'interrompido';
   }
   if (!r.ok) {
     estado[chat] = { ...atual, sessao: r.sessao ?? sessao, pendente: false, atualizado: agora };
     gravarEstado();
     await responder(chat, `Não consegui responder agora: ${r.motivo}.`);
-    return;
+    return 'ok';
   }
   // Resposta pedida em áudio: o modelo abre com a linha [[audio]] e escreve o
   // texto para ser falado.
@@ -1217,7 +1311,7 @@ async function atender({ chat, grupo, texto: escrito, midia: anexo, origem: deOn
     estado[chat] = { sessao: r.sessao, pendente: false, atualizado: agora };
     gravarEstado();
     log('[respondido] só com arquivo', chat);
-    return;
+    return 'ok';
   }
   estado[chat] = {
     sessao: r.sessao,
@@ -1231,12 +1325,13 @@ async function atender({ chat, grupo, texto: escrito, midia: anexo, origem: deOn
   gravarEstado();
   if (emAudio) {
     await responderEmAudio(chat, resposta);
-    return;
+    return 'ok';
   }
   // No grupo, cada @número de participante na resposta vira menção de verdade.
   const mencionados = retrato ? mencoesNoTexto(resposta, retrato.pessoas) : [];
   await responder(chat, resposta, mencionados);
-  log('[respondido]', chat, confirmou ? '(com ação liberada)' : '', mencionados.length ? `(marcando ${mencionados.length})` : '');
+  log('[respondido]', chat, validos.length > 1 ? `(${validos.length} mensagens juntas)` : '', confirmou ? '(com ação liberada)' : '', mencionados.length ? `(marcando ${mencionados.length})` : '');
+  return 'ok';
 }
 
 // ── Servidor ────────────────────────────────────────────────────────────────
@@ -1283,7 +1378,7 @@ http.createServer((req, res) => {
     filtrar(corpo).then((m) => {
       if (!m) return;
       log('[recebido]', m.grupo ? 'grupo' : 'privado', m.chat);
-      enfileirar(m.chat, () => atender(m).catch(e => log('[erro]', e?.message ?? e)));
+      receber(m);
     }).catch(e => log('[erro] no filtro', e?.message ?? e));
   });
 }).listen(cfg.porta, () => log(`[bot] ouvindo na porta ${cfg.porta}`));

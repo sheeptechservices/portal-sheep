@@ -11,6 +11,17 @@ altera o portal sempre passa por confirmação: o bot propõe, termina com
 "Confirma? (sim/não)", e as ferramentas de escrita só ficam liberadas na
 mensagem que responde "sim".
 
+## Mensagens em partes
+
+Quem manda uma mensagem e logo outra para completar recebe uma resposta só.
+Cada mensagem é preparada assim que chega (o áudio transcrito, o arquivo
+baixado e lido) e entra no lote da conversa; o lote só vai ao Claude Code
+depois de um instante de silêncio (`ESPERA_MENSAGENS_MS`, padrão 3 segundos).
+Se chegar mais enquanto ele pensa, a resposta pela metade é descartada e o bot
+recomeça com tudo junto. A exceção é a ação já confirmada: ela não para no
+meio, e o que chegar entra na resposta seguinte. Num grupo, o que o dono e um
+convidado mandam ao mesmo tempo fica em lotes separados.
+
 ## Internet
 
 Na conversa privada, o bot pesquisa na web e lê páginas (as ferramentas
