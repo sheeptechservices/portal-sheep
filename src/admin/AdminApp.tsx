@@ -7,6 +7,7 @@ import { IconAcessos, IconAlert, IconArrowRight, IconBalao, IconCheck, IconChevr
 import { lojaFixadas, useTarefasFixadas } from '../lib/tarefasFixadas';
 import { lojaTema, comRevelacao } from '../lib/tema';
 import { lojaSubpagina, useSubpaginaAtual } from '../lib/subpagina';
+import { lerRota, navegar, useRota } from '../lib/rotas';
 import {
   criarPode, podeAbrirPagina, podeGerenciarUsuarios, podeVerUsuarios, PERMISSAO_DA_PAGINA,
   rotuloPapel, type Permissoes, type Pode,
@@ -1350,9 +1351,12 @@ function LoginArte() {
 
 // ── Main shell ────────────────────────────────────────────────────────────────
 function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => void; saindo: boolean }) {
-  // A tela abre no Dashboard: a primeira pergunta de quem chega é como está a
-  // casa, e não o que fazer agora - para isso existem os quadros, a um clique.
-  const [page, setPage] = useState<Page>('dashboard');
+  // A tela abre no que o endereço diz (`/tarefas/996`), e sem nada no Dashboard:
+  // a primeira pergunta de quem chega é como está a casa, e não o que fazer
+  // agora - para isso existem os quadros, a um clique.
+  const [page, setPage] = useState<Page>(() => lerRota().pagina);
+  /** A próxima troca de tela reescreve o endereço em vez de empilhar um passo. */
+  const trocaSemPasso = useRef(false);
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -1808,6 +1812,9 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
     if (permissoes === null) return;
     if (paginaLiberada(page)) return;
     const primeira = (Object.keys(PERMISSAO_DA_PAGINA) as Page[]).find(paginaLiberada);
+    // A troca não foi escolha de ninguém: reescreve o endereço, sem deixar
+    // passo no histórico para a tela que a pessoa não alcança.
+    trocaSemPasso.current = true;
     setPage(primeira ?? 'perfil');
   }, [permissoes, paginaLiberada, page]);
 
@@ -1817,43 +1824,23 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
     return () => { document.title = prev; };
   }, []);
 
-  // Deep link: ?oportunidade=<id> abre direto o card da oportunidade (link compartilhável).
-  // Lê uma vez na montagem (após o login, a URL é preservada) e limpa a query para não reabrir.
+  // A página no endereço. Trocar de tela é passo no histórico (`/tarefas`,
+  // com a aba que a tela guarda); o voltar do navegador troca a tela de volta.
+  // A ficha e a aba de cada tela, quem escreve é a própria tela (lib/rotas).
+  // Os links antigos (`/?tarefa=996`) já viraram rota na carga do módulo.
+  const rota = useRota();
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    // `?lead=` continua valendo: a seção mudou de nome, e os links que já foram
-    // mandados por aí não mudaram junto.
-    const sid = params.get('oportunidade') ?? params.get('lead');
-    if (sid) {
-      setPage('oportunidades');
-      setOpenCard({ page: 'oportunidades', id: sid, nonce: 1 });
-      window.history.replaceState({}, '', window.location.pathname + window.location.hash);
-      return;
-    }
-    // `?tarefa=<id>` abre a gaveta da tarefa, pelo mesmo caminho da busca
-    // rápida e do inbox: a tela de Tarefas guarda o alvo e abre quando a
-    // listagem chega.
-    const tid = params.get('tarefa');
-    if (tid) {
-      setPage('tarefas');
-      setOpenCard({ page: 'tarefas', id: tid, nonce: 1 });
-      window.history.replaceState({}, '', window.location.pathname + window.location.hash);
-      return;
-    }
-    // `?usuario=<id>` abre a ficha cadastral da pessoa na tela de Usuários.
-    // Quem não alcança a tela cai no aviso de acesso, e o servidor recusa a
-    // ficha do mesmo jeito.
-    const uid = params.get('usuario');
-    if (uid) {
-      setPage('usuarios');
-      setOpenCard({ page: 'usuarios', id: uid, nonce: 1 });
-      window.history.replaceState({}, '', window.location.pathname + window.location.hash);
-      return;
-    }
-    // `?projeto=` só troca de página: quem abre o card é a própria tela de
-    // Projetos, que precisa da lista carregada para achar o projeto.
-    if (params.get('projeto')) setPage('projetos');
-  }, []);
+    const semPasso = trocaSemPasso.current;
+    trocaSemPasso.current = false;
+    const r = lerRota();
+    if (r.pagina === page) return;
+    navegar({ pagina: page, sub: lojaSubpagina.ler(page) ?? null, item: null, params: {} }, semPasso ? 'replace' : 'push');
+  }, [page]);
+  useEffect(() => {
+    if (rota.pagina !== page) setPage(rota.pagina);
+    // Só a rota manda aqui: a troca de tela pelo menu chega pelo efeito de cima.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rota.pagina]);
 
   // Desktop = sidebar fixa (pinned). Só reage quando CRUZA o limiar desktop↔mobile;
   // resize/zoom que não muda de faixa não mexe no sidebar (senão ele reabria a cada

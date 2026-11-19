@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useSubpagina } from '../lib/subpagina';
+import { useParametroNaRota } from '../lib/rotas';
 import { createPortal } from 'react-dom';
 
 import type { StatusConfig, UsuarioNotificavel, Notificacao, NovaNotificacao } from './types';
@@ -3568,6 +3569,9 @@ export default function ConfiguracoesPage({ token }: { token: string }) {
     }
   }, [abasVisiveis, activeTab]);
   const [escopo, setEscopo] = useState<EscopoEtapas>('funil');
+  // Nas etapas, o escopo vai no endereço (`/configuracoes/etapas?escopo=tarefas`).
+  useParametroNaRota('configuracoes', 'escopo', escopo, v => setEscopo(v === 'tarefas' ? 'tarefas' : 'funil'),
+    { padrao: 'funil', ativo: activeTab === 'etapas' });
   const [addingTarefa, setAddingTarefa] = useState(false);
   const [addingEtiqueta, setAddingEtiqueta] = useState(false);
   const [statuses, setStatuses] = useState<StatusConfig[]>([]);

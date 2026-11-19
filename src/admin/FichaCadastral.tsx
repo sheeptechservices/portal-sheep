@@ -6,6 +6,7 @@ import { rotuloPapel } from './papeis';
 import { tempoRelativo } from '../lib/datas';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
+import { linkDe } from '../lib/rotas';
 import { SECOES, exportarFicha, paraTela, valorLegivel, type Cadastro, type FormatoFicha } from '../lib/cadastro';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -13,7 +14,7 @@ import { SECOES, exportarFicha, paraTela, valorLegivel, type Cadastro, type Form
 //  preencheu no próprio Perfil, para ler, exportar e mandar o link adiante.
 //  Só leitura - quem corrige o cadastro é a própria pessoa, no Perfil.
 //
-//  O link copiado é `?usuario=<id>`: abre o portal na tela de Usuários com esta
+//  O link copiado é `/usuarios/<id>`: abre o portal na tela de Usuários com esta
 //  ficha aberta, e só para quem já alcança a tela (o servidor recusa o resto).
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -68,7 +69,7 @@ export function FichaCadastral({ token, pessoa, onFechar }: {
   }, [fechar]);
 
   async function copiarLink() {
-    const url = `${window.location.origin}${window.location.pathname}?usuario=${pessoa.id}`;
+    const url = linkDe({ pagina: 'usuarios', item: pessoa.id });
     try {
       await navigator.clipboard.writeText(url);
       setCopiado(true);

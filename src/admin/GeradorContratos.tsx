@@ -36,6 +36,7 @@ import {
 import { contratoColaborador, dataBr, type DadosColaborador } from '../lib/contratoColaborador';
 import { contratoServicos, type DadosServicos } from '../lib/contratoServicos';
 import type { Paragrafo } from '../lib/docx';
+import { useParametroNaRota } from '../lib/rotas';
 
 export type ModeloContrato = 'servicos' | 'colaborador';
 
@@ -1140,6 +1141,14 @@ export default function GeradorContratos({ token }: { token: string }) {
   // Outro modelo é outra fila: a aba volta para o formulário e o histórico é
   // buscado de novo quando alguém pedir.
   useEffect(() => { setAba('gerar'); setHistorico(null); }, [escolhido]);
+
+  // O modelo e a aba no endereço (`/gerador-documentos?modelo=servicos&aba=historico`).
+  // Escolher o modelo é passo no histórico: o voltar devolve à escolha. A aba
+  // vem depois do efeito de cima, para o endereço ganhar da volta ao formulário.
+  useParametroNaRota('gerador-documentos', 'modelo', escolhido,
+    v => setEscolhido(v === 'servicos' || v === 'colaborador' ? v : null), { passo: true });
+  useParametroNaRota('gerador-documentos', 'aba', aba,
+    v => setAba(v === 'historico' ? 'historico' : 'gerar'), { padrao: 'gerar', ativo: !!escolhido });
 
   // A lista só é buscada quando a aba é aberta, e uma vez por modelo aberto.
   // Quem entra no gerador para fazer um contrato não paga por uma consulta que

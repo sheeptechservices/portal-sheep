@@ -37,6 +37,8 @@ import { useAuth, useToast } from './AdminApp';
 import { useApi } from './OportunidadesPage';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
+import { useSubpagina } from '../lib/subpagina';
+import { esquecerFicha, useFichaNaRota } from '../lib/rotas';
 import { useLarguraPainel } from '../lib/painelLateral';
 import { PuxadorDoPainel } from '../components/PuxadorDoPainel';
 
@@ -111,12 +113,29 @@ export default function CofreSenhas({ token }: { token: string }) {
   const [gaveta, setGaveta] = useState<{ segredo: Segredo | null } | null>(null);
   /** Os segredos, ou o registro de quem mexeu neles. A segunda aba só existe
    *  para quem tem a permissão de auditar. */
-  const [aba, setAba] = useState<'segredos' | 'acessos'>('segredos');
+  const [abaGravada, setAba] = useSubpagina<'segredos' | 'acessos'>('cofre', 'segredos');
 
   const podeEditar = pode('cofre:editar');
   const podeAuditar = pode('cofre:auditar');
+  // Quem não audita fica nos segredos, mesmo com `/cofre/acessos` no endereço.
+  const aba = podeAuditar ? abaGravada : 'segredos';
   const podeExcluir = pode('cofre:excluir');
   const aberto = !!abertoAte && Date.parse(abertoAte) > Date.now();
+
+  // O segredo no endereço (`/cofre/<id>`). O link espera a lista chegar para
+  // achar o segredo; a gaveta cuida do cofre trancado, pedindo o código.
+  const [pedido, setPedido] = useState<string | null>(null);
+  useFichaNaRota('cofre', gaveta?.segredo?.id ?? null, setPedido, () => setGaveta(null));
+  useEffect(() => {
+    if (!pedido || carregando) return;
+    const s = segredos.find(x => x.id === pedido);
+    setPedido(null);
+    if (s) setGaveta({ segredo: s });
+    else {
+      esquecerFicha('cofre');
+      toast('error', 'Segredo não encontrado', 'O link aponta para um segredo que não existe mais ou que você não pode ver.');
+    }
+  }, [pedido, carregando, segredos, toast]);
 
   const carregar = useCallback(async () => {
     const r = await api('?action=cofre');

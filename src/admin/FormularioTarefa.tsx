@@ -35,6 +35,7 @@ import { EditorRico } from '../components/EditorRico';
 import { ChipReuniao } from '../components/VinculoReuniao';
 import { ReuniaoModal } from '../components/ReuniaoModal';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
+import { linkDe } from '../lib/rotas';
 import { diaCurto as fmtDataCurta } from '../lib/datas';
 // Reexportada: ela morava aqui e as telas a importam deste arquivo. O desenho
 // saiu para os componentes quando as outras telas passaram a usar a mesma caixa.
@@ -940,11 +941,11 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
   const fixada = !!rascunho.id && fixadas.some(f => f.id === rascunho.id);
 
   /** Link que abre esta tarefa direto, para quem já tem acesso ao portal. É o
-   *  mesmo formato do `?projeto=` da tela de Projetos, e o `prompt` é o plano
+   *  rota da gaveta (`/tarefas/996`), e o `prompt` é o plano
    *  B: sem HTTPS ou com a permissão negada não existe área de transferência. */
   async function copiarLink() {
     if (!rascunho.id) return;
-    const url = `${window.location.origin}/?tarefa=${rascunho.id}`;
+    const url = linkDe({ pagina: 'tarefas', item: String(rascunho.id) });
     try {
       await navigator.clipboard.writeText(url);
       setCopiado(true);
@@ -1001,7 +1002,7 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
         projeto: projeto?.nome ?? '',
         codigo: projeto?.codigo ?? null,
         cliente: projeto?.cliente_nome ?? null,
-        link: `${window.location.origin}/?tarefa=${rascunho.id}`,
+        link: linkDe({ pagina: 'tarefas', item: String(rascunho.id) }),
       });
       await navigator.clipboard.writeText(texto);
       setCopiadoMd(true);

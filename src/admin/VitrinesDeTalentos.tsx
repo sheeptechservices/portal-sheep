@@ -24,6 +24,7 @@ import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import { useLarguraPainel } from '../lib/painelLateral';
 import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { instante, tempoRelativo } from '../lib/datas';
+import { useParametroNaRota } from '../lib/rotas';
 import { useAuth, useToast } from './AdminApp';
 import { useApi } from './OportunidadesPage';
 
@@ -472,6 +473,18 @@ export function VitrinesDeTalentos({ token, pessoas, abrir }: {
     jaAbriu.current = marca;
     setRevisando(v);
   }, [abrir?.id, abrir?.nonce, lista]);
+
+  // A vitrine aberta no endereço (`/talentos/vitrines?vitrine=12`). O link
+  // espera a lista chegar; o voltar do navegador fecha a gaveta.
+  const [pedida, setPedida] = useState<string | null>(null);
+  useParametroNaRota('talentos', 'vitrine', revisando ? String(revisando.id) : null,
+    v => { if (v) setPedida(v); else setRevisando(null); }, { passo: true });
+  useEffect(() => {
+    if (!pedida || !lista) return;
+    setPedida(null);
+    const v = lista.find(x => String(x.id) === pedida);
+    if (v) setRevisando(v);
+  }, [pedida, lista]);
 
   async function copiar(v: Vitrine) {
     try {

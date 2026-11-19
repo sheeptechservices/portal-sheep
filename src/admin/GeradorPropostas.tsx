@@ -52,6 +52,7 @@ import {
 import { EnvioDeProposta, type OrigemDoEnvio, type PedidoDeEnvio } from './EnvioDeProposta';
 import { instante, tempoRelativo } from '../lib/datas';
 import { TEMPLATES, type TemplateDeProposta } from '../lib/proposta/templates';
+import { useSubpagina } from '../lib/subpagina';
 import type {
   DadosProposta, Entrega, FaixaDeInfra, FaixaDeVolume, Fase, InfraManutencao, ItemDeInfra,
   ModeloDeInfra, OpcaoInvestimento,
@@ -1228,7 +1229,8 @@ export default function GeradorPropostas({ token, onAbrirOportunidade }: {
     return res.json().catch(() => null);
   }, [token, onSessionExpired]);
 
-  const [aba, setAba] = useState<AbaDoGerador>('gerador');
+  // A aba no endereço (`/gerador-propostas/historico`), como as das outras telas.
+  const [aba, setAba] = useSubpagina<AbaDoGerador>('gerador-propostas', 'gerador');
   /** `null` = ainda não buscado: a aba pede a lista na primeira visita. */
   const [historico, setHistorico] = useState<PropostaGerada[] | null>(null);
   const [vendo, setVendo] = useState<PropostaGerada | null>(null);

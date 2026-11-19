@@ -25,6 +25,8 @@ import { useDegrauTrilha } from '../lib/trilha';
 import { useTrocaDeNivel } from '../lib/useTrocaDeNivel';
 import { lerEventos } from '../lib/sse';
 import { useAtividades, type Trabalho } from '../lib/atividades';
+import { useSubpagina } from '../lib/subpagina';
+import { useFichaNaRota } from '../lib/rotas';
 import {
   PainelAnaliseVaga, type AnaliseFeita, type AndamentoDaAnalise, type AnexoDaVaga,
   type ContatoDoRanking,
@@ -107,7 +109,8 @@ export default function TalentosPage({ token, abrir }: {
   const [externos, setExternos] = useState<TalentoExterno[]>([]);
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(true);
-  const [aba, setAba] = useState<Aba>('todos');
+  // A aba no endereço (`/talentos/vitrines`), como as das outras telas.
+  const [aba, setAba] = useSubpagina<Aba>('talentos', 'todos');
   // O aviso do inbox chega com a vitrine a abrir: a aba muda aqui, e a
   // gaveta dela abre dentro do painel de vitrines.
   useEffect(() => { if (abrir) setAba('vitrines'); }, [abrir?.nonce]);
@@ -120,6 +123,13 @@ export default function TalentosPage({ token, abrir }: {
   const [fFamilia, setFFamilia] = useState<string[]>([]);
   const [busca, setBusca] = useState('');
   const [aberto, setAberto] = useState<Aberto>(null);
+  // A pessoa aberta no endereço: `/talentos/<id>` para quem é da casa,
+  // `/talentos/e-<id>` para o talento de fora. O cadastro que ainda está
+  // nascendo (`novo-`) não tem endereço.
+  useFichaNaRota('talentos',
+    aberto && !aberto.id.startsWith('novo-') ? (aberto.tipo === 'externo' ? `e-${aberto.id}` : aberto.id) : null,
+    item => setAberto(item.startsWith('e-') ? { tipo: 'externo', id: item.slice(2) } : { tipo: 'interno', id: item }),
+    () => setAberto(null));
   const [cadastroAberto, setCadastroAberto] = useState(false);
 
   // A analise de vaga. O rascunho e o resultado moram aqui, e nao na gaveta:

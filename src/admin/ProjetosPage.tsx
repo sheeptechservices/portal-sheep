@@ -102,6 +102,7 @@ import { AbasPilula, FaixaDaPagina } from '../components/FaixaDaPagina';
 import { entregasDa } from '../lib/entregasDaTarefa';
 import { comecarArraste, terminarArraste, useMovimentoDosCartoes, useVagaDaColuna } from '../lib/arrasteDoQuadro';
 import { useSubpagina } from '../lib/subpagina';
+import { esquecerFicha, linkDe, navegar, rotaAtual, useFichaNaRota, useParametroNaRota } from '../lib/rotas';
 import { IconFiltros } from '../components/icons';
 import { useDicaRica } from '../components/DicaRica';
 import { ConteudoDaDicaDoProjeto, corDoProjeto } from '../components/DicaDoProjeto';
@@ -4857,7 +4858,7 @@ function FormularioProjeto({
   const fundo = useFecharNoFundo(fechar);
 
   /** Link que abre este projeto direto, para quem já tem acesso ao portal. É o
-   *  mesmo formato que o Funil usa em `?oportunidade=`. */
+   *  rota da ficha (`/projetos/<id>`), como as outras telas. */
   /** Copia um endereço, com o `prompt` como plano B: sem HTTPS ou com a
    *  permissão negada, a área de transferência não existe. */
   async function copiar(url: string, marcar: (v: boolean) => void, rotulo: string) {
@@ -4904,7 +4905,7 @@ function FormularioProjeto({
 
   async function copiarLink() {
     if (!editando) return;
-    const url = `${window.location.origin}/?projeto=${editando.id}`;
+    const url = linkDe({ pagina: 'projetos', item: editando.id });
     await copiar(url, setCopiado, 'Copie o link do projeto:');
   }
 
@@ -4912,6 +4913,11 @@ function FormularioProjeto({
   // "Geral" até ele ser criado.
   const [abaModal, setAbaModal] = useState<'geral' | 'tarefas' | 'reunioes'>(
     abertura?.aba ?? 'geral');
+  // A aba no endereço (`/projetos/<id>?aba=reunioes`), só com a ficha de um
+  // projeto que já existe: o novo só tem "Geral".
+  useParametroNaRota('projetos', 'aba', abaModal,
+    v => setAbaModal(v === 'tarefas' || v === 'reunioes' ? v : 'geral'),
+    { padrao: 'geral', ativo: !!editando });
   /** Entrega para onde a tela deve ir, vinda do chip de uma reunião. */
   const [entregaFocada, setEntregaFocada] = useState<number | null>(null);
   /** E o caminho inverso: a reunião que o chip da entrega quer mostrar - ou a
@@ -5802,6 +5808,9 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
    *  andar de semana é somar sete dias, e o texto sai dela. */
   const [semanaDaPlanning, setSemanaDaPlanning] = useState(() => segundaDaSemana());
   const [view, setView] = useState<'quadro' | 'lista'>('lista');
+  // A visão no endereço (`/projetos?visao=quadro`), na aba Geral, que é onde ela existe.
+  useParametroNaRota('projetos', 'visao', view, v => setView(v === 'quadro' ? 'quadro' : 'lista'),
+    { padrao: 'lista', ativo: aba === 'geral' });
   // A fileira de filtros mora recolhida no cabecalho do painel.
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [fStatus, setFStatus] = useState<string[]>([]);
@@ -6380,19 +6389,17 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     excluir: ts => setExcluindoVarias(ts),
   }), [pode, rascunhoTarefa, excluindoTarefa, excluindoVarias, alterarTarefas]);
 
-  // Link compartilhável: ?projeto=<id> abre o projeto assim que a lista chega.
-  // Roda uma vez, e limpa a query para não reabrir a cada recarregamento.
-  const linkAbertoRef = useRef(false);
-  useEffect(() => {
-    if (linkAbertoRef.current || projetos.length === 0) return;
-    const alvo = new URLSearchParams(window.location.search).get('projeto');
-    if (!alvo) return;
-    linkAbertoRef.current = true;
-    const p = projetos.find(x => x.id === alvo || x.codigo === alvo);
-    if (p) setForm({ editando: p });
-    else toast('error', 'Projeto não encontrado', 'O link aponta para um projeto que não existe mais.');
-    window.history.replaceState({}, '', window.location.pathname + window.location.hash);
-  }, [projetos, toast]);
+  // A ficha no endereço (`/projetos/<id>`): o link abre pelo mesmo caminho da
+  // busca, esperando a lista; o voltar do navegador fecha. Fechar pelo voltar
+  // não apaga o projeto novo: quem voltou não desistiu de nada.
+  useFichaNaRota('projetos', form?.editando?.id ?? null, id => setAlvoDaBusca(id), () => void fecharProjeto(false));
+  // A tarefa aberta por cima da ficha (`?tarefa=996`): é passo no histórico, e
+  // o voltar fecha só ela, deixando o projeto aberto embaixo.
+  useParametroNaRota('projetos', 'tarefa', rascunhoTarefa?.id != null ? String(rascunhoTarefa.id) : null, v => {
+    if (!v) { setRascunhoTarefa(null); return; }
+    const t = projetos.flatMap(x => x.tarefas ?? []).find(x => String(x.id) === v);
+    if (t) abrirTarefa(t);
+  }, { passo: true, ativo: !!form?.editando });
 
   /** Abre o painel na mesma batida do clique e cria o projeto atrás dele. Não
    *  há mais "Criar projeto": esperar a ida ao servidor para só então mostrar o
@@ -6438,14 +6445,28 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
 
   useEffect(() => {
     if (!alvoDaBusca) return;
-    const p = projetos.find(x => x.id === alvoDaBusca);
-    if (!p) return;
+    // O código também serve (`/projetos/SHP-001`), como servia no link antigo.
+    const p = projetos.find(x => x.id === alvoDaBusca) ?? projetos.find(x => x.codigo === alvoDaBusca);
+    if (!p) {
+      // A lista chegou e o projeto não está nela: link de projeto excluído, ou
+      // de um que esta pessoa não enxerga. Esperar calado deixaria a tela parada.
+      if (!carregando && projetos.length > 0 && rotaAtual().item === alvoDaBusca) {
+        setAlvoDaBusca(null);
+        esquecerFicha('projetos');
+        toast('error', 'Projeto não encontrado', 'O link aponta para um projeto que não existe mais ou que você não pode ver.');
+      }
+      return;
+    }
+    // Aberto pelo código, o endereço passa a dizer o id: é ele que a ficha escreve.
+    if (p.id !== alvoDaBusca && rotaAtual().item === alvoDaBusca) navegar({ ...rotaAtual(), item: p.id }, 'replace');
     // Com reunião pedida, a ficha só abre quando ela já está na lista - do
     // contrário a aba de Reuniões abriria sem a reunião do clique, e o "espere
     // um instante" viraria "não aconteceu nada".
     if (aberturaPedida?.reuniao && !(p.reunioes ?? []).some(r => r.id === aberturaPedida.reuniao)) return;
     setAlvoDaBusca(null);
-    setAba('geral');
+    // Só troca quando precisa: gravar a aba que já está na tela poria um
+    // `/geral` à toa no endereço.
+    if (aba !== 'geral') setAba('geral');
     setForm({ editando: p });
     onAbriu?.();
   }, [alvoDaBusca, projetos, aberturaPedida]);

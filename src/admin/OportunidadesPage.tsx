@@ -23,6 +23,7 @@ import { EditorRico } from '../components/EditorRico';
 import { TextoRico } from '../components/TextoRico';
 import { AbasPilula, FaixaDaPagina } from '../components/FaixaDaPagina';
 import { useSubpagina } from '../lib/subpagina';
+import { linkDe, useFichaNaRota, useParametroNaRota } from '../lib/rotas';
 import { ContaAnimada } from '../components/ContaAnimada';
 import { CategoriaTag, ANEXO_CATEGORIAS, normalizaCategoria } from '../components/CategoriaTag';
 import { PreviaArquivo } from '../components/PreviaArquivo';
@@ -1255,6 +1256,8 @@ export function DetailPanel({
   /** A aba aberta. Mesma navegação do painel de projeto: a ficha da oportunidade de um
    *  lado, o que já foi conversado do outro. */
   const [aba, setAba] = useState<'geral' | 'reunioes'>('geral');
+  // A aba no endereço (`?aba=reunioes`): o link leva à ficha já nas reuniões.
+  useParametroNaRota('oportunidades', 'aba', aba, v => setAba(v === 'reunioes' ? 'reunioes' : 'geral'), { padrao: 'geral' });
   /** As reuniões da oportunidade. Vivem fora do `detail` porque cada gesto as pinta na
    *  hora, e o `detail` só é relido quando alguma outra coisa muda. */
   const [reunioes, setReunioes] = useState<Reuniao[]>([]);
@@ -1315,10 +1318,10 @@ export function DetailPanel({
     setReunioes((data?.reunioes ?? []) as Reuniao[]);
   }
 
-  // Copia um link direto para este card (?oportunidade=<id>) - compartilhável com
+  // Copia um link direto para este card (/oportunidades/<id>) - compartilhável com
   // qualquer pessoa que tenha acesso à plataforma. Feedback visual + toast.
   async function copyShareLink() {
-    const url = `${window.location.origin}${window.location.pathname}?oportunidade=${id}`;
+    const url = linkDe({ pagina: 'oportunidades', item: id });
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(url);
@@ -3466,6 +3469,9 @@ export default function OportunidadesPage({ token, openCard, onCardOpened }: {
     setSelectedId(openCard.id);
     onCardOpened?.();
   }, [openCard?.nonce]);
+  // A ficha no endereço (`/oportunidades/<id>`). A gaveta busca pelo id, então
+  // abre na hora, sem esperar o quadro.
+  useFichaNaRota('oportunidades', selectedId, setSelectedId, () => setSelectedId(null));
 
   function commitMove(subId: string, statusId: number) {
     const statusName = statuses.find(s => Number(s.id) === statusId)?.nome;

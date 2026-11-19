@@ -15,6 +15,7 @@ import {
 } from '../lib/cadastro';
 import { rotuloPapel } from './papeis';
 import { instante as formatarData, tempoRelativo } from '../lib/datas';
+import { useSubpagina } from '../lib/subpagina';
 import { ContaAnimada } from '../components/ContaAnimada';
 import { FaixaDaPagina } from '../components/FaixaDaPagina';
 
@@ -390,7 +391,8 @@ export default function PerfilPage({ token }: { token: string }) {
   } | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [semFoto, setSemFoto] = useState(false);
-  const [aba, setAba] = useState<'cadastro' | 'acoes'>('cadastro');
+  // A aba no endereço (`/perfil/acoes`), como as das outras telas.
+  const [aba, setAba] = useSubpagina<'cadastro' | 'acoes'>('perfil', 'cadastro');
   // O que está nos campos e o que o servidor tem. A diferença entre os dois é
   // o que acende a barra de gravar.
   const [form, setForm] = useState<Cadastro>(VAZIO);

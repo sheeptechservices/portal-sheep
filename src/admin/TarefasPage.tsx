@@ -31,6 +31,7 @@ import { SkeletonCards, SkeletonTabela } from '../components/Skeleton';
 import { AbasPilula, FaixaDaPagina } from '../components/FaixaDaPagina';
 import { comecarArraste, terminarArraste, useMovimentoDosCartoes, useVagaDaColuna } from '../lib/arrasteDoQuadro';
 import { useSubpagina } from '../lib/subpagina';
+import { esquecerFicha, useFichaNaRota } from '../lib/rotas';
 import { ContaAnimada } from '../components/ContaAnimada';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import {
@@ -432,6 +433,11 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
   useEffect(() => {
     if (abrir) setAlvoDaBusca(Number(abrir.id));
   }, [abrir?.nonce]);
+  // A gaveta no endereço (`/tarefas/996`): um link colado abre pelo mesmo
+  // caminho da busca, esperando a listagem; o voltar do navegador fecha.
+  useFichaNaRota('tarefas', form?.id != null ? String(form.id) : null,
+    id => { if (Number(id) > 0) setAlvoDaBusca(Number(id)); else esquecerFicha('tarefas'); },
+    () => void fecharTarefa());
 
   // "Nova tarefa" pedida de outra tela: espera a carga, porque a tarefa nasce
   // na etapa de entrada, que vem dela, e entao abre a gaveta uma vez.
@@ -1116,6 +1122,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
       if (!carregando) {
         setAlvoDaBusca(null);
         onAbriu?.();
+        esquecerFicha('tarefas');
         toast('error', 'Tarefa não encontrada',
           'O link aponta para uma tarefa que não existe mais ou que você não pode ver.');
       }

@@ -19,6 +19,7 @@ import {
 import MatrizPermissoes from './MatrizPermissoes';
 import { ContaAnimada } from '../components/ContaAnimada';
 import { FichaCadastral } from './FichaCadastral';
+import { useFichaNaRota } from '../lib/rotas';
 import { Chave } from '../components/Chave';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -350,7 +351,7 @@ const ALVO_DE_CONTROLE = 'button, a, input, [role="listbox"], [role="option"]';
 
 export default function UsuariosPage({ token, abrir, onAberto }: {
   token: string;
-  /** Link direto `?usuario=<id>`: abre a ficha dessa pessoa quando a lista chega. */
+  /** Pedido de abrir a ficha de uma pessoa (o inbox, a busca), quando a lista chega. */
   abrir?: { id: string; nonce: number };
   /** Avisa que o pedido foi atendido, para ele não reabrir a ficha na volta à tela. */
   onAberto?: () => void;
@@ -393,6 +394,8 @@ export default function UsuariosPage({ token, abrir, onAberto }: {
     onAberto?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [abrir?.id, abrir?.nonce]);
+  // A ficha no endereço (`/usuarios/<id>`): o link abre, o voltar fecha.
+  useFichaNaRota('usuarios', fichaDe, setFichaDe, () => setFichaDe(null));
 
   const chamar = useCallback(async (corpo: Record<string, unknown>): Promise<Resposta | null> => {
     const r = await fetch('/api/admin-data', {
