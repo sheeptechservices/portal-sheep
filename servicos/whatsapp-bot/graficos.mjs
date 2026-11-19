@@ -390,6 +390,114 @@ export async function graficoEmPng(spec) {
   });
 }
 
+// ── A peça livre: comunicado, anúncio, convite, card de novidade ────────────
+//  O desenho é livre e a identidade é fixa. Quem chama escreve o conteúdo em
+//  HTML com as peças do kit abaixo (cartão de vidro, rótulo, título, selo,
+//  lista, passos, números, botão); a moldura - o fundo com os feixes, a logo,
+//  a fonte, as cores - vem sempre daqui, e não há como trocá-la.
+
+/** Os formatos: o tamanho final em pixels, a letra base (tudo no kit é em
+ *  rem) e o respiro da borda. */
+export const FORMATOS_DE_PECA = {
+  quadrado: { largura: 1080, altura: 1080, base: 30, borda: 64 },
+  retrato: { largura: 1080, altura: 1350, base: 30, borda: 68 },
+  story: { largura: 1080, altura: 1920, base: 33, borda: 84 },
+  paisagem: { largura: 1920, altura: 1080, base: 34, borda: 84 },
+  banner: { largura: 1500, altura: 500, base: 23, borda: 48 },
+};
+
+const CSS_KIT = `
+  .conteudo { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: safe center; gap: 1rem; overflow: hidden; }
+  .cartao { position: relative; background: rgba(9, 15, 12, .80); border: 1px solid rgba(255,255,255,.08); border-radius: 1.1rem;
+    backdrop-filter: blur(26px); -webkit-backdrop-filter: blur(26px); padding: 1.4rem 1.6rem; display: flex; flex-direction: column; gap: .7rem; }
+  .cartao.limao { background: ${LIMAO}; border-color: ${LIMAO}; color: ${PRETO}; }
+  .cartao.limao h1, .cartao.limao h2, .cartao.limao h3, .cartao.limao p, .cartao.limao .texto { color: ${PRETO}; }
+  .rotulo { font-size: .6rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: ${LIMAO}; }
+  h1, .titulo { font-size: 2.3rem; line-height: 1.06; font-weight: 800; letter-spacing: -.025em; color: #F4F7F5; }
+  h2 { font-size: 1.35rem; line-height: 1.18; font-weight: 700; letter-spacing: -.015em; color: #F4F7F5; }
+  h3 { font-size: .95rem; line-height: 1.25; font-weight: 700; color: #F4F7F5; }
+  p, .texto { font-size: .82rem; line-height: 1.5; color: #B8C0BB; }
+  .sub { font-size: 1rem; line-height: 1.4; color: #A9B1AC; }
+  em, .destaque { font-style: normal; color: ${LIMAO}; }
+  b, strong { font-weight: 700; color: #F4F7F5; }
+  .selo { display: inline-flex; align-self: flex-start; align-items: center; gap: .4rem; padding: .32rem .85rem; border-radius: 999px;
+    background: ${LIMAO}; color: ${PRETO}; font-size: .58rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+  .selo.vazado { background: transparent; color: ${LIMAO}; border: 1.5px solid ${LIMAO}; }
+  .lista { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .55rem; }
+  .lista li { position: relative; padding-left: 1.15rem; font-size: .85rem; line-height: 1.45; color: #E7EEEA; }
+  .lista li::before { content: ''; position: absolute; left: 0; top: .52em; width: .42rem; height: .42rem; border-radius: 50%; background: ${LIMAO}; }
+  .passos { list-style: none; padding: 0; margin: 0; counter-reset: passo; display: flex; flex-direction: column; gap: .85rem; }
+  .passos li { counter-increment: passo; display: grid; grid-template-columns: 1.8rem 1fr; column-gap: .85rem; row-gap: .15rem; align-items: start; }
+  .passos li::before { content: counter(passo); grid-row: span 2; width: 1.8rem; height: 1.8rem; border-radius: 50%; background: ${LIMAO}; color: ${PRETO};
+    font-size: .8rem; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+  .passos li b, .passos li strong { font-size: .92rem; color: #F4F7F5; }
+  .passos li span { font-size: .74rem; line-height: 1.4; color: #A9B1AC; }
+  .grade { display: grid; gap: .9rem; }
+  .grade.dois { grid-template-columns: repeat(2, 1fr); }
+  .grade.tres { grid-template-columns: repeat(3, 1fr); }
+  .grade.quatro { grid-template-columns: repeat(4, 1fr); }
+  .linha { display: flex; gap: .9rem; align-items: center; }
+  .numero { font-size: 2.4rem; font-weight: 800; line-height: 1; letter-spacing: -.02em; color: #F4F7F5; font-variant-numeric: tabular-nums; }
+  .numero small { display: block; margin-top: .4rem; font-size: .56rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #8E9590; }
+  .botao { display: inline-flex; align-self: flex-start; align-items: center; gap: .5rem; padding: .7rem 1.4rem; border-radius: 999px;
+    background: ${LIMAO}; color: ${PRETO}; font-size: .8rem; font-weight: 800; }
+  .botao.vazado { background: transparent; color: ${LIMAO}; border: 1.5px solid ${LIMAO}; }
+  .divisor { height: 1px; background: rgba(255,255,255,.08); }
+  .icone { width: 1.6rem; height: 1.6rem; color: ${LIMAO}; flex-shrink: 0; }
+  .icone.grande { width: 2.6rem; height: 2.6rem; }
+  svg { stroke-linecap: round; stroke-linejoin: round; }
+  .centro { text-align: center; align-items: center; }
+  .centro .selo, .centro .botao { align-self: center; }
+  .rodape { position: relative; display: flex; justify-content: space-between; gap: 1rem; font-size: .52rem; color: #B8C0BB;
+    text-shadow: 0 1px 10px rgba(0,0,0,.9), 0 0 2px rgba(0,0,0,.8); }
+`;
+
+/** O HTML de quem chama, sem o que não é conteúdo: script, quadro embutido,
+ *  folha de estilo própria (a identidade é a daqui), evento, link para
+ *  javascript e emoji (a marca usa ícone de traço, nunca emoji). */
+export function limparHtmlDaPeca(html) {
+  return String(html ?? '')
+    // Primeiro as que embrulham conteúdo, inteiras com o que vai dentro; depois
+    // qualquer abertura ou fechamento solto que tenha sobrado.
+    .replace(/<\s*(script|style|iframe|object|embed|form|textarea|button|noscript|template)\b[\s\S]*?<\/\s*\1\s*>/gi, '')
+    .replace(/<\s*\/?\s*(script|style|iframe|object|embed|link|meta|base|form|input|textarea|button|noscript|template)\b[^>]*>/gi, '')
+    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/(href|src|xlink:href)\s*=\s*("|')\s*javascript:[^"']*\2/gi, '')
+    .replace(/\p{Extended_Pictographic}(️|‍\p{Extended_Pictographic})*/gu, '');
+}
+
+/** A peça livre em PNG, no tamanho exato do formato. Devolve também se o
+ *  conteúdo passou do espaço, para quem chama encurtar. */
+export async function pecaEmPng(spec) {
+  const f = FORMATOS_DE_PECA[spec.formato] ?? FORMATOS_DE_PECA.quadrado;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+    * { box-sizing: border-box; margin: 0; }
+    html { font-size: ${f.base}px; }
+    body { width: ${f.largura}px; height: ${f.altura}px; background: #050A08; overflow: hidden; }
+    ${CSS_LUZES}
+    .palco { width: ${f.largura}px; height: ${f.altura}px; padding: ${f.borda}px; display: flex; flex-direction: column; gap: 1.1rem; }
+    .topo { position: relative; display: flex; justify-content: space-between; align-items: center; }
+    .marcas .sheep { height: ${Math.round(f.base * 1.55)}px; }
+    .marcas .cliente { max-height: ${Math.round(f.base * 1.4)}px; }
+    ${CSS_KIT}
+  </style></head><body><div class="palco">
+    <div class="topo">${marcasHtml(spec.cliente)}</div>
+    <main class="conteudo">${limparHtmlDaPeca(spec.html)}</main>
+    ${spec.rodape ? `<div class="rodape"><span>${esc(spec.rodape)}</span><span>Sheep Technology</span></div>` : ''}
+  </div>${SCRIPT_LOGO}</body></html>`;
+  return comNavegador(async (p) => {
+    await p.setViewport({ width: f.largura, height: f.altura, deviceScaleFactor: 1 });
+    await p.setContent(html, { waitUntil: 'load' });
+    await p.waitForFunction('window.__pronto === true', { timeout: 10_000 });
+    const transbordou = await p.evaluate(() => {
+      const c = document.querySelector('.conteudo');
+      return !!c && (c.scrollHeight > c.clientHeight + 2 || c.scrollWidth > c.clientWidth + 2);
+    });
+    const alvo = await p.$('.palco');
+    return { png: Buffer.from(await alvo.screenshot({ type: 'png' })), transbordou, largura: f.largura, altura: f.altura };
+  });
+}
+
 /** A logo do cliente em PNG, para o Word, que não abre WebP nem SVG. */
 async function logoEmPng(dataUri) {
   return comNavegador(async (p) => {

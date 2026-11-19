@@ -121,6 +121,34 @@ const FERRAMENTAS = [
     },
   },
   {
+    name: 'gerar_peca',
+    title: 'Gerar peça visual',
+    description: 'Gera uma imagem PNG livre com a identidade da Sheep: comunicado, anúncio, convite, card de novidade, post, '
+      + 'aviso, agenda, boas-vindas. O fundo com os feixes de luz, a logo (e a do cliente, com projeto), a fonte e as '
+      + 'cores vêm prontos; você escreve só o conteúdo, em HTML, com as classes do kit, e escolhe o layout. '
+      + 'Kit: cartao (contêiner de vidro escuro; cartao limao = contêiner limão com texto preto), rotulo (palavrinha em '
+      + 'caixa alta limão), h1 ou titulo, h2, h3, sub (linha de apoio), p ou texto, em ou destaque (trecho em limão), '
+      + 'selo (etiqueta limão; selo vazado), lista (ul.lista com li, marcador limão), passos (ol.passos, cada li com '
+      + '<b>título</b><span>detalhe</span>, número em círculo limão), grade dois|tres|quatro (colunas), linha '
+      + '(itens lado a lado), numero (número grande, com <small>legenda</small>), botao (chamada limão; botao vazado), '
+      + 'divisor, icone (svg 24x24 de traço, fill none, stroke currentColor, stroke-width 1.8; icone grande), centro '
+      + '(centraliza). Atributo style vale para ajustes finos de espaço e tamanho; a cor é a da marca. Sem emoji, sem '
+      + 'imagem de fora. Em story e retrato, empilhe os blocos (grade dois no máximo); em paisagem e banner, use a largura. Devolve o caminho e se o conteúdo passou do espaço (transbordou): se passou, encurte e gere de '
+      + 'novo. Para mandar, ponha na resposta a linha [[arquivo:caminho]].',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        formato: { type: 'string', enum: ['quadrado', 'retrato', 'story', 'paisagem', 'banner'],
+          description: 'quadrado 1080x1080 (WhatsApp, feed), retrato 1080x1350 (feed do Instagram e LinkedIn), story 1080x1920, paisagem 1920x1080 (apresentação, e-mail), banner 1500x500 (capa).' },
+        html: { type: 'string', description: 'O conteúdo, em HTML com as classes do kit. A logo e o fundo já vêm: não repita.' },
+        titulo: { type: 'string', description: 'Nome do arquivo.' },
+        projeto: { type: 'string', description: 'Quando a peça é de um cliente: o id do projeto (de listar_projetos). A logo dele entra ao lado da Sheep.' },
+        rodape: { type: 'string', description: 'Linha pequena no pé (site, contato, data). Sem ela, a peça sai sem rodapé.' },
+      },
+      required: ['formato', 'html', 'titulo'],
+    },
+  },
+  {
     name: 'gerar_transcricao',
     title: 'Gerar transcrição',
     description: 'Gera a transcrição de uma reunião em PDF ou Word (.docx), com a identidade da Sheep, buscando o texto '
@@ -312,6 +340,19 @@ async function gerarGrafico(a) {
   return { caminho, para_mandar: `[[arquivo:${caminho}]]` };
 }
 
+async function gerarPeca(a) {
+  const { pecaEmPng, FORMATOS_DE_PECA } = await import('./graficos.mjs');
+  if (!FORMATOS_DE_PECA[a.formato]) throw new Error(`formato precisa ser ${Object.keys(FORMATOS_DE_PECA).join(', ')}`);
+  if (!String(a.html ?? '').trim()) throw new Error('a peça precisa de conteúdo em html');
+  const cliente = await clienteDoProjeto(a.projeto);
+  const r = await pecaEmPng({ ...a, cliente });
+  const caminho = gravar(r.png, a.titulo, 'png');
+  return {
+    caminho, para_mandar: `[[arquivo:${caminho}]]`, tamanho: `${r.largura}x${r.altura}`,
+    ...(r.transbordou ? { transbordou: true, aviso: 'o conteúdo passou do espaço da peça: encurte o texto ou tire um bloco e gere de novo' } : {}),
+  };
+}
+
 async function gerarRelatorio(a) {
   if (!['pdf', 'docx'].includes(a.formato)) throw new Error('formato precisa ser pdf ou docx');
   if (!Array.isArray(a.secoes) || !a.secoes.length) throw new Error('o relatório precisa de ao menos uma seção');
@@ -382,7 +423,7 @@ async function gerarTranscricao(a) {
 
 // ── O protocolo ─────────────────────────────────────────────────────────────
 
-const EXECUTAR = { dados_de_tarefas: dadosDeTarefas, gerar_grafico: gerarGrafico, gerar_relatorio: gerarRelatorio, gerar_transcricao: gerarTranscricao };
+const EXECUTAR = { dados_de_tarefas: dadosDeTarefas, gerar_grafico: gerarGrafico, gerar_relatorio: gerarRelatorio, gerar_peca: gerarPeca, gerar_transcricao: gerarTranscricao };
 const enviar = (msg) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...msg })}\n`);
 
 async function tratar({ id, method, params }) {

@@ -186,6 +186,19 @@ confirmado, sem IA no meio e sem gastar a assinatura, e avisa no privado.
   contados, e toda mensagem leva o relógio do momento em que chegou. Antes, em
   UTC, perto da meia-noite "amanhã" virava depois de amanhã.
 
+## Peças visuais
+
+`gerar_peca` (servidor de relatórios) faz imagens livres com a identidade da
+Sheep: comunicado, anúncio, convite, card de novidade, post. A moldura é fixa
+(o fundo com os feixes de luz, a logo da Sheep e a do cliente, a fonte Inter,
+o limão e o preto) e o conteúdo é HTML escrito pelo modelo com as classes de um
+kit (`cartao`, `rotulo`, `h1`, `selo`, `lista`, `passos`, `grade`, `numero`,
+`botao`, `icone`...), em cinco formatos: quadrado, retrato, story, paisagem e
+banner. O HTML passa por uma limpeza (sem script, sem estilo próprio, sem
+evento, sem emoji) e o navegador não busca nada fora. A ferramenta avisa quando
+o conteúdo passa do espaço, para o modelo encurtar. `gerar_grafico` fica só
+para números.
+
 ## Reuniões e transcrições
 
 O MCP do portal lista as reuniões dos projetos e das oportunidades
