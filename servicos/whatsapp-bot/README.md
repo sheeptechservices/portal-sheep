@@ -185,6 +185,12 @@ confirmado, sem IA no meio e sem gastar a assinatura, e avisa no privado.
   áudio pro Raul lembrando da reunião"). Exclusão não se agenda. A mensagem é
   conferida ao agendar (grupo, número, áudio com menção) e, no horário, sai
   pela Evolution.
+- Mensagem cujo conteúdo depende do dia ("toda segunda às 7h30 manda para cada
+  dev as tasks da semana") vai como `mensagem_gerada`: grava o pedido e o
+  destino (grupo ou número), e no horário o bot roda o pedido no Claude Code só
+  com leitura do portal, sem escrita, grupos, agenda nem internet, e manda o
+  que sair para o destino gravado. Esse é o único agendamento com IA no meio,
+  e o texto gerado nunca escolhe para onde vai. Um agendamento por pessoa.
 - Repete todo dia, em dias úteis (pula fim de semana, não feriado), toda semana
   ou todo mês (o dia 31 cai no último dia dos meses mais curtos).
 - Fica em `/dados/agenda.json`. Com o bot fora do ar, o que venceu roda quando

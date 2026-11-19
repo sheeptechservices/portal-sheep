@@ -8,6 +8,12 @@
 //  horário, quem executa é o próprio bot, sem IA no meio: roda exatamente o
 //  que a pessoa confirmou ao agendar e avisa no privado.
 //
+//  A exceção é `mensagem_gerada`: o conteúdo que depende do dia ("toda
+//  segunda às 7h30 manda para cada dev as tasks da semana") não pode ser
+//  escrito na hora do pedido, senão sai velho. Ela grava o pedido e o
+//  destino; no horário o bot roda o pedido só com leitura do portal e manda
+//  o que sair. O destino continua fixo desde o agendamento.
+//
 //  Quem guarda a agenda é o processo do bot (index.mjs), e este servidor só
 //  fala com ele pela rota interna: um dono só para o arquivo, sem duas mãos
 //  escrevendo ao mesmo tempo.
@@ -24,7 +30,7 @@ const AGENDA_TOKEN = process.env.AGENDA_TOKEN ?? '';
  *  `enviar_no_grupo` e `enviar_para_pessoa` não são do portal: são a mensagem
  *  (texto ou áudio) num grupo ou no privado de alguém, que o próprio bot manda
  *  pela Evolution no horário. */
-export const AGENDAVEIS = ['criar_tarefa', 'editar_tarefa', 'comentar', 'adicionar_subtarefa', 'editar_subtarefa', 'enviar_no_grupo', 'enviar_para_pessoa'];
+export const AGENDAVEIS = ['criar_tarefa', 'editar_tarefa', 'comentar', 'adicionar_subtarefa', 'editar_subtarefa', 'enviar_no_grupo', 'enviar_para_pessoa', 'mensagem_gerada'];
 export const REPETICOES = ['diario', 'dias_uteis', 'semanal', 'mensal'];
 
 const FERRAMENTAS = [
@@ -34,13 +40,16 @@ const FERRAMENTAS = [
     description: 'Grava uma ação do portal, ou uma mensagem num grupo do WhatsApp (enviar_no_grupo), para rodar '
       + 'num horário, uma vez ou repetindo. No horário o bot executa exatamente a chamada gravada, sem perguntar '
       + 'de novo, e avisa no privado. Resolva antes os ids, nomes e números exatos com as ferramentas de leitura. '
+      + 'Conteúdo que depende do dia (relatório, lista de tarefas, resumo da semana) vai como mensagem_gerada, '
+      + 'com argumentos { grupo ou numero, pedido, em_audio, mencionar }: no horário o bot escreve a mensagem com '
+      + 'os dados daquele momento, só lendo o portal, e manda para o destino. '
       + 'Age mais tarde sem ninguém olhar: só rode depois da confirmação.',
     inputSchema: {
       type: 'object',
       properties: {
         quando: { type: 'string', description: 'Data e hora da (primeira) execução, ISO 8601 com o fuso de Brasília, como 2026-11-18T09:00:00-03:00.' },
         repetir: { type: 'string', enum: REPETICOES, description: 'Sem ele, roda uma vez. dias_uteis pula sábado e domingo; semanal repete no mesmo dia da semana; mensal, no mesmo dia do mês.' },
-        ferramenta: { type: 'string', enum: AGENDAVEIS, description: 'A ferramenta do portal (mover de etapa é editar_tarefa com status), enviar_no_grupo ou enviar_para_pessoa.' },
+        ferramenta: { type: 'string', enum: AGENDAVEIS, description: 'A ferramenta do portal (mover de etapa é editar_tarefa com status), enviar_no_grupo ou enviar_para_pessoa (texto pronto), ou mensagem_gerada (texto escrito na hora, com os dados do momento).' },
         argumentos: { type: 'object', description: 'Os argumentos da ferramenta, exatamente como ela pede.' },
         resumo: { type: 'string', description: 'Uma linha dizendo o que acontece, para a lista e para o aviso. Ex.: "Mover o #977 para Fazendo", "Mensagem no grupo Tech Squad marcando o Raul".' },
       },
