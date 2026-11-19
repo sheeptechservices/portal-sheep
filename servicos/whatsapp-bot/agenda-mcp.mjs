@@ -52,6 +52,7 @@ const FERRAMENTAS = [
         ferramenta: { type: 'string', enum: AGENDAVEIS, description: 'A ferramenta do portal (mover de etapa é editar_tarefa com status), enviar_no_grupo ou enviar_para_pessoa (texto pronto), ou mensagem_gerada (texto escrito na hora, com os dados do momento).' },
         argumentos: { type: 'object', description: 'Os argumentos da ferramenta, exatamente como ela pede.' },
         resumo: { type: 'string', description: 'Uma linha dizendo o que acontece, para a lista e para o aviso. Ex.: "Mover o #977 para Fazendo", "Mensagem no grupo Tech Squad marcando o Raul".' },
+        confirmar_antes: { type: 'boolean', description: 'Só quando a pessoa pedir explicitamente para ser consultada na hora ("me pergunta antes de enviar", "me confirma na hora"). No horário, em vez de rodar, o bot mostra no privado dela o que vai sair e espera sim ou não; sem resposta em 12 horas, não sai. Sem pedido explícito, deixe de fora: o padrão é rodar sozinho.' },
       },
       required: ['quando', 'ferramenta', 'argumentos', 'resumo'],
     },
@@ -83,7 +84,7 @@ async function agenda(corpo) {
 }
 
 const EXECUTAR = {
-  agendar: (a) => agenda({ acao: 'criar', quando: a.quando, repetir: a.repetir ?? null, ferramenta: a.ferramenta, argumentos: a.argumentos, resumo: a.resumo }),
+  agendar: (a) => agenda({ acao: 'criar', quando: a.quando, repetir: a.repetir ?? null, ferramenta: a.ferramenta, argumentos: a.argumentos, resumo: a.resumo, confirmar_antes: a.confirmar_antes === true }),
   listar_agendamentos: () => agenda({ acao: 'listar' }),
   cancelar_agendamento: (a) => agenda({ acao: 'cancelar', id: a.id }),
 };

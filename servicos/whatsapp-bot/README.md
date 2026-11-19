@@ -193,6 +193,13 @@ confirmado, sem IA no meio e sem gastar a assinatura, e avisa no privado.
   com leitura do portal, sem escrita, grupos, agenda nem internet, e manda o
   que sair para o destino gravado. Esse é o único agendamento com IA no meio,
   e o texto gerado nunca escolhe para onde vai. Um agendamento por pessoa.
+- Só quando a pessoa pede ("me pergunta antes de enviar"), o agendamento leva
+  `confirmar_antes`: no horário, em vez de rodar, o bot mostra no privado do
+  dono o que vai sair (na mensagem gerada, o texto já montado) e espera. O
+  "sim" roda exatamente a chamada mostrada e o "não" descarta, os dois tratados
+  pelo próprio bot, sem passar pelo modelo; sem resposta em 12 horas, não sai.
+  A pergunta pendente fica em `agenda.json`, e vale a mais nova: uma proposta
+  do modelo feita depois dela tem a vez no "sim".
 - Repete todo dia, em dias úteis (pula fim de semana, não feriado), toda semana
   ou todo mês (o dia 31 cai no último dia dos meses mais curtos).
 - Fica em `/dados/agenda.json`. Com o bot fora do ar, o que venceu roda quando
