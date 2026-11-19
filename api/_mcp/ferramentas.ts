@@ -15,6 +15,9 @@ import {
 import { podeAcao, type Permissoes } from '../_permissoes.js';
 import { ErroFerramenta, type Ferramenta, type Servidor } from './protocolo.js';
 import { enderecoDoPortal } from '../_email.js';
+
+/** O endereço da tarefa no portal: a rota que abre a gaveta dela. */
+const linkDaTarefa = (id: unknown) => `${enderecoDoPortal()}/tarefas/${Number(id)}`;
 // A mesma lista de logos da tela (carrossel da entrada, seletores de cliente):
 // fonte única, para o bot do WhatsApp pôr a logo do cliente no gráfico.
 import { marcaDoCliente } from '../../src/lib/marcas.js';
@@ -167,7 +170,8 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
     title: 'Listar tarefas',
     description: 'Lista tarefas com filtro, das mais novas para as mais antigas. Sem filtro de status, '
       + 'traz só as abertas (sem as concluídas e as desconsideradas). A descrição vem cortada em 300 '
-      + 'caracteres; use ver_tarefa para o detalhe. Pagine com cursor enquanto "proximo" vier preenchido.',
+      + 'caracteres; use ver_tarefa para o detalhe. Cada tarefa traz o link dela no portal. '
+      + 'Pagine com cursor enquanto "proximo" vier preenchido.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -191,7 +195,7 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
       const status = await Promise.all(listaDe(a.status).map(s => nomeDaEtapa(ctx, s)));
       const etiquetas = await nomesDasEtiquetas(ctx, listaDe(a.etiqueta));
       const prioridade = listaDe(a.prioridade).map(nomeDaPrioridade);
-      return chamar(ctx, 'GET', 'tarefas_filtradas', {
+      const r = await chamar(ctx, 'GET', 'tarefas_filtradas', {
         projeto: listaDe(a.projeto), status, responsavel: listaDe(a.responsavel), prioridade,
         etiqueta: etiquetas, entrega: listaDe(a.entrega),
         prazo_de: a.prazo_de ? data(a.prazo_de, 'prazo_de') : undefined,
@@ -199,14 +203,16 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
         texto: a.texto, incluir_concluidas: a.incluir_concluidas ? '1' : undefined,
         limite: a.limite, cursor: a.cursor,
       });
+      return { ...r, tarefas: (r?.tarefas ?? []).map((t: any) => ({ ...t, link: linkDaTarefa(t.id) })) };
     },
   },
   {
     name: 'ver_tarefa',
     title: 'Ver tarefa',
     description: 'Tudo de uma tarefa: campos, descrição inteira, subtarefas, a conversa com respostas, '
-      + 'menções, joinhas e anexos (só os dados do arquivo; o conteúdo vem por baixar_anexo), e o '
-      + 'histórico de alterações mais recente.',
+      + 'menções, joinhas e anexos (só os dados do arquivo; o conteúdo vem por baixar_anexo), o '
+      + 'histórico de alterações mais recente, o link no portal e quem já abriu a tarefa (vistos: '
+      + 'quem, quantas vezes, a primeira e a última).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -233,6 +239,7 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
       const historico = Number.isFinite(Number(a.historico)) ? Number(a.historico) : 30;
       return {
         id: Number(t.id),
+        link: linkDaTarefa(t.id),
         titulo: t.titulo,
         descricao: t.descricao ?? '',
         projeto: { id: t.projeto_id, nome: t.projeto_nome },
@@ -260,6 +267,12 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
         })),
         historico: (atividade.eventos ?? []).slice(0, historico).map((e: any) => ({
           quem: e.usuario_nome, acao: e.acao, campo: e.campo, de: e.de, para: e.para, quando: e.criado_em,
+        })),
+        // Quem abriu a tarefa no portal. Visitas a menos de dez minutos uma da
+        // outra contam como uma só.
+        vistos: (atividade.vistos ?? []).map((v: any) => ({
+          quem: v.nome ?? 'alguém que saiu do portal', quem_id: v.usuario_id, vezes: Number(v.vezes) || 1,
+          primeira: v.primeira_em, ultima: v.ultima_em,
         })),
       };
     },
@@ -315,7 +328,7 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
       };
       const r = await chamar(ctx, 'POST', 'salvar_tarefa', corpo);
       return {
-        id: Number(r.id), status: r.status,
+        id: Number(r.id), link: linkDaTarefa(r.id), status: r.status,
         responsaveis: await comNomes(ctx, r.responsaveis ?? []), projetos: r.projetos ?? [],
       };
     },
