@@ -100,6 +100,9 @@ const GRUPOS_NO_PRIVADO = ['listar_grupos', 'ler_grupo', 'baixar_midia_do_grupo'
  *  escreve para fora com o número da casa e não se desfaz. Só no privado e só
  *  na mensagem que confirma a proposta. */
 const ENVIO_NO_GRUPO = ['mcp__whatsapp__enviar_no_grupo', 'mcp__whatsapp__enviar_para_pessoa'];
+/** A conta inteira do Fireflies, com as reuniões de todos os clientes: só o
+ *  dono e só no privado. No grupo e para o convidado, nem aparece. */
+const FIREFLIES = ['buscar_no_fireflies', 'resumo_do_fireflies'].map(n => `mcp__portal__${n}`);
 /** Números, gráficos e relatórios (`relatorios-mcp.mjs`): leem o portal e
  *  gravam arquivo na pasta de mídias, sem escrever nada. Liberados sempre. */
 const RELATORIOS = ['dados_de_tarefas', 'gerar_grafico', 'gerar_relatorio', 'gerar_peca', 'gerar_transcricao'].map(n => `mcp__relatorios__${n}`);
@@ -674,7 +677,7 @@ function instrucoes(quem) {
     'Anexar arquivo recebido num card: você consegue, com a ferramenta comentar_com_anexo (servidor MCP "anexos"). Ela recebe a tarefa, o texto do comentário e o caminho do arquivo original indicado na mensagem, e cuida da conversão sozinha: nunca diga que não consegue converter para base64, e não use o comentar do portal para anexos. Vale para arquivos de até 3 MB, guardados por dois dias. Também é ação de escrita: proponha e peça confirmação. Dá para criar o card e, depois da mesma confirmação, comentar com o anexo nele.',
     '',
     'Peças visuais: comunicado, anúncio, convite, card de novidade, post, aviso, agenda, boas-vindas e qualquer imagem que não seja um gráfico de números saem por gerar_peca, nunca por gerar_grafico (que é só para números, e desenha barras e ranking). Na peça o desenho é seu: a identidade (fundo com os feixes, logo, fonte, cores) já vem, e você monta o conteúdo com as classes do kit, pensando como designer: uma mensagem principal, título curto e forte, hierarquia clara, pouco texto, respiro, no máximo três ou quatro blocos, e o layout que serve à mensagem (um cartão grande, passos, grade de cartões, número em destaque, chamada no fim). Sem número inventado e sem barra vazia: só entra número que existe. Formato: sem pedido, quadrado; story, retrato, paisagem ou banner quando pedirem ou quando o destino pedir. Se a ferramenta disser que transbordou, encurte e gere de novo antes de mandar. Peça de um cliente leva o projeto, para a logo dele entrar. Quando pedirem ajuste ("mais curto", "troca o título", "põe em story"), gere de novo com o que mudou.',
-    'Reuniões: listar_reunioes traz as reuniões dos projetos e das oportunidades, com o resumo de cada uma (as notas), quem participou e se há transcrição do Fireflies; transcricao_da_reuniao traz a conversa inteira, fala por fala, numerada. Para perguntas sobre o que foi dito ou decidido, comece pelo resumo e vá à transcrição quando precisar do detalhe. Transcrição em arquivo: gerar_transcricao faz o PDF ou o Word com a identidade da Sheep e já busca o texto sozinho; você não copia a transcrição. Para ajustar antes de mandar, leia as falas e use remover (os números n), trocar (nomes ou trechos), titulo e resumo; para cada ajuste pedido depois, gere de novo com tudo o que já foi combinado. Transcrição tem tudo o que se falou: antes de mandar para um grupo ou para o privado de alguém, mande primeiro o arquivo aqui no privado do dono, para ele conferir, e só depois proponha o envio com Confirma? (sim/não). Reunião sem transcrição (que não veio do Fireflies) só tem o resumo: diga isso.',
+    'Reuniões: listar_reunioes traz as reuniões já anexadas aos projetos e às oportunidades do portal, com o resumo de cada uma (as notas), quem participou e se há transcrição do Fireflies. Muita reunião não é anexada: quando não achar no portal, procure direto na conta do Fireflies com buscar_no_fireflies (pelo título, por quem participou e pelo dia; uma palavra acha mais que uma frase, e o nome do cliente costuma estar no título), e leia com resumo_do_fireflies e transcricao_da_reuniao usando o fireflies_id. Nunca diga que só enxerga as reuniões do portal nem que não consegue buscar no Fireflies: busque. A conta do Fireflies só se consulta na conversa privada com o dono; no grupo, fique com as reuniões do portal. transcricao_da_reuniao traz a conversa inteira, fala por fala, numerada. Para perguntas sobre o que foi dito ou decidido, comece pelo resumo e vá à transcrição quando precisar do detalhe. Transcrição em arquivo: gerar_transcricao faz o PDF ou o Word com a identidade da Sheep (pelo id da reunião no portal ou pelo fireflies_id) e já busca o texto sozinho; você não copia a transcrição. Para ajustar antes de mandar, leia as falas e use remover (os números n), trocar (nomes ou trechos), titulo e resumo; para cada ajuste pedido depois, gere de novo com tudo o que já foi combinado. Transcrição tem tudo o que se falou: antes de mandar para um grupo ou para o privado de alguém, mande primeiro o arquivo aqui no privado do dono, para ele conferir, e só depois proponha o envio com Confirma? (sim/não). Reunião sem transcrição (que não veio do Fireflies) só tem o resumo: diga isso.',
     'Links das tarefas: cada tarefa do portal vem com o link dela (campo link em listar_tarefas, ver_tarefa e criar_tarefa). Mande o link quando pedirem, quando uma preferência pedir, ou quando acabou de criar a tarefa a pedido de alguém. Numa lista, o link vai na linha de cada tarefa, como texto puro, sem asterisco nem parênteses em volta, para o WhatsApp torná-lo clicável. Sem pedido nem preferência, não encha a resposta de links. Quem já abriu uma tarefa no portal vem em ver_tarefa (vistos: quem, quantas vezes, a primeira e a última).',
     'Escreva para WhatsApp: respostas curtas e diretas, em português do Brasil.',
     'Formatação do WhatsApp: *negrito* com um asterisco, _itálico_, listas com "- ". Não use títulos com #, tabelas nem blocos de código.',
@@ -710,7 +713,7 @@ function perguntar({ texto, sessao, liberarEscrita, privado, quem }) {
   const permitidas = [
     ...LEITURA.map(doPortal),
     ...RELATORIOS,
-    ...(privado && dono ? [...GRUPOS_NO_PRIVADO, ...AGENDA_LEITURA] : []),
+    ...(privado && dono ? [...GRUPOS_NO_PRIVADO, ...AGENDA_LEITURA, ...FIREFLIES] : []),
     ...(liberarEscrita && dono ? ESCRITA_TODAS : []),
     ...(liberarEscrita && dono && privado ? [...AGENDA_ESCRITA, ...ENVIO_NO_GRUPO] : []),
     `Read(${absoluto(midiaDir)}/**)`,
@@ -731,6 +734,9 @@ function perguntar({ texto, sessao, liberarEscrita, privado, quem }) {
     // As preferências são do dono, e só no privado: no grupo e para o
     // convidado, nem aparecem.
     ...(privado && dono ? [] : PREFERENCIAS),
+    // A conta do Fireflies tem as reuniões de todos os clientes: fora do
+    // privado do dono, nem aparece.
+    ...(privado && dono ? [] : FIREFLIES),
   ];
   // A mensagem vai pela entrada padrão, e não como argumento: um texto que
   // comece com hífen (uma lista colada) seria lido como opção da linha de comando.

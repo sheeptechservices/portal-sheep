@@ -158,7 +158,8 @@ const FERRAMENTAS = [
     inputSchema: {
       type: 'object',
       properties: {
-        reuniao: { type: 'integer', description: 'Id da reunião (de listar_reunioes).' },
+        reuniao: { type: 'integer', description: 'Id da reunião no portal (de listar_reunioes).' },
+        fireflies_id: { type: 'string', description: 'Id da reunião no Fireflies (de buscar_no_fireflies), no lugar de reuniao, para a que não foi anexada ao portal.' },
         formato: { type: 'string', enum: ['pdf', 'docx'] },
         titulo: { type: 'string', description: 'Padrão: o assunto da reunião.' },
         resumo: { type: 'string', description: 'Texto que entra antes da transcrição, numa seção Resumo. Aceita **negrito** e linhas "- ".' },
@@ -170,7 +171,7 @@ const FERRAMENTAS = [
         },
         minutagem: { type: 'boolean', description: 'O minuto antes de cada fala. Padrão: sim.' },
       },
-      required: ['reuniao', 'formato'],
+      required: ['formato'],
     },
   },
 ];
@@ -397,8 +398,12 @@ export function montarTranscricao(falas, { remover = [], trocar = [], minutagem 
 
 async function gerarTranscricao(a) {
   if (!['pdf', 'docx'].includes(a.formato)) throw new Error('formato precisa ser pdf ou docx');
-  if (!Number.isInteger(Number(a.reuniao))) throw new Error('reuniao precisa ser o id da reunião, de listar_reunioes');
-  const t = await portal('transcricao_da_reuniao', { reuniao: Number(a.reuniao), limite: 5000 });
+  const doPortal = a.reuniao != null && a.reuniao !== '';
+  if (doPortal && !Number.isInteger(Number(a.reuniao))) throw new Error('reuniao precisa ser o id da reunião, de listar_reunioes');
+  if (!doPortal && !String(a.fireflies_id ?? '').trim()) throw new Error('diga a reunião: reuniao (id no portal) ou fireflies_id (de buscar_no_fireflies)');
+  const t = await portal('transcricao_da_reuniao', doPortal
+    ? { reuniao: Number(a.reuniao), limite: 5000 }
+    : { fireflies_id: String(a.fireflies_id).trim(), limite: 5000 });
   const montada = montarTranscricao(t?.falas ?? [], {
     remover: Array.isArray(a.remover) ? a.remover : [], trocar: Array.isArray(a.trocar) ? a.trocar : [], minutagem: a.minutagem !== false,
   });

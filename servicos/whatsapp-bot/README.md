@@ -204,7 +204,11 @@ para números.
 O MCP do portal lista as reuniões dos projetos e das oportunidades
 (`listar_reunioes`, com o resumo) e traz a transcrição inteira do Fireflies
 (`transcricao_da_reuniao`, fala por fala, numerada), cortando pelo que a
-pessoa conectada vê. `gerar_transcricao` (servidor de relatórios) faz o PDF ou
+pessoa conectada vê. A reunião que não foi anexada a projeto nenhum se acha
+direto na conta do Fireflies (`buscar_no_fireflies`, pelo título, por quem
+participou e pelo dia, e `resumo_do_fireflies`), e a transcrição e o
+documento aceitam o `fireflies_id`. A conta tem as reuniões de todos os
+clientes: essas duas ferramentas só existem no privado do dono. `gerar_transcricao` (servidor de relatórios) faz o PDF ou
 o Word com a identidade da Sheep, buscando o texto sozinho: o modelo não
 reescreve a transcrição, só diz o que muda (falas a remover, trocas de nome ou
 de trecho, título, resumo no topo, minutagem). Antes de mandar para um grupo ou
