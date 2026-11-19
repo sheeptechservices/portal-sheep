@@ -24,7 +24,7 @@
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, statSync, unlinkSync, copyFileSync, rmSync } from 'node:fs';
 import { basename, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { docxParaTexto, xlsxParaTexto, ErroDocumento } from './documentos.mjs';
@@ -930,6 +930,17 @@ async function responderEmAudio(chat, texto) {
 //  `agenda-mcp.mjs` pede pela rota interna.
 
 const arquivoAgenda = join(cfg.dados, 'agenda.json');
+/** Os anexos dos envios agendados, um subdiretório por agendamento. Ficam no
+ *  volume, e não na pasta de mídias: aquela mora no contêiner e some a cada
+ *  deploy ou reinício, e o anexo sumia antes do horário (19/11, os grupos
+ *  agendados depois da troca de imagem não receberam a peça). */
+const anexosAgendadosDir = join(cfg.dados, 'agendados');
+mkdirSync(anexosAgendadosDir, { recursive: true });
+/** A pasta de onde o anexo de um envio pode sair: a cópia do agendamento ou,
+ *  para o que foi agendado antes da cópia existir, a pasta de mídias. */
+const pastaDoAnexo = (a) => (String(a?.arquivo ?? '').startsWith(anexosAgendadosDir + sep) ? anexosAgendadosDir : midiaDir);
+/** Apaga a cópia do anexo quando o agendamento acaba (rodou, ou cancelado). */
+const largarAnexo = (item) => rmSync(join(anexosAgendadosDir, item.id), { recursive: true, force: true });
 let agenda = [];
 try { agenda = JSON.parse(readFileSync(arquivoAgenda, 'utf8')).itens ?? []; } catch { agenda = []; }
 function gravarAgenda() {
@@ -989,7 +1000,7 @@ async function chamarPortal(nome, argumentos) {
 /** A mensagem agendada (texto ou áudio, num grupo ou no privado de alguém),
  *  mandada pelo próprio bot no horário. */
 async function enviarAgendado(ferramenta, argumentos) {
-  const plano = planoDeEnvio(ferramenta, argumentos, { midiaDir });
+  const plano = planoDeEnvio(ferramenta, argumentos, { midiaDir: pastaDoAnexo(argumentos) });
   const inst = encodeURIComponent(cfg.instancia);
   if (plano.tipo === 'arquivo') {
     const ok = await evolution(`/message/sendMedia/${inst}`, {
@@ -1075,6 +1086,7 @@ function pedidoDaAgenda(corpo) {
     item.ativo = false;
     item.cancelado_em = new Date().toISOString();
     gravarAgenda();
+    largarAnexo(item);
     return { status: 200, body: { ok: true, cancelado: item.resumo } };
   }
   if (corpo.acao === 'criar') {
@@ -1102,20 +1114,30 @@ function pedidoDaAgenda(corpo) {
     // de número aparece na conversa, e não horas depois no aviso de falha.
     if (corpo.ferramenta === 'enviar_no_grupo' || corpo.ferramenta === 'enviar_para_pessoa') {
       try { planoDeEnvio(corpo.ferramenta, corpo.argumentos, { midiaDir }); } catch (e) { return { status: 400, body: { error: e.message } }; }
-      // A pasta de mídias guarda o arquivo por dois dias: anexo agendado para
-      // depois disso sumiria antes do horário.
-      if (corpo.argumentos.arquivo && new Date(String(corpo.quando)).getTime() > Date.now() + MIDIA_VIDA_MS - 3600_000) {
-        return { status: 400, body: { error: 'anexo só se agenda para até dois dias: a pasta de mídias guarda o arquivo por esse tempo' } };
-      }
-      if (corpo.argumentos.arquivo && corpo.repetir) {
-        return { status: 400, body: { error: 'anexo não se agenda com repetição: o arquivo some em dois dias' } };
+    }
+    const id = randomBytes(4).toString('hex');
+    let argumentos = corpo.argumentos;
+    // O anexo é copiado agora para o volume: a pasta de mídias some no deploy
+    // e apaga o que tem mais de dois dias. Com a cópia, vale qualquer data e
+    // repetição. O caminho gravado é o da cópia, montado aqui, e não o que o
+    // modelo mandou.
+    if ((corpo.ferramenta === 'enviar_no_grupo' || corpo.ferramenta === 'enviar_para_pessoa') && argumentos.arquivo) {
+      try {
+        const origem = resolve(String(argumentos.arquivo));
+        const pasta = join(anexosAgendadosDir, id);
+        mkdirSync(pasta, { recursive: true });
+        const copia = join(pasta, basename(origem));
+        copyFileSync(origem, copia);
+        argumentos = { ...argumentos, arquivo: copia };
+      } catch (e) {
+        return { status: 500, body: { error: `não consegui guardar o anexo para o horário (${e.message})` } };
       }
     }
     const item = {
-      id: randomBytes(4).toString('hex'),
+      id,
       resumo: String(corpo.resumo ?? '').trim().slice(0, 200) || corpo.ferramenta,
       ferramenta: corpo.ferramenta,
-      argumentos: corpo.argumentos,
+      argumentos,
       quando: quando.toISOString(),
       repetir: corpo.repetir ?? null,
       ...(corpo.repetir === 'mensal' ? { dia_do_mes: diaEmBrasilia(quando.toISOString()) } : {}),
@@ -1163,6 +1185,7 @@ async function rodarAgenda() {
         item.quando = seguinte;
       } else {
         item.ativo = false;
+        largarAnexo(item);
       }
       gravarAgenda();
       log('[agenda] executado', item.id, ok ? 'ok' : `falhou: ${detalhe.slice(0, 120)}`);
