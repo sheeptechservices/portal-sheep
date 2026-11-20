@@ -52,6 +52,9 @@ const cfg = {
   mcpUrl: process.env.PORTAL_MCP_URL ?? '',
   mcpToken: process.env.PORTAL_MCP_TOKEN ?? '',
   claude: process.env.CLAUDE_BIN ?? 'claude',
+  /** O modelo que interpreta a resposta a uma proposta: rápido, porque é
+   *  consultado antes da resposta de verdade. */
+  modeloDecisao: process.env.MODELO_CONFIRMACAO || 'haiku',
   dados: process.env.DADOS_DIR ?? '/dados',
   trabalho: process.env.TRABALHO_DIR ?? '/app/trabalho',
   /** Conversa parada há mais que isto recomeça do zero. */
@@ -715,9 +718,71 @@ function instrucoes(quem) {
  *  novo: o modelo refaz a proposta. */
 // Só palavra de concordância abre: verbo de ação ("cria outro card") é pedido
 // novo, e não pode disparar a proposta que estava esperando.
-const CONCORDA = /^\s*(sim|s|ss|confirmo|confirma|confirmado|pode|manda|ok|okay|beleza|isso|faz|faca|faça|vai|bora|positivo)\b/i;
+// O teste roda no texto sem acento: o `\b` do JavaScript não enxerga letra
+// acentuada como letra, e "tá" ou "faça" no fim nunca fechavam a palavra.
+// O "sim" falado chega pela transcrição e vem com muleta na frente ("é, pode
+// mandar", "então tá, fechado"): ela é pulada antes de procurar a concordância.
+const MULETA = '(?:(?:e|eh|ah|ahn|hum|entao|olha|oi|opa|bom|ta)[\\s,.!]+)*';
+const CONCORDA = new RegExp(`^\\s*${MULETA}(sim|s|ss|confirmo|confirma|confirmado|pode|manda|ok|okay|beleza|blz|isso|faz|faca|vai|bora|positivo|ta|certo|fechado|combinado|perfeito|show|claro|exato|correto|uhum|aham|envia|segue)(?=[\\s,.!?]|$)`, 'i');
 const RESSALVA = /\b(n[aã]o|nao|mas|por[eé]m|cancela|espera|pera|antes|muda|troca|altera|corrige|errad|tamb[eé]m|al[eé]m|outr[oa])/i;
-const ehConfirmacao = (t) => t.length <= 80 && CONCORDA.test(t) && !RESSALVA.test(t);
+const ACENTOS = new RegExp(`[${String.fromCharCode(0x300)}-${String.fromCharCode(0x36f)}]`, 'g');
+const semAcentos = (t) => String(t ?? '').normalize('NFD').replace(ACENTOS, '');
+/** `limite` maior para o áudio: falado, o mesmo "sim" sai com mais palavras. */
+const ehConfirmacao = (t, limite = 80) => t.length <= limite && CONCORDA.test(semAcentos(t)) && !RESSALVA.test(semAcentos(t));
+/** O "sim" seco ("sim", "pode mandar", "tá, fechado"), que confirma sem
+ *  consulta. Frase mais comprida, mesmo começando por sim, pode trazer outro
+ *  pedido junto, e vai para o modelo interpretar. */
+const simCurto = (t, limite) => ehConfirmacao(t, limite) && t.split(/\s+/).filter(Boolean).length <= 4;
+
+/** A configuração de MCP vazia, para a consulta que só classifica. */
+const mcpVazio = join(cfg.dados, '.mcp-vazio.json');
+writeFileSync(mcpVazio, JSON.stringify({ mcpServers: {} }));
+
+/** O que a pessoa quis dizer com a resposta a uma proposta: confirma (aprova
+ *  a ação como foi proposta, mesmo com outras palavras ou outro pedido junto),
+ *  ajuste (aprova com mudança na própria ação), recusa ou outro. Uma chamada
+ *  curta ao modelo, sem nenhuma ferramenta: ela só decide se a proposta foi
+ *  aprovada, e o que roda continua sendo a ação proposta. Falhou, devolve
+ *  null, e quem chamou fica com a regra de palavras. */
+function decidirResposta(proposta, resposta) {
+  const texto = [
+    '[Classificação de confirmação]',
+    'Você só classifica, sem conversar. O bot fez a proposta abaixo e esperava a resposta da pessoa. Diga o que ela quis.',
+    'confirma: aprova a ação como foi proposta, com qualquer forma de dizer ("acho que sim", "manda bala", "tá ótimo, pode ir"), mesmo com muleta, elogio, ou com outro pedido separado que não muda a ação proposta ("sim, e depois me manda o link").',
+    'ajuste: aprova, mas mudando algo na própria ação (outro horário, outro texto, outro destino, outro card, outro valor).',
+    'recusa: não quer a ação.',
+    'outro: a resposta não trata da proposta.',
+    'complemento: o pedido separado que veio junto da confirmação, nas palavras da pessoa; vazio se não houver.',
+    'Na dúvida entre confirma e qualquer outra, não é confirma.',
+    'Responda só com JSON, sem nada em volta: {"decisao":"confirma|ajuste|recusa|outro","complemento":"..."}',
+    `Proposta do bot:\n"""${String(proposta ?? '').slice(-2000)}"""`,
+    `Resposta da pessoa:\n"""${resposta}"""`,
+  ].join('\n\n');
+  const args = ['-p', '--output-format', 'json', '--model', cfg.modeloDecisao,
+    '--mcp-config', mcpVazio, '--strict-mcp-config', '--tools', 'Read', '--disallowedTools', 'Read'];
+  return new Promise((resolver) => {
+    const [exe, prefixo] = cfg.claude.endsWith('.mjs') ? [process.execPath, [cfg.claude]] : [cfg.claude, []];
+    const filho = spawn(exe, [...prefixo, ...args], { cwd: cfg.trabalho, env: process.env });
+    filho.stdin.end(texto);
+    let saida = '';
+    const relogio = setTimeout(() => filho.kill('SIGKILL'), 45_000);
+    filho.stdout.on('data', c => { saida += c; });
+    filho.on('error', () => { clearTimeout(relogio); resolver(null); });
+    filho.on('close', () => {
+      clearTimeout(relogio);
+      try {
+        const r = JSON.parse(saida.trim().split('\n').filter(Boolean).pop() ?? '');
+        const d = JSON.parse(String(r.result ?? '').match(/\{[\s\S]*\}/)?.[0] ?? '');
+        if (!['confirma', 'ajuste', 'recusa', 'outro'].includes(d.decisao)) return resolver(null);
+        resolver({ decisao: d.decisao, complemento: String(d.complemento ?? '').trim() });
+      } catch {
+        log('[confirmação] não consegui interpretar a resposta', saida.slice(0, 200));
+        resolver(null);
+      }
+    });
+  });
+}
+
 /** A proposta que espera o "sim": a linha pedida nas instruções, com folga. */
 const PEDE_CONFIRMACAO = /Confirma\?|\(sim\s*\/\s*n[aã]o\)/i;
 
@@ -1280,9 +1345,10 @@ async function perguntarAntes(item) {
     ferramenta = envioDaGerada(item.argumentos);
     argumentos = { grupo: item.argumentos.grupo, numero: item.argumentos.numero, texto, mencionar: item.argumentos.mencionar };
   }
+  const previa = await previaDaExecucao(ferramenta, argumentos);
   const agora = Date.now();
   const c = {
-    id: randomBytes(4).toString('hex'), item_id: item.id, resumo: item.resumo, ferramenta, argumentos,
+    id: randomBytes(4).toString('hex'), item_id: item.id, resumo: item.resumo, ferramenta, argumentos, previa,
     pedido_em: new Date(agora).toISOString(), expira_em: new Date(agora + CONFIRMACAO_VALE_MS).toISOString(),
   };
   confirmacoes.push(c);
@@ -1293,7 +1359,7 @@ async function perguntarAntes(item) {
   gravarAgenda();
   const ok = await responder(privadoDoAutorizado, [
     `*Hora do agendamento:* ${item.resumo}`,
-    await previaDaExecucao(ferramenta, argumentos),
+    previa,
     `Mando agora? Responda *sim* para enviar ou *não* para deixar. Sem resposta até ${emBrasilia(c.expira_em)}, não sai.`,
   ].join('\n\n'));
   if (ok === false) {
@@ -1310,16 +1376,41 @@ const NEGA = /^\s*(n[aã]o|nao|n|cancela|cancelar|deixa|esquece|nem|negativo|mel
  *  modelo: o sim roda exatamente a chamada mostrada, o não descarta. Devolve
  *  true quando a mensagem era isso. Vale a pergunta mais nova; se o modelo
  *  propôs algo depois dela, o "sim" é dele. */
-async function respostaDaConfirmacao(chat, texto, atual) {
-  if (!confirmacoes.length) return false;
+async function respostaDaConfirmacao(chat, texto, atual, limite = 80) {
+  if (!confirmacoes.length) return null;
   const c = confirmacoes[confirmacoes.length - 1];
-  if (atual?.pendente && atual.atualizado && atual.atualizado > new Date(c.pedido_em).getTime()) return false;
+  if (atual?.pendente && atual.atualizado && atual.atualizado > new Date(c.pedido_em).getTime()) return null;
   const t = String(texto ?? '').trim();
-  const sim = ehConfirmacao(t);
-  const nao = !sim && t.length <= 80 && NEGA.test(t);
-  if (!sim && !nao) return false;
+  let sim = simCurto(t, limite);
+  let nao = !sim && t.length <= limite && t.split(/\s+/).length <= 4 && NEGA.test(semAcentos(t));
+  let ajuste = false;
+  let complemento = '';
+  if (!sim && !nao && t.length <= 600) {
+    void digitando(chat);
+    const d = await decidirResposta(c.previa ?? c.resumo, t);
+    if (d) {
+      sim = d.decisao === 'confirma';
+      nao = d.decisao === 'recusa';
+      ajuste = d.decisao === 'ajuste';
+      complemento = sim ? d.complemento : '';
+    } else {
+      sim = ehConfirmacao(t, limite);
+      nao = !sim && t.length <= limite && NEGA.test(semAcentos(t));
+    }
+    log('[agenda] resposta interpretada', c.item_id, d?.decisao ?? 'pela regra');
+  }
+  if (!sim && !nao && !ajuste) return null;
   confirmacoes = confirmacoes.filter(x => x !== c);
   gravarAgenda();
+  // Aprovou mudando o envio: o que estava pronto não sai, e o modelo propõe
+  // o envio ajustado, que passa pela confirmação de sempre.
+  if (ajuste) {
+    fecharConfirmacao(c);
+    log('[agenda] pediu ajuste no envio', c.item_id);
+    return {
+      nota: `[Nota do sistema: o agendamento "${c.resumo}" esperava a resposta da pessoa no privado, com este envio:\n${c.previa ?? ''}\nEla respondeu pedindo mudança, e o envio original não saiu. Proponha agora o envio já ajustado como ela pediu (enviar_no_grupo ou enviar_para_pessoa, ou um novo agendamento se ela falou de outro horário), mostrando como vai ficar, e espere a confirmação.]`,
+    };
+  }
   let aviso;
   if (sim) {
     try {
@@ -1338,7 +1429,8 @@ async function respostaDaConfirmacao(chat, texto, atual) {
   const resta = confirmacoes[confirmacoes.length - 1];
   if (resta) aviso += `\n\nAinda espera resposta: ${resta.resumo}. Responda *sim* ou *não*.`;
   await responder(chat, aviso);
-  return true;
+  // O pedido que veio junto do sim segue para a conversa normal.
+  return complemento ? { resto: complemento } : { feito: true };
 }
 
 // ── As mensagens, do começo ao fim ────────────────────────────────────────
@@ -1459,7 +1551,7 @@ async function responderLote(lote, pedacos, controle) {
   }
   const validos = pedacos.filter(p => !p.erro && !p.avisado);
   if (!validos.length) return 'ok';
-  const textoJunto = validos.map(p => p.texto).filter(Boolean).join('\n');
+  let textoJunto = validos.map(p => p.texto).filter(Boolean).join('\n');
   const atual = estado[chat] ?? {};
   // "nova conversa" zera a memória, como abrir um chat novo.
   if (validos.length === 1 && /^\s*(\/novo|nova conversa|zerar|reiniciar)\s*$/i.test(textoJunto)) {
@@ -1468,17 +1560,41 @@ async function responderLote(lote, pedacos, controle) {
     await responder(chat, 'Pronto, comecei uma conversa nova.');
     return 'ok';
   }
+  // O sim falado vem da transcrição, mais comprido que o escrito: o áudio
+  // sozinho (e não o texto que responde a um áudio) ganha folga.
+  const limiteDoSim = validos.length === 1 && validos[0].notaAudio?.startsWith('[Esta mensagem chegou como áudio') ? 160 : 80;
   // O sim ou o não à pergunta de um agendamento: quem resolve é o bot.
-  if (quem.dono && privado && validos.length === 1 && !validos[0].comArquivo
-    && await respostaDaConfirmacao(chat, textoJunto, atual)) return 'ok';
+  let notaAgenda = '';
+  if (quem.dono && privado && validos.length === 1 && !validos[0].comArquivo) {
+    const r = await respostaDaConfirmacao(chat, textoJunto, atual, limiteDoSim);
+    if (r?.feito) return 'ok';
+    if (r?.resto) {
+      textoJunto = r.resto;
+      validos[0] = { ...validos[0], texto: r.resto, notaAudio: '' };
+      notaAgenda = '[Nota do sistema: a pessoa confirmou o envio agendado, que o bot já fez. Junto com a confirmação, ela pediu o que vem abaixo: atenda.]';
+    }
+    if (r?.nota) notaAgenda = r.nota;
+  }
   const expirou = !atual.atualizado || agora - atual.atualizado > cfg.sessaoMs;
   const sessao = expirou ? null : atual.sessao ?? null;
   // Arquivo junto com o "sim" não é confirmação: é assunto novo.
   // Só confirma quem pode gravar, e a proposta feita a ele: num grupo, o
   // "sim" de outra pessoa não dispara o que o bot propôs ao dono.
   const comArquivo = validos.some(p => p.comArquivo);
-  const confirmou = quem.dono && !expirou && !!atual.pendente && !comArquivo && ehConfirmacao(textoJunto)
+  const podeConfirmar = quem.dono && !expirou && !!atual.pendente && !comArquivo && !notaAgenda
     && (atual.pendentePor ?? cfg.autorizado) === quem.numero;
+  // O sim seco confirma direto. O resto (sim no meio da frase, sim com outro
+  // pedido junto, outra forma de dizer) o modelo interpreta; sem a consulta,
+  // vale a regra de palavras.
+  let confirmou = podeConfirmar && simCurto(textoJunto, limiteDoSim);
+  let complemento = '';
+  if (podeConfirmar && !confirmou && textoJunto.length <= 600) {
+    void digitando(chat);
+    const d = await decidirResposta(atual.proposta ?? '', textoJunto);
+    confirmou = d ? d.decisao === 'confirma' : ehConfirmacao(textoJunto, limiteDoSim);
+    complemento = confirmou && d ? d.complemento : '';
+    log('[confirmação] resposta interpretada', chat, d?.decisao ?? 'pela regra');
+  }
   // A ação confirmada não para no meio.
   controle.interrompivel = !confirmou;
 
@@ -1504,7 +1620,9 @@ async function responderLote(lote, pedacos, controle) {
     ...validos.flatMap((p, i) => [`[Mensagem ${i + 1} de ${validos.length}]`, ...conteudo(p)]),
   ];
   const pergunta = [
-    confirmou ? '[Nota do sistema: a pessoa confirmou a ação que você propôs na mensagem anterior. Execute exatamente essa ação agora, nada além.]' : '',
+    confirmou && !complemento ? '[Nota do sistema: a pessoa confirmou a ação que você propôs na mensagem anterior. Execute exatamente essa ação agora, nada além.]' : '',
+    confirmou && complemento ? `[Nota do sistema: a pessoa confirmou a ação que você propôs na mensagem anterior. Execute exatamente essa ação agora. Junto, ela pediu também: "${complemento}". Depois de executar a ação confirmada, atenda esse pedido: se for consulta, responda; se ele alterar o portal ou mandar mensagem, não execute, proponha e peça a confirmação.]` : '',
+    notaAgenda,
     notaGrupo,
     // O relógio vai em toda mensagem: numa conversa retomada horas depois, o
     // que vale é a hora de agora, e não a do começo da conversa.
@@ -1550,6 +1668,8 @@ async function responderLote(lote, pedacos, controle) {
     // A proposta fica esperando o "sim" só se o bot terminou pedindo
     // confirmação; qualquer outra resposta desarma.
     pendente: PEDE_CONFIRMACAO.test(resposta),
+    // O texto da proposta, para interpretar a resposta que vier.
+    ...(PEDE_CONFIRMACAO.test(resposta) ? { proposta: resposta.slice(-2000) } : {}),
     // De quem é a proposta: só a confirmação dessa pessoa a dispara.
     pendentePor: quem.numero,
     atualizado: agora,

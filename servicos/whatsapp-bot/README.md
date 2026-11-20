@@ -11,6 +11,17 @@ altera o portal sempre passa por confirmação: o bot propõe, termina com
 "Confirma? (sim/não)", e as ferramentas de escrita só ficam liberadas na
 mensagem que responde "sim".
 
+O "sim" não precisa ser seco. Um sim curto ("sim", "pode mandar", "tá,
+fechado", escrito ou falado) confirma na hora. Qualquer outra resposta a uma
+proposta passa por uma consulta rápida ao modelo (`haiku`, sem ferramenta
+nenhuma), que diz se a pessoa aprovou como está ("acho que sim, pode ir"),
+aprovou mudando a ação ("pode, mas troca o horário"), recusou ou falou de
+outra coisa. Aprovou como está: roda a ação proposta, e o pedido que veio
+junto ("sim, e depois me manda o link") é atendido em seguida, com proposta
+própria se mexer no portal ou mandar mensagem. Aprovou mudando: a proposta é
+refeita. A consulta só decide se houve aprovação; o que roda é sempre o que
+foi proposto. Se ela falhar, vale a regra de palavras.
+
 ## Mensagens em partes
 
 Quem manda uma mensagem e logo outra para completar recebe uma resposta só.
@@ -196,8 +207,11 @@ confirmado, sem IA no meio e sem gastar a assinatura, e avisa no privado.
 - Só quando a pessoa pede ("me pergunta antes de enviar"), o agendamento leva
   `confirmar_antes`: no horário, em vez de rodar, o bot mostra no privado do
   dono o que vai sair (na mensagem gerada, o texto já montado) e espera. O
-  "sim" roda exatamente a chamada mostrada e o "não" descarta, os dois tratados
-  pelo próprio bot, sem passar pelo modelo; sem resposta em 12 horas, não sai.
+  "sim" roda exatamente a chamada mostrada e o "não" descarta, os dois
+  tratados pelo próprio bot; sem resposta em 12 horas, não sai. Resposta que
+  não é um sim ou não seco passa pela mesma consulta das propostas: sim com
+  outro pedido manda e leva o pedido para a conversa; sim com mudança não manda
+  o pronto, e o modelo propõe o envio ajustado.
   A pergunta pendente fica em `agenda.json`, e vale a mais nova: uma proposta
   do modelo feita depois dela tem a vez no "sim".
 - Repete todo dia, em dias úteis (pula fim de semana, não feriado), toda semana
