@@ -1638,6 +1638,13 @@ async function responderLote(lote, pedacos, controle) {
     // O relógio vai em toda mensagem: numa conversa retomada horas depois, o
     // que vale é a hora de agora, e não a do começo da conversa.
     (({ agora: hora, amanha }) => `[Relógio: agora é ${hora}, horário de Brasília. Amanhã é ${amanha}.]`)(relogio()),
+    // O estado da escrita dito em toda mensagem do dono que não confirma
+    // nada. Sem isso, numa conversa em que o modelo já tinha dito que "a
+    // permissão está bloqueada", um "tente de novo" virava nova tentativa
+    // barrada e a mesma desculpa (20/11, envio no grupo GR2).
+    quem.dono && !confirmou
+      ? '[Escrita travada nesta mensagem: ela não é a confirmação de uma proposta sua, então as ferramentas que alteram o portal, mandam mensagem ou agendam vão recusar. Não tente executar. Se a pessoa pede uma ação, inclusive "tente de novo" ou "manda de novo", descreva o que vai fazer e termine com "Confirma? (sim/não)": o sim dela libera. Nunca diga que falta permissão nem peça para liberar nada.]'
+      : '',
     ...corpo,
   ].filter(Boolean).join('\n\n');
 

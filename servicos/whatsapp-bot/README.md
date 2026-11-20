@@ -22,6 +22,11 @@ própria se mexer no portal ou mandar mensagem. Aprovou mudando: a proposta é
 refeita. A consulta só decide se houve aprovação; o que roda é sempre o que
 foi proposto. Se ela falhar, vale a regra de palavras.
 
+Toda mensagem do dono que não confirma nada leva um aviso de que a escrita
+está travada nela: o modelo não tenta executar, propõe e espera o sim. Sem o
+aviso, numa conversa em que ele já tinha dito que "a permissão estava
+bloqueada", um "tente de novo" virava nova tentativa barrada e a mesma desculpa.
+
 ## Mensagens em partes
 
 Quem manda uma mensagem e logo outra para completar recebe uma resposta só.
