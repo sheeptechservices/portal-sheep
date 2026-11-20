@@ -669,6 +669,7 @@ function instrucoes(quem) {
     'Regra de ouro, sem exceção: nunca altere nada no portal sem confirmação.',
     'Você sabe e pode criar, editar, mover, excluir e comentar cards, e abrir chamados: as ferramentas de escrita do portal (criar_tarefa, editar_tarefa, excluir_tarefa, comentar, excluir_comentario, adicionar_subtarefa, editar_subtarefa, excluir_subtarefa, joinha_comentario, abrir_chamado) existem e funcionam. O sistema só deixa elas rodarem na mensagem que traz a confirmação da pessoa; antes disso a chamada é recusada por permissão. Nunca diga que não consegue fazer essas ações nem que elas estão indisponíveis: proponha e peça a confirmação. Se uma chamada de escrita for recusada, é só porque a confirmação ainda não veio.',
     'Para qualquer criação, edição, mudança de etapa, comentário ou exclusão: primeiro use as ferramentas de leitura para achar exatamente o card e os dados certos; depois descreva em poucas linhas o que vai fazer (qual card, de onde para onde, quais campos) e termine a mensagem com a linha exata "Confirma? (sim/não)". Não execute nessa mensagem.',
+    'Ferramenta de escrita recusada quer dizer uma coisa só: a mensagem que você está respondendo não chegou como confirmação de uma proposta sua. Nunca diga que falta permissão, que a pessoa precisa liberar algo ou que o sistema recusou por conta própria: refaça a proposta do mesmo jeito, terminando com "Confirma? (sim/não)", e espere o sim.',
     'Só execute quando a mensagem seguinte começar com a nota do sistema dizendo que a pessoa confirmou. Execute exatamente o que foi proposto, nada além, e diga em uma linha o que foi feito.',
     'Se a pessoa disser não ou mudar de ideia, não execute e pergunte o que ela quer.',
     'Se houver mais de um card que serve, liste as opções e pergunte qual, antes de propor a ação.',
@@ -784,7 +785,17 @@ function decidirResposta(proposta, resposta) {
 }
 
 /** A proposta que espera o "sim": a linha pedida nas instruções, com folga. */
-const PEDE_CONFIRMACAO = /Confirma\?|\(sim\s*\/\s*n[aã]o\)/i;
+// A linha pedida é "Confirma? (sim/não)", mas o modelo às vezes fecha com outra
+// forma ("Para liberar, responda sim", "Posso mandar?"), e aí o sim da pessoa
+// não liberava nada (20/11, envio no grupo do Eduardo recusado duas vezes).
+// Vale qualquer pedido de confirmação no fim da mensagem.
+const PEDIDOS_DE_CONFIRMACAO = [
+  /\bconfirm(?:a|o|ar)\s*\?/i, /\bquer\s+que\s+eu\s+[^?]*\?/i, /\(sim\s*(?:\/|ou)\s*n[aã]o\)/i, /\bsim\s+ou\s+n[aã]o\b/i,
+  /responda\s+[*_"'\u201c]*sim/i, /\b(?:me\s+)?(?:d[aá]|manda)\s+(?:o|um)\s+[*_"'\u201c]*(?:sim|ok)/i,
+  /\bposso\s+(?:seguir|mandar|enviar|criar|agendar|fazer|mover|gravar|registrar|publicar|excluir|apagar|comentar|abrir|executar|prosseguir|disparar)\b[^?]*\?/i,
+  /\b(?:pode|podemos)\s+(?:seguir|mandar|enviar|ser)\s*\?/i, /\bmando\s*\?/i, /\bsigo\s*\?/i,
+];
+const PEDE_CONFIRMACAO = { test: (t) => { const fim = String(t ?? '').slice(-400); return PEDIDOS_DE_CONFIRMACAO.some(r => r.test(fim)); } };
 
 /** Roda o Claude Code uma vez. Devolve o texto da resposta e a sessão. */
 function perguntar({ texto, sessao, liberarEscrita, privado, quem, controle }) {
