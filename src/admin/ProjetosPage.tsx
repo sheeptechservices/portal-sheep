@@ -93,7 +93,8 @@ import { COR_STATUS_PROJETO } from '../lib/statusDoProjeto';
 import { useTelaCheia } from '../lib/useTelaCheia';
 import { COR_ENTREGA, ICONE_ENTREGA } from '../lib/etapasEntrega';
 import { DonosDaTarefa } from '../components/DonosDaTarefa';
-import { CartaoDaTarefa } from './CartaoDaTarefa';
+import { CartaoDaTarefa, RegraDoRetornoNoQuadro } from './CartaoDaTarefa';
+import { regraDoRetorno, type Retorno } from '../lib/retornos';
 import { SeletorPessoas } from '../components/SeletorPessoas';
 import {
   SecaoReunioes, type Reuniao, type ReuniaoFF,
@@ -303,6 +304,16 @@ export interface Tarefa {
   comentarios?: number;
   /** Quantos arquivos vieram pendurados nesses comentários. */
   anexos?: number;
+  /** Quantas vezes ela voltou para trás depois de entregue (ver
+   *  `src/lib/retornos.ts`). Ausente quando nunca voltou. */
+  retornos?: number;
+  /** A volta mais recente: de onde, para onde, quando e quem. É ela que o selo
+   *  do card conta. */
+  ultimo_retorno?: Retorno | null;
+  /** As datas do último ano em que ela foi entregue e em que voltou: a taxa de
+   *  retorno do painel. */
+  entregues_em?: string[];
+  retornos_em?: string[];
 }
 
 /** Entrega ainda sem id, montada no cadastro de um projeto novo. */
@@ -1459,7 +1470,17 @@ function ColunaDoQuadro({ etapa, tarefas, pessoas, podeEditar, arrastando, loteA
  *  tarefa está, e a prioridade diz por qual começar. No empate fica a ordem que
  *  já vinha, que é a de criação - ninguém reordena tarefa à mão, então não há
  *  decisão de pessoa para esta ordenação atropelar. */
-function QuadroDeTarefas({ tarefas, etapas, pessoas, podeEditar, onAbrir, onCriar, onExcluir,
+function QuadroDeTarefas(props: Parameters<typeof QuadroDeTarefasSemRegra>[0]) {
+  // O selo de retorno dos cards sai das etapas deste quadro.
+  const regra = useMemo(() => regraDoRetorno(props.etapas), [props.etapas]);
+  return (
+    <RegraDoRetornoNoQuadro.Provider value={regra}>
+      <QuadroDeTarefasSemRegra {...props} />
+    </RegraDoRetornoNoQuadro.Provider>
+  );
+}
+
+function QuadroDeTarefasSemRegra({ tarefas, etapas, pessoas, podeEditar, onAbrir, onCriar, onExcluir,
   onMover, onFixarRecolhida, entregaDe, alto }: {
   tarefas: Tarefa[];
   etapas: EtapaTarefa[];

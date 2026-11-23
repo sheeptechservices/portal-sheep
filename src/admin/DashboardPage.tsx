@@ -16,6 +16,7 @@ import { ContaAnimada } from '../components/ContaAnimada';
 import { IconAlert, IconPlus, IconTrendDown, IconTrendUp } from '../components/icons';
 import { DicaComposicao, DicaTopo, useDicaRica } from '../components/DicaRica';
 import { ConteudoDaDicaDoProjeto, corDoProjeto } from '../components/DicaDoProjeto';
+import { taxaDeRetorno } from '../lib/retornos';
 import { COR_ENTREGA } from '../lib/etapasEntrega';
 import { Skeleton } from '../components/Skeleton';
 import { ETAPAS_PADRAO, indexar, type EtapaTarefa } from './FormularioTarefa';
@@ -395,7 +396,7 @@ export default function DashboardPage({ token, onIr, onNovaTarefa }: {
       {/* Os projetos em andamento: a entrega da vez, o quanto andou e o prazo. */}
       <section className="painel-cartao painel-projetos">
         <div className="painel-projetos-cabeca" aria-hidden="true">
-          <span>Projeto</span><span>Entrega atual</span><span>Progresso</span><span>Prazo</span><span>Situação</span>
+          <span>Projeto</span><span>Entrega atual</span><span>Progresso</span><span>Prazo</span><span>Retorno</span><span>Situação</span>
         </div>
         {carregando ? (
           <div className="dux-spinner-row"><span className="dux-spinner sm" /></div>
@@ -711,6 +712,10 @@ function LinhaDoProjeto({ p, i, hoje, fecha, onAbrir }: {
   const sit = situacaoDo(p, hoje);
   const tarefas = p.tarefas ?? [];
   const feitas = tarefas.filter(t => fecha(t.status)).length;
+  // Quantas das entregas dos últimos 90 dias voltaram da revisão ou de
+  // concluída. Por projeto, e não por pessoa: o número mede o retrabalho do
+  // projeto, não quem errou.
+  const giro = taxaDeRetorno(tarefas);
   const { gatilho, dica, aberta } = useDicaRica<HTMLButtonElement>(
     () => <ConteudoDaDicaDoProjeto p={p} fecha={fecha} />, { largura: 320, seguir: true });
 
@@ -734,6 +739,12 @@ function LinhaDoProjeto({ p, i, hoje, fecha, onAbrir }: {
         <span className="projeto-pct"><ContaAnimada valor={`${Math.round(p.progresso)}%`} /></span>
       </span>
       <span className="projeto-prazo">{diaCurto(p.previsao_entrega)}</span>
+      <span className={`projeto-retorno${giro.pct != null && giro.pct >= 25 ? ' alto' : ''}`}
+        title={giro.pct == null
+          ? `Nenhuma entrega nos últimos ${giro.dias} dias`
+          : `${giro.retornos} de ${giro.entregas} entregas voltaram nos últimos ${giro.dias} dias`}>
+        {giro.pct == null ? '-' : `${giro.pct}%`}
+      </span>
       <span><span className={`chip-situacao ${sit}`}>{ROTULO_SITUACAO[sit]}</span></span>
     </button>
   );

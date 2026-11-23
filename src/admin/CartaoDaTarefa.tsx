@@ -13,10 +13,12 @@
 //  as regras de quem pode mover e para onde.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { CSSProperties, DragEvent, MouseEvent, ReactNode } from 'react';
+import { createContext, useContext } from 'react';
 import { ICONE_COMPLEXIDADE } from '../lib/complexidades';
 import { ICONE_PRIORIDADE, PRIORIDADE_PADRAO } from '../lib/prioridades';
 import { dia as fmtData } from '../lib/datas';
-import { IconCalendario } from '../components/icons';
+import { IconCalendario, IconUndo } from '../components/icons';
+import { textoDoRetorno, type RegraDoRetorno, type Retorno } from '../lib/retornos';
 import { DonosDaTarefa, type PessoaConhecida } from '../components/DonosDaTarefa';
 import { SinaisDaTarefa } from '../components/SinaisDaTarefa';
 import { ChipEtiqueta } from './FormularioTarefa';
@@ -85,6 +87,36 @@ export interface TarefaDoCartao {
   responsaveis?: string[];
   comentarios?: number;
   anexos?: number;
+  /** A etapa: é ela que diz se o selo de retorno ainda está aceso. */
+  status?: string;
+  retornos?: number;
+  ultimo_retorno?: Retorno | null;
+}
+
+/** A regra de retorno do quadro em que o card está. Vem por contexto, e não
+ *  por propriedade: o quadro já conhece as etapas, e passar a regra de mão em
+ *  mão até cada card atravessaria colunas e grupos que não a usam. */
+export const RegraDoRetornoNoQuadro = createContext<RegraDoRetorno | null>(null);
+
+/** A tarefa voltou para trás depois de entregue e ainda não foi entregue de
+ *  novo: o selo fica aceso. Voltou para a revisão (ou fechou), ele apaga. */
+export function retornoAceso(t: TarefaDoCartao, regra: RegraDoRetorno | null): boolean {
+  return !!regra && !!t.status && !!t.ultimo_retorno && (t.retornos ?? 0) > 0 && regra.antesDaEntrega(t.status);
+}
+
+/** O selo "Retornou", com o número de vezes quando passou de uma. A dica conta
+ *  de onde para onde, quando e quem devolveu. */
+export function SeloDeRetorno({ t }: { t: TarefaDoCartao }) {
+  const regra = useContext(RegraDoRetornoNoQuadro);
+  if (!retornoAceso(t, regra)) return null;
+  const vezes = t.retornos ?? 1;
+  const texto = textoDoRetorno(t.ultimo_retorno!, vezes);
+  return (
+    <span className="selo-retorno surge" title={texto} aria-label={texto}>
+      <IconUndo size={12} />
+      {vezes > 1 ? `Retornou ${vezes}x` : 'Retornou'}
+    </span>
+  );
 }
 
 export function CartaoDaTarefa({
@@ -132,6 +164,7 @@ export function CartaoDaTarefa({
       <div className="tarefa-cartao-topo">
         <Prioridade valor={t.prioridade} />
         <span className="tarefa-cartao-chave">#{t.id}</span>
+        <SeloDeRetorno t={t} />
         {contexto && <span className="tarefa-cartao-projeto" title={contexto}>{contexto}</span>}
       </div>
       {/* Aparecem com o ponteiro no card, por cima do canto. Sempre visíveis

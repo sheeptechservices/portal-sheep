@@ -18,7 +18,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   IconBalao, IconCheck, IconComentario, IconEstrela, IconInbox, IconJoinha, IconMegafone, IconMural, IconPlay,
-  IconReply, IconVisaoQuadro, IconX,
+  IconReply, IconUndo, IconVisaoQuadro, IconX,
 } from './icons';
 import { Dialogo } from './Dialogo';
 import { SelectSistema } from './SelectSistema';
@@ -31,7 +31,7 @@ import { useToast } from '../lib/toast';
 /** Um aviso, no formato que o servidor manda para todas as fontes. */
 export interface ItemDoInbox {
   chave: string;
-  tipo: 'chamado' | 'pedido' | 'reuniao' | 'mencao' | 'resposta' | 'joinha' | 'etapa' | 'vitrine' | 'mural';
+  tipo: 'chamado' | 'pedido' | 'reuniao' | 'mencao' | 'resposta' | 'joinha' | 'etapa' | 'retorno' | 'vitrine' | 'mural';
   titulo: string;
   descricao: string;
   etiqueta: string;
@@ -78,6 +78,7 @@ const FONTES = {
   resposta: { icone: IconReply, nome: 'Resposta em tarefa' },
   joinha: { icone: IconJoinha, nome: 'Joinha em tarefa' },
   etapa: { icone: IconVisaoQuadro, nome: 'Tarefa mudou de etapa' },
+  retorno: { icone: IconUndo, nome: 'Tarefa retornou' },
   vitrine: { icone: IconEstrela, nome: 'Interesse na vitrine' },
   mural: { icone: IconMural, nome: 'Marcação no mural' },
 } as const;

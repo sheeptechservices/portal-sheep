@@ -14,11 +14,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { iniciais, useAuth, useToast } from './AdminApp';
-import { CartaoDaTarefa, Complexidade, Prazo, Prioridade } from './CartaoDaTarefa';
+import { CartaoDaTarefa, Complexidade, Prazo, Prioridade, RegraDoRetornoNoQuadro, SeloDeRetorno, retornoAceso } from './CartaoDaTarefa';
+import { regraDoRetorno } from '../lib/retornos';
 import {
   IconAgrupar, IconAlert, IconArrowRight, IconCalendario, IconCheck, IconChevronDown, IconInbox,
   IconPrioridadeAlta, IconRecolher,
-  IconAjustes, IconDownload, IconDuplicar, IconNovaTarefa, IconOrdenar, IconPlus, IconRecentes,
+  IconAjustes, IconDownload, IconDuplicar, IconNovaTarefa, IconOrdenar, IconPlus, IconRecentes, IconUndo,
   IconSearch, IconTrash, IconUser, IconX,
 } from '../components/icons';
 import { SelectSistema } from '../components/SelectSistema';
@@ -305,12 +306,16 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
   // "Recentes": a ordem de quem procura o que acabou de entrar. Liga e desliga
   // por cima da ordem escolhida, sem perde-la.
   const [recentes, setRecentes] = useState(false);
+  // "Retornadas": só as que voltaram para trás depois de entregues e ainda não
+  // foram entregues de novo - o selo aceso no card.
+  const [soRetornadas, setSoRetornadas] = useState(false);
   // Os filtros finos moram recolhidos sob a busca, como no mockup.
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [agrupamento, setAgrupamento] = useState<string>('status');
 
   const et = useMemo(() => indexar(etapas), [etapas]);
   const etq = useMemo(() => indexarEtiquetas(etiquetas), [etiquetas]);
+  const regraRetorno = useMemo(() => regraDoRetorno(etapas), [etapas]);
   const entrada = etapas.find(e => Number(e.is_entrada) === 1)?.nome ?? etapas[0]?.nome ?? '';
 
   const podeEditar = pode('tarefas:editar');
@@ -513,6 +518,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
       entregasDa(t).map(id => tituloDeEntrega.get(id) ?? '').join(' ');
     const lista = tarefas.filter(t =>
       (!soMinhas || (!!usuario && (t.responsaveis ?? []).includes(usuario.id))) &&
+      (!soRetornadas || retornoAceso(t, regraRetorno)) &&
       // Filtrar por projeto acha a tarefa que apenas passa por ele, e não só a
       // que nasceu lá.
       (fProjeto.length === 0 || t.projetosDela.some(p => fProjeto.includes(p.nome))) &&
@@ -544,7 +550,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
       return va < vb ? -1 : va > vb ? 1 : porUrgencia(a, b) || a.id - b.id;
     });
   }, [tarefas, tituloDeEntrega, fProjeto, fStatus, fResponsavel, fEtiqueta, fEntrega, fComplexidade, fPrazo, busca, ordem,
-    soMinhas, recentes, usuario]);
+    soMinhas, soRetornadas, regraRetorno, recentes, usuario]);
 
   const grupos = useMemo(
     () => montarGrupos(filtradas, agrupamento, etapas),
@@ -1221,6 +1227,8 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
   }
 
   return (
+    // O selo de retorno dos cards, da lista e da tabela sai das etapas daqui.
+    <RegraDoRetornoNoQuadro.Provider value={regraRetorno}>
     <div className="admin-content-wrap pagina-cristal pagina-tarefas">
       {/* A faixa do alto, no desenho do mockup: a area e o nome da tela, o dia
           de hoje, quem esta com trabalho aberto e quanto ainda esta na mesa. */}
@@ -1296,6 +1304,12 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
               aria-pressed={recentes} onClick={() => setRecentes(v => !v)}>
               <IconRecentes size={15} />
               Recentes
+            </button>
+            <button type="button" className={`botao-fantasma${soRetornadas ? ' ativo' : ''}`}
+              aria-pressed={soRetornadas} onClick={() => setSoRetornadas(v => !v)}
+              title="As tarefas que voltaram da revisão ou de concluída e ainda não foram entregues de novo">
+              <IconUndo size={15} />
+              Retornadas
             </button>
             <button type="button" className={`botao-fantasma${filtrosAbertos || contagemDeFiltros ? ' ativo' : ''}`}
               aria-expanded={filtrosAbertos} onClick={() => setFiltrosAbertos(v => !v)}>
@@ -1465,6 +1479,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
           onConfirmar={() => void excluir(excluindo)} />
       )}
     </div>
+    </RegraDoRetornoNoQuadro.Provider>
   );
 }
 
@@ -1888,6 +1903,7 @@ function Lista({ grupos, pessoas, et, etq, podeExcluir, onAbrir, onExcluir, sele
                 </span>
                 <span className="backlog-linha-titulo">
                   <span className="backlog-linha-texto">{t.titulo}</span>
+                  <SeloDeRetorno t={t} />
                   {t.etiquetas.map(e => <ChipEtiqueta key={e} etiqueta={e} cor={etq.cor(e)} />)}
                   <SinaisDaTarefa t={t} />
                 </span>
@@ -2006,6 +2022,7 @@ function Tabela({ grupos, pessoas, et, etq, podeExcluir, onAbrir, onExcluir, sel
                   <td><Prioridade valor={t.prioridade} /></td>
                   <td>
                     <span style={{ fontWeight: 600, color: 'var(--black)' }}>{t.titulo}</span>
+                    <SeloDeRetorno t={t} />
                     {t.etiquetas.length > 0 && (
                       <span style={{ display: 'inline-flex', gap: 4, marginLeft: 6 }}>
                         {t.etiquetas.map(e => <ChipEtiqueta key={e} etiqueta={e} cor={etq.cor(e)} />)}

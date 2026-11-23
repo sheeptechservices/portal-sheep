@@ -15,6 +15,7 @@ import {
   normalizarUrl, perfilDaInstancia, qrDaInstancia, type ConfigEvolution,
 } from './_evolution.js';
 import { mensagemDeChamadoConcluido } from './_whatsapp-mensagens.js';
+import { regraDoRetorno, type Retorno } from '../src/lib/retornos.js';
 import { validarChaveAws } from './_aws-precos.js';
 import { lerCurriculo } from './_leitura-curriculo.js';
 import { lerTituloDoArquivo } from './_proposta-fonte.js';
@@ -3798,14 +3799,14 @@ function chavesDoInbox(body: any): string[] {
   const cruas = Array.isArray(body?.chaves) ? body.chaves : [body?.chave];
   return [...new Set(cruas
     .map((c: unknown) => String(c ?? '').trim())
-    .filter((c: string) => /^(reporte|tarefa|reuniao|mencao|resposta|joinha|etapa|vitrine|mural):.{1,80}$/.test(c)))] as string[];
+    .filter((c: string) => /^(reporte|tarefa|reuniao|mencao|resposta|joinha|etapa|retorno|vitrine|mural):.{1,80}$/.test(c)))] as string[];
 }
 
 /** Um aviso do inbox. O mesmo formato para as tres fontes: a gaveta desenha
  *  uma linha so, e quem sabe de onde o aviso veio e o `tipo`. */
 interface ItemDoInbox {
   /** `reporte:12` (`reporte:12:<reaberto_em>` depois de reaberto), `tarefa:87`, `reuniao:01JABC`, `mencao:340`, `resposta:341`,
-   *  `joinha:340:<usuario>`, `etapa:12` - tipo e id da coisa. Menção e resposta
+   *  `joinha:340:<usuario>`, `etapa:12`, `retorno:<id do diário>` - tipo e id da coisa. Menção e resposta
    *  levam o id do comentário: duas na mesma tarefa são dois avisos. O joinha
    *  leva também quem deu, porque cada pessoa que concorda é um aviso, e a
    *  etapa leva o id do aviso, que já é por pessoa.
@@ -3814,7 +3815,7 @@ interface ItemDoInbox {
    *  que pode ser marcado e limpo, e uma fonte nova que não entre lá nasce com
    *  o gesto recusado pelo servidor. */
   chave: string;
-  tipo: 'chamado' | 'pedido' | 'reuniao' | 'mencao' | 'resposta' | 'joinha' | 'etapa' | 'vitrine' | 'mural';
+  tipo: 'chamado' | 'pedido' | 'reuniao' | 'mencao' | 'resposta' | 'joinha' | 'etapa' | 'retorno' | 'vitrine' | 'mural';
   titulo: string;
   descricao: string;
   /** O canto direito da linha: urgencia do chamado, projeto do pedido. */
@@ -5050,7 +5051,7 @@ async function despacharAdminData(
       // listagem é o que roda depois de toda ação da tela.
       const [etapasTarefa, projs, equipe, arqs, clientes, reunioes, vinculos, entregas,
         evidencias, arquivosDeEntrega, tarefas, conversas, anexosDaConversa,
-        acessos] = await Promise.all([
+        acessos, trocasDeEtapa] = await Promise.all([
         etapasDeTarefa(db),
         db.execute({
           sql: `
@@ -5137,9 +5138,44 @@ async function despacharAdminData(
                  criado_em, criado_por_nome, atualizado_em, atualizado_por_nome
           FROM projeto_acessos ORDER BY ordem, id
         `),
+        // As trocas de etapa do diário, de onde se contam os retornos e as
+        // entregas de cada tarefa (ver src/lib/retornos.ts). Só as colunas que
+        // a conta usa: o diário tem uma linha por campo alterado.
+        db.execute(`
+          SELECT tarefa_id, de, para, usuario_nome, criado_em
+          FROM tarefa_eventos WHERE campo = 'status' ORDER BY id
+        `),
       ]);
       const nComentarios = new Map(conversas.rows.map(r => [Number(r.tarefa_id), Number(r.n)]));
       const nAnexos = new Map(anexosDaConversa.rows.map(r => [Number(r.tarefa_id), Number(r.n)]));
+      // O giro de cada tarefa: quantas vezes ela voltou para trás depois de
+      // entregue, a volta mais recente (o selo do card) e as datas do último
+      // ano de entregas e retornos (a taxa de retorno do painel). Tarefa que
+      // nunca foi entregue nem voltou não leva nada.
+      const regraRetorno = regraDoRetorno(etapasTarefa.nomes.map(nome => ({
+        nome,
+        is_conclusao: etapasTarefa.conclusivas.has(nome),
+        is_excluded: etapasTarefa.desconsideradas.has(nome),
+      })));
+      const umAnoAtras = new Date(Date.now() - 365 * 86400_000).toISOString();
+      const giro = new Map<number, { retornos: number; ultimo: Retorno | null; entregues_em: string[]; retornos_em: string[] }>();
+      for (const e of trocasDeEtapa.rows) {
+        const de = String(e.de ?? '');
+        const para = String(e.para ?? '');
+        const volta = regraRetorno.ehRetorno(de, para);
+        if (!volta && !regraRetorno.ehEntrega(de, para)) continue;
+        const id = Number(e.tarefa_id);
+        const g = giro.get(id) ?? { retornos: 0, ultimo: null, entregues_em: [], retornos_em: [] };
+        const quando = String(e.criado_em);
+        if (volta) {
+          g.retornos++;
+          g.ultimo = { de, para, quando, quem: e.usuario_nome != null ? String(e.usuario_nome) : null };
+          if (quando >= umAnoAtras) g.retornos_em.push(quando);
+        } else if (quando >= umAnoAtras) {
+          g.entregues_em.push(quando);
+        }
+        giro.set(id, g);
+      }
       // A Geral nasce na primeira leitura que nao a encontra, e nao no
       // `migrarSchema`: la ela custaria uma ida ao banco a cada processo novo,
       // e aqui custa uma so, na vida inteira da base.
@@ -5199,6 +5235,9 @@ async function despacharAdminData(
           // Só os números: o conteúdo da conversa desce quando o card abre.
           comentarios: nComentarios.get(Number(t.id)) ?? 0,
           anexos: nAnexos.get(Number(t.id)) ?? 0,
+          ...((g) => (g ? {
+            retornos: g.retornos, ultimo_retorno: g.ultimo, entregues_em: g.entregues_em, retornos_em: g.retornos_em,
+          } : {}))(giro.get(Number(t.id))),
         })),
         acessos: acessos.rows.filter(a => a.projeto_id === p.id).map(a => ({
           ...a,
@@ -6696,7 +6735,7 @@ async function despacharAdminData(
       // ela.
       const veVitrine = podeAcao(permissoes, 'vitrines');
 
-      const [chamados, pedidos, lidos, mencoes, respostas, joinhas, etapas, interesses, noMural] = await Promise.all([
+      const [chamados, pedidos, lidos, mencoes, respostas, joinhas, etapas, interesses, noMural, voltas, etapasDoQuadro] = await Promise.all([
         cuidaDaFila
           ? db.execute({
             // Sem filtro de andamento: chamado resolvido continua no inbox, com
@@ -6827,6 +6866,26 @@ async function despacharAdminData(
                 ORDER BY quando DESC LIMIT 40`,
           args: [usuario?.id ?? '', usuario?.id ?? '', desde],
         }),
+        // Tarefa da pessoa que voltou para trás no quadro, movida por outra
+        // pessoa. A consulta traz as trocas de etapa; qual delas é retorno a
+        // regra decide logo abaixo, a mesma do selo do card. O LIKE é só o
+        // primeiro corte pela lista de donos (JSON); a conferência fina é a
+        // de `donosDaTarefa`.
+        db.execute({
+          sql: `SELECT e.id, e.tarefa_id, e.de, e.para, e.usuario_nome, e.criado_em,
+                       t.titulo AS tarefa_titulo, t.responsavel_id, t.responsaveis, p.nome AS projeto_nome
+                FROM tarefa_eventos e
+                JOIN projeto_tarefas t ON t.id = e.tarefa_id
+                JOIN projetos p ON p.id = t.projeto_id
+                WHERE e.campo = 'status'
+                  AND e.criado_em >= ?
+                  AND (e.usuario_id IS NULL OR e.usuario_id <> ?)
+                  AND (t.responsavel_id = ? OR t.responsaveis LIKE ?)
+                  AND ${daEquipe}
+                ORDER BY e.criado_em DESC LIMIT 80`,
+          args: [desde, usuario?.id ?? '', usuario?.id ?? '', `%"${usuario?.id ?? ''}"%`, ...argsDaEquipe],
+        }),
+        etapasDeTarefa(db),
       ]);
 
       const jaLido = new Set(lidos.rows.map(x => String(x.chave)));
@@ -6918,6 +6977,30 @@ async function despacharAdminData(
           quando: String(e.criado_em),
           lido: jaLido.has(chave),
           alvo: String(e.tarefa_id),
+        });
+      }
+
+      // As voltas para trás das tarefas da pessoa: "Fulano devolveu para
+      // Fazer". Leva à tarefa, como o aviso de etapa.
+      const regraDasVoltas = regraDoRetorno(etapasDoQuadro.nomes.map(nome => ({
+        nome,
+        is_conclusao: etapasDoQuadro.conclusivas.has(nome),
+        is_excluded: etapasDoQuadro.desconsideradas.has(nome),
+      })));
+      for (const v of voltas.rows) {
+        const chave = `retorno:${v.id}`;
+        if (jaLimpo.has(chave)) continue;
+        if (!regraDasVoltas.ehRetorno(String(v.de ?? ''), String(v.para ?? ''))) continue;
+        if (!usuario?.id || !donosDaTarefa(v).includes(usuario.id)) continue;
+        itens.push({
+          chave,
+          tipo: 'retorno',
+          titulo: `${v.usuario_nome ?? 'Alguém'} devolveu de "${v.de}" para "${v.para}"`,
+          descricao: String(v.tarefa_titulo ?? ''),
+          etiqueta: String(v.projeto_nome ?? ''),
+          quando: String(v.criado_em),
+          lido: jaLido.has(chave),
+          alvo: String(v.tarefa_id),
         });
       }
 
