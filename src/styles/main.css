@@ -25319,8 +25319,10 @@ input:is(.form-checkbox, .perm-check):disabled { opacity: .45; cursor: default; 
 .menu-fixada-tirar:focus-visible { opacity: 1; }
 .menu-fixada-tirar:hover,
 .menu-fixada-tirar:focus-visible { outline: none; background: var(--gray4); color: var(--black); }
-/* No trilho de icones so o ponto cabe: o x sai, e o titulo vem no `title`. */
-.menu-trilho .menu-fixada-tirar { display: none; }
+/* No trilho de icones recolhido so o ponto cabe: o x sai, e o titulo vem no
+   `title`. Aberto por cima (o mouse ou o foco dentro dele), o trilho e o menu
+   inteiro, e o x volta, como o resto da linha. */
+.menu-trilho:not(:hover):not(:has(:focus-visible)) .menu-fixada-tirar { display: none; }
 
 /* O alfinete aceso na ficha: a tarefa esta fixada no menu. */
 .secao-add.tarefa-fixar.fixada {
