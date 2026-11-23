@@ -21,7 +21,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createInterface } from 'node:readline';
-import { docxParaTexto, xlsxParaTexto } from './documentos.mjs';
+import { docxParaTexto, xlsxParaTexto, jsonParaTexto } from './documentos.mjs';
 import { digitos, pessoasDoGrupo, planoDeEnvio } from './mensagem-grupo.mjs';
 import { falar, paraFala } from './voz.mjs';
 import { transcrever, AUDIO_MAX_SEGUNDOS } from './transcricao.mjs';
@@ -66,7 +66,7 @@ const FERRAMENTAS = [
   {
     name: 'baixar_midia_do_grupo',
     title: 'Baixar arquivo ou ouvir áudio de um grupo',
-    description: 'Baixa a imagem, o PDF, o Word ou o Excel de uma mensagem do grupo (id de ler_grupo) para a '
+    description: 'Baixa a imagem, o PDF, o Word, o Excel ou o JSON de uma mensagem do grupo (id de ler_grupo) para a '
       + 'pasta de mídias, e devolve o caminho para ler com Read e o do original, para anexar com comentar_com_anexo. '
       + 'Num áudio, devolve a transcrição automática em transcricao (pode ter palavra trocada).',
     inputSchema: {
@@ -259,6 +259,7 @@ const TIPOS = {
   'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'application/pdf': 'pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'application/json': 'json', 'text/json': 'json', 'application/x-ndjson': 'jsonl',
 };
 
 async function baixarMidia(a) {
@@ -281,8 +282,8 @@ async function baixarMidia(a) {
   }
   const mime = String((m.imageMessage ?? doc)?.mimetype ?? '').split(';')[0];
   const nomeOriginal = String(doc?.fileName ?? '').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').replace(/^\.+/, '').slice(-100);
-  const ext = TIPOS[mime] ?? nomeOriginal.toLowerCase().match(/\.(docx|xlsx|pdf|png|jpe?g|webp|gif)$/)?.[1];
-  if (!ext) throw new Error('essa mensagem não tem imagem, PDF, Word ou Excel que eu consiga abrir');
+  const ext = TIPOS[mime] ?? nomeOriginal.toLowerCase().match(/\.(docx|xlsx|pdf|png|jpe?g|webp|gif|json|jsonl|ndjson)$/)?.[1];
+  if (!ext) throw new Error('essa mensagem não tem imagem, PDF, Word, Excel ou JSON que eu consiga abrir');
   const b = await evolution('POST', `/chat/getBase64FromMediaMessage/${INSTANCIA}`, { message: reg, convertToMp4: false });
   const conteudo = Buffer.from(String(b?.base64 ?? ''), 'base64');
   if (!conteudo.length || conteudo.length > MIDIA_MAX) throw new Error('o arquivo veio vazio ou grande demais');
@@ -291,10 +292,13 @@ async function baixarMidia(a) {
   const original = join(MIDIA_DIR, `${prefixo}-${nome}`);
   writeFileSync(original, conteudo, { mode: 0o600 });
   let leitura = original;
-  const converter = ext === 'docx' ? docxParaTexto : ext === 'xlsx' ? xlsxParaTexto : null;
+  const json = ['json', 'jsonl', 'ndjson'].includes(ext);
+  const converter = ext === 'docx' ? docxParaTexto : ext === 'xlsx' ? xlsxParaTexto : json ? jsonParaTexto : null;
   if (converter) {
     leitura = `${original}.txt`;
-    writeFileSync(leitura, `Conteúdo extraído de "${nome}". Formatação, imagens e gráficos não vêm junto.\n\n${converter(conteudo)}`, { mode: 0o600 });
+    // O JSON é o mesmo conteúdo, só reorganizado: uma chave por linha.
+    const aviso = json ? 'Reorganizado com uma chave por linha para a leitura; o conteúdo é o mesmo.' : 'Formatação, imagens e gráficos não vêm junto.';
+    writeFileSync(leitura, `Conteúdo extraído de "${nome}". ${aviso}\n\n${converter(conteudo)}`, { mode: 0o600 });
   }
   return { caminho_para_ler: leitura, caminho_original: original, nome, de: reg.pushName ?? null };
 }

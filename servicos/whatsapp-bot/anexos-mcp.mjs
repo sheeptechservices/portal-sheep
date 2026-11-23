@@ -25,7 +25,7 @@ const PORTAL_MCP_TOKEN = process.env.PORTAL_MCP_TOKEN ?? '';
 const ANEXO_MAX = 3 * 1024 * 1024;
 const TIPOS = {
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif',
-  pdf: 'application/pdf', txt: 'text/plain', csv: 'text/csv',
+  pdf: 'application/pdf', txt: 'text/plain', csv: 'text/csv', json: 'application/json',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 };

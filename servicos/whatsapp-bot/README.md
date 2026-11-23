@@ -58,6 +58,7 @@ mensagem respondida ("cria um card disso" em resposta a um print):
 | Word (.docx) | convertido em texto: parágrafos, títulos, listas e tabelas |
 | Excel (.xlsx) | convertido em texto: cada aba, linha a linha, com datas e números legíveis |
 | CSV e TXT | do jeito que chegou |
+| JSON (.json, .jsonl, .ndjson, .geojson) | reorganizado com uma chave por linha, o mesmo conteúdo: minificado ele vem numa linha só, e a leitura corta linha longa. JSON Lines vira um bloco por registro; JSON inválido vai como veio, avisado |
 | Áudio (voz do WhatsApp, .mp3, .m4a, .ogg) | transcrito na própria VPS, até 5 minutos |
 
 O arquivo é baixado da Evolution para `/app/trabalho/midia`, onde fica dois

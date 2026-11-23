@@ -13,7 +13,7 @@
 //  continuam à vista do modelo o tempo todo: escondidas, ele concluía que não
 //  sabia editar e nem chegava a propor.
 //
-//  Imagens, PDFs, Word, Excel, CSV e TXT que chegam com a mensagem (ou na
+//  Imagens, PDFs, Word, Excel, CSV, TXT e JSON que chegam com a mensagem (ou na
 //  mensagem respondida) são baixados da Evolution para uma pasta própria -
 //  Word e Excel já convertidos em texto, por `documentos.mjs` - e o Claude Code
 //  os lê com a única ferramenta própria liberada, a de leitura, presa a essa
@@ -27,7 +27,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, statSync, unlinkSync, copyFileSync, rmSync } from 'node:fs';
 import { basename, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { docxParaTexto, xlsxParaTexto, ErroDocumento } from './documentos.mjs';
+import { docxParaTexto, xlsxParaTexto, jsonParaTexto, ErroDocumento } from './documentos.mjs';
 import { AGENDAVEIS, REPETICOES } from './agenda-mcp.mjs';
 import { pessoasDoGrupo, mencoesNoTexto, planoDeEnvio } from './mensagem-grupo.mjs';
 import { transcrever, ErroTranscricao, AUDIO_MAX_SEGUNDOS } from './transcricao.mjs';
@@ -510,16 +510,27 @@ const FORMATOS = {
   'text/plain': { ext: 'txt' }, 'text/csv': { ext: 'csv' },
   [DOCX]: { ext: 'txt', converter: docxParaTexto, rotulo: 'documento do Word' },
   [XLSX]: { ext: 'txt', converter: xlsxParaTexto, rotulo: 'planilha do Excel' },
+  // O JSON também vira texto: indentado, uma chave por linha. Minificado, ele
+  // vem numa linha só, e a ferramenta de leitura corta linha longa.
+  'application/json': {
+    ext: 'txt', converter: jsonParaTexto, rotulo: 'arquivo JSON',
+    aviso: 'Reorganizado com uma chave por linha para a leitura; o conteúdo é o mesmo.',
+  },
 };
 /** Quando o WhatsApp manda um tipo genérico, a extensão do nome decide. */
 const POR_EXTENSAO = {
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', pdf: 'application/pdf',
   txt: 'text/plain', csv: 'text/csv', docx: DOCX, xlsx: XLSX,
+  json: 'application/json', jsonl: 'application/json', ndjson: 'application/json', geojson: 'application/json',
 };
-const SINONIMOS = { 'text/comma-separated-values': 'text/csv', 'application/csv': 'text/csv' };
+const SINONIMOS = {
+  'text/comma-separated-values': 'text/csv', 'application/csv': 'text/csv',
+  'text/json': 'application/json', 'application/x-json': 'application/json', 'application/ld+json': 'application/json',
+  'application/geo+json': 'application/json', 'application/x-ndjson': 'application/json', 'application/jsonl': 'application/json',
+};
 /** Os formatos binários antigos do Office: outro bicho, que não entra. */
 const ANTIGOS = { doc: 'Word', xls: 'Excel', 'application/msword': 'Word', 'application/vnd.ms-excel': 'Excel' };
-const O_QUE_LEIO = 'imagens, PDF, Word (.docx), Excel (.xlsx), CSV e TXT';
+const O_QUE_LEIO = 'imagens, PDF, Word (.docx), Excel (.xlsx), CSV, TXT e JSON';
 
 function formatoDe(midia) {
   const ext = String(midia.nome ?? '').toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? '';
@@ -606,7 +617,7 @@ async function prepararMidia({ midia, origem, texto }) {
   let gravar = conteudo;
   if (formato.converter) {
     try {
-      gravar = `Conteúdo extraído de ${qual} (${formato.rotulo}). Formatação, imagens e gráficos não vêm junto.\n\n${formato.converter(conteudo)}`;
+      gravar = `Conteúdo extraído de ${qual} (${formato.rotulo}). ${formato.aviso ?? 'Formatação, imagens e gráficos não vêm junto.'}\n\n${formato.converter(conteudo)}`;
     } catch (e) {
       const motivo = e instanceof ErroDocumento ? e.message : 'o arquivo veio num formato que eu não entendi';
       log('[midia] conversão falhou', e?.message ?? e);

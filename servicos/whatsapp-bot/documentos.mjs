@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  Word (.docx) e Excel (.xlsx) em texto, para o Claude Code ler.
+//  Word (.docx), Excel (.xlsx) e JSON em texto, para o Claude Code ler.
 //
 //  Os dois formatos são um zip com XML dentro. Abrimos o zip com o zlib do
 //  próprio Node e tiramos o conteúdo do XML: parágrafos, títulos, listas e
@@ -255,4 +255,30 @@ function limitar(texto) {
   return texto.length > TEXTO_MAX
     ? `${texto.slice(0, TEXTO_MAX)}\n\n(o arquivo continua, mas parei aqui: é longo demais para ler inteiro)`
     : texto;
+}
+
+// ── JSON ────────────────────────────────────────────────────────────────────
+
+/** O BOM que alguns programas põem no começo do arquivo: o JSON.parse recusa. */
+const BOM = String.fromCharCode(0xfeff);
+
+/** JSON em texto que a leitura aguenta: indentado, uma chave por linha. O
+ *  JSON costuma chegar minificado, numa linha só, e a ferramenta de leitura
+ *  corta linha longa: sem isso o modelo veria só o começo. JSON Lines (um
+ *  objeto por linha, .jsonl) também entra. O conteúdo é o mesmo; só a
+ *  disposição muda. Arquivo que não é JSON válido vai como veio, avisado,
+ *  porque um JSON quebrado ainda diz muita coisa. */
+export function jsonParaTexto(buf) {
+  const texto = buf.toString('utf8').replace(new RegExp(`^${BOM}`), '');
+  if (!texto.trim()) throw new ErroDocumento('o arquivo veio vazio');
+  try {
+    return limitar(JSON.stringify(JSON.parse(texto), null, 2));
+  } catch { /* pode ser JSON Lines */ }
+  const linhas = texto.split(/\r?\n/).filter(l => l.trim());
+  if (linhas.length > 1) {
+    try {
+      return limitar(`JSON Lines: ${linhas.length} registros, um por bloco.\n\n${linhas.map(l => JSON.stringify(JSON.parse(l), null, 2)).join('\n\n')}`);
+    } catch { /* não é JSON Lines também */ }
+  }
+  return limitar(`(O arquivo não é um JSON válido: segue o texto como veio.)\n\n${texto}`);
 }
