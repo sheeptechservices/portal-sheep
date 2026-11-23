@@ -5237,6 +5237,9 @@ async function despacharAdminData(
           anexos: nAnexos.get(Number(t.id)) ?? 0,
           ...((g) => (g ? {
             retornos: g.retornos, ultimo_retorno: g.ultimo, entregues_em: g.entregues_em, retornos_em: g.retornos_em,
+            // O selo, já resolvido: a tela recalcula com a etapa de agora (que
+            // muda no gesto, antes da gravação); quem só lê, como o MCP, usa este.
+            retorno_aceso: g.retornos > 0 && regraRetorno.antesDaEntrega(String(t.status)),
           } : {}))(giro.get(Number(t.id))),
         })),
         acessos: acessos.rows.filter(a => a.projeto_id === p.id).map(a => ({
@@ -5435,11 +5438,57 @@ async function despacharAdminData(
         args.push(`%${texto}%`, `%${texto}%`, ...(numero ? [Number(numero)] : []));
       }
 
+      // As voltas para trás de cada tarefa, pela regra do selo (ver
+      // src/lib/retornos.ts): elas filtram ("retornadas", "retornaram desde")
+      // e vão junto em cada tarefa da resposta.
+      const etapas = await etapasDeTarefa(db);
+      const regraRetorno = regraDoRetorno(etapas.nomes.map(nome => ({
+        nome, is_conclusao: etapas.conclusivas.has(nome), is_excluded: etapas.desconsideradas.has(nome),
+      })));
+      const voltas = new Map<number, { retornos: number; ultimo: Retorno; datas: string[] }>();
+      if (regraRetorno.etapasDeEntrega.length) {
+        const de = regraRetorno.etapasDeEntrega;
+        const r = await db.execute({
+          sql: `SELECT tarefa_id, de, para, usuario_nome, criado_em FROM tarefa_eventos
+                WHERE campo = 'status' AND de IN (${de.map(() => '?').join(',')}) ORDER BY id`,
+          args: de,
+        });
+        for (const e of r.rows) {
+          if (!regraRetorno.ehRetorno(String(e.de ?? ''), String(e.para ?? ''))) continue;
+          const id = Number(e.tarefa_id);
+          const v = voltas.get(id) ?? { retornos: 0, ultimo: null as unknown as Retorno, datas: [] };
+          v.retornos++;
+          v.ultimo = { de: String(e.de), para: String(e.para), quando: String(e.criado_em), quem: e.usuario_nome != null ? String(e.usuario_nome) : null };
+          v.datas.push(String(e.criado_em));
+          voltas.set(id, v);
+        }
+      }
+      // "retornadas": o selo aceso, voltou e ainda não foi entregue de novo.
+      // "retornaram_desde": voltou ao menos uma vez a partir do dia, esteja
+      // onde estiver agora.
+      const soAcesas = query.get('retornadas') === '1';
+      const retornaramDesde = String(query.get('retornaram_desde') ?? '').trim();
+      if (soAcesas || retornaramDesde) {
+        const ids = [...voltas.entries()]
+          .filter(([, v]) => !retornaramDesde || v.datas.some(d => d.slice(0, 10) >= retornaramDesde))
+          .map(([id]) => id);
+        if (ids.length === 0) return { status: 200, body: { tarefas: [], total: 0, proximo: null } };
+        onde.push(`t.id IN (${ids.map(() => '?').join(',')})`);
+        args.push(...ids);
+        if (soAcesas) {
+          const antes = etapas.nomes.filter(n => regraRetorno.antesDaEntrega(n));
+          if (antes.length === 0) return { status: 200, body: { tarefas: [], total: 0, proximo: null } };
+          onde.push(`t.status IN (${antes.map(() => '?').join(',')})`);
+          args.push(...antes);
+        }
+      }
+
       // Concluída e desconsiderada ficam de fora por padrão: o que se pergunta
       // quase sempre é o que ainda está aberto. Pedir um status pelo nome
       // derruba o corte, porque aí a pergunta já disse o que quer.
-      const etapas = await etapasDeTarefa(db);
-      if (!statusPedidos.length && query.get('incluir_concluidas') !== '1') {
+      // "retornadas" já diz onde a tarefa está (antes da entrega), e inclui a
+      // que voltou para o Backlog, como o botão da tela: o corte não se aplica.
+      if (!statusPedidos.length && !soAcesas && query.get('incluir_concluidas') !== '1') {
         const fechadas = [...etapas.conclusivas, ...etapas.desconsideradas];
         if (fechadas.length) {
           onde.push(`t.status NOT IN (${fechadas.map(() => '?').join(',')})`);
@@ -5491,6 +5540,12 @@ async function despacharAdminData(
         responsaveis: donosDaTarefa(l).map(id => quem.get(id) ?? { id, nome: null, email: null }),
         etiquetas: (() => { try { return JSON.parse(String(l.etiquetas ?? '[]')); } catch { return []; } })(),
         descricao_cortada: Number(l.descricao_tamanho) > 300,
+        // Só na tarefa que já voltou: quantas vezes, a volta mais recente e se
+        // o selo está aceso (voltou e ainda não foi entregue de novo).
+        ...((v) => (v ? {
+          retornos: v.retornos, ultimo_retorno: v.ultimo,
+          retorno_aceso: regraRetorno.antesDaEntrega(String(l.status)),
+        } : {}))(voltas.get(Number(l.id))),
       }));
       return {
         status: 200,

@@ -21,6 +21,7 @@ const linkDaTarefa = (id: unknown) => `${enderecoDoPortal()}/tarefas/${Number(id
 // A mesma lista de logos da tela (carrossel da entrada, seletores de cliente):
 // fonte única, para o bot do WhatsApp pôr a logo do cliente no gráfico.
 import { marcaDoCliente } from '../../src/lib/marcas.js';
+import { taxaDeRetorno } from '../../src/lib/retornos.js';
 
 export interface Ctx {
   db: Client;
@@ -171,6 +172,9 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
     description: 'Lista tarefas com filtro, das mais novas para as mais antigas. Sem filtro de status, '
       + 'traz só as abertas (sem as concluídas e as desconsideradas). A descrição vem cortada em 300 '
       + 'caracteres; use ver_tarefa para o detalhe. Cada tarefa traz o link dela no portal. '
+      + 'Tarefa que já voltou para trás depois de entregue (saiu de Em revisão ou de concluída para '
+      + 'uma etapa anterior) traz retornos (quantas vezes), ultimo_retorno (de, para, quando, quem) e '
+      + 'retorno_aceso (voltou e ainda não foi entregue de novo, o selo "Retornou" do portal). '
       + 'Pagine com cursor enquanto "proximo" vier preenchido.',
     inputSchema: {
       type: 'object',
@@ -185,6 +189,8 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
         prazo_ate: { type: 'string', description: 'Prazo até (AAAA-MM-DD).' },
         texto: { type: 'string', description: 'Busca no título e na descrição. "#123" acha pelo número.' },
         incluir_concluidas: { type: 'boolean', description: 'Traz também as concluídas e desconsideradas.' },
+        retornadas: { type: 'boolean', description: 'Só as que voltaram para trás depois de entregues e ainda não foram entregues de novo (o botão "Retornadas" do portal).' },
+        retornaram_desde: { type: 'string', description: 'Só as que voltaram para trás ao menos uma vez a partir deste dia (AAAA-MM-DD), estejam onde estiverem agora. Para incluir as que já fecharam, junte incluir_concluidas.' },
         limite: { type: 'integer', minimum: 1, maximum: 200, description: 'Padrão 50.' },
         cursor: { type: 'string', description: 'O "proximo" da página anterior.' },
       },
@@ -201,6 +207,8 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
         prazo_de: a.prazo_de ? data(a.prazo_de, 'prazo_de') : undefined,
         prazo_ate: a.prazo_ate ? data(a.prazo_ate, 'prazo_ate') : undefined,
         texto: a.texto, incluir_concluidas: a.incluir_concluidas ? '1' : undefined,
+        retornadas: a.retornadas ? '1' : undefined,
+        retornaram_desde: a.retornaram_desde ? data(a.retornaram_desde, 'retornaram_desde') : undefined,
         limite: a.limite, cursor: a.cursor,
       });
       return { ...r, tarefas: (r?.tarefas ?? []).map((t: any) => ({ ...t, link: linkDaTarefa(t.id) })) };
@@ -902,7 +910,10 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
             links: e.links ?? [], arquivos: (e.arquivos ?? []).map((f: any) => f.nome),
           }))
           : secao === 'tarefas'
-            ? abertas.map(t => ({ ...tarefaCurta(t), prioridade: t.prioridade ?? null, responsaveis: (t.responsaveis ?? []).map(nomeDe) }))
+            ? abertas.map(t => ({
+              ...tarefaCurta(t), prioridade: t.prioridade ?? null, responsaveis: (t.responsaveis ?? []).map(nomeDe),
+              ...(t.retornos ? { retornos: t.retornos, ultimo_retorno: t.ultimo_retorno ?? null, retorno_aceso: !!t.retorno_aceso } : {}),
+            }))
             : secao === 'reunioes'
               ? reunioes.map(m => ({
                 id: Number(m.id), data: m.data, assunto: m.assunto, participantes: m.participantes ?? [],
@@ -953,6 +964,15 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
           proximas: [...abertas].sort((x, y) => String(x.prazo || '9999').localeCompare(String(y.prazo || '9999')))
             .slice(0, teto.tarefas).map(tarefaCurta),
         },
+        // O retrabalho do projeto: quantas das entregas dos últimos 90 dias
+        // voltaram da revisão ou de concluída (a coluna "Retorno" do painel), e
+        // as tarefas que voltaram e ainda não foram entregues de novo.
+        retorno: ((x) => ({
+          taxa_90_dias: x.pct, entregas_90_dias: x.entregas, voltaram_90_dias: x.retornos,
+          retornadas_agora: tarefas.filter(t => t.retorno_aceso).slice(0, teto.tarefas).map(t => ({
+            ...tarefaCurta(t), vezes: t.retornos ?? 1, ultimo_retorno: t.ultimo_retorno ?? null,
+          })),
+        }))(taxaDeRetorno(tarefas)),
         reunioes: {
           total: reunioes.length,
           ultimas: reunioes.slice(0, 5).map(m => ({ id: Number(m.id), data: m.data, assunto: m.assunto })),
