@@ -83,6 +83,14 @@ function avisar() {
   for (const o of ouvintes) o();
 }
 
+/** Quem reescreve o endereço por fora (o login tira o `?session=` com
+ *  `history.replaceState`) avisa por aqui. Sem isso a rota guardada continua
+ *  com o que foi tirado, e a próxima navegação montada a partir dela o põe de
+ *  volta no endereço: foi assim que o token do login reaparecia na barra. */
+export function releerEndereco(): void {
+  avisar();
+}
+
 function assinar(o: () => void): () => void {
   ouvintes.add(o);
   return () => { ouvintes.delete(o); };

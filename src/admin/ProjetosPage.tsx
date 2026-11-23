@@ -102,7 +102,7 @@ import { AbasPilula, FaixaDaPagina } from '../components/FaixaDaPagina';
 import { entregasDa } from '../lib/entregasDaTarefa';
 import { comecarArraste, terminarArraste, useMovimentoDosCartoes, useVagaDaColuna } from '../lib/arrasteDoQuadro';
 import { useSubpagina } from '../lib/subpagina';
-import { esquecerFicha, linkDe, navegar, rotaAtual, useFichaNaRota, useParametroNaRota } from '../lib/rotas';
+import { esquecerFicha, lerRota, linkDe, navegar, rotaAtual, useFichaNaRota, useParametroNaRota } from '../lib/rotas';
 import { IconFiltros } from '../components/icons';
 import { useDicaRica } from '../components/DicaRica';
 import { ConteudoDaDicaDoProjeto, corDoProjeto } from '../components/DicaDoProjeto';
@@ -6458,7 +6458,7 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
       return;
     }
     // Aberto pelo código, o endereço passa a dizer o id: é ele que a ficha escreve.
-    if (p.id !== alvoDaBusca && rotaAtual().item === alvoDaBusca) navegar({ ...rotaAtual(), item: p.id }, 'replace');
+    if (p.id !== alvoDaBusca && rotaAtual().item === alvoDaBusca) navegar({ ...lerRota(), item: p.id }, 'replace');
     // Com reunião pedida, a ficha só abre quando ela já está na lista - do
     // contrário a aba de Reuniões abriria sem a reunião do clique, e o "espere
     // um instante" viraria "não aconteceu nada".

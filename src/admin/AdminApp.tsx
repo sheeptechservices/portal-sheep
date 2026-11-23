@@ -7,7 +7,7 @@ import { IconAcessos, IconAlert, IconArrowRight, IconBalao, IconCheck, IconChevr
 import { lojaFixadas, useTarefasFixadas } from '../lib/tarefasFixadas';
 import { lojaTema, comRevelacao } from '../lib/tema';
 import { lojaSubpagina, useSubpaginaAtual } from '../lib/subpagina';
-import { lerRota, navegar, useRota } from '../lib/rotas';
+import { lerRota, navegar, releerEndereco, useRota } from '../lib/rotas';
 import {
   criarPode, podeAbrirPagina, podeGerenciarUsuarios, podeVerUsuarios, PERMISSAO_DA_PAGINA,
   rotuloPapel, type Permissoes, type Pode,
@@ -2269,6 +2269,7 @@ const _urlState = (() => {
     const clean = new URL(window.location.href);
     clean.searchParams.delete('session');
     history.replaceState(null, '', clean.toString());
+    releerEndereco();
   }
   return { urlToken };
 })();
