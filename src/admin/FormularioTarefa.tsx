@@ -886,6 +886,13 @@ export function SeletorEtiquetas({ valor, opcoes, etq, onChange, desabilitado }:
   );
 }
 
+/** A tarefa nasceu de um chamado do painel do cliente: a etiqueta Chamado é
+ *  posta por quem a cria (o painel e o abrir_chamado). Excluir a tarefa tira o
+ *  chamado do painel, e a confirmação avisa. */
+export const veioDeChamado = (t: { etiquetas?: string[] | null }) => (t.etiquetas ?? []).includes('Chamado');
+export const AVISO_DO_CHAMADO = 'O chamado do cliente que gerou esta tarefa também sai do painel de chamados dele.';
+export const AVISO_DOS_CHAMADOS = 'Os chamados de cliente que geraram alguma delas também saem do painel de chamados.';
+
 // ── O formulário ──────────────────────────────────────────────────────────────
 
 export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etiquetaPorPapel,

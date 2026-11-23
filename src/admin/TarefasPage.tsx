@@ -49,7 +49,8 @@ import { COMPLEXIDADES } from '../lib/complexidades';
 // O formulário e o vocabulário de tarefa moram fora desta tela: o relatório de
 // Gestão abre o mesmo modal, e duas cópias divergiriam no primeiro campo novo.
 import {
-  Avatar, AvatarVazio, ChipEtiqueta, ConfirmarExclusao, ETAPAS_PADRAO, FormularioTarefa,
+  AVISO_DO_CHAMADO, AVISO_DOS_CHAMADOS, Avatar, AvatarVazio, ChipEtiqueta, ConfirmarExclusao, ETAPAS_PADRAO,
+  FormularioTarefa, veioDeChamado,
   entregasDoRascunho, etiquetasParaOPapel, indexar, indexarEtiquetas, tarefaGravada, TITULO_PADRAO, type EtapaTarefa,
   type Etapario, type EtiquetaTarefa, type Etiquetario, type Pessoa, type Rascunho,
 } from './FormularioTarefa';
@@ -1211,6 +1212,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
         {fichaDaTarefa}
         {excluindo && (
           <ConfirmarExclusao titulo={excluindo.titulo}
+            aviso={veioDeChamado(excluindo) ? AVISO_DO_CHAMADO : undefined}
             onCancelar={() => setExcluindo(null)}
             onConfirmar={() => void excluir(excluindo)} />
         )}
@@ -1445,9 +1447,10 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
         <Dialogo
           titulo={selecionadas.length === 1 ? 'Excluir tarefa' : `Excluir ${selecionadas.length} tarefas`}
           descricao={selecionadas.length === 1
-            ? <>Tem certeza que deseja excluir "<strong>{selecionadas[0].titulo}</strong>"? Esta ação não pode ser desfeita.</>
+            ? <>Tem certeza que deseja excluir "<strong>{selecionadas[0].titulo}</strong>"?{veioDeChamado(selecionadas[0]) ? <> {AVISO_DO_CHAMADO}</> : null} Esta ação não pode ser desfeita.</>
             : <>As <strong>{selecionadas.length} tarefas</strong> selecionadas saem do quadro junto com a conversa,
-              os anexos e o diário de cada uma. Esta ação não pode ser desfeita.</>}
+              os anexos e o diário de cada uma.{selecionadas.some(veioDeChamado) ? <> {AVISO_DOS_CHAMADOS}</> : null} Esta
+              ação não pode ser desfeita.</>}
           rotuloOk={selecionadas.length === 1 ? 'Excluir' : `Excluir ${selecionadas.length}`}
           onFechar={() => setExcluindoLote(false)}
           onConfirmar={() => void excluirSelecionadas()} />
@@ -1457,6 +1460,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
 
       {excluindo && (
         <ConfirmarExclusao titulo={excluindo.titulo}
+          aviso={veioDeChamado(excluindo) ? AVISO_DO_CHAMADO : undefined}
           onCancelar={() => setExcluindo(null)}
           onConfirmar={() => void excluir(excluindo)} />
       )}

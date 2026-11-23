@@ -201,6 +201,14 @@ const TAREFA_DO_PROJETO = `t.id = ch.tarefa_id
   AND (t.projeto_id = ch.projeto_id
        OR EXISTS (SELECT 1 FROM json_each(COALESCE(t.projetos, '[]')) jp WHERE jp.value = ch.projeto_id))`;
 
+/** O chamado que ainda aparece no painel: o que não tem tarefa, ou cuja
+ *  tarefa existe (neste projeto ou levada para outro). Tarefa excluída é
+ *  trabalho que o time descartou - um teste, um pedido em dobro -, e o chamado
+ *  dela sai do painel junto, em vez de ficar "Encerrado" com a porta de
+ *  reabrir. O registro continua no banco; só não aparece. */
+const CHAMADO_NO_PAINEL = `(ch.tarefa_id IS NULL
+  OR EXISTS (SELECT 1 FROM projeto_tarefas tv WHERE tv.id = ch.tarefa_id))`;
+
 const texto = (v: unknown, max: number) => String(v ?? '').trim().slice(0, max);
 
 /** A lista de links em JSON guardada no banco. Formato inválido vira lista
@@ -413,7 +421,7 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
         sql: `SELECT a.nome, a.tipo, a.base64
               FROM chamado_cliente_anexos a
               JOIN chamados_cliente ch ON ch.id = a.chamado_id
-              WHERE ch.projeto_id = ? AND ch.numero = ? AND a.ordem = ?`,
+              WHERE ch.projeto_id = ? AND ch.numero = ? AND a.ordem = ? AND ${CHAMADO_NO_PAINEL}`,
         args: [projetoId, numeroDoChamado, posicao],
       });
       if (!a.rows[0]) return res.status(404).json({ error: 'Arquivo não encontrado.' });
@@ -453,7 +461,7 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
                      ch.links, ch.criado_em, t.status AS etapa, t.prazo
               FROM chamados_cliente ch
               LEFT JOIN projeto_tarefas t ON ${TAREFA_DO_PROJETO}
-              WHERE ch.projeto_id = ?
+              WHERE ch.projeto_id = ? AND ${CHAMADO_NO_PAINEL}
               ORDER BY ch.numero DESC`,
         args: [projetoId],
       }),
@@ -487,9 +495,9 @@ export async function atenderChamados(req: VercelRequest, res: VercelResponse) {
       etapas: etapas.map(e => ({ nome: e.nome, cor: e.cor, grupo: grupoDa(e, etapas), fila: naFila(e, etapas) })),
       chamados: chamados.rows.map(c => {
         const id = Number(c.id);
-        // Tarefa apagada ou levada para outro projeto: o chamado continua na
-        // lista do cliente, encerrado - sumir com ele seria apagar o que o
-        // cliente escreveu. E reabrir continua possível.
+        // Tarefa levada para outro projeto: o chamado continua na lista do
+        // cliente, encerrado, e reabrir continua possível. A tarefa excluída
+        // tira o chamado da lista (CHAMADO_NO_PAINEL).
         const etapa = c.etapa != null ? etapas.find(e => e.nome === String(c.etapa)) : undefined;
         const status = c.etapa != null ? String(c.etapa) : 'Encerrado';
         const doChamado = anexos.rows.filter(a => Number(a.chamado_id) === id).map(a => ({
@@ -726,7 +734,7 @@ async function reabrirChamado(req: VercelRequest, res: VercelResponse, db: Clien
     sql: `SELECT ch.id, ch.titulo, ch.descricao, ch.urgencia, t.id AS tarefa_id, t.status AS etapa
           FROM chamados_cliente ch
           LEFT JOIN projeto_tarefas t ON ${TAREFA_DO_PROJETO}
-          WHERE ch.projeto_id = ? AND ch.numero = ?`,
+          WHERE ch.projeto_id = ? AND ch.numero = ? AND ${CHAMADO_NO_PAINEL}`,
     args: [projetoId, numero],
   });
   const ch = achado.rows[0];
@@ -860,7 +868,7 @@ async function ajustarChamado(req: VercelRequest, res: VercelResponse, db: Clien
                  t.id AS tarefa_id, t.status AS etapa
           FROM chamados_cliente ch
           LEFT JOIN projeto_tarefas t ON ${TAREFA_DO_PROJETO}
-          WHERE ch.projeto_id = ? AND ch.numero = ?`,
+          WHERE ch.projeto_id = ? AND ch.numero = ? AND ${CHAMADO_NO_PAINEL}`,
     args: [projetoId, numero],
   });
   const ch = achado.rows[0];

@@ -118,9 +118,11 @@ export function Dialogo({
 }
 
 /** O caso mais curto do diálogo: apagar uma coisa com nome. */
-export function ConfirmarExclusao({ titulo, oQue = 'tarefa', zIndex, onCancelar, onConfirmar }: {
+export function ConfirmarExclusao({ titulo, oQue = 'tarefa', aviso, zIndex, onCancelar, onConfirmar }: {
   /** O nome do que vai sumir, para a pessoa reconhecer o que confirmou. */
   titulo: string;
+  /** O que mais sai junto, numa frase (o chamado do cliente, por exemplo). */
+  aviso?: string;
   /** A palavra que descreve: "tarefa", "reunião". Entra no título e na frase. */
   oQue?: string;
   zIndex?: number;
@@ -130,7 +132,7 @@ export function ConfirmarExclusao({ titulo, oQue = 'tarefa', zIndex, onCancelar,
   return (
     <Dialogo
       titulo={`Excluir ${oQue}`}
-      descricao={<>Tem certeza que deseja excluir "<strong>{titulo}</strong>"? Esta ação não pode ser desfeita.</>}
+      descricao={<>Tem certeza que deseja excluir "<strong>{titulo}</strong>"?{aviso ? <> {aviso}</> : null} Esta ação não pode ser desfeita.</>}
       rotuloOk="Excluir"
       zIndex={zIndex}
       onFechar={onCancelar}

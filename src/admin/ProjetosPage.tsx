@@ -79,7 +79,8 @@ import { Donut, type FatiaDonut } from '../components/Donut';
 // e uma cópia local divergiria dela no primeiro campo novo.
 import {
   AvatarVazio,
-  ConfirmarExclusao, entregasDoRascunho, FormularioTarefa, indexarEtiquetas, tarefaGravada, TITULO_PADRAO,
+  AVISO_DO_CHAMADO, AVISO_DOS_CHAMADOS, ConfirmarExclusao, entregasDoRascunho, FormularioTarefa, indexarEtiquetas,
+  tarefaGravada, TITULO_PADRAO, veioDeChamado,
   type EtapaTarefa, type Etiquetario, type EtiquetaTarefa, type Rascunho as RascunhoTarefa,
 } from './FormularioTarefa';
 import { PreviaArquivo } from '../components/PreviaArquivo';
@@ -7448,6 +7449,7 @@ carregando ? (
         {excluindoTarefa && (
           <ConfirmarExclusao
             titulo={excluindoTarefa.titulo}
+            aviso={veioDeChamado(excluindoTarefa) ? AVISO_DO_CHAMADO : undefined}
             onCancelar={() => setExcluindoTarefa(null)}
             onConfirmar={() => void excluirTarefa(excluindoTarefa)}
           />
@@ -7456,6 +7458,7 @@ carregando ? (
         {excluindoVarias && (excluindoVarias.length === 1 ? (
           <ConfirmarExclusao
             titulo={excluindoVarias[0].titulo}
+            aviso={veioDeChamado(excluindoVarias[0]) ? AVISO_DO_CHAMADO : undefined}
             onCancelar={() => setExcluindoVarias(null)}
             onConfirmar={() => void excluirTarefas(excluindoVarias)}
           />
@@ -7463,7 +7466,7 @@ carregando ? (
           <Dialogo
             titulo={`Excluir ${excluindoVarias.length} tarefas`}
             descricao={<>As <strong>{excluindoVarias.length} tarefas</strong> selecionadas saem do quadro junto com
-              a conversa, os anexos e o diário de cada uma. Esta ação não pode ser desfeita.</>}
+              a conversa, os anexos e o diário de cada uma.{excluindoVarias.some(veioDeChamado) ? <> {AVISO_DOS_CHAMADOS}</> : null} Esta ação não pode ser desfeita.</>}
             rotuloOk={`Excluir ${excluindoVarias.length}`}
             onFechar={() => setExcluindoVarias(null)}
             onConfirmar={() => void excluirTarefas(excluindoVarias)} />
