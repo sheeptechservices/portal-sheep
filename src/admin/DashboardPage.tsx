@@ -187,6 +187,17 @@ export default function DashboardPage({ token, onIr, onNovaTarefa }: {
     };
   }, [projetos, tarefas, et, usuario, hoje, fimDaSemana]);
 
+  // A taxa de retorno da casa: das entregas dos últimos 90 dias, quantas
+  // voltaram da revisão ou de concluída. Toda tarefa uma vez só, pela mesma
+  // conta da coluna "Retorno" da tabela (ver src/lib/retornos.ts).
+  const retorno = useMemo(() => taxaDeRetorno(tarefas), [tarefas]);
+  /** Os projetos em andamento do mais ao menos retrabalho: a dica do card. */
+  const retornoPorProjeto = useMemo(() => (projetos ?? [])
+    .filter(x => x.status === 'Em andamento')
+    .map(x => ({ id: x.id, nome: x.nome, ...taxaDeRetorno(x.tarefas ?? []) }))
+    .filter((x): x is typeof x & { pct: number } => x.pct != null)
+    .sort((a, b) => b.pct - a.pct || b.retornos - a.retornos), [projetos]);
+
   const emAndamento = useMemo(() => (projetos ?? [])
     .filter(p => p.status === 'Em andamento')
     .sort((a, b) => String(a.previsao_entrega ?? '9999').localeCompare(String(b.previsao_entrega ?? '9999'))),
@@ -281,43 +292,33 @@ export default function DashboardPage({ token, onIr, onNovaTarefa }: {
                   {detalhe.ativos.length > 5 && <p className="dica-rodape">e mais {detalhe.ativos.length - 5}</p>}
                 </>
               )} />
-            <Numero rotulo="Entregas no prazo" valor={resumo.noPrazo == null ? '-' : `${resumo.noPrazo}%`}
-              delta={resumo.entregasAtrasadas ? `${resumo.entregasAtrasadas} atrasada${resumo.entregasAtrasadas === 1 ? '' : 's'}` : undefined}
-              detalhe={`das ${resumo.entregasAbertas} entregas abertas com prazo`}
+            <Numero rotulo="Taxa de retorno" valor={retorno.pct == null ? '-' : `${retorno.pct}%`}
+              delta={retorno.retornos ? `${retorno.retornos} ${retorno.retornos === 1 ? 'voltou' : 'voltaram'}` : undefined}
+              detalhe={retorno.entregas
+                ? `das ${retorno.entregas} entregas dos últimos ${retorno.dias} dias`
+                : `nenhuma entrega nos últimos ${retorno.dias} dias`}
               dica={() => (
                 <>
-                  <DicaTopo rotulo="Entregas abertas com prazo" valor={resumo.entregasAbertas}
-                    nota={resumo.noPrazo == null ? undefined : `${resumo.noPrazo}% no prazo`} />
+                  <DicaTopo rotulo="Entregas que voltaram" valor={retorno.pct == null ? '-' : `${retorno.pct}%`}
+                    nota={`últimos ${retorno.dias} dias`} />
                   <DicaComposicao fatias={[
-                    { rotulo: 'No prazo', valor: resumo.entregasAbertas - resumo.entregasAtrasadas, cor: 'var(--green)' },
-                    { rotulo: 'Atrasadas', valor: resumo.entregasAtrasadas, cor: 'var(--red)' },
+                    { rotulo: 'Seguiram', valor: retorno.entregas - retorno.retornos, cor: 'var(--green)' },
+                    { rotulo: 'Voltaram', valor: retorno.retornos, cor: 'var(--red)' },
                   ]} />
-                  {detalhe.atrasadas.length > 0 && (
+                  {retornoPorProjeto.length > 0 && (
                     <>
-                      <p className="dica-secao">Mais atrasadas</p>
+                      <p className="dica-secao">Mais retrabalho</p>
                       <ul className="dica-lista">
-                        {detalhe.atrasadas.slice(0, 4).map((e, i) => (
-                          <li key={e.id} style={{ animationDelay: `${120 + i * 40}ms` }}>
-                            <span className="dica-lista-nome">{e.titulo}<em>{e.projetoNome}</em></span>
-                            <strong className="ruim">{e.dias}d</strong>
+                        {retornoPorProjeto.slice(0, 5).map((x, i) => (
+                          <li key={x.id} style={{ animationDelay: `${120 + i * 40}ms` }}>
+                            <span className="dica-lista-nome">{x.nome}<em>{x.retornos} de {x.entregas} entregas</em></span>
+                            <strong className={x.pct >= 25 ? 'ruim' : ''}>{x.pct}%</strong>
                           </li>
                         ))}
                       </ul>
                     </>
                   )}
-                  {detalhe.proximas.length > 0 && (
-                    <>
-                      <p className="dica-secao">Vencem em seguida</p>
-                      <ul className="dica-lista">
-                        {detalhe.proximas.slice(0, 3).map((e, i) => (
-                          <li key={e.id} style={{ animationDelay: `${200 + i * 40}ms` }}>
-                            <span className="dica-lista-nome">{e.titulo}<em>{e.projetoNome}</em></span>
-                            <strong>{e.dias === 0 ? 'hoje' : `em ${e.dias}d`}</strong>
-                          </li>
-                        ))}
-                      </ul>
-                    </>
-                  )}
+                  <p className="dica-rodape">Retorno é a entrega que saiu da revisão ou de concluída e voltou para trás no quadro.</p>
                 </>
               )} />
             <Numero rotulo="Tarefas abertas" valor={resumo.tarefasAbertas}
