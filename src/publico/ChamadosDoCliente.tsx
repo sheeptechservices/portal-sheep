@@ -691,7 +691,9 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
             ) : (
               <span className="chm-nome-vazio" />
             )}
-            {dados?.projeto.cliente && <span className="chm-cliente">{dados.projeto.cliente}</span>}
+            {/* O nome do cliente só aparece quando a logo dele não está no alto:
+                com ela, repetir o nome embaixo do título é dizer duas vezes. */}
+            {dados?.projeto.cliente && !logoDoCliente && <span className="chm-cliente">{dados.projeto.cliente}</span>}
           </div>
           <button type="button" className="btn btn-primary" disabled={!dados}
             onClick={() => { setErroEnvio(null); setFormAberto(true); }}>
