@@ -24823,6 +24823,10 @@ body.quadro-arrastando, body.quadro-arrastando * { cursor: grabbing !important; 
 .admin-modal-overlay.saindo .admin-modal.tarefa-central {
   animation: encolhe .2s var(--curva-anti) both;
 }
+/* A ficha que toma o lugar da moldura de espera (FichaCarregando) já está na
+   tela: entrar de novo seria a mesma caixa pulando duas vezes. A saída fica. */
+.admin-modal-overlay.sem-entrada:not(.saindo),
+.admin-modal-overlay.sem-entrada:not(.saindo) .admin-modal.tarefa-central { animation: none; }
 .admin-modal.tarefa-central .admin-modal-header { padding: 22px 26px 16px; }
 .admin-modal.tarefa-central .admin-modal-body { padding: 18px 26px 26px; }
 .admin-modal.tarefa-central .painel-rodape { padding: 14px 26px; }

@@ -8,6 +8,7 @@ import { lojaFixadas, useTarefasFixadas } from '../lib/tarefasFixadas';
 import { lojaTema, comRevelacao } from '../lib/tema';
 import { lojaSubpagina, useSubpaginaAtual } from '../lib/subpagina';
 import { lerRota, navegar, releerEndereco, useRota } from '../lib/rotas';
+import { FichaCarregando } from '../components/FichaCarregando';
 import {
   criarPode, podeAbrirPagina, podeGerenciarUsuarios, podeVerUsuarios, PERMISSAO_DA_PAGINA,
   rotuloPapel, type Permissoes, type Pode,
@@ -1520,6 +1521,8 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
     return () => document.removeEventListener('visibilitychange', aoVoltar);
   }, [contarSePreciso]);
 
+  /** O `abrirFicha` para quem é declarado antes dele (o inbox). */
+  const abrirFichaRef = useRef<(tipo: 'tarefa' | 'projeto', id: string, extra?: { aba?: 'reunioes'; reuniao?: number }) => void>(() => {});
   const [openCard, setOpenCard] = useState<
     {
       page: Page; id: string; nonce: number; aba?: 'reunioes'; reuniao?: number;
@@ -1651,11 +1654,7 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
       // O id da reunião que acabou de nascer, que é o que a ficha precisa para
       // abrir aquela e não outra.
       const nova = Number(resposta?.reunioes?.[0]?.id) || undefined;
-      setPage('projetos');
-      setOpenCard(prev => ({
-        page: 'projetos', id: projetoId, nonce: (prev?.nonce ?? 0) + 1,
-        aba: 'reunioes', reuniao: nova,
-      }));
+      abrirFichaRef.current('projeto', projetoId, { aba: 'reunioes', reuniao: nova });
       // Espera a ficha abrir para devolver: é o que mantém a caixa na tela,
       // girando, em vez de fechar e deixar um vão. O teto de 8s é rede: se a
       // ficha não abrir - projeto que sumiu, leitura que falhou -, ninguém
@@ -1713,10 +1712,8 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
       }
       return;
     }
-    setPage('tarefas');
-    if (item.alvo) {
-      setOpenCard(prev => ({ page: 'tarefas', id: item.alvo!, nonce: (prev?.nonce ?? 0) + 1 }));
-    }
+    if (item.alvo) abrirFichaRef.current('tarefa', item.alvo);
+    else setPage('tarefas');
   }, []);
 
   const listarReportes = useCallback(async () => {
@@ -1874,6 +1871,57 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
 
   const pode = useMemo(() => criarPode(permissoes), [permissoes]);
 
+  // ── A ficha por cima da tela ─────────────────────────────────────────────
+  //  Tarefa e projeto abrem por cima da tela em que a pessoa está, e não
+  //  trocando a tela: a de Tarefas (ou de Projetos) é montada só com a ficha
+  //  (`soFicha`), e a moldura de espera entra no gesto enquanto os dados vêm.
+  //  Na própria tela da ficha nada muda: ela abre a dela, como sempre abriu.
+  //  O endereço ganha `?ficha=tarefa.996`, com passo no histórico: o voltar
+  //  do navegador fecha a ficha, e o link colado a reabre.
+  const [fichaSolta, setFichaSolta] = useState<{
+    tipo: 'tarefa' | 'projeto'; id: string; nonce: number; aba?: 'reunioes'; reuniao?: number;
+  } | null>(null);
+  const fichaSoltaRef = useRef(fichaSolta);
+  fichaSoltaRef.current = fichaSolta;
+  /** A ficha que já tomou o lugar da moldura de espera. */
+  const [fichaPronta, setFichaPronta] = useState<string | null>(null);
+  const chaveDaFicha = fichaSolta ? `${fichaSolta.tipo}.${fichaSolta.id}` : null;
+  const paginaRef = useRef(page);
+  paginaRef.current = page;
+  const podeRef = useRef(pode);
+  podeRef.current = pode;
+
+  const abrirFicha = useCallback((tipo: 'tarefa' | 'projeto', id: string, extra?: { aba?: 'reunioes'; reuniao?: number }) => {
+    const pagina: Page = tipo === 'tarefa' ? 'tarefas' : 'projetos';
+    // Na tela da ficha, ou para quem não vê aquela tela, o caminho de antes.
+    if (paginaRef.current === pagina || !podeRef.current(tipo === 'tarefa' ? 'tarefas:ver' : 'projetos:ver')) {
+      setPage(pagina);
+      setOpenCard(prev => ({ page: pagina, id, nonce: (prev?.nonce ?? 0) + 1, ...extra }));
+      return;
+    }
+    setFichaSolta(prev => ({ tipo, id, nonce: (prev?.nonce ?? 0) + 1, ...extra }));
+    // Do endereço de agora, e não de uma cópia guardada.
+    const r = lerRota();
+    const ficha = `${tipo}.${id}`;
+    if (r.params.ficha === ficha) return;
+    navegar({ ...r, params: { ...r.params, ficha } }, r.params.ficha ? 'replace' : 'push', r.params.ficha ? undefined : 'ficha-solta');
+  }, []);
+
+  abrirFichaRef.current = abrirFicha;
+
+  const fecharFichaSolta = useCallback(() => {
+    setFichaSolta(null);
+    const r = lerRota();
+    if (!r.params.ficha) return;
+    // Abriu com passo no histórico: fechar é voltar nele.
+    if (window.history.state && typeof window.history.state === 'object' && window.history.state.portal === 'ficha-solta') {
+      window.history.back();
+      return;
+    }
+    const { ficha: _ficha, ...resto } = r.params;
+    navegar({ ...r, params: resto }, 'replace', null);
+  }, []);
+
   // A página de Usuários não entra na matriz: a trava dela é o papel, conferido
   // no servidor. O master abre para ler; mexer continua sendo do administrador
   // do sistema. Ver `PAGINAS_SO_ADMIN`.
@@ -1914,6 +1962,20 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
     if (r.pagina === page) return;
     navegar({ pagina: page, sub: lojaSubpagina.ler(page) ?? null, item: null, params: {} }, semPasso ? 'replace' : 'push');
   }, [page]);
+  useEffect(() => {
+    const f = rota.params.ficha;
+    if (!f) {
+      if (fichaSoltaRef.current) setFichaSolta(null);
+      return;
+    }
+    const ponto = f.indexOf('.');
+    const tipo = f.slice(0, ponto);
+    const id = f.slice(ponto + 1);
+    if (ponto < 1 || !id || (tipo !== 'tarefa' && tipo !== 'projeto')) return;
+    const atual = fichaSoltaRef.current;
+    if (atual && atual.tipo === tipo && atual.id === id) return;
+    setFichaSolta({ tipo, id, nonce: Date.now() });
+  }, [rota]);
   useEffect(() => {
     if (rota.pagina !== page) setPage(rota.pagina);
     // Só a rota manda aqui: a troca de tela pelo menu chega pelo efeito de cima.
@@ -1962,6 +2024,11 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
   // animação dela (é ela que chama o `onClose` no fim). Fechar daqui
   // desmontaria a busca antes da saída tocar.
   function irPara(t: QuickTarget) {
+    // Tarefa e projeto abrem por cima da tela em que se está.
+    if (t.kind === 'card' && (t.page === 'tarefas' || t.page === 'projetos')) {
+      abrirFicha(t.page === 'tarefas' ? 'tarefa' : 'projeto', t.id);
+      return;
+    }
     setPage(t.page);
     if (t.kind === 'card') {
       setOpenCard(prev => ({ page: t.page, id: t.id, nonce: (prev?.nonce ?? 0) + 1 }));
@@ -2069,14 +2136,8 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
                 vincularReuniao={vincularReuniaoDoInbox} onIr={irPeloInbox} />
             </>
           )}
-          onAbrirProjeto={id => {
-            setPage('projetos');
-            setOpenCard({ page: 'projetos', id, nonce: Date.now() });
-          }}
-          onAbrirTarefa={id => {
-            setPage('tarefas');
-            setOpenCard(prev => ({ page: 'tarefas', id: String(id), nonce: (prev?.nonce ?? 0) + 1 }));
-          }}
+          onAbrirProjeto={id => abrirFicha('projeto', id)}
+          onAbrirTarefa={id => abrirFicha('tarefa', String(id))}
           apiDoMenu={apiDoMenu}
           onLogout={onLogout}
         />
@@ -2234,10 +2295,7 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
           <MuralDaEquipe token={token} abrir={abrirMural} onAbriu={() => setAbrirMural(null)} />
           {pode('tarefas:ver') && (
           <DiarioDoDia token={token}
-            onAbrirTarefa={id => {
-              setPage('tarefas');
-              setOpenCard(prev => ({ page: 'tarefas', id: String(id), nonce: (prev?.nonce ?? 0) + 1 }));
-            }}
+            onAbrirTarefa={id => abrirFicha('tarefa', String(id))}
             onVerTodas={() => {
               setTarefasDaEntrega({ minhas: true, nonce: Date.now() });
               setPage('tarefas');
@@ -2245,6 +2303,35 @@ function MainApp({ token, onLogout, saindo }: { token: string; onLogout: () => v
           )}
         </>}
       />
+
+      {fichaSolta && fichaPronta !== chaveDaFicha && (
+        <FichaCarregando key={`espera-${chaveDaFicha}`} tipo={fichaSolta.tipo} onFechar={fecharFichaSolta} />
+      )}
+      {fichaSolta && (
+        <Suspense fallback={null}>
+          {fichaSolta.tipo === 'tarefa' ? (
+            <TarefasPage key={chaveDaFicha} token={token} soFicha
+              abrir={{ id: fichaSolta.id, nonce: fichaSolta.nonce }}
+              onAbriu={() => setFichaPronta(chaveDaFicha)}
+              onFechouFicha={fecharFichaSolta} />
+          ) : (
+            <ProjetosPage key={chaveDaFicha} token={token} soFicha
+              abrir={{ id: fichaSolta.id, nonce: fichaSolta.nonce, aba: fichaSolta.aba, reuniao: fichaSolta.reuniao }}
+              onAbriu={() => { setFichaPronta(chaveDaFicha); avisarFichaAberta(); }}
+              onFechouFicha={fecharFichaSolta}
+              // Ir para outra tela a partir da ficha fecha a ficha: a tela de
+              // fundo troca, e a camada sai junto com o endereço.
+              onAbrirOportunidade={(id: string) => {
+                setPage('oportunidades');
+                setOpenCard({ page: 'oportunidades', id, nonce: Date.now() });
+              }}
+              onVerTarefasDaEntrega={(projeto: string, entrega: number) => {
+                setTarefasDaEntrega({ projeto, entrega, nonce: Date.now() });
+                setPage('tarefas');
+              }} />
+          )}
+        </Suspense>
+      )}
 
       {quickOpen && (
         <Suspense fallback={null}>

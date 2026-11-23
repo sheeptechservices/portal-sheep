@@ -4699,7 +4699,7 @@ function AbaPlanning({
 // ── Formulário ───────────────────────────────────────────────────────────────
 
 function FormularioProjeto({
-  editando, base, pessoas, clientes, salvando, abertura, onFechar, onSalvar,
+  editando, base, pessoas, clientes, salvando, abertura, onFechar, onSalvar, semEntrada,
   onCriarTarefa, onAbrirTarefa, onExcluirTarefa, onMoverTarefa,
   onFixarRecolhida, podeEditarTarefa, etapasTarefa, onBaixarAnexo, onVerAnexo, onEtiquetar,
   marcadores, submarcadores, onExcluir, somenteLeitura, onVerTarefasDaEntrega,
@@ -4713,6 +4713,8 @@ function FormularioProjeto({
 }: {
   /** A API da página, para as seções que gravam sozinhas (o grupo do WhatsApp). */
   api?: ApiDaPagina;
+  /** Toma o lugar da moldura de espera, que já entrou: ver FichaCarregando. */
+  semEntrada?: boolean;
   editando: Projeto | null;
   /** Com que rascunho o painel abre enquanto o projeto ainda não voltou do
    *  servidor. É o mesmo objeto que foi gravado no clique. */
@@ -5046,7 +5048,7 @@ function FormularioProjeto({
   // cabeçalho e rodapé parados, corpo rolando entre os dois); mais largo que o
   // da tarefa porque a aba Tarefas mostra o quadro do projeto.
   return createPortal(
-    <div className={`admin-modal-overlay tarefa-central-fundo${saindo ? ' saindo' : ''}`} {...fundo}>
+    <div className={`admin-modal-overlay tarefa-central-fundo${semEntrada ? ' sem-entrada' : ''}${saindo ? ' saindo' : ''}`} {...fundo}>
       <div className={`admin-modal painel-gaveta tarefa-central projeto-central${telaCheia ? ' tela-cheia' : ''}`}
         role="dialog" aria-modal="true"
         onClick={e => e.stopPropagation()}>
@@ -5724,8 +5726,12 @@ function CartaoDoProjeto({ p, fecha, podeEditar, onAbrir }: {
   );
 }
 
-export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAbriu, onAbrirOportunidade }: {
+export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAbriu, onAbrirOportunidade, soFicha, onFechouFicha }: {
   token: string;
+  /** Só a ficha, por cima de outra tela: ver o mesmo em TarefasPage. */
+  soFicha?: boolean;
+  /** A ficha fechou, ou o projeto não existe: a camada some. */
+  onFechouFicha?: () => void;
   /** Leva à tela do Funil com a oportunidade aberta: é de lá que um card é
    *  mexido, e a folha do Funil na Planning só o mostra. */
   onAbrirOportunidade?: (id: string) => void;
@@ -5906,7 +5912,8 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     try { localStorage.setItem('planning:secao', s); } catch { /* sem armazenamento, só não lembra */ }
   }, []);
   useEffect(() => {
-    if (aba !== 'planning' || !veFunil) return;
+    // Só a ficha, por cima de outra tela: a Planning nem está à vista.
+    if (soFicha || aba !== 'planning' || !veFunil) return;
     let vivo = true;
     setFunil(f => ({ ...f, carregando: true, erro: undefined }));
     api('?action=board')
@@ -6450,10 +6457,11 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     if (!p) {
       // A lista chegou e o projeto não está nela: link de projeto excluído, ou
       // de um que esta pessoa não enxerga. Esperar calado deixaria a tela parada.
-      if (!carregando && projetos.length > 0 && rotaAtual().item === alvoDaBusca) {
+      if (!carregando && projetos.length > 0 && (soFicha || rotaAtual().item === alvoDaBusca)) {
         setAlvoDaBusca(null);
         esquecerFicha('projetos');
         toast('error', 'Projeto não encontrado', 'O link aponta para um projeto que não existe mais ou que você não pode ver.');
+        if (soFicha) onFechouFicha?.();
       }
       return;
     }
@@ -6466,10 +6474,19 @@ export default function ProjetosPage({ token, onVerTarefasDaEntrega, abrir, onAb
     setAlvoDaBusca(null);
     // Só troca quando precisa: gravar a aba que já está na tela poria um
     // `/geral` à toa no endereço.
-    if (aba !== 'geral') setAba('geral');
+    // Por cima de outra tela, a aba da tela de Projetos fica como estava.
+    if (!soFicha && aba !== 'geral') setAba('geral');
     setForm({ editando: p });
     onAbriu?.();
   }, [alvoDaBusca, projetos, aberturaPedida]);
+
+  // Só a ficha: quando ela fecha, a camada inteira vai junto.
+  const fichaJaAbriu = useRef(false);
+  useEffect(() => {
+    if (!soFicha) return;
+    if (form) { fichaJaAbriu.current = true; return; }
+    if (fichaJaAbriu.current) onFechouFicha?.();
+  }, [form, soFicha]);
 
   /** Fecha o painel. O projeto que ninguém tocou não fica: abrir e desistir não
    *  deveria deixar "Projeto sem nome" no quadro da casa. Qualquer alteração,
@@ -7331,6 +7348,165 @@ carregando ? (
       )
   );
 
+  // O que mora por cima da tela: a ficha do projeto, a tarefa aberta dela, os
+  // diálogos. No modo "só a ficha", é só isto que se desenha.
+  const camadas = (
+    <>
+        {form && (
+          <FormularioProjeto
+            semEntrada={soFicha}
+            // Versão viva da lista, e não o retrato de quando o modal abriu: o
+            // retrato de abertura não mostraria o que acabou de ser gravado.
+            editando={form.editando ? projetos.find(p => p.id === form.editando!.id) ?? form.editando : null}
+            base={form.base}
+            abertura={aberturaPedida}
+            onVerTarefasDaEntrega={form.editando && onVerTarefasDaEntrega
+              ? entregaId => onVerTarefasDaEntrega(form.editando!.id, entregaId)
+              : undefined}
+            onCriarTarefa={criarTarefaNoProjeto}
+            onAbrirTarefa={abrirTarefa}
+            onExcluirTarefa={setExcluindoTarefa}
+            onMoverTarefa={moverTarefaDeEtapa}
+            onFixarRecolhida={pode('configuracoes:etapas') ? fixarEtapaRecolhida : undefined}
+            podeEditarTarefa={pode('tarefas:editar')}
+            etapasTarefa={etapasTarefa}
+            pessoas={pessoas}
+            clientes={clientes}
+            salvando={salvando}
+            onFechar={intacto => void fecharProjeto(intacto)}
+            onSalvar={salvar}
+            onBaixarAnexo={a => void baixarAnexo(a)}
+            marcadores={marcadoresDeEntrega}
+            submarcadores={submarcadoresDeEntrega}
+            somenteLeitura={!podeEditar}
+            onExcluir={setExcluindo}
+            onEtiquetar={etiquetarAnexo}
+            onRegistrarReuniao={registrarReuniao}
+            onVincularReuniao={vincularReuniao}
+            onBuscarReunioesFireflies={buscarReunioesFireflies}
+            onBuscarGravacaoFireflies={buscarGravacaoFireflies}
+            onBuscarTranscricaoFireflies={buscarTranscricaoFireflies}
+            onAnexarReuniaoFireflies={anexarReuniaoFireflies}
+            onExcluirReuniao={excluirReuniao}
+            onPublicar={publicarProjeto}
+            onChamados={alternarChamadosDoProjeto}
+            // Quem está na equipe vê os acessos e revela a senha, mesmo sem
+            // editar o projeto: o login é do trabalho, e quem executa e quem
+            // testa precisam dele. Quem não edita recebe a seção em leitura, sem
+            // guardar, mexer nem remover - o servidor confere as duas coisas.
+            acessos={form.editando ? acoesDeAcesso(form.editando.id) : undefined}
+            api={api}
+            onSalvarEntrega={salvarEntrega}
+            onExcluirEntrega={excluirEntrega}
+            onSubirEvidencia={subirEvidencia}
+            onBaixarEvidencia={baixarEvidencia}
+            onVerEvidencia={ev => setPrevia({ fonte: 'evidencia', item: ev })}
+            onAnexarNaEntrega={anexarNaEntrega}
+            onRemoverAnexoDaEntrega={removerAnexoDaEntrega}
+            onVerAnexoDaEntrega={a => setPrevia({ fonte: 'entrega_arquivo', item: a })}
+            onBaixarAnexoDaEntrega={baixarAnexoDaEntrega}
+            onVerAnexo={a => setPrevia({ fonte: 'anexo', item: a })}
+          />
+        )}
+
+        {rascunhoTarefa && (
+          <FormularioTarefa
+            rascunho={rascunhoTarefa}
+            projetos={projetos}
+            etapas={etapasTarefa}
+            etiquetas={etiquetasTarefa}
+            etiquetaPorPapel={etiquetaPorPapel}
+            usuarioId={usuario?.id}
+            etq={etq}
+            pessoas={pessoas}
+            salvando={salvando}
+            somenteLeitura={!pode('tarefas:editar')}
+            podeComentar={pode('tarefas:comentar')}
+            api={api}
+            onMudar={setRascunhoTarefa}
+            onFechar={() => setRascunhoTarefa(null)}
+            onConversaMudou={reconciliar}
+            onSalvar={() => salvarRascunho(rascunhoTarefa)}
+            onExcluir={pode('tarefas:excluir') && rascunhoTarefa.id ? () => {
+              const alvo = projetos.flatMap(p => p.tarefas ?? []).find(x => x.id === rascunhoTarefa.id);
+              if (alvo) setExcluindoTarefa(alvo);
+            } : undefined}
+            onDuplicar={pode('tarefas:editar') && rascunhoTarefa.id ? () => {
+              const alvo = projetos.flatMap(p => p.tarefas ?? []).find(x => x.id === rascunhoTarefa.id);
+              if (alvo) void duplicarTarefa(alvo);
+            } : undefined}
+            // Criar entrega é editar projeto: sem essa permissão o seletor não
+            // oferece, em vez de oferecer e o servidor recusar.
+            onEntregaCriada={podeEditar ? (projetoId, entrega) => {
+              mudancasRef.current++;
+              setProjetos(ps => ps.map(x => (x.id === projetoId
+                ? { ...x, entregas: [...(x.entregas ?? []), entrega] } : x)));
+            } : undefined}
+          />
+        )}
+
+        {excluindoTarefa && (
+          <ConfirmarExclusao
+            titulo={excluindoTarefa.titulo}
+            onCancelar={() => setExcluindoTarefa(null)}
+            onConfirmar={() => void excluirTarefa(excluindoTarefa)}
+          />
+        )}
+
+        {excluindoVarias && (excluindoVarias.length === 1 ? (
+          <ConfirmarExclusao
+            titulo={excluindoVarias[0].titulo}
+            onCancelar={() => setExcluindoVarias(null)}
+            onConfirmar={() => void excluirTarefas(excluindoVarias)}
+          />
+        ) : (
+          <Dialogo
+            titulo={`Excluir ${excluindoVarias.length} tarefas`}
+            descricao={<>As <strong>{excluindoVarias.length} tarefas</strong> selecionadas saem do quadro junto com
+              a conversa, os anexos e o diário de cada uma. Esta ação não pode ser desfeita.</>}
+            rotuloOk={`Excluir ${excluindoVarias.length}`}
+            onFechar={() => setExcluindoVarias(null)}
+            onConfirmar={() => void excluirTarefas(excluindoVarias)} />
+        ))}
+
+        {previa && (
+          <PreviaArquivo
+            arquivo={{
+              nome: previa.item.nome,
+              comentario: previa.fonte === 'evidencia' ? previa.item.comentario : null,
+              chave: `${previa.fonte}:${previa.item.id}`,
+            }}
+            onCarregar={() => api(previa.fonte === 'evidencia'
+              ? `?action=entrega_evidencia_base64&id=${previa.item.id}`
+              : previa.fonte === 'entrega_arquivo'
+                ? `?action=entrega_arquivo_base64&id=${previa.item.id}`
+                : `?action=projeto_arquivo_base64&id=${previa.item.id}`)}
+            onBaixar={() => (previa.fonte === 'evidencia'
+              ? void baixarEvidencia(previa.item)
+              : previa.fonte === 'entrega_arquivo'
+                ? void baixarAnexoDaEntrega(previa.item)
+                : void baixarAnexo(previa.item))}
+            onFechar={() => setPrevia(null)}
+          />
+        )}
+
+        {excluindo && (
+          <ConfirmarExclusao titulo={excluindo.nome} oQue="projeto" zIndex={1100}
+            onCancelar={() => setExcluindo(null)} onConfirmar={() => void excluir(excluindo)} />
+        )}
+    </>
+  );
+
+  if (soFicha) {
+    return (
+      <EtiquetarioCtx.Provider value={etq}>
+      <AcoesEmMassaCtx.Provider value={acoesEmMassa}>
+        {camadas}
+      </AcoesEmMassaCtx.Provider>
+      </EtiquetarioCtx.Provider>
+    );
+  }
+
   return (
     <EtiquetarioCtx.Provider value={etq}>
     <AcoesEmMassaCtx.Provider value={acoesEmMassa}>
@@ -7447,147 +7623,7 @@ carregando ? (
       ) : conteudoDaAba}
       </AbaPainel>
 
-      {form && (
-        <FormularioProjeto
-          // Versão viva da lista, e não o retrato de quando o modal abriu: o
-          // retrato de abertura não mostraria o que acabou de ser gravado.
-          editando={form.editando ? projetos.find(p => p.id === form.editando!.id) ?? form.editando : null}
-          base={form.base}
-          abertura={aberturaPedida}
-          onVerTarefasDaEntrega={form.editando && onVerTarefasDaEntrega
-            ? entregaId => onVerTarefasDaEntrega(form.editando!.id, entregaId)
-            : undefined}
-          onCriarTarefa={criarTarefaNoProjeto}
-          onAbrirTarefa={abrirTarefa}
-          onExcluirTarefa={setExcluindoTarefa}
-          onMoverTarefa={moverTarefaDeEtapa}
-          onFixarRecolhida={pode('configuracoes:etapas') ? fixarEtapaRecolhida : undefined}
-          podeEditarTarefa={pode('tarefas:editar')}
-          etapasTarefa={etapasTarefa}
-          pessoas={pessoas}
-          clientes={clientes}
-          salvando={salvando}
-          onFechar={intacto => void fecharProjeto(intacto)}
-          onSalvar={salvar}
-          onBaixarAnexo={a => void baixarAnexo(a)}
-          marcadores={marcadoresDeEntrega}
-          submarcadores={submarcadoresDeEntrega}
-          somenteLeitura={!podeEditar}
-          onExcluir={setExcluindo}
-          onEtiquetar={etiquetarAnexo}
-          onRegistrarReuniao={registrarReuniao}
-          onVincularReuniao={vincularReuniao}
-          onBuscarReunioesFireflies={buscarReunioesFireflies}
-          onBuscarGravacaoFireflies={buscarGravacaoFireflies}
-          onBuscarTranscricaoFireflies={buscarTranscricaoFireflies}
-          onAnexarReuniaoFireflies={anexarReuniaoFireflies}
-          onExcluirReuniao={excluirReuniao}
-          onPublicar={publicarProjeto}
-          onChamados={alternarChamadosDoProjeto}
-          // Quem está na equipe vê os acessos e revela a senha, mesmo sem
-          // editar o projeto: o login é do trabalho, e quem executa e quem
-          // testa precisam dele. Quem não edita recebe a seção em leitura, sem
-          // guardar, mexer nem remover - o servidor confere as duas coisas.
-          acessos={form.editando ? acoesDeAcesso(form.editando.id) : undefined}
-          api={api}
-          onSalvarEntrega={salvarEntrega}
-          onExcluirEntrega={excluirEntrega}
-          onSubirEvidencia={subirEvidencia}
-          onBaixarEvidencia={baixarEvidencia}
-          onVerEvidencia={ev => setPrevia({ fonte: 'evidencia', item: ev })}
-          onAnexarNaEntrega={anexarNaEntrega}
-          onRemoverAnexoDaEntrega={removerAnexoDaEntrega}
-          onVerAnexoDaEntrega={a => setPrevia({ fonte: 'entrega_arquivo', item: a })}
-          onBaixarAnexoDaEntrega={baixarAnexoDaEntrega}
-          onVerAnexo={a => setPrevia({ fonte: 'anexo', item: a })}
-        />
-      )}
-
-      {rascunhoTarefa && (
-        <FormularioTarefa
-          rascunho={rascunhoTarefa}
-          projetos={projetos}
-          etapas={etapasTarefa}
-          etiquetas={etiquetasTarefa}
-          etiquetaPorPapel={etiquetaPorPapel}
-          usuarioId={usuario?.id}
-          etq={etq}
-          pessoas={pessoas}
-          salvando={salvando}
-          somenteLeitura={!pode('tarefas:editar')}
-          podeComentar={pode('tarefas:comentar')}
-          api={api}
-          onMudar={setRascunhoTarefa}
-          onFechar={() => setRascunhoTarefa(null)}
-          onConversaMudou={reconciliar}
-          onSalvar={() => salvarRascunho(rascunhoTarefa)}
-          onExcluir={pode('tarefas:excluir') && rascunhoTarefa.id ? () => {
-            const alvo = projetos.flatMap(p => p.tarefas ?? []).find(x => x.id === rascunhoTarefa.id);
-            if (alvo) setExcluindoTarefa(alvo);
-          } : undefined}
-          onDuplicar={pode('tarefas:editar') && rascunhoTarefa.id ? () => {
-            const alvo = projetos.flatMap(p => p.tarefas ?? []).find(x => x.id === rascunhoTarefa.id);
-            if (alvo) void duplicarTarefa(alvo);
-          } : undefined}
-          // Criar entrega é editar projeto: sem essa permissão o seletor não
-          // oferece, em vez de oferecer e o servidor recusar.
-          onEntregaCriada={podeEditar ? (projetoId, entrega) => {
-            mudancasRef.current++;
-            setProjetos(ps => ps.map(x => (x.id === projetoId
-              ? { ...x, entregas: [...(x.entregas ?? []), entrega] } : x)));
-          } : undefined}
-        />
-      )}
-
-      {excluindoTarefa && (
-        <ConfirmarExclusao
-          titulo={excluindoTarefa.titulo}
-          onCancelar={() => setExcluindoTarefa(null)}
-          onConfirmar={() => void excluirTarefa(excluindoTarefa)}
-        />
-      )}
-
-      {excluindoVarias && (excluindoVarias.length === 1 ? (
-        <ConfirmarExclusao
-          titulo={excluindoVarias[0].titulo}
-          onCancelar={() => setExcluindoVarias(null)}
-          onConfirmar={() => void excluirTarefas(excluindoVarias)}
-        />
-      ) : (
-        <Dialogo
-          titulo={`Excluir ${excluindoVarias.length} tarefas`}
-          descricao={<>As <strong>{excluindoVarias.length} tarefas</strong> selecionadas saem do quadro junto com
-            a conversa, os anexos e o diário de cada uma. Esta ação não pode ser desfeita.</>}
-          rotuloOk={`Excluir ${excluindoVarias.length}`}
-          onFechar={() => setExcluindoVarias(null)}
-          onConfirmar={() => void excluirTarefas(excluindoVarias)} />
-      ))}
-
-      {previa && (
-        <PreviaArquivo
-          arquivo={{
-            nome: previa.item.nome,
-            comentario: previa.fonte === 'evidencia' ? previa.item.comentario : null,
-            chave: `${previa.fonte}:${previa.item.id}`,
-          }}
-          onCarregar={() => api(previa.fonte === 'evidencia'
-            ? `?action=entrega_evidencia_base64&id=${previa.item.id}`
-            : previa.fonte === 'entrega_arquivo'
-              ? `?action=entrega_arquivo_base64&id=${previa.item.id}`
-              : `?action=projeto_arquivo_base64&id=${previa.item.id}`)}
-          onBaixar={() => (previa.fonte === 'evidencia'
-            ? void baixarEvidencia(previa.item)
-            : previa.fonte === 'entrega_arquivo'
-              ? void baixarAnexoDaEntrega(previa.item)
-              : void baixarAnexo(previa.item))}
-          onFechar={() => setPrevia(null)}
-        />
-      )}
-
-      {excluindo && (
-        <ConfirmarExclusao titulo={excluindo.nome} oQue="projeto" zIndex={1100}
-          onCancelar={() => setExcluindo(null)} onConfirmar={() => void excluir(excluindo)} />
-      )}
+      {camadas}
     </div>
     </AcoesEmMassaCtx.Provider>
     </EtiquetarioCtx.Provider>

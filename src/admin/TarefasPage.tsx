@@ -251,8 +251,14 @@ export type FiltroInicialTarefas =
   | { projeto: string; entrega: number; nonce: number; minhas?: undefined }
   | { minhas: true; nonce: number; projeto?: undefined; entrega?: undefined };
 
-export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, abrir, onAbriu, criar, onCriou }: {
+export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, abrir, onAbriu, criar, onCriou, soFicha, onFechouFicha }: {
   token: string;
+  /** Só a ficha, por cima de outra tela: a camada de fichas do AdminApp monta a
+   *  tela assim para abrir uma tarefa sem trocar a tela de fundo. Não desenha o
+   *  quadro nem mexe no endereço (os ganchos de rota só agem na tela deles). */
+  soFicha?: boolean;
+  /** A ficha fechou, ou a tarefa não existe: a camada some. */
+  onFechouFicha?: () => void;
   filtroInicial?: FiltroInicialTarefas;
   onFiltroAplicado?: () => void;
   /** A tarefa que a busca rápida escolheu. O `nonce` faz a mesma tarefa reabrir
@@ -1109,6 +1115,14 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
     prazo: t.prazo ?? '', etiquetas: t.etiquetas,
   });
 
+  // Só a ficha: quando ela fecha, a camada inteira vai junto.
+  const fichaJaAbriu = useRef(false);
+  useEffect(() => {
+    if (!soFicha) return;
+    if (form) { fichaJaAbriu.current = true; return; }
+    if (fichaJaAbriu.current) onFechouFicha?.();
+  }, [form, soFicha]);
+
   // A gaveta da tarefa que veio da busca, assim que ela aparece na listagem.
   // Os filtros são limpos junto: achar pelo nome e cair numa tela que esconde
   // justamente aquela tarefa seria o mesmo que não ter achado.
@@ -1125,6 +1139,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
         esquecerFicha('tarefas');
         toast('error', 'Tarefa não encontrada',
           'O link aponta para uma tarefa que não existe mais ou que você não pode ver.');
+        if (soFicha) onFechouFicha?.();
       }
       return;
     }
@@ -1169,6 +1184,7 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
           onMudar={setForm}
           onFechar={() => void fecharTarefa()}
           onConversaMudou={reconciliar}
+          semEntrada={soFicha}
           onSalvar={() => salvar(form)}
           onExcluir={podeExcluir && form.id ? () => {
             const alvo = tarefas.find(x => x.id === form.id);
@@ -1187,6 +1203,20 @@ export default function TarefasPage({ token, filtroInicial, onFiltroAplicado, ab
           } : undefined}
         />
   );
+
+  // Por cima de outra tela, só a ficha e o que nasce dela.
+  if (soFicha) {
+    return (
+      <>
+        {fichaDaTarefa}
+        {excluindo && (
+          <ConfirmarExclusao titulo={excluindo.titulo}
+            onCancelar={() => setExcluindo(null)}
+            onConfirmar={() => void excluir(excluindo)} />
+        )}
+      </>
+    );
+  }
 
   return (
     <div className="admin-content-wrap pagina-cristal pagina-tarefas">

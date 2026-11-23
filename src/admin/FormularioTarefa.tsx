@@ -890,7 +890,10 @@ export function SeletorEtiquetas({ valor, opcoes, etq, onChange, desabilitado }:
 
 export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etiquetaPorPapel,
   usuarioId, etq, pessoas, salvando, somenteLeitura, podeComentar, api,
-  onMudar, onFechar, onSalvar, onExcluir, onDuplicar, onEntregaCriada, onConversaMudou, embutida }: {
+  onMudar, onFechar, onSalvar, onExcluir, onDuplicar, onEntregaCriada, onConversaMudou, embutida, semEntrada }: {
+  /** A ficha toma o lugar da moldura de espera (`FichaCarregando`), que já
+   *  entrou: entrar de novo seria a mesma caixa pulando duas vezes. */
+  semEntrada?: boolean;
   /** Painel de detalhe ao lado do quadro, dentro da pagina, em vez da gaveta
    *  por cima dela: e o desenho do mockup na tela de Tarefas em janela larga. */
   embutida?: boolean;
@@ -1690,7 +1693,7 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
   // Por dentro é a mesma peça (cabeçalho e rodapé parados, corpo rolando), e
   // sai encolhendo de leve, como todo diálogo centrado.
   return createPortal(
-    <div className={`admin-modal-overlay tarefa-central-fundo${saindo ? ' saindo' : ''}`}
+    <div className={`admin-modal-overlay tarefa-central-fundo${semEntrada ? ' sem-entrada' : ''}${saindo ? ' saindo' : ''}`}
       style={{ zIndex: 10000 }} {...fundo}>
       <div className={`admin-modal painel-gaveta tarefa-central${telaCheia ? ' tela-cheia' : ''}`}
         role="dialog" aria-modal="true"
