@@ -19,8 +19,25 @@ export default defineConfig(({ mode }) => {
   if (env.TURSO_DATABASE_URL) process.env.TURSO_DATABASE_URL = env.TURSO_DATABASE_URL
   if (env.TURSO_AUTH_TOKEN) process.env.TURSO_AUTH_TOKEN = env.TURSO_AUTH_TOKEN
 
+  // A versão desta build, para a aba aberta saber que saiu outra (ver
+  // `src/lib/novaVersao.ts`). Na Vercel é o commit: refazer o deploy do mesmo
+  // commit não acusa versão nova. Fora dela, o instante da build.
+  const versao = (process.env.VERCEL_GIT_COMMIT_SHA || env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 12)
+    || `local-${Date.now()}`
+
   return {
+    define: {
+      __VERSAO_DO_PORTAL__: JSON.stringify(versao),
+    },
     plugins: [
+      {
+        // O mesmo número, num arquivo à parte, que a aba aberta consulta.
+        name: 'versao-do-portal',
+        apply: 'build',
+        generateBundle() {
+          this.emitFile({ type: 'asset', fileName: 'versao.json', source: JSON.stringify({ versao }) })
+        },
+      },
       react(),
       {
         name: 'local-api',

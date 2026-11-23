@@ -27142,3 +27142,113 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   .folha-fundo, .folha-fundo.saindo,
   .folha-celular, .folha-fundo.saindo .folha-celular { animation: none; transition: none; }
 }
+
+/* ── Versão nova do portal ───────────────────────────────────────────────
+   O aviso no pé da tela (AvisoNovaVersao): o mesmo vidro dos toasts, no
+   centro, acima das gavetas e das listas e abaixo dos toasts. Fica até a
+   pessoa atualizar; o x adia por uma hora. */
+.aviso-versao {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  z-index: 10055;
+  width: min(560px, calc(100vw - 32px));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 10px 10px 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--janela-borda);
+  background: var(--menu-flutuante);
+  -webkit-backdrop-filter: var(--vidro-flutuante-filtro, blur(30px) saturate(160%));
+  backdrop-filter: var(--vidro-flutuante-filtro, blur(30px) saturate(160%));
+  box-shadow: var(--shadow-card-hover);
+  transform: translateX(-50%);
+  animation: aviso-versao-entra .28s var(--curva-anti) both;
+}
+.aviso-versao.saindo { animation: aviso-versao-sai .18s var(--curva-anti) both; }
+@keyframes aviso-versao-entra {
+  from { opacity: 0; transform: translate(-50%, 16px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes aviso-versao-sai {
+  from { opacity: 1; transform: translate(-50%, 0); }
+  to   { opacity: 0; transform: translate(-50%, 12px); }
+}
+.aviso-versao-ico {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  color: var(--yellow);
+  background: color-mix(in srgb, var(--yellow) 16%, transparent);
+}
+.aviso-versao-texto {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--gray);
+}
+.aviso-versao-texto strong { font-size: 13px; font-weight: 700; color: var(--black); }
+.aviso-versao-atualizar { flex-shrink: 0; white-space: nowrap; }
+.aviso-versao-depois {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--gray2);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.aviso-versao-depois:hover,
+.aviso-versao-depois:focus-visible { outline: none; background: var(--gray4); color: var(--black); }
+/* No celular, acima da barra de abas do pé da tela, e o texto quebra sob o
+   título com o botão embaixo dele. */
+@media (max-width: 768px) {
+  .aviso-versao {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    flex-wrap: wrap;
+  }
+  .aviso-versao-texto { flex-basis: calc(100% - 82px); }
+  .aviso-versao-atualizar { margin-left: 42px; }
+}
+
+/* No lugar da tela que não carregou porque mudou na versão nova: só aquela
+   área, com o motivo e o botão. */
+.tela-desatualizada {
+  max-width: 420px;
+  margin: 12vh auto 0;
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+.tela-desatualizada-ico {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  color: var(--yellow);
+  background: color-mix(in srgb, var(--yellow) 14%, transparent);
+}
+.tela-desatualizada-titulo { font-size: 15px; font-weight: 700; color: var(--black); }
+.tela-desatualizada-texto { font-size: 13px; line-height: 1.5; color: var(--gray); margin-bottom: 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .aviso-versao, .aviso-versao.saindo { animation: none; }
+}

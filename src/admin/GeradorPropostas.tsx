@@ -16,13 +16,14 @@
 //  campo em branco vira slide vazio no cliente - por isso o montador recusa
 //  entregar quando falta coisa, em vez de gerar assim mesmo.
 // ─────────────────────────────────────────────────────────────────────────────
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { telaSobDemanda } from '../lib/novaVersao';
 import type { KeyboardEvent as EventoDeTecla } from 'react';
 import type { StatusConfig, Submission } from './types';
 
 /** O cadastro de lead do Funil, o mesmo de lá. Sob demanda: só quem cria um
  *  lead daqui paga pelo código da tela do Funil. */
-const CadastroDeLead = lazy(() => import('./OportunidadesPage').then(m => ({ default: m.CreateModal })));
+const CadastroDeLead = telaSobDemanda(() => import('./OportunidadesPage').then(m => ({ default: m.CreateModal })));
 import {
   IconArrowLeft, IconArrowRight, IconCheck, IconChevronRight, IconDoc, IconDownload, IconEdit, IconEye,
   IconFunil, IconInbox, IconLink, IconPlus, IconSalvar, IconSparkles, IconSpinner, IconTrash, IconUpload, IconX,

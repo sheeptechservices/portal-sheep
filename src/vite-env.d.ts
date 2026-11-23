@@ -10,3 +10,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+/** A versão da build que está rodando, posta pelo `vite.config.ts`. */
+declare const __VERSAO_DO_PORTAL__: string;
