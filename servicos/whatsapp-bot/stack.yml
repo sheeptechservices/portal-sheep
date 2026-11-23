@@ -3,7 +3,8 @@
 # Os segredos (token da assinatura, token do portal, chave da Evolution e o
 # segredo do webhook) ficam em /opt/sheep-bot/segredos.env, legível só pelo
 # root, e nunca neste arquivo. A rede é a mesma da Evolution: o bot fala com ela
-# por dentro, e ela avisa o bot por dentro, sem porta aberta para fora.
+# por dentro, e ela avisa o bot por dentro. Para fora, só o caminho do aviso do
+# Fireflies, pelo Traefik (ver os labels).
 version: "3.7"
 
 services:
@@ -21,6 +22,18 @@ services:
     networks:
       - rede_da_evolution
     deploy:
+      # A única entrada de fora: o aviso de reunião pronta do Fireflies, pelo
+      # Traefik da VPS, no domínio da Evolution. Só o caminho /fireflies/ chega
+      # ao bot; o webhook da Evolution e as rotas internas continuam só na
+      # rede de dentro. Ver "Reunião pronta" no README.
+      labels:
+        - "traefik.enable=1"
+        - "traefik.http.routers.sheepbot.rule=Host(`evolutionapi.sheeptechnology.com.br`) && PathPrefix(`/fireflies/`)"
+        - "traefik.http.routers.sheepbot.priority=100"
+        - "traefik.http.routers.sheepbot.entrypoints=websecure"
+        - "traefik.http.routers.sheepbot.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.sheepbot.service=sheepbot"
+        - "traefik.http.services.sheepbot.loadbalancer.server.port=3000"
       replicas: 1
       restart_policy:
         condition: any

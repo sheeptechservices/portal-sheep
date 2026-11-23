@@ -260,6 +260,56 @@ de trecho, título, resumo no topo, minutagem). Antes de mandar para um grupo ou
 para alguém, o bot manda o arquivo no privado do dono para conferir, e o envio
 pede a confirmação de sempre.
 
+## Reunião pronta (aviso do Fireflies)
+
+Quando o Fireflies termina o resumo de uma reunião, ele chama o bot (webhook
+v2, evento `meeting.summarized`), e o bot manda ao dono, só no privado:
+
+- os pontos principais;
+- o dever de casa, por responsável;
+- as tarefas sugeridas para o portal, com projeto, responsável e prazo.
+
+As tarefas ficam como proposta: a mensagem fecha com "Quer que eu crie essas
+tarefas no portal? (sim/não)", e só o sim do dono as cria, pelo fluxo de
+confirmação de sempre. Nada vai para grupo nenhum.
+
+- **O que entra pela rota:** só o id da reunião e o nome do evento. O resumo o
+  bot busca no portal (`resumo_do_fireflies`), pela conexão que ele mesmo
+  abre. Quem chama a rota não recebe dado nenhum de volta.
+- **A rota:** `https://evolutionapi.sheeptechnology.com.br/fireflies/<FIREFLIES_ROTA>`,
+  a única do bot aberta para fora. O Traefik da VPS só encaminha o caminho
+  `/fireflies/` (labels no `stack.yml`); o webhook da Evolution e as rotas
+  internas continuam só na rede de dentro.
+- **Antes de qualquer coisa**, `reunioes.mjs` confere:
+  - a frequência (30 pedidos por minuto, no total; acima disso, 429);
+  - o tamanho (16 KB);
+  - a assinatura: HMAC-SHA256 do corpo cru com `FIREFLIES_WEBHOOK_SEGREDO`,
+    no cabeçalho `X-Hub-Signature`.
+
+  Aviso que não passa é descartado sem consultar o portal nem chamar o modelo.
+  Sem o segredo configurado, a rota nem existe.
+- **Uma vez só:** a reunião entra numa fila gravada no volume
+  (`/dados/reunioes.json`). Um reenvio do Fireflies ou um deploy no meio não
+  fazem a mesma reunião chegar duas vezes, nem sumir.
+- **Na vez certa:** a reunião roda na fila da conversa privada do dono. Ela não
+  atropela uma resposta que ele está esperando, e entra na mesma conversa, então
+  o sim cai na proposta certa.
+- **Sem resumo:** reunião curta ou sem fala o Fireflies não resume. O bot tenta
+  de novo (2, 10 e 30 minutos) e depois desiste calado. Outra falha (portal fora
+  do ar, por exemplo) segue as mesmas tentativas e, no fim, avisa o dono.
+- **Que reuniões:** o Fireflies só avisa as reuniões da conta que cadastrou o
+  webhook. Na conta do dono, são todas as que o assistente dele gravou, inclusive
+  as marcadas por outras pessoas.
+
+Para ligar:
+
+1. No Fireflies, em Integrações > Webhook (v2), cadastrar o endereço acima, o
+   evento `meeting.summarized` e um segredo de assinatura.
+2. Na VPS, gravar no `segredos.env` o `FIREFLIES_WEBHOOK_SEGREDO` (o mesmo do
+   Fireflies, digitado por quem o criou) e o `FIREFLIES_ROTA` (gerado na VPS).
+3. `docker stack deploy -c /opt/sheep-bot/stack.yml sheepbot`, que relê o
+   `segredos.env` e aplica os labels do Traefik.
+
 ## Links das tarefas
 
 O MCP do portal devolve o link de cada tarefa (`/tarefas/<id>`) em
@@ -354,6 +404,7 @@ tem?" mostra a lista, e "esquece a dos tópicos" apaga.
 | `voz.mjs` e `falar.py` | Texto em mensagem de voz, com o Kokoro e o ffmpeg, na própria máquina. |
 | `transcricao.mjs` | Áudio em texto, com o ffmpeg e o whisper.cpp, na própria máquina. |
 | `mensagem-grupo.mjs` | Monta e confere o envio (grupo ou privado, texto com menções ou áudio), igual na hora e no agendado. |
+| `reunioes.mjs` | O aviso de reunião pronta do Fireflies: confere a assinatura, lê o aviso, limita a frequência e guarda o que já foi avisado. |
 | `github-mcp.mjs` | Servidor MCP do bot: lê os repositórios dos projetos no GitHub (arquivos, busca, commits, pull requests), só leitura. |
 | `agenda-mcp.mjs` | Servidor MCP do bot: agenda, lista e cancela ações no portal e mensagens nos grupos para um horário. |
 | `preferencias-mcp.mjs` | Servidor MCP do bot: grava, lista e apaga as preferências de estilo do dono. |
@@ -371,6 +422,8 @@ Ficam em `/opt/sheep-bot/segredos.env` na VPS, legível só pelo root:
 | `PORTAL_MCP_TOKEN` | Perfil do portal > Conectar IA > Gerar token para automação |
 | `EVOLUTION_APIKEY` | lida da própria Evolution na VPS |
 | `WEBHOOK_SEGREDO` | gerado na VPS; vira parte do endereço do webhook |
+| `FIREFLIES_WEBHOOK_SEGREDO` | o segredo de assinatura cadastrado no webhook do Fireflies, digitado por quem o criou (opcional: sem ele, o aviso de reunião pronta fica desligado) |
+| `FIREFLIES_ROTA` | gerado na VPS; vira o fim do endereço do aviso do Fireflies |
 | `GITHUB_TOKEN_LEITURA` | GitHub > Settings > Developer settings > Fine-grained tokens, dono sheeptechservices, só leitura, nos repositórios dos projetos (opcional: sem ele, o bot não lê os repositórios) |
 
 Nenhum deles vai para o repositório.
