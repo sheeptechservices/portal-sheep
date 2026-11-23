@@ -66,7 +66,7 @@ WORKDIR /app
 # código: mudar o código não reinstala nada.
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
-COPY index.mjs documentos.mjs mensagem-grupo.mjs transcricao.mjs voz.mjs falar.py graficos.mjs anexos-mcp.mjs whatsapp-mcp.mjs agenda-mcp.mjs relatorios-mcp.mjs preferencias-mcp.mjs vinculos.mjs ./
+COPY index.mjs documentos.mjs mensagem-grupo.mjs transcricao.mjs voz.mjs falar.py graficos.mjs anexos-mcp.mjs whatsapp-mcp.mjs agenda-mcp.mjs relatorios-mcp.mjs preferencias-mcp.mjs vinculos.mjs github-mcp.mjs ./
 COPY marca ./marca
 RUN mkdir -p /app/trabalho /dados && chown -R node:node /app /dados
 

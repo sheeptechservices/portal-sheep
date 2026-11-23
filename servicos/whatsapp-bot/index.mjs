@@ -51,6 +51,9 @@ const cfg = {
   }).filter(c => c.numero),
   mcpUrl: process.env.PORTAL_MCP_URL ?? '',
   mcpToken: process.env.PORTAL_MCP_TOKEN ?? '',
+  /** Token do GitHub só de leitura, nos repositórios liberados nele. Vazio
+   *  desliga a leitura dos repositórios (as ferramentas nem aparecem). */
+  githubToken: process.env.GITHUB_TOKEN_LEITURA ?? '',
   claude: process.env.CLAUDE_BIN ?? 'claude',
   /** O modelo que interpreta a resposta a uma proposta: rápido, porque é
    *  consultado antes da resposta de verdade. */
@@ -110,6 +113,11 @@ const ENVIO_NO_GRUPO = ['mcp__whatsapp__enviar_no_grupo', 'mcp__whatsapp__enviar
 /** A conta inteira do Fireflies, com as reuniões de todos os clientes: só o
  *  dono e só no privado. No grupo e para o convidado, nem aparece. */
 const FIREFLIES = ['buscar_no_fireflies', 'resumo_do_fireflies'].map(n => `mcp__portal__${n}`);
+/** Os repositórios dos projetos no GitHub (`github-mcp.mjs`), só de leitura:
+ *  código de cliente, então só o dono e só no privado, como o Fireflies. Sem
+ *  o token, nem aparecem. */
+const GITHUB = ['github_repositorio', 'github_arquivos', 'github_ler_arquivo', 'github_buscar', 'github_commits',
+  'github_ver_commit', 'github_pull_requests', 'github_ver_pull_request'].map(n => `mcp__github__${n}`);
 /** Números, gráficos e relatórios (`relatorios-mcp.mjs`): leem o portal e
  *  gravam arquivo na pasta de mídias, sem escrever nada. Liberados sempre. */
 const RELATORIOS = ['dados_de_tarefas', 'gerar_grafico', 'gerar_relatorio', 'gerar_peca', 'gerar_transcricao'].map(n => `mcp__relatorios__${n}`);
@@ -168,6 +176,17 @@ writeFileSync(mcpConfig, JSON.stringify({
       args: [fileURLToPath(new URL('./preferencias-mcp.mjs', import.meta.url))],
       env: { PREFERENCIAS_URL: `http://127.0.0.1:${cfg.porta}/interno/preferencias`, AGENDA_TOKEN: cfg.agendaToken },
     },
+    ...(cfg.githubToken ? {
+      github: {
+        type: 'stdio',
+        command: process.execPath,
+        args: [fileURLToPath(new URL('./github-mcp.mjs', import.meta.url))],
+        env: {
+          GITHUB_TOKEN_LEITURA: cfg.githubToken,
+          ...(process.env.GITHUB_API ? { GITHUB_API: process.env.GITHUB_API } : {}),
+        },
+      },
+    } : {}),
     relatorios: {
       type: 'stdio',
       command: process.execPath,
@@ -698,6 +717,7 @@ function instrucoes(quem) {
     'Peças visuais: comunicado, anúncio, convite, card de novidade, post, aviso, agenda, boas-vindas e qualquer imagem que não seja um gráfico de números saem por gerar_peca, nunca por gerar_grafico (que é só para números, e desenha barras e ranking). Na peça o desenho é seu: a identidade (fundo com os feixes, logo, fonte, cores) já vem, e você monta o conteúdo com as classes do kit, pensando como designer: uma mensagem principal, título curto e forte, hierarquia clara, pouco texto, respiro, no máximo três ou quatro blocos, e o layout que serve à mensagem (um cartão grande, passos, grade de cartões, número em destaque, chamada no fim). Sem número inventado e sem barra vazia: só entra número que existe. Formato: sem pedido, quadrado; story, retrato, paisagem ou banner quando pedirem ou quando o destino pedir. Se a ferramenta disser que transbordou, encurte e gere de novo antes de mandar. Peça de um cliente leva o projeto, para a logo dele entrar. Quando pedirem ajuste ("mais curto", "troca o título", "põe em story"), gere de novo com o que mudou.',
     'Reuniões: listar_reunioes traz as reuniões já anexadas aos projetos e às oportunidades do portal, com o resumo de cada uma (as notas), quem participou e se há transcrição do Fireflies. Muita reunião não é anexada: quando não achar no portal, procure direto na conta do Fireflies com buscar_no_fireflies (pelo título, por quem participou e pelo dia; uma palavra acha mais que uma frase, e o nome do cliente costuma estar no título), e leia com resumo_do_fireflies e transcricao_da_reuniao usando o fireflies_id. Nunca diga que só enxerga as reuniões do portal nem que não consegue buscar no Fireflies: busque. A conta do Fireflies só se consulta na conversa privada com o dono; no grupo, fique com as reuniões do portal. transcricao_da_reuniao traz a conversa inteira, fala por fala, numerada. Para perguntas sobre o que foi dito ou decidido, comece pelo resumo e vá à transcrição quando precisar do detalhe. Transcrição em arquivo: gerar_transcricao faz o PDF ou o Word com a identidade da Sheep (pelo id da reunião no portal ou pelo fireflies_id) e já busca o texto sozinho; você não copia a transcrição. Para ajustar antes de mandar, leia as falas e use remover (os números n), trocar (nomes ou trechos), titulo e resumo; para cada ajuste pedido depois, gere de novo com tudo o que já foi combinado. Transcrição tem tudo o que se falou: antes de mandar para um grupo ou para o privado de alguém, mande primeiro o arquivo aqui no privado do dono, para ele conferir, e só depois proponha o envio com Confirma? (sim/não). Reunião sem transcrição (que não veio do Fireflies) só tem o resumo: diga isso.',
     'Cliente, grupo, projeto e links: ligue as pontas pelos cadastros do portal, sem perguntar o que eles já respondem. listar_projetos traz de cada projeto o cliente, o código, a equipe, o grupo do WhatsApp vinculado e os links; ver_projeto traz a ficha inteira de um projeto (descrição, tipo, prioridade, datas, link do sistema, repositórios do GitHub, pastas do Drive, acessos da equipe sem a senha, equipe, entregas, arquivos, reuniões e tarefas abertas), e é a ela que você recorre para qualquer pergunta sobre um projeto; listar_grupos traz o cliente de cada grupo; listar_pessoas, quem é quem. Quem fala de "a Orteconte", "o grupo da Click" ou "o projeto do Daniel" está apontando um cliente: ache o projeto (pelo cliente, pelo nome, pelo código ou pela equipe), o grupo e os links por ali. Dentro de um grupo, a nota do sistema já diz de que cliente ele é: os pedidos de lá são desse cliente. Só pergunte quando o portal deixar duas leituras de pé, e aí ofereça as opções que achou.',
+    'Código dos projetos (GitHub): na conversa privada com o dono você lê os repositórios dos projetos, só leitura, pelo servidor MCP "github". Os repositórios de cada projeto estão na ficha dele (ver_projeto, campo repositorios): ache o projeto pelo cliente ou pelo nome e use o endereço que está lá; não invente repositório. github_repositorio dá o panorama; github_commits e github_ver_commit dizem o que mudou (com desde e ate para "essa semana"); github_pull_requests e github_ver_pull_request, o que está em revisão; github_arquivos, github_buscar e github_ler_arquivo, onde fica e como está o código. Ao explicar mudança, diga em português o que mudou para quem usa o sistema, com o commit ou o pull request como fonte, sem despejar código; mostre um trecho só quando pedirem. Você não escreve no GitHub: não abre pull request, não comenta, não muda nada. Repositório que o token não alcança responde "não encontrado": diga que ele precisa ser liberado no token. Código de cliente não vai para grupo.',
     'Mural da equipe: ler_mural traz os recados do mural do portal que a pessoa enxerga (os que ela escreveu e os que a marcam), com quem foi marcado, quem já viu a versão atual, quem ainda não e as reações. Filtros: para_mim, meus, nao_vistos, autor, busca e desde. Você só lê o mural: não escreve, não edita, não reage, e ler pelo bot não marca o recado como visto. Se pedirem para deixar recado, diga que pelo bot só dá para ler e que o recado se escreve no portal. No grupo, não traga recado do mural: ele é do time.',
     'Links das tarefas: cada tarefa do portal vem com o link dela (campo link em listar_tarefas, ver_tarefa e criar_tarefa). Mande o link quando pedirem, quando uma preferência pedir, ou quando acabou de criar a tarefa a pedido de alguém. Numa lista, o link vai na linha de cada tarefa, como texto puro, sem asterisco nem parênteses em volta, para o WhatsApp torná-lo clicável. Sem pedido nem preferência, não encha a resposta de links. Os links de cada projeto vêm em listar_projetos (links): portal, a ficha do projeto, só para o time; chamados, o painel em que o cliente abre e acompanha chamados sem login; acompanhamento, a página de andamento do cliente, quando publicada; sistema, o endereço do que foi entregue. Quando pedirem o link do portal de chamados, do acompanhamento ou do projeto, pegue de lá e mande, sem dizer que não tem. O link de chamados e o de acompanhamento abrem sem senha: mande no grupo do próprio cliente ou para quem pediu no privado, nunca no grupo de outro cliente. Quem já abriu uma tarefa no portal vem em ver_tarefa (vistos: quem, quantas vezes, a primeira e a última).',
     'Escreva para WhatsApp: respostas curtas e diretas, em português do Brasil.',
@@ -806,7 +826,7 @@ function perguntar({ texto, sessao, liberarEscrita, privado, quem, controle }) {
   const permitidas = [
     ...LEITURA.map(doPortal),
     ...RELATORIOS,
-    ...(privado && dono ? [...GRUPOS_NO_PRIVADO, ...AGENDA_LEITURA, ...FIREFLIES] : []),
+    ...(privado && dono ? [...GRUPOS_NO_PRIVADO, ...AGENDA_LEITURA, ...FIREFLIES, ...(cfg.githubToken ? GITHUB : [])] : []),
     ...(liberarEscrita && dono ? ESCRITA_TODAS : []),
     ...(liberarEscrita && dono && privado ? [...AGENDA_ESCRITA, ...ENVIO_NO_GRUPO] : []),
     `Read(${absoluto(midiaDir)}/**)`,
@@ -830,6 +850,8 @@ function perguntar({ texto, sessao, liberarEscrita, privado, quem, controle }) {
     // A conta do Fireflies tem as reuniões de todos os clientes: fora do
     // privado do dono, nem aparece.
     ...(privado && dono ? [] : FIREFLIES),
+    // O código dos clientes, idem: fora do privado do dono, nem aparece.
+    ...(privado && dono ? [] : GITHUB),
   ];
   // A mensagem vai pela entrada padrão, e não como argumento: um texto que
   // comece com hífen (uma lista colada) seria lido como opção da linha de comando.

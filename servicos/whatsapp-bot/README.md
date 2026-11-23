@@ -285,6 +285,26 @@ o detalhe de entregas, tarefas, reuniões e arquivos vem por `secao`, em
 páginas. `listar_projetos` tem o mesmo teto e aceita `busca`.
 Os acessos não vão para grupo.
 
+## Código dos projetos (GitHub)
+
+`github-mcp.mjs` lê os repositórios dos projetos, só leitura: o panorama do
+repositório, as pastas, um arquivo (em partes, com as linhas numeradas), a
+busca, os commits (por período, autor, arquivo ou branch), um commit com o que
+mudou, os pull requests e um pull request com revisões e arquivos. Os
+repositórios de cada projeto vêm da ficha dele no portal (`ver_projeto`, campo
+`repositorios`); a ferramenta aceita o endereço como está na ficha.
+
+- O acesso é um token de granularidade fina do GitHub, só leitura (Contents,
+  Metadata e Pull requests) e só nos repositórios liberados nele, em
+  `GITHUB_TOKEN_LEITURA`. Repositório fora do token responde "não
+  encontrado". Sem o token, as ferramentas nem aparecem.
+- Só o dono, no privado, como o Fireflies: código de cliente não vai a grupo, e
+  o convidado não tem as ferramentas.
+- A busca no conteúdo usa a do GitHub, que nem sempre cobre repositório
+  privado de organização; sem resultado, ela procura nos nomes dos arquivos e
+  pastas, pela árvore inteira.
+- Nada é escrito no GitHub.
+
 ## Mural da equipe
 
 `ler_mural` (MCP do portal) lê os recados do mural que a pessoa enxerga, os que
@@ -334,6 +354,7 @@ tem?" mostra a lista, e "esquece a dos tópicos" apaga.
 | `voz.mjs` e `falar.py` | Texto em mensagem de voz, com o Kokoro e o ffmpeg, na própria máquina. |
 | `transcricao.mjs` | Áudio em texto, com o ffmpeg e o whisper.cpp, na própria máquina. |
 | `mensagem-grupo.mjs` | Monta e confere o envio (grupo ou privado, texto com menções ou áudio), igual na hora e no agendado. |
+| `github-mcp.mjs` | Servidor MCP do bot: lê os repositórios dos projetos no GitHub (arquivos, busca, commits, pull requests), só leitura. |
 | `agenda-mcp.mjs` | Servidor MCP do bot: agenda, lista e cancela ações no portal e mensagens nos grupos para um horário. |
 | `preferencias-mcp.mjs` | Servidor MCP do bot: grava, lista e apaga as preferências de estilo do dono. |
 | `Dockerfile` | Node 22 com o Claude Code, o ffmpeg, o whisper.cpp (compilado numa etapa à parte), o Kokoro (num ambiente Python próprio) e o Chromium com a fonte Inter, rodando como usuário comum. |
@@ -350,6 +371,7 @@ Ficam em `/opt/sheep-bot/segredos.env` na VPS, legível só pelo root:
 | `PORTAL_MCP_TOKEN` | Perfil do portal > Conectar IA > Gerar token para automação |
 | `EVOLUTION_APIKEY` | lida da própria Evolution na VPS |
 | `WEBHOOK_SEGREDO` | gerado na VPS; vira parte do endereço do webhook |
+| `GITHUB_TOKEN_LEITURA` | GitHub > Settings > Developer settings > Fine-grained tokens, dono sheeptechservices, só leitura, nos repositórios dos projetos (opcional: sem ele, o bot não lê os repositórios) |
 
 Nenhum deles vai para o repositório.
 
