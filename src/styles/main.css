@@ -26482,6 +26482,52 @@ html.tema-revelando::view-transition-new(root) { z-index: 1; animation: tema-rev
   margin-bottom: 14px;
   object-fit: contain;
 }
+/* A assinatura da Sheep e a do cliente, lado a lado, com um fio entre as duas
+   (o mesmo arranjo do banner do lançamento). As duas numa cor só: a do cliente
+   vira silhueta no tom da da Sheep, branca no escuro e preta no claro. */
+.chm-marcas {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+  min-width: 0;
+}
+.chm-marcas .chm-marca { margin-bottom: 0; }
+.chm-marca-do-cliente {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+.chm-marcas-fio {
+  flex-shrink: 0;
+  width: 1px;
+  height: 26px;
+  background: var(--gray2);
+  opacity: .6;
+}
+.chm-marca-cliente {
+  display: block;
+  width: auto;
+  max-width: 180px;
+  object-fit: contain;
+  /* Silhueta preta no claro... */
+  filter: brightness(0);
+}
+/* ...e branca no escuro, como a assinatura da Sheep (.brand-logo). */
+:root[data-theme="dark"] .chm-marca-cliente { filter: brightness(0) invert(1); }
+/* Logo com desenho por dentro (o selo da 300, os bichos da HOVEP): chapada, a
+   silhueta apagaria o que identifica a marca. Ela fica em tons de cinza, no
+   claro como veio e no escuro invertida, que é o branco com o desenho por
+   dentro. */
+.chm-marca-cliente.com-desenho { filter: grayscale(1) contrast(1.15); }
+:root[data-theme="dark"] .chm-marca-cliente.com-desenho { filter: grayscale(1) invert(1) brightness(1.15); }
+@media (max-width: 560px) {
+  .chm-marcas, .chm-marca-do-cliente { gap: 12px; }
+  .chm-marca-cliente { max-width: 120px; }
+}
+
 .chm-assinatura {
   display: flex;
   align-items: center;

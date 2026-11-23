@@ -38,6 +38,7 @@ import { useSaidaSuave } from '../lib/useSaidaSuave';
 import { iniciarOndas } from '../lib/ondas';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
+import { marcaDoCliente } from '../lib/marcas';
 import { useDicaRica } from '../components/DicaRica';
 import { prazoDoChamado } from '../../api/_dias-uteis';
 
@@ -656,15 +657,34 @@ export default function ChamadosDoCliente({ token }: { token: string }) {
     );
   }
 
+  // A logo do cliente do projeto, quando a casa tem o arquivo dela. Cliente
+  // cadastrado à mão não tem, e aí fica só a da Sheep, como antes.
+  const logoDoCliente = marcaDoCliente(dados?.projeto.cliente);
+
   return (
     <div className="chm-pagina">
       <FundoDeOndas />
       <div className="chm-centro">
         <header className="chm-topo">
           <div className="chm-titulo">
-            {/* A assinatura da casa no alto: o cliente sabe de cara de quem é o
-                painel. Preta no claro, branca no escuro (ver .brand-logo). */}
-            <img src="/logo-sheep.png" alt="Sheep Technology" className="brand-logo chm-marca" />
+            {/* A assinatura da casa no alto, e ao lado, depois de um fio, a do
+                cliente: o painel é das duas casas. As duas numa cor só, a mesma
+                da Sheep (branca no escuro, preta no claro): a logo do cliente
+                em cores brigaria com a da casa e com o fundo de ondas. */}
+            <div className="chm-marcas">
+              <img src="/logo-sheep.png" alt="Sheep Technology" className="brand-logo chm-marca" />
+              {logoDoCliente && (
+                <span className="chm-marca-do-cliente surge">
+                  <span className="chm-marcas-fio" aria-hidden="true" />
+                  <img src={logoDoCliente.src} alt={logoDoCliente.nome}
+                    className={`chm-marca-cliente${logoDoCliente.detalhe ? ' com-desenho' : ''}`}
+                    // A altura óptica do carrossel, na escala da assinatura: as
+                    // proporções das marcas são muito diferentes, e a mesma
+                    // altura para todas deixaria umas gigantes e outras sumidas.
+                    style={{ height: Math.round(logoDoCliente.altura * 0.78) }} />
+                </span>
+              )}
+            </div>
             <span className="chm-rotulo">Chamados</span>
             {dados ? (
               <h1 className="chm-nome troca" key="nome">{dados.projeto.nome}</h1>
