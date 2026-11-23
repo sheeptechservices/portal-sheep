@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef, createContext, useContext, useCallback, useMemo, lazy, Suspense, useSyncExternalStore } from 'react';
+﻿import { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, useCallback, useMemo, lazy, Suspense, useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 import type { ReactNode } from 'react';
 import { ContaAnimada } from '../components/ContaAnimada';
@@ -13,6 +13,7 @@ import {
   rotuloPapel, type Permissoes, type Pode,
 } from './papeis';
 import { createPortal } from 'react-dom';
+import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { CampoSenha } from '../components/CampoSenha';
 import { MARCAS } from '../lib/marcas';
 import { SkeletonPagina } from '../components/Skeleton';
@@ -603,6 +604,43 @@ function Sidebar({
   /** O projeto do menu com os caminhos abertos (Geral, Chamados). Um por vez:
    *  abrir outro recolhe o anterior. */
   const [projetoAberto, setProjetoAberto] = useState<string | null>(null);
+  // O balão do "Ver todos": os projetos que não couberam na seção, abertos ao
+  // lado do menu. Lista em portal, como todo dropdown da casa, para não ser
+  // recortada pelo menu e nascer acima de qualquer gaveta.
+  const [maisAberto, setMaisAberto] = useState(false);
+  const [posMais, setPosMais] = useState<{ top: number; left: number } | null>(null);
+  const gatilhoMais = useRef<HTMLButtonElement>(null);
+  const balaoMais = useRef<HTMLDivElement>(null);
+  useDropdownDismiss(maisAberto, [gatilhoMais, balaoMais], () => setMaisAberto(false));
+  // A posição é tirada uma vez, ao abrir: no trilho o menu recolhe quando o
+  // ponteiro vai para o balão, e o balão não pode ir atrás do botão.
+  useLayoutEffect(() => {
+    if (!maisAberto) { setPosMais(null); return; }
+    if (!gatilhoMais.current || !balaoMais.current) return;
+    const MARGEM = 8;
+    const g = gatilhoMais.current.getBoundingClientRect();
+    // O tamanho sem a animação de entrada: no primeiro quadro o balão ainda
+    // está encolhido e deslocado, e a medida pelo retângulo o deixava passar
+    // da borda de baixo.
+    const largura = balaoMais.current.offsetWidth;
+    const altura = balaoMais.current.offsetHeight;
+    setPosMais({
+      left: Math.max(MARGEM, Math.min(g.right + MARGEM, window.innerWidth - largura - MARGEM)),
+      top: Math.max(MARGEM, Math.min(g.top, window.innerHeight - altura - MARGEM)),
+    });
+  }, [maisAberto]);
+  useEffect(() => {
+    if (!maisAberto) return;
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setMaisAberto(false);
+      gatilhoMais.current?.focus();
+    };
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, [maisAberto]);
+  /** Saiu do balão para algum lugar: ele fecha, e o menu solto também. */
+  const sairDoBalao = () => { setMaisAberto(false); if (!pinned) onClose(); };
   /** As tarefas fixadas por quem está olhando. A seção só existe com alguma. */
   const fixadas = useTarefasFixadas();
   const veFixadas = pode('tarefas:ver') && fixadas.length > 0;
@@ -823,11 +861,50 @@ function Sidebar({
             );
           })}
           {projetosDoMenu.length > PROJETOS_NO_MENU && (
-            <button type="button" className="nav-leaf menu-projetos-todos"
-              onClick={() => { setPage('projetos'); if (!pinned) onClose(); }}>
+            <button ref={gatilhoMais} type="button" className={`nav-leaf menu-projetos-todos${maisAberto ? ' aberto' : ''}`}
+              aria-haspopup="dialog" aria-expanded={maisAberto}
+              onClick={() => setMaisAberto(a => !a)}>
               <span className="nav-leaf-ico menu-projeto-selo">+{projetosDoMenu.length - PROJETOS_NO_MENU}</span>
               <span className="nav-leaf-texto">Ver todos</span>
             </button>
+          )}
+          {maisAberto && createPortal(
+            <div ref={balaoMais} className="filter-dropdown-list menu-projetos-balao" role="dialog" aria-label="Mais projetos"
+              style={posMais ? { top: posMais.top, left: posMais.left } : { top: 0, left: 0, visibility: 'hidden' }}>
+              <p className="menu-projetos-balao-titulo">MAIS PROJETOS</p>
+              <div className="menu-projetos-balao-lista">
+                {projetosDoMenu.slice(PROJETOS_NO_MENU).map(p => {
+                  const rotulo = rotuloNoMenu(p, projetosDoMenu);
+                  return (
+                    // A linha faz o que a do menu faz: o nome abre a ficha, e
+                    // a seta abre o painel de chamados do cliente numa aba nova.
+                    <div key={p.id} className={`menu-projetos-balao-linha cor-projeto-${corDoProjeto(p.id)}`}>
+                      <button type="button" className="menu-projetos-balao-item"
+                        title={p.cliente ? `${p.cliente} | ${p.nome}` : p.nome}
+                        onClick={() => { onAbrirProjeto(p.id); sairDoBalao(); }}>
+                        <span className="menu-projeto-selo" aria-hidden="true">{rotulo.trim().charAt(0).toUpperCase()}</span>
+                        <span className="menu-projetos-balao-nome">{rotulo}</span>
+                      </button>
+                      {p.chamados && (
+                        <a className="menu-projetos-balao-chamados" href={`/chamados/${p.chamados}`}
+                          target="_blank" rel="noopener noreferrer"
+                          title="Abrir o painel de chamados do cliente numa aba nova"
+                          aria-label={`Chamados de ${rotulo}, numa aba nova`}
+                          onClick={sairDoBalao}>
+                          <IconExternal size={12} />
+                        </a>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <button type="button" className="menu-projetos-balao-todos"
+                onClick={() => { setPage('projetos'); sairDoBalao(); }}>
+                <span>Abrir a tela de Projetos</span>
+                <IconArrowRight size={12} />
+              </button>
+            </div>,
+            document.body,
           )}
         </div>
       )}

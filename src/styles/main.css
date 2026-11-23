@@ -22178,6 +22178,104 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 .app-menu .nav-leaf.menu-projeto:not(:disabled):hover .nav-leaf-ico { color: var(--proj-cor); }
 .menu-projeto:hover .menu-projeto-selo { transform: scale(1.1); }
 .menu-projetos-todos .menu-projeto-selo { font-size: 9px; }
+/* Com o balão aberto, o "Ver todos" fica realçado como num hover. */
+.app-menu .nav-leaf.menu-projetos-todos.aberto { background: var(--gray4); color: var(--black); }
+
+/* O balão do "Ver todos": os projetos que não couberam na seção do menu, ao
+   lado dele. A moldura, a camada e a entrada são as da lista de filtro; aqui
+   só a largura, a lista que rola e as linhas no desenho do menu. */
+.menu-projetos-balao {
+  width: 248px;
+  max-height: min(440px, calc(100vh - 16px));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card-hover);
+}
+.menu-projetos-balao-titulo {
+  margin: 4px 8px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  color: var(--gray2);
+}
+.menu-projetos-balao-lista {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.menu-projetos-balao-linha {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.menu-projetos-balao-item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--gray);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.menu-projetos-balao-item:hover,
+.menu-projetos-balao-item:focus-visible { outline: none; background: var(--gray4); color: var(--black); }
+.menu-projetos-balao-item:hover .menu-projeto-selo { transform: scale(1.1); }
+.menu-projetos-balao-nome {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.menu-projetos-balao-chamados {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--gray2);
+  transition: background var(--transition), color var(--transition);
+}
+.menu-projetos-balao-chamados:hover,
+.menu-projetos-balao-chamados:focus-visible { outline: none; background: var(--gray4); color: var(--black); }
+.menu-projetos-balao-todos {
+  margin-top: 6px;
+  padding: 9px 8px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: none;
+  border-top: 1px solid var(--gray3);
+  background: none;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--gray2);
+  text-align: left;
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.menu-projetos-balao-todos:hover,
+.menu-projetos-balao-todos:focus-visible { outline: none; color: var(--black); }
+@media (prefers-reduced-motion: reduce) {
+  .menu-projetos-balao { animation: none; }
+  .menu-projetos-balao-item .menu-projeto-selo { transition: none; }
+}
 .menu-projeto .nav-leaf-texto { overflow: hidden; text-overflow: ellipsis; }
 @media (prefers-reduced-motion: reduce) {
   .menu-projeto-selo { transition: none; }
