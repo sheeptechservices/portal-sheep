@@ -597,12 +597,12 @@ function Sidebar({
     }))
     .filter(g => g.items.length > 0);
 
-  // As subpaginas abrem com o ponteiro parado sobre a pagina e fecham quando
-  // ele sai do grupo (titulo e lista). A espera de entrada separa o "parei
-  // aqui" da passada a caminho de outro item; a de saida deixa atravessar o
-  // vao ate a lista sem ela fechar. Pelo teclado, o foco faz o mesmo papel, e
-  // no toque (sem ponteiro) a seta abre e fecha.
-  const [pairando, setPairando] = useState<string | null>(null);
+  // As subpaginas abrem no clique, como os projetos da seção PROJETOS: clicar
+  // na pagina abre a lista dela, clicar de novo recolhe, e abrir outra recolhe
+  // a anterior. Ir para a tela e pela subpagina. Abriam com o ponteiro parado
+  // em cima, e a lista que saltava ao passar o mouse a caminho de outro item
+  // atrapalhava mais do que ajudava.
+  const [grupoAberto, setGrupoAberto] = useState<string | null>(null);
   /** O projeto do menu com os caminhos abertos (Geral, Chamados). Um por vez:
    *  abrir outro recolhe o anterior. */
   const [projetoAberto, setProjetoAberto] = useState<string | null>(null);
@@ -652,23 +652,7 @@ function Sidebar({
   if (fixadas.length) ultimasFixadas.current = fixadas;
   const fixadasNaTela = fixadas.length ? fixadas : ultimasFixadas.current;
   const { toast } = useToast();
-  const esperaAbrir = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const esperaFechar = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const limparEsperas = () => {
-    if (esperaAbrir.current) clearTimeout(esperaAbrir.current);
-    if (esperaFechar.current) clearTimeout(esperaFechar.current);
-    esperaAbrir.current = esperaFechar.current = null;
-  };
-  useEffect(() => limparEsperas, []);
-  const entrarNoGrupo = (p: string) => {
-    limparEsperas();
-    if (pairando === p) return;
-    esperaAbrir.current = setTimeout(() => setPairando(p), 260);
-  };
-  const sairDoGrupo = (p: string) => {
-    limparEsperas();
-    esperaFechar.current = setTimeout(() => setPairando(atual => (atual === p ? null : atual)), 220);
-  };
+  const alternarGrupo = (p: string) => setGrupoAberto(atual => (atual === p ? null : p));
   const subsVisiveis = (item: NavLeaf): SubDoMenu[] => (item.subs ?? []).filter(s =>
     (!s.perm || pode(s.perm)) && (!s.pagina || podeAbrirPagina(pode, s.pagina, veUsuarios)));
 
@@ -678,7 +662,7 @@ function Sidebar({
       || (item.subs ?? []).some(sb => sb.pagina === page));
     const disabled = !!item.disabled;
     const subs = disabled || !item.page ? [] : subsVisiveis(item);
-    const aberto = subs.length > 0 && pairando === item.page;
+    const aberto = subs.length > 0 && grupoAberto === item.page;
     const botao = (
       <button
         key={item.label}
@@ -687,8 +671,10 @@ function Sidebar({
         disabled={disabled}
         title={disabled ? 'Em breve' : undefined}
         aria-current={active ? 'page' : undefined}
+        aria-expanded={subs.length ? aberto : undefined}
         onClick={() => {
           if (disabled || !item.page) return;
+          if (subs.length) { alternarGrupo(item.page); return; }
           setPage(item.page);
           if (!pinned) onClose();
         }}
@@ -705,14 +691,10 @@ function Sidebar({
     );
     if (!subs.length) return botao;
     return (
-      <div key={item.label} className={`nav-com-sub${aberto ? ' aberto' : ''}`}
-        onMouseEnter={() => entrarNoGrupo(item.page!)}
-        onMouseLeave={() => sairDoGrupo(item.page!)}
-        onFocus={() => { limparEsperas(); setPairando(item.page!); }}
-        onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) sairDoGrupo(item.page!); }}>
+      <div key={item.label} className={`nav-com-sub${aberto ? ' aberto' : ''}`}>
         {botao}
         <button type="button" className="nav-sub-seta" tabIndex={-1}
-          onClick={() => { limparEsperas(); setPairando(aberto ? null : item.page!); }}
+          onClick={() => alternarGrupo(item.page!)}
           aria-expanded={aberto} aria-label={`${aberto ? 'Recolher' : 'Abrir'} as páginas de ${item.label}`}>
           <span className={`entrega-seta${aberto ? ' aberta' : ''}`}><IconChevronRight size={13} /></span>
         </button>
