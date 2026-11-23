@@ -24172,6 +24172,8 @@ a.nav-sub-item { text-decoration: none; gap: 6px; }
 .mural-nota-acao:focus-visible { outline: none; background: var(--gray4); color: var(--black); }
 .mural-nota-acao.perigo:hover,
 .mural-nota-acao.perigo:focus-visible { color: var(--red); }
+/* O ícone de copiar troca pelo de feito no mesmo lugar (.troca). */
+.mural-nota-acao-ico { display: inline-flex; }
 
 .mural-nota-texto .ativ-texto { font-size: 13px; line-height: 1.55; }
 /* O nome de quem le, entre os marcados, aceso. */

@@ -112,6 +112,53 @@ export function textoSemMarcas(texto: string): string {
     .join(' ');
 }
 
+/** As marcas de um trecho na escrita do WhatsApp: `*negrito*` e `_itálico_`.
+ *  O sublinhado não existe lá, então fica só o texto. A marca do WhatsApp só
+ *  formata colada na palavra ("* texto*" sai cru), por isso o espaço de dentro
+ *  vai para fora dela. */
+function marcasEmWhatsapp(trecho: string): string {
+  let saida = '';
+  let ultimo = 0;
+  for (const m of trecho.matchAll(INLINE)) {
+    const i = m.index ?? 0;
+    saida += trecho.slice(ultimo, i);
+    const t = m[0];
+    const duplo = t.startsWith('**') || t.startsWith('__');
+    const dentro = marcasEmWhatsapp(duplo ? t.slice(2, -2) : t.slice(1, -1));
+    if (t.startsWith('__')) {
+      saida += dentro;
+    } else {
+      const marca = t.startsWith('**') ? '*' : '_';
+      const miolo = dentro.trim();
+      const antes = dentro.slice(0, dentro.length - dentro.trimStart().length);
+      const depois = dentro.slice(dentro.trimEnd().length);
+      saida += miolo ? `${antes}${marca}${miolo}${marca}${depois}` : dentro;
+    }
+    ultimo = i + t.length;
+  }
+  return saida + trecho.slice(ultimo);
+}
+
+/**
+ * O texto pronto para colar no WhatsApp: negrito e itálico na escrita de lá,
+ * lista com `- `, caixa de marcar como `[ ]` e `[x]`, e a menção gravada
+ * (`@[Nome](id)`) só com o nome, que é como ela se lê fora do portal.
+ */
+export function textoEmWhatsapp(texto: string): string {
+  return String(texto ?? '')
+    .replace(/\r\n/g, '\n')
+    .replace(/@\[([^\]]+)\]\([^)]*\)/g, '@$1')
+    .split('\n')
+    .map(linha => {
+      const tarefa = itemDeTarefa(linha);
+      if (tarefa) return `- [${tarefa.feito ? 'x' : ' '}] ${marcasEmWhatsapp(tarefa.resto)}`;
+      if (ITEM.test(linha)) return `- ${marcasEmWhatsapp(linha.replace(ITEM, ''))}`;
+      return marcasEmWhatsapp(linha);
+    })
+    .join('\n')
+    .trim();
+}
+
 /**
  * O texto inteiro em HTML de leitura: linhas quebradas com `<br>`, linha em
  * branco como respiro entre blocos, itens seguidos virando uma lista.

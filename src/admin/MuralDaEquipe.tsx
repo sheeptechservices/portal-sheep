@@ -20,11 +20,11 @@ import { useToast } from '../lib/toast';
 import { Escrever, TextoDoComentario, idsMarcados } from '../components/Atividade';
 import { Avatar, type Pessoa } from './FormularioTarefa';
 import { instante, tempoRelativo } from '../lib/datas';
-import { alternarTarefa } from '../lib/marcacao';
+import { alternarTarefa, textoEmWhatsapp } from '../lib/marcacao';
 import { DicaTopo, useDicaRica } from '../components/DicaRica';
 import {
-  IconCheckCircle, IconChevronRight, IconEdit, IconEstrela, IconEye, IconHelp, IconJoinha, IconMural, IconPlus,
-  IconTrash, IconX,
+  IconCheck, IconCheckCircle, IconChevronRight, IconClipboard, IconEdit, IconEstrela, IconEye, IconHelp, IconJoinha,
+  IconMural, IconPlus, IconTrash, IconX,
 } from '../components/icons';
 
 /** Alguém marcado no recado, com o que a tela precisa para desenhá-lo. */
@@ -107,6 +107,11 @@ export function MuralDaEquipe({ token, abrir, onAbriu }: {
   const [rascunho, setRascunho] = useState<{ texto: string; erro?: string; chave: number } | null>(null);
   const [editando, setEditando] = useState<{ id: number; texto: string; erro?: string } | null>(null);
   const [apagando, setApagando] = useState<number | null>(null);
+  /** O recado que acabou de ir para a área de transferência: o ícone vira o
+   *  de feito por um instante, como no cofre. */
+  const [copiado, setCopiado] = useState<number | null>(null);
+  const relogioDoCopiado = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(relogioDoCopiado.current), []);
   const [destaque, setDestaque] = useState<number | null>(null);
   const botao = useRef<HTMLButtonElement>(null);
   const cartao = useRef<HTMLDivElement>(null);
@@ -291,6 +296,21 @@ export function MuralDaEquipe({ token, abrir, onAbriu }: {
     return null;
   }
 
+  /** Copia o recado já na escrita do WhatsApp (negrito, itálico, listas e
+   *  menções), para colar num grupo sem refazer a formatação. Sem permissão
+   *  de área de transferência, o texto aparece para copiar à mão. */
+  async function copiarRecado(alvo: Nota) {
+    const texto = textoEmWhatsapp(alvo.texto);
+    try {
+      await navigator.clipboard.writeText(texto);
+      setCopiado(alvo.id);
+      window.clearTimeout(relogioDoCopiado.current);
+      relogioDoCopiado.current = window.setTimeout(() => setCopiado(null), 2000);
+    } catch {
+      window.prompt('Copie o recado:', texto);
+    }
+  }
+
   function excluir(alvo: Nota) {
     const antes = notas;
     setApagando(null);
@@ -423,20 +443,33 @@ export function MuralDaEquipe({ token, abrir, onAbriu }: {
                         )}
                         {recem && <span className="mural-nota-nova">nova</span>}
                       </span>
-                      {/* Só no que é seu: o recado de outra pessoa se lê,
-                          mas não se mexe. */}
-                      {n.autor_id === eu && n.id > 0 && editando?.id !== n.id && (
+                      {n.id > 0 && editando?.id !== n.id && (
                         <span className="mural-nota-acoes">
-                          <button type="button" className="mural-nota-acao" title="Editar o recado"
-                            aria-label="Editar o recado" tabIndex={aberto ? 0 : -1}
-                            onClick={() => { setApagando(null); setEditando({ id: n.id, texto: n.texto }); }}>
-                            <IconEdit size={13} />
+                          {/* Copiar vale para qualquer recado que a pessoa lê. */}
+                          <button type="button" className="mural-nota-acao"
+                            title={copiado === n.id ? 'Copiado' : 'Copiar para o WhatsApp'}
+                            aria-label={copiado === n.id ? 'Recado copiado' : 'Copiar o recado para o WhatsApp'}
+                            tabIndex={aberto ? 0 : -1} onClick={() => void copiarRecado(n)}>
+                            <span className="mural-nota-acao-ico troca" key={copiado === n.id ? 'feito' : 'copiar'}>
+                              {copiado === n.id ? <IconCheck size={13} /> : <IconClipboard size={13} />}
+                            </span>
                           </button>
-                          <button type="button" className="mural-nota-acao perigo" title="Excluir o recado"
-                            aria-label="Excluir o recado" tabIndex={aberto ? 0 : -1}
-                            onClick={() => setApagando(a => (a === n.id ? null : n.id))}>
-                            <IconTrash size={13} />
-                          </button>
+                          {/* Editar e excluir, só no que é seu: o recado de
+                              outra pessoa se lê, mas não se mexe. */}
+                          {n.autor_id === eu && (
+                            <>
+                              <button type="button" className="mural-nota-acao" title="Editar o recado"
+                                aria-label="Editar o recado" tabIndex={aberto ? 0 : -1}
+                                onClick={() => { setApagando(null); setEditando({ id: n.id, texto: n.texto }); }}>
+                                <IconEdit size={13} />
+                              </button>
+                              <button type="button" className="mural-nota-acao perigo" title="Excluir o recado"
+                                aria-label="Excluir o recado" tabIndex={aberto ? 0 : -1}
+                                onClick={() => setApagando(a => (a === n.id ? null : n.id))}>
+                                <IconTrash size={13} />
+                              </button>
+                            </>
+                          )}
                         </span>
                       )}
                     </div>
