@@ -5547,6 +5547,12 @@ body.arrastando-painel {
   padding: 18px 0 14px;
   border-bottom: 1px solid var(--gray3);
 }
+/* Reuniões e pastas do Drive na tarefa são um par de consulta: o mesmo
+   desenho de chips, um embaixo do outro, sem linha separando. */
+.admin-modal-body section.bloco-reunioes:has(+ .bloco-drive) {
+  border-bottom: none;
+  padding-bottom: 0;
+}
 
 .admin-modal-body section:last-child {
   border-bottom: none;
@@ -23079,6 +23085,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 .tarefa-detalhe .bloco-checklist { order: 3; border-top: none; padding-top: 0; animation-delay: .2s; }
 .tarefa-detalhe .bloco-reunioes { order: 4; animation-delay: .24s; }
 .tarefa-detalhe .bloco-drive { order: 4; animation-delay: .26s; }
+.tarefa-detalhe .bloco-reunioes + .bloco-drive { border-top: none; padding-top: 0; }
 .tarefa-detalhe .bloco-atividade { order: 5; animation-delay: .28s; }
 .tarefa-detalhe .admin-modal-body > :not([class*="bloco-"]) { order: 6; }
 
