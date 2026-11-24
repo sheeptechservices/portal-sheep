@@ -14,7 +14,7 @@ import { AtividadeDaTarefa } from './AtividadeDaTarefa';
 import { createPortal } from 'react-dom';
 import { iniciais, useToast } from './AdminApp';
 import {
-  IconAlert, IconAlfinete, IconArrastar, IconCheck, IconChevronDown, IconClipboard, IconDuplicar, IconLink,
+  IconAlert, IconAlfinete, IconArrastar, IconCheck, IconChevronDown, IconClipboard, IconDrive, IconDuplicar, IconLink,
   IconPlus, IconSpinner, IconTrash, IconUser, IconX,
 } from '../components/icons';
 import { SelectSistema } from '../components/SelectSistema';
@@ -32,7 +32,7 @@ import { SeletorProjetos } from '../components/SeletorProjetos';
 import { PilulaDeStatus } from '../components/PilulaDeStatus';
 import { mesmaOrdem, moverNaLista } from '../lib/reordenar';
 import { EditorRico } from '../components/EditorRico';
-import { ChipReuniao } from '../components/VinculoReuniao';
+import { Chip, ChipReuniao } from '../components/VinculoReuniao';
 import { ReuniaoModal } from '../components/ReuniaoModal';
 import { useFecharNoFundo } from '../lib/useFecharNoFundo';
 import { linkDe } from '../lib/rotas';
@@ -1064,6 +1064,21 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
     ? (projeto?.reunioes ?? []).filter(r =>
         (r.entregas ?? []).some(id => entregasDoRascunho(rascunho).includes(id)))
     : [];
+  /** As pastas do Drive dos projetos da tarefa: é onde moram os documentos que
+   *  ela consulta, e abrir a ficha do projeto só para achar o link é um desvio.
+   *  Com mais de um projeto, a mesma pasta cadastrada nos dois aparece uma vez,
+   *  e a nota do chip diz de qual projeto ela é. */
+  const pastasDoDrive = (() => {
+    const vistas = new Set<string>();
+    return escolhidos.flatMap(id => {
+      const dele = projetos.find(p => p.id === id);
+      return (dele?.drives ?? []).filter(d => {
+        if (!d.url || vistas.has(d.url)) return false;
+        vistas.add(d.url);
+        return true;
+      }).map(d => ({ ...d, projeto: escolhidos.length > 1 ? dele?.nome ?? null : null }));
+    });
+  })();
   const { toast } = useToast();
 
   /** Fixa ou desafixa no gesto; recusado, o alfinete volta e o toast explica. */
@@ -1597,6 +1612,30 @@ export function FormularioTarefa({ rascunho, projetos, etapas, etiquetas, etique
                     fireflies={!!r.fireflies_id}
                     titulo={`Abrir "${r.assunto}"`}
                     onAbrir={() => setReuniaoAberta(r)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* As pastas vêm do projeto, como as reuniões vêm da entrega: aqui só
+              se abrem, e cadastrar é na ficha do projeto. */}
+          {pastasDoDrive.length > 0 && (
+            <section className="bloco-drive">
+              <div className="admin-section-head">
+                <p className="admin-section-title">
+                  Pastas no Drive
+                  <span style={{ marginLeft: 6, fontWeight: 600 }}>({pastasDoDrive.length})</span>
+                </p>
+              </div>
+              <div className="vinculo-chips">
+                {pastasDoDrive.map(d => (
+                  <Chip key={d.url}
+                    icone={<IconDrive size={12} />}
+                    nome={d.nome || 'Pasta do Drive'}
+                    nota={d.projeto}
+                    titulo={`Abrir "${d.nome || 'Pasta do Drive'}" no Drive`}
+                    onAbrir={() => window.open(d.url, '_blank', 'noopener,noreferrer')}
                   />
                 ))}
               </div>

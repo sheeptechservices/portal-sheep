@@ -23078,6 +23078,7 @@ button.nt-dia-convite:focus-visible { outline: none; border-color: var(--gray2);
 .tarefa-detalhe .bloco-descricao { order: 2; animation-delay: .16s; }
 .tarefa-detalhe .bloco-checklist { order: 3; border-top: none; padding-top: 0; animation-delay: .2s; }
 .tarefa-detalhe .bloco-reunioes { order: 4; animation-delay: .24s; }
+.tarefa-detalhe .bloco-drive { order: 4; animation-delay: .26s; }
 .tarefa-detalhe .bloco-atividade { order: 5; animation-delay: .28s; }
 .tarefa-detalhe .admin-modal-body > :not([class*="bloco-"]) { order: 6; }
 
