@@ -268,7 +268,9 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
     description: 'Tudo de uma tarefa: campos, descrição inteira, subtarefas, a conversa com respostas, '
       + 'menções, joinhas e anexos (só os dados do arquivo; o conteúdo vem por baixar_anexo), o '
       + 'histórico de alterações mais recente, o link no portal e quem já abriu a tarefa (vistos: '
-      + 'quem, quantas vezes, a primeira e a última).',
+      + 'quem, quantas vezes, a primeira e a última). Se a tarefa veio de um chamado do cliente, traz '
+      + 'o chamado: número, quem pediu, urgência, as reaberturas e as respostas já dadas ao cliente '
+      + '(com o id, para editar ou apagar).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -281,10 +283,13 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
     acoes: ['tarefa_atividade', 'tarefa_subtarefas'],
     async executar(a, ctx) {
       const t = await tarefaOuErro(ctx, a.id);
-      const [atividade, sub] = await Promise.all([
+      const [atividade, sub, doChamado] = await Promise.all([
         chamar(ctx, 'GET', 'tarefa_atividade', { id: t.id }),
         chamar(ctx, 'GET', 'tarefa_subtarefas', { id: t.id }),
+        // O chamado é complemento: sem ele (ou sem permissão), a tarefa vem igual.
+        chamar(ctx, 'GET', 'chamado_da_tarefa', { id: t.id }).catch(() => null),
       ]);
+      const ch = doChamado?.chamado ?? null;
       const comentarios: any[] = atividade.comentarios ?? [];
       const linha = (c: any) => ({
         id: Number(c.id), autor: c.usuario_nome, autor_id: c.usuario_id, texto: c.texto,
@@ -330,6 +335,17 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
           quem: v.nome ?? 'alguém que saiu do portal', quem_id: v.usuario_id, vezes: Number(v.vezes) || 1,
           primeira: v.primeira_em, ultima: v.ultima_em,
         })),
+        // O pedido do cliente por trás da tarefa, e o que o time já respondeu a
+        // ele no painel (o que o cliente lê). Nulo quando a tarefa é interna.
+        chamado: ch ? {
+          numero: ch.numero, titulo: ch.titulo, solicitante: ch.solicitante, email: ch.email ?? null,
+          urgencia: ch.urgencia, tipo: ch.tipo ?? null, aberto_em: ch.criado_em,
+          reaberturas: (ch.reaberturas ?? []).map((e: any) => ({ autor: e.autor, texto: e.texto, quando: e.criado_em })),
+          respostas_ao_cliente: (ch.respostas ?? []).map((r: any) => ({
+            id: Number(r.id), texto: r.texto, autor: r.autor_nome ?? null, quando: r.criado_em,
+            editada_em: r.editado_em ?? null, minha: !!r.minha,
+          })),
+        } : null,
       };
     },
   },
@@ -525,6 +541,78 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
         chamado: r.numero, tarefa_id: r.tarefa_id, etapa: r.status, previsao: r.previsao,
         responsavel: r.responsavel, anexos: r.anexos, painel: r.painel,
       };
+    },
+  },
+  {
+    name: 'responder_chamado',
+    title: 'Responder ao cliente no chamado',
+    description: 'Escreve a resposta ao cliente que aparece no painel de chamados dele, dentro do chamado. '
+      + 'É a única escrita do time que o cliente lê (o comentário da tarefa é interno). Aponte pela '
+      + 'tarefa (tarefa_id) ou pelo chamado: projeto e numero do chamado no painel. Sai assinada pela '
+      + 'pessoa conectada. Não manda e-mail nem WhatsApp: o cliente lê ao abrir o painel. Aceita a '
+      + 'marcação leve. Escreva para o cliente, sem jargão interno.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tarefa_id: idNumero('Número da tarefa do chamado.'),
+        projeto: { type: 'string', description: 'Com numero, no lugar de tarefa_id: id, código, nome ou cliente.' },
+        numero: idNumero('Número do chamado no painel do projeto.'),
+        texto: { type: 'string', description: 'A resposta, como o cliente vai ler. De 2 a 6000 caracteres.' },
+      },
+      required: ['texto'],
+    },
+    annotations: ESCRITA,
+    acoes: ['responder_chamado_cliente'],
+    async executar(a, ctx) {
+      let tarefaId = a.tarefa_id != null ? Number(a.tarefa_id) : null;
+      let numero: number | null = null;
+      if (tarefaId == null) {
+        if (a.projeto == null || a.numero == null) throw new ErroFerramenta('Diga a tarefa (tarefa_id) ou o chamado (projeto e numero).');
+        const projeto = await projetoOuErro(ctx, a.projeto);
+        const r = await ctx.db.execute({
+          sql: 'SELECT tarefa_id, numero FROM chamados_cliente WHERE projeto_id = ? AND numero = ?',
+          args: [String(projeto.id), Number(a.numero)],
+        });
+        const linha = r.rows[0];
+        if (!linha) throw new ErroFerramenta(`O projeto ${projeto.nome} não tem o chamado ${a.numero}.`);
+        if (linha.tarefa_id == null) throw new ErroFerramenta(`O chamado ${a.numero} não tem tarefa, e a resposta sai pela tarefa.`);
+        tarefaId = Number(linha.tarefa_id);
+        numero = Number(linha.numero);
+      }
+      // Mesmo corte de quem enxerga a tarefa, antes de escrever para fora.
+      await tarefaOuErro(ctx, tarefaId);
+      const r = await chamar(ctx, 'POST', 'responder_chamado_cliente', { tarefa_id: tarefaId, texto: String(a.texto ?? '') });
+      return { id: Number(r.id), tarefa_id: tarefaId, ...(numero != null ? { chamado: numero } : {}), criado_em: r.criado_em };
+    },
+  },
+  {
+    name: 'editar_resposta_chamado',
+    title: 'Editar resposta ao cliente',
+    description: 'Troca o texto de uma resposta ao cliente já enviada (o id vem de ver_tarefa, em '
+      + 'chamado.respostas_ao_cliente). Só quem escreveu edita. No painel, ela aparece como editada.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: idNumero('Id da resposta.'), texto: { type: 'string' } },
+      required: ['id', 'texto'],
+    },
+    annotations: ESCRITA,
+    acoes: ['editar_resposta_chamado_cliente'],
+    async executar(a, ctx) {
+      const r = await chamar(ctx, 'POST', 'editar_resposta_chamado_cliente', { id: Number(a.id), texto: String(a.texto ?? '') });
+      return { id: Number(a.id), editada_em: r.editado_em };
+    },
+  },
+  {
+    name: 'apagar_resposta_chamado',
+    title: 'Apagar resposta ao cliente',
+    description: 'Apaga uma resposta ao cliente já enviada (id de ver_tarefa). Só quem escreveu apaga. '
+      + 'Some do painel do cliente na próxima vez que ele abrir. Não tem volta: confirme antes.',
+    inputSchema: { type: 'object', properties: { id: idNumero('Id da resposta.') }, required: ['id'] },
+    annotations: APAGA,
+    acoes: ['apagar_resposta_chamado_cliente'],
+    async executar(a, ctx) {
+      await chamar(ctx, 'POST', 'apagar_resposta_chamado_cliente', { id: Number(a.id) });
+      return { apagada: Number(a.id) };
     },
   },
   {
@@ -1358,6 +1446,8 @@ const INSTRUCOES = [
   'Chamado e tarefa: chamado é o pedido do cliente, que ele acompanha no painel de chamados do '
     + 'projeto; abrir_chamado o registra em nome dele e a tarefa do time nasce sozinha. Use só quando '
     + 'pedirem um chamado. Trabalho interno é criar_tarefa.',
+  'Resposta ao cliente: responder_chamado escreve no painel de chamados, e é o que o cliente lê; '
+    + 'comentar fica só para o time. Antes de responder, veja em ver_tarefa o que já foi respondido.',
   'Projeto: listar_projetos para achar o id e os links; ver_projeto para a ficha inteira (descrição, '
     + 'repositórios, Drive, acessos sem senha, equipe, entregas, reuniões e tarefas).',
   'Entregas: criar_entrega, editar_entrega e excluir_entrega mexem nos marcos do projeto; '
