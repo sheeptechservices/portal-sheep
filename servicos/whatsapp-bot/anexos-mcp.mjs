@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  Servidor MCP do próprio bot: anexa a um comentário do portal um arquivo que
-//  chegou pelo WhatsApp.
+//  Servidor MCP do próprio bot: anexa a um comentário do portal, ou a uma
+//  entrega, um arquivo que chegou pelo WhatsApp.
 //
 //  O `comentar` do portal recebe o anexo em base64, e o modelo não tem como
 //  produzir isso: ele vê a imagem, mas não tem os bytes dela. Esta ferramenta
@@ -60,6 +60,41 @@ const FERRAMENTA = {
   },
 };
 
+/** A mesma leitura do arquivo, para uma entrega: material dela ou evidência de
+ *  uma etapa (o comprovante do envio, o aceite do cliente). */
+const NA_ENTREGA = {
+  name: 'anexar_arquivo_na_entrega',
+  title: 'Anexar arquivo na entrega',
+  description: 'Anexa numa entrega do portal arquivos que chegaram pelo WhatsApp. Use o caminho do arquivo '
+    + 'original indicado na mensagem (pasta de mídias). tipo "arquivo" (padrão) é material da entrega; '
+    + '"evidencia" é a prova de uma etapa: etapa "Entrega" (comprovante do que foi enviado) ou "Validação" '
+    + '(aceite do cliente), que liberam marcar a entrega como Entregue ou Validada. Até 3 MB por arquivo. '
+    + 'Altera o portal: só rode depois da confirmação da pessoa.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      entrega_id: { type: 'integer', description: 'Id da entrega (ver_projeto, secao entregas).' },
+      tipo: { type: 'string', enum: ['arquivo', 'evidencia'] },
+      etapa: { type: 'string', enum: ['Entrega', 'Validação'], description: 'Só para evidência. Padrão Entrega.' },
+      comentario: { type: 'string', description: 'Só para evidência: o que o arquivo comprova.' },
+      substituir: { type: 'boolean', description: 'Só para evidência: troca a prova anterior da etapa.' },
+      arquivos: {
+        type: 'array',
+        minItems: 1,
+        items: {
+          type: 'object',
+          properties: {
+            caminho: { type: 'string', description: 'Caminho do arquivo na pasta de mídias.' },
+            nome: { type: 'string', description: 'Nome com que o anexo aparece. Padrão: o nome original.' },
+          },
+          required: ['caminho'],
+        },
+      },
+    },
+    required: ['entrega_id', 'arquivos'],
+  },
+};
+
 /** O nome com que o arquivo chegou: o bot grava "<carimbo>-<sorteio>-<nome>". */
 const nomeOriginal = (arq) => basename(arq).replace(/^\d+-[0-9a-f]{8}-/, '');
 
@@ -113,6 +148,21 @@ async function comentarComAnexo(a) {
   return `Comentário gravado na tarefa ${Number(a.tarefa_id)} com ${anexos.map(x => x.nome).join(', ')}. ${resultado}`.trim();
 }
 
+async function anexarNaEntrega(a) {
+  const anexos = (Array.isArray(a.arquivos) ? a.arquivos : []).map(lerAnexo);
+  if (!anexos.length) throw new Error('faltou dizer qual arquivo anexar');
+  const evidencia = String(a.tipo ?? 'arquivo') === 'evidencia';
+  const resultado = await chamarPortal('anexar_na_entrega', {
+    entrega_id: Number(a.entrega_id),
+    tipo: evidencia ? 'evidencia' : 'arquivo',
+    ...(evidencia ? { etapa: a.etapa ?? 'Entrega', comentario: String(a.comentario ?? ''), substituir: a.substituir === true } : {}),
+    anexos,
+  });
+  return `Anexado na entrega ${Number(a.entrega_id)}${evidencia ? ` como evidência da etapa ${a.etapa ?? 'Entrega'}` : ''}: ${anexos.map(x => x.nome).join(', ')}. ${resultado}`.trim();
+}
+
+const FERRAMENTAS = { [FERRAMENTA.name]: comentarComAnexo, [NA_ENTREGA.name]: anexarNaEntrega };
+
 // ── O protocolo ─────────────────────────────────────────────────────────────
 
 const enviar = (msg) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...msg })}\n`);
@@ -128,11 +178,12 @@ async function tratar(pedido) {
   }
   if (id === undefined) return; // notificação: nada a responder
   if (method === 'ping') return enviar({ id, result: {} });
-  if (method === 'tools/list') return enviar({ id, result: { tools: [FERRAMENTA] } });
+  if (method === 'tools/list') return enviar({ id, result: { tools: [FERRAMENTA, NA_ENTREGA] } });
   if (method === 'tools/call') {
-    if (params?.name !== FERRAMENTA.name) return enviar({ id, error: { code: -32602, message: `ferramenta desconhecida: ${params?.name}` } });
+    const fazer = FERRAMENTAS[params?.name];
+    if (!fazer) return enviar({ id, error: { code: -32602, message: `ferramenta desconhecida: ${params?.name}` } });
     try {
-      const texto = await comentarComAnexo(params.arguments ?? {});
+      const texto = await fazer(params.arguments ?? {});
       return enviar({ id, result: { content: [{ type: 'text', text: texto }] } });
     } catch (e) {
       return enviar({ id, result: { content: [{ type: 'text', text: `Não deu: ${e?.message ?? e}` }], isError: true } });

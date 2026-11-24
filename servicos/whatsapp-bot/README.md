@@ -398,7 +398,7 @@ tem?" mostra a lista, e "esquece a dos tópicos" apaga.
 |---|---|
 | `index.mjs` | O serviço: recebe o webhook da Evolution, filtra, chama o Claude Code e responde. |
 | `documentos.mjs` | Word e Excel em texto, abrindo o zip com o próprio Node. |
-| `anexos-mcp.mjs` | Servidor MCP do bot: anexa a um comentário do portal um arquivo recebido. |
+| `anexos-mcp.mjs` | Servidor MCP do bot: anexa a um comentário do portal, ou a uma entrega (como arquivo ou como evidência de etapa), um arquivo recebido. |
 | `whatsapp-mcp.mjs` | Servidor MCP do bot: lista os grupos, lê as mensagens, baixa arquivos, diz quem está no grupo e manda mensagem com menção (depois da confirmação). |
 | `relatorios-mcp.mjs` | Servidor MCP do bot: números das tarefas, gráficos e relatórios. |
 | `graficos.mjs` e `marca/` | O desenho dos gráficos e dos relatórios, com a logo da Sheep. |
