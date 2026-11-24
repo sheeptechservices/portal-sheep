@@ -145,6 +145,54 @@ function etiquetasDaLinha(l: Record<string, any>): string[] {
   catch { return []; }
 }
 
+/** O projeto pelo id, código, nome ou cliente, como em ver_projeto. Mais de um
+ *  que bate é erro com as opções: escrever no projeto errado não tem desfazer
+ *  fácil, e aqui não cabe adivinhar. */
+async function projetoOuErro(ctx: Ctx, pedido: unknown) {
+  const texto = String(pedido ?? '').trim();
+  if (!texto) throw new ErroFerramenta('Diga qual projeto: id, código, nome ou cliente.');
+  const r = await lembrar(ctx, 'projetos', () => chamar(ctx, 'GET', 'projetos'));
+  const todos: any[] = r.projetos ?? [];
+  const alvo = semAcento(texto);
+  const exatos = todos.filter(x => [x.id, x.codigo, x.nome].some(v => v != null && semAcento(String(v)) === alvo));
+  const achados = exatos.length ? exatos : todos.filter(x =>
+    [x.id, x.codigo, x.nome, x.cliente_nome].some(v => v != null && semAcento(String(v)).includes(alvo)));
+  if (achados.length === 0) throw new ErroFerramenta(`Nenhum projeto bate com "${texto}". Veja os nomes e códigos em listar_projetos.`);
+  if (achados.length > 1) {
+    throw new ErroFerramenta(`Mais de um projeto bate com "${texto}": ${achados.map(x => `${x.nome} (${x.codigo ?? x.id})`).join(', ')}. Chame de novo com o código ou o id.`);
+  }
+  return achados[0];
+}
+
+/** A entrega pelo id, com o projeto dela, dentro do que a pessoa enxerga. */
+async function entregaOuErro(ctx: Ctx, id: unknown) {
+  const r = await lembrar(ctx, 'projetos', () => chamar(ctx, 'GET', 'projetos'));
+  for (const projeto of (r.projetos ?? []) as any[]) {
+    const entrega = (projeto.entregas ?? []).find((e: any) => Number(e.id) === Number(id));
+    if (entrega) return { entrega, projeto };
+  }
+  throw new ErroFerramenta(`Entrega ${id} não encontrada. Veja os ids em ver_projeto (secao entregas).`);
+}
+
+/** Os status que se escolhem à mão. "Em andamento" e "Bloqueada" o portal deduz
+ *  das tarefas, e por isso não entram. */
+const STATUS_DA_ENTREGA = ['Planejada', 'Triagem', 'Entregue', 'Validada', 'Cancelada'];
+function statusDaEntrega(pedido: string): string {
+  const achado = STATUS_DA_ENTREGA.find(x => semAcento(x) === semAcento(pedido));
+  if (!achado) {
+    throw new ErroFerramenta(`Status "${pedido}" não se escolhe à mão. Use ${STATUS_DA_ENTREGA.join(', ')}; "Em andamento" e "Bloqueada" vêm das tarefas.`);
+  }
+  return achado;
+}
+
+/** Prioridade da entrega: a posição na fila do cliente, de 1 em diante. */
+function prioridadeDaEntrega(v: unknown): number | null {
+  if (v === null || v === '' || v === undefined) return null;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1) throw new ErroFerramenta('prioridade da entrega é um número inteiro de 1 em diante (a posição na fila), ou null.');
+  return n;
+}
+
 async function tarefaOuErro(ctx: Ctx, id: unknown) {
   const t = await tarefaVisivel(ctx.db, ctx.usuario, Number(id));
   if (!t) throw new ErroFerramenta(`Tarefa ${id} não encontrada.`);
@@ -991,6 +1039,184 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
     },
   },
   {
+    name: 'criar_entrega',
+    title: 'Criar entrega',
+    description: 'Cria uma entrega (um marco) num projeto. Nasce Planejada, a não ser que venha status '
+      + 'Triagem ou Cancelada: Entregue e Validada pedem a evidência antes (anexar_na_entrega e depois '
+      + 'editar_entrega). prioridade é a posição na fila do cliente, de 1 em diante. Devolve o id.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projeto: { type: 'string', description: 'Id, código (PRJ-26-011), nome do projeto ou nome do cliente.' },
+        titulo: { type: 'string' },
+        descricao: { type: 'string', description: 'Aceita a marcação leve do portal.' },
+        prazo: { type: 'string', description: 'AAAA-MM-DD.' },
+        responsaveis: { type: 'array', items: { type: 'string' }, description: 'Ids ou e-mails (listar_pessoas).' },
+        marcador: { type: 'string', description: 'A área do cliente a que a entrega pertence.' },
+        submarcador: { type: 'string' },
+        prioridade: { type: ['integer', 'null'] },
+        status: { type: 'string', description: 'Planejada (padrão), Triagem ou Cancelada.' },
+      },
+      required: ['projeto', 'titulo'],
+    },
+    annotations: ESCRITA,
+    acoes: ['projetos', 'salvar_entrega'],
+    async executar(a, ctx) {
+      const projeto = await projetoOuErro(ctx, a.projeto);
+      const titulo = String(a.titulo ?? '').trim();
+      if (!titulo) throw new ErroFerramenta('A entrega precisa de um título.');
+      const status = a.status !== undefined ? statusDaEntrega(String(a.status)) : 'Planejada';
+      if (status === 'Entregue' || status === 'Validada') {
+        throw new ErroFerramenta('Entrega nova não nasce Entregue nem Validada: crie, anexe a evidência com anexar_na_entrega e depois mude o status com editar_entrega.');
+      }
+      const campos = {
+        projeto_id: String(projeto.id), titulo, descricao: a.descricao !== undefined ? String(a.descricao) : null,
+        prazo: a.prazo !== undefined ? data(a.prazo, 'prazo') : null,
+        responsaveis: await idsDasPessoas(ctx, listaDe(a.responsaveis)),
+        marcador: a.marcador ?? null, submarcador: a.submarcador ?? null,
+        prioridade: prioridadeDaEntrega(a.prioridade),
+      };
+      const r = await chamar(ctx, 'POST', 'salvar_entrega', { ...campos, status });
+      // O portal só cria Planejada ou Cancelada; a Triagem vai na gravação seguinte.
+      if (status === 'Triagem') await chamar(ctx, 'POST', 'salvar_entrega', { ...campos, id: Number(r.id), status });
+      return { id: Number(r.id), status: status === 'Triagem' ? status : r.status, projeto: { id: String(projeto.id), nome: projeto.nome } };
+    },
+  },
+  {
+    name: 'editar_entrega',
+    title: 'Editar entrega',
+    description: 'Altera só os campos informados de uma entrega; o resto fica como está. prazo: null apaga '
+      + 'o prazo; prioridade: null tira da fila. Responsáveis podem ser trocados inteiros ou somados e '
+      + 'tirados. status manual: Planejada, Triagem, Entregue, Validada ou Cancelada. Entregue pede a '
+      + 'evidência de etapa "Entrega", e Validada a de etapa "Validação" (anexar_na_entrega): sem ela o '
+      + 'portal recusa. "Em andamento" e "Bloqueada" vêm das tarefas e não se escolhem.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: idNumero('Id da entrega (ver_projeto, secao entregas).'),
+        titulo: { type: 'string' },
+        descricao: { type: 'string' },
+        prazo: { type: ['string', 'null'], description: 'AAAA-MM-DD, ou null para apagar.' },
+        responsaveis: { type: 'array', items: { type: 'string' } },
+        adicionar_responsaveis: { type: 'array', items: { type: 'string' } },
+        remover_responsaveis: { type: 'array', items: { type: 'string' } },
+        marcador: { type: ['string', 'null'] },
+        submarcador: { type: ['string', 'null'] },
+        prioridade: { type: ['integer', 'null'] },
+        status: { type: 'string' },
+      },
+      required: ['id'],
+    },
+    annotations: ESCRITA,
+    acoes: ['projetos', 'salvar_entrega'],
+    async executar(a, ctx) {
+      const { entrega: e, projeto } = await entregaOuErro(ctx, a.id);
+      let donos: string[] = Array.isArray(e.responsaveis) ? e.responsaveis.map(String) : [];
+      if (a.responsaveis !== undefined) donos = await idsDasPessoas(ctx, listaDe(a.responsaveis));
+      const somar = await idsDasPessoas(ctx, listaDe(a.adicionar_responsaveis));
+      const tirar = await idsDasPessoas(ctx, listaDe(a.remover_responsaveis));
+      donos = [...new Set([...donos, ...somar])].filter(id => !tirar.includes(id));
+      const titulo = a.titulo !== undefined ? String(a.titulo).trim() : String(e.titulo);
+      if (!titulo) throw new ErroFerramenta('A entrega precisa de um título.');
+      const corpo: Record<string, unknown> = {
+        id: Number(e.id), projeto_id: String(projeto.id), titulo,
+        descricao: a.descricao !== undefined ? String(a.descricao) : (e.descricao ?? null),
+        prazo: a.prazo !== undefined ? data(a.prazo, 'prazo') : (e.prazo ?? null),
+        responsaveis: donos,
+        marcador: a.marcador !== undefined ? a.marcador : (e.marcador ?? null),
+        submarcador: a.submarcador !== undefined ? a.submarcador : (e.submarcador ?? null),
+        prioridade: a.prioridade !== undefined ? prioridadeDaEntrega(a.prioridade) : (e.prioridade ?? null),
+      };
+      // Sem status no pedido, o portal mantém o que está gravado.
+      if (a.status !== undefined) corpo.status = statusDaEntrega(String(a.status));
+      await chamar(ctx, 'POST', 'salvar_entrega', corpo);
+      // O status que valeu: o manual, ou o que o portal deduziu das tarefas.
+      const depois = await chamar(ctx, 'GET', 'projetos');
+      const atual = (depois.projetos ?? []).flatMap((x: any) => x.entregas ?? []).find((x: any) => Number(x.id) === Number(e.id));
+      return { id: Number(e.id), titulo, status: atual?.status ?? corpo.status ?? e.status, projeto: { id: String(projeto.id), nome: projeto.nome } };
+    },
+  },
+  {
+    name: 'excluir_entrega',
+    title: 'Excluir entrega',
+    description: 'Apaga uma entrega, com os arquivos e as evidências dela. As tarefas que pendiam dela '
+      + 'continuam no projeto, soltas. O projeto precisa de ao menos uma entrega. Não tem volta: '
+      + 'confirme com a pessoa antes.',
+    inputSchema: { type: 'object', properties: { id: idNumero('Id da entrega.') }, required: ['id'] },
+    annotations: APAGA,
+    acoes: ['projetos', 'excluir_entrega'],
+    async executar(a, ctx) {
+      const { entrega: e, projeto } = await entregaOuErro(ctx, a.id);
+      await chamar(ctx, 'POST', 'excluir_entrega', { id: Number(e.id) });
+      return { excluida: { id: Number(e.id), titulo: e.titulo }, projeto: { id: String(projeto.id), nome: projeto.nome } };
+    },
+  },
+  {
+    name: 'anexar_na_entrega',
+    title: 'Anexar na entrega',
+    description: 'Anexa arquivos numa entrega, em base64, até uns 3 MB cada. tipo "arquivo" (padrão): '
+      + 'material da entrega. tipo "evidencia": a prova de uma etapa, que libera o status; etapa '
+      + '"Entrega" (o comprovante do que foi enviado, para Entregue) ou "Validação" (o aceite do '
+      + 'cliente, para Validada). substituir troca a prova anterior daquela etapa. O comentário vai junto '
+      + 'da evidência.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        entrega_id: idNumero('Id da entrega.'),
+        tipo: { type: 'string', enum: ['arquivo', 'evidencia'] },
+        etapa: { type: 'string', enum: ['Entrega', 'Validação'], description: 'Só para evidência. Padrão Entrega.' },
+        comentario: { type: 'string', description: 'Só para evidência.' },
+        substituir: { type: 'boolean', description: 'Só para evidência: troca a prova anterior da etapa.' },
+        anexos: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            properties: {
+              nome: { type: 'string', description: 'Nome do arquivo, com extensão.' },
+              tipo: { type: 'string', description: 'MIME, como application/pdf. Padrão application/octet-stream.' },
+              base64: { type: 'string', description: 'Conteúdo em base64, sem o prefixo data:.' },
+            },
+            required: ['nome', 'base64'],
+          },
+        },
+      },
+      required: ['entrega_id', 'anexos'],
+    },
+    annotations: ESCRITA,
+    acoes: ['projetos', 'add_entrega_arquivo', 'add_entrega_evidencia'],
+    async executar(a, ctx) {
+      const { entrega: e, projeto } = await entregaOuErro(ctx, a.entrega_id);
+      const evidencia = String(a.tipo ?? 'arquivo') === 'evidencia';
+      const etapa = String(a.etapa ?? 'Entrega');
+      if (evidencia && !['Entrega', 'Validação'].includes(etapa)) throw new ErroFerramenta('etapa da evidência é Entrega ou Validação.');
+      const anexos = (Array.isArray(a.anexos) ? a.anexos : []).map((x: any) => {
+        const base64 = String(x?.base64 ?? '').replace(/^data:[^,]*,/, '');
+        const nome = String(x?.nome ?? '').trim();
+        if (!nome || !base64) throw new ErroFerramenta('Cada anexo precisa de nome e base64.');
+        return { nome, tipo: String(x?.tipo ?? 'application/octet-stream'), base64, tamanho: Buffer.from(base64, 'base64').length };
+      });
+      if (!anexos.length) throw new ErroFerramenta('Faltou o arquivo.');
+      if (evidencia) {
+        // Em fila: com substituir, só a primeira troca a prova anterior, e as
+        // outras se somam a ela, em vez de uma apagar a outra.
+        for (const [i, x] of anexos.entries()) {
+          await chamar(ctx, 'POST', 'add_entrega_evidencia', {
+            entrega_id: Number(e.id), etapa, ...x,
+            comentario: i === 0 ? String(a.comentario ?? '') : '', substituir: i === 0 && a.substituir === true,
+          });
+        }
+      } else {
+        // Arquivos não dependem um do outro: vão juntos.
+        await Promise.all(anexos.map(x => chamar(ctx, 'POST', 'add_entrega_arquivo', { entrega_id: Number(e.id), ...x })));
+      }
+      return {
+        entrega: { id: Number(e.id), titulo: e.titulo }, projeto: { id: String(projeto.id), nome: projeto.nome },
+        anexados: anexos.map(x => x.nome), como: evidencia ? `evidência da etapa ${etapa}` : 'arquivo da entrega',
+      };
+    },
+  },
+  {
     name: 'listar_status',
     title: 'Listar etapas',
     description: 'As etapas do quadro de tarefas, na ordem. entrada: onde a tarefa nova nasce; '
@@ -1134,7 +1360,10 @@ const INSTRUCOES = [
     + 'pedirem um chamado. Trabalho interno é criar_tarefa.',
   'Projeto: listar_projetos para achar o id e os links; ver_projeto para a ficha inteira (descrição, '
     + 'repositórios, Drive, acessos sem senha, equipe, entregas, reuniões e tarefas).',
-  'Excluir tarefa não tem volta: confirme com a pessoa antes.',
+  'Entregas: criar_entrega, editar_entrega e excluir_entrega mexem nos marcos do projeto; '
+    + 'anexar_na_entrega põe arquivo ou evidência nelas. Os ids das entregas vêm de ver_projeto '
+    + '(secao entregas). Marcar como Entregue ou Validada pede antes a evidência daquela etapa.',
+  'Excluir tarefa ou entrega não tem volta: confirme com a pessoa antes.',
 ].join('\n\n');
 
 export const SERVIDOR: Servidor<Ctx> = {
