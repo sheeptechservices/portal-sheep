@@ -210,6 +210,10 @@ confirmado, sem IA no meio e sem gastar a assinatura, e avisa no privado.
   com leitura do portal, sem escrita, grupos, agenda nem internet, e manda o
   que sair para o destino gravado. Esse é o único agendamento com IA no meio,
   e o texto gerado nunca escolhe para onde vai. Um agendamento por pessoa.
+  Com `com_imagem`, a peça (ou o gráfico) é gerada no horário com os dados do
+  dia e vai como imagem, com o texto de legenda; se a imagem não sair em duas
+  tentativas, vai o texto, e o aviso ao dono diz isso. Agendamento gravado
+  antes dessa opção, cujo pedido fala em imagem ou peça, também sai em imagem.
 - Só quando a pessoa pede ("me pergunta antes de enviar"), o agendamento leva
   `confirmar_antes`: no horário, em vez de rodar, o bot mostra no privado do
   dono o que vai sair (na mensagem gerada, o texto já montado) e espera. O

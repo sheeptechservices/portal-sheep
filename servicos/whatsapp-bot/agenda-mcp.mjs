@@ -41,8 +41,10 @@ const FERRAMENTAS = [
       + 'num horário, uma vez ou repetindo. No horário o bot executa exatamente a chamada gravada, sem perguntar '
       + 'de novo, e avisa no privado. Resolva antes os ids, nomes e números exatos com as ferramentas de leitura. '
       + 'Conteúdo que depende do dia (relatório, lista de tarefas, resumo da semana) vai como mensagem_gerada, '
-      + 'com argumentos { grupo ou numero, pedido, em_audio, mencionar }: no horário o bot escreve a mensagem com '
-      + 'os dados daquele momento, só lendo o portal, e manda para o destino. '
+      + 'com argumentos { grupo ou numero, pedido, em_audio, com_imagem, mencionar }: no horário o bot escreve a mensagem com '
+      + 'os dados daquele momento, só lendo o portal, e manda para o destino. Quando a pessoa quer o envio em imagem '
+      + '(a peça do relatório, um gráfico), ponha com_imagem: true: no horário a peça é gerada de novo, com os dados do '
+      + 'dia, e vai como imagem com o texto de legenda. Sem ele, vai só texto. '
       + 'Age mais tarde sem ninguém olhar: só rode depois da confirmação.',
     inputSchema: {
       type: 'object',
