@@ -562,38 +562,31 @@ export function CartaoReportar({
       <div className={`reportar-painel${painel ? ' aberto' : ''}`} aria-hidden={!painel}>
         {cartao}
       </div>
-      {/* A gota: o círculo que estica até virar a pílula "Reportar", e a
-          pílula de Chamados que se desprende dela logo depois. */}
+      {/* Uma linha de botões redondos, todos parados no lugar: o mural e o
+          diário (de fora), Chamados no mesmo vidro deles e Reportar em limão,
+          o destaque. O nome de cada um vem na dica do ponteiro. */}
       <div className="reportar-linha">
       {aoLado}
-      <div className="reportar-gota">
-        {listar && carregarPrint && (
-          <button type="button" className="reportar-gota-fila" tabIndex={painel ? -1 : 0}
-            onClick={() => setVendoFila(true)}>
-            <IconInbox size={15} />
-            <span>Chamados</span>
-          </button>
-        )}
-        <button type="button" className="reportar-fab-principal"
-          aria-expanded={painel}
-          aria-label={painel ? 'Fechar o relato' : 'Reportar'}
-          onClick={() => {
-            if (aberto) fechar();
-            else if (pronto) { setPronto(false); setAviso(null); }
-            else setAberto(true);
-          }}>
-          <span className="reportar-gota-texto" aria-hidden="true">
-            {'Reportar'.split('').map((letra, k) => (
-              <span key={k} style={{ '--k': k } as CSSProperties}>{letra}</span>
-            ))}
-          </span>
-          <span className="reportar-gota-ico">
-            <span className={`reportar-fab-giro${painel ? ' fechar' : ''}`} key={painel ? 'x' : 'megafone'}>
-              {painel ? <IconX size={19} /> : <IconMegafone size={19} />}
-            </span>
-          </span>
+      {listar && carregarPrint && (
+        <button type="button" className="diario-fab reportar-fila-fab" tabIndex={painel ? -1 : 0}
+          aria-label="Ver os chamados" title="Chamados"
+          onClick={() => setVendoFila(true)}>
+          <span className="diario-fab-giro"><IconInbox size={18} /></span>
         </button>
-      </div>
+      )}
+      <button type="button" className="reportar-fab-principal"
+        aria-expanded={painel}
+        aria-label={painel ? 'Fechar o relato' : 'Reportar'}
+        title={painel ? undefined : 'Reportar um problema ou sugestão'}
+        onClick={() => {
+          if (aberto) fechar();
+          else if (pronto) { setPronto(false); setAviso(null); }
+          else setAberto(true);
+        }}>
+        <span className={`reportar-fab-giro${painel ? ' fechar' : ''}`} key={painel ? 'x' : 'megafone'}>
+          {painel ? <IconX size={19} /> : <IconMegafone size={19} />}
+        </span>
+      </button>
       </div>
       {fila}
     </div>
