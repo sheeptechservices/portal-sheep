@@ -94,7 +94,8 @@ passa a voz do WhatsApp (OGG/Opus) para WAV antes. Tudo isso fica em
   como um escrito.
 - Responder a um áudio com um pedido ("cria um card disso") leva a
   transcrição como assunto.
-- Nos grupos, `baixar_midia_do_grupo` devolve a transcrição do áudio de alguém.
+- Nos grupos, `baixar_midia_do_grupo` devolve a transcrição do áudio de alguém;
+  nas conversas privadas do número, `baixar_midia_da_conversa`.
 - Uma transcrição por vez, até 5 minutos de áudio; acima disso, um aviso. O
   áudio de passagem é apagado no fim.
 
@@ -164,8 +165,9 @@ O mesmo vale para as conversas privadas do número da casa: o que alguém
 mandou direto para ele fica guardado na Evolution, e o bot lista essas
 conversas (`listar_conversas`) e lê uma delas pelo número ou pelo nome
 (`ler_conversa`). O WhatsApp às vezes guarda a conversa por um código interno
-(`@lid`) em vez do telefone, e a leitura procura pelas duas grafias. É só
-leitura, e só no privado do dono: responder é `enviar_para_pessoa`, com
+(`@lid`) em vez do telefone, e a leitura procura pelas duas grafias. O print,
+o documento e o áudio dessas conversas se abrem com `baixar_midia_da_conversa`,
+igual aos dos grupos. É só leitura, e só no privado do dono: responder é `enviar_para_pessoa`, com
 confirmação.
 
 Ele também manda mensagem num grupo, com menção: "manda no grupo da Tech Squad

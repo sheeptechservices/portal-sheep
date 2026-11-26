@@ -67,18 +67,17 @@ const FERRAMENTAS = [
   {
     name: 'baixar_midia_do_grupo',
     title: 'Baixar arquivo ou ouvir áudio de um grupo',
-    description: 'Baixa a imagem, o PDF, o Word, o Excel ou o JSON de uma mensagem de um grupo (id de ler_grupo) ou de '
-      + 'uma conversa privada (id de ler_conversa) para a pasta de mídias, e devolve o caminho para ler com Read e o '
-      + 'do original, para anexar com comentar_com_anexo. Num áudio, devolve a transcrição automática em '
-      + 'transcricao (pode ter palavra trocada).',
+    description: 'Baixa a imagem, o PDF, o Word, o Excel ou o JSON de uma mensagem de um grupo (id de ler_grupo) '
+      + 'para a pasta de mídias, e devolve o caminho para ler com Read e o do original, para anexar com '
+      + 'comentar_com_anexo. Num áudio, devolve a transcrição automática em transcricao (pode ter palavra trocada). '
+      + 'Para mensagem de conversa privada, use baixar_midia_da_conversa.',
     inputSchema: {
       type: 'object',
       properties: {
-        grupo: { type: 'string', description: 'Id do grupo ou parte do nome. Para conversa privada, use conversa.' },
-        conversa: { type: 'string', description: 'No lugar de grupo: o número da pessoa da conversa privada.' },
-        mensagem_id: { type: 'string', description: 'O id da mensagem, de ler_grupo ou ler_conversa.' },
+        grupo: { type: 'string', description: 'Id do grupo ou parte do nome.' },
+        mensagem_id: { type: 'string', description: 'O id da mensagem, de ler_grupo.' },
       },
-      required: ['mensagem_id'],
+      required: ['grupo', 'mensagem_id'],
     },
   },
   {
@@ -100,8 +99,7 @@ const FERRAMENTAS = [
     title: 'Ler uma conversa privada',
     description: 'As mensagens de uma conversa privada do número da casa, da mais antiga para a mais nova, com '
       + 'quem mandou, quando (horário de Brasília) e o texto. É onde está o que alguém mandou direto para o número '
-      + 'da casa. Imagem, áudio e documento aparecem marcados, com o id para baixar_midia_do_grupo (passando '
-      + 'conversa no lugar de grupo).',
+      + 'da casa. Imagem, áudio e documento aparecem marcados, com o id para baixar_midia_da_conversa.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -109,6 +107,23 @@ const FERRAMENTAS = [
         nome: { type: 'string', description: 'No lugar do número: o nome da pessoa, ou parte dele.' },
         limite: { type: 'integer', minimum: 1, maximum: 200, description: 'Quantas mensagens trazer. Padrão 40.' },
       },
+    },
+  },
+  {
+    name: 'baixar_midia_da_conversa',
+    title: 'Abrir arquivo ou ouvir áudio de uma conversa privada',
+    description: 'O mesmo que baixar_midia_do_grupo, para uma mensagem de conversa privada do número da casa (id de '
+      + 'ler_conversa): a imagem, o PDF, o Word, o Excel ou o JSON vão para a pasta de mídias, com o caminho para '
+      + 'ler com Read e o do original, para anexar com comentar_com_anexo. Num áudio, devolve a transcrição '
+      + 'automática em transcricao (pode ter palavra trocada).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        numero: { type: 'string', description: 'O número da pessoa da conversa, como veio em ler_conversa.' },
+        nome: { type: 'string', description: 'No lugar do número: o nome da pessoa, ou parte dele.' },
+        mensagem_id: { type: 'string', description: 'O id da mensagem, de ler_conversa.' },
+      },
+      required: ['mensagem_id'],
     },
   },
   {
@@ -313,6 +328,9 @@ async function lerConversa(a) {
     conversa: { numero: c.numero, nome },
     mensagens,
     ...(mensagens.length ? {} : { aviso: 'nenhuma mensagem guardada nessa conversa' }),
+    ...(mensagens.some(m => m.midia)
+      ? { midias: 'abra imagem e documento, e ouça áudio, com baixar_midia_da_conversa (este numero e o id da mensagem)' }
+      : {}),
   };
 }
 
@@ -386,7 +404,7 @@ const TIPOS = {
 
 async function baixarMidia(a) {
   // De um grupo ou de uma conversa privada: a mensagem só serve se for de lá.
-  const privada = !a.grupo && (a.conversa || a.numero);
+  const privada = !a.grupo && (a.conversa || a.numero || a.nome);
   if (!a.grupo && !privada) throw new Error('diga o grupo ou a conversa (número) da mensagem');
   const onde = privada ? new Set((await acharConversa(a)).jids) : new Set([(await acharGrupo(a.grupo)).id]);
   const id = String(a.mensagem_id ?? '').trim();
@@ -502,6 +520,7 @@ const enviar = (msg) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0',
 const EXECUTAR = {
   listar_grupos: () => grupos(), ler_grupo: lerGrupo, baixar_midia_do_grupo: baixarMidia,
   listar_conversas: listarConversas, ler_conversa: lerConversa,
+  baixar_midia_da_conversa: a => baixarMidia({ numero: a.numero, nome: a.nome, mensagem_id: a.mensagem_id }),
   participantes_do_grupo: participantes, enviar_no_grupo: enviarNoGrupo,
   procurar_contato: procurarContato, enviar_para_pessoa: enviarParaPessoa,
 };
