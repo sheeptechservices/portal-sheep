@@ -118,9 +118,11 @@ const COMENTAR_COM_ANEXO = 'mcp__anexos__comentar_com_anexo';
 const ANEXAR_NA_ENTREGA = 'mcp__anexos__anexar_arquivo_na_entrega';
 const ESCRITA_TODAS = [...ESCRITA.map(doPortal), COMENTAR_COM_ANEXO, ANEXAR_NA_ENTREGA];
 /** O servidor de grupos do bot (`whatsapp-mcp.mjs`): lista os grupos, lê as
- *  mensagens, baixa arquivos e diz quem está em cada um. Só na conversa
- *  privada: no grupo, o bot não lê o que se diz em outros grupos. */
-const GRUPOS_NO_PRIVADO = ['listar_grupos', 'ler_grupo', 'baixar_midia_do_grupo', 'participantes_do_grupo', 'procurar_contato']
+ *  mensagens, baixa arquivos e diz quem está em cada um, e lê as conversas
+ *  privadas do número da casa. Só na conversa privada do dono: no grupo, o bot
+ *  não lê o que se diz em outros grupos nem no privado de ninguém. */
+const GRUPOS_NO_PRIVADO = ['listar_grupos', 'ler_grupo', 'baixar_midia_do_grupo', 'participantes_do_grupo', 'procurar_contato',
+  'listar_conversas', 'ler_conversa']
   .map(n => `mcp__whatsapp__${n}`);
 /** Mandar mensagem num grupo ou no privado de alguém, em texto ou áudio:
  *  escreve para fora com o número da casa e não se desfaz. Só no privado e só
@@ -722,6 +724,7 @@ function instrucoes(quem) {
     '',
     'Chamado: só quando a pessoa pedir claramente um chamado ("abre um chamado", "registra um chamado para o cliente X"), use abrir_chamado. Ele grava o chamado no painel de chamados do cliente, que o cliente acompanha, e a tarefa do time nasce sozinha na Triagem, com o gestor, as etiquetas e o prazo: não crie a tarefa à parte. Pedido que não fala em chamado é tarefa comum, com criar_tarefa.',
     'Grupos do WhatsApp: na conversa privada você lê os grupos em que o número da casa está, pelo servidor MCP "whatsapp": listar_grupos (com o cliente de cada grupo e os projetos dele, já com os links, pelo vínculo cadastrado no portal ou deduzido do nome do grupo: cliente.como diz qual), ler_grupo (as mensagens recentes, com quem mandou e quando) e baixar_midia_do_grupo (o print ou arquivo de uma mensagem, para ler com Read ou anexar com comentar_com_anexo).',
+    'Conversas privadas do número da casa: o que outras pessoas mandaram direto para o número da casa fica guardado, e você lê com listar_conversas (as conversas recentes, com número e nome) e ler_conversa (as mensagens de uma delas, pelo número ou pelo nome). Quando a pessoa disser que alguém mandou mensagem no privado do número, leia com ler_conversa em vez de pedir print. O arquivo de uma mensagem privada se baixa com baixar_midia_do_grupo passando conversa (o número) no lugar de grupo. É só leitura: responder continua sendo enviar_para_pessoa, com confirmação.',
     'Com isso a pessoa pode pedir no privado coisas como "cria um chamado da última solicitação da Vanda no grupo": ache o grupo e o projeto, leia as mensagens, junte as mensagens seguidas da pessoa que formam o pedido, e proponha o chamado com ela como quem pediu. Se o grupo não estiver claro, pergunte qual. Se o pedido veio com print, ofereça anexá-lo na tarefa do chamado com comentar_com_anexo, na mesma confirmação.',
     'Mensagem num grupo: quando a pessoa pedir no privado para mandar algo num grupo ("manda no grupo da Tech Squad: reunião às 15h, marcando o Raul"), use enviar_no_grupo. Ache o grupo com listar_grupos e quem marcar com participantes_do_grupo, pelo nome; se houver mais de uma pessoa com o nome, ou nenhuma, pergunte em vez de escolher. Proponha mostrando o nome do grupo, o texto exato que vai sair e quem vai ser marcado (nome e número), e termine com "Confirma? (sim/não)". Depois do sim, chame enviar_no_grupo com o id do grupo, o texto com @ seguido do número de cada pessoa marcada no lugar do nome (ex.: "teste @5531999990000") e os números em mencionar. Mande só o texto combinado, sem assinatura e sem dizer que é um bot. A mensagem sai com o número da casa e não se desfaz.',
     'Mensagem no privado de alguém: quando a pessoa pedir para mandar algo para alguém ("manda pro Raul no privado que a reunião mudou"), ache o número com procurar_contato (ou participantes_do_grupo, se a pessoa está num grupo); se houver mais de um contato com o nome, ou nenhum, pergunte. Proponha mostrando o nome, o número e o texto exato, com "Confirma? (sim/não)", e depois do sim use enviar_para_pessoa.',

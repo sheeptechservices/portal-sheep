@@ -160,6 +160,14 @@ de chamado concluído; sem vínculo, o nome do grupo diz o cliente), lê as
 mensagens recentes, que a Evolution guarda, baixa o print ou arquivo de uma
 delas e diz quem está no grupo. Quem faz é `whatsapp-mcp.mjs`.
 
+O mesmo vale para as conversas privadas do número da casa: o que alguém
+mandou direto para ele fica guardado na Evolution, e o bot lista essas
+conversas (`listar_conversas`) e lê uma delas pelo número ou pelo nome
+(`ler_conversa`). O WhatsApp às vezes guarda a conversa por um código interno
+(`@lid`) em vez do telefone, e a leitura procura pelas duas grafias. É só
+leitura, e só no privado do dono: responder é `enviar_para_pessoa`, com
+confirmação.
+
 Ele também manda mensagem num grupo, com menção: "manda no grupo da Tech Squad
 que a reunião é às 15h, marcando o Raul". O bot acha o Raul entre os
 participantes, pelo nome com que ele aparece nas mensagens (dois Raul, ou
@@ -403,7 +411,7 @@ tem?" mostra a lista, e "esquece a dos tópicos" apaga.
 | `index.mjs` | O serviço: recebe o webhook da Evolution, filtra, chama o Claude Code e responde. |
 | `documentos.mjs` | Word e Excel em texto, abrindo o zip com o próprio Node. |
 | `anexos-mcp.mjs` | Servidor MCP do bot: anexa a um comentário do portal, ou a uma entrega (como arquivo ou como evidência de etapa), um arquivo recebido. |
-| `whatsapp-mcp.mjs` | Servidor MCP do bot: lista os grupos, lê as mensagens, baixa arquivos, diz quem está no grupo e manda mensagem com menção (depois da confirmação). |
+| `whatsapp-mcp.mjs` | Servidor MCP do bot: lista os grupos e as conversas privadas, lê as mensagens, baixa arquivos, diz quem está no grupo e manda mensagem com menção (depois da confirmação). |
 | `relatorios-mcp.mjs` | Servidor MCP do bot: números das tarefas, gráficos e relatórios. |
 | `graficos.mjs` e `marca/` | O desenho dos gráficos e dos relatórios, com a logo da Sheep. |
 | `voz.mjs` e `falar.py` | Texto em mensagem de voz, com o Kokoro e o ffmpeg, na própria máquina. |

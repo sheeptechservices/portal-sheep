@@ -1,14 +1,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  Servidor MCP do próprio bot: os grupos do WhatsApp em que o número da casa
-//  está.
+//  está, e as conversas privadas dele (o que outras pessoas mandaram para o
+//  número da casa).
 //
 //  É o que deixa pedir no privado "cria um chamado da última solicitação da
 //  Vanda no grupo": o bot lista os grupos (com o projeto do portal vinculado a
 //  cada um), lê as mensagens recentes do grupo e baixa um print ou arquivo que
 //  alguém mandou lá.
 //
-//  Quase tudo aqui é leitura: listar, ler, baixar, ver quem está no grupo e
-//  procurar um contato. As escritas são enviar_no_grupo e enviar_para_pessoa,
+//  Quase tudo aqui é leitura: listar e ler grupos e conversas privadas, baixar
+//  arquivo, ver quem está no grupo e procurar um contato. As escritas são enviar_no_grupo e enviar_para_pessoa,
 //  que mandam texto ou áudio (na voz do bot) num grupo ou no privado de alguém:
 //  o bot só as libera na conversa privada com o número autorizado e na
 //  mensagem que confirma a proposta, com o destino e o texto à vista.
@@ -66,16 +67,48 @@ const FERRAMENTAS = [
   {
     name: 'baixar_midia_do_grupo',
     title: 'Baixar arquivo ou ouvir áudio de um grupo',
-    description: 'Baixa a imagem, o PDF, o Word, o Excel ou o JSON de uma mensagem do grupo (id de ler_grupo) para a '
-      + 'pasta de mídias, e devolve o caminho para ler com Read e o do original, para anexar com comentar_com_anexo. '
-      + 'Num áudio, devolve a transcrição automática em transcricao (pode ter palavra trocada).',
+    description: 'Baixa a imagem, o PDF, o Word, o Excel ou o JSON de uma mensagem de um grupo (id de ler_grupo) ou de '
+      + 'uma conversa privada (id de ler_conversa) para a pasta de mídias, e devolve o caminho para ler com Read e o '
+      + 'do original, para anexar com comentar_com_anexo. Num áudio, devolve a transcrição automática em '
+      + 'transcricao (pode ter palavra trocada).',
     inputSchema: {
       type: 'object',
       properties: {
-        grupo: { type: 'string', description: 'Id do grupo ou parte do nome.' },
-        mensagem_id: { type: 'string', description: 'O id da mensagem, de ler_grupo.' },
+        grupo: { type: 'string', description: 'Id do grupo ou parte do nome. Para conversa privada, use conversa.' },
+        conversa: { type: 'string', description: 'No lugar de grupo: o número da pessoa da conversa privada.' },
+        mensagem_id: { type: 'string', description: 'O id da mensagem, de ler_grupo ou ler_conversa.' },
       },
-      required: ['grupo', 'mensagem_id'],
+      required: ['mensagem_id'],
+    },
+  },
+  {
+    name: 'listar_conversas',
+    title: 'Listar conversas privadas do número da casa',
+    description: 'As conversas privadas do número da casa (pessoas que mandaram mensagem para ele, ou para quem '
+      + 'ele mandou), da mais recente para a mais antiga, com o número, o nome e quando foi a última mensagem. '
+      + 'Grupos ficam de fora (são de listar_grupos).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        nome: { type: 'string', description: 'Só as conversas com quem tem este nome (parte dele basta).' },
+        limite: { type: 'integer', minimum: 1, maximum: 100, description: 'Quantas trazer. Padrão 30.' },
+      },
+    },
+  },
+  {
+    name: 'ler_conversa',
+    title: 'Ler uma conversa privada',
+    description: 'As mensagens de uma conversa privada do número da casa, da mais antiga para a mais nova, com '
+      + 'quem mandou, quando (horário de Brasília) e o texto. É onde está o que alguém mandou direto para o número '
+      + 'da casa. Imagem, áudio e documento aparecem marcados, com o id para baixar_midia_do_grupo (passando '
+      + 'conversa no lugar de grupo).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        numero: { type: 'string', description: 'O número da pessoa, com DDI e DDD (o nono dígito é opcional).' },
+        nome: { type: 'string', description: 'No lugar do número: o nome da pessoa, ou parte dele.' },
+        limite: { type: 'integer', minimum: 1, maximum: 200, description: 'Quantas mensagens trazer. Padrão 40.' },
+      },
     },
   },
   {
@@ -194,6 +227,95 @@ async function acharGrupo(pedido) {
   return achado;
 }
 
+// ── As conversas privadas ───────────────────────────────────────────────────
+//  O WhatsApp identifica a conversa às vezes pelo telefone (`...@s.whatsapp.net`)
+//  e às vezes por um código interno (`...@lid`), com o telefone ao lado. A
+//  conversa guarda os dois, e a leitura procura pelos dois.
+
+/** O telefone nas duas grafias do WhatsApp: com e sem o nono dígito. */
+function formasDoNumero(n) {
+  const formas = new Set([n]);
+  if (/^55\d{2}9\d{8}$/.test(n)) formas.add(n.slice(0, 4) + n.slice(5));
+  if (/^55\d{10}$/.test(n)) formas.add(`${n.slice(0, 4)}9${n.slice(4)}`);
+  return formas;
+}
+
+const PRIVADA = (jid) => /@(s\.whatsapp\.net|lid)$/.test(String(jid ?? ''));
+
+async function conversasPrivadas() {
+  const r = await evolution('POST', `/chat/findChats/${INSTANCIA}`, {}).catch(() => []);
+  const lista = [];
+  for (const c of Array.isArray(r) ? r : []) {
+    const ultima = c.lastMessage?.key ?? {};
+    const jids = [...new Set([c.remoteJid, c.remoteJidAlt, ultima.remoteJid, ultima.remoteJidAlt, ultima.senderPn]
+      .map(j => String(j ?? '')).filter(PRIVADA))];
+    if (!jids.length || !PRIVADA(c.remoteJid)) continue;
+    const telefone = jids.find(j => j.endsWith('@s.whatsapp.net'));
+    lista.push({
+      jids,
+      numero: telefone ? digitos(telefone) : null,
+      nome: c.pushName ?? c.name ?? (ultima.fromMe ? null : c.lastMessage?.pushName) ?? null,
+      atualizado: c.updatedAt ?? null,
+    });
+  }
+  return lista.sort((a, b) => String(b.atualizado ?? '').localeCompare(String(a.atualizado ?? '')));
+}
+
+async function listarConversas(a) {
+  const limite = Math.min(Math.max(Number(a.limite) || 30, 1), 100);
+  let lista = await conversasPrivadas();
+  if (a.nome) lista = lista.filter(c => semAcento(c.nome).includes(semAcento(a.nome)));
+  return {
+    conversas: lista.slice(0, limite).map(c => ({ numero: c.numero, nome: c.nome, atualizado: c.atualizado })),
+  };
+}
+
+/** A conversa pelo número (em qualquer das grafias) ou pelo nome. */
+async function acharConversa(a) {
+  const numero = digitos(a.numero ?? a.conversa ?? '');
+  const lista = await conversasPrivadas();
+  if (numero) {
+    const formas = formasDoNumero(numero.length <= 11 ? `55${numero}` : numero);
+    const achada = lista.find(c => c.numero && formas.has(c.numero));
+    // Sem conversa guardada com esse número, ainda dá para procurar as
+    // mensagens pelo telefone direto.
+    return achada ?? { jids: [...formas].map(f => `${f}@s.whatsapp.net`), numero: [...formas][0], nome: null };
+  }
+  const nome = semAcento(a.nome);
+  if (!nome) throw new Error('diga o número ou o nome da pessoa');
+  const achadas = lista.filter(c => semAcento(c.nome).includes(nome));
+  if (!achadas.length) throw new Error(`não achei conversa privada com "${a.nome}"`);
+  if (achadas.length > 1 && !achadas.some(c => semAcento(c.nome) === nome)) {
+    throw new Error(`mais de uma conversa com esse nome: ${achadas.slice(0, 6).map(c => `${c.nome} (${c.numero ?? 'sem número'})`).join(', ')}. Diga o número.`);
+  }
+  return achadas.find(c => semAcento(c.nome) === nome) ?? achadas[0];
+}
+
+async function lerConversa(a) {
+  const c = await acharConversa(a);
+  const limite = Math.min(Math.max(Number(a.limite) || 40, 1), 200);
+  // Uma busca por grafia, em paralelo; a mesma mensagem guardada pelas duas
+  // vem uma vez só.
+  const lotes = await Promise.all(c.jids.map(jid =>
+    evolution('POST', `/chat/findMessages/${INSTANCIA}`, { where: { key: { remoteJid: jid } }, page: 1, offset: limite })
+      .then(r => r?.messages?.records ?? (Array.isArray(r) ? r : []))
+      .catch(() => [])));
+  const porId = new Map();
+  for (const reg of lotes.flat()) if (reg?.key?.id && !porId.has(reg.key.id)) porId.set(reg.key.id, reg);
+  const mensagens = [...porId.values()]
+    .sort((x, y) => Number(x.messageTimestamp) - Number(y.messageTimestamp))
+    .map(linha)
+    .filter(Boolean)
+    .map(m => (m.numero || m.quem.startsWith('Sheep') ? m : { ...m, numero: c.numero }))
+    .slice(-limite);
+  const nome = c.nome ?? [...porId.values()].find(r => !r.key?.fromMe && r.pushName)?.pushName ?? null;
+  return {
+    conversa: { numero: c.numero, nome },
+    mensagens,
+    ...(mensagens.length ? {} : { aviso: 'nenhuma mensagem guardada nessa conversa' }),
+  };
+}
+
 // ── As mensagens ────────────────────────────────────────────────────────────
 
 function miolo(m) {
@@ -263,11 +385,14 @@ const TIPOS = {
 };
 
 async function baixarMidia(a) {
-  const g = await acharGrupo(a.grupo);
+  // De um grupo ou de uma conversa privada: a mensagem só serve se for de lá.
+  const privada = !a.grupo && (a.conversa || a.numero);
+  if (!a.grupo && !privada) throw new Error('diga o grupo ou a conversa (número) da mensagem');
+  const onde = privada ? new Set((await acharConversa(a)).jids) : new Set([(await acharGrupo(a.grupo)).id]);
   const id = String(a.mensagem_id ?? '').trim();
   const r = await evolution('POST', `/chat/findMessages/${INSTANCIA}`, { where: { key: { id } }, page: 1, offset: 5 });
-  const reg = (r?.messages?.records ?? []).find(x => x.key?.id === id && x.key?.remoteJid === g.id);
-  if (!reg) throw new Error('não achei essa mensagem nesse grupo');
+  const reg = (r?.messages?.records ?? []).find(x => x.key?.id === id && onde.has(x.key?.remoteJid));
+  if (!reg) throw new Error(privada ? 'não achei essa mensagem nessa conversa' : 'não achei essa mensagem nesse grupo');
   const m = miolo(reg.message);
   const doc = m.documentMessage;
   // Áudio não vira arquivo para ler: vira texto, aqui mesmo.
@@ -376,6 +501,7 @@ async function procurarContato(a) {
 const enviar = (msg) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...msg })}\n`);
 const EXECUTAR = {
   listar_grupos: () => grupos(), ler_grupo: lerGrupo, baixar_midia_do_grupo: baixarMidia,
+  listar_conversas: listarConversas, ler_conversa: lerConversa,
   participantes_do_grupo: participantes, enviar_no_grupo: enviarNoGrupo,
   procurar_contato: procurarContato, enviar_para_pessoa: enviarParaPessoa,
 };
