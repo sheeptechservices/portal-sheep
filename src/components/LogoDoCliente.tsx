@@ -10,12 +10,15 @@
 //  Serve à divisória da Planning.
 // ─────────────────────────────────────────────────────────────────────────────
 import { logoDoCliente } from '../lib/marcas';
+import { useMarcas } from '../lib/useMarcas';
 
 export function LogoDoCliente({ cliente, altura = 16, larguraMaxima = 46 }: {
   cliente: string;
   altura?: number;
   larguraMaxima?: number;
 }) {
+  // Só para pintar de novo quando as logos gravadas pelo portal chegam.
+  useMarcas();
   const marca = logoDoCliente(cliente);
   if (!marca) return null;
   if (marca.cor && marca.proporcao) {

@@ -21,6 +21,8 @@ const linkDaTarefa = (id: unknown) => `${enderecoDoPortal()}/tarefas/${Number(id
 // A mesma lista de logos da tela (carrossel da entrada, seletores de cliente):
 // fonte única, para o bot do WhatsApp pôr a logo do cliente no gráfico.
 import { marcaDoCliente } from '../../src/lib/marcas.js';
+// A outra fonte de logo: a que o cliente ganhou pelo portal, gravada no banco.
+import { logosGravadas } from '../_logos-de-clientes.js';
 import { taxaDeRetorno } from '../../src/lib/retornos.js';
 
 export interface Ctx {
@@ -162,6 +164,109 @@ async function projetoOuErro(ctx: Ctx, pedido: unknown) {
     throw new ErroFerramenta(`Mais de um projeto bate com "${texto}": ${achados.map(x => `${x.nome} (${x.codigo ?? x.id})`).join(', ')}. Chame de novo com o código ou o id.`);
   }
   return achados[0];
+}
+
+// ── A ficha do projeto ──────────────────────────────────────────────────────
+
+/** As mesmas listas da tela do projeto (`ProjetosPage`, `papeisDeEquipe`). */
+const TIPOS_DO_PROJETO = ['BI', 'IA', 'SaaS', 'Automação', 'Integração', 'App', 'Site', 'Consultoria', 'Outro'];
+const STATUS_DO_PROJETO = ['Em andamento', 'Pausado', 'Concluído', 'Cancelado'];
+const PAPEIS_NA_EQUIPE = ['Comercial', 'Gestor', 'Dev', 'QA'];
+
+function escolhaDe(lista: string[], pedido: unknown, campo: string): string {
+  const achada = lista.find(x => semAcento(x) === semAcento(String(pedido ?? '')));
+  if (!achada) throw new ErroFerramenta(`${campo} "${pedido}" não existe. Use ${lista.join(', ')}.`);
+  return achada;
+}
+
+/** O cliente pelo nome (ou por um projeto dele). Com `criar`, o que não existe
+ *  nasce; nome parecido com um que já existe é erro com as opções, para não
+ *  nascer um segundo cadastro do mesmo cliente com outra grafia. */
+async function clienteDoPedido(ctx: Ctx, pedido: unknown, criar: boolean): Promise<{ id: string; nome: string; novo: boolean }> {
+  const texto = String(pedido ?? '').trim();
+  if (!texto) throw new ErroFerramenta('Diga qual cliente.');
+  const r = await lembrar(ctx, 'projetos', () => chamar(ctx, 'GET', 'projetos'));
+  const clientes: { id: string; nome: string }[] = (r.clientes ?? []).map((c: any) => ({ id: String(c.id), nome: String(c.nome) }));
+  const alvo = semAcento(texto);
+  const exato = clientes.find(c => c.id === texto || semAcento(c.nome) === alvo);
+  if (exato) return { ...exato, novo: false };
+  const parecidos = clientes.filter(c => semAcento(c.nome).includes(alvo) || alvo.includes(semAcento(c.nome)));
+  if (!criar) {
+    if (parecidos.length === 1) return { ...parecidos[0], novo: false };
+    // Pelo projeto: o cliente dele.
+    const projeto = await projetoOuErro(ctx, texto).catch(() => null);
+    const doProjeto = projeto?.cliente_id ? clientes.find(c => c.id === String(projeto.cliente_id)) : undefined;
+    if (doProjeto) return { ...doProjeto, novo: false };
+    throw new ErroFerramenta(parecidos.length
+      ? `Mais de um cliente bate com "${texto}": ${parecidos.map(c => c.nome).join(', ')}. Diga o nome exato.`
+      : `Cliente "${texto}" não encontrado.`);
+  }
+  if (parecidos.length) {
+    throw new ErroFerramenta(`Já existe cliente com nome parecido: ${parecidos.map(c => c.nome).join(', ')}. `
+      + 'Se for o mesmo, use o nome exato; se for outro, confirme com a pessoa o nome completo.');
+  }
+  const novo = await chamar(ctx, 'POST', 'create_cliente', { nome: texto });
+  ctx.cache.delete('projetos');
+  return { id: String(novo.id), nome: String(novo.nome), novo: true };
+}
+
+/** Pessoas por id, e-mail, `eu` ou nome (exato, ou parte que só uma pessoa tem). */
+async function idsDePessoasPorTexto(ctx: Ctx, pedidas: string[]): Promise<string[]> {
+  const todas = await pessoas(ctx);
+  return pedidas.map(p => {
+    if (p === 'eu') return ctx.usuario.id;
+    const direta = todas.find(u => u.id === p || u.email === p.toLowerCase());
+    if (direta) return direta.id;
+    const alvo = semAcento(p);
+    const exatas = todas.filter(u => semAcento(u.nome ?? '') === alvo);
+    const achadas = exatas.length ? exatas : todas.filter(u => semAcento(u.nome ?? '').includes(alvo));
+    if (achadas.length === 1) return achadas[0].id;
+    throw new ErroFerramenta(achadas.length
+      ? `Mais de uma pessoa bate com "${p}": ${achadas.map(u => `${u.nome} (${u.email})`).join(', ')}. Use o e-mail.`
+      : `Pessoa "${p}" não encontrada. Veja os nomes e e-mails em listar_pessoas.`);
+  });
+}
+
+async function equipeDoPedido(ctx: Ctx, bruto: unknown): Promise<{ usuario_id: string; papel: string }[]> {
+  const lista = Array.isArray(bruto) ? bruto : [];
+  const equipe: { usuario_id: string; papel: string }[] = [];
+  for (const m of lista) {
+    const [id] = await idsDePessoasPorTexto(ctx, [String((m as any)?.pessoa ?? '').trim()]);
+    const papel = escolhaDe(PAPEIS_NA_EQUIPE, (m as any)?.papel ?? 'Dev', 'Papel');
+    // A mesma pessoa não acumula dois papéis no mesmo projeto: vale o primeiro.
+    if (!equipe.some(x => x.usuario_id === id)) equipe.push({ usuario_id: id, papel });
+  }
+  return equipe;
+}
+
+function linksDoProjeto(bruto: unknown, campo: string) {
+  const lista = Array.isArray(bruto) ? bruto : [];
+  return lista.map((x: any) => {
+    const url = String(typeof x === 'string' ? x : x?.url ?? '').trim();
+    if (!/^https?:\/\/\S+$/i.test(url)) throw new ErroFerramenta(`${campo}: "${url}" não é um endereço http ou https.`);
+    return { nome: typeof x === 'string' ? '' : String(x?.nome ?? '').trim(), url };
+  });
+}
+
+/** Os campos simples da ficha, só os que vieram, já conferidos. */
+async function camposDoProjeto(_ctx: Ctx, a: Record<string, any>): Promise<Record<string, unknown>> {
+  const c: Record<string, unknown> = {};
+  for (const campo of ['descricao', 'objetivo', 'observacoes']) {
+    if (a[campo] !== undefined) c[campo] = a[campo] === null ? null : String(a[campo]);
+  }
+  if (a.tipo !== undefined) c.tipo = a.tipo ? escolhaDe(TIPOS_DO_PROJETO, a.tipo, 'Tipo') : null;
+  if (a.status !== undefined) c.status = escolhaDe(STATUS_DO_PROJETO, a.status, 'Status');
+  if (a.prioridade !== undefined) c.prioridade = escolhaDe(PRIORIDADES, a.prioridade, 'Prioridade');
+  if (a.data_inicio !== undefined) c.data_inicio = data(a.data_inicio, 'data_inicio');
+  if (a.previsao_entrega !== undefined) c.previsao_entrega = data(a.previsao_entrega, 'previsao_entrega');
+  if (a.repositorios !== undefined) c.repositorios = linksDoProjeto(a.repositorios, 'repositorios');
+  if (a.drives !== undefined) c.drives = linksDoProjeto(a.drives, 'drives');
+  if (a.link_portal !== undefined) {
+    const url = String(a.link_portal ?? '').trim();
+    if (url && !/^https?:\/\/\S+$/i.test(url)) throw new ErroFerramenta(`link_portal: "${url}" não é um endereço http ou https.`);
+    c.link_portal = url || null;
+  }
+  return c;
 }
 
 /** A entrega pelo id, com o projeto dela, dentro do que a pessoa enxerga. */
@@ -925,13 +1030,17 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
     annotations: LEITURA,
     acoes: ['tarefas_projetos'],
     async executar(a, ctx) {
-      const r = await chamar(ctx, 'GET', 'tarefas_projetos');
+      const [r, gravadas] = await Promise.all([chamar(ctx, 'GET', 'tarefas_projetos'), logosGravadas(ctx.db)]);
       const base = enderecoDoPortal();
       const busca = semAcento(String(a.busca ?? ''));
+      // A logo anexada pelo portal vale quando a casa não tem a marca em arquivo.
+      const gravadaDe = (cliente: unknown) => gravadas.find(g => semAcento(g.nome) === semAcento(String(cliente ?? '')));
       const projetos = (r.projetos ?? [])
         .filter((p: any) => !busca || [p.nome, p.cliente, p.codigo, p.id].some(x => x != null && semAcento(String(x)).includes(busca)))
         .map(({ chamados_token, publico_token, link_portal, entregas, equipe, ...p }: any) => {
-          const m = marcaDoCliente(p.cliente);
+          const estatica = marcaDoCliente(p.cliente);
+          const gravada = estatica ? undefined : gravadaDe(p.cliente);
+          const m = estatica ?? (gravada ? { src: gravada.src, detalhe: true } : undefined);
           // O projeto geral não é de cliente: não tem painel nem página para mandar.
           const deCliente = String(p.id) !== 'geral';
           // Os links logo depois do nome: se a resposta vier cortada, o que
@@ -1124,6 +1233,175 @@ const FERRAMENTAS: Ferramenta<Ctx>[] = [
         if (JSON.stringify(ficha).length <= 24_000) return ficha;
       }
       return { ...montar({ texto: 300, entregas: 0, tarefas: 0 }), aviso: 'Ficha grande: listas e textos encurtados. Use secao para o detalhe.' };
+    },
+  },
+  {
+    name: 'criar_projeto',
+    title: 'Criar projeto',
+    description: 'Cadastra um projeto novo com a ficha inteira, como a tela "Novo projeto". cliente é o nome do '
+      + 'cliente: se ainda não existe, ele é criado. Precisa de ao menos uma entrega (os marcos do projeto). '
+      + 'tipo: ' + 'BI, IA, SaaS, Automação, Integração, App, Site, Consultoria ou Outro. status: Em andamento (padrão), '
+      + 'Pausado, Concluído ou Cancelado. equipe: pessoa (id, e-mail ou nome, de listar_pessoas) e papel '
+      + '(Comercial, Gestor, Dev ou QA). O código do projeto e o painel de chamados do cliente saem sozinhos. '
+      + 'Devolve o id, o código e os links.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        nome: { type: 'string', description: 'O nome do projeto.' },
+        cliente: { type: 'string', description: 'O nome do cliente. Criado se ainda não existe.' },
+        descricao: { type: 'string', description: 'Aceita a marcação leve do portal.' },
+        objetivo: { type: 'string' },
+        tipo: { type: 'string' },
+        status: { type: 'string' },
+        prioridade: { type: 'string', description: 'Urgente, Alta, Média (padrão) ou Baixa.' },
+        data_inicio: { type: 'string', description: 'AAAA-MM-DD.' },
+        previsao_entrega: { type: 'string', description: 'AAAA-MM-DD.' },
+        observacoes: { type: 'string' },
+        repositorios: { type: 'array', items: { type: 'object', properties: { nome: { type: 'string' }, url: { type: 'string' } }, required: ['url'] }, description: 'Até 2.' },
+        drives: { type: 'array', items: { type: 'object', properties: { nome: { type: 'string' }, url: { type: 'string' } }, required: ['url'] }, description: 'As pastas do Drive do projeto.' },
+        link_portal: { type: 'string', description: 'O endereço do sistema entregue, quando há.' },
+        equipe: {
+          type: 'array',
+          items: { type: 'object', properties: { pessoa: { type: 'string' }, papel: { type: 'string' } }, required: ['pessoa', 'papel'] },
+        },
+        entregas: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            properties: {
+              titulo: { type: 'string' },
+              descricao: { type: 'string' },
+              prazo: { type: 'string', description: 'AAAA-MM-DD.' },
+              responsaveis: { type: 'array', items: { type: 'string' }, description: 'Ids, e-mails ou nomes.' },
+              marcador: { type: 'string', description: 'A área do cliente a que a entrega pertence.' },
+              submarcador: { type: 'string' },
+            },
+            required: ['titulo'],
+          },
+        },
+      },
+      required: ['nome', 'entregas'],
+    },
+    annotations: ESCRITA,
+    acoes: ['projetos', 'create_projeto', 'create_cliente'],
+    async executar(a, ctx) {
+      const nome = String(a.nome ?? '').trim();
+      if (!nome) throw new ErroFerramenta('O projeto precisa de um nome.');
+      const entregasPedidas = Array.isArray(a.entregas) ? a.entregas : [];
+      if (!entregasPedidas.length) throw new ErroFerramenta('O projeto precisa de ao menos uma entrega: diga os marcos.');
+      const cliente = a.cliente !== undefined && String(a.cliente).trim() ? await clienteDoPedido(ctx, a.cliente, true) : null;
+      const entregas = [];
+      for (const e of entregasPedidas) {
+        const titulo = String(e?.titulo ?? '').trim();
+        if (!titulo) throw new ErroFerramenta('Toda entrega precisa de um título.');
+        entregas.push({
+          titulo, descricao: e.descricao ?? null, prazo: e.prazo ? data(e.prazo, 'prazo da entrega') : null,
+          responsaveis: await idsDePessoasPorTexto(ctx, listaDe(e.responsaveis)),
+          marcador: e.marcador ?? null, submarcador: e.submarcador ?? null,
+        });
+      }
+      const r = await chamar(ctx, 'POST', 'create_projeto', {
+        nome, entregas,
+        ...(await camposDoProjeto(ctx, a)),
+        cliente_id: cliente?.id ?? null,
+        equipe: a.equipe !== undefined ? await equipeDoPedido(ctx, a.equipe) : [],
+      });
+      ctx.cache.delete('projetos');
+      const codigo = (await ctx.db.execute({ sql: 'SELECT codigo FROM projetos WHERE id = ?', args: [String(r.id)] })).rows[0]?.codigo;
+      const base = enderecoDoPortal();
+      return {
+        id: String(r.id), codigo: codigo != null ? String(codigo) : null, nome,
+        cliente: cliente ? { id: cliente.id, nome: cliente.nome, novo: cliente.novo } : null,
+        entregas: entregas.length,
+        links: {
+          portal: `${base}/projetos/${encodeURIComponent(String(r.id))}`,
+          chamados: r.chamados_token ? `${base}/chamados/${String(r.chamados_token)}` : null,
+        },
+      };
+    },
+  },
+  {
+    name: 'editar_projeto',
+    title: 'Editar projeto',
+    description: 'Muda só os campos informados da ficha de um projeto; o resto fica como está. cliente troca o '
+      + 'cliente (criado se ainda não existe). equipe substitui a equipe inteira: mande a lista completa, com '
+      + 'quem fica (ver_projeto mostra a atual). repositorios e drives também substituem a lista. Datas: null '
+      + 'apaga. Entregas mudam com criar_entrega e editar_entrega, e o progresso sai delas.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projeto: { type: 'string', description: 'Id, código, nome do projeto ou nome do cliente.' },
+        nome: { type: 'string' },
+        cliente: { type: 'string' },
+        descricao: { type: 'string' },
+        objetivo: { type: 'string' },
+        tipo: { type: 'string' },
+        status: { type: 'string' },
+        prioridade: { type: 'string' },
+        data_inicio: { type: ['string', 'null'] },
+        previsao_entrega: { type: ['string', 'null'] },
+        observacoes: { type: 'string' },
+        repositorios: { type: 'array', items: { type: 'object', properties: { nome: { type: 'string' }, url: { type: 'string' } }, required: ['url'] } },
+        drives: { type: 'array', items: { type: 'object', properties: { nome: { type: 'string' }, url: { type: 'string' } }, required: ['url'] } },
+        link_portal: { type: 'string' },
+        equipe: {
+          type: 'array',
+          items: { type: 'object', properties: { pessoa: { type: 'string' }, papel: { type: 'string' } }, required: ['pessoa', 'papel'] },
+        },
+      },
+      required: ['projeto'],
+    },
+    annotations: ESCRITA,
+    acoes: ['projetos', 'update_projeto', 'create_cliente'],
+    async executar(a, ctx) {
+      const projeto = await projetoOuErro(ctx, a.projeto);
+      if (String(projeto.id) === 'geral') throw new ErroFerramenta('O projeto geral não tem ficha para editar.');
+      const campos: Record<string, unknown> = { ...(await camposDoProjeto(ctx, a)) };
+      if (a.nome !== undefined) {
+        const nome = String(a.nome ?? '').trim();
+        if (!nome) throw new ErroFerramenta('O nome do projeto não pode ficar vazio.');
+        campos.nome = nome;
+      }
+      if (a.cliente !== undefined) {
+        campos.cliente_id = String(a.cliente ?? '').trim() ? (await clienteDoPedido(ctx, a.cliente, true)).id : null;
+      }
+      if (a.equipe !== undefined) {
+        campos.equipe = await equipeDoPedido(ctx, a.equipe);
+        // A gravação com equipe passa pela validação da ficha inteira, que pede o nome.
+        if (campos.nome === undefined) campos.nome = projeto.nome;
+      }
+      if (!Object.keys(campos).length) throw new ErroFerramenta('Diga o que mudar no projeto.');
+      await chamar(ctx, 'POST', 'update_projeto', { id: String(projeto.id), ...campos });
+      ctx.cache.delete('projetos');
+      return { ok: true, projeto: { id: String(projeto.id), nome: campos.nome ?? projeto.nome }, mudou: Object.keys(campos) };
+    },
+  },
+  {
+    name: 'definir_logo_do_cliente',
+    title: 'Definir a logo do cliente',
+    description: 'Grava (ou troca) a logo de um cliente, que passa a aparecer no carrossel de clientes do '
+      + 'portal e nos seletores. imagem_base64 é o arquivo PNG, WEBP ou JPEG em base64, até 700 KB. '
+      + 'remover: true tira a logo gravada.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cliente: { type: 'string', description: 'O nome do cliente, ou um projeto dele (id, código ou nome).' },
+        imagem_base64: { type: 'string' },
+        remover: { type: 'boolean' },
+      },
+      required: ['cliente'],
+    },
+    annotations: ESCRITA,
+    acoes: ['projetos', 'salvar_logo_cliente', 'remover_logo_cliente'],
+    async executar(a, ctx) {
+      const cliente = await clienteDoPedido(ctx, a.cliente, false);
+      if (a.remover === true) {
+        await chamar(ctx, 'POST', 'remover_logo_cliente', { cliente_id: cliente.id });
+        return { ok: true, cliente: cliente.nome, removida: true };
+      }
+      const r = await chamar(ctx, 'POST', 'salvar_logo_cliente', { cliente_id: cliente.id, base64: a.imagem_base64 });
+      return { ok: true, cliente: cliente.nome, logo: `${enderecoDoPortal()}${r.src}` };
     },
   },
   {
@@ -1449,7 +1727,10 @@ const INSTRUCOES = [
   'Resposta ao cliente: responder_chamado escreve no painel de chamados, e é o que o cliente lê; '
     + 'comentar fica só para o time. Antes de responder, veja em ver_tarefa o que já foi respondido.',
   'Projeto: listar_projetos para achar o id e os links; ver_projeto para a ficha inteira (descrição, '
-    + 'repositórios, Drive, acessos sem senha, equipe, entregas, reuniões e tarefas).',
+    + 'repositórios, Drive, acessos sem senha, equipe, entregas, reuniões e tarefas). criar_projeto '
+    + 'cadastra um projeto novo com a ficha inteira e ao menos uma entrega, e cria o cliente se ele '
+    + 'ainda não existe; editar_projeto muda só os campos informados. A logo do cliente entra com '
+    + 'definir_logo_do_cliente e aparece sozinha no carrossel de clientes do portal.',
   'Entregas: criar_entrega, editar_entrega e excluir_entrega mexem nos marcos do projeto; '
     + 'anexar_na_entrega põe arquivo ou evidência nelas. Os ids das entregas vêm de ver_projeto '
     + '(secao entregas). Marcar como Entregue ou Validada pede antes a evidência daquela etapa.',

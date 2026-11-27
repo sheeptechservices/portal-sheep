@@ -82,12 +82,52 @@ export const MARCAS: Marca[] = [
     cor: '#164FB6', corEscura: '#5B8BE8', proporcao: 1 },
 ];
 
+// ── As logos gravadas pelo portal ───────────────────────────────────────────
+//  A outra fonte: a logo que o cliente ganhou pelo portal (o bot do WhatsApp
+//  anexa quando cadastra o projeto). Ela vem da rota pública das marcas, uma
+//  vez por página, e entra depois das marcas da casa; o nome que a casa já tem
+//  em arquivo fica com o arquivo. Sem desenho conhecido, ela entra como
+//  `detalhe`: cinza em repouso, sem virar silhueta, que num JPEG de fundo
+//  branco seria um retângulo chapado.
+
+const mesmoNome = (a: string, b: string) => a.trim().toLocaleLowerCase('pt-BR') === b.trim().toLocaleLowerCase('pt-BR');
+let gravadas: Marca[] = [];
+let carregando: Promise<void> | null = null;
+const ouvintes = new Set<() => void>();
+
+/** Busca as logos gravadas uma vez por página. Fora do navegador (o servidor
+ *  também importa este arquivo) não faz nada. */
+export function carregarMarcasGravadas(): Promise<void> {
+  if (typeof window === 'undefined' || typeof fetch === 'undefined') return Promise.resolve();
+  carregando ??= fetch('/api/projeto-publico?modo=marcas')
+    .then(r => (r.ok ? r.json() : { marcas: [] }))
+    .then((d: { marcas?: { nome: string; src: string }[] }) => {
+      gravadas = (d.marcas ?? [])
+        .filter(m => m?.nome && m?.src && !MARCAS.some(s => mesmoNome(s.nome, m.nome)))
+        .map(m => ({ nome: m.nome, src: m.src, altura: 30, detalhe: true }));
+      ouvintes.forEach(f => f());
+    })
+    .catch(() => { /* sem as gravadas, ficam as da casa */ });
+  return carregando;
+}
+if (typeof window !== 'undefined') void carregarMarcasGravadas();
+
+/** Avisa quando as logos gravadas chegam, para quem desenhou antes. */
+export function ouvirMarcas(f: () => void): () => void {
+  ouvintes.add(f);
+  return () => { ouvintes.delete(f); };
+}
+
+/** Todas as marcas: as da casa e, depois, as gravadas pelo portal. */
+export function todasAsMarcas(): Marca[] {
+  return gravadas.length ? [...MARCAS, ...gravadas] : MARCAS;
+}
+
 /** Casa o cliente com a marca pelo nome. Cliente cadastrado à mão não tem logo,
  *  e aí quem chama cai no nome - por isso o retorno é opcional. */
 export function marcaDoCliente(nome: string | null | undefined): Marca | undefined {
   if (!nome) return undefined;
-  const alvo = nome.trim().toLocaleLowerCase('pt-BR');
-  return MARCAS.find(m => m.nome.toLocaleLowerCase('pt-BR') === alvo);
+  return MARCAS.find(m => mesmoNome(m.nome, nome)) ?? gravadas.find(m => mesmoNome(m.nome, nome));
 }
 
 /** A logo no formato que os seletores do portal esperam. */

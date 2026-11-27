@@ -33,6 +33,9 @@ import { emailAdmin } from './_papeis.js';
 // o projeto está no teto de funções do plano, e uma rota a mais travaria o
 // deploy. A lógica e as regras dele moram no módulo.
 import { atenderChamados } from './_chamados-publico.js';
+// As logos que os clientes ganharam pelo portal, para o carrossel da tela de
+// entrada, que aparece antes do login: `modo=marcas` e `modo=logo`.
+import { atenderLogos } from './_logos-de-clientes.js';
 import { prazoDoChamado } from './_dias-uteis.js';
 
 /** As entregas de uma tarefa: a principal (`entrega_id`) e as da lista
@@ -148,6 +151,7 @@ const ORDEM_STATUS = [
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.query.modo === 'chamados') return atenderChamados(req, res);
+  if (req.query.modo === 'marcas' || req.query.modo === 'logo') return atenderLogos(req, res);
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }

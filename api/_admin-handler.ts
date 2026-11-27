@@ -26,6 +26,7 @@ import {
 import { obterDdl } from './_schema.js';
 import { DDL_FILA_DE_EMAILS, enfileirarAvisos, enviarResumosVencidos } from './_resumo-email.js';
 import { DDL_AJUSTES_DO_CHAMADO, lerChamado, registrarChamado } from './_chamados-publico.js';
+import { DDL_LOGOS_DE_CLIENTES, conferirLogo, enderecoDaLogo } from './_logos-de-clientes.js';
 import {
   ETAPAS_TAREFA_PADRAO, ETIQUETAS_TAREFA_PADRAO, etapasDeTarefa, progressoDaEntrega,
   statusDeduzido, type EtapasDeTarefa,
@@ -1125,6 +1126,9 @@ async function migrarSchema(db: Client) {
   for (const sql of DDL_AJUSTES_DO_CHAMADO) {
     try { await ddl(sql); } catch { /* já existe */ }
   }
+  // A logo que o cliente ganha pelo portal. A definição mora com a rota que a
+  // serve, que também a garante.
+  try { await ddl(DDL_LOGOS_DE_CLIENTES); } catch { /* já existe */ }
 
   // Dono da sessão. A coluna aceita nulo porque nasceu depois da tabela, e as
   // sessões da senha compartilhada (removida em 28/08/2026) não tinham dono;
@@ -9380,6 +9384,33 @@ function faltaEmProjeto(p: any): string | null {
         args: [id, nome, new Date().toISOString()],
       });
       return { status: 200, body: { id, nome } };
+    }
+
+    // A logo do cliente: grava (ou troca) e tira. Ela entra sozinha no carrossel
+    // da tela de entrada e nos seletores, pela rota pública das marcas.
+    if (action === 'salvar_logo_cliente' || action === 'remover_logo_cliente') {
+      const clienteId = String(body?.cliente_id ?? '').trim();
+      const cliente = clienteId ? (await db.execute({
+        sql: 'SELECT id, nome FROM clientes WHERE id = ?', args: [clienteId],
+      })).rows[0] : undefined;
+      if (!cliente) return { status: 404, body: { error: 'Cliente não encontrado.' } };
+      await db.execute(DDL_LOGOS_DE_CLIENTES);
+      if (action === 'remover_logo_cliente') {
+        await db.execute({ sql: 'DELETE FROM cliente_logos WHERE cliente_id = ?', args: [clienteId] });
+        return { status: 200, body: { ok: true, cliente: { id: clienteId, nome: String(cliente.nome) } } };
+      }
+      const logo = conferirLogo(body?.base64);
+      if ('erro' in logo) return { status: 400, body: { error: logo.erro } };
+      const versao = randomBytes(6).toString('hex');
+      await db.execute({
+        sql: `INSERT INTO cliente_logos (cliente_id, mime, dados, versao, atualizado_em, atualizado_por)
+              VALUES (?,?,?,?,?,?)
+              ON CONFLICT(cliente_id) DO UPDATE SET mime = excluded.mime, dados = excluded.dados,
+                versao = excluded.versao, atualizado_em = excluded.atualizado_em,
+                atualizado_por = excluded.atualizado_por`,
+        args: [clienteId, logo.mime, logo.dados, versao, new Date().toISOString(), usuario?.nome ?? null],
+      });
+      return { status: 200, body: { ok: true, cliente: { id: clienteId, nome: String(cliente.nome) }, src: enderecoDaLogo(clienteId, versao) } };
     }
 
     // Matriz de permissões do papel. Chave fora do catálogo é descartada em

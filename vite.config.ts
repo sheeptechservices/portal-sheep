@@ -233,6 +233,12 @@ export default defineConfig(({ mode }) => {
                   res.end(JSON.stringify(b))
                   return falso
                 },
+                // A logo do cliente (`modo=logo`) sai em bytes, e nao em JSON.
+                end: (b?: Buffer | string) => {
+                  res.statusCode = status
+                  res.end(b)
+                  return falso
+                },
               }
               await handler(
                 {

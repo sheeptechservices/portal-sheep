@@ -249,6 +249,9 @@ export const PERMISSAO_DA_ACAO: Record<string, string | string[]> = {
   projeto_arquivo_base64: 'projetos:ver',
   etiquetar_projeto_arquivo: 'projetos:editar',
   create_cliente: 'projetos:criar',
+  // A logo do cliente é parte da ficha dele: quem edita projeto troca a logo.
+  salvar_logo_cliente: 'projetos:editar',
+  remover_logo_cliente: 'projetos:editar',
   // Entregas e reuniões pendem do projeto: quem edita o projeto edita o
   // que está dentro dele. Ver o conteúdo da evidência é leitura.
   // A tela de Tarefas monta as colunas com esta lista, e Configurações a edita.

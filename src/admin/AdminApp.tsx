@@ -17,7 +17,7 @@ import { createPortal } from 'react-dom';
 import { useDropdownDismiss } from '../lib/useDropdownDismiss';
 import { telaSobDemanda } from '../lib/novaVersao';
 import { CampoSenha } from '../components/CampoSenha';
-import { MARCAS } from '../lib/marcas';
+import { useMarcas } from '../lib/useMarcas';
 import { SkeletonPagina } from '../components/Skeleton';
 import { GOOGLE_CLIENT_ID, GOOGLE_DOMINIO, carregarGis } from '../lib/google';
 // Cada página é carregada sob demanda (code-splitting) - só entra no bundle quando aberta
@@ -1186,9 +1186,11 @@ function LoginScreen({ onLogin, saindo }: { onLogin: (token: string) => void; sa
 }
 
 /** Carrossel dos clientes, no pé da coluna de acesso. As logos e suas
- *  alturas ópticas vêm de `lib/marcas`, compartilhadas com o portal. */
+ *  alturas ópticas vêm de `lib/marcas`, compartilhadas com o portal, e as
+ *  gravadas pelo portal entram depois, quando chegam. */
 
 function MarcasDoGrupo() {
+  const MARCAS = useMarcas();
   return (
     <div className="login-marcas">
       <span className="login-marcas-rotulo">Nossos clientes</span>
