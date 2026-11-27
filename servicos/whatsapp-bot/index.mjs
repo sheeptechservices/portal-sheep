@@ -108,7 +108,12 @@ const LEITURA = ['listar_projetos', 'ver_projeto', 'ler_mural', 'listar_tarefas'
 const ESCRITA = ['criar_tarefa', 'editar_tarefa', 'excluir_tarefa', 'comentar', 'excluir_comentario',
   'adicionar_subtarefa', 'editar_subtarefa', 'excluir_subtarefa', 'joinha_comentario', 'abrir_chamado',
   'criar_entrega', 'editar_entrega', 'excluir_entrega', 'anexar_na_entrega',
-  'responder_chamado', 'editar_resposta_chamado', 'apagar_resposta_chamado'];
+  'responder_chamado', 'editar_resposta_chamado', 'apagar_resposta_chamado',
+  'criar_projeto', 'editar_projeto'];
+/** A logo do cliente pelo portal recebe a imagem em base64, que o modelo não
+ *  produz: quem chama é `anexar_logo_do_cliente`, do servidor de anexos. Para o
+ *  modelo ela nem aparece. */
+const LOGO_PELO_PORTAL = 'mcp__portal__definir_logo_do_cliente';
 const doPortal = (nome) => `mcp__portal__${nome}`;
 /** O servidor MCP do próprio bot (`anexos-mcp.mjs`): anexa a um comentário um
  *  arquivo que chegou pelo WhatsApp. Escreve no portal, então vai com a escrita. */
@@ -116,7 +121,9 @@ const COMENTAR_COM_ANEXO = 'mcp__anexos__comentar_com_anexo';
 /** O mesmo servidor anexa numa entrega (arquivo ou evidência) o arquivo que
  *  chegou pelo WhatsApp. Também escreve no portal. */
 const ANEXAR_NA_ENTREGA = 'mcp__anexos__anexar_arquivo_na_entrega';
-const ESCRITA_TODAS = [...ESCRITA.map(doPortal), COMENTAR_COM_ANEXO, ANEXAR_NA_ENTREGA];
+/** E grava a logo do cliente no portal, a partir da imagem baixada ou mandada. */
+const ANEXAR_LOGO = 'mcp__anexos__anexar_logo_do_cliente';
+const ESCRITA_TODAS = [...ESCRITA.map(doPortal), COMENTAR_COM_ANEXO, ANEXAR_NA_ENTREGA, ANEXAR_LOGO];
 /** O servidor de grupos do bot (`whatsapp-mcp.mjs`): lista os grupos, lê as
  *  mensagens, baixa arquivos e diz quem está em cada um, e lê as conversas
  *  privadas do número da casa. Só na conversa privada do dono: no grupo, o bot
@@ -148,7 +155,7 @@ const INTERNET = ['WebSearch', 'WebFetch'];
 /** Ler uma página pelo servidor do bot (`web-mcp.mjs`): direto e, quando a
  *  VPS não alcança o site ou ele é montado em JavaScript, por um leitor
  *  externo. Só no privado, como o resto da internet. */
-const LER_PAGINA = ['mcp__web__ler_pagina'];
+const LER_PAGINA = ['mcp__web__ler_pagina', 'mcp__web__baixar_logo'];
 const AGENDA_ESCRITA = ['mcp__agenda__agendar', 'mcp__agenda__cancelar_agendamento'];
 /** As preferências de estilo (`preferencias-mcp.mjs`): só o dono, só no
  *  privado. Para qualquer outra pessoa, e no grupo, nem aparecem. */
@@ -196,7 +203,10 @@ writeFileSync(mcpConfig, JSON.stringify({
       type: 'stdio',
       command: process.execPath,
       args: [fileURLToPath(new URL('./web-mcp.mjs', import.meta.url))],
-      env: Object.fromEntries(['LEITOR_WEB_URL', 'LEITOR_WEB_CHAVE'].filter(k => process.env[k]).map(k => [k, process.env[k]])),
+      env: {
+        MIDIA_DIR: midiaDir,
+        ...Object.fromEntries(['LEITOR_WEB_URL', 'LEITOR_WEB_CHAVE', 'CONVERSOR_IMAGEM_URL'].filter(k => process.env[k]).map(k => [k, process.env[k]])),
+      },
     },
     preferencias: {
       type: 'stdio',
@@ -732,6 +742,8 @@ function instrucoes(quem) {
     'Se a pessoa disser não ou mudar de ideia, não execute e pergunte o que ela quer.',
     'Se houver mais de um card que serve, liste as opções e pergunte qual, antes de propor a ação.',
     '',
+    'Projeto novo: quando pedirem para cadastrar um projeto, use criar_projeto com a ficha inteira: nome, cliente, tipo, status, prioridade, descrição, objetivo, data de início e previsão de entrega, equipe com o papel de cada um (Comercial, Gestor, Dev ou QA), repositórios, pastas do Drive e ao menos uma entrega (os marcos). Deduza o que der da conversa e do que você já leu (reuniões, sites, cards, grupos) e proponha a ficha completa numa mensagem só, com "Confirma? (sim/não)"; o que não der para saber, deixe em branco e diga. O cliente que ainda não existe é criado junto. Para mudar a ficha de um projeto que já existe, use editar_projeto (a equipe vai sempre completa). Nunca diga que não consegue criar projeto.',
+    'Logo do cliente: quando o projeto é de um cliente sem logo (listar_projetos traz logo nula, ou o cliente é novo) e a pessoa não mandou a logo, procure a oficial antes de propor. Ache o site oficial da empresa (WebSearch), leia com ler_pagina e pegue o endereço da imagem da logo no cabeçalho da página (ou a og:image, ou o ícone, nessa ordem); baixe com baixar_logo e abra com Read para conferir que é mesmo a logo da empresa e que está legível. Prefira a versão com fundo transparente e o nome escrito, e não use logo de outra empresa com nome parecido. Na proposta, diga de onde a logo veio e mande a imagem junto com [[arquivo:caminho]]. Depois do sim, crie o projeto e grave a logo com anexar_logo_do_cliente (o caminho de baixar_logo, ou o arquivo de imagem que a pessoa mandou): ela entra sozinha no carrossel de clientes do portal. Se não achar uma logo confiável, diga e siga sem ela. Para trocar a logo de um cliente que já tem, é o mesmo anexar_logo_do_cliente.',
     'Chamado: só quando a pessoa pedir claramente um chamado ("abre um chamado", "registra um chamado para o cliente X"), use abrir_chamado. Ele grava o chamado no painel de chamados do cliente, que o cliente acompanha, e a tarefa do time nasce sozinha na Triagem, com o gestor, as etiquetas e o prazo: não crie a tarefa à parte. Pedido que não fala em chamado é tarefa comum, com criar_tarefa.',
     'Grupos do WhatsApp: na conversa privada você lê os grupos em que o número da casa está, pelo servidor MCP "whatsapp": listar_grupos (com o cliente de cada grupo e os projetos dele, já com os links, pelo vínculo cadastrado no portal ou deduzido do nome do grupo: cliente.como diz qual), ler_grupo (as mensagens recentes, com quem mandou e quando) e baixar_midia_do_grupo (o print ou arquivo de uma mensagem, para ler com Read ou anexar com comentar_com_anexo).',
     'Conversas privadas do número da casa: o que outras pessoas mandaram direto para o número da casa fica guardado, e você lê com listar_conversas (as conversas recentes, com número e nome) e ler_conversa (as mensagens de uma delas, pelo número ou pelo nome). Quando a pessoa disser que alguém mandou mensagem no privado do número, leia com ler_conversa em vez de pedir print. Imagem, documento e áudio de uma conversa privada você abre e ouve com baixar_midia_da_conversa (o número e o id da mensagem), do mesmo jeito que nos grupos: leia o print com Read, use a transcrição do áudio. Nunca diga que não consegue abrir o que veio no privado de alguém, e não peça para a pessoa descrever o áudio ou o print. É só leitura: responder continua sendo enviar_para_pessoa, com confirmação.',
@@ -891,6 +903,8 @@ function perguntar({ texto, sessao, liberarEscrita, privado, quem, controle }) {
     ...(privado && dono ? [] : PREFERENCIAS),
     // Ler página é internet: no grupo, nem aparece.
     ...(privado ? [] : LER_PAGINA),
+    // A logo pelo portal só se grava pelo servidor de anexos, com os bytes.
+    LOGO_PELO_PORTAL,
     // A conta do Fireflies tem as reuniões de todos os clientes: fora do
     // privado do dono, nem aparece.
     ...(privado && dono ? [] : FIREFLIES),

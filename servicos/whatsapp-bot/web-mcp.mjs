@@ -16,6 +16,9 @@
 import { createInterface } from 'node:readline';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
 
 const LEITOR = (process.env.LEITOR_WEB_URL ?? 'https://r.jina.ai/').replace(/\/*$/, '/');
 const LEITOR_CHAVE = process.env.LEITOR_WEB_CHAVE ?? '';
@@ -25,6 +28,13 @@ const BAIXAR_MAX = 3 * 1024 * 1024;
  *  JavaScript, ou uma tela de bloqueio. */
 const TEXTO_MIN = 400;
 const NAVEGADOR = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36';
+/** O conversor de imagem: busca de fora (alcança o site que a VPS não
+ *  alcança), passa SVG e qualquer formato para PNG, corta a borda vazia e
+ *  limita o tamanho. */
+const CONVERSOR = (process.env.CONVERSOR_IMAGEM_URL ?? 'https://wsrv.nl/').replace(/\/*$/, '/');
+const MIDIA_DIR = process.env.MIDIA_DIR ?? '/app/trabalho/midia';
+/** O teto da logo no portal. */
+const LOGO_MAX = 700 * 1024;
 
 const FERRAMENTAS = [
   {
@@ -37,6 +47,21 @@ const FERRAMENTAS = [
       type: 'object',
       properties: {
         url: { type: 'string', description: 'O endereço da página, com ou sem https://.' },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'baixar_logo',
+    title: 'Baixar a logo de uma empresa',
+    description: 'Baixa a imagem de uma logo pelo endereço dela (PNG, JPG, WEBP, SVG, de um site), converte '
+      + 'em PNG com a borda vazia cortada e grava na pasta de mídias. Devolve o caminho, para conferir com '
+      + 'Read e depois anexar ao cliente com anexar_logo_do_cliente. O endereço vem de ler_pagina (a imagem '
+      + 'do cabeçalho do site oficial, a og:image ou o ícone).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'O endereço da imagem da logo.' },
       },
       required: ['url'],
     },
@@ -161,9 +186,43 @@ async function lerPagina(a) {
   };
 }
 
+// ── A logo ──────────────────────────────────────────────────────────────────
+
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+async function pedirAoConversor(url, extra) {
+  const r = await fetch(`${CONVERSOR}?url=${encodeURIComponent(url)}&output=png&fit=inside&we&trim=8${extra}`, {
+    headers: { 'User-Agent': NAVEGADOR }, signal: AbortSignal.timeout(40_000),
+  });
+  if (!r.ok) throw new Error(`o conversor respondeu ${r.status}`);
+  const bytes = Buffer.from(await r.arrayBuffer());
+  if (!bytes.subarray(0, 8).equals(PNG)) throw new Error('o endereço não é de uma imagem');
+  return bytes;
+}
+
+async function baixarLogo(a) {
+  const { url } = await enderecoPublico(a.url);
+  let bytes;
+  try {
+    bytes = await pedirAoConversor(url, '&w=800&h=400');
+    // PNG cheio de detalhe pode passar do teto do portal: menor, ele cabe.
+    if (bytes.length > LOGO_MAX) bytes = await pedirAoConversor(url, '&w=480&h=240');
+  } catch (e) {
+    throw new Error(`não baixei a logo: ${motivo(e)}`);
+  }
+  if (bytes.length > LOGO_MAX) throw new Error('a logo passou de 700 KB mesmo reduzida: procure outra versão');
+  mkdirSync(MIDIA_DIR, { recursive: true });
+  const caminho = join(MIDIA_DIR, `${Date.now()}-${randomBytes(4).toString('hex')}-logo.png`);
+  writeFileSync(caminho, bytes, { mode: 0o600 });
+  // Largura e altura do cabeçalho do PNG, para saber o formato da marca.
+  const largura = bytes.readUInt32BE(16);
+  const altura = bytes.readUInt32BE(20);
+  return { caminho, origem: url, largura, altura, kb: Math.round(bytes.length / 1024) };
+}
+
 // ── O protocolo ─────────────────────────────────────────────────────────────
 
-const EXECUTAR = { ler_pagina: lerPagina };
+const EXECUTAR = { ler_pagina: lerPagina, baixar_logo: baixarLogo };
 const enviar = (msg) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...msg })}\n`);
 
 async function tratar({ id, method, params }) {

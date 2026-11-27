@@ -388,6 +388,28 @@ ela escreveu e os que a marcam, com marcados, quem já viu a versão atual, quem
 ainda não e as reações. Só leitura: o bot não escreve recado, e ler pelo bot
 não marca como visto. No grupo, o mural não aparece na resposta.
 
+## Projeto novo e logo do cliente
+
+"Cadastra o projeto da M Perícias": o bot monta a ficha inteira com
+`criar_projeto` (MCP do portal) - nome, cliente, tipo, status, prioridade,
+descrição, objetivo, datas, equipe com papel, repositórios, pastas do Drive e
+ao menos uma entrega - e propõe tudo numa mensagem, com confirmação. O cliente
+que ainda não existe nasce junto; nome parecido com um cliente que já existe é
+recusado, para não nascer um segundo cadastro do mesmo. `editar_projeto` muda
+só os campos que vierem.
+
+A logo: quando o cliente não tem (ou é novo) e ninguém mandou, o bot acha o site
+oficial, lê com `ler_pagina`, pega a imagem do cabeçalho (ou a og:image, ou o
+ícone) e baixa com `baixar_logo` (`web-mcp.mjs`). Ela passa por um conversor
+externo, o wsrv.nl, que alcança o site que a VPS não alcança, converte SVG e
+qualquer formato em PNG e corta a borda vazia. O bot abre a imagem para
+conferir, mostra na proposta e, depois do sim, grava com
+`anexar_logo_do_cliente` (`anexos-mcp.mjs`), que lê o arquivo da pasta de
+mídias e chama o `definir_logo_do_cliente` do portal com os bytes. A logo fica
+no banco do portal e entra sozinha no carrossel de clientes da tela de entrada
+e nos seletores. O `definir_logo_do_cliente` não aparece para o modelo: ele
+recebe base64, que só o servidor de anexos produz.
+
 ## De que cliente é cada grupo
 
 `vinculos.mjs` liga grupo, cliente, projeto e links pelos cadastros do portal:

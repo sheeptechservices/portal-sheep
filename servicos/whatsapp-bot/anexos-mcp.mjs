@@ -161,7 +161,34 @@ async function anexarNaEntrega(a) {
   return `Anexado na entrega ${Number(a.entrega_id)}${evidencia ? ` como evidência da etapa ${a.etapa ?? 'Entrega'}` : ''}: ${anexos.map(x => x.nome).join(', ')}. ${resultado}`.trim();
 }
 
-const FERRAMENTAS = { [FERRAMENTA.name]: comentarComAnexo, [NA_ENTREGA.name]: anexarNaEntrega };
+/** A logo do cliente: a imagem que baixar_logo trouxe, ou a que a pessoa
+ *  mandou pelo WhatsApp. Ela entra no carrossel de clientes do portal. */
+const LOGO = {
+  name: 'anexar_logo_do_cliente',
+  title: 'Anexar a logo do cliente no portal',
+  description: 'Grava (ou troca) a logo de um cliente no portal, que passa a aparecer no carrossel de clientes '
+    + 'e nos seletores. Use o caminho que baixar_logo devolveu, ou o arquivo de imagem que a pessoa mandou '
+    + '(pasta de mídias). PNG, WEBP ou JPEG, até 700 KB. Altera o portal: só rode depois da confirmação da pessoa.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      cliente: { type: 'string', description: 'O nome do cliente, ou um projeto dele.' },
+      caminho: { type: 'string', description: 'Caminho da imagem na pasta de mídias.' },
+    },
+    required: ['cliente', 'caminho'],
+  },
+};
+
+const IMAGENS = ['image/png', 'image/jpeg', 'image/webp'];
+
+async function anexarLogo(a) {
+  const arquivo = lerAnexo({ caminho: a.caminho });
+  if (!IMAGENS.includes(arquivo.tipo)) throw new Error('a logo precisa ser PNG, WEBP ou JPEG: passe a imagem por baixar_logo, que converte');
+  const resultado = await chamarPortal('definir_logo_do_cliente', { cliente: String(a.cliente ?? ''), imagem_base64: arquivo.base64 });
+  return `Logo gravada. ${resultado}`.trim();
+}
+
+const FERRAMENTAS = { [FERRAMENTA.name]: comentarComAnexo, [NA_ENTREGA.name]: anexarNaEntrega, [LOGO.name]: anexarLogo };
 
 // ── O protocolo ─────────────────────────────────────────────────────────────
 
@@ -178,7 +205,7 @@ async function tratar(pedido) {
   }
   if (id === undefined) return; // notificação: nada a responder
   if (method === 'ping') return enviar({ id, result: {} });
-  if (method === 'tools/list') return enviar({ id, result: { tools: [FERRAMENTA, NA_ENTREGA] } });
+  if (method === 'tools/list') return enviar({ id, result: { tools: [FERRAMENTA, NA_ENTREGA, LOGO] } });
   if (method === 'tools/call') {
     const fazer = FERRAMENTAS[params?.name];
     if (!fazer) return enviar({ id, error: { code: -32602, message: `ferramenta desconhecida: ${params?.name}` } });
