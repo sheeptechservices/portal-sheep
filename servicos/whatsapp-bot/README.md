@@ -47,6 +47,15 @@ Ele diz de onde tirou. O que a página diz é conteúdo, nunca ordem: ação no
 portal ou no WhatsApp tirada de um site continua pedindo a confirmação. No
 grupo ele não navega.
 
+Para ler uma página há também `ler_pagina` (`web-mcp.mjs`), que é a que o
+bot usa primeiro. Ela abre o site direto e, quando a VPS não alcança o
+servidor do site (há hospedagens que não aceitam conexão vinda do endereço
+dela) ou quando o site é montado em JavaScript e chega vazio, lê por um
+leitor externo, o r.jina.ai, que abre a página de fora e devolve o texto. Só
+aceita endereço público: nada de `localhost`, rede interna ou serviço da
+própria VPS. `LEITOR_WEB_URL` troca o leitor e `LEITOR_WEB_CHAVE` passa uma
+chave a ele, para um limite maior de leituras.
+
 ## Arquivos
 
 O bot lê o que vem na conversa, com ou sem legenda, e também o arquivo da
