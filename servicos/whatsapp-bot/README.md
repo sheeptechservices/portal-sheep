@@ -99,8 +99,10 @@ passa a voz do WhatsApp (OGG/Opus) para WAV antes. Tudo isso fica em
 `transcricao.mjs`.
 
 - A mensagem de voz vira o texto da mensagem, com uma nota avisando o modelo
-  de que é transcrição e pode ter palavra trocada. Um "sim" falado confirma
-  como um escrito.
+  de que é transcrição e pode ter palavra trocada. O modelo corrige pelo
+  contexto e segue com a leitura mais provável, sem pedir que a pessoa
+  confirme o que disse; só pergunta quando o áudio se contradiz a ponto de
+  quebrar o pedido. Um "sim" falado confirma como um escrito.
 - Responder a um áudio com um pedido ("cria um card disso") leva a
   transcrição como assunto.
 - Nos grupos, `baixar_midia_do_grupo` devolve a transcrição do áudio de alguém;
